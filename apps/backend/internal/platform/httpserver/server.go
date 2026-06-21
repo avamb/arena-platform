@@ -56,10 +56,10 @@ type PoolDB interface {
 // disabled auth stub). The route mounts guard against missing dependencies
 // rather than panicking at startup.
 type Server struct {
-	cfg    *config.Config
-	logger *slog.Logger
-	router *chi.Mux
-	srv    *http.Server
+	cfg     *config.Config
+	logger  *slog.Logger
+	router  *chi.Mux
+	srv     *http.Server
 	db      Pinger
 	pool    PoolDB
 	stub    *auth.StubProvider
