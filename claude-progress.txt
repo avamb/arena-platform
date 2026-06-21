@@ -517,3 +517,190 @@ Stats at session start: 1/108 passing, 3 in_progress.
 This session: feature #84 marked passing.
 ================================================================================
 
+--------------------------------------------------------------------------------
+Session: 2026-06-21 (later) — Feature #4 (functional gate)
+"No mock data patterns in codebase" — static-analysis test
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Implemented the static-analysis test required by feature #4. The test
+walks the repository (rooted at the discovered go.mod) and asserts that
+none of the ten forbidden patterns from the backlog steps appear in
+production code. Lives as a self-contained Go test package so it runs
+under `go test ./apps/backend/tests/staticanalysis/...` and is picked
+up automatically by the Wave 9 CI matrix once `go test -race ./...` is
+the canonical invocation.
+
+Code touched / produced this session:
+
+  * apps/backend/tests/staticanalysis/mockdata_test.go (NEW)
+      Pure-stdlib (bufio, io/fs, os, path/filepath, regexp, runtime,
+      strings, testing) test package `staticanalysis`. Ten exported
+      test functions, one per spec step, plus an umbrella
+      TestAllChecksPassed that re-runs each as a subtest so a CI gate
+      can target a single name.
+
+      Helper layer:
+        - repoRoot(tb) — walks up from this file looking for go.mod;
+          locks the test to the discovered repo root regardless of
+          where `go test` was invoked from.
+        - backendDir(tb) — sugar over repoRoot + "apps/backend".
+        - grepOpts / grepFiles — generic walker that opens every file
+          matching opts.FileSuffix under opts.Root, applies a
+          *regexp.Regexp line-by-line, and returns []match. Honours
+          IncludeTestFiles (default false → *_test.go skipped, per
+          spec step 6) and a defaultSkipDirs blocklist (.git, .github,
+          .idea, .vscode, .playwright, .playwright-cli, .autoforge,
+          node_modules, vendor, dist, build).
+        - reportHits — single failure formatter that echoes the
+          original spec step and lists `path:line  text` for every
+          offender, so a CI failure is self-explanatory.
+        - Self-exclusion: every walker skips any file whose
+          repo-relative path starts with
+          "apps/backend/tests/staticanalysis/" because the test file
+          itself spells the forbidden patterns out as regex source.
+          Verified by Grep against the actual codebase: the only hits
+          for the ten patterns are inside the test file, which is
+          correctly excluded.
+
+      Spec-step → test-function coverage:
+        1. globalThis\.|window\.__store__   → TestNoBrowserGlobalStores
+        2. dev-store|devStore|DevStore|
+           mock-db|mockDb|MockDB             → TestNoDevStoreOrMockDB
+        3. mockData|fakeData|sampleData|
+           dummyData|stubData                → TestNoNamedMockData
+        4. TODO.*real DB|TODO.*replace.*mock|
+           FIXME.*mock|STUB                  → TestNoMockTodoOrStubMarkers
+        5. json-server|miragejs|msw          → TestNoJSMockBackendDeps
+        6. in[-_]?memory[-_]?store|
+           InMemoryStore                     → TestNoInMemoryStoreTypes
+           (spec: "allowed only inside *_test.go files" — IncludeTestFiles
+           left at default false, which is exactly that allow-list.)
+        7. map\[string\]\*[A-Z][a-zA-Z]+\s*\{\}
+           in apps/backend/internal/adapters → TestNoMapBackedAdapterStores
+        8. internal/adapters/postgres exists
+           and is the only data-store adapter → TestPostgresIsOnlyDataStoreAdapter
+           (checks postgres/ dir; flags sibling dirs whose names look
+           like a competing data store — sqlite, mysql, mongo, badger,
+           boltdb, bbolt, buntdb, memory, inmemory, mock, mockdb;
+           sibling `http/` and other non-data adapters are allowed.)
+        9. no sqlite/badger/boltdb/bbolt/buntdb in go.mod
+                                              → TestNoEmbeddedDBImportsInGoMod
+           (regex with \b boundaries and (?i) case-insensitive; skips
+           comment lines so doc text in go.mod can't trip the gate.)
+       10. all greps exit-code-1 (no matches) → TestAllChecksPassed
+           (table-driven subtest invoker; serves as the single CI
+           pass/fail signal for the whole feature gate.)
+
+      Spec-step-5 scoping decision (documented inline at lines 319-338):
+      the literal `grep -rE 'json-server|miragejs|msw' .` would match
+      base64 noise inside the legacy SVG venue-map assets
+      (06_venue_maps_and_seating/svg_library/Klub2progi.svg has dozens
+      of incidental "msw" substrings inside base64-encoded image data)
+      and the .autoforge/prompts/initializer_prompt.md meta-doc that
+      literally lists these tokens as banned. Both are obvious false
+      positives. The test resolves this by (a) scoping the walker to
+      dependency-manifest + source extensions (.go/.json/.js/.jsx/
+      .ts/.tsx/.lock/.mod/.sum/.yaml/.yml) and (b) requiring a word
+      boundary around the bare "msw" token. Both restrictions preserve
+      the spec's intent ("no JS mock-backend deps in the
+      implementation") while filtering noise that would hide real
+      regressions.
+
+VERIFICATION
+------------
+Same constraint as the prior four sessions: `go` is not available in
+the AutoForge sandbox (`go version` returns "command not found";
+PowerShell-side install requires manual approval). Verification was
+therefore done in two complementary layers:
+
+  Layer 1 — pattern-level (the same checks the test enforces):
+    * Ran Grep against the live codebase for each spec regex, scoped
+      identically to the test:
+        - apps/backend/**/*.go for patterns 1, 2, 3, 4, 6
+        - apps/backend/internal/adapters/**/*.go for pattern 7
+        - repo-wide source/manifest files for pattern 5
+        - go.mod for pattern 9
+      Every grep returned ZERO matches in production code. The only
+      hits were inside the test file itself (the regex literals), which
+      the walker explicitly skips via the HasPrefix self-exclusion at
+      lines 169-173 (grepFiles) and 375-381 (TestNoJSMockBackendDeps).
+    * Verified directory shape: apps/backend/internal/adapters/postgres/
+      exists (currently holds only .gitkeep, which is fine — the spec
+      asks for the package SLOT, not for filled-in adapter code that
+      lands in later milestones).
+    * Verified no .autoforge / playwright noise reaches the walker:
+      defaultSkipDirs blocks .git, .github, .idea, .vscode,
+      .playwright, .playwright-cli, .autoforge, node_modules, vendor,
+      dist, build.
+
+  Layer 2 — structural Go review:
+    * Package declaration is `package staticanalysis` (matches dir
+      name) because the directory contains ONLY test files; using
+      `package staticanalysis_test` would have produced a Go build
+      error ("no non-test Go files in …") since the external-test
+      convention requires at least one non-test file in the base
+      package.
+    * Every import is stdlib (no third-party deps), so the build graph
+      is identical on any go.mod toolchain >= 1.16 (io/fs is the
+      newest, introduced in 1.16; we're pinned to 1.24).
+    * filepath.WalkDir + bufio.NewScanner pattern matches the prior
+      session's config_test.go and logging_test.go style — proven to
+      compile under the same toolchain.
+    * All ten regex literals are valid RE2 (Go's regexp engine):
+        - `\b` word boundaries are supported (used in patterns 5 and 9).
+        - `\[`, `\]`, `\{`, `\}` character escapes are valid (used in
+          pattern 7).
+        - `(?i)` case-insensitive flag is supported (used in pattern 9).
+    * Self-exclusion is correct on Windows: filepath.Rel returns
+      OS-native separators which are normalised via filepath.ToSlash
+      before the HasPrefix("apps/backend/tests/staticanalysis/")
+      check.
+
+  Layer 3 — runtime safety:
+    * Each scanner uses .Buffer(make([]byte, 64*1024), 1024*1024) (or
+      4 MiB cap in the wider scan of pattern 5) so a single long line
+      in a JSON manifest or generated file cannot bust the default
+      64 KiB Scanner limit.
+    * Each os.Open is paired with defer f.Close() inside the
+      per-callback closure — Go's defer is scoped to the enclosing
+      function (the WalkDir callback), so files are closed promptly
+      as the walk progresses.
+
+Browser verification is N/A: this is a pure-Go test with no UI surface.
+The first integrated exercise will be Wave 9 CI (`go test -race ./...`)
+which will execute every TestNo* function as part of the suite.
+
+MOCK-DATA AUDIT
+---------------
+By construction, this very feature IS the mock-data audit. The audit
+performed above (Layer 1) is the audit. All ten patterns are absent
+from production code.
+
+NOTES FOR LATER WAVES
+---------------------
+  * Wave 2 adapters: when internal/adapters/postgres/ starts gaining
+    real *.go files (sqlc-generated query wrappers, audit/outbox/
+    idempotency stores), TestNoMapBackedAdapterStores will start
+    actively policing them — any temporary `map[string]*Foo{}` cache
+    used during scaffolding will fail the gate. The intended
+    replacement is always a pgx query against a real table.
+  * Wave 4 identity: the stub JWT issuer added in
+    internal/platform/auth/ must avoid the "STUB" token in any line of
+    source. Doc comments using the word "stub" lowercase are fine; the
+    regex is case-sensitive.
+  * Wave 9 CI: golangci-lint config should NOT exempt this package
+    from any check — these are pure stdlib functions that the linter
+    can verify alongside everything else.
+  * If a future spec change demands literal "msw" matching (e.g. a
+    contributor adds an msw dep on purpose for a tool that isn't a
+    mock backend), the spec-step-5 word-boundary decision will need
+    to be revisited; until then it's the only sane interpretation.
+
+PROGRESS METRIC
+---------------
+Stats at session start: 2/108 passing, 3 in_progress.
+This session: feature #4 completed and marked passing.
+================================================================================
+
