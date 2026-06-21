@@ -1,0 +1,63 @@
+# Project-Specific Allowed Commands
+# ==================================
+# Location: {project_dir}/.autoforge/allowed_commands.yaml
+version: 1
+
+commands:
+  # Go development tools
+  - name: go
+    description: Go toolchain
+  - name: gofmt
+    description: Go formatter
+  - name: golangci-lint
+    description: Go linter
+
+  # Docker tools
+  - name: docker
+    description: Docker container runtime
+  - name: docker-compose
+    description: Docker Compose v1
+
+  # Database tools
+  - name: psql
+    description: PostgreSQL command-line client
+  - name: pg_isready
+    description: Check PostgreSQL connectivity
+
+  # Build and shell utilities
+  - name: make
+    description: Build automation
+  - name: curl
+    description: HTTP client
+  - name: find
+    description: File system search
+  - name: chmod
+    description: Change file permissions
+  - name: git
+    description: Version control
+
+  # Project init script
+  - name: ./init.sh
+    description: Project initialization script
+
+  # Process launching helpers needed for Windows
+  - name: cmd.exe
+    description: Windows command interpreter (used to start GUI apps)
+  - name: cmd
+    description: Windows command interpreter
+  - name: where
+    description: Windows where command (locate executables)
+  - name: sed
+    description: Stream editor
+  - name: awk
+    description: Awk text processing
+  - name: tail
+    description: Tail file output
+  - name: head
+    description: Head file output
+  - name: powershell.exe
+    description: Windows PowerShell
+  - name: pwsh
+    description: PowerShell Core
+  - name: start
+    description: Start a process

@@ -1,0 +1,7 @@
+// internal/platform/
+//
+// Cross-cutting platform primitives (config, slog wiring, pgx pool, otel,
+// prometheus, chi middleware chain, AuthBoundary, PermissionBoundary,
+// IdempotencyStore, AuditWriter, OutboxWriter, WebhookDelivery).
+//
+// Implemented across Wave 2..7.

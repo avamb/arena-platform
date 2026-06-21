@@ -1,0 +1,3 @@
+// cmd/arena-migrate/
+// Migration tool binary. See main.go for entry point and app_spec.txt
+// Wave 3 for goose subcommands (up, down, status, redo).

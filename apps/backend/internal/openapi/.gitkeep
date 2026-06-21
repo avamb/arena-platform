@@ -1,0 +1,5 @@
+// internal/openapi/
+//
+// Generated Go server types produced by oapi-codegen from
+// apps/backend/openapi/openapi.yaml. Generated files MUST NOT be edited by
+// hand; regenerate via `make gen-openapi` (Wave 4).

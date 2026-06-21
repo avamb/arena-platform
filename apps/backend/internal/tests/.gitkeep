@@ -1,0 +1,7 @@
+// internal/tests/
+//
+// Shared test helpers reachable only from inside the apps/backend module:
+// testcontainers-go PostgreSQL fixture, HTTP test server harness, fake
+// AuthBoundary used by integration suites. End-to-end suites live in
+// apps/backend/tests/ (sibling of internal/) to keep them out of the
+// production build graph.

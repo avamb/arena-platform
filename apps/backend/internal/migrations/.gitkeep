@@ -1,0 +1,6 @@
+// internal/migrations/
+//
+// goose-managed SQL migrations embedded via embed.FS into the arena-migrate
+// binary. Baseline migration 0001_init.sql (created in Wave 3) provisions
+// idempotency_keys, audit_events, outbox_events, worker_jobs,
+// worker_dead_letter, and i18n_text.

@@ -1,0 +1,5 @@
+// internal/adapters/
+//
+// Concrete adapters that implement the platform boundary interfaces:
+// Postgres-backed AuditWriter / OutboxWriter / IdempotencyStore, HTTP
+// WebhookDelivery, JWT AuthBoundary implementation, etc.

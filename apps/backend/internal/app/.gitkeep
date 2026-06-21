@@ -1,0 +1,6 @@
+// internal/app/
+//
+// Application services / use-cases that orchestrate domain + platform
+// boundaries. HTTP handlers call into this layer; this layer never imports
+// chi, pgx, or any adapter directly — it depends on interfaces defined in
+// internal/platform and internal/domain.

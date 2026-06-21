@@ -1,0 +1,6 @@
+// internal/domain/
+//
+// Pure domain types and business rules (no I/O, no framework imports).
+// In this milestone the directory is a placeholder; subsequent business
+// milestones (identity, organizations, catalog, inventory, checkout,
+// payments, tickets) will land here.
