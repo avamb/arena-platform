@@ -1065,3 +1065,205 @@ Stats at session start: 5/108 passing, 3 in_progress.
 This session: feature #3 completed and marked passing.
 ================================================================================
 
+--------------------------------------------------------------------------------
+Session: 2026-06-21 (later) - Feature #5 (Wave 0 - Infrastructure)
+"Backend API queries real database" - pgx QueryTracer + /v1/info + /v1/echo
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Wired three pieces that together prove arena-api hits real PostgreSQL on
+every /v1/* request (no in-memory stores, no mocks):
+
+  1. pgx QueryTracer that mirrors every SQL statement into the slog
+     stream. Each query produces a "db query" record at TraceQueryStart
+     (sql, op, args_count, args) and a "db query end" record at
+     TraceQueryEnd (elapsed_ms, command_tag, rows_affected, error).
+     Gated on cfg.DBLogQueries OR LOG_LEVEL=debug so production stays
+     quiet by default.
+
+  2. GET /v1/info - read-only handler that issues
+     SELECT current_setting('server_version'), now() against PG on
+     every request. The result (db_version, db_now) is folded into the
+     JSON response so callers can confirm the round-trip from the
+     response body alone.
+
+  3. POST /v1/echo - authenticated transactional command (Bearer JWT +
+     Idempotency-Key required) that opens pgx.Tx and emits in one
+     atomic unit:
+       - SELECT idempotency_keys (lookup)
+       - BEGIN
+       - INSERT audit_events
+       - INSERT outbox_events
+       - INSERT idempotency_keys (cache response)
+       - COMMIT
+     On a duplicate Idempotency-Key the middleware replays the cached
+     response without re-executing the transaction.
+
+Supporting work this session:
+
+  * POST /v1/dev/token - mints HS256 JWTs from the StubProvider so the
+    AutoForge harness (and humans running curl) can obtain a working
+    token for /v1/echo without a real IdP. Only mounted when
+    ENABLE_DEV_AUTH=true.
+  * httpserver middleware: requestContext (copies chi RequestID onto
+    ctx), traceContext (32-hex trace_id, sets X-Trace-Id response
+    header, attaches via logging.WithTraceID, emits "http request
+    start/end" log pair with elapsed_ms), jsonBodyLimit
+    (MaxBytesReader for POST/PUT/PATCH).
+  * Server.Options struct: bundles Config, Logger, DB (Pinger), Pool
+    (PoolDB), Auth (StubProvider), Audit, Idem, PgxPool,
+    MetricsHandler. New() lazily constructs PG-backed audit +
+    idempotency stores when not supplied.
+
+Code touched / produced this session:
+
+  * apps/backend/internal/platform/database/database.go
+      Added strings import and a block in Open() that attaches a
+      NewQueryTracer to pgxCfg.ConnConfig.Tracer when DB_LOG_QUERIES
+      OR LOG_LEVEL=debug. Logs "db query tracer enabled" so
+      operators can confirm the tracer is on from container logs.
+
+  * apps/backend/internal/platform/database/tracer.go (NEW)
+      QueryTracer + helpers (normalizeSQL, queryOp, formatArgs,
+      floatMillis). Renders multi-line SQL as a single line so JSON
+      log records stay grep-friendly; raw payloads summarised by
+      "[%d B]" so large jsonb columns do not blow up the line.
+
+  * apps/backend/internal/platform/httpserver/info.go (NEW)
+      handleInfo + infoResponse struct. Issues SELECT
+      current_setting('server_version'), now() via s.pool.QueryRow.
+
+  * apps/backend/internal/platform/httpserver/echo.go (NEW)
+      handleEcho - full transactional command: audit + outbox +
+      idempotency in one tx. insertOutboxEcho, extractClientIP helpers.
+
+  * apps/backend/internal/platform/httpserver/devtoken.go (NEW)
+      handleDevToken + devTokenRequest/Response. Delegates to
+      auth.StubProvider.IssueToken. errorEnvelope helper shared with
+      echo.
+
+  * apps/backend/internal/platform/httpserver/middleware.go (NEW)
+      requestContext, traceContext, jsonBodyLimit, newTraceID,
+      clientIP. trace_id is 16 random octets hex-encoded (W3C
+      trace-context shape), ready to be replaced by SpanContext IDs
+      when OTEL is wired.
+
+  * apps/backend/internal/platform/httpserver/server.go (REWRITE)
+      Added Options struct, PoolDB interface, fields for
+      pool/stub/audit/idem/metrics, mountV1Routes() that wires
+      /v1/info, /v1/dev/token, /v1/echo (each guarded by available
+      dependencies). Peer agent later folded a MetricsHandler field
+      and /metrics route mount into the same file for feature #87.
+
+  * apps/backend/internal/platform/audit/audit.go (verified)
+      audit.Writer interface + PGWriter (Write, WriteTx). insertSQL
+      uses NULLIF($3,'')::uuid + NULLIF($9,'')::inet so empty
+      actor_id / ip become NULL rather than failing the INSERT.
+
+  * apps/backend/internal/platform/idempotency/idempotency.go (verified)
+      Store interface + PGStore (Lookup, Save), Middleware, SaveTx,
+      MarkPersisted, capturingWriter. SaveTx persists the idempotency
+      row INSIDE the caller's pgx.Tx so audit + outbox + idempotency
+      roll back together on failure.
+
+  * apps/backend/cmd/arena-api/main.go
+      Added auth + observability imports. Constructs
+      auth.StubProvider from cfg (Secret/Issuer/Audience/DefaultTTL/
+      Enabled). Constructs httpserver.New(Options{Config, Logger,
+      DB:pool, Pool:pool.Pool, PgxPool:pool.Pool, Auth:stubAuth,
+      MetricsHandler:metrics.Handler()}).
+
+  * docker-compose.yml
+      DB_LOG_QUERIES: "true" (api service) so the feature #5 probe
+      always has fresh SQL traces in the container logs.
+      ENABLE_DEV_AUTH (api service, replacing ENABLE_STUB_AUTH which
+      config.Load does not read).
+      Migrate service: ENABLE_DEV_AUTH=false so config.Validate does
+      not insist on JWT_SIGNING_SECRET for the migrate container.
+
+VERIFICATION (mirroring feature #5's ten steps)
+-----------------------------------------------
+  1.  DB_LOG_QUERIES=true set in docker-compose, rebuilt + restarted api.
+  2.  docker compose logs api - JSON stream with structured records
+      including msg "db query tracer enabled".
+  3.  curl GET /v1/info - 200 with envelope including
+      db_version="17.10" and db_now="2026-06-21T21:07:05.966916Z" from
+      a real SELECT round-trip.
+  4.  Log filter for trace_id 8e82c7d680a205fce8326fbf0c550055:
+        msg="db query"
+        sql="SELECT current_setting('server_version') AS version, now() AS db_now"
+        op="SELECT"  args_count=0
+      OK - "query" / "SELECT" present, trace_id attributed to /v1/info.
+  5.  curl POST /v1/dev/token - JWT for actor 00000000-...-000000000042;
+      curl POST /v1/echo with that Bearer + Idempotency-Key
+      REAL_DB_PROBE_1, body {"message":"x"} - 200.
+  6.  Log filter for trace_id eb4f45ac03049af35cab7213e996c21d:
+        - msg="db query" sql="SELECT ... FROM idempotency_keys WHERE
+          key=$1 AND scope=$2 AND expires_at > now() LIMIT 1"
+          args=[$1="REAL_DB_PROBE_1", $2="POST /v1/echo"]
+        - msg="db query" sql="begin"
+        - msg="db query" sql="INSERT INTO audit_events ..."  args_count=10
+        - msg="db query" sql="INSERT INTO outbox_events ..."  args_count=2
+        - msg="db query" sql="INSERT INTO idempotency_keys ..."  args_count=8
+        - msg="db query" sql="commit"
+      OK - Six SQL statements logged with parameter placeholders.
+  7.  OK - SELECT FROM idempotency_keys (lookup) + INSERT INTO
+      idempotency_keys (store) both present in the same trace.
+  8.  Response X-Trace-Id header = "eb4f45ac03049af35cab7213e996c21d"
+      EXACTLY matches the trace_id attribute on every SQL log line
+      for that request - trace_id correlation verified.
+  9.  OK - Every "db query end" record carries an elapsed_ms float
+      (e.g. 2.186 ms, 4.973 ms, 0.822 ms, 0.650 ms, 1.023 ms).
+  10. OK - /v1/echo SQL queries fully observable - NOT a mock.
+
+Bonus checks beyond the 10 steps:
+
+  - Replay test: same curl with same Idempotency-Key - 200 with
+    Idempotent-Replay: true header and the original response body
+    serialised verbatim. No new audit / outbox rows written.
+  - psql verification: rows present in audit_events (1),
+    outbox_events (2 - one for our probe + one from a peer-agent's
+    anonymous echo), idempotency_keys (1) - all with correct
+    trace_id / actor_id / payload values.
+  - Mock-data grep across apps/ found exactly ONE hit:
+    apps/backend/tests/staticanalysis/mockdata_test.go - the
+    INTENDED guardrail test that fails if any prod code contains
+    those patterns. No real mock usage.
+  - Server restart test: docker compose restart api; before/after
+    row counts identical; pool reconnects in <5s; /v1/info still
+    returns the same db_version; tracer still emits
+    "db query"+"db query end" pairs.
+  - Playwright snapshot of /v1/info displays the JSON envelope with
+    db_version 17.10. Only console error is favicon.ico 404 -
+    cosmetic.
+  - Test data cleaned (DELETE FROM audit_events / outbox_events /
+    idempotency_keys WHERE ...REAL_DB_PROBE_1...) after verification.
+
+NOTES FOR LATER WAVES
+---------------------
+  - The QueryTracer is currently gated on DB_LOG_QUERIES OR
+    LOG_LEVEL=debug; when OTEL Wave 7 lands, every "db query" /
+    "db query end" pair can be enriched with the active span
+    context (TraceID/SpanID from go.opentelemetry.io/otel/trace)
+    for full distributed-trace correlation.
+  - StubProvider currently lives in
+    apps/backend/internal/platform/auth. Wave 6 (real identity)
+    should keep the Provider interface and swap StubProvider for
+    an RS256 verifier without touching the middleware or any /v1
+    handler.
+  - audit.PGWriter / idempotency.PGStore both take *pgxpool.Pool
+    directly; once sqlc lands (Wave 9) these inserts can be
+    replaced with typed query wrappers without changing the
+    boundary contracts.
+  - /v1/echo writes the outbox row inside the same tx as audit +
+    idempotency. The OutboxDispatcher worker (Wave 5) will consume
+    the partial index outbox_events_unprocessed_idx and mark
+    processed_at after delivery.
+
+PROGRESS METRIC
+---------------
+Stats at session start: 5/108 passing, 3 in_progress.
+This session: feature #5 completed and marked passing.
+================================================================================
+

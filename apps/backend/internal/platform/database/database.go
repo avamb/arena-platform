@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -53,6 +54,20 @@ func Open(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Pool, 
 	pgxCfg.MaxConnLifetime = cfg.DBPoolMaxConnLife
 	pgxCfg.MaxConnIdleTime = cfg.DBPoolMaxConnIdle
 	pgxCfg.HealthCheckPeriod = 30 * time.Second
+
+	// Attach the slog-backed QueryTracer when verbose SQL logging is enabled
+	// (DB_LOG_QUERIES=true) or when LOG_LEVEL=debug. The tracer mirrors every
+	// SQL statement into slog so feature #5's "Backend API queries real
+	// database" verification can prove handlers hit PostgreSQL.
+	if cfg.DBLogQueries || strings.EqualFold(cfg.LogLevel, "debug") {
+		// Level pinned to Info so JSON logs surface even when the global
+		// level is Info — debug-level traces would be suppressed by default.
+		pgxCfg.ConnConfig.Tracer = NewQueryTracer(logger, slog.LevelInfo)
+		logger.Info("db query tracer enabled",
+			"log_queries", cfg.DBLogQueries,
+			"log_level", cfg.LogLevel,
+		)
+	}
 
 	pool, err := connectWithRetry(ctx, pgxCfg, logger)
 	if err != nil {
