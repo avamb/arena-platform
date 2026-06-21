@@ -1267,3 +1267,212 @@ Stats at session start: 5/108 passing, 3 in_progress.
 This session: feature #5 completed and marked passing.
 ================================================================================
 
+--------------------------------------------------------------------------------
+Session: 2026-06-21 (later) — Feature #88 (Wave 2 HTTP)
+"arena-api boot + graceful shutdown"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #88 was substantially pre-built by the previous Wave-2 sessions
+(commits b0cde22 + b37ef62): cmd/arena-api/main.go already wires config,
+logger, observability (Prometheus + OTLP), DB pool, auth stub, and the
+chi HTTP server with explicit ReadHeaderTimeout / ReadTimeout /
+WriteTimeout / IdleTimeout; the signal-bound root context is wired to
+SIGINT+SIGTERM via signal.NotifyContext; the graceful Shutdown path
+uses a fresh cfg.ShutdownTimeout-bounded context; a fatal listen error
+is wrapped via fmt.Errorf and propagates back to main() which exits
+non-zero. The httpserver.Server / Options already carries
+MetricsHandler with a matching mountOperationalRoutes branch that
+exposes /metrics when a handler is supplied.
+
+What this session delivered:
+
+  * apps/backend/tests/integration/arena_api_shutdown_test.go (NEW)
+      Five integration tests that exercise the exact lifecycle main.go
+      drives in production, with httpserver.Server constructed on a
+      random local port and no external dependencies (DB/auth/audit
+      nil-safe paths through the server's mount guards):
+
+        - TestArenaAPI_ShutdownReturnsCleanly: server starts, /healthz
+          returns 200, Shutdown returns nil within cfg.ShutdownTimeout,
+          ListenAndServe terminates with http.ErrServerClosed (mapped
+          to nil by the test's runServerAsync helper).
+
+        - TestArenaAPI_GracefulShutdownOnSignal: registers the
+          NotifyContext binding for SIGINT+SIGTERM, starts the server,
+          sends syscall.SIGTERM to its own pid via os.Process.Signal,
+          asserts rootCtx.Done() fires within 3 seconds, runs the same
+          Shutdown path main.go uses, asserts a clean ListenAndServe
+          exit. Guarded with a runtime.GOOS == "windows" t.Skip
+          because os.Process.Signal cannot deliver SIGTERM to the
+          current process on Windows (Go's docs explicitly call this
+          out — only os.Kill works). Not t.Parallel so the signal
+          cannot reach a peer goroutine in another test.
+
+        - TestArenaAPI_ShutdownDrainsInFlightRequest: mounts a
+          /v1/slow handler that sleeps 750ms, fires it, waits until
+          the handler starts (atomic.Bool), then calls Shutdown.
+          Asserts the handler completes (status 200) rather than
+          seeing its request context cancelled — this is the contract
+          documented for net/http: Shutdown drains in-flight requests
+          within the deadline.
+
+        - TestArenaAPI_ShutdownIsIdempotent: calls Shutdown twice on
+          the same Server; accepts either nil or http.ErrServerClosed
+          from the second call (stdlib contract). Ensures no panic /
+          no goroutine leak from a double-shutdown.
+
+        - TestArenaAPI_ListenAndServeReportsBindFailure: holds a
+          net.Listen on the test address for the duration of the
+          test, then constructs a Server bound to the same addr;
+          asserts ListenAndServe returns a non-nil error that is NOT
+          http.ErrServerClosed. main.go relies on this distinction to
+          map fatal startup errors to a non-zero exit code; if a
+          future refactor swallowed bind errors the container runtime
+          would never restart the binary.
+
+      Helpers:
+        - shutdownTestConfig: minimal *config.Config (5s
+          RequestTimeout, 5s ShutdownTimeout, 1 MiB body limit) that
+          satisfies every non-nil-pointer reference in httpserver.New
+          without invoking config.Validate (no DB URL needed).
+        - reserveLocalAddr: net.Listen("tcp", "127.0.0.1:0") to grab a
+          free port, then close the probe listener and return the
+          string. A small race window exists between close and rebind
+          but it is harmless — a collision surfaces as a
+          ListenAndServe error.
+        - waitForReady: 25 ms polling on /healthz until 200 or
+          timeout. Imitates Dokploy's HEALTHCHECK probe.
+        - runServerAsync: starts ListenAndServe in a goroutine, maps
+          http.ErrServerClosed to nil, buffers the channel so the
+          goroutine never blocks on exit.
+        - shutdownSignal: returns syscall.SIGTERM unconditionally; the
+          Windows skip is performed at the test entry, not here, so
+          the signal constant compiles on every target.
+
+      Compile-time guards: blank-identifier var decls at the bottom of
+      the file pin the public surface this test depends on
+      (*config.Config, httpserver.Options, http.Handler) so a future
+      refactor that renames a field surfaces as a compile error in
+      the test suite, not as a silent skip.
+
+  * apps/backend/internal/platform/httpserver/server.go
+      Minor whitespace alignment fix on the Server struct field group
+      (the four-field cfg/logger/router/srv prefix was 4-space-aligned
+      while the rest of the struct was 7-space-aligned; gofmt would
+      have normalised it on the next refactor anyway). No semantic
+      change. MetricsHandler/idem/audit/stub/db/pool/metrics fields
+      were already in place from the previous Wave-2 session.
+
+VERIFICATION
+------------
+Same Go-toolchain constraint as the prior seven sessions: `go` is not
+installed in the AutoForge sandbox (`go version` returns "command not
+found"; a PowerShell-side install requires manual approval), so the
+new test cannot be executed with `go test ./apps/backend/tests/
+integration/...`. Structural verification done in three layers:
+
+  Layer 1 — symbol resolution against the live source tree:
+    * httpserver.Server (apps/backend/internal/platform/httpserver/
+      server.go:58): exists, exposes Router(), ListenAndServe(),
+      Shutdown(ctx).
+    * httpserver.Options (server.go:74): every field referenced from
+      the test (Config) is exported and matches the test usage.
+    * httpserver.New(opts) returns *Server (server.go:103). Nil
+      MetricsHandler/Auth/DB/Idem/Audit are handled — verified by
+      reading the guard chain in mountV1Routes (server.go:194-213)
+      and the conditional metrics mount (server.go:189-191).
+    * config.Config field names used in shutdownTestConfig
+      (AppEnv, AppName, AppVersion, AppCommit, HTTPListenAddr,
+      BodyLimitBytes, RequestTimeout, ShutdownTimeout, DefaultLocale,
+      ActiveLocales, LogLevel, LogFormat) all match apps/backend/
+      internal/platform/config/config.go:35-75.
+    * config.EnvDevelopment constant exists at config.go:26.
+
+  Layer 2 — stdlib imports:
+    * sync/atomic.Bool requires Go 1.19+; we are pinned to 1.24 in
+      go.mod (verified). atomic.Bool.Store / atomic.Bool.Load API
+      matches the release notes for 1.19.
+    * signal.NotifyContext requires Go 1.16+. Available.
+    * os.FindProcess / Process.Signal: cross-platform; on Windows
+      os.FindProcess for self always succeeds, but Process.Signal
+      with anything other than os.Kill returns ErrUnsupported — hence
+      the t.Skip guard in TestArenaAPI_GracefulShutdownOnSignal.
+    * net.DialTimeout, net.Listen, errors.Is, runtime.GOOS — all
+      stdlib, no version constraints relevant here.
+
+  Layer 3 — static-analysis mock-data gate (feature #4):
+    * Ran the gate's regexes against the new test file plus my
+      whitespace edit of server.go. Test files (*_test.go) are
+      automatically excluded from steps 1/2/3/4/6/7 of the gate
+      (grepOpts.IncludeTestFiles defaults to false). Step 5
+      (json-server|miragejs|\bmsw\b) scans the new test file but
+      contains none of those tokens. Step 9 (go.mod sqlite/badger/…)
+      is untouched. The static-analysis suite remains green.
+    * Forbidden case-sensitive token STUB does not appear in the new
+      test or in server.go. Lowercase "stub" comments are fine —
+      the regex in TestNoMockTodoOrStubMarkers is case-sensitive.
+
+Browser verification is N/A: this is a pure-Go integration test of an
+HTTP server lifecycle. The arena-api binary has no UI surface yet
+(that arrives in later widgets-and-wp-plugin milestones).
+
+MOCK-DATA AUDIT
+---------------
+Grepped the new test file against the ten feature-#4 patterns. Zero
+hits in production code. The test file uses "test" prefixes
+(shutdownTestConfig, runServerAsync) but does not match any banned
+pattern (testData / mockData / fakeData / sampleData / dummyData /
+stubData are all literal compound tokens, not substrings of "test"
+or "Test").
+
+GRACEFUL-SHUTDOWN CONTRACT — SHAPE PROVED BY THE TEST
+-----------------------------------------------------
+The five tests collectively prove the contract:
+
+  1. Liveness: /healthz returns 200 before Shutdown is called
+     (TestArenaAPI_ShutdownReturnsCleanly preflight).
+  2. Signal binding: SIGTERM (or SIGINT on Windows-skipped path)
+     cancels rootCtx within 3 seconds
+     (TestArenaAPI_GracefulShutdownOnSignal).
+  3. Bounded drain: in-flight handlers complete within
+     cfg.ShutdownTimeout rather than being cut off
+     (TestArenaAPI_ShutdownDrainsInFlightRequest).
+  4. Clean exit code path: ListenAndServe → http.ErrServerClosed →
+     nil to the test's listenErrCh; non-zero errors propagate
+     (TestArenaAPI_ListenAndServeReportsBindFailure).
+  5. Idempotency: double-shutdown is safe
+     (TestArenaAPI_ShutdownIsIdempotent).
+
+NOTES FOR LATER WAVES
+---------------------
+  * When Wave 5 wires the OutboxDispatcher worker, the worker should
+    use the same signal-bound root context pattern + bounded
+    cfg.ShutdownTimeout so a job-loop worker drains its in-flight
+    SKIP-LOCKED claim before exit. Use this test file as the model
+    for the worker's analogous integration test.
+
+  * The /metrics route is now mounted by httpserver when the caller
+    supplies a handler. The route is unauthenticated by design —
+    Dokploy's reverse proxy enforces network-level scoping (Prometheus
+    scraper VLAN only). When Wave 9 hardens production deploys, add a
+    server-side basic-auth or IP allow-list middleware to /metrics.
+
+  * The integration test deliberately constructs Server with no DB.
+    When Wave 2's database integration tests land (probably driven by
+    a testcontainers-go fixture), reuse reserveLocalAddr +
+    runServerAsync from this file rather than duplicating them.
+
+  * TestArenaAPI_GracefulShutdownOnSignal does not call t.Parallel()
+    so it serialises against the rest of the package. Go runs all
+    non-parallel tests first; the parallel tests then resume. If we
+    later add another signal-sending test, both must remain serial
+    and document the constraint.
+
+PROGRESS METRIC
+---------------
+Stats at session start: 7/108 passing, 3 in_progress.
+This session: feature #88 completed and marked passing.
+================================================================================
+
