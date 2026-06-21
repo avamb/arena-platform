@@ -51,6 +51,39 @@ services:
       timeout: 3s
       retries: 10
 
+  # ------------------------------------------------------------------
+  # migrate : arena-migrate (one-shot). Brought up via
+  #            `docker compose run --rm migrate up`  (or down/status/redo).
+  #            Shares the same image as api/worker — only ENTRYPOINT differs.
+  # ------------------------------------------------------------------
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: arena_new/arena-api:dev
+    container_name: arena_migrate
+    profiles: ["tools"]   # never auto-starts; opt-in via `--profile tools` or `run`
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/app/arena-migrate"]
+    environment:
+      APP_ENV: development
+      APP_NAME: arena-migrate
+      APP_VERSION: 0.1.0-dev
+      APP_COMMIT: local
+      DATABASE_URL: "postgres://arena:arena@postgres:5432/arena?sslmode=disable"
+      DB_POOL_MIN_CONNS: "1"
+      DB_POOL_MAX_CONNS: "5"
+      DEFAULT_LOCALE: "en"
+      ACTIVE_LOCALES: "ru,en"
+      LOG_LEVEL: "info"
+      LOG_FORMAT: "text"
+      # arena-migrate does not authenticate requests; explicitly disable the
+      # dev stub auth boundary so config.Validate doesn't insist on a JWT
+      # signing secret being present in the migrate container's env.
+      ENABLE_DEV_AUTH: "false"
+
   api:
     build:
       context: .
@@ -80,7 +113,10 @@ services:
       DB_POOL_MAX_CONNS: "20"
       DB_POOL_MAX_CONN_LIFETIME: "1h"
       DB_POOL_MAX_CONN_IDLE_TIME: "30m"
-      DB_LOG_QUERIES: "false"
+      # Mirror every SQL statement into the slog stream (feature #5 probe).
+      # Production should keep this off; turn it on temporarily for live SQL
+      # introspection without redeploying.
+      DB_LOG_QUERIES: "true"
 
       REDIS_URL: "redis://redis:6379/0"
 
@@ -91,7 +127,8 @@ services:
       LOG_FORMAT: "json"
 
       # Dev stub auth — replaced by real identity module in a later milestone.
-      ENABLE_STUB_AUTH: "true"
+      # Variable name is ENABLE_DEV_AUTH (matches config.Load lookup).
+      ENABLE_DEV_AUTH: "true"
       JWT_SIGNING_SECRET: "dev-only-do-not-use-in-prod"
       JWT_ISSUER: "arena-dev"
       JWT_AUDIENCE: "arena-api"
