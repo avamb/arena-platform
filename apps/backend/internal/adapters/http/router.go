@@ -98,6 +98,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
@@ -246,29 +247,51 @@ func (d Deps) withDefaults() Deps {
 // Middleware implementations
 // -----------------------------------------------------------------------------
 
-// requestContext copies the chi RequestID (set upstream by chimw.RequestID)
-// into:
+// requestContext resolves the per-request identifier and surfaces it via:
 //
 //   - the X-Request-Id response header — the public contract that every
-//     response carries an identifier the client can quote in support
-//     requests.
+//     response carries a correlatable identifier the client can quote in
+//     support requests (feature #61).
 //   - the slog context via logging.WithRequestID — so any subsequent
 //     logging.FromContext(ctx) returns a logger with a "request_id"
-//     attribute attached without per-call boilerplate.
+//     attribute attached automatically without per-call boilerplate.
 //
-// If chimw.RequestID was not installed upstream (defensive — tests that
-// build a partial chain), this middleware mints its own 16-byte random hex
-// identifier so the X-Request-Id contract still holds.
+// Resolution order (feature #61 steps 5–6):
+//
+//  1. If the incoming request carries an X-Request-Id header whose value is a
+//     valid UUID (any version, RFC 4122 format), the client-supplied value is
+//     preserved verbatim in the response header and in the slog context.
+//  2. Otherwise (header absent, empty, or not a valid UUID) a fresh UUIDv7 is
+//     minted so the response always carries a well-formed, sortable UUID.
+//
+// The reference to chimw.RequestID is intentionally dropped: chi's built-in
+// RequestID generates non-UUID identifiers (e.g. "host/000001") that fail the
+// "valid UUID" contract in step 2 of feature #61.
 func requestContext(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		reqID := chimw.GetReqID(r.Context())
-		if reqID == "" {
-			reqID = newRandomHex(16)
-		}
+		reqID := resolveRequestID(r)
 		w.Header().Set(HeaderRequestID, reqID)
 		ctx := logging.WithRequestID(r.Context(), reqID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// resolveRequestID returns the request identifier to use for this request.
+// If the client sent a well-formed UUID via X-Request-Id it is preserved
+// verbatim; otherwise a fresh UUIDv7 is minted.
+func resolveRequestID(r *http.Request) string {
+	if inbound := strings.TrimSpace(r.Header.Get(HeaderRequestID)); inbound != "" {
+		if _, err := uuid.Parse(inbound); err == nil {
+			return inbound
+		}
+	}
+	id, err := uuid.NewV7()
+	if err != nil {
+		// Entropy exhaustion is effectively impossible; fall back to a hex
+		// string so the non-empty X-Request-Id contract still holds.
+		return newRandomHex(16)
+	}
+	return id.String()
 }
 
 // loggerMiddleware attaches base to the request context via
@@ -698,9 +721,12 @@ func RequireJSONContentType(next http.Handler) http.Handler {
 				// The Accept-Post response header (RFC 7240 / draft-wilde-accept-post)
 				// tells the client which media types are accepted for POST.
 				w.Header().Set("Accept-Post", "application/json")
-				requestID := strings.TrimSpace(r.Header.Get(HeaderRequestID))
-				if rid := chimw.GetReqID(r.Context()); rid != "" {
-					requestID = rid
+				// Use the resolved request_id from context (set by requestContext
+				// middleware upstream). Fall back to the inbound header in the
+				// unlikely case that requestContext wasn't in the chain.
+				requestID := logging.RequestID(r.Context())
+				if requestID == "" {
+					requestID = strings.TrimSpace(r.Header.Get(HeaderRequestID))
 				}
 				traceID := strings.TrimSpace(r.Header.Get(HeaderTraceID))
 				w.Header().Set("Content-Type", "application/json; charset=utf-8")

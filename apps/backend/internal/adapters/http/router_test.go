@@ -26,6 +26,7 @@ import (
 	httpadapter "github.com/abhteam/arena_new/apps/backend/internal/adapters/http"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
+	"github.com/google/uuid"
 )
 
 // -----------------------------------------------------------------------------
@@ -143,20 +144,20 @@ func TestNewRouter_TraceIDInContext(t *testing.T) {
 }
 
 // TestNewRouter_InboundRequestIDHonoured verifies that when a client supplies
-// an X-Request-Id request header (common in service-to-service calls) the
-// chi RequestID middleware preserves it in the response header and in context.
+// a valid UUID as X-Request-Id (common in service-to-service calls), the
+// requestContext middleware preserves that UUID verbatim in both the response
+// header and the slog context (feature #61 step 5).
 //
-// Note: chi's RequestID middleware reads the "X-Request-Id" header and
-// keeps the client-supplied value when it is non-empty. The requestContext
-// middleware then mirrors that value to both the response header and the
-// slog context.
+// Note: only well-formed UUIDs are preserved. An arbitrary non-UUID string is
+// replaced with a fresh UUIDv7 (feature #61 step 6).
 func TestNewRouter_InboundRequestIDHonoured(t *testing.T) {
 	r := httpadapter.NewRouter(httpadapter.Deps{})
 
 	var out probeResult
 	r.Get("/probe", probeHandler(&out))
 
-	clientID := "client-supplied-req-id-12345"
+	// Supply a valid UUID — the middleware must echo it back unchanged.
+	clientID := "01234567-89ab-cdef-0123-456789abcdef"
 	req := httptest.NewRequest(http.MethodGet, "/probe", nil)
 	req.Header.Set("X-Request-Id", clientID)
 	rr := httptest.NewRecorder()
@@ -167,6 +168,33 @@ func TestNewRouter_InboundRequestIDHonoured(t *testing.T) {
 	}
 	if out.requestID != clientID {
 		t.Fatalf("logging.RequestID(ctx): want %q got %q", clientID, out.requestID)
+	}
+}
+
+// TestNewRouter_InvalidInboundRequestIDIsReplaced verifies that when a client
+// sends a non-UUID value as X-Request-Id, the server generates a fresh UUIDv7
+// instead of echoing the invalid value (feature #61 step 6).
+func TestNewRouter_InvalidInboundRequestIDIsReplaced(t *testing.T) {
+	r := httpadapter.NewRouter(httpadapter.Deps{})
+
+	var out probeResult
+	r.Get("/probe", probeHandler(&out))
+
+	invalidID := "not-a-uuid"
+	req := httptest.NewRequest(http.MethodGet, "/probe", nil)
+	req.Header.Set("X-Request-Id", invalidID)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	got := rr.Header().Get(httpadapter.HeaderRequestID)
+	if got == "" {
+		t.Fatal("X-Request-Id header must be non-empty even when client sent invalid value")
+	}
+	if got == invalidID {
+		t.Fatalf("server must NOT echo back invalid X-Request-Id %q", invalidID)
+	}
+	if _, err := uuid.Parse(got); err != nil {
+		t.Fatalf("replacement X-Request-Id %q is not a valid UUID: %v", got, err)
 	}
 }
 
