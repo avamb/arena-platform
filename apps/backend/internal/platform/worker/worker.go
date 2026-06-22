@@ -31,7 +31,7 @@
 // This implementation is intentionally minimal — it is the foundation
 // scaffold for future business-domain jobs. Backoff policy, batch
 // claiming, and Prometheus metrics are out of scope for this milestone
-// but the seams (HandlerFunc signature, registry, ClaimNext helper) are
+// but the seams (HandlerFunc signature, registry, Queue interface) are
 // already shaped to accommodate them.
 package worker
 
@@ -106,10 +106,195 @@ type Job struct {
 	MaxAttempts int
 }
 
+// Queue is the persistence contract for the background job queue.
+//
+// PGQueue provides the production implementation backed by the worker_jobs
+// PostgreSQL table. Tests supply an inMemoryQueue that mirrors the same
+// semantics without requiring a live database.
+type Queue interface {
+	// ClaimNext atomically selects and claims the next pending job whose
+	// scheduled_at is in the past, for the given instanceID. Returns
+	// (nil, nil) when the queue is empty.
+	ClaimNext(ctx context.Context, instanceID string) (*Job, error)
+
+	// MarkDone sets status='done' on the row identified by jobID.
+	MarkDone(ctx context.Context, jobID string) error
+
+	// MarkRetry resets the row to status='pending', stores lastErr in
+	// last_error, and clears claimed_at / claimed_by so the next worker
+	// poll picks it up again.
+	MarkRetry(ctx context.Context, jobID, lastErr string) error
+
+	// MarkFailed sets status='failed' on the row and inserts a
+	// corresponding record in worker_dead_letter.
+	MarkFailed(ctx context.Context, job *Job, lastErr string) error
+}
+
+// PGQueue implements Queue against the worker_jobs PostgreSQL table.
+type PGQueue struct {
+	pool *pgxpool.Pool
+}
+
+// NewPGQueue wraps a pgxpool.Pool into a PGQueue.
+func NewPGQueue(pool *pgxpool.Pool) *PGQueue {
+	return &PGQueue{pool: pool}
+}
+
+// ClaimNext implements Queue by running a single CTE that SELECTs with
+// FOR UPDATE SKIP LOCKED and then UPDATEs the matching row atomically.
+func (q *PGQueue) ClaimNext(ctx context.Context, instanceID string) (*Job, error) {
+	if q.pool == nil {
+		return nil, errors.New("worker: nil pgxpool")
+	}
+
+	queryCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	tx, err := q.pool.BeginTx(queryCtx, pgx.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	// Rollback is a no-op after a successful Commit; pgx documents this
+	// explicitly. We keep the defer to recover from any error path.
+	defer func() { _ = tx.Rollback(context.Background()) }()
+
+	const claimSQL = `
+		WITH next AS (
+			SELECT id
+			  FROM worker_jobs
+			 WHERE status = 'pending'
+			   AND scheduled_at <= now()
+			 ORDER BY scheduled_at ASC, created_at ASC
+			 FOR UPDATE SKIP LOCKED
+			 LIMIT 1
+		)
+		UPDATE worker_jobs j
+		   SET status      = 'claimed',
+		       attempts    = j.attempts + 1,
+		       claimed_at  = now(),
+		       claimed_by  = $1,
+		       last_error  = NULL
+		  FROM next
+		 WHERE j.id = next.id
+		 RETURNING j.id::text, j.job_type, j.payload, j.attempts, j.max_attempts
+	`
+
+	row := tx.QueryRow(queryCtx, claimSQL, instanceID)
+
+	var (
+		id          string
+		jobType     string
+		payload     []byte
+		attempts    int
+		maxAttempts int
+	)
+	if err := row.Scan(&id, &jobType, &payload, &attempts, &maxAttempts); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			_ = tx.Commit(queryCtx)
+			return nil, nil
+		}
+		return nil, fmt.Errorf("claim query: %w", err)
+	}
+
+	if err := tx.Commit(queryCtx); err != nil {
+		return nil, fmt.Errorf("commit claim: %w", err)
+	}
+
+	return &Job{
+		ID:          id,
+		Type:        jobType,
+		Payload:     payload,
+		Attempts:    attempts,
+		MaxAttempts: maxAttempts,
+	}, nil
+}
+
+// MarkDone implements Queue by setting status='done' on the row.
+func (q *PGQueue) MarkDone(ctx context.Context, jobID string) error {
+	updCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	const sql = `
+		UPDATE worker_jobs
+		   SET status     = 'done',
+		       last_error = NULL
+		 WHERE id = $1::uuid
+	`
+	if _, err := q.pool.Exec(updCtx, sql, jobID); err != nil {
+		return fmt.Errorf("update done: %w", err)
+	}
+	return nil
+}
+
+// MarkRetry implements Queue by resetting the row to status='pending'.
+func (q *PGQueue) MarkRetry(ctx context.Context, jobID, lastErr string) error {
+	updCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	const retrySQL = `
+		UPDATE worker_jobs
+		   SET status      = 'pending',
+		       last_error  = $2,
+		       claimed_at  = NULL,
+		       claimed_by  = NULL
+		 WHERE id = $1::uuid
+	`
+	if _, err := q.pool.Exec(updCtx, retrySQL, jobID, lastErr); err != nil {
+		return fmt.Errorf("schedule retry: %w", err)
+	}
+	return nil
+}
+
+// MarkFailed implements Queue by atomically inserting into worker_dead_letter
+// and setting status='failed' on the row.
+func (q *PGQueue) MarkFailed(ctx context.Context, job *Job, lastErr string) error {
+	updCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	tx, err := q.pool.BeginTx(updCtx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("begin dead-letter tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+
+	const deadLetterSQL = `
+		INSERT INTO worker_dead_letter (
+			original_job_id, job_type, payload, attempts, last_error,
+			original_created_at
+		)
+		SELECT id, job_type, payload, attempts, $2, created_at
+		  FROM worker_jobs
+		 WHERE id = $1::uuid
+	`
+	if _, err := tx.Exec(updCtx, deadLetterSQL, job.ID, lastErr); err != nil {
+		return fmt.Errorf("insert dead-letter: %w", err)
+	}
+
+	const failSQL = `
+		UPDATE worker_jobs
+		   SET status     = 'failed',
+		       last_error = $2
+		 WHERE id = $1::uuid
+	`
+	if _, err := tx.Exec(updCtx, failSQL, job.ID, lastErr); err != nil {
+		return fmt.Errorf("mark failed: %w", err)
+	}
+
+	if err := tx.Commit(updCtx); err != nil {
+		return fmt.Errorf("commit dead-letter tx: %w", err)
+	}
+	return nil
+}
+
 // Options configures a Worker.
 type Options struct {
-	// Pool is the pgx connection pool. Required.
+	// Pool is the pgx connection pool. Used to construct a PGQueue
+	// automatically when Queue is nil. Required when Queue is nil.
 	Pool *database.Pool
+
+	// Queue provides a custom job-queue implementation. When non-nil,
+	// Pool is ignored for queue operations. Intended for unit tests.
+	Queue Queue
 
 	// Registry holds the handler map. Required.
 	Registry *Registry
@@ -136,7 +321,7 @@ type Options struct {
 // Worker polls the worker_jobs table and dispatches claimed rows to the
 // registered handlers.
 type Worker struct {
-	pool            *database.Pool
+	queue           Queue
 	registry        *Registry
 	logger          *slog.Logger
 	instanceID      string
@@ -149,10 +334,16 @@ type Worker struct {
 }
 
 // New constructs a Worker. Returns an error when required dependencies
-// are missing — pgx pool and registry must both be non-nil.
+// are missing — either a Queue or a non-nil Pool must be supplied, and
+// the Registry must be non-nil.
 func New(opts Options) (*Worker, error) {
-	if opts.Pool == nil {
-		return nil, errors.New("worker: pgx pool is required")
+	var q Queue
+	if opts.Queue != nil {
+		q = opts.Queue
+	} else if opts.Pool != nil {
+		q = NewPGQueue(opts.Pool.Pool)
+	} else {
+		return nil, errors.New("worker: either Pool or Queue is required")
 	}
 	if opts.Registry == nil {
 		return nil, errors.New("worker: registry is required")
@@ -179,7 +370,7 @@ func New(opts Options) (*Worker, error) {
 	}
 
 	return &Worker{
-		pool:            opts.Pool,
+		queue:           q,
 		registry:        opts.Registry,
 		logger:          logger.With(slog.String("component", "worker"), slog.String("instance_id", instanceID)),
 		instanceID:      instanceID,
@@ -221,7 +412,7 @@ func (w *Worker) Run(ctx context.Context) error {
 		default:
 		}
 
-		job, err := w.claimNext(ctx)
+		job, err := w.queue.ClaimNext(ctx, w.instanceID)
 		if err != nil {
 			// Pool closed mid-poll, or context cancellation racing with
 			// a query. Both are clean-shutdown signals.
@@ -242,6 +433,13 @@ func (w *Worker) Run(ctx context.Context) error {
 			}
 			continue
 		}
+
+		w.logger.Info("job claimed",
+			"job_id", job.ID,
+			"job_type", job.Type,
+			"attempt", job.Attempts,
+			"max_attempts", job.MaxAttempts,
+		)
 
 		w.execute(ctx, job)
 	}
@@ -264,91 +462,6 @@ func (w *Worker) Stop() error {
 		)
 		return context.DeadlineExceeded
 	}
-}
-
-// claimNext runs a single transactional claim attempt. Returns (nil, nil)
-// when the queue is empty, (&Job{...}, nil) when a row was successfully
-// claimed, or (nil, err) on any database error.
-//
-// The transaction uses SELECT … FOR UPDATE SKIP LOCKED to avoid blocking
-// peer workers and to guarantee at-most-one-claim semantics — the row's
-// ID is hidden from any concurrent SELECT inside the same transaction
-// until COMMIT.
-func (w *Worker) claimNext(ctx context.Context) (*Job, error) {
-	pool := w.pool.Pool
-	if pool == nil {
-		return nil, errors.New("worker: nil pgxpool")
-	}
-
-	queryCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	tx, err := pool.BeginTx(queryCtx, pgx.TxOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("begin tx: %w", err)
-	}
-	// Rollback is a no-op after a successful Commit; pgx documents this
-	// explicitly. We keep the defer to recover from any error path.
-	defer func() { _ = tx.Rollback(context.Background()) }()
-
-	const claimSQL = `
-		WITH next AS (
-			SELECT id
-			  FROM worker_jobs
-			 WHERE status = 'pending'
-			   AND scheduled_at <= now()
-			 ORDER BY scheduled_at ASC, created_at ASC
-			 FOR UPDATE SKIP LOCKED
-			 LIMIT 1
-		)
-		UPDATE worker_jobs j
-		   SET status      = 'claimed',
-		       attempts    = j.attempts + 1,
-		       claimed_at  = now(),
-		       claimed_by  = $1,
-		       last_error  = NULL
-		  FROM next
-		 WHERE j.id = next.id
-		 RETURNING j.id::text, j.job_type, j.payload, j.attempts, j.max_attempts
-	`
-
-	row := tx.QueryRow(queryCtx, claimSQL, w.instanceID)
-
-	var (
-		id          string
-		jobType     string
-		payload     []byte
-		attempts    int
-		maxAttempts int
-	)
-	if err := row.Scan(&id, &jobType, &payload, &attempts, &maxAttempts); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			// No pending row visible. Commit (no-op for an empty CTE)
-			// and let the caller back off.
-			_ = tx.Commit(queryCtx)
-			return nil, nil
-		}
-		return nil, fmt.Errorf("claim query: %w", err)
-	}
-
-	if err := tx.Commit(queryCtx); err != nil {
-		return nil, fmt.Errorf("commit claim: %w", err)
-	}
-
-	w.logger.Info("job claimed",
-		"job_id", id,
-		"job_type", jobType,
-		"attempt", attempts,
-		"max_attempts", maxAttempts,
-	)
-
-	return &Job{
-		ID:          id,
-		Type:        jobType,
-		Payload:     payload,
-		Attempts:    attempts,
-		MaxAttempts: maxAttempts,
-	}, nil
 }
 
 // execute runs the handler for a claimed job and writes the outcome back
@@ -385,7 +498,7 @@ func (w *Worker) execute(ctx context.Context, job *Job) {
 		return
 	}
 
-	if err := w.markDone(ctx, job); err != nil {
+	if err := w.queue.MarkDone(ctx, job.ID); err != nil {
 		w.logger.Error("mark done failed",
 			"job_id", job.ID,
 			"error", err.Error(),
@@ -412,48 +525,14 @@ func safeHandler(ctx context.Context, h HandlerFunc, payload []byte) (err error)
 	return h(ctx, payload)
 }
 
-// markDone writes status='done' for the row. A short timeout is used so a
-// dead database does not block the run loop forever.
-func (w *Worker) markDone(ctx context.Context, job *Job) error {
-	updCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	const sql = `
-		UPDATE worker_jobs
-		   SET status     = 'done',
-		       last_error = NULL
-		 WHERE id = $1::uuid
-	`
-	if _, err := w.pool.Pool.Exec(updCtx, sql, job.ID); err != nil {
-		return fmt.Errorf("update done: %w", err)
-	}
-	return nil
-}
-
 // markFailureOrRetry either schedules a retry (status='pending') or
 // finalises the row as failed (status='failed') and copies it into
 // worker_dead_letter. The decision is based on attempts vs max_attempts.
-//
-// Both branches run inside a single transaction so the dead-letter
-// insert and the row's status flip are atomic — a crash between them
-// would otherwise leave a job both visible to the queue and present in
-// the dead-letter table.
 func (w *Worker) markFailureOrRetry(ctx context.Context, job *Job, handlerErr error) {
-	updCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
 	errText := truncate(handlerErr.Error(), 4000)
 
 	if job.Attempts < job.MaxAttempts {
-		const retrySQL = `
-			UPDATE worker_jobs
-			   SET status      = 'pending',
-			       last_error  = $2,
-			       claimed_at  = NULL,
-			       claimed_by  = NULL
-			 WHERE id = $1::uuid
-		`
-		if _, err := w.pool.Pool.Exec(updCtx, retrySQL, job.ID, errText); err != nil {
+		if err := w.queue.MarkRetry(ctx, job.ID, errText); err != nil {
 			w.logger.Error("schedule retry failed",
 				"job_id", job.ID,
 				"error", err.Error(),
@@ -462,50 +541,9 @@ func (w *Worker) markFailureOrRetry(ctx context.Context, job *Job, handlerErr er
 		return
 	}
 
-	// Final failure path: copy to dead letter and flip the row to 'failed'.
-	tx, err := w.pool.Pool.BeginTx(updCtx, pgx.TxOptions{})
-	if err != nil {
-		w.logger.Error("begin dead-letter tx failed",
-			"job_id", job.ID,
-			"error", err.Error(),
-		)
-		return
-	}
-	defer func() { _ = tx.Rollback(context.Background()) }()
-
-	const deadLetterSQL = `
-		INSERT INTO worker_dead_letter (
-			original_job_id, job_type, payload, attempts, last_error,
-			original_created_at
-		)
-		SELECT id, job_type, payload, attempts, $2, created_at
-		  FROM worker_jobs
-		 WHERE id = $1::uuid
-	`
-	if _, err := tx.Exec(updCtx, deadLetterSQL, job.ID, errText); err != nil {
-		w.logger.Error("insert dead-letter failed",
-			"job_id", job.ID,
-			"error", err.Error(),
-		)
-		return
-	}
-
-	const failSQL = `
-		UPDATE worker_jobs
-		   SET status     = 'failed',
-		       last_error = $2
-		 WHERE id = $1::uuid
-	`
-	if _, err := tx.Exec(updCtx, failSQL, job.ID, errText); err != nil {
-		w.logger.Error("mark failed update failed",
-			"job_id", job.ID,
-			"error", err.Error(),
-		)
-		return
-	}
-
-	if err := tx.Commit(updCtx); err != nil {
-		w.logger.Error("commit dead-letter tx failed",
+	// Final failure: move to dead letter.
+	if err := w.queue.MarkFailed(ctx, job, errText); err != nil {
+		w.logger.Error("mark failed failed",
 			"job_id", job.ID,
 			"error", err.Error(),
 		)
