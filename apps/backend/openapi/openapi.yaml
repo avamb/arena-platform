@@ -43,6 +43,7 @@ components:
       properties:
         error:
           type: object
+          description: Error details object containing machine-readable code, human-readable message, and correlation IDs.
           required: [code, message, request_id, trace_id]
           properties:
             code:
