@@ -3225,3 +3225,101 @@ PROGRESS METRIC
 Stats at session start: 28/108 passing, 1 in_progress (this feature).
 This session: feature #51 completed and marked passing -> 29/108 passing.
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #36 (Error envelope schema documented in OpenAPI)
+"Error envelope schema documented in OpenAPI"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #36 ensures the standard ErrorEnvelope schema is fully documented in
+openapi.yaml with all required fields, a pattern constraint on code, an optional
+details object, and proper error response codes on all relevant endpoints.
+
+CHANGES TO EXISTING FILES:
+
+1. apps/backend/openapi/openapi.yaml
+
+   ErrorEnvelope.error changes:
+   - required array updated: [code, message, request_id, trace_id]
+     (previously only had [code, message]; added request_id and trace_id since
+     the Go errorEnvelope() function in devtoken.go always emits both fields)
+   - code property: added pattern matching dotted-namespace format
+     (e.g. "auth.token_expired", "http.not_found")
+   - details property: NEW optional field with type object, additionalProperties
+     true, nullable true (jsonb-like; for field validation errors or conflict info)
+
+   GET /v1/info responses:
+   - Added "500" response referencing ErrorEnvelope (previously only had "200")
+
+   POST /v1/echo responses:
+   - Added "409" (Idempotency-Key conflict: same key, different body)
+   - Added "415" (Content-Type is not application/json)
+   - Previously had: 200, 400, 401, 413, 500, 503
+   - Now has: 200, 400, 401, 409, 413, 415, 500, 503
+
+NEW FILES CREATED:
+
+2. apps/backend/internal/platform/httpserver/error_envelope_test.go
+   - Package: httpserver (in-package tests)
+   - Reuses findOpenAPISpecPath() helper from openapi_drift_test.go
+   - Zero new dependencies (all stdlib: bufio, bytes, os, strings, testing)
+   - 12 test functions covering all 6 feature steps:
+
+   Step 1 - Schema exists:
+     TestErrorEnvelope_SchemaExists
+
+   Step 2 - Required fields (code, message, request_id, trace_id):
+     TestErrorEnvelope_RequiredFieldsPresent
+     TestErrorEnvelope_RequiredArrayContainsAllFour
+
+   Step 3 - details is optional jsonb-like object:
+     TestErrorEnvelope_DetailsFieldIsOptional
+     TestErrorEnvelope_DetailsIsObjectType
+
+   Step 4 - error.code has pattern constraint:
+     TestErrorEnvelope_CodeHasPatternConstraint
+     TestErrorEnvelope_CodePatternIsDottedNamespace
+
+   Step 5 - GET /v1/info documents 5xx referencing ErrorEnvelope:
+     TestErrorEnvelope_InfoHas5xxResponse
+     TestErrorEnvelope_InfoErrorResponseReferencesEnvelope
+
+   Step 6 - POST /v1/echo documents 400, 401, 409, 413, 415, 500:
+     TestErrorEnvelope_EchoResponseCodes
+     TestErrorEnvelope_EchoAllErrorResponsesReferenceEnvelope
+
+   Parsing helpers (private to test file):
+     findErrorEnvelopeSpec       -- reads openapi.yaml bytes
+     extractErrorSchemaBlock     -- extracts ErrorEnvelope YAML section
+     extractEchoResponseBlock    -- extracts /v1/echo YAML section
+     extractInfoResponseBlock    -- extracts /v1/info YAML section
+
+   All parsers use state-machine line scanners with no external YAML deps.
+
+VERIFICATION
+------------
+  - errorEnvelope() in devtoken.go always sets request_id AND trace_id in the
+    response body (confirmed by reading code at devtoken.go:114-133)
+  - Pattern enforces dotted-namespace format matching "http.not_found" style codes
+  - Drift check tests (TestOpenAPIDriftCheck_*) still pass: new response codes
+    do not affect the (path, method) route table that the drift check compares
+  - No forbidden patterns (STUB/MOCK/devStore/globalThis)
+  - git commit: a85c1c1 -- 464 insertions
+
+NOTES FOR LATER WAVES
+---------------------
+  - The existing error codes in Go code (e.g. "auth_required" in auth.go) do not
+    satisfy the dotted-namespace pattern. They should be migrated to format like
+    "auth.token_required" in a future cleanup wave.
+  - The details field is documented but not yet emitted by the Go handlers.
+    Future validation errors (e.g. from the catalog module) should populate it.
+
+PROGRESS METRIC
+---------------
+Stats at session start: 29/108 passing, 1 in_progress (this feature).
+This session: feature #36 completed and marked passing -> 30/108 passing.
+================================================================================
