@@ -1,5 +1,7 @@
 # arena_new
 
+[![CI](https://github.com/abhteam/arena_new/actions/workflows/ci.yml/badge.svg)](https://github.com/abhteam/arena_new/actions/workflows/ci.yml)
+
 Production-grade backend scaffold for a multi-tenant ticketing platform — the
 successor to the legacy Bil24 / TixGear ecosystem.
 
