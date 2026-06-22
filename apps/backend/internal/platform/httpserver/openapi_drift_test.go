@@ -38,21 +38,64 @@ import (
 // Helpers: locate the spec file
 // -----------------------------------------------------------------------------
 
-// findOpenAPISpecPath returns the absolute path to openapi/openapi.yaml by
-// navigating from this source file's directory up to apps/backend/ and then
-// into the openapi/ sub-directory. Using runtime.Caller makes the path
-// resolution independent of the working directory when "go test" is run.
+// findOpenAPISpecPath returns the absolute path to openapi/openapi.yaml.
+//
+// Strategy (tried in order):
+//
+//  1. runtime.Caller(0) absolute path — works when built without -trimpath.
+//     Navigate: httpserver/ → platform/ → internal/ → apps/backend/ → openapi/
+//
+//  2. Working-directory fallback — works when -trimpath is set (e.g. Docker
+//     build-stage tests) because `go test` sets CWD to the package directory.
+//     Navigate up three levels from CWD and into openapi/.
+//
+// Both strategies produce the same canonical path on a normal checkout; the
+// fallback silently takes over when the runtime path is module-relative.
 func findOpenAPISpecPath(t *testing.T) string {
 	t.Helper()
+
+	// Strategy 1: use the compile-time file path (works without -trimpath).
 	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller(0) failed — cannot locate openapi.yaml")
+	if ok && filepath.IsAbs(thisFile) {
+		// thisFile = .../apps/backend/internal/platform/httpserver/openapi_drift_test.go
+		// Navigate: httpserver/ → platform/ → internal/ → apps/backend/ → openapi/
+		dir := filepath.Dir(thisFile)
+		candidate := filepath.Clean(filepath.Join(dir, "..", "..", "..", "openapi", "openapi.yaml"))
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
 	}
-	// thisFile = .../apps/backend/internal/platform/httpserver/openapi_drift_test.go
-	// Navigate: httpserver/ → platform/ → internal/ → apps/backend/ → openapi/
-	dir := filepath.Dir(thisFile)
-	specPath := filepath.Join(dir, "..", "..", "..", "openapi", "openapi.yaml")
-	return filepath.Clean(specPath)
+
+	// Strategy 2: CWD-relative fallback for -trimpath Docker/CI environments.
+	// `go test ./pkg/...` sets CWD to the package directory being tested, so
+	// this file lives at <cwd>/openapi_drift_test.go inside httpserver/.
+	// Navigate up three parent directories to reach apps/backend/.
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("cannot determine working directory: %v", err)
+	}
+	candidate := filepath.Clean(filepath.Join(cwd, "..", "..", "..", "openapi", "openapi.yaml"))
+	if _, statErr := os.Stat(candidate); statErr == nil {
+		return candidate
+	}
+
+	// Strategy 3: walk up from CWD looking for openapi/openapi.yaml — handles
+	// unusual test runners that set CWD to the module root.
+	dir := cwd
+	for i := 0; i < 8; i++ {
+		candidate := filepath.Join(dir, "openapi", "openapi.yaml")
+		if _, statErr := os.Stat(candidate); statErr == nil {
+			return candidate
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+
+	t.Fatalf("cannot locate openapi/openapi.yaml; tried runtime.Caller, CWD=%s", cwd)
+	return ""
 }
 
 // -----------------------------------------------------------------------------

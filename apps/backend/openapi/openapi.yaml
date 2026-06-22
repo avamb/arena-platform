@@ -424,6 +424,32 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/info-slow:
+    get:
+      operationId: getV1InfoSlow
+      summary: Slow service metadata (graceful-shutdown test endpoint)
+      description: |
+        Identical to GET /v1/info but sleeps for a configurable delay (default 5s)
+        before responding. Used exclusively in integration tests to verify that
+        in-flight requests complete during a graceful shutdown (SIGTERM). The
+        endpoint is always mounted (not gated by ENABLE_DEV_AUTH) so it is
+        reachable without credentials during graceful-shutdown test scenarios.
+        Must not be relied upon in production workloads.
+      tags: [v1, dev]
+      responses:
+        "200":
+          description: Service info (same schema as GET /v1/info, returned after the delay)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InfoResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/dev/token:
     post:
       operationId: postV1DevToken
