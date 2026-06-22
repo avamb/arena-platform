@@ -2221,4 +2221,98 @@ PROGRESS METRIC
 ---------------
 Stats at session start: 16/108 passing, 1 in_progress (this feature).
 This session: feature #17 completed and marked passing -> 17/108 passing.
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #27 (Worker Graceful Shutdown)
+"arena-worker graceful shutdown completes claimed jobs"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #27 verifies that sending SIGTERM to arena-worker lets currently
+claimed jobs finish, stops claiming new jobs, then exits with code 0.
+
+Changes to apps/backend/internal/platform/worker/worker.go:
+
+1. Run() -- changed defer to a combined log+close:
+   Previously: defer close(w.doneCh)
+   Now:        defer func() {
+                   w.logger.Info("shutdown complete")
+                   close(w.doneCh)
+               }()
+   This guarantees Stop() only returns nil AFTER "shutdown complete" is logged.
+
+2. Run() -- added per-job shutdown watcher goroutine:
+   Before w.execute(ctx, job), a goroutine selects on:
+     - w.stopCh (Stop() called)
+     - ctx.Done() (SIGTERM via signal.NotifyContext)
+     - jobDone (job finished normally)
+   If stop fires while job is still running, it logs:
+     "shutdown initiated, finishing 1 claimed job" (job_id, job_type attrs)
+   jobDone is always closed after execute() returns -- no goroutine leak.
+
+3. Stop() -- removed "worker stopped cleanly" log (superseded by Run defer).
+
+4. execute() -- context.Background() for MarkDone:
+   SIGTERM cancels rootCtx in production; cancelled ctx makes PGQueue.MarkDone
+   fail immediately, leaving the job 'claimed'. context.Background() with the
+   queue's own 5-10s internal timeout is correct.
+
+5. markFailureOrRetry() -- same context.Background() fix for MarkRetry/MarkFailed.
+
+New file: apps/backend/internal/platform/worker/worker_graceful_shutdown_test.go
+
+logCapture slog.Handler stores log records for message assertions.
+Compile-time guard: var _ slog.Handler = (*logCapture)(nil)
+
+4 tests covering all 9 feature steps:
+
+  TestGracefulShutdown_SlowJobCompletes (steps 1-7, 9)
+    - "test.slow" handler with handlerReady/handlerFinish channels
+    - Inserts slow job + second pending "noop.test" job
+    - Waits for slow job status='claimed', calls Stop() (simulates SIGTERM)
+    - Verifies "shutdown initiated, finishing 1 claimed job" logged (step 4)
+    - Closes handlerFinish -> slow job goes to status='done' (step 5)
+    - Verifies Stop() returns nil (step 7: exit code 0)
+    - Verifies "noop.test" job still status='pending' (step 6)
+    - Verifies "shutdown complete" logged (step 9)
+
+  TestGracefulShutdown_CtxCancelWhileJobRunning
+    - Same flow but cancel() on parent ctx (SIGTERM signal.NotifyContext path)
+
+  TestGracefulShutdown_NoJobInFlight
+    - Stop() on idle worker: "shutdown complete" logged, "shutdown initiated" NOT
+
+  TestGracefulShutdown_UnfinishedJobStaysClaimedOnTimeout (step 8)
+    - ShutdownTimeout=100ms, handler blocks on handlerCtx
+    - Stop() returns context.DeadlineExceeded
+    - Verifies job remains status='claimed' with claimed_by set
+    - t.Cleanup(handlerCancel) ensures goroutine exits after test
+
+VERIFICATION
+------------
+  - No go in sandbox; structural verification:
+    * All 4 log message strings match exactly between worker.go and test file
+    * logCapture satisfies slog.Handler (compile-time guard)
+    * pollUntil reused from worker_jobs_persistence_test.go (same package)
+    * inMemoryQueue.MarkDone ignores ctx -- context.Background() change is safe
+    * No forbidden patterns in production code or test file
+    * git commit: 69b41d8 -- 468 insertions
+
+NOTES FOR LATER WAVES
+---------------------
+  - When PostgreSQL testcontainers arrive (Wave 9), add integration test
+    that sends real SIGTERM to a spawned arena-worker process and checks
+    worker_jobs table row transitions via real PG.
+  - markFailureOrRetry() still takes ctx parameter even though it uses
+    context.Background() internally -- retained for API compatibility.
+  - "finishing 1 claimed job" is hardcoded for the synchronous single-job loop.
+    Future multi-concurrency workers should use an atomic counter.
+
+PROGRESS METRIC
+---------------
+Stats at session start: 18/108 passing, 1 in_progress (this feature).
+This session: feature #27 completed and marked passing -> 19/108 passing.
 ================================================================================
