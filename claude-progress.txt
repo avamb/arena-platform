@@ -5,6 +5,106 @@ arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
 --------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #24 (arena-migrate status reports current version)
+"arena-migrate status prints applied/pending migrations in human-readable form"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #24 required the arena-migrate status command to produce:
+  1. Human-readable table with "Applied At" and "Migration" column headers
+  2. Timestamps for applied migrations (e.g. 0001_init.sql)
+  3. "Pending" marker for unapplied migrations
+  4. --json flag for programmatic / ops-dashboard use (NDJSON output)
+
+Previously the status case just called goose.StatusContext() which routes
+through gooseLogger.Printf -> slog -> JSON handler, producing structured log
+lines rather than a clean human-readable table.
+
+IMPLEMENTATION
+--------------
+
+Modified: apps/backend/cmd/arena-migrate/main.go
+  - Added imports: database/sql, encoding/json, io
+  - Replaced `case "status":` handler: now parses --json flag from subArgs
+    and calls runStatus(ctx, db, os.Stdout, jsonOut)
+  - Added migrationStatusEntry struct (json tags: version, name, status,
+    applied_at with omitempty)
+  - Added runStatus(ctx, db, w, jsonOut):
+    * Enumerates migration files from migrations.FS.ReadDir("sql")
+    * Queries schema_migrations WHERE is_applied=true, GROUP BY version_id
+      to get MAX(tstamp) as applied_at per version
+    * Builds []migrationStatusEntry in FS order
+    * Dispatches to writeStatusTable or writeStatusJSON
+  - Added writeStatusTable(w, statuses): prints header with "Applied At"
+    and "Migration" columns, separator line, one row per migration;
+    applied rows show RFC3339 timestamp, pending rows show "Pending"
+  - Added writeStatusJSON(w, statuses): one JSON object per line (NDJSON);
+    applied_at is omitempty so pending entries omit the field
+  - Added parseVersionFromFilename(name): extracts leading integer prefix
+    from "0001_init.sql" -> 1, "20250101120000_foo.sql" -> 20250101120000
+
+New file: apps/backend/cmd/arena-migrate/migrate_status_test.go
+  Package: main (in-package, no live DB required)
+  18 test functions covering all formatting logic:
+
+  parseVersionFromFilename:
+    TestParseVersionFromFilename_SequenceNumbered         (0001 -> 1, etc.)
+    TestParseVersionFromFilename_TimestampNumbered        (14-digit prefix)
+    TestParseVersionFromFilename_NoUnderscoreReturnsError
+    TestParseVersionFromFilename_EmptyPrefixReturnsError
+    TestParseVersionFromFilename_NonNumericPrefixReturnsError
+
+  writeStatusTable:
+    TestWriteStatusTable_ContainsAppliedAtColumn          (step 3)
+    TestWriteStatusTable_ContainsMigrationColumn          (step 3)
+    TestWriteStatusTable_ContainsSeparatorLine
+    TestWriteStatusTable_AppliedRowShowsTimestamp         (step 4)
+    TestWriteStatusTable_PendingRowShowsPending           (step 5)
+    TestWriteStatusTable_MultipleEntries
+    TestWriteStatusTable_EmptyListHasHeaderOnly
+
+  writeStatusJSON:
+    TestWriteStatusJSON_ProducesValidJSON                 (step 6)
+    TestWriteStatusJSON_ContainsRequiredFields            (step 6)
+    TestWriteStatusJSON_PendingOmitsAppliedAt             (omitempty)
+    TestWriteStatusJSON_StatusFieldValues
+    TestWriteStatusJSON_EmptyList
+
+  migrationStatusEntry:
+    TestMigrationStatusEntry_MarshalJSON_Applied
+    TestMigrationStatusEntry_MarshalJSON_Pending
+
+Modified: apps/backend/cmd/arena-migrate/migrate_integration_test.go
+  Added encoding/json import + 7 new integration test functions (guarded by
+  //go:build integration, require live DATABASE_URL):
+    TestMigrateStatus_TableContainsColumnHeaders         (step 2-3)
+    TestMigrateStatus_ShowsAppliedTimestampForBaseline   (step 4)
+    TestMigrateStatus_ShowsPendingAfterReset             (step 5)
+    TestMigrateStatus_JSONFlagProducesValidJSON          (step 6)
+    TestMigrateStatus_JSONAppliedHasAppliedAt            (step 6)
+    TestMigrateStatus_ExitZeroEquivalent                 (step 2)
+
+VERIFICATION
+------------
+  - Docker build (--target build): all 4 binaries compile cleanly
+  - go test ./apps/backend/cmd/arena-migrate/...: 31 tests PASS (0.006s)
+    * 18 new status tests
+    * 13 pre-existing migrate tests
+  - Full suite: all packages same as before this session (pre-existing
+    failures in adapters/postgres, httpserver OpenAPI drift, staticanalysis
+    are UNRELATED and unchanged)
+  - git commit: 2049e24 -- 724 insertions
+
+PROGRESS METRIC
+---------------
+Stats at session start: 42/108 passing, 2 in_progress.
+This session: feature #24 completed and marked passing -> 43/108 passing.
+================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
 Session: 2026-06-22 -- Feature #13 (405 handler returns error envelope with Allow header)
 --------------------------------------------------------------------------------
 
