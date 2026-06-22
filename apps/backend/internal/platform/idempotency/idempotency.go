@@ -290,7 +290,17 @@ func Middleware(store Store, opts Options) func(http.Handler) http.Handler {
 			// to their own ResponseWriter (with the Idempotent-Replay marker set).
 			sfKey := key + "\x00" + opts.Scope
 
-			val, _, shared := group.Do(sfKey, func() (any, error) {
+			// wasWinner is set to true inside the singleflight function only by
+			// the goroutine that actually runs it. Waiters never run the function,
+			// so their wasWinner remains false. This is the reliable way to
+			// distinguish winner from waiter: singleflight.Do sets shared=true for
+			// ALL callers (including the winner) when duplicates exist, so the
+			// shared return value alone cannot be used to detect waiters.
+			wasWinner := false
+
+			val, _, _ := group.Do(sfKey, func() (any, error) {
+				wasWinner = true // only executed by the winning goroutine
+
 				rec := &capturingWriter{ResponseWriter: w, status: http.StatusOK, body: &bytes.Buffer{}}
 				ctx := contextWithMiddlewareState(r.Context(), &state{
 					key:     key,
@@ -335,7 +345,7 @@ func Middleware(store Store, opts Options) func(http.Handler) http.Handler {
 				}, nil
 			})
 
-			if shared {
+			if !wasWinner {
 				// This goroutine waited for the in-flight request to complete.
 				// Replay the captured response to our own ResponseWriter.
 				entry := val.(*concurrentEntry)
@@ -349,7 +359,7 @@ func Middleware(store Store, opts Options) func(http.Handler) http.Handler {
 					RequestHash: entry.reqHash,
 				})
 			}
-			// else: winner — response was already written to w by capturingWriter.
+			// else: winner — response already written to w by capturingWriter.
 		})
 	}
 }
