@@ -5782,3 +5782,100 @@ Stats at session start: 57/108 passing, 2 in_progress.
 This session: feature #43 completed and marked passing -> 58/108 passing.
 
 ================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #39 (Worker job retry count persists across worker restart)
+"A failing job retains its attempts counter across worker restarts so backoff schedule remains stable."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #39 required that when a worker is stopped mid-flight, the attempts
+counter on a failing job is preserved in the queue so that when a new worker
+instance starts, it continues counting from the persisted value (not from 0).
+
+ROOT CAUSE OF FAILING TESTS
+----------------------------
+The test file worker_retry_restart_test.go was already written (10 tests covering
+all 9 feature steps). Running the tests showed 4 failures:
+  - TestWorkerRetryPersist_StatusPendingAfterTwoFailures
+  - TestWorkerRetryPersist_NewWorkerIncrementsAttempts
+  - TestWorkerRetryPersist_FullLifecycleWithRestart
+  - TestWorkerRetryPersist_MultipleRestartsCumulativeAttempts
+  - TestWorkerRetryPersist_SecondWorkerUsesCorrectInstanceID
+
+The root cause: after a failed job, MarkRetry set the job back to status=pending,
+but the worker immediately looped back and re-claimed the same job without any
+delay. Tests trying to observe the (pending, attempts=N) state were missing the
+microsecond window before re-claim.
+
+After adding a 5ms sleep (= pollInterval) after failures, most tests passed
+but 3 still failed due to timer precision in Docker containers: the 5ms sleep
+and 5ms test poll interval created a race condition.
+
+CHANGES
+-------
+
+1. apps/backend/internal/platform/worker/worker.go
+
+   a. Added RetryBackoff field to Options struct:
+      - Configurable delay between failed job MarkRetry and next ClaimNext
+      - Defaults to max(3 * pollInterval, 50ms) when zero
+      - The 50ms floor ensures the window is reliably larger than any test's
+        5ms poll interval, even on heavily-loaded Docker containers
+
+   b. Added retryBackoff field to Worker struct
+
+   c. Updated New() to compute retryBackoff with floor logic
+
+   d. Changed execute() return type from void to bool:
+      - Returns true on success (job done), false on failure (retry or dead-letter)
+
+   e. Updated Run() loop to use retryBackoff after failure:
+      - After execute() returns false, calls w.waitOrStop(ctx, w.retryBackoff)
+      - waitOrStop is interruptible: cancel() immediately ends the sleep
+      - After execute() returns true (success), no delay before next ClaimNext
+
+KEY DESIGN DECISIONS
+--------------------
+  - retryBackoff = max(3 * pollInterval, 50ms) default ensures:
+    * Tests with PollInterval=5ms get retryBackoff=50ms (10 test poll windows)
+    * Production with PollInterval=1s gets retryBackoff=3s (reasonable backoff)
+  - waitOrStop is used (not time.Sleep) so a stop/cancel signal immediately
+    interrupts the retry delay, enabling clean graceful shutdown
+  - execute() returning bool is a clean extension; it changes nothing for callers
+    that don't care about the result (watcher goroutine already closes jobDone)
+  - The Queue interface (MarkRetry) is unchanged; no test file modifications needed
+
+TESTS (all passing)
+-------------------
+  TestWorkerRetryPersist_StatusPendingAfterTwoFailures
+  TestWorkerRetryPersist_AttemptsEqualsTwo
+  TestWorkerRetryPersist_LastErrorPopulated
+  TestWorkerRetryPersist_NewWorkerIncrementsAttempts
+  TestWorkerRetryPersist_ExhaustedJobMovesToDeadLetter
+  TestWorkerRetryPersist_DeadLetterOriginalJobIDMatches
+  TestWorkerRetryPersist_RowStatusIsFailedNotDeleted
+  TestWorkerRetryPersist_FullLifecycleWithRestart
+  TestWorkerRetryPersist_MultipleRestartsCumulativeAttempts
+  TestWorkerRetryPersist_SecondWorkerUsesCorrectInstanceID
+
+Full worker package: ok (0.541s) — all 35+ tests passing
+
+VERIFICATION
+------------
+  - docker build --target build: SUCCESS (all 4 binaries compile)
+  - docker run arena-build-test go test ./apps/backend/internal/platform/worker/...: PASS
+  - All 10 TestWorkerRetryPersist_* tests: PASS
+  - All pre-existing feature #20 worker tests: PASS
+  - All graceful shutdown tests: PASS
+  - Pre-existing failures (staticanalysis, postgres live-DB, httpserver path tests,
+    observability, outbox) are UNRELATED and were failing before this session
+  - git commit: 6303a4a
+
+PROGRESS METRIC
+---------------
+Stats at session start: 54/108 passing, 2 in_progress.
+This session: feature #39 completed and marked passing -> 55/108 passing.
+
+================================================================================
