@@ -7352,3 +7352,76 @@ Stats at session start: 78/108 passing, 1 in_progress.
 This session: feature #64 completed and marked passing -> 79/108 passing.
 
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #65 (Timestamps formatted as RFC 3339 UTC)
+"All timestamps in JSON responses are RFC 3339 strings in UTC, e.g.
+'2026-06-21T14:30:00.000Z'. Z suffix required (not +00:00)."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #65: Verified that all timestamps in JSON responses conform to RFC 3339
+UTC format with a mandatory 'Z' suffix. No '+00:00' representation allowed.
+
+Steps verified:
+  Step 1: GET /v1/info response includes 'server_time' timestamp field
+  Step 2: Format matches /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/
+  Step 3: Suffix is 'Z' (UTC), never '+00:00' or any '+' offset
+  Step 4: POST /v1/echo 'issued_at' (a time.Time field) — same format, second source
+  Step 5: Static source scan confirms time.RFC3339Nano/.RFC3339 + .UTC() usage
+
+ANALYSIS
+--------
+All production timestamp formatting was already correct:
+- String fields: time.Now().UTC().Format(time.RFC3339Nano) → produces Z suffix for UTC
+- time.Time fields: encoding/json uses MarshalJSON() → RFC3339Nano with Z for UTC
+- No '+00:00' representations found anywhere in production code
+
+Go's time package format "Z07:00" produces:
+  - UTC timezone → "Z" suffix ✓
+  - Other timezones → "±HH:MM" (not used in production code)
+
+No production code changes were needed — only tests were added.
+
+CHANGES
+-------
+1. apps/backend/internal/platform/httpserver/rfc3339_timestamps_test.go (NEW)
+   10 tests covering all 5 feature steps:
+
+   Step 1 (server_time field present):
+     TestTimestamp_InfoHasServerTimeField
+
+   Step 2 (format matches RFC3339 pattern):
+     TestTimestamp_InfoServerTimeMatchesRFC3339
+
+   Step 3 (Z suffix, not +00:00):
+     TestTimestamp_InfoServerTimeHasZSuffix
+     TestTimestamp_InfoServerTimeNotPlusOffset
+
+   Step 4 (echo issued_at same format):
+     TestTimestamp_EchoIssuedAtMatchesRFC3339
+     TestTimestamp_EchoIssuedAtHasZSuffix
+     TestTimestamp_EchoIssuedAtIsNonEmpty
+
+   Step 5 (static scan):
+     TestTimestamp_StaticScan_RFC3339NanoWithUTC
+     TestTimestamp_StaticScan_NoHardcodedOffset
+
+   Full sweep:
+     TestTimestamp_FullVerification (all 5 steps as sub-tests)
+
+VERIFICATION
+------------
+  - 10/10 TestTimestamp_* tests: PASS (0.403s)
+  - go build ./...: SUCCESS (all packages compile)
+  - git commit: d268f7f
+
+PROGRESS METRIC
+---------------
+Stats at session start: 79/108 passing, 0 in_progress.
+This session: feature #65 completed and marked passing -> 80/108 passing.
+
+================================================================================
