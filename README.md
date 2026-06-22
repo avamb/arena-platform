@@ -106,6 +106,52 @@ Useful URLs once `init.sh` reports readiness:
 
 ---
 
+## Authentication — PLACEHOLDER (Foundation Milestone)
+
+> **⚠ PLACEHOLDER — This is NOT production-grade authentication.**
+>
+> The `internal/platform/auth` package provides a development-only JWT boundary
+> for the Backend Foundation Milestone. It is **not** a substitute for a real
+> identity system.
+
+### What is wired now
+
+| Component | Description |
+|-----------|-------------|
+| `auth.AuthContext` | Value type (`ActorID uuid.UUID`, `OrgID *uuid.UUID`, `Roles []string`, `TokenID string`) stored on every authenticated request context. |
+| `auth.WithAuthContext` / `auth.FromContext` | Context helpers to write/read `AuthContext`. |
+| `auth.ValidateJWT(secret)` | HS256 middleware using [`github.com/golang-jwt/jwt/v5`](https://github.com/golang-jwt/jwt). Extracts the `Authorization: Bearer …` token, verifies the HMAC-SHA256 signature, validates time claims, and stores `AuthContext` on the request context. Returns `401` with a standard error envelope on failure. |
+| `auth.IssueJWT(…)` | Dev-only HS256 token minter (jwt/v5-backed). |
+| `POST /v1/dev/auth/token` | Dev endpoint that issues a signed JWT. **Only mounted when `ENABLE_DEV_AUTH=true`.** Blocked in production. |
+| `auth.StubProvider` | Manual HS256 issuer/verifier (HMAC-SHA256 without jwt/v5). Used by the existing `/v1/dev/token` and `/v1/echo` middleware chain. |
+
+### What is NOT wired (deferred)
+
+- Real user identity (OAuth 2.0, magic link, password hashing)
+- RS256 / ECDSA JWT verification against a real IdP (Keycloak, Auth0, custom)
+- Token revocation / deny-list
+- Per-organization role management / RBAC enforcement
+- Refresh token rotation
+
+### Dev quick-start
+
+```bash
+# Get a dev JWT (ENABLE_DEV_AUTH=true required)
+curl -s -X POST http://localhost:8080/v1/dev/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{"actor_id":"00000000-0000-0000-0000-000000000042","roles":["admin"]}' \
+  | jq -r .token
+
+# Use it to call an authenticated endpoint
+curl -s http://localhost:8080/v1/echo \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: test-1" \
+  -d '{"message":"hello"}'
+```
+
+---
+
 ## Scope of this milestone
 
 **In scope**: repository layout, three binaries (`arena-api`,

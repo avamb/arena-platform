@@ -260,9 +260,13 @@ func (s *Server) mountV1Routes() {
 		// Anonymous (or authenticated) routes
 		r.Get("/info", s.handleInfo)
 
-		// Dev-only token mint — only mounted when the stub provider is on.
+		// Dev-only token mint endpoints — only mounted when the stub provider is on.
 		if s.stub != nil && s.stub.Enabled() {
+			// /v1/dev/token — original endpoint using the manual HMAC issuer (StubProvider).
 			r.Post("/dev/token", s.handleDevToken)
+			// /v1/dev/auth/token — new endpoint using the jwt/v5-backed IssueJWT issuer
+			// (AuthContext boundary placeholder, feature #96).
+			r.Post("/dev/auth/token", s.handleDevAuthToken)
 		}
 
 		// Authenticated transactional routes (echo). Requires:

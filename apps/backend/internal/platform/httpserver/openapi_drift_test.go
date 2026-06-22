@@ -203,7 +203,7 @@ func hasIdempotencyKeyParam(data []byte) bool {
 
 // buildDriftTestServer creates a Server with every optional dependency wired
 // so that ALL conditional routes are mounted:
-//   - stub auth enabled  → /v1/dev/token + /v1/echo are mounted
+//   - stub auth enabled  → /v1/dev/token + /v1/dev/auth/token + /v1/echo are mounted
 //   - noopMetricsHandler → /metrics is mounted
 //   - noopIdemStore + captureAuditWriter + fakePoolDB → /v1/echo is mounted
 //

@@ -6,6 +6,7 @@ toolchain go1.24.5
 
 require (
 	github.com/go-chi/chi/v5 v5.1.0
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/jackc/pgx/v5 v5.7.1
 	github.com/pressly/goose/v3 v3.22.1
 	github.com/prometheus/client_golang v1.20.5

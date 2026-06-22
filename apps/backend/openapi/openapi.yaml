@@ -220,6 +220,57 @@ components:
           description: JWT audience (aud) claim
           example: "arena-api"
 
+    DevAuthTokenRequest:
+      type: object
+      properties:
+        actor_id:
+          type: string
+          format: uuid
+          description: UUID to embed as the "sub" (subject) claim. Defaults to 00000000-0000-0000-0000-000000000001.
+          example: "00000000-0000-0000-0000-000000000042"
+        org_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Optional organisation UUID embedded as the "org_id" claim.
+          example: "11111111-1111-1111-1111-111111111111"
+        roles:
+          type: array
+          items:
+            type: string
+          description: Coarse-grained role labels embedded in the "roles" claim.
+          example: ["admin", "viewer"]
+        ttl_seconds:
+          type: integer
+          description: Token lifetime in seconds. Defaults to 3600 (1 hour) when omitted or ≤ 0.
+          example: 3600
+
+    DevAuthTokenResponse:
+      type: object
+      required: [token, expires_at, actor_id, issuer, audience]
+      properties:
+        token:
+          type: string
+          description: Signed JWT (HS256 via jwt/v5) usable in Authorization Bearer headers.
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        expires_at:
+          type: string
+          format: date-time
+          description: Token expiry time (RFC3339 UTC).
+          example: "2026-06-22T07:00:00Z"
+        actor_id:
+          type: string
+          description: The actor UUID embedded in the token's sub claim.
+          example: "00000000-0000-0000-0000-000000000042"
+        issuer:
+          type: string
+          description: The iss claim value (configured JWT_ISSUER).
+          example: "arena-dev"
+        audience:
+          type: string
+          description: The aud claim value (configured JWT_AUDIENCE).
+          example: "arena-api"
+
     EchoRequest:
       type: object
       required: [message]
@@ -404,6 +455,44 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Dev auth is disabled (ENABLE_DEV_AUTH=false or stub not initialised)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/dev/auth/token:
+    post:
+      operationId: postV1DevAuthToken
+      summary: Mint a development JWT via jwt/v5 issuer (dev-only)
+      description: |
+        Issues a signed HS256 JWT using the jwt/v5-backed IssueJWT function
+        (AuthContext boundary PLACEHOLDER — feature #96). Only mounted when
+        ENABLE_DEV_AUTH=true. Must never be reachable in production.
+        The resulting token is accepted by the ValidateJWT middleware and
+        populates an AuthContext (ActorID, OrgID, Roles, TokenID) in the
+        request context.
+      tags: [v1, dev]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DevAuthTokenRequest"
+      responses:
+        "200":
+          description: Token issued successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DevAuthTokenResponse"
+        "400":
+          description: Request body is not valid JSON, or actor_id / org_id is not a valid UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Dev auth is disabled (ENABLE_DEV_AUTH=false)
           content:
             application/json:
               schema:
