@@ -195,6 +195,11 @@ func (s *Server) mountOperationalRoutes() {
 	if s.metrics != nil {
 		s.router.Method(http.MethodGet, "/metrics", s.metrics)
 	}
+	// Custom 404 handler: returns the standard JSON error envelope instead of
+	// chi's default plain-text "404 page not found\n" response. Every unknown
+	// path therefore still carries Content-Type: application/json, X-Request-Id,
+	// and the structured error body that clients can parse uniformly.
+	s.router.NotFound(handleNotFound)
 }
 
 func (s *Server) mountV1Routes() {
@@ -229,6 +234,15 @@ func (s *Server) mountV1Routes() {
 			})
 		}
 	})
+}
+
+// handleNotFound is the chi NotFound handler. It replaces chi's built-in
+// plain-text "404 page not found\n" response with the project-standard JSON
+// error envelope (feature #12). The handler is invoked after the full
+// middleware chain, so X-Request-Id and X-Trace-Id are already present in
+// the response headers when errorEnvelope reads them from ctx.
+func handleNotFound(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusNotFound, errorEnvelope("http.not_found", "the requested resource does not exist", r))
 }
 
 // handleHealthz is a liveness probe: returns 200 unconditionally while the
