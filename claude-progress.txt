@@ -4951,3 +4951,87 @@ PROGRESS METRIC
 Stats at session start: 48/108 passing, 2 in_progress.
 This session: feature #31 completed and marked passing -> 49/108 passing.
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #30 (Missing Content-Type returns 415 envelope)
+"Missing Content-Type returns 415 envelope"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #30 requires that mutating endpoints (POST, PUT, PATCH) enforce
+Content-Type: application/json. Missing or unsupported media types return
+415 Unsupported Media Type with the standard JSON error envelope.
+
+IMPLEMENTATION
+--------------
+
+1. apps/backend/internal/adapters/http/router.go
+   - Added RequireJSONContentType middleware (exported):
+     * Checks Content-Type on POST/PUT/PATCH requests only
+     * Media type comparison is case-insensitive (application/JSON ok)
+     * Parameters ignored (application/json; charset=utf-8 ok)
+     * On failure: sets Accept-Post: application/json response header
+     * Returns 415 with standard JSON error envelope
+     * code: "http.unsupported_media_type"
+     * GET/HEAD/DELETE pass through untouched
+   - Wired RequireJSONContentType as step 10 in NewRouter chain
+   - Updated package doc comment to document step 10
+
+2. apps/backend/internal/platform/httpserver/content_type_test.go (NEW)
+   13 test functions covering all 6 feature steps:
+
+   TestContentType_NoContentType_Returns415
+   TestContentType_NoContentType_ErrorCode
+   TestContentType_NoContentType_AcceptPostHeader
+   TestContentType_NoContentType_ResponseIsJSONEnvelope
+   TestContentType_TextPlain_Returns415
+   TestContentType_FormData_Returns415
+   TestContentType_JsonWithCharset_NotRejectedWith415
+   TestContentType_JsonCaseInsensitive_NotRejectedWith415
+   TestContentType_GET_NotAffected
+   TestContentType_PUT_NoContentType_Returns415
+   TestContentType_PATCH_NoContentType_Returns415
+   TestContentType_EnvelopeHasMessageField
+   TestContentType_AcceptPostAbsentOnSuccess
+
+3. REGRESSION FIXES in existing tests:
+   - devauth_test.go: added Content-Type to 5 POST requests that were missing it
+   - jwt_expired_test.go: added Content-Type to 5 POST requests missing it
+   - method_not_allowed_test.go: added Content-Type to 3 PATCH requests
+   - router_test.go: fixed body limit test to use io.NopCloser so no
+     Content-Length is set, exercising MaxBytesReader slow-path
+
+VERIFICATION
+------------
+  - docker build --target build: SUCCESS (all 4 binaries compile)
+  - docker run arena-build-test go test -run TestContentType: 13/13 PASS
+  - adapters/http package: ok (all tests pass)
+  - devauth tests: all 5 previously-failing now PASS
+  - JWT expired tests: all 5 previously-failing now PASS
+  - Method-not-allowed tests: all 3 previously-failing now PASS
+  - Pre-existing failures (OpenAPI, Operational, README, observability, outbox)
+    are UNRELATED and were failing before this session
+  - TestBodyLimit_SafeMethodsNotLimited in untracked body_limit_test.go:
+    pre-existing bug in another agent file; GET request infrastructure bug,
+    not caused by Content-Type middleware (only affects POST/PUT/PATCH)
+  - No forbidden patterns (STUB/MOCK/devStore/globalThis)
+  - git commit: 68c3cae
+
+ARCHITECTURE NOTES
+------------------
+  - RequireJSONContentType fires as the LAST middleware in NewRouter, after
+    JSONBodyLimit. JSONBodyLimit fast-path (Content-Length check) fires first.
+  - The middleware is exported so callers building partial routers can reuse it
+  - GET requests pass through unconditionally (no body expected)
+  - The middleware fires before chi routing, so PATCH on a POST-only route
+    returns 415 if Content-Type missing; adding Content-Type gets 405 from chi
+
+PROGRESS METRIC
+---------------
+Stats at session start: 45/108 passing, 2 in_progress.
+This session: feature #30 completed and marked passing -> 46/108 passing.
+================================================================================
+================================================================================
