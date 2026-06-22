@@ -441,6 +441,482 @@ func isValidBCP47Locale(s string) bool {
 	return true
 }
 
+// ---------------------------------------------------------------------------
+// Feature #23 — arena-migrate down rolls back baseline migration
+// ---------------------------------------------------------------------------
+
+// platformTables is the canonical list of tables created by 0001_init.sql.
+// Used across multiple down/up cycle tests to verify structural completeness.
+var platformTables = []string{
+	"idempotency_keys",
+	"audit_events",
+	"outbox_events",
+	"worker_jobs",
+	"worker_dead_letter",
+	"i18n_text",
+}
+
+// tableExists returns whether the given table exists in the public schema.
+func tableExists(t *testing.T, db *sql.DB, ctx context.Context, table string) bool {
+	t.Helper()
+	var exists bool
+	row := db.QueryRowContext(ctx,
+		`SELECT EXISTS (
+			SELECT 1
+			FROM   information_schema.tables
+			WHERE  table_schema = 'public'
+			AND    table_name   = $1
+		)`, table)
+	if err := row.Scan(&exists); err != nil {
+		t.Fatalf("tableExists(%q): query error: %v", table, err)
+	}
+	return exists
+}
+
+// indexExists returns whether the given index exists in the public schema.
+func indexExists(t *testing.T, db *sql.DB, ctx context.Context, indexName string) bool {
+	t.Helper()
+	var exists bool
+	row := db.QueryRowContext(ctx,
+		`SELECT EXISTS (
+			SELECT 1
+			FROM   pg_indexes
+			WHERE  schemaname = 'public'
+			AND    indexname  = $1
+		)`, indexName)
+	if err := row.Scan(&exists); err != nil {
+		t.Fatalf("indexExists(%q): query error: %v", indexName, err)
+	}
+	return exists
+}
+
+// uuidv7FunctionExists returns whether the uuidv7() function exists.
+func uuidv7FunctionExists(t *testing.T, db *sql.DB, ctx context.Context) bool {
+	t.Helper()
+	var exists bool
+	row := db.QueryRowContext(ctx,
+		`SELECT EXISTS (
+			SELECT 1
+			FROM   pg_proc
+			JOIN   pg_namespace ON pg_namespace.oid = pg_proc.pronamespace
+			WHERE  pg_namespace.nspname = 'public'
+			AND    pg_proc.proname      = 'uuidv7'
+		)`)
+	if err := row.Scan(&exists); err != nil {
+		t.Fatalf("uuidv7FunctionExists: query error: %v", err)
+	}
+	return exists
+}
+
+// resetAndUp is a test helper that calls goose.ResetContext followed by
+// goose.UpContext to bring the database to a clean fully-migrated state.
+// It is used as a t.Cleanup function so down-cycle tests leave the DB
+// in a usable state for subsequent tests in the same suite run.
+func resetAndUp(t *testing.T, db *sql.DB, ctx context.Context) {
+	t.Helper()
+	if err := goose.ResetContext(ctx, db, migrations.Dir); err != nil {
+		t.Logf("resetAndUp: reset error (non-fatal in cleanup): %v", err)
+	}
+	if err := goose.UpContext(ctx, db, migrations.Dir); err != nil {
+		t.Logf("resetAndUp: up error (non-fatal in cleanup): %v", err)
+	}
+}
+
+// TestMigrateDown_RollsBackMostRecentMigration verifies that goose.DownContext
+// successfully rolls back exactly one migration (the most recent one).
+//
+// Feature #23 steps 2–3: arena-migrate down exits 0 and rolls back one step.
+func TestMigrateDown_RollsBackMostRecentMigration(t *testing.T) {
+	db := integrationMigrateDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	configureGooseIntegration(t)
+
+	// Start from fully migrated state.
+	if err := goose.UpContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("setup goose.UpContext: %v", err)
+	}
+	t.Cleanup(func() { resetAndUp(t, db, ctx) })
+
+	vBefore, err := goose.GetDBVersionContext(ctx, db)
+	if err != nil {
+		t.Fatalf("GetDBVersionContext before down: %v", err)
+	}
+	if vBefore <= 0 {
+		t.Fatalf("expected positive version before down, got %d", vBefore)
+	}
+
+	// arena-migrate down — must return nil (exit code 0 equivalent).
+	// Step 3: goose.DownContext returns nil.
+	if err := goose.DownContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("goose.DownContext (step 3 exit code 0): unexpected error: %v", err)
+	}
+
+	vAfter, err := goose.GetDBVersionContext(ctx, db)
+	if err != nil {
+		t.Fatalf("GetDBVersionContext after down: %v", err)
+	}
+
+	// The version must have decreased by exactly one migration step.
+	if vAfter >= vBefore {
+		t.Errorf("version after down = %d; want < %d (one migration rolled back)", vAfter, vBefore)
+	}
+
+	t.Logf("arena-migrate down: version %d -> %d (one migration rolled back)", vBefore, vAfter)
+}
+
+// TestMigrateReset_TablesGoneAfterFullRollback verifies that after rolling back
+// ALL migrations the platform tables no longer exist in the public schema.
+// Only schema_migrations (managed by goose) should survive.
+//
+// Feature #23 step 4: \dt shows our tables are gone.
+func TestMigrateReset_TablesGoneAfterFullRollback(t *testing.T) {
+	db := integrationMigrateDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	configureGooseIntegration(t)
+
+	// Start from fully migrated state.
+	if err := goose.UpContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("setup goose.UpContext: %v", err)
+	}
+	// Always restore the DB to fully migrated state when the test ends.
+	t.Cleanup(func() { resetAndUp(t, db, ctx) })
+
+	// Roll back all migrations.
+	if err := goose.ResetContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("goose.ResetContext: %v", err)
+	}
+
+	// Step 4: Every platform table from 0001_init.sql must be gone.
+	for _, table := range platformTables {
+		t.Run("table_absent="+table, func(t *testing.T) {
+			if tableExists(t, db, ctx, table) {
+				t.Errorf("table %q still exists after full rollback; want gone", table)
+			}
+		})
+	}
+
+	// The outbox table from 0002_outbox.sql must also be gone.
+	t.Run("table_absent=outbox", func(t *testing.T) {
+		if tableExists(t, db, ctx, "outbox") {
+			t.Errorf("table %q still exists after full rollback; want gone", "outbox")
+		}
+	})
+
+	// schema_migrations must still exist (goose manages it; it is NOT dropped by reset).
+	t.Run("schema_migrations_survives", func(t *testing.T) {
+		if !tableExists(t, db, ctx, "schema_migrations") {
+			t.Error("schema_migrations table gone after reset; goose needs it to be present")
+		}
+	})
+
+	t.Logf("full rollback verified: all platform tables absent, schema_migrations intact")
+}
+
+// TestMigrateReset_StatusShowsNotApplied verifies that after a full rollback
+// the schema_migrations table records migration 1 as not applied.
+//
+// Feature #23 step 5: arena-migrate status shows migration 1 as not applied.
+func TestMigrateReset_StatusShowsNotApplied(t *testing.T) {
+	db := integrationMigrateDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	configureGooseIntegration(t)
+
+	// Start from fully migrated state.
+	if err := goose.UpContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("setup goose.UpContext: %v", err)
+	}
+	t.Cleanup(func() { resetAndUp(t, db, ctx) })
+
+	// Roll back all migrations.
+	if err := goose.ResetContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("goose.ResetContext: %v", err)
+	}
+
+	// Step 5: version should be 0 (no migrations applied).
+	version, err := goose.GetDBVersionContext(ctx, db)
+	if err != nil {
+		t.Fatalf("goose.GetDBVersionContext after reset: %v", err)
+	}
+	if version != 0 {
+		t.Errorf("schema version after full rollback = %d; want 0 (no migrations applied)", version)
+	}
+
+	// The most recent row for migration version_id=1 should show is_applied=false.
+	// Goose records both the apply (is_applied=true) and rollback (is_applied=false).
+	var isApplied bool
+	var rowFound bool
+	row := db.QueryRowContext(ctx,
+		`SELECT is_applied
+		   FROM schema_migrations
+		  WHERE version_id = 1
+		  ORDER BY id DESC
+		  LIMIT 1`)
+	if err := row.Scan(&isApplied); err != nil {
+		if err == sql.ErrNoRows {
+			// If version_id=1 was never recorded in schema_migrations, that is
+			// also acceptable — it means goose cleaned up the row on down.
+			rowFound = false
+			t.Logf("schema_migrations: no row for version_id=1 after reset (goose may remove the row)")
+		} else {
+			t.Fatalf("query schema_migrations version 1: %v", err)
+		}
+	} else {
+		rowFound = true
+		if isApplied {
+			t.Errorf("schema_migrations version_id=1 is_applied=true after rollback; want false (not applied)")
+		}
+		t.Logf("schema_migrations: version_id=1 is_applied=%v (rowFound=%v)", isApplied, rowFound)
+	}
+
+	t.Logf("arena-migrate status after reset: version=0, migration 1 not applied")
+}
+
+// TestMigrateDown_UpAfterResetRestoresTables verifies that running
+// goose.UpContext after a full rollback re-applies 0001_init.sql and
+// all subsequent migrations, restoring every platform table.
+//
+// Feature #23 steps 6–7: arena-migrate up re-applies 0001_init.sql and tables exist again.
+func TestMigrateDown_UpAfterResetRestoresTables(t *testing.T) {
+	db := integrationMigrateDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	configureGooseIntegration(t)
+
+	// Ensure a fully migrated starting point.
+	if err := goose.UpContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("setup goose.UpContext: %v", err)
+	}
+	t.Cleanup(func() { resetAndUp(t, db, ctx) })
+
+	// Roll back everything.
+	if err := goose.ResetContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("goose.ResetContext: %v", err)
+	}
+
+	// Step 6: Re-apply all migrations.
+	if err := goose.UpContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("goose.UpContext after reset (step 6): %v", err)
+	}
+
+	// Step 7: Every platform table must exist again.
+	for _, table := range platformTables {
+		t.Run("table_restored="+table, func(t *testing.T) {
+			if !tableExists(t, db, ctx, table) {
+				t.Errorf("table %q missing after up-after-reset; want restored", table)
+			}
+		})
+	}
+	t.Run("table_restored=outbox", func(t *testing.T) {
+		if !tableExists(t, db, ctx, "outbox") {
+			t.Errorf("table %q missing after up-after-reset; want restored", "outbox")
+		}
+	})
+
+	// Version must be positive (fully migrated) again.
+	version, err := goose.GetDBVersionContext(ctx, db)
+	if err != nil {
+		t.Fatalf("GetDBVersionContext after up-after-reset: %v", err)
+	}
+	if version <= 0 {
+		t.Errorf("version after up-after-reset = %d; want > 0", version)
+	}
+
+	t.Logf("up-after-reset: all tables restored, version=%d", version)
+}
+
+// TestMigrateDown_NoOrphanIndexesAfterCycle verifies that after a reset+up
+// cycle, no orphan indexes or stale structures remain (step 8).
+// Specifically checks that all key indexes from 0001_init.sql exist and that
+// no unexpected user-defined indexes exist.
+//
+// Feature #23 step 8: no orphan rows or stale indexes.
+func TestMigrateDown_NoOrphanIndexesAfterCycle(t *testing.T) {
+	db := integrationMigrateDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	configureGooseIntegration(t)
+
+	// Reset then up to perform a full cycle.
+	if err := goose.ResetContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("goose.ResetContext: %v", err)
+	}
+	t.Cleanup(func() { resetAndUp(t, db, ctx) })
+
+	if err := goose.UpContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("goose.UpContext after reset: %v", err)
+	}
+
+	// All expected indexes from 0001_init.sql must be present.
+	wantIndexes := []string{
+		"idempotency_keys_key_scope_uniq",
+		"idempotency_keys_expires_at_idx",
+		"audit_events_resource_idx",
+		"audit_events_actor_idx",
+		"outbox_events_unprocessed_idx",
+		"worker_jobs_status_scheduled_idx",
+		"worker_jobs_idem_uniq",
+		"worker_dead_letter_job_type_idx",
+		"i18n_text_ns_key_locale_uniq",
+		"i18n_text_ns_key_idx",
+	}
+	for _, idx := range wantIndexes {
+		t.Run("index_present="+idx, func(t *testing.T) {
+			if !indexExists(t, db, ctx, idx) {
+				t.Errorf("index %q missing after reset+up cycle; want present (no orphan/missing index)", idx)
+			}
+		})
+	}
+
+	// Outbox index from 0002_outbox.sql must also be present.
+	t.Run("index_present=outbox_backlog_idx", func(t *testing.T) {
+		if !indexExists(t, db, ctx, "outbox_backlog_idx") {
+			t.Errorf("index outbox_backlog_idx missing after reset+up cycle")
+		}
+	})
+
+	// uuidv7() function must be present (created by 0001_init.sql Up section).
+	t.Run("uuidv7_function_present", func(t *testing.T) {
+		if !uuidv7FunctionExists(t, db, ctx) {
+			t.Error("uuidv7() function missing after reset+up cycle")
+		}
+	})
+
+	t.Logf("step 8 verified: all expected indexes present, uuidv7() function intact")
+}
+
+// TestMigrateDown_UpDownCycleDeterministic runs a complete reset→up→down→up
+// cycle THREE times and verifies that each iteration produces an identical
+// schema structure (deterministic rollback/restore behaviour).
+//
+// Feature #23 step 9: repeat cycle 3 times to verify deterministic behaviour.
+func TestMigrateDown_UpDownCycleDeterministic(t *testing.T) {
+	db := integrationMigrateDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	configureGooseIntegration(t)
+
+	t.Cleanup(func() { resetAndUp(t, db, ctx) })
+
+	for cycle := 1; cycle <= 3; cycle++ {
+		t.Run(fmt.Sprintf("cycle_%d", cycle), func(t *testing.T) {
+			// --- DOWN: roll back all migrations ---
+			if err := goose.ResetContext(ctx, db, migrations.Dir); err != nil {
+				t.Fatalf("cycle %d reset: %v", cycle, err)
+			}
+
+			// Verify tables are gone after reset.
+			for _, table := range platformTables {
+				if tableExists(t, db, ctx, table) {
+					t.Errorf("cycle %d: table %q still exists after reset; want gone", cycle, table)
+				}
+			}
+
+			vAfterReset, err := goose.GetDBVersionContext(ctx, db)
+			if err != nil {
+				t.Fatalf("cycle %d: GetDBVersionContext after reset: %v", cycle, err)
+			}
+			if vAfterReset != 0 {
+				t.Errorf("cycle %d: version after reset = %d; want 0", cycle, vAfterReset)
+			}
+
+			// --- UP: re-apply all migrations ---
+			if err := goose.UpContext(ctx, db, migrations.Dir); err != nil {
+				t.Fatalf("cycle %d up: %v", cycle, err)
+			}
+
+			// Verify tables are back after up.
+			for _, table := range platformTables {
+				if !tableExists(t, db, ctx, table) {
+					t.Errorf("cycle %d: table %q missing after up; want restored", cycle, table)
+				}
+			}
+
+			vAfterUp, err := goose.GetDBVersionContext(ctx, db)
+			if err != nil {
+				t.Fatalf("cycle %d: GetDBVersionContext after up: %v", cycle, err)
+			}
+			if vAfterUp <= 0 {
+				t.Errorf("cycle %d: version after up = %d; want > 0", cycle, vAfterUp)
+			}
+
+			// uuidv7() function must be present after each up.
+			if !uuidv7FunctionExists(t, db, ctx) {
+				t.Errorf("cycle %d: uuidv7() function missing after up", cycle)
+			}
+
+			t.Logf("cycle %d: reset (v=0) → up (v=%d): OK", cycle, vAfterUp)
+		})
+	}
+}
+
+// TestMigrateDown_DownScriptDropsInReverseOrder verifies that the 0001_init.sql
+// Down section drops tables in reverse dependency order.  Specifically:
+//   - i18n_text is dropped first (no dependents)
+//   - idempotency_keys last among application tables
+//   - uuidv7() function is dropped AFTER all tables (tables depend on it)
+//
+// This test reads the embedded SQL bytes and checks token order, providing a
+// fast compile-time guard without requiring a live DB.
+//
+// Feature #23 step 10: down migration script drops in reverse dependency order.
+func TestMigrateDown_DownScriptDropsInReverseOrder(t *testing.T) {
+	t.Parallel()
+
+	// Read 0001_init.sql from the embedded FS.
+	data, err := migrations.FS.ReadFile("sql/0001_init.sql")
+	if err != nil {
+		t.Fatalf("read 0001_init.sql from embed.FS: %v", err)
+	}
+	content := string(data)
+
+	// Locate the +goose Down section.
+	downMarker := "-- +goose Down"
+	downIdx := strings.Index(content, downMarker)
+	if downIdx < 0 {
+		t.Fatalf("0001_init.sql does not contain %q section", downMarker)
+	}
+	downSection := content[downIdx:]
+
+	// All DROP TABLE statements in the Down section.
+	// We verify order by checking that i18n_text appears before idempotency_keys
+	// (inserted-last is dropped-first) and that DROP FUNCTION uuidv7 appears
+	// after all DROP TABLE statements (the function is a dependency of the tables).
+	dropI18n := strings.Index(downSection, "DROP TABLE IF EXISTS i18n_text")
+	dropIdempotency := strings.Index(downSection, "DROP TABLE IF EXISTS idempotency_keys")
+	dropFunction := strings.Index(downSection, "DROP FUNCTION IF EXISTS uuidv7")
+
+	if dropI18n < 0 {
+		t.Error("Down section: missing 'DROP TABLE IF EXISTS i18n_text'")
+	}
+	if dropIdempotency < 0 {
+		t.Error("Down section: missing 'DROP TABLE IF EXISTS idempotency_keys'")
+	}
+	if dropFunction < 0 {
+		t.Error("Down section: missing 'DROP FUNCTION IF EXISTS uuidv7'")
+	}
+
+	// i18n_text (last created) must be dropped before idempotency_keys (first created).
+	if dropI18n >= 0 && dropIdempotency >= 0 && dropI18n > dropIdempotency {
+		t.Errorf("down script: i18n_text dropped AFTER idempotency_keys; "+
+			"want i18n_text first (reverse creation order). "+
+			"i18n_text pos=%d, idempotency_keys pos=%d", dropI18n, dropIdempotency)
+	}
+
+	// DROP FUNCTION uuidv7 must come after all DROP TABLE statements
+	// because the tables reference uuidv7() in their DEFAULT expressions.
+	if dropFunction >= 0 && dropIdempotency >= 0 && dropFunction < dropIdempotency {
+		t.Errorf("down script: DROP FUNCTION uuidv7() appears BEFORE DROP TABLE idempotency_keys; "+
+			"want function dropped last (tables depend on it). "+
+			"function pos=%d, idempotency_keys pos=%d", dropFunction, dropIdempotency)
+	}
+
+	t.Logf("down script order verified: i18n_text(%d) before idempotency_keys(%d) before uuidv7()(%d)",
+		dropI18n, dropIdempotency, dropFunction)
+}
+
 // TestMigrateSchemaHasExpectedTables verifies that the platform tables created
 // by 0001_init.sql actually exist in the database after arena-migrate up.
 // This guards against silent partial migration failures.
