@@ -5,6 +5,131 @@ arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
 --------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #61 (X-Request-Id header present in every response)
+"Every response (success or error, including 404, 405, 500) carries X-Request-Id
+header with a UUIDv7. Client-supplied X-Request-Id is preserved if valid."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #61 requires:
+  Step 1: GET /v1/info -- response has X-Request-Id header
+  Step 2: Header value is a valid UUID
+  Step 3: GET /does-not-exist -- 404 response has X-Request-Id
+  Step 4: GET /v1/debug/panic -- 500 response has X-Request-Id
+  Step 5: Send valid UUID as X-Request-Id -- response echoes same value
+  Step 6: Send X-Request-Id: not-a-uuid -- server generates fresh UUID
+  Step 7: slog includes X-Request-Id in every log line
+
+ANALYSIS
+--------
+Steps 1, 3, 4, 7 were already working (middleware chain sets X-Request-Id).
+Steps 2, 5, 6 were NOT working:
+  - chi's chimw.RequestID generates non-UUID IDs ("hostname/counter" format)
+  - requestContext used chimw.GetReqID which returned those non-UUID IDs
+  - No validation of client-supplied X-Request-Id
+
+CHANGES
+-------
+
+1. apps/backend/internal/adapters/http/router.go (MODIFIED)
+   - Added `github.com/google/uuid` import
+   - Modified requestContext to call new resolveRequestID() instead of
+     chimw.GetReqID(r.Context())
+   - Added resolveRequestID() function:
+     * Checks inbound X-Request-Id header with uuid.Parse()
+     * If valid UUID -> preserve verbatim
+     * Otherwise -> generate uuid.NewV7()
+   - Updated RequireJSONContentType to use logging.RequestID(r.Context())
+     instead of chimw.GetReqID for consistency
+
+2. apps/backend/internal/adapters/http/router_test.go (MODIFIED)
+   - Updated TestNewRouter_InboundRequestIDHonoured to send a valid UUID
+     (was "client-supplied-req-id-12345" which is NOT a UUID)
+   - Added TestNewRouter_InvalidInboundRequestIDIsReplaced (step 6)
+
+3. apps/backend/internal/platform/httpserver/devtoken.go (MODIFIED)
+   - errorEnvelope: replaced chimw.GetReqID(r.Context()) with
+     logging.RequestID(r.Context()) so the request_id in JSON body always
+     matches the X-Request-Id response header
+   - Removed now-unused chimw import
+
+4. apps/backend/internal/platform/httpserver/x_request_id_test.go (NEW)
+   22 tests covering all 7 feature steps:
+
+   Steps 1+2 (header present, valid UUID):
+     TestXRequestID_InfoResponseHasHeader
+     TestXRequestID_InfoResponseHasHeaderOnAnyStatus
+     TestXRequestID_HeaderValueIsValidUUID
+     TestXRequestID_HeaderValueIsUUIDv7
+     TestXRequestID_EachRequestGetsDistinctUUID
+
+   Step 3 (404 has X-Request-Id):
+     TestXRequestID_404ResponseHasHeader
+     TestXRequestID_404HeaderValueIsUUID
+
+   Step 4 (500 panic has X-Request-Id):
+     TestXRequestID_500PanicResponseHasHeader
+     TestXRequestID_500PanicHeaderValueIsUUID
+     TestXRequestID_500BodyIncludesRequestID
+
+   Step 5 (valid client UUID preserved):
+     TestXRequestID_ValidClientUUIDIsEchoed
+     TestXRequestID_ValidClientUUIDv4IsEchoed
+     TestXRequestID_ValidClientUUIDv7IsEchoed
+     TestXRequestID_ValidClientUUIDPreservedOn404
+
+   Step 6 (invalid value replaced):
+     TestXRequestID_InvalidClientValueIsReplaced
+     TestXRequestID_RandomStringIsReplaced
+     TestXRequestID_EmptyHeaderGeneratesUUID
+     TestXRequestID_PartialUUIDIsReplaced
+
+   Step 7 (slog includes request_id):
+     TestXRequestID_SlogIncludesRequestID
+     TestXRequestID_SlogRequestIDMatchesHeader
+
+   Full sweep:
+     TestXRequestID_FullVerification (all 7 steps as sub-tests)
+
+BONUS FIX
+---------
+TestNotFound_RequestIDMatchesBetweenHeaderAndBody was FAILING before this
+session because errorEnvelope used chimw.GetReqID (returning non-UUID chi format)
+while the X-Request-Id header had the UUID. The fix to errorEnvelope resolved
+this pre-existing test failure as well.
+
+VERIFICATION
+------------
+  - docker build --target build: SUCCESS (all 4 binaries compile)
+  - 22/22 TestXRequestID_* tests: PASS
+  - adapters/http package: ALL PASS (including new invalid UUID test)
+  - TestNotFound_RequestIDMatchesBetweenHeaderAndBody: NOW PASSES
+  - Pre-existing failures (README/Dockerfile trimpath, postgres integration,
+    observability, outbox) are UNRELATED to this feature
+  - git commit: 50d333c
+
+ARCHITECTURE NOTES
+------------------
+  Key insight: chi's chimw.RequestID middleware generates "hostname/counter"
+  format IDs, not UUIDs. The fix was to bypass chimw.GetReqID entirely in
+  requestContext and instead:
+    1. Check the inbound X-Request-Id header directly
+    2. Validate it as UUID via uuid.Parse()
+    3. Either preserve (valid UUID) or generate fresh UUIDv7
+
+  The cascade effect: errorEnvelope also needed to use logging.RequestID(ctx)
+  (which reads our stored UUID) instead of chimw.GetReqID (which reads chi's
+  counter format). This ensures body.request_id == X-Request-Id header.
+
+PROGRESS METRIC
+---------------
+Stats at session start: 74/108 passing, 2 in_progress.
+This session: feature #61 completed and marked passing -> 75/108 passing.
+
+================================================================================
+
+--------------------------------------------------------------------------------
 Session: 2026-06-22 -- Feature #56 (?lang=invalid returns default locale, not error)
 "?lang query parameter with an unknown locale falls back to default locale,
 same as Accept-Language fallback. Should not 400."
