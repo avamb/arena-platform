@@ -1148,3 +1148,307 @@ func TestMigrateSchemaHasExpectedTables(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Feature #25 — arena-migrate redo re-applies last migration
+// ---------------------------------------------------------------------------
+
+// capturingGooseLogger records all Printf messages emitted by goose during a
+// migration operation. This allows integration tests to assert on the specific
+// log output produced by the redo command.
+//
+// Fatalf panics (like the production gooseLogger) so that goose fatal errors
+// surface as test failures rather than silently swallowing them.
+type capturingGooseLogger struct {
+	t        *testing.T
+	messages []string
+}
+
+func (l *capturingGooseLogger) Printf(format string, v ...interface{}) {
+	msg := strings.TrimRight(fmt.Sprintf(format, v...), "\n")
+	l.messages = append(l.messages, msg)
+}
+
+func (l *capturingGooseLogger) Fatalf(format string, v ...interface{}) {
+	msg := fmt.Sprintf(format, v...)
+	l.t.Logf("[goose fatal] %s", msg)
+	panic("goose fatal: " + msg)
+}
+
+// Compile-time guard: capturingGooseLogger must satisfy goose.Logger.
+var _ goose.Logger = (*capturingGooseLogger)(nil)
+
+// TestMigrateRedo_Succeeds verifies that goose.RedoContext returns nil (i.e.
+// arena-migrate redo exits 0) and that the schema version is unchanged after
+// the redo cycle (roll back one + re-apply one = net zero).
+//
+// Feature #25 steps 1–3: apply all migrations, run redo, verify exit 0.
+func TestMigrateRedo_Succeeds(t *testing.T) {
+	db := integrationMigrateDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	configureGooseIntegration(t)
+
+	// Step 1: Apply all pending migrations.
+	if err := goose.UpContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("setup goose.UpContext: %v", err)
+	}
+	t.Cleanup(func() { resetAndUp(t, db, ctx) })
+
+	vBefore, err := goose.GetDBVersionContext(ctx, db)
+	if err != nil {
+		t.Fatalf("GetDBVersionContext before redo: %v", err)
+	}
+	if vBefore <= 0 {
+		t.Fatalf("expected positive version before redo, got %d", vBefore)
+	}
+
+	// Step 2–3: Run redo — must return nil (equivalent to exit code 0).
+	if err := goose.RedoContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("goose.RedoContext: unexpected error (want exit 0): %v", err)
+	}
+
+	// After redo the version must be identical: redo = down(1) + up(1), net zero change.
+	vAfter, err := goose.GetDBVersionContext(ctx, db)
+	if err != nil {
+		t.Fatalf("GetDBVersionContext after redo: %v", err)
+	}
+	if vAfter != vBefore {
+		t.Errorf("version after redo = %d; want %d (redo should preserve schema version)", vAfter, vBefore)
+	}
+
+	t.Logf("redo succeeded: version stable at %d", vAfter)
+}
+
+// TestMigrateRedo_LogsRollbackThenApply verifies that redo emits log messages
+// that indicate the most recent migration was first rolled back and then
+// re-applied.  goose v3 uses Printf("DONE   <name> ...") for rollback steps
+// and Printf("OK     <name> ...") for apply steps; our gooseLogger converts
+// those Printf calls to slog.Info records.
+//
+// Feature #25 step 4: logs show rolling back then applying the last migration.
+func TestMigrateRedo_LogsRollbackThenApply(t *testing.T) {
+	db := integrationMigrateDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	// Configure goose with a capturing logger (not the silent one) so we can
+	// inspect what goose prints during the redo operation.
+	if err := goose.SetDialect("postgres"); err != nil {
+		t.Fatalf("goose.SetDialect: %v", err)
+	}
+	goose.SetBaseFS(migrations.FS)
+	goose.SetTableName("schema_migrations")
+
+	capture := &capturingGooseLogger{t: t}
+	goose.SetLogger(capture)
+	t.Cleanup(func() {
+		// Restore the silent logger after this test to avoid polluting other tests.
+		goose.SetLogger(&integrationSilentLogger{t: t})
+	})
+
+	// Step 1: Apply all migrations (messages from this phase are discarded below).
+	if err := goose.UpContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("setup goose.UpContext: %v", err)
+	}
+	t.Cleanup(func() { resetAndUp(t, db, ctx) })
+
+	// Discard messages produced by the setup Up call; only capture redo messages.
+	capture.messages = nil
+
+	// Step 2: Run redo.
+	if err := goose.RedoContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("goose.RedoContext: %v", err)
+	}
+
+	t.Logf("captured %d goose log messages during redo: %v", len(capture.messages), capture.messages)
+
+	// Step 4: redo must emit at least 2 messages (one rollback, one re-apply).
+	if len(capture.messages) < 2 {
+		t.Errorf("redo: expected >= 2 goose log messages (rollback + apply); got %d: %v",
+			len(capture.messages), capture.messages)
+	}
+
+	// The migration filenames embedded in this binary.
+	knownMigrations := []string{"0001_init.sql", "0002_outbox.sql", "0003_i18n_seeds.sql"}
+
+	rollbackIdx := -1
+	applyIdx := -1
+	for i, msg := range capture.messages {
+		upper := strings.ToUpper(msg)
+		containsMig := false
+		for _, name := range knownMigrations {
+			if strings.Contains(msg, name) {
+				containsMig = true
+				break
+			}
+		}
+		if !containsMig {
+			continue
+		}
+		// goose v3 logs "DONE" for a successful rollback (down) step.
+		if strings.Contains(upper, "DONE") && rollbackIdx == -1 {
+			rollbackIdx = i
+		}
+		// goose v3 logs "OK" for a successful apply (up) step.
+		if strings.Contains(upper, "OK") && applyIdx == -1 {
+			applyIdx = i
+		}
+	}
+
+	if rollbackIdx == -1 {
+		t.Errorf("redo: no 'DONE' (rollback) message found for any migration file; messages: %v",
+			capture.messages)
+	}
+	if applyIdx == -1 {
+		t.Errorf("redo: no 'OK' (apply) message found for any migration file; messages: %v",
+			capture.messages)
+	}
+	// Rollback must be logged BEFORE the re-apply.
+	if rollbackIdx != -1 && applyIdx != -1 && rollbackIdx > applyIdx {
+		t.Errorf("redo: rollback message (idx=%d) appeared AFTER apply message (idx=%d); want rollback first",
+			rollbackIdx, applyIdx)
+	}
+}
+
+// TestMigrateRedo_TablesStillPresent verifies that all platform tables remain
+// present in the public schema after a redo operation. Redo must not destroy
+// any schema objects created by earlier migrations.
+//
+// Feature #25 step 5: confirm tables are still present and structure unchanged.
+func TestMigrateRedo_TablesStillPresent(t *testing.T) {
+	db := integrationMigrateDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	configureGooseIntegration(t)
+
+	// Step 1: Apply all migrations.
+	if err := goose.UpContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("setup goose.UpContext: %v", err)
+	}
+	t.Cleanup(func() { resetAndUp(t, db, ctx) })
+
+	// Step 2: Run redo.
+	if err := goose.RedoContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("goose.RedoContext: %v", err)
+	}
+
+	// Step 5: Every platform table must still exist after redo.
+	for _, table := range platformTables {
+		t.Run("table_present="+table, func(t *testing.T) {
+			if !tableExists(t, db, ctx, table) {
+				t.Errorf("table %q missing after redo; want present", table)
+			}
+		})
+	}
+
+	// schema_migrations (goose-managed) must also survive the redo.
+	t.Run("schema_migrations_present", func(t *testing.T) {
+		if !tableExists(t, db, ctx, "schema_migrations") {
+			t.Error("schema_migrations missing after redo; want present")
+		}
+	})
+
+	// uuidv7() function (created by 0001_init.sql) must still be available.
+	t.Run("uuidv7_function_present", func(t *testing.T) {
+		if !uuidv7FunctionExists(t, db, ctx) {
+			t.Error("uuidv7() function missing after redo; want present")
+		}
+	})
+
+	t.Logf("redo: all platform tables and uuidv7() function still present after redo")
+}
+
+// TestMigrateRedo_UpdatesSchemaTimestamp verifies that redo inserts a fresh
+// is_applied=true row into schema_migrations for the re-applied migration,
+// updating the recorded apply timestamp to reflect the most recent run.
+//
+// goose records every apply and rollback as a new row (id auto-increments).
+// After redo there must be a new row with id > max_id_before and is_applied=true
+// for the version that was redone.
+//
+// Feature #25 step 6: schema_migrations.applied_at for the redone migration is
+// updated to the most recent run.
+func TestMigrateRedo_UpdatesSchemaTimestamp(t *testing.T) {
+	db := integrationMigrateDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	configureGooseIntegration(t)
+
+	// Step 1: Apply all migrations.
+	if err := goose.UpContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("setup goose.UpContext: %v", err)
+	}
+	t.Cleanup(func() { resetAndUp(t, db, ctx) })
+
+	// Determine which version is currently the most recent (highest applied).
+	vCurrent, err := goose.GetDBVersionContext(ctx, db)
+	if err != nil {
+		t.Fatalf("GetDBVersionContext before redo: %v", err)
+	}
+
+	// Snapshot the maximum id in schema_migrations before redo.  goose uses an
+	// auto-increment id, so any rows inserted by redo will have id > this value.
+	var maxIDBefore int64
+	row := db.QueryRowContext(ctx, `SELECT COALESCE(MAX(id), 0) FROM schema_migrations`)
+	if err := row.Scan(&maxIDBefore); err != nil {
+		t.Fatalf("query max id before redo: %v", err)
+	}
+
+	// Record the tstamp of the existing applied row for vCurrent (for comparison).
+	var tstampBefore time.Time
+	row = db.QueryRowContext(ctx,
+		`SELECT tstamp
+		   FROM schema_migrations
+		  WHERE version_id = $1 AND is_applied = true
+		  ORDER BY id DESC
+		  LIMIT 1`, vCurrent)
+	if err := row.Scan(&tstampBefore); err != nil {
+		if err == sql.ErrNoRows {
+			t.Fatalf("no applied row found for version_id=%d before redo", vCurrent)
+		}
+		t.Fatalf("query tstamp before redo: %v", err)
+	}
+
+	// Step 2: Run redo.
+	if err := goose.RedoContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("goose.RedoContext: %v", err)
+	}
+
+	// Step 6: There must be a new row for vCurrent with id > maxIDBefore and
+	// is_applied = true — this row records the fresh re-apply after the rollback.
+	var newID int64
+	var newIsApplied bool
+	var tstampAfter time.Time
+	row = db.QueryRowContext(ctx,
+		`SELECT id, is_applied, tstamp
+		   FROM schema_migrations
+		  WHERE version_id = $1 AND id > $2 AND is_applied = true
+		  ORDER BY id DESC
+		  LIMIT 1`, vCurrent, maxIDBefore)
+	if err := row.Scan(&newID, &newIsApplied, &tstampAfter); err != nil {
+		if err == sql.ErrNoRows {
+			t.Fatalf("no new is_applied=true row in schema_migrations after redo for "+
+				"version_id=%d (id > %d); redo must insert a fresh apply record",
+				vCurrent, maxIDBefore)
+		}
+		t.Fatalf("query schema_migrations after redo: %v", err)
+	}
+
+	// The new row must be marked as applied.
+	if !newIsApplied {
+		t.Errorf("schema_migrations new row (id=%d) is_applied=false; want true "+
+			"(redo must re-apply the migration)", newID)
+	}
+
+	// The new tstamp must not be earlier than the old one (time must not go backwards).
+	if tstampAfter.Before(tstampBefore) {
+		t.Errorf("redo: new tstamp %v is before old tstamp %v; tstamp must not go backwards",
+			tstampAfter.Format(time.RFC3339), tstampBefore.Format(time.RFC3339))
+	}
+
+	t.Logf("redo updated schema_migrations: version_id=%d new_id=%d is_applied=%v "+
+		"tstamp_before=%v tstamp_after=%v",
+		vCurrent, newID, newIsApplied,
+		tstampBefore.Format(time.RFC3339), tstampAfter.Format(time.RFC3339))
+}
