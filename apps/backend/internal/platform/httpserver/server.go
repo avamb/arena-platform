@@ -19,6 +19,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	httpadapter "github.com/abhteam/arena_new/apps/backend/internal/adapters/http"
@@ -104,6 +105,13 @@ type Server struct {
 	audit   audit.Writer
 	idem    idempotency.Store
 	metrics http.Handler
+
+	// faultInjectOutboxAfterAudit is a dev/test-only fault injection flag.
+	// When true, handleEcho forces a transaction rollback immediately after
+	// the audit_events INSERT succeeds, before writing to outbox_events.
+	// This proves that both writes are in the same transaction: neither row
+	// persists when the fault fires. Enabled by FAULT_INJECT_OUTBOX_AFTER_AUDIT=true.
+	faultInjectOutboxAfterAudit bool
 }
 
 // Options bundles the dependencies that New requires. Using a struct rather
@@ -146,6 +154,14 @@ type Options struct {
 	// the middleware is omitted, so unit tests that don't care about
 	// metrics can leave this unset without polluting a shared registry.
 	Metrics *observability.Metrics
+	// FaultInjectOutboxAfterAudit enables fault injection for transaction
+	// atomicity testing. When true, handleEcho rolls back the transaction
+	// after writing the audit_events row and before writing outbox_events,
+	// returning 500 with code='internal.transaction_failed'. This proves
+	// that both rows are in the same transaction (neither persists on fault).
+	// Only meaningful in development/test environments.
+	// Corresponds to env var FAULT_INJECT_OUTBOX_AFTER_AUDIT=true.
+	FaultInjectOutboxAfterAudit bool
 }
 
 // New constructs (but does not start) the HTTP server.
@@ -199,6 +215,8 @@ func New(opts Options) *Server {
 		audit:   auditWriter,
 		idem:    idemStore,
 		metrics: opts.MetricsHandler,
+
+		faultInjectOutboxAfterAudit: opts.FaultInjectOutboxAfterAudit,
 	}
 
 	s.mountOperationalRoutes()
@@ -253,6 +271,12 @@ func (s *Server) mountOperationalRoutes() {
 	// path therefore still carries Content-Type: application/json, X-Request-Id,
 	// and the structured error body that clients can parse uniformly.
 	s.router.NotFound(handleNotFound)
+	// Custom 405 handler: when the path is known but the HTTP method is not
+	// supported, chi populates the Allow response header (listing the methods
+	// that ARE registered) and then calls this handler.  We keep the Allow
+	// header intact and wrap the 405 in the standard JSON error envelope so
+	// clients receive a parseable, machine-readable error body (feature #13).
+	s.router.MethodNotAllowed(handleMethodNotAllowed)
 }
 
 func (s *Server) mountV1Routes() {
@@ -300,6 +324,56 @@ func (s *Server) mountV1Routes() {
 // the response headers when errorEnvelope reads them from ctx.
 func handleNotFound(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusNotFound, errorEnvelope("http.not_found", "the requested resource does not exist", r))
+}
+
+// handleMethodNotAllowed is the chi MethodNotAllowed handler. It replaces
+// chi's default plain-text 405 response with the project-standard JSON error
+// envelope (feature #13).
+//
+// chi v5 does NOT set the Allow header when a custom MethodNotAllowed handler
+// is registered (the default handler sets Allow, but a custom handler bypasses
+// that code path). We therefore build the Allow header ourselves by probing
+// the chi Routes interface stored in the current RouteContext: for each
+// candidate HTTP method, we ask Routes.Match whether it would route that
+// method on the same path. Matched methods are joined into the Allow value.
+//
+// Standard candidates for Allow probing (per RFC 9110 §9):
+//
+//	GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS
+//
+// HEAD is always included alongside GET when GET is matched because go's
+// net/http automatically handles HEAD on any GET route (RFC requirement).
+func handleMethodNotAllowed(w http.ResponseWriter, r *http.Request) {
+	// Probe the chi router for methods that ARE allowed on this path.
+	// chi.RouteContext(r.Context()).Routes is the live chi.Routes that matched
+	// this request; calling Match on a fresh Context is non-destructive.
+	rctx := chi.RouteContext(r.Context())
+	if rctx != nil && rctx.Routes != nil {
+		candidates := []string{
+			http.MethodGet,
+			http.MethodHead,
+			http.MethodPost,
+			http.MethodPut,
+			http.MethodPatch,
+			http.MethodDelete,
+			http.MethodOptions,
+		}
+		var allowed []string
+		for _, m := range candidates {
+			if m == r.Method {
+				// skip the method that was just rejected
+				continue
+			}
+			testCtx := chi.NewRouteContext()
+			if rctx.Routes.Match(testCtx, m, r.URL.Path) {
+				allowed = append(allowed, m)
+			}
+		}
+		if len(allowed) > 0 {
+			w.Header().Set("Allow", strings.Join(allowed, ", "))
+		}
+	}
+	writeJSON(w, http.StatusMethodNotAllowed, errorEnvelope("http.method_not_allowed", "method not allowed", r))
 }
 
 // handleHealthz is a liveness probe: returns 200 unconditionally while the
