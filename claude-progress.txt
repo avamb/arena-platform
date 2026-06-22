@@ -2791,3 +2791,86 @@ PROGRESS METRIC
 Stats at session start: 23/108 passing, 1 in_progress (this feature).
 This session: feature #82 completed and marked passing -> 24/108 passing.
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #11 (All routes mounted under /v1 prefix)
+"All routes mounted under /v1 prefix"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #11 verifies that versioned business endpoints live under /v1/ and that
+paths without the prefix (/info, /api/info, /echo) return 404 with the standard
+JSON error envelope.
+
+The route structure was already correct in server.go:
+  - mountOperationalRoutes: /healthz, /readyz, /metrics (outside /v1)
+  - mountV1Routes: /v1/info, /v1/dev/token, /v1/echo (all under /v1)
+  - Custom NotFound handler returns JSON error envelope
+
+NEW FILE: apps/backend/internal/platform/httpserver/v1_routes_test.go
+
+  Package: httpserver (in-package, same as echo_audit_test.go)
+  Reuses test doubles from echo_audit_test.go:
+    captureAuditWriter, noopIdemStore, fakePoolDB, fakeTx, fakeRow
+
+  Helper: buildV1TestServer(t) *Server
+    Creates a fully-wired Server with stub auth + all deps so all /v1 routes
+    are mounted. No live PostgreSQL required.
+
+  Utility: isOperational(pattern string) bool
+    Returns true for /healthz, /readyz, /metrics (intentionally outside /v1)
+
+  9 tests covering all 6 feature steps:
+
+    TestV1Routes_InfoReturns200 (step 1)
+      Builds server, calls /v1/info; expects 200 and JSON content-type.
+
+    TestV1Routes_InfoNoPrefixReturns404 (step 2)
+      Calls /info (no version prefix); expects 404 with JSON error envelope.
+
+    TestV1Routes_InfoNoPrefixHasRequestID (step 2)
+      Calls /info, expects non-empty X-Request-Id header on 404 response.
+
+    TestV1Routes_ApiInfoReturns404 (step 3)
+      Calls /api/info; expects 404.
+
+    TestV1Routes_EchoMountedReturns401 (step 4)
+      POST /v1/echo without Authorization; expects 401 (route mounted, auth fires).
+
+    TestV1Routes_EchoMountedContentTypeIsJSON (step 4)
+      Same request; verifies 401 body is application/json.
+
+    TestV1Routes_EchoNoPrefixReturns404 (step 5)
+      POST /echo (no prefix); expects 404.
+
+    TestV1Routes_AllBusinessRoutesUnderV1Prefix (step 6)
+      chi.Walk traverses entire route tree; skips operational routes;
+      asserts all remaining routes have /v1 prefix.
+
+    TestV1Routes_V1InfoAppearsInWalk (step 6)
+      chi.Walk confirms /v1/info is registered.
+
+    TestV1Routes_V1EchoAppearsInWalk (step 6)
+      chi.Walk confirms POST /v1/echo is registered.
+
+VERIFICATION
+------------
+  - In-package tests access unexported s.router field directly
+  - All test doubles reused from echo_audit_test.go (same package)
+  - No new imports beyond existing go.mod dependencies
+  - No forbidden patterns (STUB/MOCK/devStore/globalThis)
+  - git commit: e9ac5dc -- 381 insertions
+
+NOTES FOR LATER WAVES
+---------------------
+  - TestV1Routes_AllBusinessRoutesUnderV1Prefix automatically enforces
+    future /v1 routes without any test updates needed.
+
+PROGRESS METRIC
+---------------
+Stats at session start: 24/108 passing, 1 in_progress (this feature).
+This session: feature #11 completed and marked passing -> 25/108 passing.
+================================================================================
