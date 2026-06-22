@@ -139,13 +139,31 @@ func (s *Server) handleEcho(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Validate the message field with fine-grained error codes:
+	//   - unknown field(s) in body → validation.unknown_field (strict schema)
 	//   - missing key or explicit null → validation.field_required
 	//   - present but empty / whitespace-only string → validation.field_empty
 	// We re-decode into a raw map to tell "absent/null" apart from "empty string"
 	// since the generated EchoRequest struct uses a plain string (not *string).
+	// Unknown fields are checked first so a typo like "messsage" reports the
+	// unknown field rather than "message required" — giving the client the
+	// most actionable error.
 	{
 		var rawMap map[string]json.RawMessage
 		if err2 := json.Unmarshal(body, &rawMap); err2 == nil {
+			// Strict schema: EchoRequest defines exactly one field ("message").
+			// Any additional key is rejected with validation.unknown_field.
+			// The value is NOT echoed back in the error to prevent info leakage.
+			for key := range rawMap {
+				if key != "message" {
+					writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+						"validation.unknown_field",
+						"request body contains unknown field '"+key+"'",
+						r,
+						map[string]any{"field": key},
+					))
+					return
+				}
+			}
 			msgRaw, exists := rawMap["message"]
 			if !exists || string(msgRaw) == "null" {
 				writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(

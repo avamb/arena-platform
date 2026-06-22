@@ -271,9 +271,16 @@ components:
           description: The aud claim value (configured JWT_AUDIENCE).
           example: "arena-api"
 
-    EchoRequest:
+    EchoRequest: # strict schema: additionalProperties: false — unknown fields yield 400 validation.unknown_field
       type: object
       required: [message]
+      additionalProperties: false
+      description: |
+        Strict schema — the server rejects any field not defined here with
+        HTTP 400 code='validation.unknown_field'. This protects against
+        typos (e.g. "messsage" instead of "message") and forward-compat
+        issues where clients inadvertently include private data in unknown
+        fields.
       properties:
         message:
           type: string
