@@ -41,6 +41,16 @@ const MaxEchoMessageBytes = 8 * 1024
 // than a bare verb keeps the audit log queryable and human-readable.
 const echoAuditAction = "v1.echo.create"
 
+// echoOutboxEventType is the stable event_type identifier written to
+// outbox_events.event_type for every successful POST /v1/echo request.
+// Follows the "v1.<resource>.<verb>" convention used by the audit action.
+const echoOutboxEventType = "v1.echo.created"
+
+// echoOutboxAggregateType is the aggregate_type written to outbox_events.
+// It identifies the domain aggregate the event belongs to — "echo" for
+// the placeholder echo resource used in this foundational milestone.
+const echoOutboxAggregateType = "echo"
+
 // echoRequest is the request body schema for POST /v1/echo.
 type echoRequest struct {
 	Message string `json:"message"`
@@ -216,14 +226,15 @@ func (s *Server) handleEcho(w http.ResponseWriter, r *http.Request) {
 	)
 }
 
-// insertOutboxEcho writes the placeholder echo.message_processed event into
-// outbox_events. Returns the generated id (UUID) so the response can echo it.
+// insertOutboxEcho writes the v1.echo.created event into outbox_events.
+// Returns the generated id (UUID) so the response can echo it.
+// The row is picked up by the OutboxDispatcher worker in a later milestone.
 func insertOutboxEcho(ctx context.Context, tx pgx.Tx, actorID, message, requestID, traceID string) (string, error) {
 	const q = `
 		INSERT INTO outbox_events
 		    (aggregate_type, aggregate_id, event_type, payload, occurred_at)
 		VALUES
-		    ('echo_message', $1, 'echo.message_processed', $2::jsonb, now())
+		    ('echo', $1, 'v1.echo.created', $2::jsonb, now())
 		RETURNING id::text
 	`
 	payload, err := json.Marshal(map[string]any{
