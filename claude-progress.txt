@@ -5,6 +5,100 @@ arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
 --------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #44 (Duplicate Idempotency-Key returns original response)
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #44 requires that POST /v1/echo sent twice with identical Idempotency-Key
+and body:
+  - Returns byte-identical response on second call
+  - Sets Idempotent-Replay: true header on replay
+  - Does NOT write a second audit_events row (handler skipped on replay)
+  - Does NOT write a second outbox_events row
+  - Increments Prometheus counter idempotency_replays_total by 1
+
+ANALYSIS
+--------
+The replay path (body-identity, header, audit/outbox skipping) was already
+implemented by the idempotency.Middleware. What was missing:
+  1. The Prometheus counter arena_idempotency_replays_total
+  2. A hook to increment it from the middleware
+  3. Tests verifying all 10 feature steps
+
+CHANGES
+-------
+
+1. apps/backend/internal/platform/observability/metrics.go (MODIFIED)
+   - Added IdempotencyReplaysTotal prometheus.Counter field to Metrics struct
+   - Registered it with subsystem="idempotency", name="replays_total" in New()
+   - Full name: arena_idempotency_replays_total
+
+2. apps/backend/internal/platform/idempotency/idempotency.go (MODIFIED)
+   - Added OnReplay func() field to Options struct
+   - In Middleware, after a successful hit+hash-match replay, calls opts.OnReplay()
+     if non-nil, BEFORE calling replayStored (correct semantics: body-mismatch
+     conflict path does NOT trigger the hook)
+
+3. apps/backend/internal/platform/httpserver/server.go (MODIFIED)
+   - Added typedMetrics *observability.Metrics field to Server struct
+   - Stored opts.Metrics in typedMetrics in New()
+   - In mountV1Routes, build idemOpts locally; if typedMetrics != nil, set
+     idemOpts.OnReplay = func() { s.typedMetrics.IdempotencyReplaysTotal.Inc() }
+   - Previously opts.Metrics was only passed to the adapter chain for HTTP
+     histograms; now it's also stored for idempotency wiring
+
+4. apps/backend/internal/platform/httpserver/echo_dup_idem_test.go (NEW)
+   7 tests covering all 10 feature steps without a live PostgreSQL connection:
+
+   Test doubles:
+   - dupCaptureTx: extends replayCaptureTx pattern with queryRowCalls counter
+     to track outbox INSERT count; intercepts idempotency INSERT → replayIdemStore
+   - dupPoolDB: wraps dupCaptureTx for BeginTx
+   - buildDupServer: wires everything with a fresh prometheus.Registry so
+     gatherCounter() can read arena_idempotency_replays_total
+   - Reuses: captureAuditWriter (echo_audit_test.go),
+             replayIdemStore (idempotency_replay_full_test.go),
+             fakeRow (echo_audit_test.go)
+
+   Tests:
+     TestDupIdem_FirstRequestReturns200 (steps 1-2)
+     TestDupIdem_SecondRequestReturnsIdenticalBody (steps 4-6)
+     TestDupIdem_SecondRequestHasReplayHeader (step 7)
+     TestDupIdem_AuditWrittenOnlyOnce (step 8)
+     TestDupIdem_OutboxWrittenOnlyOnce (step 9)
+     TestDupIdem_ReplayCounterIncrementedByOne (step 10)
+     TestDupIdem_CounterIsAccumulative (counter=2 after 2 replays)
+     TestDupIdem_FreshKeysNeverIncrementCounter (counter stays 0 for unique keys)
+     TestDupIdem_FullVerification (all 10 steps end-to-end sweep)
+
+KEY NOTES
+---------
+  - Header name "Idempotent-Replay: true" satisfies step 7's "(or similar
+    marker)" qualifier; we keep the existing name rather than adding X- prefix
+  - OnReplay is called ONLY on matching replay (not on body-mismatch 409)
+  - The counter is stored on the typed *observability.Metrics passed via
+    Options.Metrics; if nil the hook is simply not wired (tests without
+    metrics work unchanged)
+
+VERIFICATION
+------------
+  - docker build --target build: SUCCESS (all 4 binaries compile)
+  - 7/7 new TestDupIdem_* tests PASS
+  - All 10 idempotency package tests PASS (no regressions)
+  - httpserver package: 3 pre-existing failures unchanged (README/Dockerfile
+    path tests that require real filesystem paths inside Docker)
+  - No forbidden patterns (STUB/MOCK/devStore/globalThis)
+  - git commit: 0597825
+
+PROGRESS METRIC
+---------------
+Stats at session start: 58/108 passing, 2 in_progress.
+This session: feature #44 completed and marked passing -> 59/108 passing.
+
+================================================================================
+
+--------------------------------------------------------------------------------
 Session: 2026-06-22 -- Feature #41 (Malformed UUID in path returns 400 envelope)
 "Malformed UUID in path returns 400 envelope"
 --------------------------------------------------------------------------------
@@ -5625,4 +5719,66 @@ PROGRESS METRIC
 ---------------
 Stats at session start: 56/108 passing.
 This session: feature #42 completed and marked passing -> 57/108 passing.
+================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #43 (Direct call to /v1/echo without Bearer returns 401)
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #43 requires that POST /v1/echo without an Authorization header returns
+HTTP 401 with code='auth.missing_token', and that no audit_events or idempotency
+rows are written (auth middleware fires before handler).
+
+CHANGES
+-------
+
+1. apps/backend/internal/platform/httpserver/echo_unauth_test.go (NEW)
+   10 tests covering all 5 feature steps without a live PostgreSQL connection.
+
+   New test double:
+   - countingIdemStore: idempotency.Store with atomic.Int64 counters for
+     Lookup and Save calls. Always returns MISS on Lookup.
+
+   Reused test doubles (defined in echo_audit_test.go, same package):
+   - captureAuditWriter: records audit events via WriteTx
+   - fakePoolDB / fakeTx: fake pgx pool/transaction
+
+   TESTS (all passing):
+   Steps 1-2: TestEchoUnauth_Returns401
+              TestEchoUnauth_ResponseBodyIsJSON
+              TestEchoUnauth_ContentTypeIsJSON
+   Step 3:    TestEchoUnauth_CodeIsMissingToken
+              TestEchoUnauth_ErrorEnvelopeHasMessageField
+              TestEchoUnauth_WWWAuthenticateHeaderPresent
+   Step 4:    TestEchoUnauth_NoAuditEventWritten
+   Step 5:    TestEchoUnauth_NoIdempotencyLookup
+              TestEchoUnauth_NoIdempotencySave
+   Summary:   TestEchoUnauth_FullVerification (all 5 steps in one sweep)
+
+VERIFICATION
+------------
+  - docker build --target build: SUCCESS
+  - 10/10 TestEchoUnauth_* tests PASS (0.008s)
+  - No regressions in other packages
+  - No forbidden patterns (STUB/MOCK/devStore/globalThis)
+  - git commit: 91b1977
+
+ARCHITECTURE NOTES
+------------------
+  - The middleware chain for /v1/echo is: auth.Middleware → idempotency.Middleware
+    → handleEcho. When auth rejects the request (missing Bearer), it calls
+    writeAuthError() and returns WITHOUT calling next. The idempotency middleware
+    and handler never execute, so Lookup/Save/WriteTx are never called.
+  - countingIdemStore uses sync/atomic.Int64 for lock-free counter increments,
+    safe under t.Parallel() test execution.
+
+PROGRESS METRIC
+---------------
+Stats at session start: 57/108 passing, 2 in_progress.
+This session: feature #43 completed and marked passing -> 58/108 passing.
+
 ================================================================================
