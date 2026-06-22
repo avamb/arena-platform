@@ -402,10 +402,26 @@ func tracerMiddleware(propagator propagation.TextMapPropagator, tracer trace.Tra
 	}
 }
 
-// JSONBodyLimit returns a middleware that wraps r.Body with
-// http.MaxBytesReader for POST/PUT/PATCH requests so an oversized payload
-// cannot exhaust process memory before chi.Timeout fires. Safe methods are
-// passed through untouched.
+// JSONBodyLimit returns a middleware that enforces a maximum request body
+// size for POST/PUT/PATCH requests so an oversized payload cannot exhaust
+// process memory before chi.Timeout fires. Safe methods are passed through
+// untouched.
+//
+// Two complementary checks are applied:
+//
+//  1. Fast path — if the client sends a Content-Length header whose value
+//     already exceeds maxBytes the request is rejected immediately with
+//     HTTP 413 and the standard JSON error envelope (code
+//     'http.payload_too_large') before any body bytes are read. This makes
+//     rejection nearly instantaneous regardless of the body size.
+//
+//  2. Slow path — when Content-Length is absent or -1 (chunked / unknown
+//     body size) r.Body is wrapped with http.MaxBytesReader. A handler
+//     that reads past maxBytes receives a *http.MaxBytesError; callers are
+//     expected to map this to a 413 response.
+//
+// A slog WARN record is emitted for every rejected request, carrying
+// "content_length" and "limit" fields for dashboards and alerting rules.
 //
 // Exported (capitalised) so callers that build a router outside NewRouter
 // — for example tests or future arena-admin binaries — can reuse the same
@@ -416,6 +432,32 @@ func JSONBodyLimit(maxBytes int64) func(http.Handler) http.Handler {
 			switch r.Method {
 			case http.MethodPost, http.MethodPut, http.MethodPatch:
 				if maxBytes > 0 {
+					// Fast path: reject immediately when Content-Length already
+					// exceeds the limit. net/http sets r.ContentLength from the
+					// Content-Length header; a value of -1 means the header was
+					// absent or the transfer is chunked.
+					if r.ContentLength > maxBytes {
+						logger := logging.FromContext(r.Context())
+						logger.Warn("request body exceeds limit",
+							"content_length", r.ContentLength,
+							"limit", maxBytes,
+						)
+						requestID := logging.RequestID(r.Context())
+						traceID := logging.TraceID(r.Context())
+						w.Header().Set("Content-Type", "application/json; charset=utf-8")
+						w.WriteHeader(http.StatusRequestEntityTooLarge)
+						_ = json.NewEncoder(w).Encode(map[string]any{
+							"error": map[string]any{
+								"code":       "http.payload_too_large",
+								"message":    fmt.Sprintf("request body exceeds the %d-byte limit", maxBytes),
+								"request_id": requestID,
+								"trace_id":   traceID,
+							},
+						})
+						return
+					}
+					// Slow path: wrap body so any attempt to read past maxBytes
+					// returns a *http.MaxBytesError rather than blocking forever.
 					r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 				}
 			}
