@@ -84,6 +84,29 @@ type Metrics struct {
 	// background scraper that snapshots Pool.Stat().
 	DBPoolConnections *prometheus.GaugeVec
 
+	// DBPoolOpenConnections is the total number of open connections in the pgx
+	// pool (idle + acquired). Corresponds to pgxpool.Stat.TotalConns().
+	// Metric name: arena_db_pool_open_connections.
+	DBPoolOpenConnections prometheus.Gauge
+
+	// DBPoolIdle is the number of idle (unused but open) connections in the
+	// pgx pool. Metric name: arena_db_pool_idle.
+	DBPoolIdle prometheus.Gauge
+
+	// DBPoolInUse is the number of connections currently acquired and in use
+	// by application goroutines. Metric name: arena_db_pool_in_use.
+	DBPoolInUse prometheus.Gauge
+
+	// DBPoolWaitCount is the total number of times the pool was exhausted and
+	// a caller had to wait for a connection (EmptyAcquireCount in pgxpool).
+	// Metric name: arena_db_pool_wait_count.
+	DBPoolWaitCount prometheus.Gauge
+
+	// DBPoolWaitDurationSeconds is the total cumulative time (in seconds) spent
+	// waiting for connections from the pool (AcquireDuration in pgxpool).
+	// Metric name: arena_db_pool_wait_duration_seconds.
+	DBPoolWaitDurationSeconds prometheus.Gauge
+
 	// WorkerJobsLagSeconds reports the age of the oldest ready-but-unclaimed
 	// job per queue, in seconds. Worker dispatcher refreshes this gauge on
 	// every poll cycle.
@@ -166,6 +189,41 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 			[]string{LabelState},
 		),
 
+		DBPoolOpenConnections: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: MetricsNamespace,
+			Subsystem: subsystemDB,
+			Name:      "pool_open_connections",
+			Help:      "Total open pgx pool connections (idle + acquired). Mirrors pgxpool.Stat.TotalConns().",
+		}),
+
+		DBPoolIdle: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: MetricsNamespace,
+			Subsystem: subsystemDB,
+			Name:      "pool_idle",
+			Help:      "Number of idle (open but not acquired) pgx pool connections. Mirrors pgxpool.Stat.IdleConns().",
+		}),
+
+		DBPoolInUse: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: MetricsNamespace,
+			Subsystem: subsystemDB,
+			Name:      "pool_in_use",
+			Help:      "Number of pgx pool connections currently acquired by application goroutines. Mirrors pgxpool.Stat.AcquiredConns().",
+		}),
+
+		DBPoolWaitCount: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: MetricsNamespace,
+			Subsystem: subsystemDB,
+			Name:      "pool_wait_count",
+			Help:      "Cumulative number of times the pool was exhausted and a caller waited for a connection. Mirrors pgxpool.Stat.EmptyAcquireCount().",
+		}),
+
+		DBPoolWaitDurationSeconds: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: MetricsNamespace,
+			Subsystem: subsystemDB,
+			Name:      "pool_wait_duration_seconds",
+			Help:      "Total cumulative seconds spent waiting for a pgx pool connection. Mirrors pgxpool.Stat.AcquireDuration().",
+		}),
+
 		WorkerJobsLagSeconds: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
 				Namespace: MetricsNamespace,
@@ -217,6 +275,11 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 		m.HTTPRequestDuration,
 		m.HTTPRequestsTotal,
 		m.DBPoolConnections,
+		m.DBPoolOpenConnections,
+		m.DBPoolIdle,
+		m.DBPoolInUse,
+		m.DBPoolWaitCount,
+		m.DBPoolWaitDurationSeconds,
 		m.WorkerJobsLagSeconds,
 		m.OutboxBacklog,
 		m.HTTPPanicsTotal,

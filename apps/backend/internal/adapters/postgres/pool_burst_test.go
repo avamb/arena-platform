@@ -48,11 +48,13 @@ var _ poolStatReader = (*fakePoolStat)(nil)
 // tests atomically update acquired / idle counts to simulate connection
 // acquisition during a burst.
 type fakePoolStat struct {
-	acquired  atomic.Int32
-	idle      atomic.Int32
-	max       int32
-	total     atomic.Int32
-	newConns  atomic.Int64
+	acquired        atomic.Int32
+	idle            atomic.Int32
+	max             int32
+	total           atomic.Int32
+	newConns        atomic.Int64
+	emptyAcquire    atomic.Int64
+	acquireDuration atomic.Int64 // nanoseconds
 }
 
 func newFakePoolStat(maxConns int32) *fakePoolStat {
@@ -77,11 +79,15 @@ func (f *fakePoolStat) release() {
 }
 
 // poolStatReader interface implementation.
-func (f *fakePoolStat) AcquiredConns() int32 { return f.acquired.Load() }
-func (f *fakePoolStat) IdleConns() int32     { return f.idle.Load() }
-func (f *fakePoolStat) MaxConns() int32      { return f.max }
-func (f *fakePoolStat) TotalConns() int32    { return f.total.Load() }
-func (f *fakePoolStat) NewConnsCount() int64 { return f.newConns.Load() }
+func (f *fakePoolStat) AcquiredConns() int32        { return f.acquired.Load() }
+func (f *fakePoolStat) IdleConns() int32             { return f.idle.Load() }
+func (f *fakePoolStat) MaxConns() int32              { return f.max }
+func (f *fakePoolStat) TotalConns() int32            { return f.total.Load() }
+func (f *fakePoolStat) NewConnsCount() int64         { return f.newConns.Load() }
+func (f *fakePoolStat) EmptyAcquireCount() int64     { return f.emptyAcquire.Load() }
+func (f *fakePoolStat) AcquireDuration() time.Duration {
+	return time.Duration(f.acquireDuration.Load())
+}
 
 // =============================================================================
 // Metric read helpers

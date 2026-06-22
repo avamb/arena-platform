@@ -92,6 +92,12 @@ type poolStatReader interface {
 	MaxConns() int32
 	TotalConns() int32
 	NewConnsCount() int64
+	// EmptyAcquireCount is the number of times the pool had no available
+	// connection and a caller had to wait (maps to db_pool_wait_count).
+	EmptyAcquireCount() int64
+	// AcquireDuration is the total cumulative time spent waiting for a
+	// connection (maps to db_pool_wait_duration_seconds).
+	AcquireDuration() time.Duration
 }
 
 // RegisterPoolMetrics starts a background goroutine that periodically scrapes
@@ -135,19 +141,39 @@ func publishPoolStats(pool *pgxpool.Pool, m *observability.Metrics) {
 	publishPoolStatSnapshot(pool.Stat(), m)
 }
 
-// publishPoolStatSnapshot writes the five pool-connection gauge values from a
-// poolStatReader snapshot into the DBPoolConnections GaugeVec.
+// publishPoolStatSnapshot writes the pool-connection gauge values from a
+// poolStatReader snapshot into both the DBPoolConnections GaugeVec and the
+// individual named gauges (feature #79: db_pool_open_connections, db_pool_idle,
+// db_pool_in_use, db_pool_wait_count, db_pool_wait_duration_seconds).
 //
 // This function is the unit-testable core of the pool-metrics pipeline: tests
 // supply a fakePoolStat instead of a real *pgxpool.Stat so they can control
 // AcquiredConns / IdleConns values and assert burst-rise / post-burst-drain
 // behaviour without a PostgreSQL connection (feature #40).
 func publishPoolStatSnapshot(s poolStatReader, m *observability.Metrics) {
+	// Legacy GaugeVec (feature #40 / #87) — kept for backward compatibility.
 	m.DBPoolConnections.WithLabelValues("acquired").Set(float64(s.AcquiredConns()))
 	m.DBPoolConnections.WithLabelValues("idle").Set(float64(s.IdleConns()))
 	m.DBPoolConnections.WithLabelValues("max").Set(float64(s.MaxConns()))
 	m.DBPoolConnections.WithLabelValues("total").Set(float64(s.TotalConns()))
 	m.DBPoolConnections.WithLabelValues("new_total").Set(float64(s.NewConnsCount()))
+
+	// Individual named gauges (feature #79).
+	if m.DBPoolOpenConnections != nil {
+		m.DBPoolOpenConnections.Set(float64(s.TotalConns()))
+	}
+	if m.DBPoolIdle != nil {
+		m.DBPoolIdle.Set(float64(s.IdleConns()))
+	}
+	if m.DBPoolInUse != nil {
+		m.DBPoolInUse.Set(float64(s.AcquiredConns()))
+	}
+	if m.DBPoolWaitCount != nil {
+		m.DBPoolWaitCount.Set(float64(s.EmptyAcquireCount()))
+	}
+	if m.DBPoolWaitDurationSeconds != nil {
+		m.DBPoolWaitDurationSeconds.Set(s.AcquireDuration().Seconds())
+	}
 }
 
 // -----------------------------------------------------------------------------
