@@ -174,6 +174,10 @@ func NewRouter(deps Deps) chi.Router {
 	// 7. tracerMiddleware — opens an OTel span, sets X-Trace-Id, copies
 	//    the trace_id into the slog ctx.
 	r.Use(tracerMiddleware(deps.Propagator, deps.Tracer))
+	// 7b. requestLogMiddleware — emits "http request start/end" records with
+	//     sensitive headers (Authorization, Cookie) masked so that raw bearer
+	//     tokens and session cookies never appear in log output.
+	r.Use(requestLogMiddleware(deps.Logger))
 	// 8. Timeout — only when RequestTimeout > 0.
 	if deps.RequestTimeout > 0 {
 		r.Use(chimw.Timeout(deps.RequestTimeout))
@@ -380,6 +384,106 @@ func JSONBodyLimit(maxBytes int64) func(http.Handler) http.Handler {
 				}
 			}
 			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Request logging with sensitive-header masking
+// -----------------------------------------------------------------------------
+
+// MaskSensitiveHeader returns a safe-to-log representation of an HTTP header
+// value. The header name comparison is case-insensitive. The following headers
+// are masked before the value reaches any slog output:
+//
+//   - authorization / proxy-authorization: scheme is preserved, credential
+//     replaced — "Bearer eyJ…" becomes "Bearer ***", "Basic dXNl…" becomes
+//     "Basic ***".
+//   - cookie / set-cookie: entire value replaced with "<redacted>" because
+//     cookie strings can contain session identifiers and CSRF tokens.
+//
+// All other header names are returned unchanged so request tracing retains
+// useful diagnostic information (Content-Type, Accept-Language, etc.) without
+// leaking credentials.
+//
+// Exported so callers outside the package (e.g. integration-test helpers) can
+// apply the same masking rule without duplicating the logic.
+func MaskSensitiveHeader(name, value string) string {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "authorization", "proxy-authorization":
+		// Preserve the scheme name so operators know WHICH kind of credential
+		// was presented (Bearer vs Basic vs Digest) without seeing the secret.
+		// "Bearer eyJhbGci…" → "Bearer ***"
+		// "Basic dXNlcjpwYXNz" → "Basic ***"
+		if idx := strings.IndexByte(value, ' '); idx > 0 {
+			return value[:idx] + " ***"
+		}
+		// No space — value has no recognisable scheme; redact in full.
+		return "<redacted>"
+	case "cookie", "set-cookie":
+		// Cookie values often embed session IDs, CSRF tokens, and auth material.
+		// Redact the entire value rather than attempting per-cookie parsing.
+		return "<redacted>"
+	}
+	return value
+}
+
+// requestLogMiddleware emits structured "http request start" and "http request
+// end" slog records for every request. Sensitive headers are masked via
+// MaskSensitiveHeader before reaching the log output so raw bearer tokens and
+// session cookies never appear in log files or log-aggregation systems.
+//
+// The middleware is positioned AFTER tracerMiddleware in the canonical chain so
+// that logging.FromContext(r.Context()) returns a logger already enriched with
+// both request_id (set by requestContext) and trace_id (set by tracerMiddleware)
+// — every log record produced here is therefore automatically correlated to the
+// right distributed trace.
+//
+// The Authorization and Cookie headers are always included in "request start"
+// when they are present, masked per MaskSensitiveHeader. This gives operators
+// visibility into which requests carried credentials (and which scheme) without
+// exposing the credential itself.
+func requestLogMiddleware(base *slog.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// logging.FromContext inherits request_id and trace_id from ctx so
+			// both identifiers appear on every record without per-site boilerplate.
+			logger := logging.FromContext(r.Context())
+			if logger == nil {
+				logger = base
+			}
+			if logger == nil {
+				logger = slog.Default()
+			}
+
+			start := time.Now()
+
+			// Build "request start" log args. Always include method, path, and
+			// the real client address. Sensitive headers are appended only when
+			// they are present in the request.
+			args := []any{
+				"method", r.Method,
+				"path", r.URL.Path,
+				"remote_addr", r.RemoteAddr,
+			}
+			if auth := r.Header.Get("Authorization"); auth != "" {
+				args = append(args, "authorization", MaskSensitiveHeader("authorization", auth))
+			}
+			if cookie := r.Header.Get("Cookie"); cookie != "" {
+				args = append(args, "cookie", MaskSensitiveHeader("cookie", cookie))
+			}
+			logger.Info("http request start", args...)
+
+			ww := chimw.NewWrapResponseWriter(w, r.ProtoMajor)
+			next.ServeHTTP(ww, r.WithContext(r.Context()))
+
+			logger.Info("http request end",
+				"method", r.Method,
+				"path", r.URL.Path,
+				"status", ww.Status(),
+				"bytes_out", ww.BytesWritten(),
+				"elapsed_ms", float64(time.Since(start).Microseconds())/1000.0,
+			)
 		})
 	}
 }
