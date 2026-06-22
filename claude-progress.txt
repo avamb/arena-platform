@@ -5,6 +5,66 @@ arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
 --------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #41 (Malformed UUID in path returns 400 envelope)
+"Malformed UUID in path returns 400 envelope"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #41 requires that when a path parameter declared as UUID receives a
+non-UUID value, the framework returns 400 with code='http.invalid_path_param'
+rather than crashing or returning a 500.
+
+IMPLEMENTATION
+--------------
+
+1. apps/backend/internal/platform/httpserver/uuid_path_param.go (NEW)
+   - uuidPathParam(w, r, paramName) helper function:
+     * Extracts chi URL parameter by name
+     * Parses it as uuid.UUID
+     * On failure: writes 400 JSON envelope with code='http.invalid_path_param'
+       and details.param=paramName, returns (uuid.UUID{}, false)
+     * On success: returns (uuid.UUID, true)
+   - errorEnvelopeWithDetails(code, message, r, details) function:
+     * Extends errorEnvelope() with optional error.details field
+     * Used for machine-readable error context (which param was malformed)
+
+2. apps/backend/internal/platform/httpserver/uuid_path_param_test.go (NEW)
+   - buildUUIDParamTestRouter() builds chi router with test-only GET /v1/items/{id}
+   - Handler calls uuidPathParam to validate {id}; valid UUID → 200, invalid → 400
+   - Tests covering all 6 feature steps:
+     * Step 2: GET /v1/items/not-a-uuid → HTTP 400
+     * Step 3: error.code='http.invalid_path_param'
+     * Step 4: error.details.param='id'
+     * Step 5: No panic (tested with 6 malformed inputs including path traversal)
+     * Step 6: No audit event written (captureAuditWriter has 0 events after failure)
+     * Happy path: valid UUID → 200 with item_id echo
+     * Envelope completeness: request_id, trace_id present; Content-Type=JSON
+
+VERIFICATION
+------------
+  - docker build --target build: SUCCESS
+  - go test -run TestUUID ./apps/backend/internal/platform/httpserver/...: ALL PASS
+  - 9 new tests pass, 3 pre-existing failures unchanged (README/Dockerfile docs)
+  - No panic for malformed inputs (empty string, short strings, wrong chars, path traversal)
+  - git commit: a1d5d3e
+
+ARCHITECTURE NOTES
+------------------
+  - uuidPathParam is a reusable helper for any future resource handler that
+    accepts UUID path parameters (items, orders, events, venues, etc.)
+  - errorEnvelopeWithDetails pattern matches auth.go's existing approach for
+    structured error context
+  - chi's path traversal normalization converts ../../../etc/passwd to 404
+    before the handler even runs (chi cleans URL paths)
+
+PROGRESS METRIC
+---------------
+Stats at session start: 55/108 passing, 2 in_progress.
+This session: feature #41 completed and marked passing -> 56/108 passing.
+================================================================================
+
+--------------------------------------------------------------------------------
 Session: 2026-06-22 -- Feature #34 (Generated Go server types compile against handlers)
 "Generated Go server types compile against handlers"
 --------------------------------------------------------------------------------
