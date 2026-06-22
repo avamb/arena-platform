@@ -41,6 +41,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
+	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -70,14 +71,19 @@ var _ = echoRequest{
 
 // EchoResponse schema: required = [message, actor_id, request_id, trace_id,
 // echo_event_id, idempotent_key, issued_at]
+//
+// Field names follow oapi-codegen v2 conventions (camelCase with lowercase id):
+//   - ActorId, RequestId, TraceId  (not ActorID / RequestID / TraceID)
+//   - EchoEventId is openapi_types.UUID (≡ uuid.UUID) not string
+//   - IssuedAt is time.Time not string
 var _ = echoResponse{
 	Message:       "",
-	ActorID:       "",
-	RequestID:     "",
-	TraceID:       "",
-	EchoEventID:   "",
+	ActorId:       "",
+	RequestId:     "",
+	TraceId:       "",
+	EchoEventId:   uuid.UUID{},
 	IdempotentKey: "",
-	IssuedAt:      "",
+	IssuedAt:      time.Time{},
 }
 
 // InfoResponse schema: required = [app, version, commit, env, supported_locales,

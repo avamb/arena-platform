@@ -1,0 +1,10 @@
+# oapi-codegen v2 configuration for the Arena API OpenAPI spec.
+# Run: make gen-openapi (from the repo root) to regenerate types_gen.go.
+# Any schema change in openapi.yaml that renames or removes a field used by
+# handler code will surface as a compile error in go build ./...
+package: openapi
+
+generate:
+  models: true
+
+output: apps/backend/internal/adapters/http/openapi/types_gen.go

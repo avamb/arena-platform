@@ -4,24 +4,36 @@
 # Prerequisites:
 #   go 1.24+          https://go.dev/dl/
 #   golangci-lint     https://golangci-lint.run/usage/install/
+#   oapi-codegen v2   go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.4.1
 #
 # Usage:
 #   make lint           — static analysis (golangci-lint)
 #   make test           — unit tests
 #   make test-race      — unit tests with -race detector
 #   make build          — compile all binaries to ./bin/
+#   make gen-openapi    — regenerate Go types from apps/backend/openapi/openapi.yaml
 #   make run-api        — start the HTTP API server
 #   make run-worker     — start the background worker
 #   make migrate-up     — apply all pending DB migrations
 #   make migrate-down   — roll back the last DB migration
 
-.PHONY: lint test test-race build run-api run-worker migrate-up migrate-down
+.PHONY: lint test test-race build gen-openapi run-api run-worker migrate-up migrate-down
 
 # ── Optional extra flags forwarded to go test / go build ──────────────────────
 GOFLAGS ?=
 
 # ── Directories ───────────────────────────────────────────────────────────────
 BIN_DIR := bin
+
+# ── Code generation ───────────────────────────────────────────────────────────
+# Regenerates Go types from the OpenAPI spec. Re-run whenever openapi.yaml
+# changes — any field rename or removal used by handler code cascades to a
+# compile error in `go build ./...` (proven by feature #34 coupling test).
+gen-openapi:
+	@mkdir -p apps/backend/internal/adapters/http/openapi
+	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.4.1 \
+		--config=apps/backend/openapi/oapi-codegen.yaml \
+		apps/backend/openapi/openapi.yaml
 
 # ── Lint ──────────────────────────────────────────────────────────────────────
 lint:

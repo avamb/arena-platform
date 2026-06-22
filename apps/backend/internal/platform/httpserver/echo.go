@@ -25,10 +25,12 @@ import (
 	"strings"
 	"time"
 
+	oapi "github.com/abhteam/arena_new/apps/backend/internal/adapters/http/openapi"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/idempotency"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -59,21 +61,15 @@ const echoOutboxEventType = "v1.echo.created"
 // the placeholder echo resource used in this foundational milestone.
 const echoOutboxAggregateType = "echo"
 
-// echoRequest is the request body schema for POST /v1/echo.
-type echoRequest struct {
-	Message string `json:"message"`
-}
-
-// echoResponse is the response body. snake_case per design system spec.
-type echoResponse struct {
-	Message       string `json:"message"`
-	ActorID       string `json:"actor_id"`
-	RequestID     string `json:"request_id"`
-	TraceID       string `json:"trace_id"`
-	EchoEventID   string `json:"echo_event_id"`
-	IdempotentKey string `json:"idempotent_key"`
-	IssuedAt      string `json:"issued_at"`
-}
+// echoRequest and echoResponse are type aliases for the generated OpenAPI types
+// so that any schema change in openapi/openapi.yaml cascades to a compile error.
+// Use oapi.EchoRequest and oapi.EchoResponse directly in handler code.
+//
+// DO NOT redefine these structs locally — the coupling to oapi-codegen output
+// is intentional and enforced by feature #34 "Generated Go server types compile
+// against handlers".
+type echoRequest = oapi.EchoRequest
+type echoResponse = oapi.EchoResponse
 
 // handleEcho serves POST /v1/echo.
 //
@@ -219,14 +215,25 @@ func (s *Server) handleEcho(w http.ResponseWriter, r *http.Request) {
 	// 3. Build the response body. We need to settle on the body BEFORE we
 	// persist the idempotency row so the replay path returns byte-identical
 	// JSON on retries.
+	//
+	// echoEventID is returned as a string UUID from insertOutboxEcho; parse it
+	// into uuid.UUID so it satisfies the oapi.EchoResponse.EchoEventId field
+	// (openapi_types.UUID is an alias for uuid.UUID from github.com/google/uuid).
+	echoEventUUID, err := uuid.Parse(echoEventID)
+	if err != nil {
+		logger.Error("echo: parse echo event id", "error", err.Error())
+		writeJSON(w, http.StatusInternalServerError, errorEnvelope("internal_error",
+			"echo event ID is not a valid UUID: "+err.Error(), r))
+		return
+	}
 	resp := echoResponse{
 		Message:       req.Message,
-		ActorID:       actor.ID,
-		RequestID:     requestID,
-		TraceID:       traceID,
-		EchoEventID:   echoEventID,
+		ActorId:       actor.ID,
+		RequestId:     requestID,
+		TraceId:       traceID,
+		EchoEventId:   echoEventUUID,
 		IdempotentKey: idemKey,
-		IssuedAt:      time.Now().UTC().Format(time.RFC3339Nano),
+		IssuedAt:      time.Now().UTC(),
 	}
 	respBody, err := json.Marshal(resp)
 	if err != nil {
