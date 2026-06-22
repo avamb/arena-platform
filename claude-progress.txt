@@ -4738,3 +4738,135 @@ PROGRESS METRIC
 Stats at session start: 43/108 passing, 2 in_progress.
 This session: feature #25 completed and marked passing -> 44/108 passing.
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #28 (Panic recovery returns 500 envelope)
+"Panic recovery returns 500 envelope without stack trace in prod"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #28 requires that panicking handlers are caught by a Recoverer middleware
+that:
+  1. Returns HTTP 500 with standard error envelope (internal.unexpected code)
+  2. In production: no stack trace in response body
+  3. In development: stack trace included in response body for developer convenience
+  4. Logs slog ERROR with "panic" field + "stack" field
+  5. Increments arena_http_panics_total Prometheus counter
+  6. Server survives and continues serving after the panic
+  7. /v1/debug/panic endpoint gated by DEBUG_ROUTES_ENABLED env var
+
+NOTE: Much of this feature had already been implemented by a prior session (the
+panicRecoverer function, AppEnv in Deps, HTTPPanicsTotal in Metrics). This session
+discovered those pre-existing implementations and:
+  - Added the /v1/debug/panic endpoint and DebugRoutesEnabled option (genuinely new)
+  - Added DEBUG_ROUTES_ENABLED env var reading in main.go (new)
+  - Wrote the complete 24-test suite covering all 10 feature steps (new)
+
+CHANGES
+-------
+
+1. apps/backend/internal/platform/observability/metrics.go
+   - Added HTTPPanicsTotal prometheus.Counter field to Metrics struct
+   - Registered it in New() with name arena_http_panics_total
+
+2. apps/backend/internal/adapters/http/router.go
+   - Added AppEnv string to Deps struct (with "development" default)
+   - Replaced chimw.Recoverer with custom panicRecoverer() function
+   - panicRecoverer:
+     * Captures debug.Stack() immediately on panic
+     * Reads request_id/trace_id from response headers (set by inner middlewares)
+     * Logs slog ERROR "http panic recovered" with panic + stack fields
+     * Increments m.HTTPPanicsTotal when m is non-nil
+     * Returns {"error": {"code": "internal.unexpected", ...}}
+     * In "development" appEnv: adds "stack" field to response body
+     * In all other envs: omits stack from response body
+
+3. apps/backend/internal/platform/httpserver/server.go
+   - Added debugRoutesEnabled bool field to Server struct
+   - Added DebugRoutesEnabled bool to Options struct
+   - Passes AppEnv to httpadapter.Deps
+   - Propagates DebugRoutesEnabled to server field
+   - Mounts /v1/debug/panic only when debugRoutesEnabled is true
+
+4. apps/backend/internal/platform/httpserver/debug_panic.go (NEW)
+   - handleDebugPanic handler: calls panic("boom")
+   - Only registered when Server.debugRoutesEnabled is true
+
+5. apps/backend/cmd/arena-api/main.go
+   - Reads DEBUG_ROUTES_ENABLED env var
+   - Logs WARN if debug routes are active
+   - Passes DebugRoutesEnabled to httpserver.Options
+
+6. apps/backend/internal/platform/httpserver/panic_recovery_test.go (NEW)
+   24 tests covering all feature steps:
+
+   Core 500/envelope tests (steps 1-4):
+     TestPanicRecovery_Returns500
+     TestPanicRecovery_ContentTypeIsJSON
+     TestPanicRecovery_BodyHasInternalUnexpectedCode
+     TestPanicRecovery_BodyHasMessageField
+     TestPanicRecovery_BodyHasRequestIDField
+     TestPanicRecovery_BodyHasTraceIDField
+
+   No-stack-in-prod tests (step 5):
+     TestPanicRecovery_ProdBodyNoGoroutineKeyword
+     TestPanicRecovery_ProdBodyNoFileLineSyntax
+     TestPanicRecovery_ProdBodyNoStackField
+
+   slog ERROR logging tests (step 6):
+     TestPanicRecovery_SlogErrorLogged
+     TestPanicRecovery_SlogErrorHasPanicField
+     TestPanicRecovery_SlogErrorHasStackField
+     TestPanicRecovery_SlogStackContainsGoroutine
+
+   Prometheus counter tests (step 7):
+     TestPanicRecovery_PrometheusCounterIncremented
+     TestPanicRecovery_CounterNotIncrementedWithNoMetrics
+     TestPanicRecovery_MultipleConsecutivePanicsAllReturn500
+
+   Server survival test (step 8):
+     TestPanicRecovery_ServerSurvivesAndServeNextRequest
+
+   Dev mode stack tests (step 9):
+     TestPanicRecovery_DevModeBodyIncludesStack
+     TestPanicRecovery_DevModeBodyContainsGoroutineKeyword
+     TestPanicRecovery_DevModeCodeStillInternalUnexpected
+
+   Route gating tests (step 10):
+     TestPanicRecovery_DebugRouteNotMountedWhenDisabled
+     TestPanicRecovery_DebugRouteMountedWhenEnabled
+
+   Staging/schema tests:
+     TestPanicRecovery_StagingModeBodyNoStack
+     TestPanicRecovery_EnvelopeSchema
+
+KEY DESIGN DECISIONS
+--------------------
+  - panicRecoverer replaces chimw.Recoverer as the outermost middleware (#1)
+  - Stack is read from debug.Stack() not runtime.Stack() (convenience wrapper)
+  - request_id and trace_id are read from response HEADERS (w.Header()) because
+    inner middlewares (requestContext, tracerMiddleware) set them on the original
+    ResponseWriter before next.ServeHTTP runs, making them visible in the outer
+    defer even though the enriched request contexts are local to each middleware
+  - DEBUG_ROUTES_ENABLED is read outside Config.Validate (like FAULT_INJECT_*)
+    because it should never be accidentally required or validated in production
+  - errorMessages(), hasErrorWithAttrNonEmpty(), hasErrorWithAttrContaining()
+    are added as methods on captureSlogHandler in the same package (valid Go)
+
+VERIFICATION
+------------
+  - docker build --target build: SUCCESS (all 4 binaries compile)
+  - docker run arena-build-test go test -v -run TestPanicRecovery: 24/24 PASS
+  - Full test suite: only pre-existing failures (adapters/postgres live-DB,
+    TestDevAuth_READMEDocumentsPlaceholder) — no regressions
+  - No forbidden patterns (STUB/MOCK/devStore/globalThis)
+  - git commits: 0af1dcd + ac1caac
+
+PROGRESS METRIC
+---------------
+Stats at session start: 46/108 passing, 1 in_progress.
+This session: feature #28 completed and marked passing -> 47/108 passing.
+================================================================================
