@@ -1,0 +1,470 @@
+<project_specification>
+  <project_name>arena_new — Backend Foundation Milestone</project_name>
+
+  <overview>
+    Production-grade backend scaffold for a multi-tenant ticketing platform (successor to the legacy Bil24/TixGear ecosystem). This first milestone delivers a clean Go modular monolith foundation: HTTP API server, background worker, migration tool, observability, database access, cross-cutting boundaries (auth/permission/idempotency/audit/outbox placeholders), internationalization, and Dokploy-ready Docker deployment. Business logic for identity, organizations, catalog, inventory, checkout, payments, tickets, scanner integration, WordPress integration, and Bil24 compatibility gateway is OUT OF SCOPE for this milestone — they will be added in subsequent milestones on top of this foundation.
+
+    Краткое русское резюме: первый milestone строит чистый production-ready backend scaffold на Go (modular monolith, net/http + chi), с PostgreSQL, observability, мультиязычной поддержкой и развёртыванием через Dokploy. Бизнес-логика тикетинга в этот milestone НЕ входит — только архитектурные boundary placeholders, на которых дальше будут расти модули identity, organizations, catalog, inventory, checkout, payments и т.д.
+  </overview>
+
+  <reference_architecture_documents>
+    The spec below is derived from these source documents. The implementing agent SHOULD read them when context is required:
+    - 08_architecture/13_backend_go_initial_specification_ru.md (primary source for this milestone)
+    - 08_architecture/00_backend_architecture_brief_ru.md
+    - 08_architecture/11_architecture_decision_log_ru.md
+    - 08_architecture/12_master_platform_specification_ru.md
+    - 08_architecture/10_compliance_security_privacy_ru.md
+    - 09_autoforge/00_AGENT_GUARDRAILS.md
+    - 09_autoforge/03_SPECIFICATION_STARTER.md
+  </reference_architecture_documents>
+
+  <technology_stack>
+    <backend>
+      <language>Go 1.24.x (pinned via go.mod toolchain directive)</language>
+      <application_shape>Modular monolith with explicit domain/app/adapters boundaries</application_shape>
+      <http_foundation>Standard library net/http</http_foundation>
+      <router>chi v5 (lightweight, idiomatic net/http middleware chain)</router>
+      <database>PostgreSQL 17</database>
+      <database_driver>pgx/v5</database_driver>
+      <sql_access>sqlc (typed query wrappers; explicit transactions in workflow code)</sql_access>
+      <migrations>goose, embedded via embed.FS, executed by arena-migrate command</migrations>
+      <cache_and_locks>Redis 7 (used only where needed; PostgreSQL remains source of truth)</cache_and_locks>
+      <background_work>PostgreSQL-backed job queue using FOR UPDATE SKIP LOCKED; outbox pattern for domain events</background_work>
+      <api_contract>OpenAPI 3.1 first; oapi-codegen generates Go server types and TypeScript clients</api_contract>
+      <serialization>JSON for all public APIs</serialization>
+      <id_strategy>UUIDv7 (sortable, 128-bit, native PostgreSQL 17 uuidv7() function with Go-side fallback generator)</id_strategy>
+    </backend>
+    <observability>
+      <logging>log/slog with JSON handler, structured fields, request_id and correlation_id propagation</logging>
+      <metrics>Prometheus exporter at /metrics; HTTP latency histograms, DB pool gauges, worker job lag, outbox backlog</metrics>
+      <tracing>OpenTelemetry SDK with OTLP gRPC exporter (configurable endpoint, sampling)</tracing>
+      <health>/healthz (liveness), /readyz (readiness — includes DB ping)</health>
+    </observability>
+    <internationalization>
+      <library>go-i18n/v2 with TOML message catalogs</library>
+      <initial_languages>ru, en (active); structure ready for uk, es and additional locales</initial_languages>
+      <locale_negotiation>Accept-Language header → ?lang= query parameter → user.preferred_locale → default "en"</locale_negotiation>
+      <user_content_translations>Stored in DB (i18n_text table with locale, key, value); system messages — in file catalogs</user_content_translations>
+    </internationalization>
+    <deployment>
+      <containerization>Docker multi-stage build → gcr.io/distroless/static-debian12 final image</containerization>
+      <orchestration>Dokploy (self-hosted PaaS) — Dockerfile in repo root, optional docker-compose.yml for local dev, HEALTHCHECK directive bound to /healthz</orchestration>
+      <ci>GitHub Actions: lint (golangci-lint) + test (with race detector) + build + push image to registry</ci>
+      <local_dev>docker compose up → starts API, worker, PostgreSQL 17, Redis 7</local_dev>
+      <secrets>.env.example documents every required variable; production values injected by Dokploy environment configuration</secrets>
+    </deployment>
+    <auth_scaffold_only>
+      <method>JWT-based AuthContext boundary as PLACEHOLDER. Real identity module (OAuth, magic link, password) is out of scope for this milestone.</method>
+      <stub_identity_provider>Issues test JWTs for development/integration testing; production identity provider plugs in via the same AuthBoundary interface</stub_identity_provider>
+    </auth_scaffold_only>
+  </technology_stack>
+
+  <prerequisites>
+    <environment_setup>
+      - Go 1.24.x installed (toolchain directive in go.mod will fetch correct version)
+      - Docker 24+ and Docker Compose v2 for local development
+      - PostgreSQL 17 (provided via docker-compose for local; managed by Dokploy in production)
+      - Redis 7 (provided via docker-compose for local; managed by Dokploy in production)
+      - golangci-lint v1.60+ for static analysis
+      - sqlc v1.27+ to regenerate query wrappers when SQL changes
+      - oapi-codegen v2 to regenerate types from openapi/openapi.yaml
+      - goose v3 (vendored or installed) for ad-hoc migration commands; arena-migrate is the production path
+    </environment_setup>
+  </prerequisites>
+
+  <feature_count>80</feature_count>
+
+  <scope>
+    <in_scope>
+      This milestone delivers ONLY the foundation scaffold. Specifically:
+      - Repository layout (apps/backend/cmd, internal/platform, internal/domain stubs, internal/app stubs, internal/adapters, internal/migrations, openapi, tests)
+      - Three runnable binaries: arena-api, arena-worker, arena-migrate
+      - Configuration loading and validation (fail-fast on boot)
+      - Structured logging, request/correlation IDs, panic recovery
+      - PostgreSQL connection pool with retry; goose migrations embedded and executable
+      - chi router with /v1 prefix, consistent error envelope, standard middleware (timeout, body limit, CORS, content-type validation)
+      - OpenAPI 3.1 skeleton with one example read endpoint (GET /v1/info) and one example transactional command (POST /v1/echo with idempotency)
+      - Cross-cutting boundary placeholders: AuthBoundary, PermissionBoundary, IdempotencyStore, AuditWriter, OutboxWriter, OutboxDispatcher (worker), WebhookDelivery
+      - Background worker scaffold: job registry, Postgres-backed queue, idempotent execution, retry with exponential backoff, dead-letter table
+      - Internationalization scaffold: go-i18n catalogs (ru, en), Accept-Language negotiation, translator in context, translated error envelope
+      - Observability: /healthz, /readyz, /metrics, OpenTelemetry tracing with OTLP exporter
+      - Testing harness: unit test scaffold, integration tests with testcontainers PostgreSQL, migration up/down tests, golangci-lint config, race detector in CI
+      - Docker multi-stage build, Dokploy-compatible repository layout, docker-compose.yml for local dev, .env.example, README with Dokploy deployment guide
+    </in_scope>
+    <out_of_scope>
+      NOT to be implemented in this milestone (will be added later):
+      - Real identity/auth (OAuth, password, magic link, sessions, MFA)
+      - Organizations, memberships, roles, permissions logic (only placeholder boundaries)
+      - Catalog (events, sessions, venues, seating plans)
+      - Inventory and reservations
+      - Checkout, payments, refunds, disputes, payouts
+      - Tickets, credentials (QR, wallet, NFC) and delivery
+      - Complimentary ticket issuance
+      - External quota allocations and external barcode imports
+      - WordPress integration plugin
+      - Bil24-compatible gateway commands
+      - Reporting and service billing (Stripe Billing)
+      - Platform superadmin console
+      - Frontend / admin UI / public checkout UI
+      - **Scanner service** — confirmed as EXTERNAL boundary; no scanner runtime, no scanner-specific endpoints, no scanner webhooks in this milestone. The generic OutboxDispatcher and WebhookDelivery placeholders exist for future use by scanner integration but contain no scanner-specific logic.
+      - Payment provider adapters (Stripe, YooKassa, etc.)
+      - Production discovery/marketplace features
+    </out_of_scope>
+  </scope>
+
+  <security_and_access_control>
+    <user_roles>
+      <role name="placeholder_authenticated">
+        <permissions>
+          - Can call /v1/echo (example transactional command requires valid JWT)
+          - Can call GET /v1/info (informational, but exercises auth middleware in protected variant)
+          - Real role taxonomy (agent, organizer, platform_operator, external_ticketing_operator, platform_superadmin) is defined in architecture docs but NOT enforced in this milestone — only the boundary contract exists.
+        </permissions>
+        <protected_routes>
+          - /v1/echo requires valid JWT signed by stub IdentityProvider
+          - /v1/info accepts both anonymous and authenticated
+          - /healthz, /readyz, /metrics are unauthenticated (operational endpoints)
+        </protected_routes>
+      </role>
+      <role name="anonymous">
+        <permissions>
+          - Can call GET /v1/info (anonymous variant)
+          - Can call /healthz, /readyz, /metrics
+          - Receives 401 with proper error envelope on protected endpoints
+        </permissions>
+      </role>
+    </user_roles>
+    <authentication>
+      <method>JWT (HS256 for dev stub; production will swap to RS256/asymmetric via same boundary)</method>
+      <session_timeout>Token-bound (no server-side session store in this milestone); JWT exp claim enforced</session_timeout>
+      <password_requirements>N/A in this milestone (no password flow implemented)</password_requirements>
+    </authentication>
+    <sensitive_operations>
+      - All mutating endpoints require Idempotency-Key header; duplicate keys return the original response
+      - Audit events are written for every authenticated mutating request via AuditWriter boundary
+      - No PII or secrets in normal logs; logging middleware masks Authorization header, request bodies for known sensitive paths
+      - CORS allowlist is explicit and configured per environment
+    </sensitive_operations>
+  </security_and_access_control>
+
+  <core_features>
+    <infrastructure>
+      - Database connection established (PostgreSQL via pgx connection pool)
+      - Database schema applied correctly (goose migrations create all platform tables)
+      - Data persists across server restart (verified by integration test: create row, restart container, query row)
+      - No mock data patterns in codebase (no in-memory stores masquerading as DB, no globalThis/dev-store/mock patterns)
+      - Backend API queries real database (SQL queries visible in slog output for /v1/info and /v1/echo)
+    </infrastructure>
+    <project_scaffold_and_build>
+      - Go module initialized with module path matching repository, toolchain pinned
+      - Directory layout: apps/backend/{cmd,internal/{platform,domain,app,adapters,migrations},openapi,tests}
+      - cmd/arena-api builds and serves HTTP on configured port
+      - cmd/arena-worker builds and consumes jobs from Postgres queue
+      - cmd/arena-migrate builds and applies/rolls back migrations
+      - Production Dockerfile: multi-stage, distroless final image, non-root user, HEALTHCHECK
+      - docker-compose.yml for local dev: api + worker + postgres + redis with named volumes
+      - Makefile (or Taskfile) with targets: build, test, lint, run-api, run-worker, migrate-up, migrate-down, gen-sql, gen-openapi
+    </project_scaffold_and_build>
+    <configuration_and_bootstrap>
+      - Config loaded from environment variables via dedicated config package
+      - Config validated on boot; missing/invalid values cause fail-fast exit with clear error
+      - Separate config defaults for dev / staging / prod profiles selected via APP_ENV
+      - Graceful shutdown on SIGTERM/SIGINT (drains in-flight requests, closes DB pool, flushes telemetry)
+      - DB pool size, timeout, and lifecycle configurable
+      - .env.example committed at repo root documenting every variable with comments
+    </configuration_and_bootstrap>
+    <logging_and_observability>
+      - log/slog initialized with JSON handler in production, text in dev
+      - Request ID middleware generates UUIDv7 per request, surfaces in response header X-Request-Id
+      - Correlation ID propagated to worker jobs and outbound HTTP calls
+      - /healthz returns 200 when process is alive
+      - /readyz returns 200 only when DB ping succeeds and migrations are at latest version
+      - OpenTelemetry SDK initialized with OTLP gRPC exporter (configurable endpoint and sampling)
+      - HTTP server instrumented: spans for every request, attributes for route, method, status
+      - Prometheus /metrics endpoint exposes default Go metrics
+      - HTTP request latency histogram (by route + status)
+      - DB pool gauges: open, idle, in-use, wait count, wait duration
+      - Panic recovery middleware logs stack trace, returns 500 with error envelope, increments panic counter
+    </logging_and_observability>
+    <database_and_migrations>
+      - pgx/v5 connection pool established with sensible defaults
+      - Connection retry with exponential backoff on initial connect (handles container startup races)
+      - goose migrations directory with baseline 0001_init.sql creating placeholder platform tables: schema_migrations is goose-managed, plus idempotency_keys, audit_events, outbox_events, worker_jobs, worker_dead_letter, i18n_text
+      - Migrations embedded via embed.FS into arena-migrate binary
+      - arena-migrate supports: up, down, status, redo subcommands
+      - Transaction helper that provides explicit tx scoping for domain workflows; rejects nested implicit transactions
+      - sqlc configuration generates typed Go query wrappers from queries/ directory
+      - Integration test harness boots a PostgreSQL container (via testcontainers-go), applies migrations, runs tests, tears down
+    </database_and_migrations>
+    <http_api_foundation>
+      - chi v5 router with standard middleware chain: RequestID, RealIP, Logger, Recoverer, Timeout, BodyLimit, CORS, ContentTypeValidator
+      - All API routes mounted under /v1 prefix; /v1/info and /v1/echo are the example endpoints
+      - Consistent error envelope: { "error": { "code", "message", "details", "request_id", "trace_id" } }
+      - Custom 404 handler returns error envelope
+      - Custom 405 handler returns error envelope with Allow header
+      - 500 handler returns error envelope without leaking stack traces in production
+      - Body size limit enforced (configurable, default 1 MiB)
+      - Request timeout middleware enforced (configurable, default 30s)
+      - CORS middleware configured via allowlist (env-driven)
+      - Content-Type validation rejects unsupported types on POST/PUT/PATCH
+      - Pagination helper exposing cursor and offset modes with consistent envelope
+      - OpenAPI 3.1 skeleton in openapi/openapi.yaml; oapi-codegen generates server types
+      - GET /v1/info — example read endpoint, returns service version, build info, supported locales
+      - POST /v1/echo — example transactional command, requires JWT and Idempotency-Key, writes audit + outbox in single transaction
+    </http_api_foundation>
+    <cross_cutting_boundaries>
+      - AuthBoundary interface in internal/platform/auth with JWT placeholder implementation
+      - Auth middleware extracts and validates JWT, attaches Actor to context, returns 401 envelope on failure
+      - PermissionBoundary interface (always allow in this milestone, but contract exists and is called from /v1/echo)
+      - Idempotency middleware reads Idempotency-Key header, checks idempotency_keys table, replays stored response on duplicate within configurable TTL
+      - AuditWriter interface + Postgres implementation; writes to audit_events with actor, action, resource, request_id, timestamp, ip
+      - OutboxWriter interface + Postgres implementation; enqueues events into outbox_events in the SAME transaction as the business write
+      - OutboxDispatcher worker job: polls outbox_events for unprocessed, marks delivered, retries with backoff on failure
+      - WebhookDelivery placeholder: signs payloads with HMAC, posts to subscriber URL, retries with exponential backoff, records delivery attempts
+    </cross_cutting_boundaries>
+    <background_worker_foundation>
+      - arena-worker process with graceful shutdown matching arena-api
+      - Job registry pattern: handlers register by job_type at startup
+      - Postgres-backed job queue using FOR UPDATE SKIP LOCKED for concurrent worker safety
+      - Idempotent job execution: each job has unique job_id and optional idempotency_key
+      - Retry with exponential backoff; configurable max_attempts per job type
+      - Dead-letter table receives jobs that exhausted retries; queryable for ops
+    </background_worker_foundation>
+    <internationalization_foundation>
+      - go-i18n/v2 message catalogs in i18n/ru.toml and i18n/en.toml committed to repo
+      - Accept-Language header parsed (RFC 4647 lookup), best match selected from active locales
+      - ?lang= query parameter overrides Accept-Language when present and supported
+      - Translator placed in request context; handlers obtain it via context helper
+      - Error envelope includes translated message; code remains stable across locales
+      - Fallback chain: explicit ?lang → Accept-Language → user.preferred_locale (when auth present) → "en"
+    </internationalization_foundation>
+    <testing_harness>
+      - Unit test scaffold demonstrates pure-domain testing pattern (no DB)
+      - Integration test harness boots PostgreSQL via testcontainers-go and runs tests against real schema
+      - Migration up/down tests verify every migration is reversible and idempotent
+      - Race detector enabled in CI for unit and integration test suites
+      - Code coverage report uploaded as CI artifact
+      - golangci-lint configured with .golangci.yml covering vet, staticcheck, errcheck, gosec, revive, gofmt
+    </testing_harness>
+    <deployment_and_dokploy_integration>
+      - Production Dockerfile committed at repo root; multi-stage build; final image is distroless static-debian12 with non-root user
+      - Repository layout is Dokploy-compatible: Dockerfile at root, optional docker-compose.yml for advanced deployments
+      - .env.example documents every required variable with inline comments
+      - HEALTHCHECK directive in Dockerfile bound to /healthz for Dokploy auto-restart
+      - README includes a Dokploy deployment guide: create app, set env vars, bind volume for Postgres, configure domain and SSL
+    </deployment_and_dokploy_integration>
+  </core_features>
+
+  <database_schema>
+    <tables>
+      <schema_migrations>
+        - id (text, goose-managed), applied_at (timestamptz), goose-controlled fields
+      </schema_migrations>
+      <idempotency_keys>
+        - id (uuid v7 PK), key (text, unique within scope), scope (text, e.g. endpoint name), actor_id (uuid, nullable), request_hash (text), response_status (int), response_body (jsonb), created_at (timestamptz), expires_at (timestamptz)
+        - Index on (key, scope) unique; index on expires_at for cleanup
+      </idempotency_keys>
+      <audit_events>
+        - id (uuid v7 PK), occurred_at (timestamptz), actor_type (text), actor_id (uuid, nullable), action (text), resource_type (text), resource_id (text), request_id (text), trace_id (text), ip (inet, nullable), metadata (jsonb)
+        - Index on (resource_type, resource_id, occurred_at desc); index on actor_id
+      </audit_events>
+      <outbox_events>
+        - id (uuid v7 PK), aggregate_type (text), aggregate_id (text), event_type (text), payload (jsonb), occurred_at (timestamptz), processed_at (timestamptz, nullable), attempts (int default 0), last_error (text, nullable)
+        - Index on processed_at where processed_at IS NULL (partial index for dispatcher)
+      </outbox_events>
+      <worker_jobs>
+        - id (uuid v7 PK), job_type (text), payload (jsonb), idempotency_key (text, nullable), scheduled_at (timestamptz), claimed_at (timestamptz, nullable), claimed_by (text, nullable), attempts (int default 0), max_attempts (int), status (text: pending/claimed/done/failed), last_error (text, nullable), created_at (timestamptz)
+        - Index on (status, scheduled_at) for queue scan; unique on (job_type, idempotency_key) where idempotency_key IS NOT NULL
+      </worker_jobs>
+      <worker_dead_letter>
+        - id (uuid v7 PK), original_job_id (uuid), job_type (text), payload (jsonb), attempts (int), last_error (text), failed_at (timestamptz), original_created_at (timestamptz)
+      </worker_dead_letter>
+      <i18n_text>
+        - id (uuid v7 PK), namespace (text, e.g. "venue.name", "event.title"), key (text), locale (text), value (text), updated_at (timestamptz)
+        - Unique on (namespace, key, locale); index on (namespace, key)
+      </i18n_text>
+    </tables>
+    <note>
+      All business-domain tables (organizations, users, events, sessions, orders, tickets, etc.) are DEFERRED to subsequent milestones. This milestone establishes only the cross-cutting tables required to demonstrate audit, outbox, idempotency, jobs, and i18n boundaries.
+    </note>
+  </database_schema>
+
+  <api_endpoints_summary>
+    <operational>
+      - GET /healthz — liveness probe; returns 200 always while process is alive
+      - GET /readyz — readiness probe; returns 200 only if DB ping succeeds and migrations are at latest
+      - GET /metrics — Prometheus exposition format
+    </operational>
+    <example_v1>
+      - GET /v1/info — service metadata: version, commit, build_time, supported_locales, active_locale (resolved from request)
+      - POST /v1/echo — example transactional command; requires Authorization Bearer JWT and Idempotency-Key; body {"message": string}; writes audit event + outbox event in single transaction; returns echoed message with request_id and trace_id
+    </example_v1>
+    <openapi_spec>
+      - All routes documented in openapi/openapi.yaml (OpenAPI 3.1)
+      - Generated TypeScript and Go server types committed for example clients/server stubs
+    </openapi_spec>
+  </api_endpoints_summary>
+
+  <ui_layout>
+    <main_structure>
+      No graphical UI is delivered in this milestone. The "interface" surfaces are:
+      - The HTTP API itself (chi-served JSON)
+      - The OpenAPI document (openapi/openapi.yaml) which can be browsed via any OpenAPI viewer (Swagger UI is OPTIONAL — if included, it must be a separate Docker compose service or a Dokploy-mounted static site, not part of the Go binary)
+      - The Dokploy admin panel (used by operators to deploy and configure the application)
+    </main_structure>
+  </ui_layout>
+
+  <design_system>
+    <color_palette>
+      Not applicable for this milestone (backend-only). Future frontend milestones will define the design system.
+    </color_palette>
+    <typography>
+      Not applicable for this milestone.
+    </typography>
+    <api_response_style>
+      - All JSON responses use snake_case for field names
+      - Timestamps in RFC 3339 UTC format
+      - IDs as UUIDv7 strings
+      - Error envelope is uniform across every endpoint
+    </api_response_style>
+  </design_system>
+
+  <implementation_steps>
+    <step number="1">
+      <title>Project Scaffold and Build Pipeline</title>
+      <tasks>
+        - Initialize Go module with toolchain directive pinning Go 1.24.x
+        - Create directory layout under apps/backend
+        - Create cmd/arena-api, cmd/arena-worker, cmd/arena-migrate with minimal main.go stubs
+        - Write multi-stage production Dockerfile and local docker-compose.yml
+        - Create Makefile/Taskfile with build/test/lint/run targets
+        - Set up GitHub Actions workflow for lint + test + build + image push
+      </tasks>
+    </step>
+    <step number="2">
+      <title>Configuration, Logging, Health</title>
+      <tasks>
+        - Implement config package with env loading and validation
+        - Wire log/slog with JSON handler and request ID propagation
+        - Implement panic recovery middleware
+        - Implement /healthz and /readyz handlers
+        - Wire graceful shutdown on SIGTERM/SIGINT
+      </tasks>
+    </step>
+    <step number="3">
+      <title>Database Pool and Migrations</title>
+      <tasks>
+        - Initialize pgx/v5 pool with retry on initial connect
+        - Embed goose migrations via embed.FS
+        - Implement arena-migrate subcommands (up, down, status, redo)
+        - Write baseline migration 0001_init.sql creating cross-cutting tables
+        - Implement transaction helper and integration test harness with testcontainers
+      </tasks>
+    </step>
+    <step number="4">
+      <title>HTTP API Foundation</title>
+      <tasks>
+        - Wire chi router with standard middleware chain
+        - Implement error envelope and custom 404/405/500 handlers
+        - Add body size limit, request timeout, CORS, content-type validation middleware
+        - Implement pagination helper
+        - Write OpenAPI 3.1 skeleton and generate server types with oapi-codegen
+        - Implement GET /v1/info and POST /v1/echo example endpoints
+      </tasks>
+    </step>
+    <step number="5">
+      <title>Cross-Cutting Boundaries</title>
+      <tasks>
+        - Define AuthBoundary interface; implement JWT placeholder + auth middleware
+        - Define PermissionBoundary interface (always-allow stub)
+        - Implement Idempotency middleware backed by idempotency_keys table
+        - Implement AuditWriter and OutboxWriter with Postgres implementations
+        - Implement OutboxDispatcher worker job and WebhookDelivery placeholder
+      </tasks>
+    </step>
+    <step number="6">
+      <title>Background Worker Foundation</title>
+      <tasks>
+        - Implement arena-worker process with graceful shutdown
+        - Implement job registry and Postgres-backed queue with FOR UPDATE SKIP LOCKED
+        - Implement retry with exponential backoff and dead-letter table
+        - Integration tests for at least one example job type (use OutboxDispatcher as the demo)
+      </tasks>
+    </step>
+    <step number="7">
+      <title>Observability Wiring</title>
+      <tasks>
+        - Add Prometheus /metrics endpoint with default Go metrics + custom histograms/gauges
+        - Initialize OpenTelemetry SDK with OTLP exporter
+        - Instrument HTTP server and DB pool with OTEL
+        - Configure sampling and resource attributes
+      </tasks>
+    </step>
+    <step number="8">
+      <title>Internationalization Scaffold</title>
+      <tasks>
+        - Add go-i18n/v2 dependency and create ru.toml and en.toml catalogs
+        - Implement locale negotiation middleware (Accept-Language → ?lang → preferred_locale → default)
+        - Place translator in request context
+        - Wire translated error envelope
+      </tasks>
+    </step>
+    <step number="9">
+      <title>Testing and Quality Gates</title>
+      <tasks>
+        - Add golangci-lint config
+        - Add unit test examples in domain stub
+        - Add integration test suite using testcontainers PostgreSQL
+        - Add migration up/down test
+        - Wire race detector and coverage in CI
+      </tasks>
+    </step>
+    <step number="10">
+      <title>Dokploy-Ready Deployment</title>
+      <tasks>
+        - Finalize Dockerfile with HEALTHCHECK bound to /healthz
+        - Finalize docker-compose.yml for local dev (api + worker + postgres + redis)
+        - Write .env.example with all variables documented
+        - Write README section "Deploying to Dokploy" with concrete steps
+      </tasks>
+    </step>
+  </implementation_steps>
+
+  <success_criteria>
+    <functionality>
+      - All 80 features pass in the AutoForge feature database
+      - arena-api boots, serves /v1/info and /v1/echo end-to-end
+      - arena-worker boots and successfully dispatches at least one outbox event
+      - arena-migrate applies and rolls back the baseline migration
+      - Data persists across a full docker compose down/up cycle (volume-backed Postgres)
+      - JWT-protected /v1/echo enforces auth and idempotency; replays return original response
+    </functionality>
+    <user_experience>
+      - Operators (Dokploy users) can deploy the service with a Dockerfile and env vars only
+      - Developers can run docker compose up and have a working local environment in under 2 minutes
+      - API responses are predictable, paginated where applicable, and use the standard error envelope
+      - All user-facing API messages are translated for ru and en
+    </user_experience>
+    <technical_quality>
+      - golangci-lint passes with zero warnings
+      - go test ./... -race passes
+      - Integration tests run against real PostgreSQL (testcontainers)
+      - No in-memory data stores masquerading as persistence
+      - No business logic inside HTTP handlers (handlers only call into internal/app)
+      - All mutating endpoints have idempotency and audit coverage
+      - Outbox writes occur in the same DB transaction as their business write
+      - All cross-cutting boundaries are interfaces in internal/platform with adapter implementations in internal/adapters
+    </technical_quality>
+    <design_polish>
+      Not applicable (backend-only milestone). Future milestones will add design polish criteria.
+    </design_polish>
+    <production_readiness>
+      - /healthz and /readyz suitable for Dokploy health checks and orchestrator probes
+      - Structured logs ingestible by any JSON-aware log aggregator
+      - Metrics scrapeable by Prometheus
+      - Traces exportable to any OTLP-compatible backend
+      - Graceful shutdown handles SIGTERM correctly under Docker/Dokploy
+      - All secrets injected via env vars; nothing sensitive committed to the repo
+    </production_readiness>
+  </success_criteria>
+</project_specification>

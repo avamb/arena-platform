@@ -1578,3 +1578,62 @@ PROGRESS METRIC
 Stats at session start: 10/108 passing, 1 in_progress.
 This session: feature #89 completed and marked passing.
 ================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 — Feature #6 (Auth Middleware)
+"JWT auth middleware rejects missing token"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #6 was already fully implemented by a previous Wave-2 session.
+
+Code verified this session:
+
+  * apps/backend/internal/platform/auth/auth.go
+      Complete implementation covering all 7 feature steps:
+      - bearerFromHeader: returns ErrMissingToken for absent header,
+        wrong scheme (Basic/Digest/custom), empty bearer value
+      - Middleware: calls writeAuthError with code=auth.missing_token
+      - writeAuthError: sets WWW-Authenticate: Bearer realm="arena",
+        Content-Type: application/json, 401 status, error envelope
+        with code/message/request_id/trace_id fields
+      - resolveRequestID: reads from response header, chi ctx, then
+        incoming header (priority order)
+      - negotiateLocale: honours Accept-Language, supports en/ru
+      - translateAuthCode: inline catalog with en+ru messages
+
+  * apps/backend/internal/platform/auth/auth_test.go
+      Comprehensive tests already in place:
+      - TestBearerFromHeader_NormalisesMissingTokenCases (9 sub-cases)
+      - TestBearerFromHeader_AcceptsWellFormedToken
+      - TestMiddleware_MissingHeader_Returns401WithEnvelope (steps 1-3,6,7)
+      - TestMiddleware_BasicSchemeReturnsMissingToken (step 4)
+      - TestMiddleware_BearerWithEmptyValueReturnsMissingToken (step 5)
+      - TestMiddleware_LocalisesMessageByAcceptLanguage (8 sub-cases)
+      - TestMapAuthErrorToStatus_DottedCodes
+      - TestMiddleware_HappyPath_AttachesActor
+      - TestNegotiateLocale + TestTranslateAuthCode_FallbacksAreSafe
+
+  * apps/backend/internal/platform/httpserver/server.go
+      Middleware wired at line 217: pr.Use(auth.Middleware(s.stub, ...))
+      for the /v1/echo route group.
+
+VERIFICATION
+------------
+All 7 feature steps satisfied by existing code + tests:
+  1. ✅ POST /v1/echo with no Authorization header → 401
+  2. ✅ HTTP 401 status code
+  3. ✅ JSON: {"error":{"code":"auth.missing_token","message":...,"request_id":...,"trace_id":...}}
+  4. ✅ Authorization: Basic abc → same 401 (wrong scheme)
+  5. ✅ Authorization: Bearer    → same 401 (empty value)
+  6. ✅ WWW-Authenticate: Bearer realm="arena" on every 401
+  7. ✅ X-Request-Id header present (set by requestContext middleware)
+
+No code changes were required — feature was pre-built.
+
+PROGRESS METRIC
+---------------
+Stats: 12/108 passing (11 were passing at session start, +1 this session).
+This session: feature #6 marked passing.
+================================================================================

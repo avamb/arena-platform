@@ -1,0 +1,174 @@
+//get params
+var url_string = window.location.href; 
+var url_for_param = new URL(url_string);
+var event_id = url_for_param.searchParams.get("id");
+var city_id;
+let currency = [];
+let zone = "test";
+
+
+
+function propsLoaded(){
+    let port = properties.ServerURL.match(/:([\d]+)/g);
+    if(port === null){
+        zone="real";
+    }
+    else if(port[0] != ":1240"){
+        zone = port[0].substr(1);
+    }
+    
+    new Promise(function(resolve, reject){
+        const url = properties.ServerURL;
+        let request = {
+            fid: properties.AgentFIDWorld, 
+            token: properties.AgentTokenWorld,
+            locale: "en",
+            command: "GET_ALL_ACTIONS"
+        };
+        
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', url);
+        xhr.responseType = 'json';
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.onload = () => {
+            let bigResult = xhr.response;
+            let result = bigResult.actionList;
+            
+            
+            for (let i in result){
+                if(result[i].actionId == event_id){
+                    for(let j in result[i].actionEventList){
+                        currency.push(result[i].actionEventList[j].currency);
+                        
+                    }
+                }
+            }
+            resolve();
+        };
+        xhr.send(JSON.stringify(request));
+        xhr.onerror = function() {
+          alert(`Network Error`);
+        };
+    }).then(function(){
+        return new Promise((resolve, reject) => {
+            const url = properties.ServerURL;
+            let request = {
+                fid: properties.AgentFIDRu, 
+                token: properties.AgentTokenRu,
+                locale: "en",
+                command: "GET_ALL_ACTIONS"
+            };
+            
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', url);
+            xhr.responseType = 'json';
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.onload = () => {
+                let bigResult = xhr.response;
+                let result = bigResult.actionList;
+                
+                
+                for (let i in result){
+                    if(result[i].actionId == event_id){
+                        for(let j in result[i].actionEventList){
+                            currency.push(result[i].actionEventList[j].currency);
+                            
+                        }
+                    }
+                }
+                resolve()
+            };
+            xhr.send(JSON.stringify(request));
+            xhr.onerror = function() { // only triggers if the request couldn't be made at all
+              alert(`Network Error`);
+            };
+            }).then(sendRequest);
+        });
+
+}
+    
+    
+    //request
+function sendRequest(){
+    const url = properties.ServerURL;
+    let request = {
+        fid: properties.HomePageFid, 
+        token: properties.HomePageToken,
+        locale: "en",
+        command: "GET_ALL_ACTIONS"
+    };
+    
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    xhr.responseType = 'json';
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.onload = () => {
+        let bigResult = xhr.response;
+        console.log(bigResult);
+        let result = bigResult.actionList;
+        let actionName;
+        let fullActionName;
+        let bigPosterUrl;
+        let desc;
+        
+        let rBank = false;
+        let fBank = false;
+        
+        for (let i in result){
+            if(result[i].actionId == event_id){
+                actionName = result[i].actionName;
+                fullActionName = result[i].fullActionName;
+                bigPosterUrl = result[i].bigPosterUrl;
+                desc = result[i].description;
+                city_id = result[i].actionEventList[0].cityId
+            }
+        }
+        for(let j in currency){
+            if(currency[j] == "RUB" && (properties.AgentFIDRu !== 0 && properties.AgentTokenRu !== "")) rBank = true;
+            if(currency[j] != "RUB" && (properties.AgentFIDWorld !== 0 && properties.AgentTokenWorld !== "")) fBank = true;
+        }
+        if(rBank === false && fBank === false){
+            let noBankBtn = '<a class="link-to-widget" target="_blank" href="#"><button class="buy-ticket no-bank">На данное событие нет подходящего FID и Token</button></a>';
+            document.querySelector(".btn-point").insertAdjacentHTML('afterend', noBankBtn);
+        }
+        
+        let rHref = "/widget_en/#/?frontendId=" + properties.AgentFIDRu + "&token=" + properties.AgentTokenRu + "&id=" + event_id + "&cityId=" + city_id + "&agr=" + location.protocol + '//' + location.hostname + "/agreement.html&zone=" + zone + "&lng=ru&success=" + location.protocol + '//' + location.hostname + "/pay_s.php&fail=" + location.protocol + '//' + location.hostname + "/pay_f.php";
+        
+        let fHref = "/widget_en/#/?frontendId=" + properties.AgentFIDWorld + "&token=" + properties.AgentTokenWorld +"&id=" + event_id + "&cityId=" + city_id + "&agr=" + location.protocol + '//' + location.hostname + "/agreement.html&zone=" + zone + "&lng=ru&success=" + location.protocol + '//' + location.hostname + "/pay_s.php&fail=" + location.protocol + '//' + location.hostname + "/pay_f.php";                      
+
+        if(fBank === true){
+            let fBankBtn = '<a class="link-to-widget" target="_blank" href="' + fHref+ '"><button class="buy-ticket">' + properties.WorldPayButton + '</button></a>';
+            document.querySelector(".btn-point").insertAdjacentHTML('afterend', fBankBtn);
+        }
+        
+        if(rBank === true){
+            let rBankBtn = '<a class="link-to-widget" target="_blank" href="' + rHref+ '"><button class="buy-ticket">' + properties.RuPayButton + '</button></a>';
+            document.querySelector(".btn-point").insertAdjacentHTML('afterend', rBankBtn);
+        }
+        
+        document.querySelector(".actionName").innerHTML = actionName;
+        document.querySelector(".fullActionName").innerHTML = fullActionName;
+        document.querySelector(".event-img").src = bigPosterUrl;
+        document.querySelector(".description").innerHTML = desc;
+        
+        document.querySelector(".event-img").onload = () => {
+            document.querySelector(".main-block").style.display = "flex";
+            document.querySelector(".description").style.display = "block";
+            document.querySelector("#spinload").style.display = "none";
+        };
+        
+        
+        
+    };
+    xhr.send(JSON.stringify(request));
+    xhr.onerror = function() { // only triggers if the request couldn't be made at all
+      alert(`Network Error`);
+    };
+}
+
+
+
+
+
+    
+    
