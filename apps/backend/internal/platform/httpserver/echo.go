@@ -128,9 +128,34 @@ func (s *Server) handleEcho(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errorEnvelope("http.invalid_json", msg, r))
 		return
 	}
-	if strings.TrimSpace(req.Message) == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("http.missing_field", "field 'message' is required and must be non-empty", r))
-		return
+	// Validate the message field with fine-grained error codes:
+	//   - missing key or explicit null → validation.field_required
+	//   - present but empty / whitespace-only string → validation.field_empty
+	// We re-decode into a raw map to tell "absent/null" apart from "empty string"
+	// since the generated EchoRequest struct uses a plain string (not *string).
+	{
+		var rawMap map[string]json.RawMessage
+		if err2 := json.Unmarshal(body, &rawMap); err2 == nil {
+			msgRaw, exists := rawMap["message"]
+			if !exists || string(msgRaw) == "null" {
+				writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+					"validation.field_required",
+					"field 'message' is required",
+					r,
+					map[string]any{"field": "message"},
+				))
+				return
+			}
+			if strings.TrimSpace(req.Message) == "" {
+				writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+					"validation.field_empty",
+					"field 'message' must not be empty",
+					r,
+					map[string]any{"field": "message"},
+				))
+				return
+			}
+		}
 	}
 
 	if s.audit == nil || s.pool == nil {
