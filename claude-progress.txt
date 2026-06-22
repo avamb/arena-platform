@@ -6411,3 +6411,59 @@ Stats at session start: 64/108 passing, 2 in_progress.
 This session: feature #50 completed and marked passing -> 65/108 passing.
 
 ================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #54 (Accept-Language q-value locale negotiation)
+"Parser must honor q-values (RFC 4647). e.g. Accept-Language: fr;q=0.9,ru;q=0.8 selects ru."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #54 requires q-value (RFC 4647) locale negotiation via Accept-Language.
+
+ANALYSIS
+--------
+The production code (apps/backend/internal/platform/i18n/locale.go) already
+implements full q-value parsing via fromAcceptLanguage(). No production code
+changes were needed. The feature required comprehensive test coverage.
+
+CHANGES
+-------
+
+1. apps/backend/internal/platform/i18n/locale_test.go (NEW)
+   23 unit tests for NegotiateLocale and parseQuality:
+   - TestNegotiateLocale_QValueFrRuEn: fr;q=0.9,ru;q=0.8,en;q=0.5 selects ru
+   - TestNegotiateLocale_RegionStrippingRuRU: ru-RU reduced to ru
+   - TestNegotiateLocale_RegionStrippingEnUS: en-US,en;q=0.9 selects en
+   - TestNegotiateLocale_ZhUnsupportedFallsToDefault: zh-CN falls back to en
+   - TestNegotiateLocale_ExplicitQ0Excluded: ru;q=0,en;q=0.5 selects en
+   - TestNegotiateLocale_OrderDoesNotMatterOnlyQValue: list order irrelevant
+   - TestNegotiateLocale_WhitespaceHandled: whitespace trimmed correctly
+   - TestNegotiateLocale_ThreeDecimalQValue: 0.456 beats 0.123
+   - TestParseQuality_*: integer 0/1, decimal 0.9, invalid inputs
+   All 23 tests: PASS (0.003s)
+
+2. apps/backend/internal/platform/httpserver/locale_qvalue_test.go (NEW)
+   15+ HTTP-level tests via GET /v1/info covering all 6 feature steps:
+   - Steps 1+2: fr;q=0.9,ru;q=0.8,en;q=0.5 yields active_locale=ru
+   - Step 3: en-US,en;q=0.9 yields en (region strip)
+   - Step 4: ru-RU yields ru (region strip)
+   - Step 5: zh-CN yields en (unsupported, fallback to default)
+   - Step 6: direct unit tests in i18n package (file above)
+   - TestLocaleQValue_FullVerification: all steps in one table-driven test
+   All tests: PASS (0.014s)
+
+VERIFICATION
+------------
+  - docker build --target build: SUCCESS (all 4 binaries compile)
+  - 23/23 i18n unit tests: PASS (0.003s)
+  - 15+ httpserver locale q-value tests: PASS (0.014s)
+  - No regressions in either package
+  - git commit: 83d2f38
+
+PROGRESS METRIC
+---------------
+Stats at session start: 67/108 passing, 2 in_progress.
+This session: feature #54 completed and marked passing -> 68/108 passing.
+
+================================================================================
