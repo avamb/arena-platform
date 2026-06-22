@@ -6806,3 +6806,48 @@ Stats at session start: 71/108 passing, 1 in_progress.
 This session: feature #57 completed and marked passing -> 72/108 passing.
 
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #58 (POST /v1/echo with non-string message returns 400)
+"Type validation: message must be string. Number, array, object, or boolean
+rejected with code='validation.field_type'."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #58: When the 'message' field in POST /v1/echo is a non-string JSON type
+(number, boolean, array, or object), return 400 with code='validation.field_type'
+and details containing field='message', expected='string', actual=<json-type>.
+
+ANALYSIS
+--------
+The existing echo.go caught *json.UnmarshalTypeError but mapped ALL such errors
+to 'http.invalid_shape'. For field-level type errors, json.Unmarshal sets:
+  - typeErr.Field = "message" (the JSON tag name)
+  - typeErr.Value = "number" / "bool" / "array" / "object"
+The fix checks typeErr.Field == "message" first and returns the correct code.
+
+CHANGES
+-------
+1. apps/backend/internal/platform/httpserver/echo.go (MODIFIED)
+   Added check for typeErr.Field == "message" before existing http.invalid_shape.
+   Returns 400 validation.field_type with errorEnvelopeWithDetails:
+     {field: "message", expected: "string", actual: typeErr.Value}
+
+2. apps/backend/internal/platform/httpserver/echo_type_validation_test.go (NEW)
+   20 tests covering all 5 feature steps - all PASS (0.026s).
+
+VERIFICATION
+------------
+  - docker build --target build: SUCCESS
+  - 20/20 TestTypeValidation_* tests: PASS
+  - git commit: ab84a3d
+
+PROGRESS METRIC
+---------------
+Stats at session start: 72/108 passing.
+This session: feature #58 completed and marked passing -> 73/108 passing.
+
+================================================================================
