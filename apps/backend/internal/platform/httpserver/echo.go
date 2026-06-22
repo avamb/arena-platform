@@ -17,6 +17,7 @@ package httpserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -96,15 +97,36 @@ func (s *Server) handleEcho(w http.ResponseWriter, r *http.Request) {
 			fmt.Sprintf("request body exceeds %d bytes", MaxEchoMessageBytes), r))
 		return
 	}
+	// Empty body: reject with a dedicated code before attempting JSON decode.
+	if len(body) == 0 {
+		writeJSON(w, http.StatusBadRequest, errorEnvelope("http.empty_body", "request body is required and must be a JSON object", r))
+		return
+	}
+
 	var req echoRequest
-	if len(body) > 0 {
-		if err := json.Unmarshal(body, &req); err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope("invalid_json", "request body is not valid JSON: "+err.Error(), r))
+	if err := json.Unmarshal(body, &req); err != nil {
+		// Type mismatch: valid JSON but wrong top-level type (e.g. array, string).
+		var typeErr *json.UnmarshalTypeError
+		if errors.As(err, &typeErr) {
+			writeJSON(w, http.StatusBadRequest, errorEnvelope("http.invalid_shape",
+				fmt.Sprintf("expected JSON object but received %s", typeErr.Value), r))
 			return
 		}
+		// Syntax error: include byte offset for diagnostics but never echo the body.
+		msg := "request body is not valid JSON"
+		var syntaxErr *json.SyntaxError
+		if errors.As(err, &syntaxErr) {
+			msg = fmt.Sprintf("request body is not valid JSON: parse error near byte offset %d", syntaxErr.Offset)
+		} else {
+			// Other decode errors (e.g. invalid UTF-8) carry enough context in
+			// err.Error() without exposing raw body content.
+			msg = "request body is not valid JSON: " + err.Error()
+		}
+		writeJSON(w, http.StatusBadRequest, errorEnvelope("http.invalid_json", msg, r))
+		return
 	}
 	if strings.TrimSpace(req.Message) == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("missing_field", "field 'message' is required and must be non-empty", r))
+		writeJSON(w, http.StatusBadRequest, errorEnvelope("http.missing_field", "field 'message' is required and must be non-empty", r))
 		return
 	}
 

@@ -172,6 +172,17 @@ func run() error {
 			"echo endpoint will rollback after audit write. DO NOT use in production.")
 	}
 
+	// DEBUG_ROUTES_ENABLED mounts the /v1/debug/* routes (e.g. /v1/debug/panic)
+	// which exist for integration tests and developer tooling. These routes
+	// MUST NOT be enabled in production. Like FAULT_INJECT_*, we read this
+	// directly from the environment (not via validated Config) so its absence
+	// in production is enforced by human process and code review.
+	debugRoutesEnabled := os.Getenv("DEBUG_ROUTES_ENABLED") == "true"
+	if debugRoutesEnabled {
+		logger.Warn("DEBUG ROUTES ACTIVE: DEBUG_ROUTES_ENABLED=true — " +
+			"/v1/debug/* routes are mounted. DO NOT use in production.")
+	}
+
 	srv := httpserver.New(httpserver.Options{
 		Config:                      cfg,
 		Logger:                      logger,
@@ -182,6 +193,7 @@ func run() error {
 		Metrics:                     metrics,           // wires the Prometheus HTTP latency/count middleware
 		MetricsHandler:              metrics.Handler(), // mounts the /metrics scrape endpoint
 		FaultInjectOutboxAfterAudit: faultInjectOutbox,
+		DebugRoutesEnabled:          debugRoutesEnabled,
 	})
 
 	listenErrCh := make(chan error, 1)

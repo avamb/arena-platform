@@ -78,8 +78,11 @@ package http
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -127,9 +130,19 @@ type Deps struct {
 	BodyLimitBytes int64
 
 	// Metrics is the shared *observability.Metrics that backs the
-	// prometheusMiddleware HTTP histogram + counter. Nil disables the
-	// middleware (useful in tests that don't want metric noise).
+	// prometheusMiddleware HTTP histogram + counter and the panic counter.
+	// Nil disables both the prometheusMiddleware and the panic counter
+	// (useful in tests that don't want metric noise).
 	Metrics *observability.Metrics
+
+	// AppEnv is the deployment profile string (e.g. "development",
+	// "production"). The panic recoverer uses this to decide whether to
+	// include the goroutine stack trace in the error response body:
+	//   - "development"         → stack included (developer convenience)
+	//   - "production"|"staging" → stack excluded (no information leak)
+	// Defaults to "development" when empty so tests are not accidentally
+	// treated as production.
+	AppEnv string
 
 	// Propagator overrides the W3C trace context propagator. Defaults to
 	// otel.GetTextMapPropagator() so the package picks up whatever the
@@ -157,7 +170,13 @@ func NewRouter(deps Deps) chi.Router {
 
 	// 1. Recoverer — outermost so a panic anywhere downstream becomes a
 	//    500 with a structured log line rather than a process crash.
-	r.Use(chimw.Recoverer)
+	//    We use our own panicRecoverer instead of chimw.Recoverer so we can
+	//    log the panic at ERROR level via slog, increment the Prometheus
+	//    http_panics_total counter, and return the project-standard JSON
+	//    error envelope.  In development mode the stack trace is also
+	//    included in the response body for developer convenience; in
+	//    production / staging it is omitted to prevent information leaks.
+	r.Use(panicRecoverer(deps.Logger, deps.Metrics, deps.AppEnv))
 	// 2. RealIP — must run before any middleware that reads r.RemoteAddr.
 	r.Use(chimw.RealIP)
 	// 3. RequestID — populates chimw.GetReqID(ctx).
@@ -202,6 +221,11 @@ func (d Deps) withDefaults() Deps {
 	}
 	if out.Tracer == nil {
 		out.Tracer = otel.Tracer(TracerName)
+	}
+	if out.AppEnv == "" {
+		// Default to development so tests get stack traces in panic responses
+		// and so we never accidentally treat an unset env as production-safe.
+		out.AppEnv = "development"
 	}
 	return out
 }
@@ -383,6 +407,100 @@ func JSONBodyLimit(maxBytes int64) func(http.Handler) http.Handler {
 					r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 				}
 			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Panic recovery middleware
+// -----------------------------------------------------------------------------
+
+// panicRecoverer returns a middleware that catches any panic from a downstream
+// handler and converts it into an HTTP 500 response with the project-standard
+// JSON error envelope.
+//
+// Behaviour:
+//   - Captures the full goroutine stack via runtime/debug.Stack().
+//   - Logs an ERROR record via slog carrying the panic value ("panic" field)
+//     and the raw stack string ("stack" field) plus request_id and trace_id
+//     read from the response headers set by the upstream requestContext and
+//     tracerMiddleware.
+//   - Increments the arena_http_panics_total Prometheus counter when m is
+//     non-nil.
+//   - Returns HTTP 500 with {"error":{"code":"internal.unexpected",...}}.
+//   - In "development" mode the response also contains a "stack" field so
+//     engineers can see the backtrace directly in the HTTP client without
+//     tailing server logs.  In "production" / "staging" the stack is omitted
+//     to prevent leaking internal source paths and variable values to clients.
+//
+// panicRecoverer must be the OUTERMOST middleware (position 1) so it covers
+// panics in every downstream middleware and handler.  It supersedes
+// chimw.Recoverer.
+func panicRecoverer(base *slog.Logger, m *observability.Metrics, appEnv string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			defer func() {
+				rvr := recover()
+				if rvr == nil {
+					return // no panic; nothing to do
+				}
+
+				// Capture the stack trace immediately — runtime.Stack fills
+				// a buffer with the goroutine backtraces; debug.Stack is a
+				// convenience wrapper that allocates one for us.
+				stack := string(debug.Stack())
+
+				// Read request identifiers from response headers. The inner
+				// requestContext middleware (position 4) and tracerMiddleware
+				// (position 7) both set these on the original http.ResponseWriter
+				// before calling next, so they are visible to the outer defer
+				// even though the enriched request values passed downstream are
+				// local to each middleware closure.
+				requestID := w.Header().Get(HeaderRequestID)
+				traceID := w.Header().Get(HeaderTraceID)
+
+				// Log the panic at ERROR level so alerting rules can page on
+				// rising error_count where msg="http panic recovered".
+				logger := base
+				if logger == nil {
+					logger = slog.Default()
+				}
+				logger.Error("http panic recovered",
+					"panic", fmt.Sprintf("%v", rvr),
+					"stack", stack,
+					"method", r.Method,
+					"path", r.URL.Path,
+					"request_id", requestID,
+					"trace_id", traceID,
+				)
+
+				// Increment the Prometheus panic counter so dashboards and
+				// alerts can fire on any non-zero panic rate.
+				if m != nil {
+					m.HTTPPanicsTotal.Inc()
+				}
+
+				// Build the error response body.
+				errFields := map[string]any{
+					"code":       "internal.unexpected",
+					"message":    "an unexpected error occurred",
+					"request_id": requestID,
+					"trace_id":   traceID,
+				}
+				// In development mode include the stack trace in the response
+				// so engineers can debug without tailing server logs. In all
+				// other environments (staging, production) omit the stack to
+				// avoid leaking internal paths and values to clients.
+				if appEnv == "development" {
+					errFields["stack"] = stack
+				}
+
+				w.Header().Set("Content-Type", "application/json; charset=utf-8")
+				w.WriteHeader(http.StatusInternalServerError)
+				_ = json.NewEncoder(w).Encode(map[string]any{"error": errFields})
+			}()
+
 			next.ServeHTTP(w, r)
 		})
 	}

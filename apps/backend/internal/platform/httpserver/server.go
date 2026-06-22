@@ -117,6 +117,13 @@ type Server struct {
 	// long-running requests for graceful-shutdown testing. Defaults to 5s when
 	// zero. Only meaningful in development/test environments.
 	slowDelay time.Duration
+
+	// debugRoutesEnabled controls whether the /v1/debug/* routes are mounted.
+	// These routes exist solely to facilitate integration tests and developer
+	// tooling. In particular, GET /v1/debug/panic intentionally panics to
+	// exercise the Recoverer middleware. They MUST NOT be enabled in production.
+	// Corresponds to env var DEBUG_ROUTES_ENABLED=true.
+	debugRoutesEnabled bool
 }
 
 // Options bundles the dependencies that New requires. Using a struct rather
@@ -172,6 +179,13 @@ type Options struct {
 	// Defaults to 5s when zero. Set to a small value in tests so graceful-
 	// shutdown assertions complete quickly. Only meaningful in development/test.
 	SlowDelay time.Duration
+
+	// DebugRoutesEnabled mounts the /v1/debug/* routes when true. These routes
+	// exist for integration tests and developer tooling. In particular,
+	// GET /v1/debug/panic intentionally panics to exercise the Recoverer
+	// middleware. MUST NOT be enabled in production.
+	// Corresponds to env var DEBUG_ROUTES_ENABLED=true.
+	DebugRoutesEnabled bool
 }
 
 // New constructs (but does not start) the HTTP server.
@@ -182,7 +196,7 @@ func New(opts Options) *Server {
 	}
 
 	// Build the chi router via the adapter so the canonical middleware
-	// chain (Recoverer → RealIP → RequestID → requestContext → logger →
+	// chain (panicRecoverer → RealIP → RequestID → requestContext → logger →
 	// prometheus → tracer → Timeout → bodyLimit) is applied uniformly
 	// across every arena_new HTTP listener. The Server is responsible only
 	// for the lifecycle (http.Server, listen, graceful shutdown) and for
@@ -192,6 +206,7 @@ func New(opts Options) *Server {
 		RequestTimeout: opts.Config.RequestTimeout,
 		BodyLimitBytes: opts.Config.BodyLimitBytes,
 		Metrics:        opts.Metrics,
+		AppEnv:         string(opts.Config.AppEnv),
 	})
 
 	// Lazily construct PG-backed audit + idempotency stores when the caller
@@ -228,6 +243,7 @@ func New(opts Options) *Server {
 
 		faultInjectOutboxAfterAudit: opts.FaultInjectOutboxAfterAudit,
 		slowDelay:                   opts.SlowDelay,
+		debugRoutesEnabled:          opts.DebugRoutesEnabled,
 	}
 
 	s.mountOperationalRoutes()
@@ -298,6 +314,15 @@ func (s *Server) mountV1Routes() {
 	s.router.Route("/v1", func(r chi.Router) {
 		// Anonymous (or authenticated) routes
 		r.Get("/info", s.handleInfo)
+
+		// Debug routes — only mounted when DEBUG_ROUTES_ENABLED=true. These
+		// routes exist solely for integration tests and developer tooling; they
+		// MUST NOT be enabled in production. The panic endpoint intentionally
+		// triggers a panic to exercise the Recoverer middleware.
+		if s.debugRoutesEnabled {
+			r.Get("/debug/panic", s.handleDebugPanic)
+		}
+
 		// /v1/info-slow is a synthetic endpoint used to test graceful shutdown.
 		// It sleeps for slowDelay (default 5s) before responding so integration
 		// tests can verify that in-flight requests complete when SIGTERM is sent.

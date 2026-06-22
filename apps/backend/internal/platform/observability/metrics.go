@@ -83,6 +83,12 @@ type Metrics struct {
 
 	// OutboxBacklog reports the number of unpublished outbox events.
 	OutboxBacklog prometheus.Gauge
+
+	// HTTPPanicsTotal counts HTTP handler panics caught by the Recoverer
+	// middleware. Incremented once per panic regardless of the error type.
+	// A rising value indicates a programming error in a handler; the metric
+	// can be used to page on-call when it exceeds zero over a rolling window.
+	HTTPPanicsTotal prometheus.Counter
 }
 
 // New constructs a *Metrics, registers every baseline collector on the
@@ -156,6 +162,15 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 				Help:      "Number of outbox events awaiting publication.",
 			},
 		),
+
+		HTTPPanicsTotal: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: MetricsNamespace,
+				Subsystem: subsystemHTTP,
+				Name:      "panics_total",
+				Help:      "Total HTTP handler panics caught by the Recoverer middleware.",
+			},
+		),
 	}
 
 	for _, c := range []prometheus.Collector{
@@ -164,6 +179,7 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 		m.DBPoolConnections,
 		m.WorkerJobsLagSeconds,
 		m.OutboxBacklog,
+		m.HTTPPanicsTotal,
 	} {
 		if err := reg.Register(c); err != nil {
 			// If a peer test already registered the same metric on the
