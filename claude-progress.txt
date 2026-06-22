@@ -7604,3 +7604,73 @@ Stats at session start: 81/108 passing, 1 in_progress.
 This session: feature #67 completed and marked passing -> 82/108 passing.
 
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #68 (All error responses documented in OpenAPI)
+"Every endpoint documents its possible error responses (400, 401, 403, 404, 409,
+413, 415, 422, 429, 500, 503 as applicable) referencing the ErrorEnvelope component."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #68: Verified that all endpoints in openapi.yaml document the correct
+error responses referencing the ErrorEnvelope component.
+
+Steps verified:
+  Step 1: Parse openapi.yaml → root node found, 8 paths parsed
+  Step 2: POST /v1/echo has 200, 400, 401, 409, 413, 415, 500, 503 — all ✓
+  Step 3: GET /v1/info has 200, 500 — both ✓
+  Step 4: All error responses use $ref: "#/components/schemas/ErrorEnvelope"
+          (operational endpoints /healthz, /readyz, /metrics excluded as they
+           use domain-specific schemas like ReadyzResponse for their 503)
+  Step 5: Every documented status code corresponds to an actual handler code
+          (verified via echoCodeSources map + echo.go source scan)
+
+ANALYSIS
+--------
+The openapi.yaml already had all required error responses correctly documented:
+- POST /v1/echo: 200, 400, 401, 409, 413, 415, 500, 503 — all present
+- GET /v1/info: 200, 500 — both present
+- All error responses (400+) reference $ref: "#/components/schemas/ErrorEnvelope"
+
+Key parser fix: YAML keys with quotes like `"200":` needed quote-stripping in
+the key parser (not just the value parser). Added `strings.Trim(key, '"\'')`.
+
+KEY DESIGN NOTE (operational endpoints)
+---------------------------------------
+GET /readyz 503 correctly uses ReadyzResponse (not ErrorEnvelope) because its
+503 is a structured readiness check result, not an error. The test excludes
+/healthz, /readyz, /metrics from the ErrorEnvelope $ref requirement.
+
+CHANGES
+-------
+1. apps/backend/internal/platform/httpserver/openapi_error_responses_test.go (NEW)
+   20 tests covering all 5 feature steps:
+
+   Step 1 (parse): TestErrorResponses_ParseOpenAPI
+   Step 2 (echo codes): TestErrorResponses_EchoHasAllRequiredCodes
+                        TestErrorResponses_Echo200/400/401/409/413/415/500/503
+   Step 3 (info codes): TestErrorResponses_InfoHasAllRequiredCodes
+                        TestErrorResponses_Info200/500
+   Step 4 (ErrorEnvelope): TestErrorResponses_AllErrorsUseErrorEnvelopeRef
+                            TestErrorResponses_Echo400UsesErrorEnvelope
+                            TestErrorResponses_Info500UsesErrorEnvelope
+   Step 5 (handler match): TestErrorResponses_EchoCodesMatchHandler
+                            TestErrorResponses_InfoCodesMatchHandler
+   Full sweep: TestErrorResponses_FullVerification
+
+VERIFICATION
+------------
+  - 20/20 TestErrorResponses_* tests: PASS (0.185s)
+  - Pre-existing TestOpenAPI_* failures unrelated (runtime.Caller/-trimpath issue)
+  - go vet: EXIT 0
+  - git commit: 70da1b9
+
+PROGRESS METRIC
+---------------
+Stats at session start: 82/108 passing, 1 in_progress.
+This session: feature #68 completed and marked passing -> 83/108 passing.
+
+================================================================================
