@@ -84,6 +84,59 @@ Useful URLs once `init.sh` reports readiness:
 
 ---
 
+## Code generation
+
+The backend uses two code-generation tools.  Both must be re-run and the output
+committed whenever the corresponding source files change.
+
+### OpenAPI → Go server types + TypeScript client
+
+```bash
+make gen-openapi      # regenerate apps/backend/internal/adapters/http/openapi/
+make gen-ts-client    # regenerate apps/backend/openapi/clients/ts/index.d.ts
+```
+
+Source: `apps/backend/openapi/openapi.yaml`
+Config: `apps/backend/openapi/oapi-codegen.yaml`
+
+### sqlc → typed SQL query wrappers
+
+```bash
+make sqlc-generate
+```
+
+This command runs `sqlc generate` inside `apps/backend/` using the config at
+`apps/backend/sqlc.yaml`.
+
+| Path | Role |
+|------|------|
+| `apps/backend/sqlc.yaml` | sqlc configuration (engine, package, output path, overrides) |
+| `apps/backend/internal/adapters/postgres/queries/` | Hand-written `.sql` source files with `-- name: QueryName :one/:many/:exec` annotations |
+| `apps/backend/internal/adapters/postgres/gen/` | Generated Go package — **do not edit by hand**; commit the output alongside the SQL source |
+
+**Prerequisites:** sqlc v2 must be on your `PATH`.
+
+```bash
+# Install via Go toolchain
+go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+
+# Or download a pre-built binary
+# https://docs.sqlc.dev/en/stable/overview/install.html
+```
+
+**Example query** (`internal/adapters/postgres/queries/system.sql`):
+
+```sql
+-- name: SelectUUIDv7 :one
+SELECT uuidv7() AS id;
+```
+
+After running `make sqlc-generate`, the generated `*Queries.SelectUUIDv7(ctx)`
+method returns a `uuid.UUID` and serves as proof that the sqlc pipeline is
+correctly wired.
+
+---
+
 ## Technology stack (target end-of-milestone)
 
 | Concern           | Choice                                                                |
@@ -149,6 +202,20 @@ curl -s http://localhost:8080/v1/echo \
   -H "Idempotency-Key: test-1" \
   -d '{"message":"hello"}'
 ```
+
+#### POST /v1/echo — strict schema policy
+
+`POST /v1/echo` enforces a **strict schema** on the request body: any field not
+defined in `EchoRequest` (i.e. anything other than `"message"`) causes an
+immediate `HTTP 400` with `code='validation.unknown_field'` and
+`error.details.field` set to the offending field name. The field's **value is
+never echoed** in the error to prevent information leakage.
+
+This catches common typos (`"messsage"` instead of `"message"`) and prevents
+clients from silently passing private data in unknown fields that the server
+would otherwise ignore. The policy is enforced at the handler layer after JSON
+decode, documented in `openapi/openapi.yaml` via `additionalProperties: false`
+on the `EchoRequest` schema.
 
 ---
 
