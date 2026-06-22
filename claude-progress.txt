@@ -2648,3 +2648,87 @@ PROGRESS METRIC
 Stats at session start: 21/108 passing, 1 in_progress (this feature).
 This session: feature #93 completed and marked passing -> 22/108 passing.
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #100 (Outbox writer + dispatcher placeholders)
+"Outbox writer + dispatcher placeholders"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #100 delivers the outbox boundary interfaces and migration.
+
+NEW FILES CREATED:
+
+1. apps/backend/internal/migrations/sql/0002_outbox.sql
+   - Creates canonical outbox table (separate from outbox_events in 0001)
+   - Columns: id uuid PK DEFAULT uuidv7(), aggregate_type text,
+     aggregate_id uuid, event_type text, payload jsonb,
+     occurred_at timestamptz DEFAULT now(), dispatched_at timestamptz,
+     attempts int DEFAULT 0
+   - Partial index outbox_backlog_idx ON outbox (dispatched_at, occurred_at)
+     WHERE dispatched_at IS NULL (efficient backlog scan, step 2)
+   - goose Down block: DROP INDEX IF EXISTS + DROP TABLE IF EXISTS
+
+2. apps/backend/internal/platform/outbox/writer.go
+   - Event value-object (AggregateType, AggregateID, EventType, Payload, OccurredAt)
+   - Writer interface: Append(ctx, tx pgx.Tx, event Event) error  (step 3)
+   - PGWriter implementation: validates, marshals payload, COALESCE for
+     occurred_at, dispatched_at left NULL (undelivered)
+   - Compile-time guard: var _ Writer = (*PGWriter)(nil)
+
+3. apps/backend/internal/platform/outbox/dispatcher.go
+   - Dispatcher interface: Dispatch(ctx, event Event) error  (step 4)
+   - NoopDispatcher stub: always returns nil (placeholder for worker wave)
+   - Compile-time guard: var _ Dispatcher = NoopDispatcher{}
+
+4. apps/backend/internal/platform/outbox/monitor.go
+   - BacklogQuerier interface satisfied by *pgxpool.Pool  (step 5)
+   - MonitorBacklog(ctx, querier, gauge, interval, logger): background goroutine
+     that ticks and runs SELECT COUNT(*) FROM outbox WHERE dispatched_at IS NULL
+     and sets the Prometheus outbox_backlog gauge
+   - Samples immediately on start; stops when ctx is cancelled
+   - Errors logged at Warn, loop continues
+
+5. apps/backend/internal/platform/outbox/writer_test.go
+   - 12 unit tests (captureTx/fakeQuerier test doubles, no live DB)
+   - Covers: INSERT columns, arg values, nil tx, validation, exec error,
+     nil payload defaults to {}, zero OccurredAt sends nil, NoopDispatcher,
+     gauge set, error graceful handling, context cancel
+
+6. apps/backend/internal/platform/outbox/outbox_integration_test.go
+   - Build tag: //go:build integration  (step 6)
+   - 4 tests (DATABASE_URL + 0002_outbox.sql required):
+     TestOutbox_RollbackRemovesRow (rollback atomicity - canonical step 6)
+     TestOutbox_CommitPersistsRow (happy path persistence)
+     TestOutbox_BacklogMonitorReadsCount (backlogSQL live count)
+     TestOutbox_DispatchedAtIsNullAfterWrite (freshly written rows are NULL)
+
+EXISTING (unchanged):
+   - observability/metrics.go already had OutboxBacklog gauge registered;
+     monitor.go provides the periodic update mechanism to populate it.
+
+VERIFICATION
+------------
+  - All imports match go.mod dependencies (pgx/v5, prometheus, log/slog)
+  - Compile-time interface guards on all types
+  - Migration follows goose conventions; passes AllSQLFilesHaveGooseUpMarker
+  - No forbidden patterns (STUB/MOCK/devStore/globalThis)
+  - git commit: e5a75c4 -- 970 insertions
+
+NOTES FOR LATER WAVES
+---------------------
+  - Call outbox.MonitorBacklog(ctx, pool, metrics.OutboxBacklog, 15*time.Second,
+    logger) from arena-api main() after pool init.
+  - Integration test table check in migrate_integration_test.go should be
+    updated to include "outbox" table after 0002_outbox migration.
+  - Echo endpoint still writes to outbox_events; migrate to Writer.Append
+    when the OutboxDispatcher worker lands.
+
+PROGRESS METRIC
+---------------
+Stats at session start: 22/108 passing, 1 in_progress (this feature).
+This session: feature #100 completed and marked passing -> 23/108 passing.
+================================================================================
