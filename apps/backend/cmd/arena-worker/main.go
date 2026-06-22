@@ -34,9 +34,11 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/database"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/idempotency"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func main() {
@@ -132,8 +134,22 @@ func run() error {
 	// The platform foundation milestone ships two handlers:
 	//   noop.test         — used by the worker_jobs persistence test (#20)
 	//   placeholder.log   — demonstrates ShouldRunPlaceholderJob (step 3)
+	//   idempotency.cleanup — purges expired idempotency_keys (feature #48)
 	registry := worker.NewRegistry()
-	registerBuiltinHandlers(registry, logger)
+	registerBuiltinHandlers(registry, pool.Pool, metrics, logger)
+
+	// 7b. Idempotency cleanup startup scheduling (feature #48) ---------------
+	// Enqueue an idempotency.cleanup job immediately if none is already
+	// pending in the queue. The handler self-schedules the next run after
+	// each completion, providing cron-like periodic execution.
+	if err := idempotency.ScheduleInitialCleanupJob(rootCtx, pool.Pool); err != nil {
+		// Non-fatal: the cleanup job is a maintenance task. Log the failure
+		// and continue — data correctness is not compromised if the first
+		// cleanup run is delayed.
+		logger.Warn("could not schedule initial idempotency cleanup job", "error", err.Error())
+	} else {
+		logger.Info("idempotency cleanup job scheduled at startup")
+	}
 
 	// 8. Worker loop ----------------------------------------------------------
 	w, err := worker.New(worker.Options{
@@ -200,7 +216,7 @@ func run() error {
 
 // registerBuiltinHandlers attaches every job type the foundation
 // milestone ships with.
-func registerBuiltinHandlers(reg *worker.Registry, logger *slog.Logger) {
+func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, metrics *observability.Metrics, logger *slog.Logger) {
 	// noop.test exists for feature #20 (worker job persistence) and for
 	// any future smoke test that wants to prove the queue plumbing
 	// without exercising business code. It always succeeds.
@@ -215,6 +231,15 @@ func registerBuiltinHandlers(reg *worker.Registry, logger *slog.Logger) {
 	if worker.ShouldRunPlaceholderJob() {
 		reg.Register("placeholder.log", worker.PlaceholderJobHandler(logger))
 	}
+
+	// idempotency.cleanup purges expired idempotency_keys rows and
+	// self-schedules the next run (cron-like, default interval 1 hour).
+	// Feature #48.
+	reg.Register(idempotency.CleanupJobType, idempotency.NewCleanupHandler(idempotency.CleanupOptions{
+		Cleaner:        idempotency.NewPGCleaner(pool),
+		DeletedCounter: metrics.IdempotencyCleanupDeletedTotal,
+		Scheduler:      idempotency.NewPGCleanupScheduler(pool),
+	}))
 }
 
 // coalesce returns the first non-empty argument.

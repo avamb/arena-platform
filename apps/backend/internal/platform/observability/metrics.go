@@ -96,6 +96,13 @@ type Metrics struct {
 	// of the response status stored. Useful for alerting on replay storms and
 	// for verifying that idempotency deduplication is working in production.
 	IdempotencyReplaysTotal prometheus.Counter
+
+	// IdempotencyCleanupDeletedTotal counts idempotency_keys rows deleted by
+	// the scheduled maintenance job (job_type='idempotency.cleanup'). Each
+	// cleanup run adds the number of rows purged. A rising value confirms the
+	// maintenance job is running; a plateau may indicate the TTL is too long
+	// relative to request volume.
+	IdempotencyCleanupDeletedTotal prometheus.Counter
 }
 
 // New constructs a *Metrics, registers every baseline collector on the
@@ -187,6 +194,15 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 				Help:      "Total idempotency-key hits that replayed a stored response without re-executing the handler.",
 			},
 		),
+
+		IdempotencyCleanupDeletedTotal: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: MetricsNamespace,
+				Subsystem: "idempotency",
+				Name:      "cleanup_deleted_total",
+				Help:      "Total idempotency_keys rows purged by the scheduled idempotency.cleanup maintenance job.",
+			},
+		),
 	}
 
 	for _, c := range []prometheus.Collector{
@@ -197,6 +213,7 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 		m.OutboxBacklog,
 		m.HTTPPanicsTotal,
 		m.IdempotencyReplaysTotal,
+		m.IdempotencyCleanupDeletedTotal,
 	} {
 		if err := reg.Register(c); err != nil {
 			// If a peer test already registered the same metric on the
