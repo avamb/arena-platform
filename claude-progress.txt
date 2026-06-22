@@ -3130,3 +3130,98 @@ PROGRESS METRIC
 Stats at session start: 26/108 passing, 1 in_progress (this feature).
 This session: feature #14 completed and marked passing -> 27/108 passing.
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #51 (Default locale is en when no Accept-Language)
+"Default locale is en when no Accept-Language provided"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #51 requires that when no Accept-Language header and no ?lang param are
+provided, the active locale resolves to 'en' (English), and all localized error
+messages use English strings by default.
+
+NEW FILES CREATED:
+
+1. apps/backend/internal/platform/i18n/locale.go
+   - Package i18n with full locale negotiation logic
+   - NegotiateLocale(acceptLang, lang, preferred, defaultLocale, supported) string
+     Priority chain: Accept-Language -> ?lang= -> user preferred -> default -> "en"
+   - Exports: SupportedLocales var (["en","ru"]), DefaultLocale const ("en"),
+     NegotiateLocale func, FromRequest convenience wrapper
+   - fromAcceptLanguage: RFC 7231 parser with quality factor support and
+     BCP-47 primary subtag reduction ("en-US" -> "en", "ru-RU" -> "ru")
+   - canonicalize, inSupported, parseQuality helpers
+   - Graceful fallbacks at every level; result is always non-empty string
+   - Only import: stdlib "strings"
+
+2. apps/backend/internal/platform/httpserver/locale_default_test.go
+   - Package httpserver (in-package), 8 test functions
+   - Reuses buildV1TestServer from v1_routes_test.go (same package)
+   - Reuses in-memory test doubles from echo_audit_test.go
+
+   Tests covering all 4 feature steps:
+     TestLocaleDefault_InfoNoHeaderActiveLocaleIsEn (step 1+2)
+       GET /v1/info with no Accept-Language -> active_locale = "en"
+     TestLocaleDefault_InfoActiveLocaleFieldPresent (step 2)
+       Verifies active_locale key is present in response body
+     TestLocaleDefault_InfoEmptyAcceptLanguageDefaultsToEn (step 2)
+       Explicit empty Accept-Language header also resolves to "en"
+     TestLocaleDefault_404ErrorMessageIsEnglishByDefault (step 3)
+       GET /v1/nonexistent -> 404 message has no Cyrillic characters
+     TestLocaleDefault_EchoNoAuthNoLocale401IsEnglish (step 4)
+       POST /v1/echo with no auth, no Accept-Language -> 401 in English
+     TestLocaleDefault_EchoNoAuthNoLocale401HasCode (step 4)
+       401 error code has auth. prefix
+     TestLocaleDefault_EchoNoAuthNoLocale401HasWWWAuthenticate (step 4)
+       WWW-Authenticate: Bearer header present on 401
+     TestLocaleDefault_InfoRuAcceptLanguageResolvesRu (sanity)
+       Accept-Language: ru -> active_locale = "ru" (proves "en" is fallback)
+
+MODIFIED FILES:
+
+3. apps/backend/internal/platform/httpserver/info.go
+   - Added import: platform/i18n
+   - Added ActiveLocale field to infoResponse struct (json:"active_locale")
+   - Added i18n.NegotiateLocale() call in handleInfo to resolve locale from
+     Accept-Language header and ?lang= query param
+   - When cfg.ActiveLocales is nil, i18n package defaults to ["en","ru"]
+   - When cfg.DefaultLocale is "", i18n package defaults to "en"
+
+4. apps/backend/openapi/openapi.yaml
+   - Added active_locale to InfoResponse.required array
+   - Added active_locale property with description and example
+
+EXISTING BEHAVIOR (already correct, no changes needed):
+   - auth.negotiateLocale() in auth.go already defaulted to "en" when
+     Accept-Language was absent -> 401 messages already English by default
+   - handleNotFound uses hardcoded English message -> 404 always English
+
+VERIFICATION
+------------
+  - locale.go: only stdlib import (strings), zero external deps
+  - info.go: i18n import path matches go.mod module name correctly
+  - NegotiateLocale handles nil supported/empty defaultLocale gracefully
+    (buildV1TestServer sets cfg.ActiveLocales=nil, cfg.DefaultLocale="")
+  - Tests reuse existing test doubles with no new dependencies
+  - No forbidden patterns (STUB/MOCK/devStore/globalThis)
+  - git commit: 64062b3 -- 490 insertions
+
+NOTES FOR LATER WAVES
+---------------------
+  - auth.go still has its own negotiateLocale() -- a future refactor could
+    replace it with i18n.NegotiateLocale() for DRY-ness. Not done here to
+    avoid touching unrelated passing tests.
+  - When the real user identity module lands, pass actor.preferred_locale
+    as the preferred arg to i18n.NegotiateLocale().
+  - When go-i18n/v2 TOML catalogs are wired, i18n package can gain a
+    Localizer wrapper that uses NegotiateLocale for message lookup.
+
+PROGRESS METRIC
+---------------
+Stats at session start: 28/108 passing, 1 in_progress (this feature).
+This session: feature #51 completed and marked passing -> 29/108 passing.
+================================================================================
