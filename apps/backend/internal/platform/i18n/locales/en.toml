@@ -1,0 +1,26 @@
+# en.toml — English message catalog for arena_new.
+#
+# This is the DEFAULT catalog: every message that exists here must be
+# present (or inherit via fallback) in all other locale catalogs.  When a
+# locale catalog is missing a message go-i18n/v2 falls back to this file.
+#
+# Message IDs use a dotted namespace: <domain>.<subcode>.
+# These IDs are stable machine-readable keys — they match the "code" field
+# in error envelopes and are safe to embed in API contracts.
+#
+# Structure is ready for uk and es: add a locale file with the same keys.
+
+["error.unauthorized"]
+other = "Authentication required: provide a valid Bearer token."
+
+["error.forbidden"]
+other = "You do not have permission to access this resource."
+
+["error.not_found"]
+other = "The requested resource does not exist."
+
+["error.validation"]
+other = "The request contains invalid data."
+
+["error.internal"]
+other = "An unexpected error occurred. Please try again later."

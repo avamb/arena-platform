@@ -26,6 +26,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/idempotency"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	"github.com/go-chi/chi/v5"
@@ -201,6 +202,14 @@ type Options struct {
 	// in tests so request-timeout assertions complete quickly. Only meaningful in
 	// development/test environments when DebugRoutesEnabled=true.
 	DebugSlowDelay time.Duration
+
+	// Bundle is the go-i18n/v2 message catalog bundle used by LocaleMiddleware
+	// to localize error messages. When non-nil, LocaleMiddleware is added to
+	// the middleware chain (after requestContext, before route handlers) so that
+	// every request carries a locale-aware Localizer in its context.
+	// When nil, locale negotiation still occurs (for the active_locale response
+	// field in /v1/info) but error messages fall back to hardcoded English strings.
+	Bundle *i18n.Bundle
 }
 
 // New constructs (but does not start) the HTTP server.
@@ -223,6 +232,20 @@ func New(opts Options) *Server {
 		Metrics:        opts.Metrics,
 		AppEnv:         string(opts.Config.AppEnv),
 	})
+
+	// Wire locale middleware when a Bundle is provided. The middleware runs
+	// inside the existing chi router after all cross-cutting middlewares
+	// (request_id, trace_id, logger) so the locale-negotiated Localizer is
+	// available to every handler via i18n.Localize(r.Context(), ...).
+	if opts.Bundle != nil {
+		defaultLocale := ""
+		var supported []string
+		if opts.Config != nil {
+			defaultLocale = opts.Config.DefaultLocale
+			supported = opts.Config.ActiveLocales
+		}
+		r.Use(i18n.LocaleMiddleware(opts.Bundle, defaultLocale, supported))
+	}
 
 	// Lazily construct PG-backed audit + idempotency stores when the caller
 	// didn't supply concrete implementations.
@@ -393,10 +416,12 @@ func (s *Server) mountV1Routes() {
 // handleNotFound is the chi NotFound handler. It replaces chi's built-in
 // plain-text "404 page not found\n" response with the project-standard JSON
 // error envelope (feature #12). The handler is invoked after the full
-// middleware chain, so X-Request-Id and X-Trace-Id are already present in
-// the response headers when errorEnvelope reads them from ctx.
+// middleware chain, so X-Request-Id, X-Trace-Id, and the locale-aware
+// Localizer (when LocaleMiddleware is wired) are already present in ctx.
 func handleNotFound(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusNotFound, errorEnvelope("http.not_found", "the requested resource does not exist", r))
+	msg := i18n.Localize(r.Context(), "error.not_found",
+		"the requested resource does not exist", nil)
+	writeJSON(w, http.StatusNotFound, errorEnvelope("http.not_found", msg, r))
 }
 
 // handleMethodNotAllowed is the chi MethodNotAllowed handler. It replaces
@@ -446,7 +471,9 @@ func handleMethodNotAllowed(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Allow", strings.Join(allowed, ", "))
 		}
 	}
-	writeJSON(w, http.StatusMethodNotAllowed, errorEnvelope("http.method_not_allowed", "method not allowed", r))
+	msg := i18n.Localize(r.Context(), "http.method_not_allowed",
+		"method not allowed", nil)
+	writeJSON(w, http.StatusMethodNotAllowed, errorEnvelope("http.method_not_allowed", msg, r))
 }
 
 // handleHealthz is a liveness probe: returns 200 unconditionally while the
