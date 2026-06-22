@@ -140,13 +140,25 @@ func (s *PGStore) Lookup(ctx context.Context, key, scope string) (StoredResponse
 }
 
 // Save implements Store.Save.
+//
+// Conflict behaviour: if a *live* row (expires_at > now()) already exists for
+// (key, scope), the INSERT is a no-op — the winner's response is preserved.
+// If the existing row is expired (expires_at <= now()), it is REPLACED with the
+// new response so the key becomes reusable (feature #47).
 func (s *PGStore) Save(ctx context.Context, key, scope, actorID string, resp StoredResponse) error {
 	const q = `
 		INSERT INTO idempotency_keys
 		    (key, scope, actor_id, request_hash, response_status, response_body, created_at, expires_at)
 		VALUES
 		    ($1, $2, NULLIF($3,'')::uuid, $4, $5, $6, $7, $8)
-		ON CONFLICT (key, scope) DO NOTHING
+		ON CONFLICT (key, scope) DO UPDATE SET
+		    actor_id        = EXCLUDED.actor_id,
+		    request_hash    = EXCLUDED.request_hash,
+		    response_status = EXCLUDED.response_status,
+		    response_body   = EXCLUDED.response_body,
+		    created_at      = EXCLUDED.created_at,
+		    expires_at      = EXCLUDED.expires_at
+		WHERE idempotency_keys.expires_at <= now()
 	`
 	if resp.Body == nil {
 		resp.Body = []byte("{}")
@@ -477,12 +489,21 @@ func SaveTx(
 		actorID = s.actor
 	}
 
+	// Same conflict strategy as PGStore.Save: replace only expired rows so an
+	// expired key can be reused; live keys remain protected (feature #47).
 	const q = `
 		INSERT INTO idempotency_keys
 		    (key, scope, actor_id, request_hash, response_status, response_body, created_at, expires_at)
 		VALUES
 		    ($1, $2, NULLIF($3,'')::uuid, $4, $5, $6, $7, $8)
-		ON CONFLICT (key, scope) DO NOTHING
+		ON CONFLICT (key, scope) DO UPDATE SET
+		    actor_id        = EXCLUDED.actor_id,
+		    request_hash    = EXCLUDED.request_hash,
+		    response_status = EXCLUDED.response_status,
+		    response_body   = EXCLUDED.response_body,
+		    created_at      = EXCLUDED.created_at,
+		    expires_at      = EXCLUDED.expires_at
+		WHERE idempotency_keys.expires_at <= now()
 	`
 	if _, err := tx.Exec(ctx, q,
 		key, scope, actorID, resp.RequestHash,

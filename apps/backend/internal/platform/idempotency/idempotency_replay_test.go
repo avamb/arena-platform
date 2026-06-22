@@ -75,11 +75,26 @@ func (s *inMemoryStore) Save(_ context.Context, key, scope, actorID string, resp
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	k := s.storeKey(key, scope)
-	if _, exists := s.records[k]; exists {
-		return nil // ON CONFLICT DO NOTHING semantics
+	if existing, exists := s.records[k]; exists && time.Now().Before(existing.resp.ExpiresAt) {
+		return nil // ON CONFLICT: existing live key → DO NOTHING (mirrors PGStore behaviour)
 	}
+	// No existing row, or existing row is expired → insert/replace (feature #47).
 	s.records[k] = storedEntry{resp: resp, key: key, scope: scope, actorID: actorID}
 	return nil
+}
+
+// forceExpire sets the expires_at for key+scope to the past, simulating the
+// DB statement: UPDATE idempotency_keys SET expires_at = now() - interval '1s'
+// This allows tests to verify that an expired key is treated as a MISS and the
+// handler is re-invoked (feature #47).
+func (s *inMemoryStore) forceExpire(key, scope string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	k := s.storeKey(key, scope)
+	if e, ok := s.records[k]; ok {
+		e.resp.ExpiresAt = time.Now().Add(-1 * time.Second)
+		s.records[k] = e
+	}
 }
 
 // reset deletes all stored records — models step 12 (cleanup test row).
