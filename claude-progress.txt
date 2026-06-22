@@ -2874,3 +2874,177 @@ PROGRESS METRIC
 Stats at session start: 24/108 passing, 1 in_progress (this feature).
 This session: feature #11 completed and marked passing -> 25/108 passing.
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #15 (OpenAPI spec lists all routes)
+"OpenAPI spec lists all routes"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #15 delivers the OpenAPI 3.1 specification and the Go-based drift check
+that guards against code/spec divergence.
+
+NEW FILES CREATED:
+
+1. apps/backend/openapi/openapi.yaml
+   - OpenAPI 3.1.0 (openapi: "3.1.0")
+   - info block with title "Arena API", version "0.1.0", contact
+   - servers block for local dev (localhost:8080)
+   - components.securitySchemes: bearerAuth (HTTP Bearer JWT)
+   - components.schemas: ErrorEnvelope, HealthzResponse, ReadyzResponse,
+     InfoResponse, DevTokenRequest, DevTokenResponse, EchoRequest, EchoResponse
+   - paths section (6 routes):
+     GET  /healthz      → operational liveness probe
+     GET  /readyz       → operational readiness probe with checks map
+     GET  /metrics      → Prometheus scrape endpoint
+     GET  /v1/info      → service metadata + DB version check
+     POST /v1/dev/token → dev-only JWT mint
+     POST /v1/echo      → transactional echo with security: bearerAuth
+                          and Idempotency-Key header parameter (required)
+   - All paths documented with operationId, summary, description, tags,
+     request bodies, and full response schemas including error envelopes
+
+2. apps/backend/internal/platform/httpserver/openapi_drift_test.go
+   - In-package tests (package httpserver) with 10 test functions
+   - Uses runtime.Caller(0) to locate openapi.yaml relative to source file
+   - Includes minimal YAML parser (parseOpenAPIPaths) with NO external
+     dependencies: line-by-line scanner, 2-space indent for path items,
+     4-space indent for HTTP method entries
+   - Reuses test doubles from echo_audit_test.go:
+     captureAuditWriter, noopIdemStore, fakePoolDB, fakeTx
+   - buildDriftTestServer: fully-wired server with MetricsHandler + all
+     conditional routes enabled (stub auth, idem, audit, pool, noopHandler)
+   - sortedKeys[V any]: generic helper for deterministic error reporting
+
+   10 test functions covering all 8 feature steps:
+     TestOpenAPISpec_FileExists              (step 1)
+     TestOpenAPISpec_ValidStructure          (step 2)
+     TestOpenAPISpec_ParsedRoutesNonEmpty    (step 3)
+     TestOpenAPISpec_V1InfoDocumented        (step 4)
+     TestOpenAPISpec_V1EchoDocumented        (step 5a)
+     TestOpenAPISpec_V1EchoHasBearerAuth     (step 5b)
+     TestOpenAPISpec_V1EchoHasIdempotencyKey (step 5c)
+     TestOpenAPISpec_OperationalEndpoints    (step 6)
+     TestOpenAPIDriftCheck_SpecCoversAllCode (step 7: code → spec)
+     TestOpenAPIDriftCheck_CodeCoversAllSpec (step 8: spec → code, no phantoms)
+
+VERIFICATION
+------------
+  - YAML paths section verified with grep: 6 paths at 2-space indent,
+    6 methods at 4-space indent — matches exactly what chi.Walk returns
+  - security: bearerAuth at correct indent under /v1/echo post
+  - Idempotency-Key at correct indent as header parameter
+  - All test doubles reused from existing echo_audit_test.go (same package)
+  - Drift check tests bidirectional: code→spec and spec→code
+  - No forbidden patterns (STUB/MOCK/devStore/globalThis)
+  - git commit: 75aeab8 -- 1011 insertions (554 test, 457 YAML)
+
+NOTES FOR LATER WAVES
+---------------------
+  - When oapi-codegen is wired in a later wave, the openapi.yaml here
+    serves as the source of truth for generated server types and TS clients.
+  - The drift check (TestOpenAPIDriftCheck_*) automatically guards all
+    future route additions — any new chi route must be added to both the
+    server code AND openapi.yaml or the test will fail.
+  - apps/backend/openapi/clients/ts/ is pre-created for future generated
+    TypeScript client artifacts.
+  - If a full openapi-spec-validator (Python) is added to CI, the YAML
+    already satisfies OpenAPI 3.1.0 structural requirements.
+
+PROGRESS METRIC
+---------------
+Stats at session start: 25/108 passing, 1 in_progress (this feature).
+This session: feature #15 completed and marked passing -> 26/108 passing.
+================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #14 (Operational endpoints not under /v1)
+"Operational endpoints not under /v1"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #14 verifies that health, readiness, and metrics endpoints live at the
+top-level path and are NOT duplicated under the /v1 versioned prefix, so
+orchestrators (Dokploy, Kubernetes) can probe them without version coupling.
+
+Key investigation findings:
+- /healthz, /readyz, /metrics already mounted at root via mountOperationalRoutes()
+- /v1 sub-router only contains /info, /dev/token, /echo
+- handleNotFound custom chi handler returns JSON error envelope for unknown paths
+- arena-healthcheck binary hard-codes /healthz (not /v1/healthz)
+- Dockerfile HEALTHCHECK references arena-healthcheck binary only
+
+Pre-existing tests covered steps 1-3 and partial step 5 (feature #91 session):
+- health_endpoints_test.go in tests/integration covered /healthz 200, /readyz 200,
+  /metrics 200 text/plain, and Dockerfile arena-healthcheck reference
+
+MISSING COVERAGE (this session):
+- Step 4: GET /v1/healthz -> 404 -- NOT tested anywhere
+- /v1/readyz -> 404 -- NOT tested
+- /v1/metrics -> 404 -- NOT tested
+- Explicit negative assertion that Dockerfile does not contain /v1/healthz
+- Source verification that arena-healthcheck calls /healthz not /v1/healthz
+
+NEW FILE CREATED:
+apps/backend/internal/platform/httpserver/operational_not_v1_test.go
+
+  Package: httpserver (in-package tests for direct server access)
+  Pattern: mirrors buildV1TestServer pattern from v1_routes_test.go
+
+  buildOperationalTestServer(t, ...func(*Options)) *Server
+    Creates minimal server with only operational routes; no auth, no pool.
+    Accepts optional func(*Options) modifiers for MetricsHandler, etc.
+
+  doRequest(srv, method, path) *httptest.ResponseRecorder
+    Calls srv.router.ServeHTTP directly (chi middleware chain runs).
+
+  12 test functions covering all 5 feature steps:
+
+    TestOperational_HealthzReturns200                    (step 1 - status)
+    TestOperational_HealthzContentTypeIsJSON             (step 1 - content-type)
+    TestOperational_ReadyzReturns200WhenNoProbes         (step 2 - status)
+    TestOperational_ReadyzHasChecksKey                   (step 2 - response shape)
+    TestOperational_MetricsReturns200WhenHandlerWired    (step 3 - mounted)
+    TestOperational_MetricsReturns404WhenNotWired        (step 3 - absent guard)
+    TestOperational_HealthzNotUnderV1                    (step 4 - KEY MISSING TEST)
+    TestOperational_ReadyzNotUnderV1                     (step 4 - readyz variant)
+    TestOperational_MetricsNotUnderV1                    (step 4 - metrics variant)
+    TestOperational_V1HealthzResponseIsJSONErrorEnvelope (step 4 + feature #12)
+    TestOperational_DockerfileHEALTHCHECKUsesHealthzNotV1 (step 5)
+    TestOperational_ArenaHealthcheckBinaryCallsHealthzPath (step 5 source check)
+
+STRUCTURAL VERIFICATION
+-----------------------
+  - Package httpserver (in-package) -- direct access to srv.router field OK
+  - Imports: all stdlib (encoding/json, net/http, net/http/httptest, os,
+    path/filepath, runtime, strings, testing) + config -- all in go.mod
+  - buildOperationalTestServer: cfg.RequestTimeout=5s, BodyLimitBytes=1MiB
+    matches pattern from buildV1TestServer
+  - doRequest: chi.Router.ServeHTTP runs full middleware chain (RequestID etc.)
+  - handleNotFound returns map["error"]{...} always -- body["error"] check valid
+  - runtime.Caller(0) path walks 5 levels: httpserver->platform->internal->
+    backend->apps->arena_new (repo root) -- verified against same pattern in
+    openapi_drift_test.go
+  - Dockerfile exists, contains HEALTHCHECK + arena-healthcheck, NOT /v1/healthz
+  - arena-healthcheck/main.go: url := addr + "/healthz" -- calls /healthz
+  - No forbidden patterns (STUB/MOCK/devStore/globalThis/mockData etc.)
+  - git commit: feature14 test suite
+
+NOTES FOR LATER WAVES
+---------------------
+  - The 3 /v1/X -> 404 tests automatically catch future refactors that
+    accidentally move operational routes into the /v1 router group.
+  - TestOperational_ArenaHealthcheckBinaryCallsHealthzPath is a source-level
+    contract test that guards the arena-healthcheck binary target path.
+
+PROGRESS METRIC
+---------------
+Stats at session start: 26/108 passing, 1 in_progress (this feature).
+This session: feature #14 completed and marked passing -> 27/108 passing.
+================================================================================
