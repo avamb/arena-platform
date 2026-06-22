@@ -83,6 +83,17 @@ func NewPool(ctx context.Context, cfg *config.Config) (*pgxpool.Pool, error) {
 // poolMetricScrapeInterval is how often RegisterPoolMetrics refreshes gauges.
 const poolMetricScrapeInterval = 15 * time.Second
 
+// poolStatReader is the narrow interface satisfied by *pgxpool.Stat.
+// Extracted here so publishPoolStatSnapshot can be exercised in unit tests
+// without a live PostgreSQL pool (feature #40 burst tests).
+type poolStatReader interface {
+	AcquiredConns() int32
+	IdleConns() int32
+	MaxConns() int32
+	TotalConns() int32
+	NewConnsCount() int64
+}
+
 // RegisterPoolMetrics starts a background goroutine that periodically scrapes
 // pgxpool.Stat() and publishes the values to the DBPoolConnections GaugeVec
 // in m (labels: acquired, idle, max, total, new_total).
@@ -117,9 +128,21 @@ func RegisterPoolMetrics(ctx context.Context, pool *pgxpool.Pool, m *observabili
 	}()
 }
 
-// publishPoolStats reads a single Stat snapshot and updates the gauges.
+// publishPoolStats reads a single Stat snapshot from pool and updates the
+// DBPoolConnections gauges. It delegates to publishPoolStatSnapshot so the
+// gauge-update logic can be unit-tested without a live pool.
 func publishPoolStats(pool *pgxpool.Pool, m *observability.Metrics) {
-	s := pool.Stat()
+	publishPoolStatSnapshot(pool.Stat(), m)
+}
+
+// publishPoolStatSnapshot writes the five pool-connection gauge values from a
+// poolStatReader snapshot into the DBPoolConnections GaugeVec.
+//
+// This function is the unit-testable core of the pool-metrics pipeline: tests
+// supply a fakePoolStat instead of a real *pgxpool.Stat so they can control
+// AcquiredConns / IdleConns values and assert burst-rise / post-burst-drain
+// behaviour without a PostgreSQL connection (feature #40).
+func publishPoolStatSnapshot(s poolStatReader, m *observability.Metrics) {
 	m.DBPoolConnections.WithLabelValues("acquired").Set(float64(s.AcquiredConns()))
 	m.DBPoolConnections.WithLabelValues("idle").Set(float64(s.IdleConns()))
 	m.DBPoolConnections.WithLabelValues("max").Set(float64(s.MaxConns()))
