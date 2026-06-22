@@ -59,11 +59,13 @@ type inMemoryJobRow struct {
 }
 
 type deadLetterRow struct {
-	originalJobID string
-	jobType       string
-	payload       []byte
-	attempts      int
-	lastError     string
+	originalJobID     string
+	jobType           string
+	payload           []byte
+	attempts          int
+	lastError         string
+	failedAt          time.Time
+	originalCreatedAt time.Time
 }
 
 type inMemoryQueue struct {
@@ -202,11 +204,13 @@ func (q *inMemoryQueue) MarkFailed(_ context.Context, job *Job, lastErr string) 
 	for _, r := range q.rows {
 		if r.id == job.ID {
 			q.deadLetter = append(q.deadLetter, deadLetterRow{
-				originalJobID: r.id,
-				jobType:       r.jobType,
-				payload:       r.payload,
-				attempts:      r.attempts,
-				lastError:     lastErr,
+				originalJobID:     r.id,
+				jobType:           r.jobType,
+				payload:           r.payload,
+				attempts:          r.attempts,
+				lastError:         lastErr,
+				failedAt:          time.Now(),
+				originalCreatedAt: r.createdAt,
 			})
 			r.status = "failed"
 			r.lastError = &lastErr
