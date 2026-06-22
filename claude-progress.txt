@@ -7819,3 +7819,70 @@ Stats at session start: 84/108 passing, 0 in_progress.
 This session: feature #70 completed and marked passing -> 85/108 passing.
 
 ================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #71 (occurred_at on audit_events recorded at write time)
+"occurred_at reflects the server-side time of the actual DB INSERT (UTC, via
+clock_timestamp() or Go time.Now().UTC()) -- prevents drift from any client-supplied timestamp."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #71: Verified that audit_events.occurred_at is set from server-side
+time.Now().UTC() and is never influenced by client-supplied timestamps such
+as an X-Request-Time header.
+
+Steps verified:
+  Step 1: POST /v1/echo at T0 (capture server clock before request)
+  Step 2: Captured audit event via in-memory captureAuditWriter
+  Step 3: occurred_at is within +-2s of T0 (server clock truth)
+  Step 4: Request with X-Request-Time: 2020-01-01T00:00:00Z -> occurred_at
+          does NOT match 2020 date; uses server clock (~2026)
+  Step 5: Static scan of echo.go and audit.go confirms no X-Request-Time
+          or client-time pattern is used for OccurredAt
+
+ANALYSIS
+--------
+The production code already correctly uses server time:
+  - echo.go line 226: OccurredAt: time.Now().UTC()
+  - audit.go lines 117-119: fallback if zero: time.Now().UTC()
+  - No header or request metadata influences occurred_at
+
+No production code changes needed -- only tests were added.
+
+CHANGES
+-------
+1. apps/backend/internal/platform/httpserver/audit_occurred_at_test.go (NEW)
+   7 tests covering all 5 feature steps:
+
+   Step 1-3 (server clock within 2s):
+     TestOccurredAt_WithinTwoSecondsOfServerClock
+     TestOccurredAt_IsUTC
+
+   Step 4 (X-Request-Time header ignored):
+     TestOccurredAt_IgnoresXRequestTimeHeader
+     TestOccurredAt_XRequestTimeFarPastIsRejected
+
+   Step 5 (static scan):
+     TestOccurredAt_StaticScan_NoClientTimestampInAuditWrite
+     TestOccurredAt_StaticScan_AuditUsesTimeNow
+
+   Full sweep:
+     TestOccurredAt_FullVerification (steps 1-3, 4, 5 as sub-tests)
+
+VERIFICATION
+------------
+  - 7/7 TestOccurredAt_* tests: PASS (0.039s)
+  - go build ./...: EXIT 0 (all packages compile)
+  - Pre-existing TestOpenAPI_*, TestDevAuth_README, etc. failures are
+    unrelated (runtime.Caller/-trimpath Docker issue, documented previously)
+  - git commit: 8d1fc55
+
+PROGRESS METRIC
+---------------
+Stats at session start: 85/108 passing, 1 in_progress.
+This session: feature #71 completed and marked passing -> 86/108 passing.
+
+================================================================================
+
+================================================================================
