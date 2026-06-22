@@ -5879,3 +5879,81 @@ Stats at session start: 54/108 passing, 2 in_progress.
 This session: feature #39 completed and marked passing -> 55/108 passing.
 
 ================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #46 (Missing Idempotency-Key on mutating endpoint returns 400)
+"Mutating endpoints REQUIRE Idempotency-Key header. Missing it yields 400 code='idempotency.missing_key'."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #46 requires that POST /v1/echo with a valid JWT but no Idempotency-Key
+header returns HTTP 400 with code='idempotency.missing_key', and that no audit
+or outbox rows are written. GET /v1/info must remain exempt (returns 200).
+
+ROOT CAUSE / FIX
+----------------
+The idempotency middleware already rejected missing-key requests with 400, but
+used the error code "idempotency_missing_key" (underscore) instead of the spec-
+required "idempotency.missing_key" (dot notation consistent with other codes).
+
+CHANGES
+-------
+
+1. apps/backend/internal/platform/idempotency/idempotency.go (MODIFIED)
+   - Line 235: error code "idempotency_missing_key" -> "idempotency.missing_key"
+   - One-line change; no other logic modified.
+
+2. apps/backend/internal/platform/httpserver/echo_missing_idem_key_test.go (NEW)
+   11 tests covering all 5 feature steps:
+
+   Steps 1-2 (HTTP 400 + JSON body + content-type):
+     TestMissingIdemKey_Returns400
+     TestMissingIdemKey_ResponseBodyIsJSON
+     TestMissingIdemKey_ContentTypeIsJSON
+
+   Step 2 (code='idempotency.missing_key'):
+     TestMissingIdemKey_CodeIsMissingKey
+
+   Step 3 (message references header name "Idempotency-Key"):
+     TestMissingIdemKey_MessageReferencesHeaderName
+
+   Step 4 (no audit or outbox rows written):
+     TestMissingIdemKey_NoAuditEventWritten
+     TestMissingIdemKey_NoIdempotencyLookup
+     TestMissingIdemKey_NoIdempotencySave
+
+   Step 5 (GET /v1/info exempt from idempotency check):
+     TestMissingIdemKey_InfoDoesNotRequireIdemKey
+     TestMissingIdemKey_InfoReturnsNot400
+
+   Summary:
+     TestMissingIdemKey_FullVerification
+
+VERIFICATION
+------------
+  - docker build --target build: SUCCESS (all 4 binaries compile)
+  - 11/11 TestMissingIdemKey_* tests: PASS (0.009s)
+  - TestConcurrent_* failures in idempotency package: PRE-EXISTING, confirmed
+    by reverting my change and re-running -- same failures present before my edit.
+    These are unrelated concurrent body-identity race conditions.
+  - No regressions in httpserver package
+  - No forbidden patterns (STUB/MOCK/devStore/globalThis)
+  - git commit: eea2a42
+
+ARCHITECTURE NOTES
+------------------
+  - The idempotency middleware is only applied to POST /v1/echo (inside the
+    authenticated route group). GET /v1/info is mounted outside that group,
+    so the middleware never runs on safe methods -- step 5 is satisfied by
+    router structure, not conditional logic inside the middleware itself.
+  - ErrMissingKey.Error() = "idempotency: missing Idempotency-Key header"
+    already contains the header name, satisfying step 3 without any additional
+    message changes.
+
+PROGRESS METRIC
+---------------
+Stats at session start: 60/108 passing, 2 in_progress.
+This session: feature #46 completed and marked passing -> 61/108 passing.
+
+================================================================================
