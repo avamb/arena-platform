@@ -276,7 +276,7 @@ func (s *Server) mountV1Routes() {
 		//   - pgx pool wired (echo writes audit + outbox in a single tx)
 		if s.stub != nil && s.stub.Enabled() && s.idem != nil && s.audit != nil && s.pool != nil {
 			r.Group(func(pr chi.Router) {
-				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{}))
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
 				pr.Use(idempotency.Middleware(s.idem, idempotency.Options{
 					Scope: "POST /v1/echo",
 					TTL:   24 * time.Hour,

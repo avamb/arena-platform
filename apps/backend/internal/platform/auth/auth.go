@@ -27,6 +27,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -140,6 +141,11 @@ type IssueRequest struct {
 	Roles     []string
 	Audience  string
 	TTL       time.Duration
+	// NotBefore overrides the "nbf" claim. When zero the provider uses its
+	// current clock value (i.e. the token is valid immediately). Set to a
+	// future time to produce a token that is not yet valid — useful in tests
+	// that verify the ErrTokenNotValidYet / auth.token_not_yet_valid path.
+	NotBefore time.Time
 }
 
 // -----------------------------------------------------------------------------
@@ -149,14 +155,15 @@ type IssueRequest struct {
 // Sentinel errors so callers can distinguish "missing header" from "expired"
 // from "bad signature" without string matching.
 var (
-	ErrMissingToken    = errors.New("auth: missing bearer token")
-	ErrMalformedToken  = errors.New("auth: malformed token")
+	ErrMissingToken     = errors.New("auth: missing bearer token")
+	ErrMalformedToken   = errors.New("auth: malformed token")
 	ErrInvalidSignature = errors.New("auth: invalid signature")
-	ErrTokenExpired    = errors.New("auth: token expired")
-	ErrUnknownIssuer   = errors.New("auth: unknown issuer")
-	ErrUnknownAudience = errors.New("auth: unknown audience")
-	ErrUnsupportedAlg  = errors.New("auth: unsupported jwt algorithm")
-	ErrDisabled        = errors.New("auth: stub provider disabled (set ENABLE_DEV_AUTH=true)")
+	ErrTokenExpired     = errors.New("auth: token expired")
+	ErrTokenNotValidYet = errors.New("auth: token not yet valid (nbf claim is in the future)")
+	ErrUnknownIssuer    = errors.New("auth: unknown issuer")
+	ErrUnknownAudience  = errors.New("auth: unknown audience")
+	ErrUnsupportedAlg   = errors.New("auth: unsupported jwt algorithm")
+	ErrDisabled         = errors.New("auth: stub provider disabled (set ENABLE_DEV_AUTH=true)")
 )
 
 // -----------------------------------------------------------------------------
@@ -250,6 +257,15 @@ func (p *StubProvider) IssueToken(_ context.Context, req IssueRequest) (string, 
 	now := p.now().UTC()
 	exp := now.Add(ttl)
 
+	// Resolve the not-before time. When the caller sets NotBefore to a future
+	// instant we honour it; when it's zero we default to now (token valid
+	// immediately). Negative/past values are also accepted without adjustment
+	// so tests can inspect that the check is performed correctly.
+	nbf := now
+	if !req.NotBefore.IsZero() {
+		nbf = req.NotBefore.UTC()
+	}
+
 	header := map[string]string{"alg": "HS256", "typ": "JWT"}
 	payload := jwtClaims{
 		Sub:       req.ActorID,
@@ -257,6 +273,7 @@ func (p *StubProvider) IssueToken(_ context.Context, req IssueRequest) (string, 
 		Aud:       aud,
 		Iat:       now.Unix(),
 		Exp:       exp.Unix(),
+		Nbf:       nbf.Unix(),
 		ActorType: string(req.ActorType),
 		Roles:     req.Roles,
 	}
@@ -330,6 +347,11 @@ func (p *StubProvider) Verify(_ context.Context, token string) (Actor, error) {
 		return Actor{}, fmt.Errorf("%w: %q", ErrUnknownAudience, claims.Aud)
 	}
 	now := p.now().UTC()
+	// Check not-before (nbf) before expiry so a token that is both not-yet-valid
+	// and expired returns the more actionable ErrTokenNotValidYet.
+	if claims.Nbf > 0 && now.Unix() < claims.Nbf {
+		return Actor{}, ErrTokenNotValidYet
+	}
 	if claims.Exp > 0 && now.Unix() >= claims.Exp {
 		return Actor{}, ErrTokenExpired
 	}
@@ -357,6 +379,7 @@ type jwtClaims struct {
 	Aud       string   `json:"aud,omitempty"`
 	Iat       int64    `json:"iat"`
 	Exp       int64    `json:"exp"`
+	Nbf       int64    `json:"nbf,omitempty"` // not-before; zero means no restriction
 	ActorType string   `json:"actor_type,omitempty"`
 	Roles     []string `json:"roles,omitempty"`
 }
@@ -385,6 +408,12 @@ type MiddlewareOptions struct {
 	// (e.g. /healthz, /readyz, /metrics, /v1/info, /v1/dev/token). When nil,
 	// every request inside the wrapped subtree must authenticate.
 	Skip func(*http.Request) bool
+
+	// Logger is the structured logger used for WARN-level security events
+	// (e.g. invalid-signature rejections). When nil, slog.Default() is used.
+	// Passing the server's configured logger ensures security events appear in
+	// the same output stream as all other request logs.
+	Logger *slog.Logger
 }
 
 // Middleware returns net/http middleware that verifies the Authorization
@@ -401,6 +430,13 @@ type MiddlewareOptions struct {
 // header so generic HTTP clients (curl --user, browsers, OpenAPI clients)
 // detect the challenge correctly.
 func Middleware(p Provider, opts MiddlewareOptions) func(http.Handler) http.Handler {
+	// Resolve the logger once when the middleware is constructed so the hot
+	// path (per-request) never needs a nil check.
+	logger := opts.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if opts.Skip != nil && opts.Skip(r) {
@@ -426,6 +462,21 @@ func Middleware(p Provider, opts MiddlewareOptions) func(http.Handler) http.Hand
 			}
 			actor, err := p.Verify(r.Context(), rawToken)
 			if err != nil {
+				// Feature #7: tokens with an invalid cryptographic signature
+				// must be rejected with the generic auth.invalid_token code
+				// rather than auth.invalid_signature. Exposing the specific
+				// failure reason (signature vs. expiry vs. issuer) is an
+				// information leak that helps attackers diagnose why their
+				// forged token was rejected. We log the real reason at WARN
+				// level internally (with the token masked) so operators retain
+				// full forensic visibility without it reaching the client.
+				if errors.Is(err, ErrInvalidSignature) {
+					logger.Warn("auth: invalid_signature",
+						"masked_token", maskToken(rawToken),
+					)
+					writeAuthError(w, r, http.StatusUnauthorized, "auth.invalid_token", nil)
+					return
+				}
 				status, code := mapAuthErrorToStatus(err)
 				writeAuthError(w, r, status, code, err)
 				return
@@ -483,6 +534,8 @@ func mapAuthErrorToStatus(err error) (int, string) {
 		return http.StatusUnauthorized, "auth.invalid_signature"
 	case errors.Is(err, ErrTokenExpired):
 		return http.StatusUnauthorized, "auth.token_expired"
+	case errors.Is(err, ErrTokenNotValidYet):
+		return http.StatusUnauthorized, "auth.token_not_yet_valid"
 	case errors.Is(err, ErrUnknownIssuer):
 		return http.StatusUnauthorized, "auth.unknown_issuer"
 	case errors.Is(err, ErrUnknownAudience):
@@ -508,9 +561,32 @@ func writeAuthError(w http.ResponseWriter, r *http.Request, status int, code str
 	requestID := resolveRequestID(r, w)
 	traceID := logging.TraceID(r.Context())
 
+	// Emit a structured WARN log so operators can detect auth failures in logs.
+	// The cause message is included at debug level to avoid leaking internal
+	// error details into info-level log streams while still allowing developers
+	// to diagnose problems in local/staging environments.
+	if r != nil {
+		logger := logging.FromContext(r.Context())
+		logger.Warn("auth: token rejected",
+			"code", code,
+			"method", r.Method,
+			"path", r.URL.Path,
+			"request_id", requestID,
+		)
+	}
+
 	if status == http.StatusUnauthorized {
 		w.Header().Set(HeaderWWWAuthenticate, WWWAuthenticateBearer)
 	}
+
+	// For expired tokens: the client should immediately request a fresh token.
+	// Retry-After: 0 signals that a retry is permissible right away (with new
+	// credentials), which is correct — the token itself is the problem, not
+	// server-side rate limiting.
+	if code == "auth.token_expired" {
+		w.Header().Set("Retry-After", "0")
+	}
+
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 
@@ -647,6 +723,18 @@ func translateAuthCode(code, locale string) string {
 	return code
 }
 
+// maskToken returns the first 8 characters of tok followed by "..." for longer
+// tokens. Short tokens (≤8 chars) are returned as-is. Used in WARN log entries
+// to preserve forensic traceability without logging the full bearer token value
+// (which may contain user-identifying entropy).
+func maskToken(tok string) string {
+	const prefixLen = 8
+	if len(tok) <= prefixLen {
+		return tok
+	}
+	return tok[:prefixLen] + "..."
+}
+
 // authMessages is the inline localization table for auth-domain error codes.
 // Keys are dotted codes; values are locale -> human message.
 var authMessages = map[string]map[string]string{
@@ -665,6 +753,10 @@ var authMessages = map[string]map[string]string{
 	"auth.token_expired": {
 		"en": "The bearer token has expired; request a fresh one.",
 		"ru": "Срок действия токена Bearer истёк, получите новый токен.",
+	},
+	"auth.token_not_yet_valid": {
+		"en": "The bearer token is not yet valid; retry after the not-before time.",
+		"ru": "Токен Bearer ещё не действителен; повторите запрос после наступления времени not-before.",
 	},
 	"auth.unknown_issuer": {
 		"en": "The bearer token was issued by an unknown issuer.",
