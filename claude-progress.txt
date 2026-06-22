@@ -3855,3 +3855,75 @@ PROGRESS METRIC
 Stats at session start: 35/108 passing, 2 in_progress (this feature).
 This session: feature #7 completed and marked passing -> 36/108 passing.
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #9 (anonymous access on public endpoints)
+"Anonymous access allowed on public endpoints"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #9 verifies that all public endpoints (/healthz, /readyz, /metrics,
+GET /v1/info) respond 200 WITHOUT any Authorization header.
+
+The endpoints were already correctly implemented (outside the auth middleware
+chain) in earlier sessions. This session adds the formal test suite that
+documents and enforces the anonymous-access contract.
+
+NEW FILE CREATED:
+
+apps/backend/internal/platform/httpserver/anonymous_access_test.go
+  Package: httpserver (in-package tests; helpers defined alongside other tests)
+  16 test functions covering all 5 feature steps:
+
+  Step 1 -- GET /healthz no headers -> 200 {"status":"ok"}:
+    TestAnonymousAccess_HealthzReturns200
+    TestAnonymousAccess_HealthzBodyStatusOk
+    TestAnonymousAccess_HealthzNoAuthRequired
+
+  Step 2 -- GET /readyz no headers -> 200 when DB probe passing:
+    TestAnonymousAccess_ReadyzReturns200WithPassingProbe
+    TestAnonymousAccess_ReadyzBodyStatusReady
+    TestAnonymousAccess_ReadyzNoProbesAlsoReturns200
+    TestAnonymousAccess_ReadyzNoAuthRequired
+
+  Step 3 -- GET /metrics no headers -> 200 Prometheus text:
+    TestAnonymousAccess_MetricsReturns200
+    TestAnonymousAccess_MetricsBodyIsPrometheusText
+    TestAnonymousAccess_MetricsNoAuthRequired
+
+  Step 4 -- GET /v1/info no headers -> 200 active_locale=en:
+    TestAnonymousAccess_InfoReturns200
+    TestAnonymousAccess_InfoLocaleDefaultsToEn
+    TestAnonymousAccess_InfoNoAuthRequired
+
+  Step 5 -- No Set-Cookie, no Authorization echo:
+    TestAnonymousAccess_NoneSetSetCookie       (subtests: healthz, readyz, metrics, v1/info)
+    TestAnonymousAccess_NoneEchoAuthorization  (subtests: healthz, readyz, metrics, v1/info)
+    TestAnonymousAccess_PublicEndpoints200Summary (single sweep table test)
+
+KEY DESIGN DECISIONS
+---------------------
+  - Used httptest.NewRecorder (in-process, no live DB/Redis required)
+  - passingProbe: minimal ReadinessProbe stub simulating "DB is up" for step 2
+  - metricsStubHandler: returns Prometheus text format without importing
+    observability package (keeps unit tests lightweight)
+  - requestAnon() helper explicitly clears Authorization + Cookie headers
+    before dispatching so the test contract is unambiguous
+  - assertNoSetCookie + assertNoAuthorizationEcho: helpers for step 5
+
+VERIFICATION
+------------
+  - docker run arena-build-test: all 16 TestAnonymousAccess_* PASS (0.046s)
+  - No change in other httpserver test outcomes (same 3 known-failing tests
+    around JWT expiry + OpenAPI drift that were present before this session)
+  - No new go.mod dependencies
+  - git commit: 1341ba4 -- 466 insertions
+
+PROGRESS METRIC
+---------------
+Stats at session start: 37/108 passing, 2 in_progress.
+This session: feature #9 completed and marked passing -> 38/108 passing.
+================================================================================
