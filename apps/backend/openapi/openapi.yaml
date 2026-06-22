@@ -1,0 +1,457 @@
+openapi: "3.1.0"
+
+info:
+  title: Arena API
+  description: |
+    Backend foundation API for the arena_new multi-tenant ticketing platform.
+    This document covers the foundation milestone endpoints: service metadata,
+    health/readiness probes, Prometheus metrics, the transactional echo command
+    (which exercises auth, idempotency, audit, and outbox in one transaction),
+    and the development-only JWT mint endpoint.
+  version: "0.1.0"
+  contact:
+    name: Arena Platform Team
+    email: andreev@abhteam.com
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server (docker compose)
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT token obtained via POST /v1/dev/token (development mode only,
+        requires ENABLE_DEV_AUTH=true) or from the real identity provider
+        in production. Pass as "Authorization: Bearer <token>".
+
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Machine-readable error code (dotted namespace, e.g. "http.not_found")
+              example: "auth_required"
+            message:
+              type: string
+              description: Human-readable error description
+              example: "authentication required"
+            request_id:
+              type: string
+              description: Per-request correlation ID (also in X-Request-Id response header)
+              example: "01J3K8MNTB4KXYZQR5V6W7SHJ2"
+            trace_id:
+              type: string
+              description: Distributed trace ID (also in X-Trace-Id response header)
+              example: "4bf92f3577b34da6a3ce929d0e0e4736"
+
+    HealthzResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+          description: Always "ok" when the process is alive
+          example: "ok"
+
+    ReadyzResponse:
+      type: object
+      required: [status, checks]
+      properties:
+        status:
+          type: string
+          enum: [ready, not_ready]
+          description: '"ready" when all probes pass, "not_ready" when any probe fails'
+          example: "ready"
+        checks:
+          type: object
+          additionalProperties:
+            type: string
+          description: Map of probe name to status string ("ok" or error message)
+          example:
+            database: "ok"
+
+    InfoResponse:
+      type: object
+      required:
+        - app
+        - version
+        - commit
+        - env
+        - supported_locales
+        - default_locale
+        - server_time
+        - request_id
+        - trace_id
+      properties:
+        app:
+          type: string
+          description: Application name
+          example: "arena-api"
+        version:
+          type: string
+          description: Semantic version string
+          example: "0.1.0"
+        commit:
+          type: string
+          description: Git commit SHA (short or full)
+          example: "a1b2c3d"
+        env:
+          type: string
+          description: Deployment environment (development, staging, production)
+          example: "development"
+        supported_locales:
+          type: array
+          items:
+            type: string
+          description: BCP-47 locale tags the server will accept
+          example: ["ru", "en"]
+        default_locale:
+          type: string
+          description: Fallback locale when Accept-Language negotiation yields no match
+          example: "en"
+        server_time:
+          type: string
+          format: date-time
+          description: Current UTC wall clock time on the server (RFC3339Nano)
+          example: "2026-06-22T05:00:00.000000000Z"
+        db_version:
+          type: string
+          description: PostgreSQL server_version string (omitted when DB query fails)
+          example: "17.0"
+        db_now:
+          type: string
+          format: date-time
+          description: PostgreSQL now() at the time of the SELECT (omitted when DB query fails)
+          example: "2026-06-22T05:00:00.000000000Z"
+        request_id:
+          type: string
+          description: Per-request correlation ID
+          example: "01J3K8MNTB4KXYZQR5V6W7SHJ2"
+        trace_id:
+          type: string
+          description: Distributed trace ID
+          example: "4bf92f3577b34da6a3ce929d0e0e4736"
+
+    DevTokenRequest:
+      type: object
+      properties:
+        actor_id:
+          type: string
+          description: UUIDv7 or any string identifier for the test actor. Defaults to "00000000-0000-0000-0000-000000000001".
+          example: "00000000-0000-0000-0000-000000000001"
+        actor_type:
+          type: string
+          description: Actor type label embedded in the JWT claims. Defaults to "stub_user".
+          example: "stub_user"
+        roles:
+          type: array
+          items:
+            type: string
+          description: Role list embedded in the JWT claims.
+          example: ["admin"]
+        ttl_seconds:
+          type: integer
+          description: Token time-to-live in seconds. Defaults to 3600.
+          example: 3600
+        audience:
+          type: string
+          description: JWT audience claim. Defaults to the server's configured audience.
+          example: "arena-api"
+
+    DevTokenResponse:
+      type: object
+      required: [token, expires_at, actor_id, actor_type, issuer, audience]
+      properties:
+        token:
+          type: string
+          description: Signed JWT (HS256) that can be used in Authorization headers
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        expires_at:
+          type: string
+          format: date-time
+          description: Token expiry time (RFC3339)
+          example: "2026-06-22T06:00:00Z"
+        actor_id:
+          type: string
+          description: Actor ID embedded in the token
+          example: "00000000-0000-0000-0000-000000000001"
+        actor_type:
+          type: string
+          description: Actor type embedded in the token
+          example: "stub_user"
+        issuer:
+          type: string
+          description: JWT issuer (iss) claim
+          example: "arena-stub"
+        audience:
+          type: string
+          description: JWT audience (aud) claim
+          example: "arena-api"
+
+    EchoRequest:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          minLength: 1
+          maxLength: 8192
+          description: Message to echo. Must be non-empty. Maximum 8 KiB.
+          example: "hello arena"
+
+    EchoResponse:
+      type: object
+      required:
+        - message
+        - actor_id
+        - request_id
+        - trace_id
+        - echo_event_id
+        - idempotent_key
+        - issued_at
+      properties:
+        message:
+          type: string
+          description: The echoed message from the request body
+          example: "hello arena"
+        actor_id:
+          type: string
+          description: ID of the authenticated actor who sent the request
+          example: "00000000-0000-0000-0000-000000000001"
+        request_id:
+          type: string
+          description: Per-request correlation ID
+          example: "01J3K8MNTB4KXYZQR5V6W7SHJ2"
+        trace_id:
+          type: string
+          description: Distributed trace ID
+          example: "4bf92f3577b34da6a3ce929d0e0e4736"
+        echo_event_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the outbox_events row created for this echo (for downstream tracing)
+          example: "01929d0e-0e47-7000-8000-000000000001"
+        idempotent_key:
+          type: string
+          description: The Idempotency-Key header value that was used to deduplicate this request
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        issued_at:
+          type: string
+          format: date-time
+          description: Server-side timestamp when the response was built (RFC3339Nano)
+          example: "2026-06-22T05:00:00.000000000Z"
+
+paths:
+  /healthz:
+    get:
+      operationId: getHealthz
+      summary: Liveness probe
+      description: |
+        Returns HTTP 200 unconditionally while the process is alive and able to
+        serve HTTP. Bound to the Docker HEALTHCHECK directive via arena-healthcheck
+        binary. Kubernetes liveness probes should point here.
+      tags: [operational]
+      responses:
+        "200":
+          description: Process is alive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthzResponse"
+              example:
+                status: "ok"
+
+  /readyz:
+    get:
+      operationId: getReadyz
+      summary: Readiness probe
+      description: |
+        Iterates all registered ReadinessProbes (database, Redis, etc.) and
+        aggregates their results. Returns 200 when every probe passes or when no
+        probes are registered (e.g. fresh server). Returns 503 with a "checks"
+        map indicating which probes failed and why.
+      tags: [operational]
+      responses:
+        "200":
+          description: All registered probes healthy (or no probes registered)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyzResponse"
+              example:
+                status: "ready"
+                checks:
+                  database: "ok"
+        "503":
+          description: One or more probes failed — service should not receive traffic
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyzResponse"
+              example:
+                status: "not_ready"
+                checks:
+                  database: "connection refused"
+
+  /metrics:
+    get:
+      operationId: getMetrics
+      summary: Prometheus metrics scrape endpoint
+      description: |
+        Exposes arena_http_request_duration_seconds histograms, arena_http_requests_total
+        counters, database pool gauges, worker job lag, and outbox backlog for
+        Prometheus scraping. This endpoint is only mounted when the server is started
+        with a MetricsHandler (i.e. PROMETHEUS_ENABLED=true). Network-level access
+        restriction (Prometheus scraper VLAN only) is enforced by the Dokploy reverse proxy.
+      tags: [operational]
+      responses:
+        "200":
+          description: Prometheus text format metrics (text/plain; version=0.0.4)
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: |
+                # HELP arena_http_request_duration_seconds HTTP request latency in seconds
+                # TYPE arena_http_request_duration_seconds histogram
+                arena_http_request_duration_seconds_bucket{method="GET",route="/v1/info",status="200",le="0.005"} 1
+
+  /v1/info:
+    get:
+      operationId: getV1Info
+      summary: Service metadata + database check
+      description: |
+        Returns static service metadata (name, version, commit, supported locales)
+        and the running PostgreSQL server_version + now() from a live SELECT.
+        No authentication required. The database fields (db_version, db_now) are
+        omitted when the database query fails — the endpoint still returns 200 with
+        the static metadata so callers can distinguish "API alive" from "DB alive".
+      tags: [v1]
+      responses:
+        "200":
+          description: Service info (DB fields present when database query succeeds)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InfoResponse"
+
+  /v1/dev/token:
+    post:
+      operationId: postV1DevToken
+      summary: Mint a development JWT (dev-only)
+      description: |
+        Issues a signed HS256 JWT using the StubProvider. Only mounted when
+        ENABLE_DEV_AUTH=true. Must never be reachable in production (config.Validate
+        enforces that EnableStubAuth is false in production). The token can be used
+        in "Authorization: Bearer <token>" headers to authenticate subsequent requests.
+      tags: [v1, dev]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DevTokenRequest"
+      responses:
+        "200":
+          description: Token issued successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DevTokenResponse"
+        "400":
+          description: Request body is not valid JSON, or token mint failed (e.g. invalid TTL)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Dev auth is disabled (ENABLE_DEV_AUTH=false or stub not initialised)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/echo:
+    post:
+      operationId: postV1Echo
+      summary: Transactional echo command
+      description: |
+        Example transactional command that exercises the full cross-cutting boundary
+        stack in a single PostgreSQL transaction:
+          1. Auth boundary  — verifies Bearer JWT (401 if missing/invalid)
+          2. Idempotency    — deduplicates by Idempotency-Key header; replays cached response
+          3. Audit boundary — writes audit_events row in the same TX
+          4. Outbox         — writes outbox_events row in the same TX (worker picks it up later)
+
+        On success returns the echoed message, actor ID, and the outbox event UUID.
+        On retry with the same Idempotency-Key the middleware returns the original
+        cached response without re-running the handler.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: |
+            Client-generated UUID that uniquely identifies this mutation request.
+            Replays (same actor + same key) return the originally cached response
+            without re-executing the handler. TTL is 24 hours.
+          schema:
+            type: string
+            format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EchoRequest"
+      responses:
+        "200":
+          description: Echo response (original or cached replay for duplicate Idempotency-Key)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EchoResponse"
+        "400":
+          description: Request body missing, not valid JSON, or "message" field is empty
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: Request body exceeds 8 KiB limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (DB unavailable, audit failure, idempotency failure, or commit failure)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Echo dependencies not wired (pool, audit, or idempotency store missing)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
