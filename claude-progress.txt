@@ -6136,3 +6136,60 @@ Stats at session start: 61/108 passing, 2 in_progress.
 This session: feature #47 completed and marked passing -> 62/108 passing.
 
 ================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #48 (Expired idempotency keys cleaned by maintenance job)
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Implemented a scheduled maintenance job that purges expired idempotency_keys rows.
+
+CHANGES
+-------
+
+1. observability/metrics.go (MODIFIED)
+   - Added IdempotencyCleanupDeletedTotal prometheus.Counter
+   - Metric name: arena_idempotency_cleanup_deleted_total
+
+2. idempotency/cleanup.go (NEW)
+   - CleanupJobType = "idempotency.cleanup"
+   - DefaultCleanupInterval = time.Hour
+   - Cleaner interface: DeleteExpired(ctx, cutoff time.Time) (int64, error)
+   - PGCleaner: production impl, DELETE WHERE expires_at < cutoff
+   - CleanupScheduler interface: ScheduleNext(ctx, at time.Time) error
+   - PGCleanupScheduler: inserts worker_jobs row with future scheduled_at
+   - NewCleanupHandler(opts): handler that deletes expired rows, increments
+     counter, and self-schedules next run (cron-like via Scheduler)
+   - ScheduleInitialCleanupJob(ctx, pool): ensures a cleanup job is enqueued
+     at worker startup if none is pending
+
+3. idempotency/cleanup_test.go (NEW)
+   16 tests covering all 6 steps (no live DB required):
+   - Steps 1-4: inMemoryCleaner with 3 seeded rows (A expired 1h, B expired 1d, C valid)
+   - Step 5: prometheus.Counter reads confirm delta=2 after handler runs
+   - Step 6: fakeCleanupScheduler records ScheduleNext calls, verifies future time
+   - TestCleanup_FullVerification: all 6 steps in sequence
+
+4. cmd/arena-worker/main.go (MODIFIED)
+   - Imports idempotency and pgxpool packages
+   - registerBuiltinHandlers now takes pool, metrics, logger
+   - Registers idempotency.cleanup handler with real PGCleaner/PGCleanupScheduler
+   - Calls ScheduleInitialCleanupJob at startup (non-fatal if fails)
+
+VERIFICATION
+------------
+  - docker build --target build: SUCCESS
+  - 16/16 TestCleanup_* tests: PASS (0.006s)
+  - Full idempotency suite: PASS (0.146s, no regressions)
+  - Worker package: PASS (0.549s)
+  - Pre-existing failures (observability TestHandler, httpserver README/Dockerfile
+    checks): UNRELATED, were failing before this session
+  - git commit: f9abaab
+
+PROGRESS METRIC
+---------------
+Stats at session start: 62/108 passing, 2 in_progress.
+This session: #48 completed and marked passing -> 63/108 passing.
+
+================================================================================
