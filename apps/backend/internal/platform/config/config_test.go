@@ -235,8 +235,8 @@ func TestValidate_StubAuthForbiddenInProduction(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when stub auth is enabled in production")
 	}
-	if !strings.Contains(err.Error(), "ENABLE_STUB_AUTH") {
-		t.Errorf("error should mention ENABLE_STUB_AUTH, got: %v", err)
+	if !strings.Contains(err.Error(), "ENABLE_DEV_AUTH") {
+		t.Errorf("error should mention ENABLE_DEV_AUTH, got: %v", err)
 	}
 }
 
@@ -356,7 +356,7 @@ func TestLoad_MissingRequiredReportsAggregatedError(t *testing.T) {
 		"DEFAULT_LOCALE", "ACTIVE_LOCALES",
 		"LOG_LEVEL", "LOG_FORMAT",
 		"OTEL_EXPORTER_OTLP_ENDPOINT",
-		"JWT_SIGNING_SECRET", "ENABLE_STUB_AUTH",
+		"JWT_SIGNING_SECRET", "ENABLE_DEV_AUTH",
 	} {
 		es.unset(k)
 	}
@@ -374,9 +374,9 @@ func TestLoad_InvalidIntegerReturnsAggregatedError(t *testing.T) {
 	es := newEnvSetter(t)
 	es.set("DATABASE_URL", "postgres://arena:arena@localhost:5432/arena?sslmode=disable")
 	es.set("BODY_LIMIT_BYTES", "not-an-int")
-	// Set ENABLE_STUB_AUTH=false so the missing JWT_SIGNING_SECRET doesn't
+	// Set ENABLE_DEV_AUTH=false so the missing JWT_SIGNING_SECRET doesn't
 	// dominate the assertion below.
-	es.set("ENABLE_STUB_AUTH", "false")
+	es.set("ENABLE_DEV_AUTH", "false")
 
 	_, err := Load()
 	if err == nil {
@@ -392,7 +392,7 @@ func TestLoad_HappyPath(t *testing.T) {
 	es.set("APP_ENV", "development")
 	es.set("DATABASE_URL", "postgres://arena:arena@localhost:5432/arena?sslmode=disable")
 	es.set("JWT_SIGNING_SECRET", "dev-secret")
-	es.set("ENABLE_STUB_AUTH", "true")
+	es.set("ENABLE_DEV_AUTH", "true")
 
 	cfg, err := Load()
 	if err != nil {

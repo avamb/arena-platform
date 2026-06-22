@@ -62,11 +62,14 @@ type Config struct {
 	ActiveLocales []string
 
 	// Observability
-	LogLevel     string
-	LogFormat    string
-	OTLPEndpoint string
+	LogLevel           string
+	LogFormat          string
+	OTLPEndpoint       string
+	OTELServiceName    string
+	OTELTracesSampler  float64
+	OTELInsecure       bool
 
-	// Auth (DEV STUB — replaced by real identity module in a later milestone)
+	// Auth (dev-only placeholder — replaced by real identity module in a later milestone)
 	JWTSecretStub  string
 	EnableStubAuth bool
 }
@@ -94,9 +97,10 @@ func Load() (*Config, error) {
 		DefaultLocale: getenv("DEFAULT_LOCALE", "en"),
 		ActiveLocales: splitCSV(getenv("ACTIVE_LOCALES", "en")),
 
-		LogLevel:     getenv("LOG_LEVEL", "info"),
-		LogFormat:    getenv("LOG_FORMAT", "json"),
-		OTLPEndpoint: getenv("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
+		LogLevel:        getenv("LOG_LEVEL", "info"),
+		LogFormat:       getenv("LOG_FORMAT", "json"),
+		OTLPEndpoint:    getenv("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
+		OTELServiceName: getenv("OTEL_SERVICE_NAME", ""),
 
 		JWTSecretStub: getenv("JWT_SIGNING_SECRET", ""),
 	}
@@ -104,6 +108,30 @@ func Load() (*Config, error) {
 	// Parse errors are collected together with Validate() errors so a single
 	// boot attempt surfaces every problem at once.
 	var parseErrs []error
+
+	// OTEL sampling ratio (0.0 - 1.0). Empty falls back to 1.0 (sample
+	// everything) so dev environments don't silently drop spans. Out-of-range
+	// values are reported via Validate(), not here.
+	if sampleStr := getenv("OTEL_TRACES_SAMPLER_ARG", ""); sampleStr != "" {
+		ratio, perr := strconv.ParseFloat(strings.TrimSpace(sampleStr), 64)
+		if perr != nil {
+			parseErrs = append(parseErrs, fmt.Errorf(
+				"config: OTEL_TRACES_SAMPLER_ARG must be a float in [0.0, 1.0] (got %q): %w",
+				sampleStr, perr,
+			))
+		} else {
+			cfg.OTELTracesSampler = ratio
+		}
+	} else {
+		cfg.OTELTracesSampler = 1.0
+	}
+
+	// OTEL gRPC insecure flag — defaults to true for local dev (no TLS).
+	insecureBool, err := getenvBool("OTEL_EXPORTER_OTLP_INSECURE", true)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.OTELInsecure = insecureBool
 
 	v, err := getenvInt64("BODY_LIMIT_BYTES", 1048576)
 	if err != nil {
@@ -157,7 +185,7 @@ func Load() (*Config, error) {
 	// wiring a real IdP, and off otherwise so a forgotten variable in
 	// staging/production cannot silently accept dev tokens.
 	stubDefault := cfg.AppEnv == EnvDevelopment
-	b, err = getenvBool("ENABLE_STUB_AUTH", stubDefault)
+	b, err = getenvBool("ENABLE_DEV_AUTH", stubDefault)
 	if err != nil {
 		parseErrs = append(parseErrs, err)
 	}
@@ -257,17 +285,23 @@ func (c *Config) Validate() error {
 		))
 	}
 
+	if c.OTELTracesSampler < 0.0 || c.OTELTracesSampler > 1.0 {
+		errs = append(errs, fmt.Errorf(
+			"OTEL_TRACES_SAMPLER_ARG must be in [0.0, 1.0] (got %v)", c.OTELTracesSampler,
+		))
+	}
+
 	// Auth stub: secret required when the stub IdP is enabled. In production
 	// the stub MUST be disabled — the boundary is wired to a real IdP later.
 	if c.EnableStubAuth {
 		if strings.TrimSpace(c.JWTSecretStub) == "" {
 			errs = append(errs, errors.New(
-				"JWT_SIGNING_SECRET is required when ENABLE_STUB_AUTH=true",
+				"JWT_SIGNING_SECRET is required when ENABLE_DEV_AUTH=true",
 			))
 		}
 		if c.AppEnv == EnvProduction {
 			errs = append(errs, errors.New(
-				"ENABLE_STUB_AUTH must be false in production (APP_ENV=production)",
+				"ENABLE_DEV_AUTH must be false in production (APP_ENV=production)",
 			))
 		}
 	}

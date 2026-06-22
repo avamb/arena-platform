@@ -20,12 +20,13 @@ import (
 	"net/http"
 	"time"
 
+	httpadapter "github.com/abhteam/arena_new/apps/backend/internal/adapters/http"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/idempotency"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	"github.com/go-chi/chi/v5"
-	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -58,7 +59,7 @@ type PoolDB interface {
 type Server struct {
 	cfg     *config.Config
 	logger  *slog.Logger
-	router  *chi.Mux
+	router  chi.Router
 	srv     *http.Server
 	db      Pinger
 	pool    PoolDB
@@ -97,6 +98,11 @@ type Options struct {
 	// When nil, the /metrics route is not mounted — useful for tests and for
 	// deployments where metrics are scraped from a sidecar instead.
 	MetricsHandler http.Handler
+	// Metrics is the typed *observability.Metrics whose HTTP histogram +
+	// counter back the prometheusMiddleware in the adapter chain. When nil
+	// the middleware is omitted, so unit tests that don't care about
+	// metrics can leave this unset without polluting a shared registry.
+	Metrics *observability.Metrics
 }
 
 // New constructs (but does not start) the HTTP server.
@@ -105,7 +111,19 @@ func New(opts Options) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	r := chi.NewRouter()
+
+	// Build the chi router via the adapter so the canonical middleware
+	// chain (Recoverer → RealIP → RequestID → requestContext → logger →
+	// prometheus → tracer → Timeout → bodyLimit) is applied uniformly
+	// across every arena_new HTTP listener. The Server is responsible only
+	// for the lifecycle (http.Server, listen, graceful shutdown) and for
+	// mounting the operational + /v1 routes on the returned router.
+	r := httpadapter.NewRouter(httpadapter.Deps{
+		Logger:         logger,
+		RequestTimeout: opts.Config.RequestTimeout,
+		BodyLimitBytes: opts.Config.BodyLimitBytes,
+		Metrics:        opts.Metrics,
+	})
 
 	// Lazily construct PG-backed audit + idempotency stores when the caller
 	// didn't supply concrete implementations.
@@ -129,18 +147,6 @@ func New(opts Options) *Server {
 		idem:    idemStore,
 		metrics: opts.MetricsHandler,
 	}
-
-	// Standard middleware chain. RequestID is first so chimw's per-request id
-	// is available to every downstream piece. requestContext copies it onto
-	// ctx via logging.WithRequestID. traceContext attaches a new trace_id and
-	// emits the request-start/end log pair.
-	r.Use(chimw.RequestID)
-	r.Use(chimw.RealIP)
-	r.Use(requestContext)
-	r.Use(traceContext)
-	r.Use(chimw.Recoverer)
-	r.Use(chimw.Timeout(opts.Config.RequestTimeout))
-	r.Use(jsonBodyLimit(opts.Config.BodyLimitBytes))
 
 	s.mountOperationalRoutes()
 	s.mountV1Routes()

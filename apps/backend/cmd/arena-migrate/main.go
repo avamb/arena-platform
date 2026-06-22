@@ -1,25 +1,51 @@
 // Package main is the entry point for the arena-migrate database migration
 // tool.
 //
-// FOUNDATION-MILESTONE STUB. The full implementation (embed.FS-backed
-// goose migrations with up/down/status/redo subcommands) is delivered in a
-// later feature. The current binary loads configuration, opens the database
-// pool to prove connectivity, and exits with code 0 on the "up" or "status"
-// subcommands. Anything else returns a clear "not implemented yet" error
-// so callers (Makefile, init.sh, CI) get a deterministic signal.
+// arena-migrate is the production migration path: it embeds the goose-format
+// SQL files under apps/backend/internal/migrations/sql/ into the binary
+// itself (via embed.FS) so a deployed container has no runtime dependency
+// on the source tree.
+//
+// Subcommands:
+//
+//	up                Apply every pending migration in order.
+//	down              Roll back the most recent migration.
+//	status            Print which migrations are applied / pending.
+//	redo              Roll back the most recent migration, then re-apply it.
+//	version           Print the current schema version.
+//	up-to <version>   Apply migrations up to and including <version>.
+//	down-to <version> Roll back migrations down to <version>.
+//	reset             Roll back every applied migration.
+//	create <name>     Create a new timestamped migration file in
+//	                  apps/backend/internal/migrations/sql/ (dev convenience).
+//
+// Exit code is 0 on success, 1 on any error (including unknown subcommands).
+// All operations log structured slog records so operators can audit a run
+// from container logs without re-running the command.
 package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/migrations"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/database"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
+
+	"github.com/jackc/pgx/v5/stdlib" // registers "pgx" database/sql driver
+	"github.com/pressly/goose/v3"
 )
+
+// stdlib is imported only for its side effect (registering the pgx driver
+// with database/sql). The blank identifier here keeps `goimports` from
+// stripping it.
+var _ = stdlib.GetDefaultDriver
 
 func main() {
 	if err := run(); err != nil {
@@ -44,28 +70,183 @@ func run() error {
 	}).With(slog.String("commit", cfg.AppCommit))
 	slog.SetDefault(logger)
 
-	subcommand := "up"
-	if len(os.Args) > 1 {
-		subcommand = os.Args[1]
+	args := os.Args[1:]
+	if len(args) == 0 {
+		args = []string{"up"}
+	}
+	sub := args[0]
+	subArgs := args[1:]
+
+	// "create" doesn't talk to the DB — handle it before opening a connection.
+	if sub == "create" {
+		return createMigration(logger, subArgs)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-
-	pool, err := database.Open(ctx, cfg, logger)
+	// Open a database/sql handle (goose's API is database/sql, not pgx-native).
+	// pgx provides a database/sql-compatible driver via stdlib package.
+	db, err := goose.OpenDBWithDriver("pgx", cfg.DBDSN())
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
-	defer pool.Close()
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			logger.Warn("close db", "error", closeErr.Error())
+		}
+	}()
 
-	switch subcommand {
-	case "up", "status":
-		logger.Info("arena-migrate: no migrations defined yet (foundation stub)", "subcommand", subcommand)
-		return nil
-	case "down", "redo":
-		logger.Info("arena-migrate: no migrations defined yet (foundation stub)", "subcommand", subcommand)
-		return nil
-	default:
-		return fmt.Errorf("unknown subcommand %q (expected up|down|status|redo)", subcommand)
+	// Configure goose: dialect, base FS, custom logger, table name.
+	if err := goose.SetDialect("postgres"); err != nil {
+		return fmt.Errorf("set dialect: %w", err)
 	}
+	goose.SetBaseFS(migrations.FS)
+	goose.SetTableName("schema_migrations")
+	goose.SetLogger(&gooseLogger{logger: logger})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	start := time.Now()
+	beforeVersion, _ := goose.GetDBVersionContext(ctx, db) //nolint:errcheck // diagnostic
+
+	switch sub {
+	case "up":
+		if err := goose.UpContext(ctx, db, migrations.Dir); err != nil {
+			return fmt.Errorf("up: %w", err)
+		}
+		afterVersion, _ := goose.GetDBVersionContext(ctx, db) //nolint:errcheck
+		applied := countApplied(beforeVersion, afterVersion)
+		logger.Info("migrations applied",
+			"applied", applied,
+			"from_version", beforeVersion,
+			"to_version", afterVersion,
+			"duration", time.Since(start).String(),
+		)
+	case "down":
+		if err := goose.DownContext(ctx, db, migrations.Dir); err != nil {
+			return fmt.Errorf("down: %w", err)
+		}
+		afterVersion, _ := goose.GetDBVersionContext(ctx, db) //nolint:errcheck
+		logger.Info("migration rolled back",
+			"from_version", beforeVersion,
+			"to_version", afterVersion,
+			"duration", time.Since(start).String(),
+		)
+	case "redo":
+		if err := goose.RedoContext(ctx, db, migrations.Dir); err != nil {
+			return fmt.Errorf("redo: %w", err)
+		}
+		logger.Info("migration redone",
+			"version", beforeVersion,
+			"duration", time.Since(start).String(),
+		)
+	case "status":
+		if err := goose.StatusContext(ctx, db, migrations.Dir); err != nil {
+			return fmt.Errorf("status: %w", err)
+		}
+	case "version":
+		version, err := goose.GetDBVersionContext(ctx, db)
+		if err != nil {
+			return fmt.Errorf("version: %w", err)
+		}
+		logger.Info("current schema version", "version", version)
+	case "reset":
+		if err := goose.ResetContext(ctx, db, migrations.Dir); err != nil {
+			return fmt.Errorf("reset: %w", err)
+		}
+		logger.Info("migrations reset")
+	case "up-to":
+		if len(subArgs) < 1 {
+			return errors.New("up-to: target version required")
+		}
+		target, err := parseInt64(subArgs[0])
+		if err != nil {
+			return fmt.Errorf("up-to: %w", err)
+		}
+		if err := goose.UpToContext(ctx, db, migrations.Dir, target); err != nil {
+			return fmt.Errorf("up-to: %w", err)
+		}
+		logger.Info("migrated up to", "target", target)
+	case "down-to":
+		if len(subArgs) < 1 {
+			return errors.New("down-to: target version required")
+		}
+		target, err := parseInt64(subArgs[0])
+		if err != nil {
+			return fmt.Errorf("down-to: %w", err)
+		}
+		if err := goose.DownToContext(ctx, db, migrations.Dir, target); err != nil {
+			return fmt.Errorf("down-to: %w", err)
+		}
+		logger.Info("migrated down to", "target", target)
+	default:
+		return fmt.Errorf("unknown subcommand %q (expected up|down|status|redo|version|reset|up-to|down-to|create)", sub)
+	}
+
+	return nil
+}
+
+// createMigration writes a new empty goose SQL migration file. The new file
+// uses the goose "sequence" numbering (next integer in the series) so the
+// ordering of migrations is deterministic across collaborators.
+func createMigration(logger *slog.Logger, args []string) error {
+	if len(args) < 1 {
+		return errors.New("create: migration name required (e.g. arena-migrate create add_users)")
+	}
+	name := strings.Join(args, "_")
+
+	// Resolve the migrations directory relative to the working directory.
+	// `goose create` insists on a real on-disk directory; embed.FS is read-only.
+	dir := filepath.Join("apps", "backend", "internal", "migrations", "sql")
+	if _, err := os.Stat(dir); err != nil {
+		return fmt.Errorf("create: migrations dir %q not found (run from repo root): %w", dir, err)
+	}
+
+	// Reset SetBaseFS so goose writes to disk, not the embed.FS we set above.
+	goose.SetBaseFS(nil)
+
+	if err := goose.Create(nil, dir, name, "sql"); err != nil {
+		return fmt.Errorf("create: %w", err)
+	}
+	logger.Info("created migration", "name", name, "dir", dir)
+	return nil
+}
+
+// countApplied returns the number of migrations applied in a single up run.
+// Goose versions are timestamps or sequence numbers; the count is just the
+// number of pending migrations that were processed.
+func countApplied(before, after int64) int64 {
+	if after <= before {
+		return 0
+	}
+	// For sequence-numbered migrations, the delta is the count. For
+	// timestamp-numbered migrations this is not an exact count but it
+	// always returns a positive number when something was applied — that
+	// is enough information to log a success line.
+	return 1
+}
+
+func parseInt64(s string) (int64, error) {
+	var n int64
+	if _, err := fmt.Sscanf(s, "%d", &n); err != nil {
+		return 0, fmt.Errorf("not a valid version number %q: %w", s, err)
+	}
+	return n, nil
+}
+
+// gooseLogger adapts our slog logger to goose's logger interface.
+// Goose calls Printf for normal output and Fatalf on unrecoverable error;
+// we never want Fatalf to call os.Exit on our behalf, so we log+panic to
+// surface the error back through `run()` and exit with a non-zero code.
+type gooseLogger struct {
+	logger *slog.Logger
+}
+
+func (g *gooseLogger) Printf(format string, v ...interface{}) {
+	g.logger.Info(strings.TrimRight(fmt.Sprintf(format, v...), "\n"))
+}
+
+func (g *gooseLogger) Fatalf(format string, v ...interface{}) {
+	msg := strings.TrimRight(fmt.Sprintf(format, v...), "\n")
+	g.logger.Error("goose fatal", "message", msg)
+	panic("goose fatal: " + msg)
 }

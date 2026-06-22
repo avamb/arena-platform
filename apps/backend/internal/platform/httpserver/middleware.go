@@ -35,14 +35,21 @@ const HeaderTraceID = "X-Trace-Id"
 
 // requestContext propagates chi's RequestID into the slog ctx so all log
 // records tagged via logging.FromContext(ctx) automatically include a
-// "request_id" attribute matching the X-Request-Id response header.
+// "request_id" attribute, AND mirrors that identifier into the
+// `X-Request-Id` response header so clients can correlate failures with
+// server-side traces without parsing the body.
+//
+// chi's own RequestID middleware only stores the identifier on context;
+// surfacing it to the client is this middleware's responsibility.
 func requestContext(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		reqID := chimw.GetReqID(r.Context())
 		if reqID == "" {
 			reqID = newTraceID()
-			w.Header().Set("X-Request-Id", reqID)
 		}
+		// Always set the response header — the contract is "every response
+		// carries X-Request-Id", and feature #6 verifies it explicitly.
+		w.Header().Set("X-Request-Id", reqID)
 		ctx := logging.WithRequestID(r.Context(), reqID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

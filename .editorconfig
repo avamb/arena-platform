@@ -1,0 +1,77 @@
+# ============================================================
+# arena_new — editor configuration
+# ============================================================
+# https://editorconfig.org/
+#
+# Applied automatically by most editors (VS Code, JetBrains, Vim,
+# Sublime, Emacs) so contributors do not have to memorise per-language
+# whitespace rules.
+
+root = true
+
+# ----------------------------------------------------------------
+# Defaults for every text file in the repo
+# ----------------------------------------------------------------
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# ----------------------------------------------------------------
+# Go uses tabs by convention; gofmt enforces it.
+# ----------------------------------------------------------------
+[*.go]
+indent_style = tab
+indent_size = 4
+
+# Go module / sum files are gofmt-controlled too.
+[{go.mod,go.sum,go.work,go.work.sum}]
+indent_style = tab
+indent_size = 4
+
+# ----------------------------------------------------------------
+# Shell scripts
+# ----------------------------------------------------------------
+[*.sh]
+indent_style = space
+indent_size = 2
+
+# ----------------------------------------------------------------
+# Makefiles REQUIRE hard tabs.
+# ----------------------------------------------------------------
+[{Makefile,*.mk,GNUmakefile}]
+indent_style = tab
+
+# ----------------------------------------------------------------
+# Markdown — keep trailing whitespace because two trailing spaces
+# is a hard line break in CommonMark.
+# ----------------------------------------------------------------
+[*.md]
+trim_trailing_whitespace = false
+
+# ----------------------------------------------------------------
+# Config / data formats
+# ----------------------------------------------------------------
+[*.{yml,yaml}]
+indent_size = 2
+
+[*.{json,jsonc}]
+indent_size = 2
+
+[*.toml]
+indent_size = 2
+
+[*.{sql,proto}]
+indent_size = 2
+
+# ----------------------------------------------------------------
+# Docker
+# ----------------------------------------------------------------
+[Dockerfile*]
+indent_size = 2
+
+[docker-compose*.{yml,yaml}]
+indent_size = 2

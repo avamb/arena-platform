@@ -162,7 +162,8 @@ func run() error {
 		Pool:           pool.Pool,
 		PgxPool:        pool.Pool,
 		Auth:           stubAuth,
-		MetricsHandler: metrics.Handler(),
+		Metrics:        metrics,        // wires the Prometheus HTTP latency/count middleware
+		MetricsHandler: metrics.Handler(), // mounts the /metrics scrape endpoint
 	})
 
 	listenErrCh := make(chan error, 1)

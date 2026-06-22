@@ -26,6 +26,8 @@ import (
 	"time"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
+	chimw "github.com/go-chi/chi/v5/middleware"
 )
 
 // devTokenRequest is the POST body. Defaults applied when fields are zero:
@@ -102,18 +104,30 @@ func (s *Server) handleDevToken(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// errorEnvelope returns the project-standard error body shape so every error
-// served by the dev-token / echo handlers is consistently structured.
+// errorEnvelope returns the project-standard error body shape (see
+// app_spec.txt §api_response_envelope) so every error served by the
+// dev-token / echo handlers is consistently structured. The envelope
+// carries request_id and trace_id resolved from the chi RequestID context
+// and the slog ctx respectively — both are exposed as response headers
+// (`X-Request-Id`, `X-Trace-Id`) so clients can correlate body, headers,
+// and server-side logs without any custom plumbing.
 func errorEnvelope(code, message string, r *http.Request) map[string]any {
 	requestID := ""
+	traceID := ""
 	if r != nil {
-		requestID = r.Header.Get("X-Request-Id")
+		if id := chimw.GetReqID(r.Context()); id != "" {
+			requestID = id
+		} else {
+			requestID = strings.TrimSpace(r.Header.Get("X-Request-Id"))
+		}
+		traceID = logging.TraceID(r.Context())
 	}
 	return map[string]any{
 		"error": map[string]any{
 			"code":       code,
 			"message":    message,
 			"request_id": requestID,
+			"trace_id":   traceID,
 		},
 	}
 }

@@ -30,6 +30,17 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
+	chimw "github.com/go-chi/chi/v5/middleware"
+)
+
+// HeaderWWWAuthenticate is the standard challenge header for 401 responses.
+// We always answer with the Bearer scheme and a fixed realm so clients can
+// distinguish protected endpoints from accidentally-public ones.
+const (
+	HeaderWWWAuthenticate = "WWW-Authenticate"
+	WWWAuthenticateBearer = `Bearer realm="arena"`
 )
 
 // -----------------------------------------------------------------------------
@@ -380,9 +391,15 @@ type MiddlewareOptions struct {
 // Bearer header on every request that is NOT excluded by opts.Skip.
 //
 // Successful auth puts the Actor on the request context (use ActorFromContext
-// to retrieve it downstream). Failures emit a uniform error envelope:
+// to retrieve it downstream). Failures emit a uniform error envelope shaped
+// per app_spec.txt §api_response_envelope:
 //
-//	{"error": {"code": "<code>", "message": "<msg>", "request_id": "..."}}
+//	{"error": {"code": "<dotted.code>", "message": "<localized>",
+//	           "request_id": "...", "trace_id": "..."}}
+//
+// 401 responses additionally carry a `WWW-Authenticate: Bearer realm="arena"`
+// header so generic HTTP clients (curl --user, browsers, OpenAPI clients)
+// detect the challenge correctly.
 func Middleware(p Provider, opts MiddlewareOptions) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -392,13 +409,25 @@ func Middleware(p Provider, opts MiddlewareOptions) func(http.Handler) http.Hand
 			}
 			rawToken, err := bearerFromHeader(r)
 			if err != nil {
-				writeAuthError(w, r, http.StatusUnauthorized, "auth_missing_token", err.Error())
+				// All three "no usable bearer token presented" cases
+				// (missing header, wrong scheme, empty bearer value)
+				// collapse into auth.missing_token per feature spec — the
+				// caller did not actually present a bearer token.
+				code := "auth.missing_token"
+				if errors.Is(err, ErrMalformedToken) {
+					// Truly malformed token (e.g. "Bearer not.a.jwt"
+					// fails parsing inside Verify, not here). Treat
+					// pre-verify malformations the same way so the
+					// authentication challenge stays uniform.
+					code = "auth.missing_token"
+				}
+				writeAuthError(w, r, http.StatusUnauthorized, code, err)
 				return
 			}
 			actor, err := p.Verify(r.Context(), rawToken)
 			if err != nil {
 				status, code := mapAuthErrorToStatus(err)
-				writeAuthError(w, r, status, code, err.Error())
+				writeAuthError(w, r, status, code, err)
 				return
 			}
 			ctx := WithActor(r.Context(), actor)
@@ -407,56 +436,254 @@ func Middleware(p Provider, opts MiddlewareOptions) func(http.Handler) http.Hand
 	}
 }
 
+// bearerFromHeader extracts the bearer token from an Authorization header.
+//
+// Returns ErrMissingToken when:
+//
+//   - the Authorization header is absent or contains only whitespace,
+//   - the scheme is not "Bearer" (e.g. Basic, Digest, custom),
+//   - the scheme is "Bearer" but no token value follows the space.
+//
+// All three cases are treated the same per feature #6 — the caller did not
+// present a usable bearer token. Later phases (signature/expiry/issuer
+// validation) live inside Provider.Verify and surface their own sentinels.
 func bearerFromHeader(r *http.Request) (string, error) {
 	h := strings.TrimSpace(r.Header.Get("Authorization"))
 	if h == "" {
-		return "", ErrMissingToken
+		return "", fmt.Errorf("%w: Authorization header is absent", ErrMissingToken)
 	}
-	const prefix = "Bearer "
-	if !strings.HasPrefix(h, prefix) && !strings.HasPrefix(h, strings.ToLower(prefix)) {
-		return "", fmt.Errorf("%w: expected 'Bearer <token>'", ErrMalformedToken)
+	// Split scheme from credentials. Anything other than "Bearer" (case
+	// insensitive) is treated as no bearer token presented — RFC 7235 allows
+	// multiple challenges, but for this milestone the only supported scheme
+	// is Bearer.
+	parts := strings.SplitN(h, " ", 2)
+	scheme := strings.ToLower(strings.TrimSpace(parts[0]))
+	if scheme != "bearer" {
+		return "", fmt.Errorf("%w: Authorization scheme %q is not supported, expected 'Bearer'", ErrMissingToken, parts[0])
 	}
-	tok := strings.TrimSpace(h[len(prefix):])
+	if len(parts) < 2 {
+		return "", fmt.Errorf("%w: Authorization header is missing the bearer token value", ErrMissingToken)
+	}
+	tok := strings.TrimSpace(parts[1])
 	if tok == "" {
-		return "", ErrMissingToken
+		return "", fmt.Errorf("%w: bearer token value is empty", ErrMissingToken)
 	}
 	return tok, nil
 }
 
 // mapAuthErrorToStatus converts an internal sentinel into HTTP status + a
-// machine-readable error code that fits the uniform error envelope.
+// machine-readable, dotted error code suitable for the uniform error envelope.
 func mapAuthErrorToStatus(err error) (int, string) {
 	switch {
 	case errors.Is(err, ErrMissingToken):
-		return http.StatusUnauthorized, "auth_missing_token"
+		return http.StatusUnauthorized, "auth.missing_token"
 	case errors.Is(err, ErrMalformedToken):
-		return http.StatusUnauthorized, "auth_malformed_token"
+		return http.StatusUnauthorized, "auth.malformed_token"
 	case errors.Is(err, ErrInvalidSignature):
-		return http.StatusUnauthorized, "auth_invalid_signature"
+		return http.StatusUnauthorized, "auth.invalid_signature"
 	case errors.Is(err, ErrTokenExpired):
-		return http.StatusUnauthorized, "auth_token_expired"
+		return http.StatusUnauthorized, "auth.token_expired"
 	case errors.Is(err, ErrUnknownIssuer):
-		return http.StatusUnauthorized, "auth_unknown_issuer"
+		return http.StatusUnauthorized, "auth.unknown_issuer"
 	case errors.Is(err, ErrUnknownAudience):
-		return http.StatusUnauthorized, "auth_unknown_audience"
+		return http.StatusUnauthorized, "auth.unknown_audience"
 	case errors.Is(err, ErrUnsupportedAlg):
-		return http.StatusUnauthorized, "auth_unsupported_alg"
+		return http.StatusUnauthorized, "auth.unsupported_alg"
 	case errors.Is(err, ErrDisabled):
-		return http.StatusServiceUnavailable, "auth_disabled"
+		return http.StatusServiceUnavailable, "auth.disabled"
 	default:
-		return http.StatusUnauthorized, "auth_invalid_token"
+		return http.StatusUnauthorized, "auth.invalid_token"
 	}
 }
 
-func writeAuthError(w http.ResponseWriter, r *http.Request, status int, code, msg string) {
+// writeAuthError renders the uniform error envelope, attaches the bearer
+// challenge header on 401 responses, and resolves request_id / trace_id from
+// the chi context so the response body matches the response headers.
+//
+// The message is translated using the Accept-Language header (English and
+// Russian are wired in this milestone). The English string serves as both
+// the EN translation and the developer-facing diagnostic embedded in
+// `details` so non-localized debugging is still possible.
+func writeAuthError(w http.ResponseWriter, r *http.Request, status int, code string, cause error) {
+	requestID := resolveRequestID(r, w)
+	traceID := logging.TraceID(r.Context())
+
+	if status == http.StatusUnauthorized {
+		w.Header().Set(HeaderWWWAuthenticate, WWWAuthenticateBearer)
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
-	payload := map[string]any{
+
+	locale := negotiateLocale(r.Header.Get("Accept-Language"))
+	message := translateAuthCode(code, locale)
+
+	body := map[string]any{
 		"error": map[string]any{
 			"code":       code,
-			"message":    msg,
-			"request_id": r.Header.Get("X-Request-Id"),
+			"message":    message,
+			"request_id": requestID,
+			"trace_id":   traceID,
 		},
 	}
-	_ = json.NewEncoder(w).Encode(payload)
+	if cause != nil {
+		body["error"].(map[string]any)["details"] = map[string]any{
+			"reason": cause.Error(),
+		}
+	}
+	_ = json.NewEncoder(w).Encode(body)
+}
+
+// resolveRequestID returns the request identifier in this priority order:
+//  1. The response header X-Request-Id (set by upstream middleware).
+//  2. The chi RequestID stored on the request context.
+//  3. The incoming X-Request-Id header (in case the client asserted one).
+//
+// Empty string is returned only when none of the three sources has a value.
+func resolveRequestID(r *http.Request, w http.ResponseWriter) string {
+	if w != nil {
+		if v := strings.TrimSpace(w.Header().Get("X-Request-Id")); v != "" {
+			return v
+		}
+	}
+	if id := chimw.GetReqID(r.Context()); id != "" {
+		return id
+	}
+	return strings.TrimSpace(r.Header.Get("X-Request-Id"))
+}
+
+// negotiateLocale picks the most-preferred supported locale from the
+// Accept-Language header. The supported set for this milestone is en and ru;
+// the default is en. Quality factors and complex tags are honoured at the
+// "language" granularity only (e.g. "ru-RU" maps to "ru").
+func negotiateLocale(header string) string {
+	header = strings.TrimSpace(header)
+	if header == "" {
+		return "en"
+	}
+	// Parse "lang;q=0.9, lang2;q=0.8" — we don't need full RFC 7231 here.
+	best := ""
+	bestQ := -1.0
+	for _, raw := range strings.Split(header, ",") {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		segs := strings.Split(raw, ";")
+		tag := strings.ToLower(strings.TrimSpace(segs[0]))
+		// Reduce to primary language subtag.
+		if dash := strings.Index(tag, "-"); dash > 0 {
+			tag = tag[:dash]
+		}
+		q := 1.0
+		for _, p := range segs[1:] {
+			p = strings.TrimSpace(p)
+			if strings.HasPrefix(p, "q=") {
+				if v, err := parseQuality(p[2:]); err == nil {
+					q = v
+				}
+			}
+		}
+		if tag != "en" && tag != "ru" {
+			continue
+		}
+		if q > bestQ {
+			best = tag
+			bestQ = q
+		}
+	}
+	if best == "" {
+		return "en"
+	}
+	return best
+}
+
+func parseQuality(s string) (float64, error) {
+	// Accept-Language quality factors are in [0,1] with at most 3 decimals.
+	// strconv would pull in another import for one call site; do it inline.
+	var whole, frac int
+	var scale = 1
+	dot := strings.Index(s, ".")
+	if dot < 0 {
+		// "q=1" or "q=0"
+		switch s {
+		case "0":
+			return 0, nil
+		case "1":
+			return 1, nil
+		}
+		return 0, fmt.Errorf("invalid quality %q", s)
+	}
+	for _, r := range s[:dot] {
+		if r < '0' || r > '9' {
+			return 0, fmt.Errorf("invalid quality %q", s)
+		}
+		whole = whole*10 + int(r-'0')
+	}
+	for _, r := range s[dot+1:] {
+		if r < '0' || r > '9' {
+			return 0, fmt.Errorf("invalid quality %q", s)
+		}
+		frac = frac*10 + int(r-'0')
+		scale *= 10
+	}
+	return float64(whole) + float64(frac)/float64(scale), nil
+}
+
+// translateAuthCode resolves the localized human-readable message for the
+// given error code. The map below is the inline message catalog for this
+// milestone; later milestones will replace it with go-i18n/v2 TOML catalogs
+// (the lookup signature stays the same).
+func translateAuthCode(code, locale string) string {
+	if msgs, ok := authMessages[code]; ok {
+		if m, ok := msgs[locale]; ok {
+			return m
+		}
+		if m, ok := msgs["en"]; ok {
+			return m
+		}
+	}
+	// Fallback so we never return an empty message — the code is at least
+	// informative even if the catalog is missing an entry.
+	return code
+}
+
+// authMessages is the inline localization table for auth-domain error codes.
+// Keys are dotted codes; values are locale -> human message.
+var authMessages = map[string]map[string]string{
+	"auth.missing_token": {
+		"en": "Authentication required: provide an Authorization header with a Bearer token.",
+		"ru": "Требуется аутентификация: укажите заголовок Authorization со схемой Bearer.",
+	},
+	"auth.malformed_token": {
+		"en": "The provided bearer token is malformed.",
+		"ru": "Предоставленный токен Bearer имеет некорректный формат.",
+	},
+	"auth.invalid_signature": {
+		"en": "The bearer token signature is invalid.",
+		"ru": "Подпись токена Bearer недействительна.",
+	},
+	"auth.token_expired": {
+		"en": "The bearer token has expired; request a fresh one.",
+		"ru": "Срок действия токена Bearer истёк, получите новый токен.",
+	},
+	"auth.unknown_issuer": {
+		"en": "The bearer token was issued by an unknown issuer.",
+		"ru": "Токен Bearer выпущен неизвестным эмитентом.",
+	},
+	"auth.unknown_audience": {
+		"en": "The bearer token is not intended for this audience.",
+		"ru": "Токен Bearer выпущен не для этой аудитории.",
+	},
+	"auth.unsupported_alg": {
+		"en": "The bearer token uses an unsupported signing algorithm.",
+		"ru": "Токен Bearer использует неподдерживаемый алгоритм подписи.",
+	},
+	"auth.invalid_token": {
+		"en": "The bearer token is invalid.",
+		"ru": "Токен Bearer недействителен.",
+	},
+	"auth.disabled": {
+		"en": "Authentication is disabled for this deployment.",
+		"ru": "Аутентификация отключена в этой среде.",
+	},
 }

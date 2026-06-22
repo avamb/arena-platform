@@ -136,6 +136,55 @@ services:
     ports:
       - "8080:8080"
 
+  # ------------------------------------------------------------------
+  # worker : arena-worker (long-running). Consumes worker_jobs rows
+  #           inserted by api/migrate/tests, dispatches to registered
+  #           handlers. Shares the api image; only ENTRYPOINT differs.
+  # ------------------------------------------------------------------
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: arena_new/arena-api:dev
+    container_name: arena_worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/app/arena-worker"]
+    environment:
+      APP_ENV: development
+      APP_NAME: arena-worker
+      APP_VERSION: 0.1.0-dev
+      APP_COMMIT: local
+
+      # arena-worker still loads the full config — including the HTTP
+      # fields — because validation is shared with arena-api. The
+      # listener never binds because the worker binary doesn't start
+      # an HTTP server.
+      HTTP_LISTEN_ADDR: ":0"
+      BODY_LIMIT_BYTES: "1048576"
+      REQUEST_TIMEOUT_SECONDS: "30"
+      SHUTDOWN_TIMEOUT: "20s"
+
+      DATABASE_URL: "postgres://arena:arena@postgres:5432/arena?sslmode=disable"
+      DB_POOL_MIN_CONNS: "1"
+      DB_POOL_MAX_CONNS: "10"
+      DB_POOL_MAX_CONN_LIFETIME: "1h"
+      DB_POOL_MAX_CONN_IDLE_TIME: "30m"
+      DB_LOG_QUERIES: "false"
+
+      DEFAULT_LOCALE: "en"
+      ACTIVE_LOCALES: "ru,en"
+
+      LOG_LEVEL: "info"
+      LOG_FORMAT: "json"
+
+      # The worker has no HTTP surface and does not validate JWTs;
+      # explicitly disable the dev stub so config.Validate does not
+      # insist on a signing secret being present.
+      ENABLE_DEV_AUTH: "false"
+
 volumes:
   arena_pg_data:
   arena_redis_data:

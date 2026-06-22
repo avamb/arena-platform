@@ -1,0 +1,54 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+build/
+
+# Test artifacts
+*.test
+*.out
+coverage.txt
+coverage.html
+profile.cov
+
+# Local env files (NEVER commit secrets)
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# AutoForge runtime (managed by the harness)
+.autoforge/runtime/
+.autoforge/state/
+.autoforge/*.db
+.autoforge/*.db-journal
+.autoforge/*.db-shm
+.autoforge/*.db-wal
+
+# Local Postgres / Redis data volumes
+data/postgres/
+data/redis/
+
+# Logs
+*.log
+logs/
+
+# Playwright (legacy)
+.playwright-cli/
+.playwright/
