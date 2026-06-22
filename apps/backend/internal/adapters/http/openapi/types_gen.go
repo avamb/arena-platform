@@ -219,6 +219,21 @@ type PostV1EchoParams struct {
 	IdempotencyKey openapi_types.UUID `json:"Idempotency-Key"`
 }
 
+// PaginationMeta defines model for PaginationMeta.
+type PaginationMeta struct {
+	// Page Current page number (1-based; first page is 1)
+	Page int `json:"page"`
+
+	// PageSize Maximum number of items per page as requested by the caller
+	PageSize int `json:"page_size"`
+
+	// Total Total number of items that match the applied query filters
+	Total int `json:"total"`
+
+	// TotalPages Total number of pages computed as ceil(total / page_size)
+	TotalPages int `json:"total_pages"`
+}
+
 // PostV1DevAuthTokenJSONRequestBody defines body for PostV1DevAuthToken for application/json ContentType.
 type PostV1DevAuthTokenJSONRequestBody = DevAuthTokenRequest
 

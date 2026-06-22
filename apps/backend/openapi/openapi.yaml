@@ -36,6 +36,33 @@ components:
         requires ENABLE_DEV_AUTH=true) or from the real identity provider
         in production. Pass as "Authorization: Bearer <token>".
 
+  headers:
+    X-Request-Id:
+      description: |
+        Per-request correlation ID that uniquely identifies this HTTP exchange.
+        Propagated through the distributed tracing pipeline and echoed back in
+        every API response (also available in the ErrorEnvelope.error.request_id field).
+      schema:
+        type: string
+        example: "01J3K8MNTB4KXYZQR5V6W7SHJ2"
+    X-Idempotency-Key:
+      description: |
+        The Idempotency-Key UUID that was presented by the client for this request.
+        Echoed back in the response so clients can correlate cached replays with the
+        original mutation request (TTL 24 hours).
+      schema:
+        type: string
+        format: uuid
+        example: "550e8400-e29b-41d4-a716-446655440000"
+    X-Trace-Id:
+      description: |
+        Distributed trace ID (OpenTelemetry W3C TraceContext format) for this request.
+        Use this value to correlate logs, metrics, and spans in your observability
+        backend. Also available in the ErrorEnvelope.error.trace_id field.
+      schema:
+        type: string
+        example: "4bf92f3577b34da6a3ce929d0e0e4736"
+
   schemas:
     ErrorEnvelope:
       type: object
@@ -341,6 +368,31 @@ components:
           format: date-time
           description: Server-side timestamp when the response was built (RFC3339Nano)
           example: "2026-06-22T05:00:00.000000000Z"
+
+    PaginationMeta:
+      type: object
+      required: [page, page_size, total, total_pages]
+      description: |
+        Standard pagination metadata returned by list endpoints.
+        Clients use this object to implement "load more" buttons or
+        paginator UI components. All fields are always present in list responses.
+      properties:
+        page:
+          type: integer
+          description: Current page number (1-based; first page is 1)
+          example: 1
+        page_size:
+          type: integer
+          description: Maximum number of items per page as requested by the caller
+          example: 20
+        total:
+          type: integer
+          description: Total number of items that match the applied query filters
+          example: 100
+        total_pages:
+          type: integer
+          description: Total number of pages computed as ceil(total / page_size)
+          example: 5
 
 paths:
   /healthz:
