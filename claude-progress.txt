@@ -5,6 +5,69 @@ arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
 --------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #101 (go-i18n setup + ru/en TOML catalogs + locale middleware)
+"go-i18n/v2 Bundle, TOML message catalogs, locale negotiation middleware, context
+plumbing, and integration into httpserver error envelopes."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #101: Implemented the full go-i18n/v2 infrastructure layer for the platform.
+
+Steps covered:
+  Step 1: Added github.com/nicksnyder/go-i18n/v2 v2.6.1 and BurntSushi/toml v1.6.0
+          as direct dependencies to go.mod / go.sum via `go get` + `go mod tidy`.
+  Step 2: Created apps/backend/internal/platform/i18n/bundle.go:
+          - Bundle struct wrapping goi18n.Bundle
+          - NewBundle() loads all *.toml from embedded locales/ dir via fs.WalkDir
+          - LocalizerFor(locale string) creates per-request Localizers
+          - //go:embed locales/*.toml directive
+  Step 3: Created locales/en.toml and locales/ru.toml with 5 base error keys:
+          error.unauthorized, error.forbidden, error.not_found, error.validation,
+          error.internal — using quoted TOML table headers for dotted keys.
+  Step 4: NegotiateLocale already existed in locale.go; LocaleMiddleware created in
+          middleware.go: Accept-Language header -> ?lang= param -> preferred -> default.
+          Panic-on-nil Bundle for fail-fast construction-time detection.
+  Step 5: Created apps/backend/internal/platform/i18n/context.go:
+          - WithLocalizer / LocalizerFrom for context plumbing
+          - Localize(ctx, messageID, fallback, templateData) with safe fallback
+  Step 6: Updated httpserver/server.go: optional Bundle field in Options,
+          LocaleMiddleware wired when Bundle non-nil, handleNotFound and
+          handleMethodNotAllowed use i18n.Localize with English fallback.
+  Step 7: Catalog structure auto-discovers any new *.toml in locales/ via WalkDir;
+          uk.toml / es.toml can be added without code changes.
+  Step 8: 47/47 tests pass: Accept-Language: ru -> Cyrillic texts; unknown lang -> en;
+          ?lang= overrides header; TestI18n101_FullVerification covers all 8 steps.
+
+ANALYSIS
+--------
+The i18n package already had NegotiateLocale (locale.go) and a minimal locale_test.go.
+What was missing: the go-i18n/v2 dependency itself, TOML catalogs, Bundle/Localizer
+wrappers, context plumbing, and httpserver integration. All pre-existing httpserver
+locale tests pass unchanged (Localize fallback param ensures backward compatibility
+when no Bundle is wired in test servers).
+
+CHANGES
+-------
+New files:
+  - apps/backend/internal/platform/i18n/bundle.go
+  - apps/backend/internal/platform/i18n/bundle_test.go (47 tests)
+  - apps/backend/internal/platform/i18n/context.go
+  - apps/backend/internal/platform/i18n/middleware.go
+  - apps/backend/internal/platform/i18n/locales/en.toml
+  - apps/backend/internal/platform/i18n/locales/ru.toml
+Modified files:
+  - apps/backend/internal/platform/httpserver/server.go (Bundle in Options, middleware wiring)
+  - go.mod (go-i18n/v2, BurntSushi/toml as direct; x/text upgraded)
+  - go.sum
+
+COMMIT
+------
+7854f03 feat(i18n): go-i18n/v2 bundle, TOML catalogs, locale middleware - Feature 101
+
+================================================================================
+
+--------------------------------------------------------------------------------
 Session: 2026-06-23 -- Feature #103 (OpenAPI 3.1 skeleton + oapi-codegen + openapi-typescript)
 "OpenAPI 3.1 contract-first with generation of Go server types (oapi-codegen)
 and TypeScript client (openapi-typescript)."
@@ -8956,5 +9019,92 @@ PROGRESS METRIC
 ---------------
 Stats at session start: 92/108 passing, 2 in_progress.
 This session: feature #79 completed and marked passing -> 93/108 passing.
+
+================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #107 (Dokploy deployment notes + production env checklist)
+"Documentation for deploying on Dokploy."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #107: Created deploy/DOKPLOY.md — a comprehensive Dokploy deployment
+guide — and 22 unit tests that verify all 4 feature steps.
+
+Steps covered:
+  Step 1: deploy/DOKPLOY.md with step-by-step Dokploy instructions:
+          - Creating the application in Dokploy (App Name, Git Repo, Branch)
+          - Dockerfile path (repository root), build context
+          - Attaching managed PostgreSQL 17 service (Option A: Dokploy managed,
+            Option B: external PostgreSQL)
+          - Setting environment variables via Dokploy UI
+          - Healthcheck path /healthz, port 8080
+          - Deploy flow with verification curl commands
+
+  Step 2: Mandatory production env variable checklist:
+          - APP_ENV=production
+          - DATABASE_URL (with sslmode=require guidance)
+          - JWT_SIGNING_SECRET (strong random ≥32 bytes)
+          - ENABLE_DEV_AUTH=false (dev stub must be disabled)
+          - LOG_LEVEL=info, LOG_FORMAT=json
+          - OTEL_EXPORTER_OTLP_ENDPOINT
+          - References .env.example for full variable documentation
+          - Separate table with recommended tuning variables
+
+  Step 3: Migration section documents arena-migrate must run before arena-api:
+          - Recommended: pre-deploy job in Dokploy (arena-migrate application
+            with one-shot start policy, ordered before arena-api)
+          - Alternative: init-container pattern
+          - Manual: docker run --rm ... arena-migrate up example
+
+  Step 4: Secret Rotation section:
+          - Explicitly labeled "out of scope for this (Backend Foundation) milestone"
+          - Documents current state (JWT_SIGNING_SECRET, DATABASE_URL)
+          - Table of expected rotation mechanisms per subsequent milestone
+          - Instructions for manual secret rotation until then
+
+CHANGES
+-------
+1. deploy/DOKPLOY.md (NEW) - comprehensive 300+ line Dokploy deployment guide
+   with 10 numbered sections covering all 4 feature steps
+
+2. apps/backend/internal/platform/httpserver/dokploy_doc_test.go (NEW)
+   22 tests:
+   - TestDokploy107_FileExists
+   - TestDokploy107_HasDokployAppCreationSection
+   - TestDokploy107_MentionsDockerfile
+   - TestDokploy107_MentionsPostgresService
+   - TestDokploy107_MentionsExposePort8080
+   - TestDokploy107_MentionsHealthcheckPath
+   - TestDokploy107_MentionsEnvironmentVariables
+   - TestDokploy107_ChecklistAppEnvProduction
+   - TestDokploy107_ChecklistDatabaseURL
+   - TestDokploy107_ChecklistJWTSigningSecret
+   - TestDokploy107_ChecklistOtelExporterEndpoint
+   - TestDokploy107_ChecklistLogLevel
+   - TestDokploy107_ChecklistEnableDevAuthFalse
+   - TestDokploy107_ChecklistReferencesEnvExample
+   - TestDokploy107_MentionsArenaMigrate
+   - TestDokploy107_MigrationsRunBeforeAPI
+   - TestDokploy107_MentionsInitContainerPattern
+   - TestDokploy107_HasMigrationSection
+   - TestDokploy107_HasSecretRotationSection
+   - TestDokploy107_SecretRotationNotInMilestone
+   - TestDokploy107_SecretRotationIndicatesWhere
+   - TestDokploy107_FullVerification (4 sub-tests, one per step)
+
+VERIFICATION
+------------
+  - 22/22 TestDokploy107_* tests: PASS (0.089s via Docker golang:1.24-alpine)
+  - go build ./...: EXIT 0 (all packages compile)
+  - git commit: 6c2787e
+
+PROGRESS METRIC
+---------------
+Stats at session start: 103/108 passing, 3 in_progress.
+This session: feature #107 completed and marked passing -> 104/108 passing.
 
 ================================================================================
