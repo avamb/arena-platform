@@ -5,6 +5,131 @@ arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
 --------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #56 (?lang=invalid returns default locale, not error)
+"?lang query parameter with an unknown locale falls back to default locale,
+same as Accept-Language fallback. Should not 400."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #56 requires:
+  Step 1: GET /v1/info?lang=klingon -- expect 200, active_locale='en'
+  Step 2: GET /v1/info?lang=ru -- expect 200, active_locale='ru'
+  Step 3: GET /v1/info?lang= (empty) -- expect 200, fallback to Accept-Language or 'en'
+  Step 4: ?lang takes priority over Accept-Language: Accept-Language: en, ?lang=ru -> ru
+
+ROOT CAUSE / BUG FOUND
+-----------------------
+The spec is contradictory in one place:
+  - <locale_negotiation> tag: "Accept-Language header → ?lang= query parameter → ..."
+  - internationalization_foundation deliverable: "?lang= query parameter overrides Accept-Language"
+  - internationalization_foundation fallback chain: "explicit ?lang → Accept-Language → ..."
+
+The existing NegotiateLocale implementation and test
+(TestNegotiateLocale_AcceptLanguageBeatLangParam) used the WRONG priority
+(Accept-Language first). Feature #56 step 4 explicitly requires the opposite.
+
+CHANGES
+-------
+
+1. apps/backend/internal/platform/i18n/locale.go (MODIFIED)
+   - Updated package doc comment to reflect correct chain: ?lang= → Accept-Language
+   - Swapped NegotiateLocale priority so ?lang= is checked FIRST (before Accept-Language)
+   - Updated doc comment to reflect correct priority chain
+   - Added feature #56 reference in comment about silent fallback
+
+2. apps/backend/internal/platform/i18n/locale_test.go (MODIFIED)
+   - Renamed TestNegotiateLocale_AcceptLanguageBeatLangParam to
+     TestNegotiateLocale_LangParamBeatsAcceptLanguage
+   - Fixed expectation: NegotiateLocale("en", "ru", ...) now expects "ru" not "en"
+   - Updated comment on TestNegotiateLocale_LangParamOverridesDefault
+
+3. apps/backend/internal/platform/i18n/lang_param_priority_test.go (NEW)
+   14 unit tests covering all 4 feature steps:
+
+   Steps 1+3 (invalid/unsupported/empty lang falls back silently):
+     TestLangParam_KlingonFallsToDefault
+     TestLangParam_UnsupportedFrFallsToDefault
+     TestLangParam_InvalidNotError
+     TestLangParam_InvalidLangFallsToAcceptLanguage
+     TestLangParam_EmptyFallsThroughToAcceptLanguage
+     TestLangParam_EmptyFallsThroughToDefault
+
+   Step 2 (valid ?lang= selects locale):
+     TestLangParam_ValidRuSelectsRu
+     TestLangParam_ValidEnSelectsEn
+     TestLangParam_ValidLangWithRegionStripped
+
+   Step 4 (?lang takes priority over Accept-Language):
+     TestLangParam_PriorityOverAcceptLanguage
+     TestLangParam_PriorityReverseCase
+     TestLangParam_PriorityWithQValues
+     TestLangParam_InvalidLangDoesNotBlock
+
+   Full chain:
+     TestLangParam_FullPriorityChain
+
+4. apps/backend/internal/platform/httpserver/lang_param_fallback_test.go (NEW)
+   20 HTTP-level tests via GET /v1/info covering all 4 feature steps:
+
+   Step 1 (klingon → 200, en):
+     TestLangParamFallback_KlingonReturns200
+     TestLangParamFallback_KlingonActiveLocaleIsEn
+     TestLangParamFallback_KlingonNot400
+     TestLangParamFallback_UnsupportedLangFallsToEn
+     TestLangParamFallback_ZhCNFallsToEn
+
+   Step 2 (valid ?lang=ru → 200, ru):
+     TestLangParamFallback_RuReturns200
+     TestLangParamFallback_RuActiveLocaleIsRu
+     TestLangParamFallback_EnReturnsEn
+
+   Step 3 (empty ?lang= → fallback):
+     TestLangParamFallback_EmptyLangReturns200
+     TestLangParamFallback_EmptyLangFallsToDefault
+     TestLangParamFallback_EmptyLangFallsToAcceptLanguage
+     TestLangParamFallback_EmptyLangNot400
+
+   Step 4 (?lang beats Accept-Language):
+     TestLangParamFallback_LangParamBeatsAcceptLanguage
+     TestLangParamFallback_LangRuBeatsAcceptLanguageEn_Returns200
+     TestLangParamFallback_LangEnBeatsAcceptLanguageRu
+     TestLangParamFallback_InvalidLangFallsToAcceptLanguage
+     TestLangParamFallback_InvalidLangNoAcceptLangFallsToDefault
+
+   Full sweep:
+     TestLangParamFallback_FullVerification (all 4 steps with 6 sub-cases)
+
+VERIFICATION
+------------
+  - docker build --target build --no-cache: SUCCESS (all 4 binaries compile)
+  - 14/14 TestLangParam_* unit tests: PASS (0.011s)
+  - 32/32 TestNegotiateLocale_* tests: PASS (no regressions)
+  - 20+ TestLangParamFallback_* HTTP tests: PASS
+  - 12/12 TestLocaleUnsupportedFallback_*: PASS (no regressions)
+  - 15/15 TestLocaleQValue_*: PASS (no regressions)
+  - Full i18n and httpserver packages: ok
+  - git commit: 7da3e66
+
+ARCHITECTURE NOTES
+------------------
+  - Correct spec priority chain is: ?lang= → Accept-Language → preferred → default
+  - The existing code had it backwards (Accept-Language first). The spec says
+    explicitly "?lang= query parameter overrides Accept-Language when present"
+    and the deliverable fallback chain is "explicit ?lang → Accept-Language → ..."
+  - The one contradictory sentence in <locale_negotiation> tag was an error.
+  - All previously-passing locale tests continue to pass because the fix is
+    compatible: most tests only test one source at a time, and the test that
+    had the wrong expectation was explicitly updated.
+
+PROGRESS METRIC
+---------------
+Stats at session start: 69/108 passing, 2 in_progress.
+This session: feature #56 completed and marked passing -> 70/108 passing.
+
+================================================================================
+
+--------------------------------------------------------------------------------
 Session: 2026-06-22 -- Feature #45 (Concurrent identical Idempotency-Key requests)
 --------------------------------------------------------------------------------
 
