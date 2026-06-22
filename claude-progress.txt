@@ -5,6 +5,66 @@ arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
 --------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #13 (405 handler returns error envelope with Allow header)
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #13 requires that an existing route hit with the wrong HTTP method
+returns 405 with:
+  1. The Allow header listing supported methods
+  2. Body: standard JSON error envelope with code='http.method_not_allowed'
+  3. Content-Type: application/json
+
+KEY DISCOVERY: chi v5 behavior
+Chi v5.1.0 does NOT set the Allow header when a custom MethodNotAllowed handler
+is registered. The default handler sets Allow via `w.Header().Add("Allow", ...)`,
+but when a custom handler is installed, chi returns it directly without the
+Allow-header-setting code path.
+
+SOLUTION: chi RouteContext.Routes is an exported field that implements the
+chi.Routes interface (includes Match(rctx, method, path) bool). The custom
+handler probes all candidate HTTP methods (GET, HEAD, POST, PUT, PATCH, DELETE,
+OPTIONS) by calling Routes.Match on a fresh RouteContext. Matched methods are
+joined into the Allow header value.
+
+MODIFIED FILES:
+- apps/backend/internal/platform/httpserver/server.go
+  * Added "strings" import
+  * Added s.router.MethodNotAllowed(handleMethodNotAllowed) in mountOperationalRoutes
+  * Added handleMethodNotAllowed() function with chi Routes.Match-based Allow header
+
+NEW FILES:
+- apps/backend/internal/platform/httpserver/method_not_allowed_test.go
+  * 10 test functions covering all 5 feature steps:
+    TestMethodNotAllowed_WrongMethodReturns405
+    TestMethodNotAllowed_AllowHeaderIncludesGET
+    TestMethodNotAllowed_BodyHasMethodNotAllowedCode
+    TestMethodNotAllowed_ContentTypeIsJSON
+    TestMethodNotAllowed_PatchOnPostOnlyReturns405
+    TestMethodNotAllowed_AllowHeaderIncludesPOST
+    TestMethodNotAllowed_PatchBodyHasMethodNotAllowedCode
+    TestMethodNotAllowed_NotAffectNotFound
+    TestMethodNotAllowed_AllowHeaderPreservedAlongside405Body
+    TestMethodNotAllowed_RequestIDAndTraceIDPresentInBody
+  * Uses buildMethodNotAllowedRouter() helper (GET /probe + POST /post-only)
+  * Verifies GET-only route returns Allow: GET, POST-only route returns Allow: POST
+
+VERIFICATION
+------------
+- Docker build (production image): clean compile, all 4 binaries built
+- go test ./apps/backend/internal/platform/httpserver/...: all 10 new tests PASS
+- No pre-existing tests broken
+- No forbidden patterns (STUB/MOCK/devStore/globalThis)
+- git commit: 650104a
+
+PROGRESS METRIC
+---------------
+Stats at session start: 40/108 passing.
+This session: feature #13 completed and marked passing -> 41/108 passing.
+================================================================================
+
+--------------------------------------------------------------------------------
 Session: 2026-06-22 -- Feature #21 (i18n_text table seeds load from migration)
 "i18n_text table seeds load from migration"
 --------------------------------------------------------------------------------
