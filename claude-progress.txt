@@ -8407,3 +8407,83 @@ Stats at session start: 94/108 passing, feature #90 claimed.
 This session: feature #90 completed and marked passing -> 95/108 passing.
 
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #99 (Audit writer boundary)
+"Interface AuditWriter for recording mutation events. In milestone — slog-based
+implementation (writes to structured log). Real audit_log table — next milestone."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #99: Added SlogWriter implementation, WriteEvent/NewEvent helpers, and
+13 unit tests covering all 5 feature steps in the audit package.
+
+Steps covered:
+  Step 1: Event struct already had all required fields (ActorID, Action,
+          ResourceType, ResourceID, Metadata, OccurredAt) in audit.go
+  Step 2: Writer interface already had Write(ctx, Event) error in audit.go
+  Step 3: NEW SlogWriter in slog_writer.go — writes event to slog at INFO level
+          with category="audit" and all Event fields as structured attributes
+  Step 4: NEW helpers in helper.go — WriteEvent() convenience function for
+          workflows, NewEvent() constructor for use in command handlers
+  Step 5: NEW 13 unit tests in audit_writer_test.go — all pass
+
+ANALYSIS
+--------
+The existing audit.go already had Event, Writer interface, and PGWriter.
+Feature #99 required adding the SlogWriter (milestone-phase writer) and helpers.
+
+SlogWriter.Write/WriteTx both call logEvent which emits:
+  slog.InfoContext(ctx, "audit event",
+    slog.String("category", "audit"),
+    ... all Event fields as structured key-value pairs ...
+  )
+
+WriteTx accepts pgx.Tx for interface compatibility but ignores it (no DB).
+NewSlogWriter(nil) falls back to slog.Default().
+
+CHANGES
+-------
+1. apps/backend/internal/platform/audit/slog_writer.go (NEW)
+   - SlogWriter struct wrapping *slog.Logger
+   - NewSlogWriter(logger) constructor with nil fallback
+   - Write(ctx, Event) error — delegates to logEvent
+   - WriteTx(ctx, pgx.Tx, Event) error — ignores tx, delegates to logEvent
+   - logEvent — emits all 11 fields including category="audit"
+   - Compile-time: var _ Writer = (*SlogWriter)(nil)
+
+2. apps/backend/internal/platform/audit/helper.go (NEW)
+   - WriteEvent(ctx, w, actorType, actorID, action, resourceType, resourceID, metadata) error
+   - NewEvent(actorType, actorID, action, resourceType, resourceID) Event
+
+3. apps/backend/internal/platform/audit/audit_writer_test.go (NEW)
+   13 tests:
+   - TestAuditEvent_RequiredFields
+   - TestWriter_InterfaceHasWriteMethod
+   - TestSlogWriter_CategoryIsAudit
+   - TestSlogWriter_AllEventFieldsPresent
+   - TestSlogWriter_MessageIsAuditEvent
+   - TestSlogWriter_WriteTxIgnoresTx
+   - TestSlogWriter_WriteTxNilTxNotPanics
+   - TestSlogWriter_NilLoggerFallsBackToDefault
+   - TestSlogWriter_NilMetadataBecomesEmptyMap
+   - TestWriteEvent_Helper
+   - TestWriteEvent_OccurredAtIsSetByHelper
+   - TestNewEvent_Helper
+   - TestAuditWriterBoundary_FullVerification (all 5 steps as sub-tests)
+
+VERIFICATION
+------------
+  - 13/13 tests: PASS (0.008s)
+  - go build ./...: EXIT 0 (all packages compile)
+  - git commit: 549ce6b
+
+PROGRESS METRIC
+---------------
+Stats at session start: 95/108 passing, 2 in_progress.
+This session: feature #99 completed and marked passing -> 96/108 passing.
+
+================================================================================
