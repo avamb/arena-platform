@@ -108,9 +108,19 @@ func (s *Server) handleEcho(w http.ResponseWriter, r *http.Request) {
 
 	var req echoRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		// Type mismatch: valid JSON but wrong top-level type (e.g. array, string).
+		// Type mismatch: valid JSON but wrong type (field-level or top-level).
 		var typeErr *json.UnmarshalTypeError
 		if errors.As(err, &typeErr) {
+			if typeErr.Field == "message" {
+				// Non-string value for the 'message' field → validation.field_type
+				writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+					"validation.field_type",
+					"field 'message' must be a string",
+					r,
+					map[string]any{"field": "message", "expected": "string", "actual": typeErr.Value},
+				))
+				return
+			}
 			writeJSON(w, http.StatusBadRequest, errorEnvelope("http.invalid_shape",
 				fmt.Sprintf("expected JSON object but received %s", typeErr.Value), r))
 			return
