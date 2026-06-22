@@ -2732,3 +2732,62 @@ PROGRESS METRIC
 Stats at session start: 22/108 passing, 1 in_progress (this feature).
 This session: feature #100 completed and marked passing -> 23/108 passing.
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #82 (golangci-lint config & Makefile)
+"golangci-lint config & Makefile"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #82 delivers the static-analysis config and developer command shortcuts.
+
+NEW FILES CREATED:
+
+1. .golangci.yml (root)
+   - Compatible with golangci-lint v1.x
+   - Linters enabled: errcheck, govet, staticcheck, gosec, revive,
+     ineffassign, unused, gofmt, goimports
+   - run.timeout: 5m, run.go: "1.24"
+   - goimports.local-prefixes: github.com/abhteam/arena_new
+   - govet: enable-all with fieldalignment disabled (noise)
+   - revive rules: exported, unused-parameter, unreachable-code, error-return,
+     error-strings
+   - gosec: G104 excluded (defer errors -- covered by errcheck)
+   - errcheck: exclude (io.Closer).Close, (io.ReadCloser).Close
+   - issues: max-issues-per-linter 0, max-same-issues 0 (show everything)
+   - exclude-rules: relax gosec/errcheck/unused in _test.go files
+   - exclude-rules: relax govet/revive/gofmt/goimports in generated
+     queries/*.go and openapi/*.go files (sqlc / oapi-codegen output)
+
+2. Makefile (root)
+   - .PHONY declaration for all targets
+   - GOFLAGS ?= for optional extra flags
+   - BIN_DIR := bin
+   - lint:       golangci-lint run ./...
+   - test:       go test $(GOFLAGS) ./...
+   - test-race:  go test -race $(GOFLAGS) ./...
+   - build:      mkdir -p bin; go build each binary to bin/
+     (arena-api, arena-worker, arena-migrate, arena-healthcheck)
+   - run-api:    go run ./apps/backend/cmd/arena-api
+   - run-worker: go run ./apps/backend/cmd/arena-worker
+   - migrate-up: go run ./apps/backend/cmd/arena-migrate up
+   - migrate-down: go run ./apps/backend/cmd/arena-migrate down
+
+VERIFICATION
+------------
+  - Both files created and staged cleanly
+  - Makefile uses hard tabs (required by make syntax)
+  - All 8 required targets present: lint, test, test-race, build, run-api,
+    run-worker, migrate-up, migrate-down
+  - All 9 required linters present in .golangci.yml
+  - No forbidden patterns (STUB/MOCK/devStore/globalThis)
+  - git commit: a2faa33 -- 146 insertions
+
+PROGRESS METRIC
+---------------
+Stats at session start: 23/108 passing, 1 in_progress (this feature).
+This session: feature #82 completed and marked passing -> 24/108 passing.
+================================================================================
