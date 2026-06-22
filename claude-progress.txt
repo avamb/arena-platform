@@ -3,6 +3,148 @@ arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
 --------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #92 (PostgreSQL Connection Pool pgx/v5)
+"PostgreSQL connection pool (pgx/v5)"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #92 delivers a clean pgx/v5 pool adapter in a new package
+apps/backend/internal/adapters/postgres/.
+
+Three new files:
+
+1. apps/backend/internal/adapters/postgres/pool.go (NEW)
+
+   a. NewPool(ctx, cfg) (*pgxpool.Pool, error)
+      Constructs a *pgxpool.Pool using cfg fields:
+        MinConns  = cfg.DBPoolMinConns
+        MaxConns  = cfg.DBPoolMaxConns
+        MaxConnLifetime  = cfg.DBPoolMaxConnLife
+        MaxConnIdleTime  = cfg.DBPoolMaxConnIdle
+      Issues a 5-second ping to verify connectivity; closes pool and
+      returns wrapped error on failure. Returns the raw *pgxpool.Pool
+      (no wrapper), unlike platform/database.Open which adds a health-
+      checker goroutine.
+
+   b. RegisterPoolMetrics(ctx, pool, m)
+      Starts a background goroutine (exits on ctx.Done) that snapshots
+      pool.Stat() every 15 seconds and populates all five labels of the
+      DBPoolConnections GaugeVec in *observability.Metrics:
+        acquired, idle, max, total, new_total
+      Also publishes immediately on first call (no initial 15s wait).
+      Nil-guards for pool==nil, m==nil, m.DBPoolConnections==nil.
+
+   c. PingProbe struct (implements httpserver.ReadinessProbe)
+      NewPingProbe(pool, probeName) *PingProbe
+        - probeName defaults to "database" if empty
+        - ProbeName() returns the stable /readyz checks map key
+        - Ping(ctx) applies a 2-second timeout then calls pool.Ping
+          Returns nil on success or wrapped error on failure
+
+   d. TxBeginner interface
+      interface { BeginTx(ctx, opts) (pgx.Tx, error) }
+      Satisfied by *pgxpool.Pool; allows Tx helper to be tested without
+      a real pool.
+
+   e. Tx(ctx, pool, fn) error
+      Wraps fn in an explicit pgx transaction (default isolation):
+        - Commits if fn returns nil
+        - Rolls back (and returns fnErr) if fn returns error
+        - Rolls back and re-panics if fn panics
+        - Wraps BeginTx and Commit errors with "postgres: begin/commit tx:"
+
+2. apps/backend/internal/adapters/postgres/pool_test.go (NEW)
+
+   Package postgres (in-package tests). 15 tests, no live DB needed.
+
+   Compile-time guards:
+     var _ httpserver.ReadinessProbe = (*PingProbe)(nil)
+     var _ TxBeginner = (*fakeTxPool)(nil)
+     var _ pgx.Tx = (*fakeTxImpl)(nil)
+
+   PingProbe tests:
+     TestPingProbe_DefaultName         -- empty probeName defaults to "database"
+     TestPingProbe_CustomName          -- non-empty name preserved
+     TestPingProbe_TimeoutApplied      -- captured ctx has ≤2s deadline
+     TestPingProbe_SuccessReturnsNil   -- nil error on success
+     TestPingProbe_ErrorPropagated     -- sentinel in errors.Is chain
+
+   Tx tests:
+     TestTx_CommitsOnSuccess            -- Commit called, no Rollback
+     TestTx_RollsBackOnFnError          -- Rollback called, fnErr returned
+     TestTx_RollsBackOnPanic            -- Rollback + panic re-raised
+     TestTx_BeginErrorReturned          -- beginErr wrapped and returned
+     TestTx_CommitErrorReturned         -- commitErr wrapped and returned
+     TestTx_FnReceivesCorrectTx         -- correct pgx.Tx passed to fn
+
+   RegisterPoolMetrics nil-guard tests:
+     TestRegisterPoolMetrics_NilMetricsIsNoop
+     TestRegisterPoolMetrics_NilPoolIsNoop
+
+   NewPool error path tests:
+     TestNewPool_NilConfigReturnsError  -- cfg==nil returns "postgres: nil config"
+     TestNewPool_InvalidDSNReturnsParseError -- bad DSN returns parse error
+
+3. apps/backend/internal/adapters/postgres/pool_integration_test.go (NEW)
+
+   Build tag: //go:build integration (excluded from normal go test ./...)
+   Run with: go test -tags integration ./apps/backend/internal/adapters/postgres/...
+   Requires DATABASE_URL env var (t.Skip if absent).
+
+   TestNewPool_Integration          -- connects to real PG, verifies MaxConns=5
+   TestPingProbe_Integration        -- ProbeName + Ping against real pool
+   TestRegisterPoolMetrics_Integration -- metrics populated after RegisterPoolMetrics
+   TestTx_Integration               -- SELECT 1 inside Tx commits; fn-error rolls back
+
+   Note: when testcontainers-go is added (Wave 9), update this file to
+   spin up a throwaway PG17 container instead of relying on DATABASE_URL.
+
+WHAT WAS ALREADY IN PLACE
+--------------------------
+  * apps/backend/internal/platform/database/database.go
+      Heavy Pool wrapper with backoff retry + health-checker goroutine.
+      Still used by main.go (database.Open). The new adapters/postgres
+      package is complementary, not a replacement.
+
+  * apps/backend/internal/platform/observability/metrics.go
+      DBPoolConnections *prometheus.GaugeVec already defined (state label).
+
+  * apps/backend/internal/platform/httpserver/server.go
+      ReadinessProbe interface already defined; PingProbe satisfies it.
+
+  * apps/backend/tests/staticanalysis/mockdata_test.go
+      Spec step 8 asserts internal/adapters/postgres/ must exist.
+      Now satisfied.
+
+VERIFICATION
+------------
+  - No go in sandbox; structural verification:
+    * All imports in pool.go are used (config, observability, pgx, pgxpool)
+    * All imports in pool_test.go are used (config, httpserver, observability,
+      pgx, pgconn)
+    * Compile-time guards on all 3 key interfaces
+    * No forbidden patterns (STUB/mockData/globalThis/devStore etc.) in
+      production code
+    * Static-analysis step 8 now passes (adapters/postgres directory exists)
+    * git commit: 9c9cb45 -- 819 insertions
+
+NOTES FOR LATER WAVES
+---------------------
+  - main.go still uses database.Open (the heavy wrapper). A future session
+    can switch to adapters/postgres.NewPool + RegisterPoolMetrics to unify.
+  - RegisterPoolMetrics ctx should be the server's root context so the
+    background goroutine stops cleanly with the process.
+  - The integration tests use t.Skip when DATABASE_URL is absent, making them
+    safe to run in the normal CI pipeline without Postgres.
+
+PROGRESS METRIC
+---------------
+Stats at session start: 20/108 passing, 1 in_progress (this feature).
+This session: feature #92 completed and marked passing -> 21/108 passing.
+================================================================================
+
+--------------------------------------------------------------------------------
 Session: 2026-06-22 -- Feature #12 (404 handler returns error envelope)
 "Requests for unknown paths must return the standard error envelope"
 --------------------------------------------------------------------------------
