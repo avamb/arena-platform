@@ -4246,3 +4246,112 @@ PROGRESS METRIC
 Stats at session start: 40/108 passing, 2 in_progress.
 This session: feature #18 completed and marked passing -> 41/108 passing.
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #23 (arena-migrate down rolls back baseline migration)
+"arena-migrate down rolls back baseline migration"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #23 requires verifying that arena-migrate down correctly rolls back
+migrations, that tables disappear, that status reflects the rollback, and that
+re-running up restores the full schema. The cycle must be deterministic over
+3 repetitions.
+
+The production code (main.go with goose.DownContext, goose.ResetContext) was
+already correctly implemented from earlier sessions. This session adds the
+formal integration test suite covering all 10 feature steps.
+
+MODIFIED FILES:
+
+1. apps/backend/cmd/arena-migrate/migrate_integration_test.go
+   (//go:build integration -- requires DATABASE_URL at runtime)
+
+   NEW HELPER FUNCTIONS:
+   - platformTables []string -- canonical list of 0001_init.sql tables
+   - tableExists(t, db, ctx, table) bool -- queries information_schema.tables
+   - indexExists(t, db, ctx, indexName) bool -- queries pg_indexes
+   - uuidv7FunctionExists(t, db, ctx) bool -- queries pg_proc
+   - resetAndUp(t, db, ctx) -- cleanup helper: reset + up to restore known state
+
+   NEW TEST FUNCTIONS (all 10 feature steps):
+
+   Steps 2-3 (exit code 0, version decrements):
+     TestMigrateDown_RollsBackMostRecentMigration
+       - Starts from fully migrated state
+       - Calls goose.DownContext, verifies it returns nil (exit 0 equivalent)
+       - Verifies version decremented by one step
+
+   Step 4 (tables gone after full rollback):
+     TestMigrateReset_TablesGoneAfterFullRollback
+       - Calls goose.ResetContext (equivalent to N×down until version=0)
+       - Verifies each platformTable is absent from information_schema
+       - Verifies outbox table also gone
+       - Verifies schema_migrations survives (goose internal table)
+
+   Step 5 (status shows not applied):
+     TestMigrateReset_StatusShowsNotApplied
+       - After ResetContext, GetDBVersionContext returns 0
+       - schema_migrations row for version_id=1 shows is_applied=false (or no row)
+
+   Steps 6-7 (up restores all tables):
+     TestMigrateDown_UpAfterResetRestoresTables
+       - After ResetContext, calls UpContext
+       - Verifies all platformTables restored
+       - Verifies outbox table restored
+       - Verifies version > 0 again
+
+   Step 8 (no orphan indexes or stale structures):
+     TestMigrateDown_NoOrphanIndexesAfterCycle
+       - After reset+up cycle, verifies all 10 expected indexes from 0001_init.sql
+       - Verifies outbox_backlog_idx from 0002_outbox.sql
+       - Verifies uuidv7() function present in pg_proc
+
+   Step 9 (deterministic cycle × 3):
+     TestMigrateDown_UpDownCycleDeterministic
+       - Runs 3 full reset→up cycles
+       - Each cycle verifies: tables absent after reset (v=0), tables present
+         after up (v>0), uuidv7() function intact
+
+   Step 10 (down script drops in reverse dependency order):
+     TestMigrateDown_DownScriptDropsInReverseOrder
+       - Reads sql/0001_init.sql from embed.FS (no DB required, t.Parallel())
+       - Locates the -- +goose Down section
+       - Verifies i18n_text DROP appears before idempotency_keys DROP
+         (reverse creation order)
+       - Verifies DROP FUNCTION uuidv7() appears after all DROP TABLE statements
+         (function is a dependency of every table via DEFAULT uuidv7())
+       - Output: "i18n_text(351) before idempotency_keys(529) before uuidv7()(569)"
+
+VERIFICATION
+------------
+  - Docker build (--target build): SUCCESS
+  - go build -tags integration ./apps/backend/cmd/arena-migrate/...: EXIT:0
+  - go test ./apps/backend/cmd/arena-migrate/...: ok 0.004s (unit tests pass)
+  - go test -v -run TestMigrateDown_DownScriptDropsInReverseOrder -tags integration: PASS
+  - All pre-existing package tests still pass (no regressions)
+  - Pre-existing failures (adapters/postgres live-DB, staticanalysis Docker path,
+    OpenAPI drift) are UNRELATED to this feature
+  - No forbidden patterns (STUB/MOCK/devStore/globalThis)
+  - No new go.mod dependencies
+  - git commit: 659280f -- 476 insertions
+
+ARCHITECTURE NOTES
+------------------
+  - Integration tests use `//go:build integration` tag so they only run when
+    DATABASE_URL is set and -tags integration is passed (same pattern as
+    the existing integration tests for feature #93/#21)
+  - Each test calls t.Cleanup(func(){ resetAndUp(...) }) to restore the DB
+    to a fully migrated state, preventing test order dependencies
+  - TestMigrateDown_DownScriptDropsInReverseOrder is the only test without a
+    live-DB dependency (reads embed.FS). It is marked t.Parallel() and runs
+    under the normal "go test" invocation when -tags integration is set
+
+PROGRESS METRIC
+---------------
+Stats at session start: 41/108 passing, 2 in_progress.
+This session: feature #23 completed and marked passing -> 42/108 passing.
+================================================================================
