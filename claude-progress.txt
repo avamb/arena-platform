@@ -7203,3 +7203,72 @@ Stats at session start: 76/108 passing, 1 in_progress.
 This session: feature #62 completed and marked passing -> 77/108 passing.
 
 ================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #63 (slog logs include request_id, correlation_id, route, status, latency)
+"Every HTTP request produces one structured log entry on completion with
+required fields: request_id, correlation_id, route, method, status,
+latency_ms, bytes_in, bytes_out."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #63: Extended the HTTP request logging middleware to emit a structured
+"http.request.completed" log record with all required fields after every request.
+
+Steps verified:
+  Step 1: GET /v1/info captures X-Request-Id; matching request_id appears in logs
+  Step 2: Single log line with msg='http.request.completed' per request
+  Step 3: All required fields present: request_id, correlation_id, route, method,
+          status, latency_ms, bytes_in, bytes_out, user_agent
+  Step 4: status=200, route='/v1/info', method='GET'
+  Step 5: latency_ms is a positive float number
+  Step 6: X-Correlation-Id header -> correlation_id appears in ALL log lines
+  Step 7: JSON log handler in production, text in dev
+  Step 8: Completion log line is valid JSON
+
+ANALYSIS
+--------
+The existing requestLogMiddleware emitted "http request end" missing:
+  - correlation_id (X-Correlation-Id was not extracted into context)
+  - route (chi route pattern vs raw URL path)
+  - latency_ms (was named elapsed_ms)
+  - bytes_in, user_agent
+
+CHANGES
+-------
+1. apps/backend/internal/adapters/http/router.go (MODIFIED)
+   - requestContext: added X-Correlation-Id -> logging.WithCorrelationID(ctx)
+   - requestLogMiddleware: renamed "http request end" -> "http.request.completed"
+   - renamed "elapsed_ms" -> "latency_ms"
+   - added "route" via chi.RouteContext().RoutePattern() (post-handler)
+   - added "bytes_in" from r.ContentLength (0 if unknown)
+   - added "user_agent" from r.Header.Get("User-Agent")
+
+2. apps/backend/internal/platform/httpserver/trace_id_propagation_test.go
+   - Updated TestTraceID_SlogRequestEndCarriesTraceID to look for
+     "http.request.completed" instead of "http request end"
+
+3. apps/backend/internal/adapters/http/sensitive_headers_test.go
+   - Updated TestRequestLog_RequestStartAndEndLogged for new msg name
+
+4. apps/backend/internal/platform/httpserver/request_log_fields_test.go (NEW)
+   13 tests covering all feature steps (all PASS)
+
+VERIFICATION
+------------
+  - docker build --target build: SUCCESS
+  - 13/13 TestRequestLog_* tests: PASS
+  - 14/14 TestTraceID_* tests: PASS
+  - full httpadapter suite: PASS (ok)
+  - Pre-existing failures unrelated to feature #63
+  - git commit: 5fe089e
+
+PROGRESS METRIC
+---------------
+Stats at session start: 77/108 passing, 1 in_progress.
+This session: feature #63 completed and marked passing -> 78/108 passing.
+
+================================================================================
+
+================================================================================
