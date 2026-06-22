@@ -243,6 +243,204 @@ func TestMigrateVersion_ReturnsPositiveAfterUp(t *testing.T) {
 	t.Logf("current schema version: %d", version)
 }
 
+// ---------------------------------------------------------------------------
+// Feature #21 — i18n_text seed rows load from migration
+// ---------------------------------------------------------------------------
+
+// TestI18nText_SeedRowsExistAfterMigrate verifies that 0003_i18n_seeds.sql
+// inserts at least one (namespace, key) pair for both 'en' and 'ru' locales
+// so that the platform has baseline translations available immediately after
+// arena-migrate up.
+//
+// Feature #21 steps 1-2: query i18n_text and verify rows exist for en + ru.
+func TestI18nText_SeedRowsExistAfterMigrate(t *testing.T) {
+	db := integrationMigrateDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	configureGooseIntegration(t)
+
+	if err := goose.UpContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("goose.UpContext: %v", err)
+	}
+
+	for _, locale := range []string{"en", "ru"} {
+		t.Run("locale="+locale, func(t *testing.T) {
+			var count int
+			row := db.QueryRowContext(ctx,
+				`SELECT COUNT(DISTINCT (namespace, key))
+				   FROM i18n_text
+				  WHERE locale = $1`, locale)
+			if err := row.Scan(&count); err != nil {
+				t.Fatalf("count i18n_text for locale %q: %v", locale, err)
+			}
+			if count < 1 {
+				t.Errorf("i18n_text distinct (namespace,key) for locale=%q = %d; want >= 1 after seed migration", locale, count)
+			}
+			t.Logf("locale=%q distinct (namespace,key) count: %d", locale, count)
+		})
+	}
+}
+
+// TestI18nText_NoNullOrEmptyValues verifies that every seeded row has a
+// non-NULL, non-empty value column.
+//
+// Feature #21 step 3: no rows with NULL or empty value.
+func TestI18nText_NoNullOrEmptyValues(t *testing.T) {
+	db := integrationMigrateDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	configureGooseIntegration(t)
+
+	if err := goose.UpContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("goose.UpContext: %v", err)
+	}
+
+	var badCount int
+	row := db.QueryRowContext(ctx,
+		`SELECT COUNT(*)
+		   FROM i18n_text
+		  WHERE value IS NULL OR value = ''`)
+	if err := row.Scan(&badCount); err != nil {
+		t.Fatalf("count i18n_text with NULL/empty value: %v", err)
+	}
+	if badCount > 0 {
+		t.Errorf("i18n_text rows with NULL or empty value = %d; want 0", badCount)
+	}
+}
+
+// TestI18nText_UniqueConstraintViolation verifies that the unique index on
+// (namespace, key, locale) rejects duplicate inserts with a 23505
+// (unique_violation) PostgreSQL error code.
+//
+// Feature #21 step 4: duplicate INSERT → expect 23505.
+func TestI18nText_UniqueConstraintViolation(t *testing.T) {
+	db := integrationMigrateDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	configureGooseIntegration(t)
+
+	if err := goose.UpContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("goose.UpContext: %v", err)
+	}
+
+	// First insert a test row (use a test-specific key to avoid collisions).
+	const (
+		testNS     = "test.feature21"
+		testKey    = "unique_constraint_check"
+		testLocale = "en"
+		testValue  = "test value for unique constraint verification"
+	)
+
+	// Clean up after test regardless of outcome.
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(ctx,
+			`DELETE FROM i18n_text WHERE namespace = $1 AND key = $2 AND locale = $3`,
+			testNS, testKey, testLocale)
+	})
+
+	// Insert first time — must succeed.
+	_, err := db.ExecContext(ctx,
+		`INSERT INTO i18n_text (namespace, key, locale, value) VALUES ($1, $2, $3, $4)`,
+		testNS, testKey, testLocale, testValue)
+	if err != nil {
+		t.Fatalf("first INSERT into i18n_text failed unexpectedly: %v", err)
+	}
+
+	// Insert duplicate — must fail with unique_violation (SQLSTATE 23505).
+	_, err = db.ExecContext(ctx,
+		`INSERT INTO i18n_text (namespace, key, locale, value) VALUES ($1, $2, $3, $4)`,
+		testNS, testKey, testLocale, "a different value that should be rejected")
+	if err == nil {
+		t.Fatal("duplicate INSERT into i18n_text succeeded; want unique_violation 23505")
+	}
+
+	// Check for the 23505 SQLSTATE.  pgx wraps this in a *pgconn.PgError
+	// which implements a Code() method.  We extract it by string matching
+	// because importing pgx internals from this package would create a
+	// dependency cycle.
+	errStr := err.Error()
+	if !strings.Contains(errStr, "23505") && !strings.Contains(errStr, "unique") {
+		t.Errorf("duplicate INSERT error = %q; want error containing '23505' or 'unique'", errStr)
+	}
+	t.Logf("duplicate INSERT correctly rejected: %v", err)
+}
+
+// TestI18nText_LocaleCodesBCP47 verifies that all locale codes stored in
+// i18n_text after the seed migration are valid BCP-47 format: either a
+// 2-letter primary tag (e.g. "en", "ru") or a tag with a region subtag
+// (e.g. "en-US", "zh-CN").  Tags must be lower-case for the primary subtag.
+//
+// Feature #21 step 5: locale codes match BCP47.
+func TestI18nText_LocaleCodesBCP47(t *testing.T) {
+	db := integrationMigrateDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	configureGooseIntegration(t)
+
+	if err := goose.UpContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("goose.UpContext: %v", err)
+	}
+
+	rows, err := db.QueryContext(ctx, `SELECT DISTINCT locale FROM i18n_text ORDER BY locale`)
+	if err != nil {
+		t.Fatalf("query distinct locales: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var locale string
+		if err := rows.Scan(&locale); err != nil {
+			t.Fatalf("scan locale: %v", err)
+		}
+
+		// Accept "xx" (2-letter primary) or "xx-XX" / "xx-XXX" (with region/script).
+		// The primary subtag must be 2-3 lowercase alpha chars.
+		// This is a lightweight check — not a full BCP-47 parser.
+		if !isValidBCP47Locale(locale) {
+			t.Errorf("locale %q does not look like a valid BCP-47 tag (want 2-3 lowercase letters, optionally followed by -SUBTAG)", locale)
+		} else {
+			t.Logf("locale %q: BCP-47 OK", locale)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterating distinct locales: %v", err)
+	}
+}
+
+// isValidBCP47Locale is a lightweight BCP-47 syntax check.
+// It accepts primary-subtag-only tags ("en", "ru", "uk") and
+// tags with a single extension subtag ("en-US", "zh-CN", "sr-Latn").
+// Primary subtag: 2–3 lowercase ASCII letters.
+// Extension subtag (optional): 2–4 upper- or mixed-case ASCII alpha/digit.
+func isValidBCP47Locale(s string) bool {
+	if s == "" {
+		return false
+	}
+	parts := strings.SplitN(s, "-", 2)
+	primary := parts[0]
+	if len(primary) < 2 || len(primary) > 3 {
+		return false
+	}
+	for _, ch := range primary {
+		if ch < 'a' || ch > 'z' {
+			return false
+		}
+	}
+	// If there is a subtag, it must be 2–4 alphanumeric characters.
+	if len(parts) == 2 {
+		sub := parts[1]
+		if len(sub) < 2 || len(sub) > 4 {
+			return false
+		}
+		for _, ch := range sub {
+			if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // TestMigrateSchemaHasExpectedTables verifies that the platform tables created
 // by 0001_init.sql actually exist in the database after arena-migrate up.
 // This guards against silent partial migration failures.
