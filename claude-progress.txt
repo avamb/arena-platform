@@ -6851,3 +6851,78 @@ Stats at session start: 72/108 passing.
 This session: feature #58 completed and marked passing -> 73/108 passing.
 
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #60 (Idempotency-Key length limit enforced)
+"Idempotency-Key has max length (e.g. 255 chars). Longer keys rejected with
+400 code='idempotency.key_too_long'."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #60 requires verifying that the Idempotency-Key header is rejected when
+it exceeds 255 bytes, with the correct dot-notation error code.
+
+ANALYSIS
+--------
+The production code in idempotency.go already had MaxKeyLength=255 and length
+checking at line 250-253, BUT was using the wrong error code:
+  "idempotency_key_too_long"  (underscores - WRONG)
+instead of the required:
+  "idempotency.key_too_long"  (dots - CORRECT per feature spec)
+
+Additionally, the error message needed to include the max_length value (255)
+for step 5. Updated the message to be explicit:
+  "Idempotency-Key exceeds max length of 255 bytes"
+
+CHANGES
+-------
+1. apps/backend/internal/platform/idempotency/idempotency.go (MODIFIED)
+   - Line 251: fixed error code "idempotency_key_too_long" -> "idempotency.key_too_long"
+   - Updated error message to explicitly state "max length of 255 bytes"
+
+2. apps/backend/internal/platform/idempotency/idempotency_key_length_test.go (NEW)
+   15 tests covering all 5 feature steps:
+
+   Step 1 (300-char key returns 400):
+     TestKeyLength_300CharKeyReturns400
+     TestKeyLength_300CharKeyIsRejected (handler not called)
+     TestKeyLength_300CharKeyIsNot200
+
+   Step 2 (code='idempotency.key_too_long'):
+     TestKeyLength_CodeIsIdempotencyKeyTooLong
+     TestKeyLength_CodeUsesDotSeparator (not underscore)
+     TestKeyLength_ResponseContentTypeIsJSON
+
+   Step 3 (exactly 255 chars accepted):
+     TestKeyLength_Exactly255CharsAccepted
+     TestKeyLength_Exactly255CharsIsNotRejected
+     TestKeyLength_256CharsRejected (boundary exactness)
+
+   Step 4 (1-char key accepted):
+     TestKeyLength_1CharKeyAccepted
+     TestKeyLength_SingleCharVariants (multiple 1-char keys)
+
+   Step 5 (message includes max_length value 255):
+     TestKeyLength_MessageIncludesMaxLength
+     TestKeyLength_MessageMentionsMaxKeyLength
+     TestKeyLength_MaxKeyLengthConstantIs255
+
+   Full sweep:
+     TestKeyLength_FullVerification (all 5 steps as sub-tests)
+
+VERIFICATION
+------------
+  - docker build --target build: SUCCESS (all 4 binaries compile)
+  - 15/15 TestKeyLength_* tests: PASS (0.039s)
+  - Full idempotency package: ok (0.177s) — zero regressions
+  - git commit: ffe2bbe
+
+PROGRESS METRIC
+---------------
+Stats at session start: 73/108 passing, 2 in_progress.
+This session: feature #60 completed and marked passing -> 74/108 passing.
+
+================================================================================
