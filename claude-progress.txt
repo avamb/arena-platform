@@ -3,6 +3,83 @@ arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
 --------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #12 (404 handler returns error envelope)
+"Requests for unknown paths must return the standard error envelope"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #12 verifies that all unknown paths return a structured JSON error
+envelope instead of chi's default plain-text "404 page not found\n" response.
+The envelope must contain: code="http.not_found", message, request_id (non-empty),
+trace_id (non-empty), and the X-Request-Id response header must be set.
+
+Two changes:
+
+1. apps/backend/internal/platform/httpserver/server.go (UPDATED)
+
+   a. Added handleNotFound() -- a package-level function that calls:
+        writeJSON(w, http.StatusNotFound,
+            errorEnvelope("http.not_found",
+                "the requested resource does not exist", r))
+      It reuses the existing errorEnvelope() from devtoken.go (same package)
+      which reads request_id from chimw.GetReqID(r.Context()) and trace_id
+      from logging.TraceID(r.Context()).
+
+   b. Added s.router.NotFound(handleNotFound) in mountOperationalRoutes().
+      This is called AFTER s.mountOperationalRoutes() has already added real
+      routes (/healthz, /readyz), so chi builds mx.handler (the full
+      middleware chain + routing table). This is crucial — see KEY INSIGHT below.
+
+2. apps/backend/internal/platform/httpserver/not_found_test.go (NEW)
+
+   In-package test (package httpserver) with 6 test functions:
+     TestNotFound_StatusIs404                 -- step 1
+     TestNotFound_ContentTypeIsJSON           -- step 2
+     TestNotFound_BodyMatchesErrorEnvelope    -- step 3 (code, message, request_id, trace_id)
+     TestNotFound_RequestIDHeaderIsSet        -- step 4
+     TestNotFound_NotChiDefault               -- step 5
+     TestNotFound_RequestIDMatchesBetweenHeaderAndBody -- correlation guard
+
+   All 6 tests pass as verified via Docker (`golang:1.24` image).
+
+KEY INSIGHT: chi v5.1.0 NotFound + middleware chain
+-----------------------------------------------------
+When no routes are registered on a chi.Mux, `mx.handler` is nil. Chi's
+ServeHTTP short-circuits to `mx.NotFoundHandler().ServeHTTP(w, r)` DIRECTLY,
+bypassing the entire middleware chain (no X-Request-Id, no trace_id set).
+
+Fix: `buildNotFoundRouter()` in the test registers a `/probe` route so chi
+builds mx.handler and the full middleware chain wraps ALL requests, including
+those handled by the NotFound handler.
+
+In production (Server.New), this is never an issue because mountOperationalRoutes()
+registers /healthz and /readyz before NotFound() is called.
+
+VERIFICATION
+------------
+  - go test ./apps/backend/internal/platform/httpserver/... -run TestNotFound
+    → PASS all 6 tests
+  - go test ./apps/backend/... → all packages pass except pre-existing
+    observability/metrics_test.go failure (unrelated to this feature)
+  - No forbidden mock patterns in production code
+  - git commit: 6843a84
+
+NOTES FOR LATER WAVES
+---------------------
+  - The MethodNotAllowed handler (405) should also be wired to return a JSON
+    error envelope. Currently chi's default plain text 405 is still active.
+  - The pre-existing failure in observability/metrics_test.go
+    (TestHandler_ReturnsHTTP200WithNonEmptyBody: missing arena_http_request_*
+    and arena_db_pool_connections metrics) should be investigated separately.
+
+PROGRESS METRIC
+---------------
+Stats at session start: 17/108 passing, 1 in_progress (this feature).
+This session: feature #12 completed and marked passing -> 18/108 passing.
+================================================================================
+
+--------------------------------------------------------------------------------
 Session: 2026-06-21 — Feature #81 (Wave 0 — Bootstrap)
 "Go module & repository skeleton" — single-module monorepo
 --------------------------------------------------------------------------------
