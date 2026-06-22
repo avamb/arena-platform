@@ -5324,3 +5324,83 @@ PROGRESS METRIC
 ---------------
 Stats at session start: 50/108 passing, 2 in_progress.
 This session: feature #33 completed and marked passing -> 51/108 passing.
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #35 (Generated TypeScript client types compile)
+"OpenAPI-generated TypeScript client types are produced and tsc-checks cleanly."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #35 requires that:
+  1. make gen-ts-client writes TypeScript types to openapi/clients/ts/
+  2. File openapi/clients/ts/index.d.ts exists
+  3. npx tsc --noEmit openapi/clients/ts/index.d.ts exits 0
+  4. Types include EchoRequest, EchoResponse, ErrorEnvelope
+  5. date-time fields are typed as string (RFC 3339)
+  6. Enums for error codes exported
+
+IMPLEMENTATION
+--------------
+
+1. package.json (NEW at project root)
+   - devDependencies: openapi-typescript@^7.13.0, typescript@^5.8.3
+   - scripts.gen-ts-client and scripts.check-ts convenience entries
+
+2. scripts/gen-ts-client.mjs (NEW)
+   - ES module script runnable via node scripts/gen-ts-client.mjs
+   - Step 1: runs npx openapi-typescript to generate base types from openapi.yaml
+     Output: interfaces for paths, components/schemas, operations
+   - Step 2: appends named type aliases via appendFileSync:
+       export type ErrorEnvelope = components["schemas"]["ErrorEnvelope"]
+       export type EchoRequest   = components["schemas"]["EchoRequest"]
+       export type EchoResponse  = components["schemas"]["EchoResponse"]
+       ... (all 10 schema types)
+   - Step 3: appends error code string-literal union types:
+       HttpErrorCode, AuthErrorCode, EchoErrorCode, DependencyErrorCode,
+       InternalErrorCode, ApiErrorCode (union of all)
+
+3. apps/backend/openapi/clients/ts/index.d.ts (GENERATED, committed)
+   - 926 lines of TypeScript declarations (33KB)
+   - date-time fields (server_time, db_now, expires_at, issued_at) typed as string
+   - Enum string literals: HealthzResponse.status typed as "ok",
+     ReadyzResponse.status typed as "ready" | "not_ready"
+   - Named exports + error code union types appended at end of file
+
+4. Makefile (MODIFIED)
+   - Added gen-ts-client to .PHONY and usage comment
+   - gen-ts-client target: node scripts/gen-ts-client.mjs
+   - Documents prerequisite (Node.js 18+, npm install) and verification command
+
+5. .gitignore (MODIFIED)
+   - Added node_modules/ entry
+
+VERIFICATION
+------------
+  - node scripts/gen-ts-client.mjs: SUCCESS (openapi-typescript 7.13.0, 44ms)
+  - npx tsc --noEmit apps/backend/openapi/clients/ts/index.d.ts: TSC PASS (exit 0)
+  - EchoRequest, EchoResponse, ErrorEnvelope: present as named top-level exports
+  - server_time, db_now, expires_at, issued_at: all typed as string
+  - ApiErrorCode, HttpErrorCode, AuthErrorCode, etc.: exported error code enums
+  - No forbidden patterns (STUB/MOCK/devStore/globalThis)
+  - git commit: 0252232
+
+ARCHITECTURE NOTES
+------------------
+  - openapi-typescript@7 generates interfaces using components["schemas"]["X"]
+    notation rather than top-level named types. The generation script appends
+    export type X = components["schemas"]["X"] aliases so consumers can import
+    types ergonomically without drilling into the components namespace.
+  - Error code union types are added manually (not derivable from OpenAPI spec
+    pattern constraint alone). They provide exhaustive switch/case safety for
+    client-side error handlers.
+  - npx tsc --noEmit file.d.ts validates that TypeScript declarations are
+    syntactically correct; no JS is emitted from .d.ts files.
+  - TypeScript 5.9.3 (from npm) is used for validation.
+
+PROGRESS METRIC
+---------------
+Stats at session start: 52/108 passing, 2 in_progress.
+This session: feature #35 completed and marked passing -> 53/108 passing.
