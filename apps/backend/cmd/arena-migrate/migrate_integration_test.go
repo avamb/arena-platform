@@ -20,6 +20,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -915,6 +916,195 @@ func TestMigrateDown_DownScriptDropsInReverseOrder(t *testing.T) {
 
 	t.Logf("down script order verified: i18n_text(%d) before idempotency_keys(%d) before uuidv7()(%d)",
 		dropI18n, dropIdempotency, dropFunction)
+}
+
+// ---------------------------------------------------------------------------
+// Feature #24 — arena-migrate status reports current version
+// ---------------------------------------------------------------------------
+
+// TestMigrateStatus_TableContainsColumnHeaders verifies that the human-readable
+// status output written by runStatus (without --json) includes the expected
+// "Applied At" and "Migration" column headers (feature #24 steps 2-3).
+func TestMigrateStatus_TableContainsColumnHeaders(t *testing.T) {
+	db := integrationMigrateDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	configureGooseIntegration(t)
+
+	if err := goose.UpContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("goose.UpContext: %v", err)
+	}
+
+	var buf strings.Builder
+	if err := runStatus(ctx, db, &buf, false); err != nil {
+		t.Fatalf("runStatus: %v", err)
+	}
+	out := buf.String()
+
+	if !strings.Contains(out, "Applied At") {
+		t.Errorf("status output missing 'Applied At' column header; output:\n%s", out)
+	}
+	if !strings.Contains(out, "Migration") {
+		t.Errorf("status output missing 'Migration' column header; output:\n%s", out)
+	}
+	t.Logf("status table header verified:\n%s", out)
+}
+
+// TestMigrateStatus_ShowsAppliedTimestampForBaseline verifies that after
+// goose.UpContext the baseline migration row (0001_init.sql) appears in the
+// status table with a non-empty applied_at timestamp (feature #24 step 4).
+func TestMigrateStatus_ShowsAppliedTimestampForBaseline(t *testing.T) {
+	db := integrationMigrateDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	configureGooseIntegration(t)
+
+	if err := goose.UpContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("goose.UpContext: %v", err)
+	}
+
+	var buf strings.Builder
+	if err := runStatus(ctx, db, &buf, false); err != nil {
+		t.Fatalf("runStatus: %v", err)
+	}
+	out := buf.String()
+
+	if !strings.Contains(out, "0001_init.sql") {
+		t.Errorf("status output missing '0001_init.sql'; output:\n%s", out)
+	}
+	// The applied_at timestamp must appear — "applied" status and NOT "Pending".
+	if !strings.Contains(out, "applied") {
+		t.Errorf("status output does not show 'applied' status for 0001_init.sql; output:\n%s", out)
+	}
+	t.Logf("baseline migration applied timestamp verified:\n%s", out)
+}
+
+// TestMigrateStatus_ShowsPendingAfterReset verifies that after a full rollback
+// the migrations appear as "pending" in the status output (feature #24 step 5).
+func TestMigrateStatus_ShowsPendingAfterReset(t *testing.T) {
+	db := integrationMigrateDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	configureGooseIntegration(t)
+
+	// Ensure we start migrated, then roll back everything.
+	if err := goose.UpContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("setup goose.UpContext: %v", err)
+	}
+	t.Cleanup(func() { resetAndUp(t, db, ctx) })
+
+	if err := goose.ResetContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("goose.ResetContext: %v", err)
+	}
+
+	var buf strings.Builder
+	if err := runStatus(ctx, db, &buf, false); err != nil {
+		t.Fatalf("runStatus after reset: %v", err)
+	}
+	out := buf.String()
+
+	// After full rollback, 0001_init.sql must show as pending.
+	if !strings.Contains(out, "0001_init.sql") {
+		t.Errorf("status output missing '0001_init.sql'; output:\n%s", out)
+	}
+	if !strings.Contains(out, "Pending") {
+		t.Errorf("status after reset: expected 'Pending' in output; got:\n%s", out)
+	}
+	t.Logf("pending status after reset verified:\n%s", out)
+}
+
+// TestMigrateStatus_JSONFlagProducesValidJSON verifies that runStatus with
+// jsonOut=true produces one valid JSON object per line with the required
+// "version", "name", and "status" fields (feature #24 step 6).
+func TestMigrateStatus_JSONFlagProducesValidJSON(t *testing.T) {
+	db := integrationMigrateDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	configureGooseIntegration(t)
+
+	if err := goose.UpContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("goose.UpContext: %v", err)
+	}
+
+	var buf strings.Builder
+	if err := runStatus(ctx, db, &buf, true /* jsonOut */); err != nil {
+		t.Fatalf("runStatus --json: %v", err)
+	}
+	out := strings.TrimSpace(buf.String())
+	if out == "" {
+		t.Fatal("runStatus --json: produced no output")
+	}
+
+	lines := strings.Split(out, "\n")
+	for i, line := range lines {
+		var obj map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &obj); err != nil {
+			t.Errorf("line %d is not valid JSON (%q): %v", i, line, err)
+			continue
+		}
+		for _, field := range []string{"version", "name", "status"} {
+			if _, ok := obj[field]; !ok {
+				t.Errorf("line %d JSON missing field %q: %v", i, field, obj)
+			}
+		}
+	}
+	t.Logf("--json output (%d lines) is valid NDJSON", len(lines))
+}
+
+// TestMigrateStatus_JSONAppliedHasAppliedAt verifies that applied migrations
+// in --json output include the "applied_at" field (feature #24 step 6).
+func TestMigrateStatus_JSONAppliedHasAppliedAt(t *testing.T) {
+	db := integrationMigrateDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	configureGooseIntegration(t)
+
+	if err := goose.UpContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("goose.UpContext: %v", err)
+	}
+
+	var buf strings.Builder
+	if err := runStatus(ctx, db, &buf, true); err != nil {
+		t.Fatalf("runStatus --json: %v", err)
+	}
+
+	found := false
+	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		var obj map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &obj); err != nil {
+			continue
+		}
+		name, _ := obj["name"].(string)
+		status, _ := obj["status"].(string)
+		if name == "0001_init.sql" && status == "applied" {
+			if _, ok := obj["applied_at"]; !ok {
+				t.Errorf("0001_init.sql applied JSON entry missing 'applied_at': %v", obj)
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Error("0001_init.sql not found as applied in --json output")
+	}
+}
+
+// TestMigrateStatus_ExitZeroEquivalent verifies that runStatus returns nil
+// (equivalent to exit code 0) for a correctly migrated database.
+// Feature #24 step 2: exit 0.
+func TestMigrateStatus_ExitZeroEquivalent(t *testing.T) {
+	db := integrationMigrateDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	configureGooseIntegration(t)
+
+	if err := goose.UpContext(ctx, db, migrations.Dir); err != nil {
+		t.Fatalf("goose.UpContext: %v", err)
+	}
+
+	var buf strings.Builder
+	if err := runStatus(ctx, db, &buf, false); err != nil {
+		t.Fatalf("runStatus returned non-nil error (non-zero exit equivalent): %v", err)
+	}
 }
 
 // TestMigrateSchemaHasExpectedTables verifies that the platform tables created

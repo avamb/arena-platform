@@ -26,8 +26,11 @@ package main
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -140,7 +143,13 @@ func run() error {
 			"duration", time.Since(start).String(),
 		)
 	case "status":
-		if err := goose.StatusContext(ctx, db, migrations.Dir); err != nil {
+		jsonOut := false
+		for _, a := range subArgs {
+			if a == "--json" {
+				jsonOut = true
+			}
+		}
+		if err := runStatus(ctx, db, os.Stdout, jsonOut); err != nil {
 			return fmt.Errorf("status: %w", err)
 		}
 	case "version":
@@ -183,6 +192,149 @@ func run() error {
 	}
 
 	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Status command
+// ---------------------------------------------------------------------------
+
+// migrationStatusEntry holds the human-readable and machine-readable status
+// of a single migration file. It is the unit of output for both the table
+// and JSON formats.
+type migrationStatusEntry struct {
+	Version   int64  `json:"version"`
+	Name      string `json:"name"`
+	AppliedAt string `json:"applied_at,omitempty"` // RFC3339 timestamp or "" for pending
+	Status    string `json:"status"`               // "applied" | "pending"
+}
+
+// runStatus prints migration status to w. If jsonOut is true it writes one
+// JSON object per line (newline-delimited JSON); otherwise it writes a
+// human-readable table with "Applied At" and "Migration" column headers.
+//
+// The function reads the embedded migration list from migrations.FS and
+// queries schema_migrations for applied-at timestamps so the output is
+// always consistent with what the database actually knows.
+func runStatus(ctx context.Context, db *sql.DB, w io.Writer, jsonOut bool) error {
+	// 1. Enumerate migration files from the embedded FS.
+	dirEntries, err := migrations.FS.ReadDir(migrations.Dir)
+	if err != nil {
+		return fmt.Errorf("list embedded migrations: %w", err)
+	}
+
+	// 2. Query schema_migrations for the most recent applied_at per version.
+	//    We use MAX(tstamp) grouped by version_id so repeated apply/rollback
+	//    cycles don't create confusing duplicate rows in the output.
+	rows, err := db.QueryContext(ctx, `
+		SELECT version_id, MAX(tstamp) AS applied_at
+		  FROM schema_migrations
+		 WHERE is_applied = true
+		 GROUP BY version_id
+	`)
+	if err != nil {
+		return fmt.Errorf("query schema_migrations: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+
+	appliedAt := make(map[int64]time.Time)
+	for rows.Next() {
+		var vid int64
+		var ts time.Time
+		if err := rows.Scan(&vid, &ts); err != nil {
+			return fmt.Errorf("scan schema_migrations row: %w", err)
+		}
+		appliedAt[vid] = ts
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate schema_migrations: %w", err)
+	}
+
+	// 3. Build the ordered status list (file FS order == migration order).
+	var statuses []migrationStatusEntry
+	for _, de := range dirEntries {
+		if de.IsDir() {
+			continue
+		}
+		name := de.Name()
+		if !strings.HasSuffix(name, ".sql") {
+			continue
+		}
+		version, parseErr := parseVersionFromFilename(name)
+		if parseErr != nil {
+			continue // ignore files that don't follow the NNN_name.sql convention
+		}
+		entry := migrationStatusEntry{
+			Version: version,
+			Name:    name,
+			Status:  "pending",
+		}
+		if ts, ok := appliedAt[version]; ok {
+			entry.Status = "applied"
+			entry.AppliedAt = ts.UTC().Format(time.RFC3339)
+		}
+		statuses = append(statuses, entry)
+	}
+
+	if jsonOut {
+		return writeStatusJSON(w, statuses)
+	}
+	return writeStatusTable(w, statuses)
+}
+
+// writeStatusTable writes a human-readable migration status table to w.
+//
+// Example output:
+//
+//	Applied At                  Migration
+//	=======================================
+//	2025-01-01T12:00:00Z     -- 0001_init.sql [applied]
+//	Pending                  -- 0002_outbox.sql [pending]
+func writeStatusTable(w io.Writer, statuses []migrationStatusEntry) error {
+	const header = "    Applied At                  Migration\n    =======================================\n"
+	if _, err := fmt.Fprint(w, header); err != nil {
+		return err
+	}
+	for _, s := range statuses {
+		var col string
+		if s.Status == "applied" {
+			col = s.AppliedAt
+		} else {
+			col = "Pending"
+		}
+		line := fmt.Sprintf("    %-28s -- %s [%s]\n", col, s.Name, s.Status)
+		if _, err := fmt.Fprint(w, line); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// writeStatusJSON writes one JSON object per line to w (newline-delimited JSON).
+// Each object contains "version", "name", "status", and (when applied) "applied_at".
+func writeStatusJSON(w io.Writer, statuses []migrationStatusEntry) error {
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(false)
+	for _, s := range statuses {
+		if err := enc.Encode(s); err != nil {
+			return fmt.Errorf("encode migration status JSON: %w", err)
+		}
+	}
+	return nil
+}
+
+// parseVersionFromFilename extracts the leading numeric version from a goose
+// migration filename. Both sequence-numbered files ("0001_init.sql") and
+// timestamp-numbered files ("20250101120000_add_users.sql") are supported.
+func parseVersionFromFilename(name string) (int64, error) {
+	idx := strings.IndexByte(name, '_')
+	if idx < 0 {
+		return 0, fmt.Errorf("migration filename %q has no underscore separator", name)
+	}
+	prefix := name[:idx]
+	if prefix == "" {
+		return 0, fmt.Errorf("migration filename %q has empty version prefix", name)
+	}
+	return parseInt64(prefix)
 }
 
 // createMigration writes a new empty goose SQL migration file. The new file
