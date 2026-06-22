@@ -12,12 +12,13 @@
 #   make test-race      — unit tests with -race detector
 #   make build          — compile all binaries to ./bin/
 #   make gen-openapi    — regenerate Go types from apps/backend/openapi/openapi.yaml
+#   make gen-ts-client  — regenerate TypeScript client types to openapi/clients/ts/
 #   make run-api        — start the HTTP API server
 #   make run-worker     — start the background worker
 #   make migrate-up     — apply all pending DB migrations
 #   make migrate-down   — roll back the last DB migration
 
-.PHONY: lint test test-race build gen-openapi run-api run-worker migrate-up migrate-down
+.PHONY: lint test test-race build gen-openapi gen-ts-client run-api run-worker migrate-up migrate-down
 
 # ── Optional extra flags forwarded to go test / go build ──────────────────────
 GOFLAGS ?=
@@ -34,6 +35,13 @@ gen-openapi:
 	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.4.1 \
 		--config=apps/backend/openapi/oapi-codegen.yaml \
 		apps/backend/openapi/openapi.yaml
+
+# Regenerates TypeScript client types from the OpenAPI spec.
+# Output: apps/backend/openapi/clients/ts/index.d.ts
+# Requires Node.js ≥ 18 (node_modules must be installed: npm install).
+# Verify with: npx tsc --noEmit apps/backend/openapi/clients/ts/index.d.ts
+gen-ts-client:
+	node scripts/gen-ts-client.mjs
 
 # ── Lint ──────────────────────────────────────────────────────────────────────
 lint:

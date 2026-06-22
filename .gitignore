@@ -45,6 +45,9 @@ docker-compose.override.yml
 data/postgres/
 data/redis/
 
+# Node.js (TypeScript client generation tooling)
+node_modules/
+
 # Logs
 *.log
 logs/

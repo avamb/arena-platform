@@ -1,0 +1,14 @@
+{
+  "name": "arena-new",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Backend foundation for arena_new multi-tenant ticketing platform",
+  "scripts": {
+    "gen-ts-client": "openapi-typescript apps/backend/openapi/openapi.yaml --output apps/backend/openapi/clients/ts/index.d.ts",
+    "check-ts": "tsc --noEmit apps/backend/openapi/clients/ts/index.d.ts"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.13.0",
+    "typescript": "^5.8.3"
+  }
+}
