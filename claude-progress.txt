@@ -5,6 +5,72 @@ arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
 --------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #103 (OpenAPI 3.1 skeleton + oapi-codegen + openapi-typescript)
+"OpenAPI 3.1 contract-first with generation of Go server types (oapi-codegen)
+and TypeScript client (openapi-typescript)."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #103: Extended the existing OpenAPI 3.1 setup with missing components,
+added gen.go with //go:generate directive, created generate-clients.sh, appended
+named exports to index.d.ts, and verified all 6 feature steps via 25 tests.
+
+Steps covered:
+  Step 1: openapi.yaml - Added components/headers section:
+          - X-Request-Id: per-request correlation ID header
+          - X-Idempotency-Key: idempotency key UUID header
+          - X-Trace-Id: distributed trace ID header
+          Added PaginationMeta schema in components/schemas:
+          - page, page_size, total, total_pages fields (all required)
+  Step 2: Created apps/backend/internal/openapi/gen.go with //go:generate directive
+          invoking oapi-codegen@v2.4.1 with the existing oapi-codegen.yaml config.
+          Includes package doc explaining how to run via `make gen-openapi`.
+  Step 3: Created generate-clients.sh at the repo root - convenience wrapper
+          that invokes node scripts/gen-ts-client.mjs
+  Step 4: README already documents `make gen-openapi` and `make gen-ts-client`
+          (no changes needed)
+  Step 5: ErrorEnvelope schema already has code, message, request_id, trace_id,
+          details fields aligned with feature #10 (adapter/http.WriteError)
+  Step 6: Added PaginationMeta Go type to types_gen.go; appended named export
+          aliases and error code union types to index.d.ts
+
+ANALYSIS
+--------
+The major components (openapi.yaml, oapi-codegen.yaml, types_gen.go, index.d.ts,
+gen-ts-client.mjs, Makefile targets) were already present from prior sessions.
+What was missing: reusable header components, pagination schema, gen.go file,
+generate-clients.sh, and the named export section in index.d.ts.
+
+The gen-ts-client.mjs script appends named exports after running openapi-typescript.
+The index.d.ts on disk was missing those appended exports (possibly the Node script
+had not been run after a previous generation). Fixed by manually appending the
+exports to match what the script would produce.
+
+CHANGES
+-------
+1. apps/backend/openapi/openapi.yaml - Added components/headers section and PaginationMeta schema
+2. apps/backend/internal/openapi/gen.go (NEW) - //go:generate for oapi-codegen
+3. generate-clients.sh (NEW) - repo-root convenience wrapper for gen-ts-client
+4. apps/backend/internal/adapters/http/openapi/types_gen.go - Added PaginationMeta type
+5. apps/backend/openapi/clients/ts/index.d.ts - Appended named exports and error code unions
+6. apps/backend/internal/platform/httpserver/openapi_103_test.go (NEW)
+   25 tests covering all 6 feature steps
+
+VERIFICATION
+------------
+  - 25/25 TestOpenAPI103_* tests: PASS (0.388s)
+  - go build ./...: EXIT 0 (all packages compile)
+  - git commit: 3a22d24
+
+PROGRESS METRIC
+---------------
+Stats at session start: 101/108 passing, 3 in_progress.
+This session: feature #103 completed and marked passing -> 102/108 passing.
+
+================================================================================
+
+--------------------------------------------------------------------------------
 Session: 2026-06-22 -- Feature #61 (X-Request-Id header present in every response)
 "Every response (success or error, including 404, 405, 500) carries X-Request-Id
 header with a UUIDv7. Client-supplied X-Request-Id is preserved if valid."
