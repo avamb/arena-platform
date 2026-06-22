@@ -3401,3 +3401,93 @@ PROGRESS METRIC
 Stats at session start: 30/108 passing, 1 in_progress (this feature).
 This session: feature #37 completed and marked passing -> 31/108 passing.
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #38 (Outbox dispatcher resumes after worker restart)
+"Outbox dispatcher resumes after worker restart"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #38 requires an OutboxEventsDispatcher that:
+- Polls the outbox_events table (written by echo handler) for unprocessed rows
+- Uses FOR UPDATE SKIP LOCKED to prevent double-processing across worker instances
+- Marks processed_at = now() and increments attempts on successful dispatch
+- Increments attempts and stores last_error on failed dispatch (row stays unprocessed)
+- Logs event_type, aggregate_id, trace_id via slog
+- Emits Prometheus counter outbox_events_dispatched_total{event_type}
+- Survives process restarts: rows with processed_at IS NULL are picked up on next start
+
+NEW FILES CREATED:
+
+1. apps/backend/internal/platform/outbox/outbox_events_dispatcher.go
+   - OutboxEventRow struct: snapshot of outbox_events row at claim time
+   - OutboxEventStore interface: ClaimNext, MarkDispatched, MarkFailed
+   - PGOutboxEventStore: production implementation against outbox_events table
+     * claimSQL: CTE with FOR UPDATE SKIP LOCKED, ordered by occurred_at ASC
+     * markDispatchedSQL: processed_at = now(), attempts = attempts + 1
+     * markFailedSQL: attempts = attempts + 1, last_error = $2 (no processed_at)
+   - OutboxEventsDispatcherOptions: Store, Dispatcher, Logger, DispatchedCounter,
+     PollInterval, ShutdownTimeout
+   - NewOutboxEventsDispatchedCounter(): factory for outbox_events_dispatched_total
+   - OutboxEventsDispatcher: Run(ctx)/Stop() loop with graceful shutdown
+     * Run: polls ClaimNext every PollInterval, calls deliverRow for each hit
+     * deliverRow: logs event_type/aggregate_id/trace_id, calls Dispatcher.Dispatch,
+       updates store, increments Prometheus counter on success
+     * Stop: idempotent, closes stopCh, waits for doneCh with shutdownTimeout
+   - outboxTruncate: local truncate helper (avoids worker package dependency)
+   - Compile-time guard: var _ OutboxEventStore = (*PGOutboxEventStore)(nil)
+
+2. apps/backend/internal/platform/outbox/dispatcher_resume_test.go
+   - Package outbox (in-package tests)
+   - inMemOutboxStore: thread-safe in-memory OutboxEventStore
+   - captureDispatcher: records Dispatch calls, supports failOnce for retry tests
+   - runDispatcherOnce: builds and runs dispatcher, polls until queue empty
+
+   17 test functions covering all 10 feature steps:
+     TestOutboxDispatcher_ResumesRowAfterRestart          (steps 1-5)
+     TestOutboxDispatcher_AttemptsIncrementedAfterSuccessfulDispatch (step 6)
+     TestOutboxDispatcher_LogsEventTypeAndAggregateID     (step 7)
+     TestOutboxDispatcher_PrometheusCounterIncremented    (step 8)
+     TestOutboxDispatcher_TraceIDPropagated               (step 9)
+     TestOutboxDispatcher_LogsContainTraceID              (step 9 via logs)
+     TestOutboxDispatcher_AtLeastOnce                     (step 10)
+     TestOutboxDispatcher_AlreadyProcessedRowsNotReDispatched
+     TestOutboxDispatcher_MultipleRowsProcessedInOrder
+     TestNewOutboxEventsDispatcher_NilStoreErrors
+     TestNewOutboxEventsDispatcher_NilDispatcherUsesNoop
+     TestOutboxDispatcher_DispatcherReceivesCorrectEvent
+     TestPGOutboxEventStore_CompileTimeInterfaceGuard
+     TestOutboxEventsDispatcher_ClaimSQLContainsForUpdateSkipLocked
+     TestOutboxEventsDispatcher_MarkDispatchedSQLUpdatesProcessedAt
+     TestOutboxEventsDispatcher_MarkFailedSQLUpdatesAttempts
+     TestNewOutboxEventsDispatchedCounter
+     TestOutboxDispatcher_StopIsIdempotent
+     TestOutboxEventsDispatcher_OutboxPayloadIsValidJSON
+
+VERIFICATION
+------------
+  - claimSQL: "FOR UPDATE SKIP LOCKED" + "processed_at IS NULL" + "outbox_events"
+  - markDispatchedSQL: "processed_at = now()" + "attempts = attempts + 1"
+  - markFailedSQL: "attempts = attempts + 1" + "last_error" (NO processed_at)
+  - No forbidden patterns (STUB/MOCK/devStore/globalThis)
+  - No new go.mod dependencies (pgx, prometheus already present)
+  - No circular imports (outbox package: stdlib + pgx + prometheus only)
+  - slog_noop() reused from writer_test.go (same package: package outbox)
+  - git commit: 9432150 -- 1254 insertions
+
+NOTES FOR LATER WAVES
+---------------------
+  - arena-worker/main.go should wire OutboxEventsDispatcher alongside the
+    worker loop in a later milestone alongside PGOutboxEventStore.
+  - Two outbox tables coexist (outbox_events and outbox); consolidate later.
+  - Real downstream delivery (Redis, webhook, SQS) should implement Dispatcher.
+
+PROGRESS METRIC
+---------------
+Stats at session start: 31/108 passing, 1 in_progress (this feature).
+This session: feature #38 completed and marked passing -> 32/108 passing.
+================================================================================
+================================================================================
