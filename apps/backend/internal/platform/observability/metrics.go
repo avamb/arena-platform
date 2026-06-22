@@ -50,12 +50,20 @@ const (
 )
 
 // DefaultHTTPDurationBuckets are the Prometheus histogram buckets used for
-// HTTP request latency. The values cover the typical web-API range from
-// 1 ms (in-memory hits) to 10 s (slow upstream calls); buckets beyond 10 s
-// are intentionally omitted because a request taking that long should have
-// timed out via REQUEST_TIMEOUT_SECONDS.
+// HTTP request latency. The values cover the full range required by the
+// feature #78 spec: from 5 ms (fast in-memory hits) up to 30 s (worst-case
+// slow upstream calls before the global REQUEST_TIMEOUT_SECONDS fires).
+// The 0.001 bucket at the low end catches sub-5 ms responses (in-process
+// short-circuits, health checks) so the histogram has a complete picture
+// even for the fastest handlers.
+//
+// Bucket boundaries (in seconds):
+//
+//	0.001 (1 ms), 0.005 (5 ms), 0.010 (10 ms), 0.025 (25 ms),
+//	0.050 (50 ms), 0.100 (100 ms), 0.250 (250 ms), 0.500 (500 ms),
+//	1.000 (1 s), 2.500 (2.5 s), 5.000 (5 s), 10.000 (10 s), 30.000 (30 s)
 var DefaultHTTPDurationBuckets = []float64{
-	0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10,
+	0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30,
 }
 
 // Metrics owns the baseline Prometheus collectors required by the feature #87
