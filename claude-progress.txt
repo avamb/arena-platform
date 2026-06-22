@@ -6711,3 +6711,98 @@ Stats at session start: 66/108 passing, 2 in_progress.
 This session: feature #53 completed and marked passing -> 67/108 passing.
 
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #57 (POST /v1/echo with empty message returns 400)
+"Server validates that 'message' is non-empty. Empty string yields 400 with
+code='validation.field_empty' or 'validation.field_required' and details.field='message'."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #57 requires fine-grained validation of the 'message' field in POST /v1/echo:
+  Step 1: {"message":""} -> HTTP 400, code='validation.field_empty'
+  Step 2: details.field='message' in the response
+  Step 3: {} (missing key) -> 400, code='validation.field_required'
+  Step 4: {"message":null} (explicit null) -> 400, code='validation.field_required'
+
+ANALYSIS
+--------
+The existing echo.go had a single validation at line 131-134:
+  if strings.TrimSpace(req.Message) == "" {
+    writeJSON(..., errorEnvelope("http.missing_field", ...))
+  }
+This didn't distinguish between missing/null vs empty string, and didn't include
+details.field='message'. Both issues needed fixing.
+
+The generated EchoRequest struct uses `Message string` (not *string), so after
+JSON decode:
+  - {} -> req.Message == ""
+  - {"message":null} -> req.Message == ""
+  - {"message":""} -> req.Message == ""
+
+To distinguish them, a secondary decode into map[string]json.RawMessage was added.
+
+CHANGES
+-------
+
+1. apps/backend/internal/platform/httpserver/echo.go (MODIFIED)
+   - Replaced single "http.missing_field" check with a block that:
+     * Decodes body into map[string]json.RawMessage
+     * If "message" key absent OR value is literal "null" -> validation.field_required
+     * If message present but TrimSpace == "" -> validation.field_empty
+     * Both use errorEnvelopeWithDetails with {"field": "message"}
+
+2. apps/backend/internal/platform/httpserver/echo_empty_message_test.go (NEW)
+   17 tests covering all 5 feature steps:
+
+   Step 1+2 (empty string -> field_empty, details.field='message'):
+     TestEmptyMessage_EmptyString_Returns400
+     TestEmptyMessage_EmptyString_CodeIsValidationFieldEmpty
+     TestEmptyMessage_EmptyString_DetailsFieldIsMessage
+     TestEmptyMessage_WhitespaceOnly_Returns400
+
+   Step 3 (missing key -> field_required):
+     TestEmptyMessage_MissingKey_Returns400
+     TestEmptyMessage_MissingKey_CodeIsValidationFieldRequired
+     TestEmptyMessage_MissingKey_DetailsFieldIsMessage
+
+   Step 4 (null value -> field_required):
+     TestEmptyMessage_NullValue_Returns400
+     TestEmptyMessage_NullValue_CodeIsValidationFieldRequired
+     TestEmptyMessage_NullValue_DetailsFieldIsMessage
+
+   Distinction checks:
+     TestEmptyMessage_MissingAndNullHaveSameCode
+     TestEmptyMessage_EmptyVsRequiredCodesAreDistinct
+
+   Regression guard:
+     TestEmptyMessage_ValidMessageSucceeds
+
+   Full sweep:
+     TestEmptyMessage_FullVerification (steps 1-4 as sub-tests)
+
+VERIFICATION
+------------
+  - docker build --target build: SUCCESS (all 4 binaries compile)
+  - 17/17 TestEmptyMessage_* tests: PASS (0.025s)
+  - Full httpserver suite: 3 known pre-existing failures (TestDevAuth_README,
+    TestOperational_Dockerfile*, TestOperational_ArenaHealthcheck*)
+  - git commit: 5779324
+
+ARCHITECTURE NOTES
+------------------
+  The key insight: json.Unmarshal into a plain `string` field treats both a missing
+  key and explicit `null` as zero value (empty string). To distinguish "absent/null"
+  from "empty string", a secondary decode into map[string]json.RawMessage is needed.
+  This is a common Go pattern when you need presence-checking without changing the
+  generated OpenAPI struct to use *string.
+
+PROGRESS METRIC
+---------------
+Stats at session start: 71/108 passing, 1 in_progress.
+This session: feature #57 completed and marked passing -> 72/108 passing.
+
+================================================================================
