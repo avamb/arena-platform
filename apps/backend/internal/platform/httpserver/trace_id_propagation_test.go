@@ -461,8 +461,8 @@ func TestTraceID_SlogRequestStartCarriesTraceID(t *testing.T) {
 }
 
 // TestTraceID_SlogRequestEndCarriesTraceID verifies step 4b: the
-// "http request end" slog record carries the same trace_id as the response
-// header, completing the per-request log bracket.
+// "http.request.completed" slog record carries the same trace_id as the
+// response header, completing the per-request log bracket.
 func TestTraceID_SlogRequestEndCarriesTraceID(t *testing.T) {
 	t.Parallel()
 	ts, _, cap := buildTraceTestServer(t)
@@ -491,19 +491,19 @@ func TestTraceID_SlogRequestEndCarriesTraceID(t *testing.T) {
 			continue
 		}
 		msg, _ := rec["msg"].(string)
-		if msg != "http request end" {
+		if msg != "http.request.completed" {
 			continue
 		}
 		foundEnd = true
 		tid, _ := rec[logging.FieldTraceID].(string)
 		if tid == "" {
-			t.Error("'http request end' log record is missing trace_id field")
+			t.Error("'http.request.completed' log record is missing trace_id field")
 		} else if tid != headerTraceID {
-			t.Errorf("'http request end' trace_id=%q != X-Trace-Id=%q", tid, headerTraceID)
+			t.Errorf("'http.request.completed' trace_id=%q != X-Trace-Id=%q", tid, headerTraceID)
 		}
 	}
 	if !foundEnd {
-		t.Error("no 'http request end' slog record found in captured output")
+		t.Error("no 'http.request.completed' slog record found in captured output")
 	}
 }
 

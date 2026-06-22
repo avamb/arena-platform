@@ -230,7 +230,7 @@ func TestRequestLog_CookieRedactedValueLogged(t *testing.T) {
 }
 
 // TestRequestLog_RequestStartAndEndLogged verifies that both the "http request
-// start" and "http request end" log records are emitted for a normal request.
+// start" and "http.request.completed" log records are emitted for a normal request.
 func TestRequestLog_RequestStartAndEndLogged(t *testing.T) {
 	var buf bytes.Buffer
 	logger := logging.New(&buf, "json", "debug")
@@ -248,8 +248,8 @@ func TestRequestLog_RequestStartAndEndLogged(t *testing.T) {
 	if !strings.Contains(logs, "http request start") {
 		t.Errorf("expected 'http request start' in logs; log output:\n%s", logs)
 	}
-	if !strings.Contains(logs, "http request end") {
-		t.Errorf("expected 'http request end' in logs; log output:\n%s", logs)
+	if !strings.Contains(logs, "http.request.completed") {
+		t.Errorf("expected 'http.request.completed' in logs; log output:\n%s", logs)
 	}
 }
 
@@ -277,7 +277,7 @@ func TestRequestLog_NoAuthHeaderMeansNoAuthInLog(t *testing.T) {
 	}
 }
 
-// TestRequestLog_StatusCodeInEndLog verifies that the "http request end" record
+// TestRequestLog_StatusCodeInEndLog verifies that the "http.request.completed" record
 // includes the response status code.
 func TestRequestLog_StatusCodeInEndLog(t *testing.T) {
 	var buf bytes.Buffer

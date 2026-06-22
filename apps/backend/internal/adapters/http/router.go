@@ -267,11 +267,26 @@ func (d Deps) withDefaults() Deps {
 // The reference to chimw.RequestID is intentionally dropped: chi's built-in
 // RequestID generates non-UUID identifiers (e.g. "host/000001") that fail the
 // "valid UUID" contract in step 2 of feature #61.
+//
+// Additionally, if the request carries an X-Correlation-Id header, its value
+// is stored on the context via logging.WithCorrelationID so that every
+// logging.FromContext(ctx) call automatically emits a "correlation_id"
+// attribute — enabling end-to-end correlation across service boundaries.
 func requestContext(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		reqID := resolveRequestID(r)
 		w.Header().Set(HeaderRequestID, reqID)
 		ctx := logging.WithRequestID(r.Context(), reqID)
+
+		// Propagate correlation_id from the X-Correlation-Id request header into
+		// the slog context. Any logging.FromContext(ctx) call downstream will then
+		// automatically include "correlation_id" in every log record without
+		// per-call boilerplate — supporting distributed trace correlation across
+		// service-to-service HTTP calls (feature #63).
+		if corrID := strings.TrimSpace(r.Header.Get("X-Correlation-Id")); corrID != "" {
+			ctx = logging.WithCorrelationID(ctx, corrID)
+		}
+
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -640,16 +655,23 @@ func MaskSensitiveHeader(name, value string) string {
 	return value
 }
 
-// requestLogMiddleware emits structured "http request start" and "http request
-// end" slog records for every request. Sensitive headers are masked via
-// MaskSensitiveHeader before reaching the log output so raw bearer tokens and
-// session cookies never appear in log files or log-aggregation systems.
+// requestLogMiddleware emits structured slog records for every request:
+//
+//   - "http.request.started"   — emitted before the handler runs; includes
+//     method, path, remote_addr, and masked credentials.
+//   - "http.request.completed" — emitted after the handler returns; includes
+//     all fields required by feature #63: request_id, correlation_id, route,
+//     method, status, latency_ms, bytes_in, bytes_out, user_agent.
+//
+// Sensitive headers are masked via MaskSensitiveHeader before reaching the log
+// output so raw bearer tokens and session cookies never appear in log files.
 //
 // The middleware is positioned AFTER tracerMiddleware in the canonical chain so
 // that logging.FromContext(r.Context()) returns a logger already enriched with
-// both request_id (set by requestContext) and trace_id (set by tracerMiddleware)
-// — every log record produced here is therefore automatically correlated to the
-// right distributed trace.
+// request_id (set by requestContext), correlation_id (set by requestContext from
+// X-Correlation-Id header), and trace_id (set by tracerMiddleware) — every log
+// record produced here is therefore automatically correlated to the right
+// distributed trace without per-call boilerplate.
 //
 // The Authorization and Cookie headers are always included in "request start"
 // when they are present, masked per MaskSensitiveHeader. This gives operators
@@ -658,8 +680,8 @@ func MaskSensitiveHeader(name, value string) string {
 func requestLogMiddleware(base *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// logging.FromContext inherits request_id and trace_id from ctx so
-			// both identifiers appear on every record without per-site boilerplate.
+			// logging.FromContext inherits request_id, correlation_id, and trace_id
+			// from ctx so all identifiers appear on every record automatically.
 			logger := logging.FromContext(r.Context())
 			if logger == nil {
 				logger = base
@@ -670,7 +692,15 @@ func requestLogMiddleware(base *slog.Logger) func(http.Handler) http.Handler {
 
 			start := time.Now()
 
-			// Build "request start" log args. Always include method, path, and
+			// Capture bytes_in from the declared Content-Length header.
+			// A value of -1 means the header was absent or the transfer is
+			// chunked; we report 0 in that case to keep the field numeric.
+			bytesIn := r.ContentLength
+			if bytesIn < 0 {
+				bytesIn = 0
+			}
+
+			// Build "request started" log args. Always include method, path, and
 			// the real client address. Sensitive headers are appended only when
 			// they are present in the request.
 			args := []any{
@@ -689,12 +719,34 @@ func requestLogMiddleware(base *slog.Logger) func(http.Handler) http.Handler {
 			ww := chimw.NewWrapResponseWriter(w, r.ProtoMajor)
 			next.ServeHTTP(ww, r.WithContext(r.Context()))
 
-			logger.Info("http request end",
+			// Resolve the matched chi route pattern after the handler ran.
+			// chi.RouteContext(r.Context()).RoutePattern() returns the low-
+			// cardinality pattern (e.g. "/v1/orders/{id}") rather than the
+			// concrete URL path so the log field is safe for aggregation/alerting.
+			// Returns "" for unmatched requests (404s); we label those "unmatched".
+			route := chi.RouteContext(r.Context()).RoutePattern()
+			if route == "" {
+				route = "unmatched"
+			}
+
+			status := ww.Status()
+			if status == 0 {
+				status = http.StatusOK
+			}
+
+			// Emit the single completion log record (feature #63). Fields are
+			// ordered from most-used (method, route, status) to least-used (sizes,
+			// user agent) so log tail output is readable without wide terminals.
+			// request_id, correlation_id, and trace_id are prepended automatically
+			// by logging.FromContext via the enriched logger returned above.
+			logger.Info("http.request.completed",
 				"method", r.Method,
-				"path", r.URL.Path,
-				"status", ww.Status(),
+				"route", route,
+				"status", status,
+				"latency_ms", float64(time.Since(start).Microseconds())/1000.0,
+				"bytes_in", bytesIn,
 				"bytes_out", ww.BytesWritten(),
-				"elapsed_ms", float64(time.Since(start).Microseconds())/1000.0,
+				"user_agent", r.Header.Get("User-Agent"),
 			)
 		})
 	}
