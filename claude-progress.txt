@@ -4870,3 +4870,84 @@ PROGRESS METRIC
 Stats at session start: 46/108 passing, 1 in_progress.
 This session: feature #28 completed and marked passing -> 47/108 passing.
 ================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #31 (Request body over limit returns 413 envelope)
+"Body size limit middleware enforces configurable max bytes (default 1 MiB). Larger requests return 413."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #31 requires the body limit middleware to:
+  1. Return 413 with code='http.payload_too_large' when body exceeds limit
+  2. Response is quick (check Content-Length header before reading body)
+  3. slog WARN entry includes content_length and limit fields
+  4. Configurable via BODY_LIMIT_BYTES env var
+
+CHANGES
+-------
+
+1. apps/backend/internal/adapters/http/router.go
+   - Modified JSONBodyLimit() function to add a fast-path Content-Length check
+   - If r.ContentLength > maxBytes: log WARN with content_length+limit, write 413
+     JSON envelope with code='http.payload_too_large', return immediately
+   - Fallback path (unchanged): wraps body with http.MaxBytesReader for chunked bodies
+   - Uses logging.FromContext(r.Context()) for slog WARN (logger already in ctx
+     via loggerMiddleware at position 5, before JSONBodyLimit at position 9)
+   - Uses logging.RequestID/TraceID from ctx for the 413 error envelope fields
+
+2. apps/backend/internal/platform/httpserver/body_limit_test.go (NEW)
+   17 tests covering all 6 feature steps:
+
+   413 response tests (steps 1-3):
+     TestBodyLimit_Returns413
+     TestBodyLimit_ContentTypeIsJSON
+     TestBodyLimit_CodeIsPayloadTooLarge
+     TestBodyLimit_CodeFollowsDottedNamespace
+     TestBodyLimit_EnvelopeHasRequiredFields
+     TestBodyLimit_EnvelopeMessageMentionsLimit
+     TestBodyLimit_EnvelopeHasRequestID
+
+   Quick response tests (step 4):
+     TestBodyLimit_RejectsBasedOnContentLength
+     TestBodyLimit_HandlerNotInvokedWhenLimitExceeded
+
+   slog WARN tests (step 5):
+     TestBodyLimit_SlogWarnEmitted
+     TestBodyLimit_SlogWarnHasContentLength
+     TestBodyLimit_SlogWarnHasLimit
+     TestBodyLimit_SlogWarnFields_BothPresent
+
+   Configurable limit tests (step 6):
+     TestBodyLimit_ConfigurableLimitAllows2MiBWith2MiBLimit
+     TestBodyLimit_ConfigurableLimitStillRejectsOver2MiB
+     TestBodyLimit_OneByteUnderLimitAllowed
+     TestBodyLimit_SafeMethodsNotLimited
+
+KEY DESIGN DECISIONS
+--------------------
+  - Fast path via r.ContentLength check (set by net/http from Content-Length header)
+    avoids reading any body bytes before rejection; makes 413 instantaneous even
+    for multi-MiB payloads
+  - Fallback path (MaxBytesReader) handles chunked/unknown-size bodies (r.ContentLength == -1)
+  - slog WARN uses logging.FromContext() so request_id and trace_id are automatically
+    included in the log record (they are in context by the time JSONBodyLimit runs)
+  - Tests use buildBodyLimitTestServer() helper that builds a minimal router with
+    httpadapter.Deps and a simple POST /test/body handler returning 200
+  - Test for step 6 (configurable limit) uses 2MiB limit server and verifies 200
+  - hasWarnWithAttrInt64() added to captureSlogHandler for numeric slog attribute check
+
+VERIFICATION
+------------
+  - docker build --target build: SUCCESS
+  - 17/17 TestBodyLimit_* tests PASS
+  - adapters/http: all 30 tests PASS (including TestNewRouter_BodyLimitMiddlewareApplied)
+  - No regressions: pre-existing failures unchanged (staticanalysis/postgres/openapi)
+  - No forbidden patterns (STUB/MOCK/devStore/globalThis)
+  - git commit: 56e0d2d
+
+PROGRESS METRIC
+---------------
+Stats at session start: 48/108 passing, 2 in_progress.
+This session: feature #31 completed and marked passing -> 49/108 passing.
+================================================================================
