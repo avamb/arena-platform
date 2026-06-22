@@ -36,6 +36,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -228,7 +229,12 @@ func Middleware(store Store, opts Options) func(http.Handler) http.Handler {
 			}
 			if hit {
 				if stored.RequestHash != "" && stored.RequestHash != reqHash {
-					writeIdempError(w, r, http.StatusConflict, "idempotency_key_conflict", ErrConflict.Error())
+					logging.FromContext(r.Context()).Warn("idempotency: body mismatch detected",
+						"code", "idempotency.body_mismatch",
+						"scope", opts.Scope,
+						"key", key,
+					)
+					writeIdempError(w, r, http.StatusConflict, "idempotency.body_mismatch", ErrConflict.Error())
 					return
 				}
 				replayStored(w, stored)
