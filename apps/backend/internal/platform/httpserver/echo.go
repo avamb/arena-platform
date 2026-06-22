@@ -159,6 +159,19 @@ func (s *Server) handleEcho(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Fault injection for transaction atomicity testing.
+	// When FAULT_INJECT_OUTBOX_AFTER_AUDIT=true the server simulates a crash
+	// between the audit_events INSERT and the outbox_events INSERT. The
+	// deferred tx.Rollback rolls back the audit write, proving that both
+	// rows share the same transaction and neither persists on failure.
+	// This hook must never be set in staging or production.
+	if s.faultInjectOutboxAfterAudit {
+		logger.Warn("echo: fault injection triggered — rolling back transaction after audit write")
+		writeJSON(w, http.StatusInternalServerError, errorEnvelope("internal.transaction_failed",
+			"fault injection: transaction rolled back after audit write", r))
+		return
+	}
+
 	// 2. Outbox row — placeholder event the OutboxDispatcher worker will pick
 	// up in a later wave. The event payload mirrors the echo response.
 	echoEventID, err := insertOutboxEcho(ctx, tx, actor.ID, req.Message, requestID, traceID)

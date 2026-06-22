@@ -155,15 +155,28 @@ func run() error {
 	}
 
 	// 7. HTTP server -----------------------------------------------------------
+	// FAULT_INJECT_OUTBOX_AFTER_AUDIT is a dev/test-only flag that forces a
+	// transaction rollback between the audit_events and outbox_events writes
+	// in /v1/echo. It must NEVER be set in staging or production. We read it
+	// directly from the environment here (not via the validated Config struct)
+	// because it is intentionally not validated — its absence in production
+	// is enforced by human process and code review, not config validation.
+	faultInjectOutbox := os.Getenv("FAULT_INJECT_OUTBOX_AFTER_AUDIT") == "true"
+	if faultInjectOutbox {
+		logger.Warn("FAULT INJECTION ACTIVE: FAULT_INJECT_OUTBOX_AFTER_AUDIT=true — " +
+			"echo endpoint will rollback after audit write. DO NOT use in production.")
+	}
+
 	srv := httpserver.New(httpserver.Options{
-		Config:         cfg,
-		Logger:         logger,
-		DB:             pool,
-		Pool:           pool.Pool,
-		PgxPool:        pool.Pool,
-		Auth:           stubAuth,
-		Metrics:        metrics,        // wires the Prometheus HTTP latency/count middleware
-		MetricsHandler: metrics.Handler(), // mounts the /metrics scrape endpoint
+		Config:                      cfg,
+		Logger:                      logger,
+		DB:                          pool,
+		Pool:                        pool.Pool,
+		PgxPool:                     pool.Pool,
+		Auth:                        stubAuth,
+		Metrics:                     metrics,           // wires the Prometheus HTTP latency/count middleware
+		MetricsHandler:              metrics.Handler(), // mounts the /metrics scrape endpoint
+		FaultInjectOutboxAfterAudit: faultInjectOutbox,
 	})
 
 	listenErrCh := make(chan error, 1)
