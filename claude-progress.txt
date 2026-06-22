@@ -8597,3 +8597,52 @@ Stats at session start: 96/108 passing, 3 in_progress.
 This session: feature #95 completed and marked passing -> 97/108 passing.
 
 ================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #106 (Dockerfile multi-stage + docker-compose.yml)
+"Production-ready Docker build for Dokploy + dev environment via compose."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #106: Verified that the existing Dockerfile and docker-compose.yml satisfy
+all 7 feature requirements. Added 24 static inspection tests covering all steps.
+
+Steps covered:
+  Step 1: Dockerfile multi-stage FROM: golang:1.24-alpine builder -> distroless final
+  Step 2: Builder stage: CGO_ENABLED=0, GOOS=linux, builds arena-api, arena-worker, arena-migrate
+  Step 3: Final image copies all binaries via COPY --from=build (embed.FS, no separate data files)
+  Step 4: HEALTHCHECK CMD uses arena-healthcheck binary (distroless-compatible, probes /healthz)
+  Step 5: EXPOSE 8080, USER nonroot:nonroot
+  Step 6: docker-compose.yml: api, worker, postgres:17-alpine, redis:7-alpine services;
+          service_healthy conditions; pg_data named volume; pg_isready + redis-cli healthchecks
+  Step 7: /healthz returns 200 in-process (httptest.Server); /readyz reachable
+
+ANALYSIS
+--------
+Both Dockerfile and docker-compose.yml were already production-complete from prior sessions.
+arena-healthcheck/main.go was also already implemented.
+No production code changes needed -- only tests were added.
+
+CHANGES
+-------
+1. apps/backend/internal/platform/httpserver/dockerfile_compose_test.go (NEW)
+   24 tests covering all 7 feature steps:
+   - TestDockerfile106_MultiStageFromLines through TestDockerfile106_UserNonroot (13 tests)
+   - TestCompose106_HasApiService through TestCompose106_RedisHasHealthcheck (8 tests)
+   - TestDockerCompose106_HealthzReturns200, TestDockerCompose106_ReadyzReachable
+   - TestDockerfileCompose106_FullVerification (all 7 steps as sub-tests)
+
+VERIFICATION
+------------
+  - 24/24 tests PASS (0.123s)
+  - go build ./...: EXIT 0 (all packages compile)
+  - Pre-existing TestOpenAPI_* and TestDevAuth_* failures unrelated (Docker trimpath issue)
+  - git commit: f07763c
+
+PROGRESS METRIC
+---------------
+Stats: 98/108 -> 99/108 passing.
+This session: feature #106 completed and marked passing.
+
+================================================================================
