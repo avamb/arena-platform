@@ -114,7 +114,10 @@ func prepareArgs(ev Event) ([]any, error) {
 		return nil, fmt.Errorf("outbox: marshal payload: %w", err)
 	}
 	// Use nil for occurred_at so COALESCE falls through to now().
-	var occurredAt *time.Time
+	// Stored as `any` (not *time.Time) so that a zero OccurredAt produces an
+	// untyped nil in the []any slice — pgx treats a typed (*time.Time)(nil)
+	// differently from an untyped nil when binding parameters.
+	var occurredAt any // nil by default (untyped interface nil)
 	if !ev.OccurredAt.IsZero() {
 		t := ev.OccurredAt.UTC()
 		occurredAt = &t

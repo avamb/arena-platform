@@ -173,7 +173,7 @@ func (s *PGOutboxEventStore) ClaimNext(ctx context.Context) (*OutboxEventRow, er
 const markDispatchedSQL = `
 	UPDATE outbox_events
 	   SET processed_at = now(),
-	       attempts     = attempts + 1
+	       attempts = attempts + 1
 	 WHERE id = $1::uuid
 `
 
@@ -189,7 +189,7 @@ func (s *PGOutboxEventStore) MarkDispatched(ctx context.Context, id string) erro
 
 const markFailedSQL = `
 	UPDATE outbox_events
-	   SET attempts   = attempts + 1,
+	   SET attempts = attempts + 1,
 	       last_error = $2
 	 WHERE id = $1::uuid
 `
