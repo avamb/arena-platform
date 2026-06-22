@@ -246,7 +246,11 @@ func (p *StubProvider) IssueToken(_ context.Context, req IssueRequest) (string, 
 		req.ActorType = ActorTypeStubUser
 	}
 	ttl := req.TTL
-	if ttl <= 0 {
+	// Only default the TTL when it is exactly zero (i.e., the caller did not
+	// set it). A negative TTL is intentional — it produces an already-expired
+	// token (exp = now + negative_duration = past), which is the canonical way
+	// to create test fixtures for the auth.token_expired path.
+	if ttl == 0 {
 		ttl = p.defaultTTL
 	}
 	aud := req.Audience
