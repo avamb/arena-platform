@@ -392,7 +392,12 @@ func (w *Worker) InstanceID() string { return w.instanceID }
 // Run returns nil on clean shutdown. A non-nil return indicates a
 // non-recoverable error — typically a pool that has been Closed.
 func (w *Worker) Run(ctx context.Context) error {
-	defer close(w.doneCh)
+	// Log "shutdown complete" and close doneCh together so Stop() never
+	// sees doneCh closed before the final log line is written.
+	defer func() {
+		w.logger.Info("shutdown complete")
+		close(w.doneCh)
+	}()
 
 	w.logger.Info("worker started",
 		"poll_interval", w.pollInterval.String(),
@@ -441,7 +446,40 @@ func (w *Worker) Run(ctx context.Context) error {
 			"max_attempts", job.MaxAttempts,
 		)
 
+		// shutdownWatcher: if Stop() or ctx cancellation fires while execute
+		// is blocking, log "shutdown initiated" so operators know the worker
+		// is draining the in-flight job rather than exiting immediately.
+		// jobDone is always closed after execute returns, preventing leaks.
+		jobDone := make(chan struct{})
+		go func(j *Job) {
+			select {
+			case <-w.stopCh:
+				select {
+				case <-jobDone:
+					// Job already finished — no drain message needed.
+				default:
+					w.logger.Info("shutdown initiated, finishing 1 claimed job",
+						slog.String("job_id", j.ID),
+						slog.String("job_type", j.Type),
+					)
+				}
+			case <-ctx.Done():
+				select {
+				case <-jobDone:
+					// Job already finished — no drain message needed.
+				default:
+					w.logger.Info("shutdown initiated, finishing 1 claimed job",
+						slog.String("job_id", j.ID),
+						slog.String("job_type", j.Type),
+					)
+				}
+			case <-jobDone:
+				// Job finished before any shutdown signal — nothing to log.
+			}
+		}(job)
+
 		w.execute(ctx, job)
+		close(jobDone) // Release the watcher goroutine.
 	}
 }
 
@@ -454,7 +492,7 @@ func (w *Worker) Stop() error {
 
 	select {
 	case <-w.doneCh:
-		w.logger.Info("worker stopped cleanly")
+		// "shutdown complete" already logged by Run() via its defer.
 		return nil
 	case <-time.After(w.shutdownTimeout):
 		w.logger.Warn("worker stop timed out",
@@ -498,7 +536,10 @@ func (w *Worker) execute(ctx context.Context, job *Job) {
 		return
 	}
 
-	if err := w.queue.MarkDone(ctx, job.ID); err != nil {
+	// Use context.Background() so a SIGTERM-cancelled parent ctx does not
+	// prevent persisting the completed status. The queue methods impose their
+	// own 5–10 s timeouts internally.
+	if err := w.queue.MarkDone(context.Background(), job.ID); err != nil {
 		w.logger.Error("mark done failed",
 			"job_id", job.ID,
 			"error", err.Error(),
@@ -531,8 +572,10 @@ func safeHandler(ctx context.Context, h HandlerFunc, payload []byte) (err error)
 func (w *Worker) markFailureOrRetry(ctx context.Context, job *Job, handlerErr error) {
 	errText := truncate(handlerErr.Error(), 4000)
 
+	// Use context.Background() for the same reason as MarkDone: a
+	// SIGTERM-cancelled ctx must not prevent the outcome from being written.
 	if job.Attempts < job.MaxAttempts {
-		if err := w.queue.MarkRetry(ctx, job.ID, errText); err != nil {
+		if err := w.queue.MarkRetry(context.Background(), job.ID, errText); err != nil {
 			w.logger.Error("schedule retry failed",
 				"job_id", job.ID,
 				"error", err.Error(),
@@ -542,7 +585,7 @@ func (w *Worker) markFailureOrRetry(ctx context.Context, job *Job, handlerErr er
 	}
 
 	// Final failure: move to dead letter.
-	if err := w.queue.MarkFailed(ctx, job, errText); err != nil {
+	if err := w.queue.MarkFailed(context.Background(), job, errText); err != nil {
 		w.logger.Error("mark failed failed",
 			"job_id", job.ID,
 			"error", err.Error(),
