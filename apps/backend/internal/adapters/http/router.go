@@ -212,6 +212,11 @@ func NewRouter(deps Deps) chi.Router {
 	if deps.BodyLimitBytes > 0 {
 		r.Use(JSONBodyLimit(deps.BodyLimitBytes))
 	}
+	// 10. RequireJSONContentType — enforces Content-Type: application/json on
+	//     POST/PUT/PATCH so mutating endpoints never receive non-JSON bodies
+	//     without an explicit client mistake being surfaced as a 415 early in
+	//     the chain, before any handler logic runs.
+	r.Use(RequireJSONContentType)
 
 	return r
 }
@@ -611,6 +616,66 @@ func requestLogMiddleware(base *slog.Logger) func(http.Handler) http.Handler {
 			)
 		})
 	}
+}
+
+// -----------------------------------------------------------------------------
+// Content-Type enforcement
+// -----------------------------------------------------------------------------
+
+// RequireJSONContentType is a middleware that enforces Content-Type:
+// application/json on mutating HTTP methods (POST, PUT, PATCH). Requests
+// using any other content type — or with a missing Content-Type header —
+// receive a 415 Unsupported Media Type response with the project-standard
+// JSON error envelope and an Accept-Post: application/json header that
+// tells the client which media type to use.
+//
+// The check is case-insensitive and ignores media-type parameters such as
+// charset, so both "application/json" and "application/json; charset=utf-8"
+// and "application/JSON" all satisfy the constraint.
+//
+// GET, HEAD, DELETE, and other safe or idempotent methods are passed through
+// without any Content-Type inspection because those methods conventionally
+// carry no body.
+//
+// Exported (capital R) so callers that build partial routers outside NewRouter
+// — integration tests, future arena-admin binaries — can apply the same
+// enforcement semantics without duplicating the logic.
+func RequireJSONContentType(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost, http.MethodPut, http.MethodPatch:
+			// Extract the media type from the Content-Type header, ignoring
+			// any parameters (e.g. "; charset=utf-8"). The comparison is
+			// case-insensitive per RFC 7231 §3.1.1.1.
+			ct := r.Header.Get("Content-Type")
+			mediaType := strings.ToLower(strings.TrimSpace(ct))
+			if idx := strings.IndexByte(mediaType, ';'); idx >= 0 {
+				mediaType = strings.TrimSpace(mediaType[:idx])
+			}
+			if mediaType != "application/json" {
+				// The Accept-Post response header (RFC 7240 / draft-wilde-accept-post)
+				// tells the client which media types are accepted for POST.
+				w.Header().Set("Accept-Post", "application/json")
+				requestID := strings.TrimSpace(r.Header.Get(HeaderRequestID))
+				if rid := chimw.GetReqID(r.Context()); rid != "" {
+					requestID = rid
+				}
+				traceID := strings.TrimSpace(r.Header.Get(HeaderTraceID))
+				w.Header().Set("Content-Type", "application/json; charset=utf-8")
+				w.WriteHeader(http.StatusUnsupportedMediaType)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"error": map[string]any{
+						"code":       "http.unsupported_media_type",
+						"message":    "Content-Type must be application/json",
+						"request_id": requestID,
+						"trace_id":   traceID,
+					},
+				})
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // -----------------------------------------------------------------------------
