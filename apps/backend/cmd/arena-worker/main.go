@@ -6,6 +6,16 @@
 // worker being offline — that is the contract the platform tables
 // (feature #20) are designed to fulfil.
 //
+// Feature #102 additions:
+//
+//   - Observability stack shared with arena-api (same config schema,
+//     same Prometheus registry shape, same OTel init path).
+//   - OutboxBacklogPoller: a background ticker (default 5 s) that runs
+//     SELECT count(*) FROM outbox WHERE dispatched_at IS NULL and
+//     stores the result in the arena_outbox_backlog Prometheus gauge.
+//   - Placeholder job handler ("placeholder.log") registered via
+//     worker.ShouldRunPlaceholderJob / worker.PlaceholderJobHandler.
+//
 // This binary is intentionally lean: it loads configuration, opens a
 // pgx pool, builds a handler registry, runs the worker loop, and exits
 // cleanly on SIGINT/SIGTERM. The HTTP surface (metrics, healthz) is
@@ -25,6 +35,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/database"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
 
@@ -36,11 +47,13 @@ func main() {
 }
 
 func run() error {
+	// 1. Configuration --------------------------------------------------------
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
 
+	// 2. Logger ---------------------------------------------------------------
 	logger := logging.NewWithOptions(logging.Options{
 		Writer:  os.Stdout,
 		Format:  cfg.LogFormat,
@@ -53,12 +66,45 @@ func run() error {
 
 	logger.Info("arena-worker starting")
 
+	// 3. Signal-bound root context --------------------------------------------
 	rootCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Database pool. Use a bounded connect deadline so the container
-	// fails fast if Postgres is genuinely unreachable rather than
-	// hanging on the docker-compose dependency.
+	// 4. Observability (shared with arena-api) --------------------------------
+	// Worker and API use identical Prometheus metric shapes so dashboards
+	// can scrape either process without reconfiguration (feature #102,
+	// step 6: "Worker and API share config schema and observability stack").
+	metrics := observability.MustNew(nil)
+
+	tracerCtx, cancelTracer := context.WithTimeout(rootCtx, 10*time.Second)
+	_, tracerShutdown, err := observability.InitTracer(tracerCtx, observability.TracingOptions{
+		Endpoint:       cfg.OTLPEndpoint,
+		Insecure:       cfg.OTELInsecure,
+		ServiceName:    coalesce(cfg.OTELServiceName, "arena-worker"),
+		ServiceVersion: cfg.AppVersion,
+		Environment:    string(cfg.AppEnv),
+		SamplerRatio:   cfg.OTELTracesSampler,
+	})
+	cancelTracer()
+	if err != nil {
+		return fmt.Errorf("init tracer: %w", err)
+	}
+	defer func() {
+		flushCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := tracerShutdown(flushCtx); err != nil {
+			logger.Warn("tracer shutdown failed", "error", err.Error())
+		}
+	}()
+
+	logger.Info("observability initialized",
+		"otlp_endpoint", cfg.OTLPEndpoint,
+	)
+
+	// 5. Database pool --------------------------------------------------------
+	// Use a bounded connect deadline so the container fails fast if
+	// Postgres is genuinely unreachable rather than hanging on the
+	// docker-compose dependency check.
 	connectCtx, cancelConnect := context.WithTimeout(rootCtx, 60*time.Second)
 	pool, err := database.Open(connectCtx, cfg, logger)
 	cancelConnect()
@@ -67,13 +113,29 @@ func run() error {
 	}
 	defer pool.Close()
 
-	// Handler registry. The platform foundation milestone only ships
-	// one handler — noop.test — used by the worker_jobs persistence
-	// test (feature #20). Real business handlers register themselves
-	// here as later milestones add them.
+	// 6. Outbox backlog poller (feature #102, step 2) -------------------------
+	// A lightweight background goroutine that refreshes the
+	// arena_outbox_backlog Prometheus gauge every 5 s by running a
+	// single COUNT query against the outbox table. This gives ops teams
+	// a real-time view of undelivered domain events without touching the
+	// dispatch path.
+	poller := worker.NewOutboxBacklogPoller(worker.OutboxBacklogPollerOptions{
+		Querier:      worker.NewPGOutboxBacklogQuerier(pool.Pool),
+		Gauge:        metrics.OutboxBacklog,
+		Logger:       logger,
+		PollInterval: worker.DefaultOutboxBacklogPollInterval, // 5 s
+	})
+	pollerErrCh := make(chan error, 1)
+	go func() { pollerErrCh <- poller.Run(rootCtx) }()
+
+	// 7. Handler registry -----------------------------------------------------
+	// The platform foundation milestone ships two handlers:
+	//   noop.test         — used by the worker_jobs persistence test (#20)
+	//   placeholder.log   — demonstrates ShouldRunPlaceholderJob (step 3)
 	registry := worker.NewRegistry()
 	registerBuiltinHandlers(registry, logger)
 
+	// 8. Worker loop ----------------------------------------------------------
 	w, err := worker.New(worker.Options{
 		Pool:            pool,
 		Registry:        registry,
@@ -88,6 +150,7 @@ func run() error {
 	logger.Info("arena-worker ready",
 		"instance_id", w.InstanceID(),
 		"poll_interval", "1s",
+		"outbox_backlog_interval", worker.DefaultOutboxBacklogPollInterval.String(),
 	)
 
 	// Run the loop in a goroutine so we can react to the signal-bound
@@ -95,12 +158,12 @@ func run() error {
 	runErrCh := make(chan error, 1)
 	go func() { runErrCh <- w.Run(rootCtx) }()
 
+	// 9. Wait for shutdown signal or fatal error -------------------------------
 	select {
 	case <-rootCtx.Done():
 		logger.Info("shutdown signal received; stopping worker")
 	case err := <-runErrCh:
-		// Worker.Run returned on its own — propagate any unexpected
-		// error and bail out.
+		// Worker.Run returned on its own — propagate any unexpected error.
 		if err != nil {
 			return fmt.Errorf("worker run: %w", err)
 		}
@@ -108,6 +171,7 @@ func run() error {
 		return nil
 	}
 
+	// 10. Graceful shutdown ---------------------------------------------------
 	if err := w.Stop(); err != nil && !errors.Is(err, context.DeadlineExceeded) {
 		logger.Warn("worker stop returned error", "error", err.Error())
 	}
@@ -122,13 +186,20 @@ func run() error {
 		logger.Warn("worker goroutine did not exit within shutdown timeout")
 	}
 
+	// The poller goroutine exits when rootCtx is cancelled (already done).
+	// Drain its channel to avoid a goroutine leak.
+	select {
+	case <-pollerErrCh:
+	case <-time.After(2 * time.Second):
+		logger.Warn("outbox backlog poller did not stop within 2s")
+	}
+
 	logger.Info("arena-worker stopped cleanly")
 	return nil
 }
 
 // registerBuiltinHandlers attaches every job type the foundation
-// milestone ships with. The list is intentionally tiny — additional
-// handlers belong to their owning modules, not here.
+// milestone ships with.
 func registerBuiltinHandlers(reg *worker.Registry, logger *slog.Logger) {
 	// noop.test exists for feature #20 (worker job persistence) and for
 	// any future smoke test that wants to prove the queue plumbing
@@ -137,4 +208,21 @@ func registerBuiltinHandlers(reg *worker.Registry, logger *slog.Logger) {
 		logger.Info("noop.test handler invoked", "payload_bytes", len(payload))
 		return nil
 	})
+
+	// placeholder.log is registered for feature #102 (step 3). It
+	// demonstrates that ShouldRunPlaceholderJob() can gate dispatch
+	// decisions and that the handler stub logs and returns nil (success).
+	if worker.ShouldRunPlaceholderJob() {
+		reg.Register("placeholder.log", worker.PlaceholderJobHandler(logger))
+	}
+}
+
+// coalesce returns the first non-empty argument.
+func coalesce(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
