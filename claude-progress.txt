@@ -8646,3 +8646,81 @@ Stats: 98/108 -> 99/108 passing.
 This session: feature #106 completed and marked passing.
 
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #97 (Permission check boundary)
+"Interface PermissionChecker with no-op implementation for milestone. Real
+roles/scopes — next milestone."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #97: Created the full permissions package with Checker interface,
+AllowAllChecker, DenyAllChecker, RequirePermission middleware, and 20 unit tests.
+
+Steps covered:
+  Step 1: Checker interface in checker.go with Check(ctx, action, resource) error
+  Step 2: AllowAllChecker (AllowAll() constructor) — milestone no-op, any actor passes
+  Step 3: DenyAllChecker (DenyAll() constructor) — test helper, always returns
+          *PermissionDeniedError (wraps ErrPermissionDenied sentinel)
+  Step 4: RequirePermission(checker, action, resource) HTTP middleware:
+          - AllowAll: forwards request to next handler unchanged
+          - DenyAll/error: writes 403 JSON {"error":{"code":"permissions.denied",...}}
+          - Infrastructure error: writes 500 JSON with "permissions.internal_error"
+  Step 5: 20/20 unit tests cover all paths
+  Step 6: Package doc string clearly labels this as PLACEHOLDER
+
+ANALYSIS
+--------
+Clean architecture: permissions package lives in internal/platform (not
+adapters/http) and does NOT import the adapters/http package. This respects
+the clean architecture boundary (platform layer free of adapter-layer imports).
+PermissionDeniedError.HTTPStatus() returns 403 so adapters/http.DomainErrStatus
+can map it automatically when the adapter layer uses the error.
+
+CHANGES
+-------
+1. apps/backend/internal/platform/permissions/checker.go (NEW)
+   - ErrPermissionDenied sentinel
+   - *PermissionDeniedError with Error(), Unwrap(), HTTPStatus()
+   - Checker interface with Check(ctx, action, resource) error
+   - allowAllChecker / AllowAll()
+   - denyAllChecker / DenyAll()
+   - RequirePermission(checker, action, resource) middleware
+   - writePermError() internal helper (no adapter-layer imports)
+
+2. apps/backend/internal/platform/permissions/checker_test.go (NEW)
+   20 tests:
+   - TestChecker_InterfaceSignature
+   - TestAllowAllChecker_ReturnsNil
+   - TestAllowAllChecker_AnyActionAnyResource
+   - TestAllowAllChecker_NilContext
+   - TestDenyAllChecker_ReturnsError
+   - TestDenyAllChecker_ErrorIsPermissionDenied
+   - TestDenyAllChecker_ReturnsPermissionDeniedError
+   - TestDenyAllChecker_ErrorMessageContainsActionAndResource
+   - TestDenyAllChecker_HTTPStatus403
+   - TestRequirePermission_AllowAll_ForwardsRequest
+   - TestRequirePermission_DenyAll_Returns403
+   - TestRequirePermission_DenyAll_JSONResponseBody
+   - TestRequirePermission_ContentType
+   - TestRequirePermission_MultipleActions (2 sub-tests)
+   - TestErrPermissionDenied_Sentinel
+   - TestPermissionDeniedError_UnwrapsToSentinel
+   - TestPermissions_IsPlaceholder
+   - TestPermissions_FullVerification (6 sub-tests)
+
+VERIFICATION
+------------
+  - 20/20 tests: PASS (0.011s)
+  - go build ./...: EXIT 0 (all packages compile)
+  - git commit: 9898e79
+
+PROGRESS METRIC
+---------------
+Stats at session start: 98/108 passing, 3 in_progress.
+This session: feature #97 completed and marked passing -> 99/108 passing.
+
+================================================================================
