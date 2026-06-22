@@ -89,6 +89,13 @@ type Metrics struct {
 	// A rising value indicates a programming error in a handler; the metric
 	// can be used to page on-call when it exceeds zero over a rolling window.
 	HTTPPanicsTotal prometheus.Counter
+
+	// IdempotencyReplaysTotal counts requests that were short-circuited by the
+	// idempotency middleware because an identical Idempotency-Key was already
+	// present in the store. Incremented once per replayed response, regardless
+	// of the response status stored. Useful for alerting on replay storms and
+	// for verifying that idempotency deduplication is working in production.
+	IdempotencyReplaysTotal prometheus.Counter
 }
 
 // New constructs a *Metrics, registers every baseline collector on the
@@ -171,6 +178,15 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 				Help:      "Total HTTP handler panics caught by the Recoverer middleware.",
 			},
 		),
+
+		IdempotencyReplaysTotal: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: MetricsNamespace,
+				Subsystem: "idempotency",
+				Name:      "replays_total",
+				Help:      "Total idempotency-key hits that replayed a stored response without re-executing the handler.",
+			},
+		),
 	}
 
 	for _, c := range []prometheus.Collector{
@@ -180,6 +196,7 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 		m.WorkerJobsLagSeconds,
 		m.OutboxBacklog,
 		m.HTTPPanicsTotal,
+		m.IdempotencyReplaysTotal,
 	} {
 		if err := reg.Register(c); err != nil {
 			// If a peer test already registered the same metric on the

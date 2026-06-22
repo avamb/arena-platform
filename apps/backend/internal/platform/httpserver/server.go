@@ -104,7 +104,8 @@ type Server struct {
 	stub    *auth.StubProvider
 	audit   audit.Writer
 	idem    idempotency.Store
-	metrics http.Handler
+	metrics       http.Handler
+	typedMetrics  *observability.Metrics
 
 	// faultInjectOutboxAfterAudit is a dev/test-only fault injection flag.
 	// When true, handleEcho forces a transaction rollback immediately after
@@ -231,15 +232,16 @@ func New(opts Options) *Server {
 	probes = append(probes, opts.Probes...)
 
 	s := &Server{
-		cfg:     opts.Config,
-		logger:  logger,
-		router:  r,
-		probes:  probes,
-		pool:    opts.Pool,
-		stub:    opts.Auth,
-		audit:   auditWriter,
-		idem:    idemStore,
-		metrics: opts.MetricsHandler,
+		cfg:          opts.Config,
+		logger:       logger,
+		router:       r,
+		probes:       probes,
+		pool:         opts.Pool,
+		stub:         opts.Auth,
+		audit:        auditWriter,
+		idem:         idemStore,
+		metrics:      opts.MetricsHandler,
+		typedMetrics: opts.Metrics,
 
 		faultInjectOutboxAfterAudit: opts.FaultInjectOutboxAfterAudit,
 		slowDelay:                   opts.SlowDelay,
@@ -347,7 +349,7 @@ func (s *Server) mountV1Routes() {
 		if s.stub != nil && s.stub.Enabled() && s.idem != nil && s.audit != nil && s.pool != nil {
 			r.Group(func(pr chi.Router) {
 				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
-				pr.Use(idempotency.Middleware(s.idem, idempotency.Options{
+				idemOpts := idempotency.Options{
 					Scope: "POST /v1/echo",
 					TTL:   24 * time.Hour,
 					ActorID: func(ctx context.Context) string {
@@ -356,7 +358,13 @@ func (s *Server) mountV1Routes() {
 						}
 						return ""
 					},
-				}))
+				}
+				if s.typedMetrics != nil {
+					idemOpts.OnReplay = func() {
+						s.typedMetrics.IdempotencyReplaysTotal.Inc()
+					}
+				}
+				pr.Use(idempotency.Middleware(s.idem, idemOpts))
 				pr.Post("/echo", s.handleEcho)
 			})
 		}

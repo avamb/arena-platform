@@ -175,6 +175,12 @@ type Options struct {
 	// ActorID is a function that extracts the actor UUID (or "" for anon)
 	// from the request context. Defaults to "" (no actor).
 	ActorID func(ctx context.Context) string
+	// OnReplay is an optional hook invoked exactly once when the middleware
+	// short-circuits a duplicate request by replaying a stored response.
+	// It is NOT called when the key is missing, malformed, or reused with a
+	// different body (those paths are errors, not replays). Typical use: increment
+	// a Prometheus counter (e.g. observability.Metrics.IdempotencyReplaysTotal).
+	OnReplay func()
 }
 
 // Middleware returns net/http middleware enforcing Idempotency-Key semantics
@@ -236,6 +242,9 @@ func Middleware(store Store, opts Options) func(http.Handler) http.Handler {
 					)
 					writeIdempError(w, r, http.StatusConflict, "idempotency.body_mismatch", ErrConflict.Error())
 					return
+				}
+				if opts.OnReplay != nil {
+					opts.OnReplay()
 				}
 				replayStored(w, stored)
 				return
