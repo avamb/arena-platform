@@ -90,6 +90,7 @@ components:
         - env
         - supported_locales
         - default_locale
+        - active_locale
         - server_time
         - request_id
         - trace_id
@@ -119,6 +120,10 @@ components:
         default_locale:
           type: string
           description: Fallback locale when Accept-Language negotiation yields no match
+          example: "en"
+        active_locale:
+          type: string
+          description: Locale resolved for this specific request via Accept-Language → ?lang= → default_locale negotiation
           example: "en"
         server_time:
           type: string

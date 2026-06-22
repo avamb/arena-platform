@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
@@ -25,11 +26,16 @@ type infoResponse struct {
 	Env              string   `json:"env"`
 	SupportedLocales []string `json:"supported_locales"`
 	DefaultLocale    string   `json:"default_locale"`
-	ServerTime       string   `json:"server_time"`
-	DBVersion        string   `json:"db_version,omitempty"`
-	DBNow            string   `json:"db_now,omitempty"`
-	RequestID        string   `json:"request_id"`
-	TraceID          string   `json:"trace_id"`
+	// ActiveLocale is the locale resolved for this specific request using the
+	// negotiation chain: Accept-Language → ?lang= → default_locale. It tells
+	// the client which language will be used for localized error messages on
+	// subsequent requests that use the same locale negotiation inputs.
+	ActiveLocale string `json:"active_locale"`
+	ServerTime   string `json:"server_time"`
+	DBVersion    string `json:"db_version,omitempty"`
+	DBNow        string `json:"db_now,omitempty"`
+	RequestID    string `json:"request_id"`
+	TraceID      string `json:"trace_id"`
 }
 
 // handleInfo serves GET /v1/info. It runs a real SELECT against PostgreSQL
@@ -40,6 +46,18 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logger := logging.FromContext(ctx)
 
+	// Resolve the active locale for this request using the standard
+	// negotiation chain (Accept-Language → ?lang= → default). The result is
+	// included in the response so clients know which language will be used for
+	// localized messages on this and subsequent calls.
+	activeLocale := i18n.NegotiateLocale(
+		r.Header.Get("Accept-Language"),
+		r.URL.Query().Get("lang"),
+		"", // no user preferred_locale at this (unauthenticated) endpoint
+		s.cfg.DefaultLocale,
+		s.cfg.ActiveLocales,
+	)
+
 	resp := infoResponse{
 		App:              s.cfg.AppName,
 		Version:          s.cfg.AppVersion,
@@ -47,6 +65,7 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 		Env:              string(s.cfg.AppEnv),
 		SupportedLocales: s.cfg.ActiveLocales,
 		DefaultLocale:    s.cfg.DefaultLocale,
+		ActiveLocale:     activeLocale,
 		ServerTime:       time.Now().UTC().Format(time.RFC3339Nano),
 		RequestID:        r.Header.Get("X-Request-Id"),
 		TraceID:          logging.TraceID(ctx),
