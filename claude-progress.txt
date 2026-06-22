@@ -3323,3 +3323,81 @@ PROGRESS METRIC
 Stats at session start: 29/108 passing, 1 in_progress (this feature).
 This session: feature #36 completed and marked passing -> 30/108 passing.
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #37 (Idempotency replay returns identical response within TTL)
+"Idempotency replay returns identical response within TTL"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #37 verifies the full idempotency lifecycle:
+- Byte-identical replay within TTL (steps 1-6)
+- 409 with code='idempotency.body_mismatch' on hash divergence (steps 7-8)
+- slog WARN record with code='idempotency.body_mismatch' (step 9)
+- TTL expiry -> fresh execution (step 10, choice: expired = MISS -> fresh 200)
+
+CHANGED FILES:
+
+1. apps/backend/internal/platform/idempotency/idempotency.go
+   - Added import: platform/logging
+   - In the HIT + hash mismatch path:
+     - Added logging.FromContext(r.Context()).Warn("idempotency: body mismatch detected",
+         "code", "idempotency.body_mismatch", "scope", opts.Scope, "key", key)
+     - Changed error code from "idempotency_key_conflict" to "idempotency.body_mismatch"
+       (matches dotted namespace format used throughout the codebase)
+
+NEW FILES CREATED:
+
+2. apps/backend/internal/platform/httpserver/idempotency_replay_full_test.go
+   - Package httpserver (in-package tests)
+   - Key design: replayCaptureTx intercepts idempotency INSERT calls (which
+     idempotency.SaveTx sends via tx.Exec) and forwards them to replayIdemStore
+     so the in-memory store stays populated even though the echo handler uses
+     the SaveTx transactional path (which calls MarkPersisted to skip middleware
+     auto-save). Without this interception the store stays empty and all Lookup
+     calls return MISS.
+
+   Types created:
+     replayIdemStore - thread-safe in-memory Store with expireAll() method
+     replayCaptureTx - pgx.Tx that intercepts idempotency INSERT -> store.Save
+     replayPoolDB    - PoolDB that returns replayCaptureTx from BeginTx
+
+   buildReplayServer(t, logger) helper:
+     - StubProvider + replayIdemStore + replayCaptureTx + captureAuditWriter
+     - Optional *slog.Logger for log capture (pass nil for default)
+     - Reuses captureAuditWriter, fakeRow from echo_audit_test.go (same package)
+
+   7 test functions covering all 10 feature steps:
+     TestReplay_FirstRequestReturns200              (steps 1-2)
+     TestReplay_SecondRequestReturnsIdenticalBody   (steps 3-5)
+     TestReplay_SecondRequestStatusAndHeadersIdentical (step 6)
+     TestReplay_ThirdRequestWithDifferentBodyReturns409 (steps 7-8)
+     TestReplay_ConflictSlogWarnEmitted             (step 9)
+     TestReplay_ExpiredTTLFreshExecution            (step 10)
+     TestReplay_StoreHasExactlyOneEntryAfterReplay  (bonus: store count)
+     TestReplay_DifferentKeysAreIndependent         (bonus: key isolation)
+
+STEP 10 DESIGN CHOICE (documented per spec):
+   Expired key = MISS, returns fresh 200 (not 410). The PGStore queries
+   WHERE expires_at > now() so an expired row is identical to a non-existent row.
+   Client can freely resubmit after TTL without receiving a 410 Gone.
+
+VERIFICATION
+------------
+  - All 7 TestReplay_* tests PASS
+  - idempotency package tests still PASS (error code change is backward-safe
+    since no test asserted on the old "idempotency_key_conflict" string)
+  - httpserver package all tests PASS
+  - Pre-existing failures in adapters/postgres, observability, outbox are
+    unrelated to this feature (DB connection, metrics name, outbox writer)
+  - No forbidden patterns (STUB/MOCK/devStore/globalThis)
+  - git commit: f8e2459 -- 639 insertions
+
+PROGRESS METRIC
+---------------
+Stats at session start: 30/108 passing, 1 in_progress (this feature).
+This session: feature #37 completed and marked passing -> 31/108 passing.
+================================================================================
