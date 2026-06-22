@@ -369,11 +369,16 @@ func prometheusMiddleware(m *observability.Metrics) func(http.Handler) http.Hand
 //     handler runs, once chimw.WrapResponseWriter knows what was written.
 //
 //  3. Surfaces the resolved trace_id via the X-Trace-Id response header
-//     and via logging.WithTraceID(ctx, ...). When the global tracer is in
-//     disabled mode (observability.InitTracer with an empty Endpoint) the
-//     span has a zero TraceID — we mint a random hex string in that case
-//     so the response-header contract still holds and integration tests
-//     have something to assert on.
+//     and via logging.WithTraceID(ctx, ...). The trace_id is resolved
+//     with the following priority:
+//       a) Live OTel SpanContext trace_id (when the sampler decides to sample).
+//       b) trace-id field from the incoming W3C Traceparent header (honours
+//          distributed traces even when the local SDK runs in disabled /
+//          NeverSample mode — the span is a no-op but the parent's trace_id
+//          still propagates through so end-to-end log correlation works).
+//       c) Inbound X-Trace-Id header (lets callers pin a custom value).
+//       d) Cryptographic random 128-bit hex string (guarantees non-empty
+//          contract on every response regardless of SDK mode).
 //
 // Calling tracer.Start always succeeds; in disabled mode it returns a
 // no-op span whose End() is a cheap function call, so the per-request
@@ -398,18 +403,30 @@ func tracerMiddleware(propagator propagation.TextMapPropagator, tracer trace.Tra
 			)
 			defer span.End()
 
-			// 3. Resolve trace_id for the X-Trace-Id header. Prefer the
-			//    real OTel SpanContext when sampling is on; otherwise
-			//    honour an inbound X-Trace-Id (lets the caller pin one);
-			//    otherwise generate a random 128-bit hex string.
+			// 3. Resolve trace_id with the priority order documented above.
 			traceID := ""
 			if sc := span.SpanContext(); sc.TraceID().IsValid() {
+				// (a) Sampled local span — use the real OTel trace_id.
 				traceID = sc.TraceID().String()
 			}
 			if traceID == "" {
+				// (b) Disabled SDK / NeverSample: the local span is a no-op so
+				// sc.TraceID() is zeroed, but the incoming W3C traceparent header
+				// still carries the distributed trace_id. Parse it directly so
+				// the trace propagates end-to-end even without local sampling.
+				// W3C traceparent format: {version(2)}-{trace-id(32)}-{parent-id(16)}-{flags(2)}
+				if tp := strings.TrimSpace(r.Header.Get("Traceparent")); tp != "" {
+					if parts := strings.SplitN(tp, "-", 4); len(parts) == 4 && len(parts[1]) == 32 {
+						traceID = parts[1]
+					}
+				}
+			}
+			if traceID == "" {
+				// (c) Caller-pinned value via X-Trace-Id request header.
 				traceID = strings.TrimSpace(r.Header.Get(HeaderTraceID))
 			}
 			if traceID == "" {
+				// (d) Random fallback — guarantees non-empty contract.
 				traceID = newRandomHex(16)
 			}
 			w.Header().Set(HeaderTraceID, traceID)
