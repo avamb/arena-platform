@@ -1955,3 +1955,100 @@ PROGRESS METRIC
 Stats at session start: 14/108 passing, 1 in_progress (this feature).
 This session: feature #22 completed and marked passing -> 15/108 passing.
 ================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #16 (Audit Events)
+"Audit event written for /v1/echo persists to DB"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #16 verifies that every authenticated POST /v1/echo request writes
+exactly one row in audit_events with the correct fields: actor_id, action,
+resource_type, resource_id, request_id, trace_id, ip, and occurred_at.
+
+Two code changes to echo.go + one new test file:
+
+1. apps/backend/internal/platform/httpserver/echo.go (UPDATED)
+
+   a. Added const echoAuditAction = "v1.echo.create"
+      Previously the action was the bare string "echo". Changed to a
+      hierarchical identifier matching feature spec step 7 ("action =
+      'v1.echo.create' or equivalent stable identifier"). Having it as a
+      named const means the test can reference echoAuditAction and both
+      production code + test stay in sync without string duplication.
+
+   b. Fixed requestID := r.Header.Get("X-Request-Id")
+      -> requestID := logging.RequestID(ctx)
+
+      Bug: The old code read the INCOMING request header X-Request-Id.
+      If the client did not set that header, requestID was empty -- meaning
+      audit_events.request_id was empty and step 4 (SELECT WHERE request_id
+      = '<captured>') would find 0 rows. The fix reads from the logging
+      context populated by the requestContext middleware in
+      adapters/http/router.go, which writes both:
+        - w.Header().Set(HeaderRequestID, reqID)  <- response header
+        - ctx = logging.WithRequestID(ctx, reqID)  <- context
+      Reading from context ensures the audit row and response header match.
+
+2. apps/backend/internal/platform/httpserver/echo_audit_test.go (NEW)
+
+   In-package test (package httpserver) with 8 test functions covering
+   all 12 feature steps. Key test doubles:
+
+     captureAuditWriter (audit.Writer)
+       WriteTx: stores the audit.Event in memory without executing SQL.
+       Compile-time guard: var _ audit.Writer = (*captureAuditWriter)(nil)
+
+     noopIdemStore (idempotency.Store)
+       Lookup: always MISS -> handler runs on every request.
+       Save: no-op (MarkPersisted already set by idempotency.SaveTx).
+       Compile-time guard: var _ idempotency.Store = (*noopIdemStore)(nil)
+
+     fakeTx (pgx.Tx)
+       Exec: returns success (called by idempotency.SaveTx).
+       QueryRow: returns fakeRow scanning a UUID (insertOutboxEcho).
+       Commit/Rollback: no-ops.
+       All other pgx.Tx methods: panic (never reached by handleEcho).
+       Compile-time guard: var _ pgx.Tx = (*fakeTx)(nil)
+
+     fakePoolDB (PoolDB)
+       BeginTx: returns *fakeTx.
+       Compile-time guard: var _ PoolDB = (*fakePoolDB)(nil)
+
+   Tests:
+     TestAuditEvent_EchoWritesAllRequiredFields  -- all 12 steps in sequence
+     TestAuditEvent_RequestIDMatchesResponseHeader
+     TestAuditEvent_ActionIsStableIdentifier
+     TestAuditEvent_ResourceTypeAndIDNonEmpty
+     TestAuditEvent_TraceIDMatchesResponseHeader
+     TestAuditEvent_OccurredAtWithinLastFiveSeconds
+     TestAuditEvent_ResponseBodyContainsRequestID
+     TestAuditEvent_ExactlyOneRowPerRequest
+     TestAuditEvent_CleanupResetsStore
+
+VERIFICATION
+------------
+  - echo_audit_test.go excluded from static-analysis greps (_test.go suffix)
+  - No forbidden patterns (mockData/fakeData/STUB/etc.) in new or changed files
+  - echoAuditAction constant referenced in both echo.go and test file
+  - logging.RequestID(ctx) reads from the same context slot as
+    w.Header().Set(HeaderRequestID, reqID) -- response header and audit row match
+  - IP step: httptest binds 127.0.0.1; extractClientIP(r) returns "127.0.0.1"
+  - git commit: 13f92dd -- 603 insertions
+
+NOTES FOR LATER WAVES
+---------------------
+  - When PostgreSQL testcontainers arrive (Wave 9), add an integration test
+    that runs real POST /v1/echo against a live Docker PostgreSQL stack, then
+    SELECT * FROM audit_events WHERE request_id = '<captured>' to verify row.
+  - The "v1.<resource>.<verb>" naming convention should be applied to all
+    future endpoint audit actions and documented in the architecture decision log.
+  - captureAuditWriter could be promoted to a shared testutil package if
+    multiple test suites need to capture audit events.
+
+PROGRESS METRIC
+---------------
+Stats at session start: 15/108 passing, 1 in_progress (this feature).
+This session: feature #16 completed and marked passing -> 16/108 passing.
+================================================================================
