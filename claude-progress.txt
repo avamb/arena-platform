@@ -8849,3 +8849,46 @@ This session: feature #98 verified and marked passing -> 100/108 passing.
 ================================================================================
 
 ================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #79 (DB pool gauges exposed in /metrics)
+"Custom gauges for pgx pool stats: db_pool_open_connections, db_pool_idle,
+db_pool_in_use, db_pool_wait_count, db_pool_wait_duration_seconds."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #79: Added 5 individual named Prometheus gauges for pgx pool statistics
+that appear in /metrics with their own TYPE lines.
+
+Steps covered:
+  Step 1: All 5 gauges appear in /metrics body (grep for 'db_pool_' finds them)
+  Step 2: Each gauge has "# TYPE <name> gauge" in scrape output
+  Step 3: arena_db_pool_in_use rises during burst, returns to 0 after
+  Step 4: arena_db_pool_open_connections is between min and max pool size
+  Step 5: arena_db_pool_wait_count increments when 200 parallel requests
+          contend for a small (5-connection) pool
+
+CHANGES
+-------
+1. observability/metrics.go: Added 5 new Gauge fields (DBPoolOpenConnections,
+   DBPoolIdle, DBPoolInUse, DBPoolWaitCount, DBPoolWaitDurationSeconds).
+2. postgres/pool.go: Extended poolStatReader interface with EmptyAcquireCount()
+   and AcquireDuration(). Updated publishPoolStatSnapshot() to populate the 5 gauges.
+3. postgres/pool_burst_test.go: Extended fakePoolStat with emptyAcquire and
+   acquireDuration fields implementing the new interface methods.
+4. postgres/pool_db_pool_gauges_test.go (NEW): 8 tests covering all 5 steps.
+
+VERIFICATION
+------------
+  - 8/8 TestDBPoolGauges_* tests: PASS
+  - All 8 pre-existing TestDBPoolBurst_* tests: still PASS
+  - go build ./apps/backend/...: EXIT 0
+  - git commit: ab8de16
+
+PROGRESS METRIC
+---------------
+Stats at session start: 92/108 passing, 2 in_progress.
+This session: feature #79 completed and marked passing -> 93/108 passing.
+
+================================================================================
