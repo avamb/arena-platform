@@ -36,6 +36,13 @@ import (
 // client cannot DoS the database with multi-megabyte audit rows.
 const MaxEchoMessageBytes = 8 * 1024
 
+// dbRetryAfterSeconds is the value placed in the Retry-After header when
+// handlers return 503 with code='dependency.database_unavailable'. It tells
+// clients and load-balancer health checks to wait this many seconds before
+// retrying. Expressed as a string so it can be set directly on the header
+// without strconv.Itoa overhead in the hot path.
+const dbRetryAfterSeconds = "30"
+
 // echoAuditAction is the stable audit action identifier written to
 // audit_events.action for every successful POST /v1/echo request.
 // Using a dotted, hierarchical naming convention (resource.verb) rather
@@ -150,7 +157,13 @@ func (s *Server) handleEcho(w http.ResponseWriter, r *http.Request) {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		logger.Error("echo: begin tx", "error", err.Error())
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("db_unavailable", "begin transaction: "+err.Error(), r))
+		// Any failure to begin a transaction indicates the database is
+		// unavailable (connection refused, pool timeout, context deadline).
+		// Return 503 with the stable code 'dependency.database_unavailable'
+		// and a Retry-After header so clients know to back off and retry.
+		w.Header().Set("Retry-After", dbRetryAfterSeconds)
+		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("dependency.database_unavailable",
+			"database is unavailable: "+err.Error(), r))
 		return
 	}
 	// Defer rollback. Commit at the bottom shadows this; if we never reach
