@@ -4003,3 +4003,95 @@ PROGRESS METRIC
 Stats at session start: 36/108 passing, 2 in_progress.
 This session: feature #8 completed and marked passing -> 37/108 passing.
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #10 (Authorization header masked in logs)
+"Authorization header masked in logs"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #10 requires that the logging middleware never writes raw Authorization,
+Cookie, or other sensitive headers to slog output. Specifically:
+  - Authorization: Bearer SECRET must NOT appear in logs
+  - "Bearer ***" MUST appear (scheme preserved, token masked)
+  - Cookie values must NOT appear in logs
+
+ANALYSIS
+--------
+The production middleware chain (adapters/http/router.go NewRouter) had no
+request start/end logging at all. The httpserver/middleware.go had a traceContext
+function that logged request start/end but was DEAD CODE (not wired to NewRouter).
+
+IMPLEMENTATION
+--------------
+
+1. apps/backend/internal/adapters/http/router.go
+   - Added MaskSensitiveHeader(name, value string) string:
+     * authorization / proxy-authorization: preserves scheme prefix, replaces
+       token with "***" (e.g. "Bearer eyJ..." -> "Bearer ***", "Basic ..." -> "Basic ***")
+     * cookie / set-cookie: replaces entire value with "<redacted>"
+     * all other headers: returned unchanged
+     * case-insensitive header name matching
+   - Added requestLogMiddleware(base *slog.Logger) func(Handler) Handler:
+     * Logs "http request start" with method, path, remote_addr
+     * Appends masked Authorization if present, masked Cookie if present
+     * Wraps response writer to capture status code
+     * Logs "http request end" with method, path, status, bytes_out, elapsed_ms
+   - Wired requestLogMiddleware into NewRouter after tracerMiddleware (step 7b)
+     so logging.FromContext(ctx) automatically enriches records with
+     request_id and trace_id
+
+2. apps/backend/internal/adapters/http/sensitive_headers_test.go (NEW)
+   Package: http_test (external package, exports-only API)
+   17 test functions covering:
+
+   MaskSensitiveHeader unit tests:
+     TestMaskSensitiveHeader_BearerToken
+     TestMaskSensitiveHeader_BearerTokenLowerCase
+     TestMaskSensitiveHeader_BasicScheme
+     TestMaskSensitiveHeader_NoSchemePrefix
+     TestMaskSensitiveHeader_ProxyAuthorization
+     TestMaskSensitiveHeader_CookieRedacted
+     TestMaskSensitiveHeader_SetCookieRedacted
+     TestMaskSensitiveHeader_NonSensitivePassThrough
+     TestMaskSensitiveHeader_EmptyAuthValue
+
+   requestLogMiddleware integration tests (via NewRouter + bytes.Buffer):
+     TestRequestLog_AuthorizationRawTokenNotLogged     (feature step 3)
+     TestRequestLog_AuthorizationMaskedValueLogged     (feature step 4)
+     TestRequestLog_CookieRawValueNotLogged            (feature step 5)
+     TestRequestLog_CookieRedactedValueLogged          (redacted placeholder)
+     TestRequestLog_RequestStartAndEndLogged           (lifecycle)
+     TestRequestLog_NoAuthHeaderMeansNoAuthInLog       (no phantom entries)
+     TestRequestLog_StatusCodeInEndLog                 (status in end record)
+     TestRequestLog_BothAuthAndCookieMaskedTogether    (combined case)
+
+VERIFICATION
+------------
+  - docker build: all 4 binaries compile cleanly
+  - docker run golang:1.24-alpine: all adapters/http tests PASS (0.070s)
+  - Full test suite: all non-DB-dependent tests pass
+    * adapters/postgres has 1 pre-existing failure (no live PG in test env)
+    * That failure was present before this session
+  - Log output during tests shows: authorization="Bearer ***" (correct masking)
+  - Raw tokens ("SECRET_DO_NOT_LOG_ABCDEF") never appear in slog output
+  - git commit: 8772a65 -- 436 insertions
+
+SECURITY DESIGN
+---------------
+  - Scheme prefix preserved ("Bearer") to help operators see auth type
+  - Token value fully replaced (not truncated like maskToken in auth.go)
+    because the log middleware may run even for anonymous requests
+  - Cookie entire value redacted (no per-cookie parsing) since cookie strings
+    can contain session IDs, CSRF tokens, and API keys
+  - Non-sensitive headers (Content-Type, Accept, User-Agent) pass through
+    unchanged for maximum diagnostic utility
+
+PROGRESS METRIC
+---------------
+Stats at session start: 38/108 passing, 2 in_progress.
+This session: feature #10 completed and marked passing -> 39/108 passing.
+================================================================================
