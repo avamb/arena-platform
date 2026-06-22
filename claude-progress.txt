@@ -8545,3 +8545,55 @@ Stats at session start: 96/108 passing, 2 in_progress.
 This session: feature #94 completed and marked passing -> 97/108 passing.
 
 ================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #95 (Postgres integration test harness - testcontainers-go)
+"Helper for integration tests with real Postgres via testcontainers-go."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #95: Created the pgtest integration test harness with testcontainers-go.
+All 5 feature steps covered through 7 integration tests.
+
+Steps verified:
+  Step 1: Added testcontainers-go v0.36.0 and modules/postgres v0.36.0 to go.mod
+          (latest that supports Go 1.24; newer versions require Go 1.25)
+  Step 2: Created internal/tests/pgtest/pgtest.go with NewTestDB(t) function
+          - Starts Postgres 17 via tcpostgres.Run("postgres:17-alpine", ...)
+          - Applies all goose migrations from embedded migrations.FS
+          - Returns *pgxpool.Pool + cleanup func()
+  Step 3: TruncateAll(t, pool) truncates all 6 application tables; each
+          NewTestDB call gets a fresh isolated container (separate DB)
+  Step 4: WithTx(t, pool, fn) wraps fn in pgx.Tx; always rolls back after
+          fn returns (uses errors.Is(err, pgx.ErrTxClosed) for safe rollback)
+  Step 5: 7 integration tests in pgtest_test.go (build tag: integration)
+
+DOCKER-IN-DOCKER INSIGHT
+--------------------------
+When running tests inside Docker (arena-build-test image), Ryuk reaper fails
+because it cannot reach back to the host. Fix requires these flags:
+  -e TESTCONTAINERS_RYUK_DISABLED=true
+  -e TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal
+  --add-host="host.docker.internal:host-gateway"
+
+CHANGES
+-------
+1. apps/backend/internal/tests/pgtest/pgtest.go (NEW)
+   - NewTestDB, TruncateAll, WithTx helpers
+2. apps/backend/internal/tests/pgtest/pgtest_test.go (NEW, build tag: integration)
+   - 7 tests covering all 5 feature steps
+3. go.mod / go.sum updated with testcontainers-go v0.36.0
+
+VERIFICATION
+------------
+  - 7/7 integration tests: PASS (43.551s)
+  - go build ./...: EXIT 0 (all packages compile)
+  - git commit: 2595d30
+
+PROGRESS METRIC
+---------------
+Stats at session start: 96/108 passing, 3 in_progress.
+This session: feature #95 completed and marked passing -> 97/108 passing.
+
+================================================================================
