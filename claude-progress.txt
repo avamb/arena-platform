@@ -3706,3 +3706,74 @@ Stats at session start: 34/108 passing, 2 in_progress.
 This session: feature #86 completed and marked passing -> 35/108 passing.
 ================================================================================
 ================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #102 (arena-worker boot)
+"arena-worker boot -- outbox backlog poller + placeholder handler"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #102 adds the three missing pieces to the arena-worker boot sequence
+that the existing cmd/arena-worker/main.go did not yet have:
+
+STEP 2 -- Outbox backlog ticker:
+  New: apps/backend/internal/platform/worker/outbox_backlog_poller.go
+    - OutboxBacklogQuerier interface: CountUndispatched(ctx) (int64, error)
+    - OutboxBacklogPollerOptions struct: Querier, Gauge, Logger, PollInterval
+    - NewOutboxBacklogPoller(opts) -- panics on nil Querier or Gauge
+    - OutboxBacklogPoller.Run(ctx): fires first poll immediately, then ticks
+      every PollInterval (default 5s), logs WARN on error and continues
+    - DefaultOutboxBacklogPollInterval = 5s
+
+  New: apps/backend/internal/platform/worker/outbox_backlog_pg.go
+    - PGOutboxBacklogQuerier wraps *pgxpool.Pool
+    - CountUndispatched: SELECT count(*) FROM outbox WHERE dispatched_at IS NULL
+    - Compile-time interface guard
+
+STEP 3 -- Placeholder job handler:
+  New: apps/backend/internal/platform/worker/placeholder.go
+    - ShouldRunPlaceholderJob() bool -- always returns true (stub scheduler)
+    - PlaceholderJobHandler(logger) HandlerFunc -- logs invocation, returns nil
+
+STEP 6 -- Shared observability:
+  Modified: apps/backend/cmd/arena-worker/main.go
+    - Added observability.MustNew(nil) for baseline Prometheus collectors
+    - Added observability.InitTracer() same as arena-api for OTel tracing
+    - Wires OutboxBacklogPoller with NewPGOutboxBacklogQuerier(pool.Pool) and
+      metrics.OutboxBacklog gauge (5s interval)
+    - Registers "placeholder.log" via ShouldRunPlaceholderJob() guard
+    - Drains pollerErrCh on shutdown to prevent goroutine leak
+
+TESTS (step 5):
+  New: apps/backend/internal/platform/worker/worker_boot_test.go
+  Package: worker (in-package tests, no live DB required)
+
+  11 test functions - ALL PASS:
+    TestOutboxBacklogPoller_FirstPollFiresImmediately   (step 2: immediate poll)
+    TestOutboxBacklogPoller_TickerFiresMultipleTimes    (step 2: periodic ticks)
+    TestOutboxBacklogPoller_GaugeReflectsCount          (step 2: gauge accuracy)
+    TestOutboxBacklogPoller_GracefulShutdown            (step 5: ctx cancel -> nil)
+    TestOutboxBacklogPoller_TransientErrorKeepsRunning  (resilience)
+    TestShouldRunPlaceholderJob_Exists                  (step 3: returns true)
+    TestShouldRunPlaceholderJob_LogsWhenInvoked         (step 3: handler logs)
+    TestNewOutboxBacklogPoller_NilQuerierPanics         (constructor guard)
+    TestNewOutboxBacklogPoller_NilGaugePanics           (constructor guard)
+    TestNewOutboxBacklogPoller_DefaultPollInterval      (default 5s applied)
+    TestPGOutboxBacklogQuerier_CompileTimeInterfaceGuard
+
+  All 15 pre-existing worker package tests still pass.
+
+VERIFICATION
+------------
+  - Docker build: all 4 binaries compile
+  - Test container (golang:1.24): all 11 new + 15 existing tests pass
+  - No forbidden patterns (STUB/MOCK/devStore/globalThis)
+  - No new go.mod dependencies
+  - git commit: 6f46cf4 -- 681 insertions
+
+PROGRESS METRIC
+---------------
+Stats at session start: 33/108 passing, 2 in_progress.
+This session: feature #102 completed and marked passing -> 34/108 passing.
+================================================================================
