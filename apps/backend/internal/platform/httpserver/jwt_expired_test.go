@@ -276,6 +276,7 @@ func TestJWTExpired_HasWWWAuthenticate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build request: %v", err)
 	}
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+expiredTok)
 
 	resp, err := ts.Client().Do(req)
@@ -310,6 +311,7 @@ func TestJWTExpired_RetryAfterHeader(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build request: %v", err)
 	}
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+expiredTok)
 
 	resp, err := ts.Client().Do(req)
@@ -345,6 +347,7 @@ func TestJWTExpired_ResponseMessageHintToRefresh(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build request: %v", err)
 	}
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+expiredTok)
 	req.Header.Set("Accept-Language", "en")
 
@@ -430,6 +433,7 @@ func TestJWTNbfFuture_HasWWWAuthenticate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build request: %v", err)
 	}
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+nbfTok)
 
 	resp, err := ts.Client().Do(req)
@@ -460,6 +464,7 @@ func TestJWTNbfFuture_NoRetryAfterOnNbfRejection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build request: %v", err)
 	}
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+nbfTok)
 
 	resp, err := ts.Client().Do(req)
@@ -496,6 +501,7 @@ func TestJWTExpired_ProducesWarnLog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build request: %v", err)
 	}
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+expiredTok)
 
 	resp, err := ts.Client().Do(req)
@@ -541,6 +547,7 @@ func TestJWTNbfFuture_ProducesWarnLog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build request: %v", err)
 	}
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+nbfTok)
 
 	resp, err := ts.Client().Do(req)
@@ -584,6 +591,7 @@ func TestJWTBothCases_WarnLogHasAuthCode(t *testing.T) {
 			if err != nil {
 				t.Fatalf("build request: %v", err)
 			}
+			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("Authorization", "Bearer "+tc.token)
 
 			resp, err := ts.Client().Do(req)

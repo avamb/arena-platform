@@ -261,9 +261,17 @@ func TestNewRouter_BodyLimitMiddlewareApplied(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	// Send a body larger than the configured limit.
-	oversized := strings.NewReader(strings.Repeat("x", limit+10))
+	// Wrap the oversized body in an io.NopCloser so that http.NewRequest
+	// cannot determine its length — Content-Length is not set (-1). This
+	// bypasses the JSONBodyLimit "fast path" (which checks Content-Length)
+	// and exercises the MaxBytesReader "slow path" that the handler
+	// encounters when it tries to read past the limit.
+	//
+	// Content-Type: application/json is required by the RequireJSONContentType
+	// middleware that is now wired globally in NewRouter.
+	oversized := io.NopCloser(strings.NewReader(strings.Repeat("x", limit+10)))
 	req := httptest.NewRequest(http.MethodPost, "/upload", oversized)
+	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	r.ServeHTTP(rr, req)
 

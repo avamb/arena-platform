@@ -54,6 +54,7 @@ func buildDevAuthTestServer(t *testing.T) *Server {
 func TestDevAuthToken_Returns200WithToken(t *testing.T) {
 	srv := buildDevAuthTestServer(t)
 	req := httptest.NewRequest(http.MethodPost, "/v1/dev/auth/token", nil)
+	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	srv.router.ServeHTTP(rr, req)
 
@@ -79,6 +80,7 @@ func TestDevAuthToken_Returns200WithToken(t *testing.T) {
 func TestDevAuthToken_ResponseHasExpectedFields(t *testing.T) {
 	srv := buildDevAuthTestServer(t)
 	req := httptest.NewRequest(http.MethodPost, "/v1/dev/auth/token", nil)
+	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	srv.router.ServeHTTP(rr, req)
 
@@ -101,6 +103,7 @@ func TestDevAuthToken_ResponseHasExpectedFields(t *testing.T) {
 func TestDevAuthToken_DefaultActorID(t *testing.T) {
 	srv := buildDevAuthTestServer(t)
 	req := httptest.NewRequest(http.MethodPost, "/v1/dev/auth/token", nil)
+	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	srv.router.ServeHTTP(rr, req)
 
@@ -119,6 +122,7 @@ func TestDevAuthToken_IssuedTokenVerifiableByValidateJWT(t *testing.T) {
 
 	// Step 1: mint a token via /v1/dev/auth/token
 	req := httptest.NewRequest(http.MethodPost, "/v1/dev/auth/token", nil)
+	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	srv.router.ServeHTTP(rr, req)
 
@@ -166,6 +170,7 @@ func TestDevAuthToken_RouteExistsOnlyWhenStubEnabled(t *testing.T) {
 	srvNoAuth := New(Options{Config: cfg})
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/dev/auth/token", nil)
+	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	srvNoAuth.router.ServeHTTP(rr, req)
 

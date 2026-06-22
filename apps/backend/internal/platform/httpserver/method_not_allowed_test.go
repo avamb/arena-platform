@@ -130,6 +130,9 @@ func TestMethodNotAllowed_PatchOnPostOnlyReturns405(t *testing.T) {
 	t.Parallel()
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPatch, "/post-only", nil)
+	// RequireJSONContentType middleware fires on PATCH; set Content-Type so
+	// chi can route the request and respond with 405 rather than 415.
+	req.Header.Set("Content-Type", "application/json")
 	buildMethodNotAllowedRouter().ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusMethodNotAllowed {
@@ -143,6 +146,7 @@ func TestMethodNotAllowed_AllowHeaderIncludesPOST(t *testing.T) {
 	t.Parallel()
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPatch, "/post-only", nil)
+	req.Header.Set("Content-Type", "application/json")
 	buildMethodNotAllowedRouter().ServeHTTP(rr, req)
 
 	allow := rr.Header().Get("Allow")
@@ -160,6 +164,7 @@ func TestMethodNotAllowed_PatchBodyHasMethodNotAllowedCode(t *testing.T) {
 	t.Parallel()
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPatch, "/post-only", nil)
+	req.Header.Set("Content-Type", "application/json")
 	buildMethodNotAllowedRouter().ServeHTTP(rr, req)
 
 	var body struct {
