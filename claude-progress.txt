@@ -8724,3 +8724,88 @@ Stats at session start: 98/108 passing, 3 in_progress.
 This session: feature #97 completed and marked passing -> 99/108 passing.
 
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #108 (GitHub Actions: lint + test + build + push)
+"Minimal production CI: static analysis, tests with race-detector, Docker image
+build, push to registry."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #108: Created the GitHub Actions CI workflow at .github/workflows/ci.yml.
+All 7 feature steps covered through 22 automated static-inspection tests.
+
+Steps covered:
+  Step 1: .github/workflows/ci.yml created with on.push(branches:[main]) and
+          on.pull_request triggers. concurrency group for cancel-in-progress.
+  Step 2: Job lint — actions/setup-go@v5 with go-version:"1.24",
+          golangci/golangci-lint-action@v6 with --timeout=5m
+  Step 3: Job test — services: postgres:17 (health-checked via pg_isready),
+          DATABASE_URL and REDIS_URL env vars,
+          go test -race -coverprofile=coverage.out -covermode=atomic ./...
+          Coverage report uploaded as artifact (retention 7 days)
+  Step 4: Job build-and-push (if: refs/heads/main + push only):
+          docker/setup-buildx-action, docker/login-action (REGISTRY_URL/USERNAME/PASSWORD secrets),
+          docker/metadata-action (type=sha + type=raw,value=latest),
+          docker/build-push-action with GHA cache, depends on lint+test
+  Step 5: Job openapi-check — regenerates types via make gen-openapi,
+          git diff --exit-code to detect drift from openapi.yaml
+  Step 6: All 4 jobs (lint, test, openapi-check, build-and-push) present
+  Step 7: README.md: CI status badge added at top of file pointing to ci.yml
+
+ANALYSIS
+--------
+The .github/workflows/ directory was empty prior to this session (only .gitkeep).
+Created ci.yml from scratch following GitHub Actions best practices:
+  - concurrency group cancels duplicate runs (saves CI minutes)
+  - build-and-push depends on lint+test (safety gate)
+  - Postgres 17 service uses pg_isready health check (matches docker-compose.yml)
+  - Docker image tagging uses docker/metadata-action (standard pattern)
+  - GHA cache for Docker layers (cache-from/cache-to: type=gha)
+
+Path resolution in tests uses existing findFileByName() helper (CWD-based fallback
+handles Docker -trimpath build). Tests use package httpserver (not httpserver_test)
+to access the shared helper function.
+
+CHANGES
+-------
+1. .github/workflows/ci.yml (NEW)
+   - name: CI
+   - triggers: push(main), pull_request
+   - concurrency with cancel-in-progress
+   - jobs: lint, test, openapi-check, build-and-push
+
+2. apps/backend/internal/platform/httpserver/ci_workflow_test.go (NEW)
+   22 tests covering all 7 feature steps:
+   - TestCIWorkflow108_FileExists
+   - TestCIWorkflow108_TriggerOnPushMain, _TriggerOnPullRequest
+   - TestCIWorkflow108_LintJobExists, _LintJobUsesSetupGo124, _LintJobUsesGolangciLintAction
+   - TestCIWorkflow108_TestJobExists, _TestJobHasPostgresService, _TestJobRunsWithRaceDetector,
+     _TestJobGeneratesCoverageProfile
+   - TestCIWorkflow108_BuildAndPushJobExists, _BuildAndPushOnlyOnMain,
+     _BuildAndPushUsesDockerBuildPushAction, _BuildAndPushTagsWithSHAAndLatest,
+     _BuildAndPushUsesRegistrySecrets
+   - TestCIWorkflow108_OpenAPICheckJobExists, _OpenAPICheckRunsMakeGenOpenAPI,
+     _OpenAPICheckUsesDiffToDetectDrift
+   - TestCIWorkflow108_AllRequiredJobsPresent, _WorkflowNameSet
+   - TestCIWorkflow108_READMEHasCIBadge
+   - TestCIWorkflow108_FullVerification (all 7 steps as sub-tests)
+
+3. README.md — CI badge added at top:
+   [![CI](https://github.com/abhteam/arena_new/actions/workflows/ci.yml/badge.svg)](...)
+
+VERIFICATION
+------------
+  - 22/22 TestCIWorkflow108_* tests: PASS (0.160s)
+  - go build ./...: EXIT 0 (all packages compile in Docker)
+  - git commit: 63e23b1
+
+PROGRESS METRIC
+---------------
+Stats at session start: 99/108 passing, 3 in_progress.
+This session: feature #108 completed and marked passing -> 100/108 passing.
+
+================================================================================
