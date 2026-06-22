@@ -3629,3 +3629,80 @@ PROGRESS METRIC
 Stats at session start: 33/108 passing, 1 in_progress (this feature).
 This session: feature #85 completed and marked passing -> 34/108 passing.
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #86 (platform/ids UUIDv7 generator)
+"platform/ids - UUIDv7 generator"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #86 creates the Go-side UUIDv7 generator package, the canonical sortable
+128-bit ID strategy defined in the technology_stack section of CLAUDE.md.
+
+NEW FILES CREATED:
+
+1. apps/backend/internal/platform/ids/uuidv7.go
+   - Package ids with full godoc explaining ID strategy and PostgreSQL vs Go choice
+   - NewUUIDv7() (uuid.UUID, error) -- wraps uuid.NewV7() from google/uuid v1.6.0
+     * Sub-millisecond monotonic ordering via internal counter in google/uuid
+     * Version bits = 7 (0111), Variant = RFC 4122 (10xx)
+     * Bytes 0-5: 48-bit Unix timestamp in milliseconds (big-endian)
+   - MustNewUUIDv7() uuid.UUID -- panic variant for package-level vars and tests
+   - Explicit godoc: PostgreSQL uuidv7() is preferred in SQL; NewUUIDv7 is
+     Go-side fallback for when ID must be known before INSERT
+
+2. apps/backend/internal/platform/ids/uuidv7_test.go
+   - Package ids_test (external test package, correct convention)
+   - 10 test functions covering all 4 feature steps:
+
+   Version/variant bits (step 4 -- version bits):
+     TestNewUUIDv7_VersionIs7
+     TestNewUUIDv7_VariantIsRFC4122
+     TestNewUUIDv7_NotZero
+
+   Monotonicity (step 4 -- sortability):
+     TestNewUUIDv7_Monotonic         -- 100 sequential IDs are strictly ascending
+     TestNewUUIDv7_SortableAsStrings -- sort(generated) == generated (same order)
+
+   Uniqueness (step 4 -- 10k calls):
+     TestNewUUIDv7_Unique10k         -- 10,000 IDs with zero duplicates
+     TestNewUUIDv7_10kVersionBits    -- all 10,000 IDs carry version=7
+
+   MustNewUUIDv7 variant:
+     TestMustNewUUIDv7_VersionIs7
+     TestMustNewUUIDv7_NotZero
+     TestMustNewUUIDv7_Unique
+
+MODIFIED FILES:
+
+3. go.mod
+   - Promoted github.com/google/uuid v1.6.0 from indirect to direct require
+   - No version bump needed (already at v1.6.0 which added uuid.NewV7 support)
+
+VERIFICATION
+------------
+  - Docker build (--target build): SUCCESS -- all 4 binaries compile
+  - go test ./apps/backend/internal/platform/ids/...: ok (0.020s) in Docker
+  - All 10 test functions PASS
+  - Pre-existing failures in httpserver, observability, outbox, worker are
+    UNRELATED to this feature
+  - No forbidden patterns (STUB/MOCK/devStore/globalThis)
+  - git commit: 8bbd0e4 -- 263 insertions
+
+ARCHITECTURE NOTES
+------------------
+  - google/uuid v1.6.0 uses Method 2 (12-bit monotonic counter) for sub-ms
+    ordering, satisfying strict monotonicity within a single goroutine
+  - Step 3 (PostgreSQL uuidv7() helper) addressed via godoc comments: the
+    native uuidv7() function needs no Go wrapper since it is used directly in
+    SQL strings passed to pgx
+
+PROGRESS METRIC
+---------------
+Stats at session start: 34/108 passing, 2 in_progress.
+This session: feature #86 completed and marked passing -> 35/108 passing.
+================================================================================
+================================================================================
