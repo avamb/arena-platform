@@ -125,6 +125,13 @@ type Server struct {
 	// exercise the Recoverer middleware. They MUST NOT be enabled in production.
 	// Corresponds to env var DEBUG_ROUTES_ENABLED=true.
 	debugRoutesEnabled bool
+
+	// debugSlowDelay is the artificial sleep used by GET /v1/debug/slow to
+	// simulate a long-running request for request-timeout testing. Defaults to
+	// 35s when zero (longer than the 30s REQUEST_TIMEOUT_SECONDS default so the
+	// timeout always fires in the default configuration). Only meaningful in
+	// development/test environments and only when debugRoutesEnabled is true.
+	debugSlowDelay time.Duration
 }
 
 // Options bundles the dependencies that New requires. Using a struct rather
@@ -187,6 +194,13 @@ type Options struct {
 	// middleware. MUST NOT be enabled in production.
 	// Corresponds to env var DEBUG_ROUTES_ENABLED=true.
 	DebugRoutesEnabled bool
+
+	// DebugSlowDelay overrides the sleep duration used by GET /v1/debug/slow.
+	// Defaults to 35s when zero (longer than the default 30s request timeout so
+	// the timeout always fires in the default configuration). Set to a small value
+	// in tests so request-timeout assertions complete quickly. Only meaningful in
+	// development/test environments when DebugRoutesEnabled=true.
+	DebugSlowDelay time.Duration
 }
 
 // New constructs (but does not start) the HTTP server.
@@ -246,6 +260,7 @@ func New(opts Options) *Server {
 		faultInjectOutboxAfterAudit: opts.FaultInjectOutboxAfterAudit,
 		slowDelay:                   opts.SlowDelay,
 		debugRoutesEnabled:          opts.DebugRoutesEnabled,
+		debugSlowDelay:              opts.DebugSlowDelay,
 	}
 
 	s.mountOperationalRoutes()
@@ -323,6 +338,10 @@ func (s *Server) mountV1Routes() {
 		// triggers a panic to exercise the Recoverer middleware.
 		if s.debugRoutesEnabled {
 			r.Get("/debug/panic", s.handleDebugPanic)
+			// GET /v1/debug/slow — sleeps for debugSlowDelay (default 35s) to
+			// exercise the per-request timeout (feature #53). Returns 503 with
+			// code='http.request_timeout' when the context deadline fires.
+			r.Get("/debug/slow", s.handleDebugSlow)
 		}
 
 		// /v1/info-slow is a synthetic endpoint used to test graceful shutdown.
