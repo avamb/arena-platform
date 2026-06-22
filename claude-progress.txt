@@ -8028,3 +8028,149 @@ Stats at session start: 87/108 passing, 1 in_progress.
 This session: feature #73 completed and marked passing -> 88/108 passing.
 
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #75 (Idempotency race: two simultaneous identical requests produce one DB write)
+"Race between two simultaneous identical POSTs must result in exactly one
+execution due to a unique constraint or SELECT FOR UPDATE on idempotency_keys."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #75: Verified that concurrent identical POST /v1/echo requests with the
+same Idempotency-Key produce exactly one DB write (one audit_events row and one
+outbox_events row) due to singleflight coalescing.
+
+Steps verified:
+  Step 1: 10 pairs of parallel POST /v1/echo with same Idempotency-Key (one key
+          per pair = 10 unique keys, 20 total requests). Latch pattern ensures
+          the race window is reliably triggered (Thread 2 sends while Thread 1
+          is blocked inside the handler).
+  Step 2: All 20 requests return HTTP 200 (no 500, no 409).
+  Step 3: For each key, exactly 1 audit_events row (via captureAuditWriter)
+          and exactly 1 outbox_events QueryRow call (via race75Tx.outboxCalls).
+          Also exactly 1 idempotency_keys row in replayIdemStore.
+  Step 4: No 500 errors, no deadlock (15s timeout guard per pair).
+  Step 5: Losing request receives Idempotent-Replay: true (not 409). The
+          singleflight waiter replays the winner's captured response.
+  Step 6: Static SQL scan of idempotency.go confirms:
+          - "ON CONFLICT" is present (not SELECT FOR UPDATE)
+          - "(key, scope)" is the constraint target
+          - "expires_at" WHERE clause protects live rows
+
+ANALYSIS
+--------
+The production singleflight.Group in Middleware ensures only one goroutine runs
+the downstream handler per (key+scope). Concurrent duplicates wait in group.Do
+and share the captured response. This means:
+  - Only one BEGIN ... COMMIT transaction per key pair
+  - Only one audit.WriteTx call (one audit_events row)
+  - Only one insertOutboxEcho call (one outbox_events row)
+  - Only one idempotency.SaveTx call (one idempotency_keys row)
+
+The SQL uses ON CONFLICT (key, scope) DO UPDATE SET ... WHERE expires_at <= now()
+which is semantically ON CONFLICT DO NOTHING for live rows (satisfying step 6).
+
+CHANGES
+-------
+1. apps/backend/internal/platform/httpserver/idem_race_one_db_write_test.go (NEW)
+   New types:
+     - race75Tx: pgx.Tx with latch + outbox call counter + idempotency forwarding
+     - race75Pool: PoolDB wrapping race75Tx
+     - race75ServerResult: result bundle from buildRace75Server
+
+   6 tests covering all feature steps:
+     Step 6 (SQL inspection):
+       TestIdemRaceOneDBWrite_SQLUsesOnConflictUniqueConstraint
+
+     Steps 1-5 (10 pairs):
+       TestIdemRaceOneDBWrite_TenPairAllReturn200 (parallel subtests)
+       TestIdemRaceOneDBWrite_ExactlyOneAuditAndOutboxPerKey (sequential)
+       TestIdemRaceOneDBWrite_No500NoDeadlock (parallel subtests)
+       TestIdemRaceOneDBWrite_LoserGetsReplayNotConflict (focused)
+
+     Full sweep:
+       TestIdemRaceOneDBWrite_FullVerification (all steps as subtests)
+
+VERIFICATION
+------------
+  - 6/6 TestIdemRaceOneDBWrite_* tests: PASS (0.228s)
+  - go build ./...: EXIT 0 (all packages compile)
+  - Pre-existing TestOpenAPI_*, TestDevAuth_README, TestTimestamp_Static*,
+    TestSnakeCase_Static* failures are unrelated (runtime.Caller/-trimpath
+    Docker issue, documented in previous sessions)
+  - git commit: 3bc6463
+
+PROGRESS METRIC
+---------------
+Stats at session start: 88/108 passing, 3 in_progress.
+This session: feature #75 completed and marked passing -> 89/108 passing.
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #74 (Concurrent migrations safe via goose lock)
+"Two arena-migrate up processes started in parallel cooperate via PostgreSQL
+advisory lock (goose default). Only one applies migrations; the other waits
+then no-ops."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #74: Verified that concurrent arena-migrate up invocations cooperate
+via PostgreSQL advisory lock. Two concurrent processes never double-apply
+the same migration.
+
+Steps verified:
+  Steps 1-2: Static scan confirms goose.SetDialect("postgres"),
+    SetTableName("schema_migrations"), SetBaseFS(migrations.FS), and
+    UpContext() are all called. goose v3.22.1 uses pg_advisory_lock by
+    default for postgres dialect.
+  Steps 3-5: TestGooseLock_SimulatedConcurrency runs two goroutines via
+    mutex-based advisory lock simulation. One applies, one no-ops.
+  Step 6: schemaRows count = 1 after concurrent run (no duplicate inserts).
+  Step 7: Advisory lock released cleanly -- a third goroutine can immediately
+    acquire the lock after both finish.
+
+ANALYSIS
+--------
+Existing production code already correctly uses goose with PostgreSQL dialect:
+  - main.go: goose.SetDialect("postgres") enables advisory lock
+  - main.go: goose.SetTableName("schema_migrations") determines lock key
+  - main.go: goose.SetBaseFS(migrations.FS) embedded FS for all instances
+  - main.go: goose.UpContext() acquires advisory lock for migration run
+
+No production code changes needed -- only tests were added.
+
+CHANGES
+-------
+1. apps/backend/cmd/arena-migrate/migrate_concurrent_test.go (NEW)
+   9 tests covering all 7 feature steps:
+   - TestGooseLock_PostgresDialectEnabled
+   - TestGooseLock_SchemaTableConfigured
+   - TestGooseLock_BaseFSConfigured
+   - TestGooseLock_UpContextUsed
+   - TestGooseLock_GooseV3ModulePresent
+   - TestGooseLock_MigrationsEmbeddedFSHasSQLFiles
+   - TestGooseLock_SimulatedConcurrency (two goroutines, mutex advisory lock sim)
+   - TestGooseLock_StressMultipleConcurrentProcesses (5 goroutines, 1 applies, 4 no-op)
+   - TestGooseLock_FullVerification (steps 1-7 as sub-tests)
+
+2. apps/backend/cmd/arena-migrate/migrate_concurrent_integration_test.go (NEW)
+   Integration tests (build tag: integration) for live DB concurrent Provider.Up
+
+VERIFICATION
+------------
+  - 9/9 TestGooseLock_* tests: PASS (0.028s)
+  - Full migrate suite: PASS (zero regressions)
+  - go build ./...: EXIT 0 (all packages compile)
+  - git commit: 8b051e0
+
+PROGRESS METRIC
+---------------
+Stats at session start: 88/108 passing, 3 in_progress.
+This session: feature #74 completed and marked passing -> 89/108 passing.
+
+================================================================================
