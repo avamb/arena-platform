@@ -35,6 +35,12 @@ import (
 // client cannot DoS the database with multi-megabyte audit rows.
 const MaxEchoMessageBytes = 8 * 1024
 
+// echoAuditAction is the stable audit action identifier written to
+// audit_events.action for every successful POST /v1/echo request.
+// Using a dotted, hierarchical naming convention (resource.verb) rather
+// than a bare verb keeps the audit log queryable and human-readable.
+const echoAuditAction = "v1.echo.create"
+
 // echoRequest is the request body schema for POST /v1/echo.
 type echoRequest struct {
 	Message string `json:"message"`
@@ -97,7 +103,10 @@ func (s *Server) handleEcho(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	requestID := r.Header.Get("X-Request-Id")
+	// Read the request-id from context (set by the requestContext middleware in
+	// the adapter chain). This is the same value written to the X-Request-Id
+	// response header so audit rows and response headers always match.
+	requestID := logging.RequestID(ctx)
 	traceID := logging.TraceID(ctx)
 	clientIP := extractClientIP(r)
 	idemKey, _, _, _, _ := idempotency.FromContext(ctx)
@@ -123,7 +132,7 @@ func (s *Server) handleEcho(w http.ResponseWriter, r *http.Request) {
 		OccurredAt:   time.Now().UTC(),
 		ActorType:    string(actor.Type),
 		ActorID:      actor.ID,
-		Action:       "echo",
+		Action:       echoAuditAction,
 		ResourceType: "echo_message",
 		ResourceID:   idemKey, // resource is keyed by the idempotency key
 		RequestID:    requestID,
