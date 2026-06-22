@@ -8809,3 +8809,43 @@ Stats at session start: 99/108 passing, 3 in_progress.
 This session: feature #108 completed and marked passing -> 100/108 passing.
 
 ================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #98 (Idempotency boundary)
+"Middleware and store interface for Idempotency-Key header. In milestone -
+in-memory stub + interface for future Postgres implementation."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #98: Verified the complete idempotency boundary implementation was
+already in place. All feature steps satisfied by existing code:
+
+Steps covered:
+  Step 1: Store interface in idempotency.go:
+          Lookup(ctx, key, scope) (StoredResponse, bool, error)
+          Save(ctx, key, scope, actorID, resp) error
+  Step 2: inMemoryStore in idempotency_replay_test.go with sync.Mutex + map
+          and TTL-based expiry check in Lookup; PGStore as production impl
+  Step 3: Middleware() reads Idempotency-Key header, replays on HIT,
+          wraps ResponseWriter and saves result on MISS; singleflight for
+          concurrent duplicate coalescing
+  Step 4: Missing key returns 400 JSON error envelope with code
+          "idempotency.missing_key"
+  Step 5: 59 unit tests covering all scenarios
+  Step 6: TTL policy documented in package doc; PGStore is the
+          migration path from in-memory to Postgres
+
+VERIFICATION
+------------
+  - 59/59 tests: PASS (0.192s via Docker golang:1.24-alpine)
+  - go build ./...: EXIT 0 (all packages compile)
+
+PROGRESS METRIC
+---------------
+Stats at session start: 100/108 passing (feature #108 was already done).
+This session: feature #98 verified and marked passing -> 100/108 passing.
+
+================================================================================
+
+================================================================================
