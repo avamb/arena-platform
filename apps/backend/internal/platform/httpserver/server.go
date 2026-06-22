@@ -16,6 +16,7 @@ package httpserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -32,13 +33,49 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Pinger is the contract required by the readiness probe — anything that can
-// answer "is my dependency healthy right now". The database pool implements
-// this directly.
+// Pinger is the legacy readiness-probe contract kept for backward
+// compatibility with database.Pool (IsHealthy / LastError). New code should
+// prefer ReadinessProbe; Server wraps a Pinger in pingerProbe automatically.
 type Pinger interface {
 	IsHealthy() bool
 	LastError() string
 }
+
+// ReadinessProbe is a named health check included in the /readyz response.
+// Each probe corresponds to a single downstream dependency (e.g. "database",
+// "redis"). Server iterates all registered probes and aggregates their results
+// into the /readyz checks map; if any probe returns a non-nil error the
+// response is 503.
+type ReadinessProbe interface {
+	// ProbeName returns the stable key used in the checks map.
+	// Example values: "database", "redis", "outbox".
+	ProbeName() string
+	// Ping returns nil when the dependency is reachable, or any non-nil
+	// error to indicate the dependency is unhealthy.
+	Ping(ctx context.Context) error
+}
+
+// pingerProbe adapts the legacy Pinger interface to ReadinessProbe so callers
+// that pass Options.DB continue to work without changes.
+type pingerProbe struct {
+	name string
+	p    Pinger
+}
+
+func (pp *pingerProbe) ProbeName() string { return pp.name }
+func (pp *pingerProbe) Ping(_ context.Context) error {
+	if pp.p.IsHealthy() {
+		return nil
+	}
+	msg := pp.p.LastError()
+	if msg == "" {
+		msg = "unhealthy"
+	}
+	return errors.New(msg)
+}
+
+// compile-time guard
+var _ ReadinessProbe = (*pingerProbe)(nil)
 
 // PoolDB is the narrow subset of *pgxpool.Pool consumed by /v1 handlers
 // (info, echo). Defining it as an interface keeps the package testable —
@@ -61,7 +98,7 @@ type Server struct {
 	logger  *slog.Logger
 	router  chi.Router
 	srv     *http.Server
-	db      Pinger
+	probes  []ReadinessProbe
 	pool    PoolDB
 	stub    *auth.StubProvider
 	audit   audit.Writer
@@ -75,8 +112,14 @@ type Server struct {
 type Options struct {
 	Config *config.Config
 	Logger *slog.Logger
-	// DB carries the readiness Pinger contract used by /readyz.
+	// DB carries the legacy Pinger contract used by /readyz. When non-nil it
+	// is wrapped as a "database" ReadinessProbe and prepended to Probes.
+	// Prefer Probes for new callers.
 	DB Pinger
+	// Probes is the ordered list of ReadinessProbe implementations whose
+	// results are aggregated into the /readyz response. When empty and DB is
+	// also nil, /readyz always returns 200 {checks:{}}.
+	Probes []ReadinessProbe
 	// Pool is the concrete pgxpool used by /v1 handlers. It is typically
 	// the same *database.Pool passed as DB (database.Pool embeds *pgxpool.Pool
 	// and exposes both contracts).
@@ -136,11 +179,21 @@ func New(opts Options) *Server {
 		idemStore = idempotency.NewPGStore(opts.PgxPool)
 	}
 
+	// Assemble the readiness probe list.
+	// If the legacy DB Pinger is set, prepend it as a "database" probe so
+	// existing callers (main.go, integration tests) continue to work without
+	// any changes at the call site.
+	probes := make([]ReadinessProbe, 0, 1+len(opts.Probes))
+	if opts.DB != nil {
+		probes = append(probes, &pingerProbe{name: "database", p: opts.DB})
+	}
+	probes = append(probes, opts.Probes...)
+
 	s := &Server{
 		cfg:     opts.Config,
 		logger:  logger,
 		router:  r,
-		db:      opts.DB,
+		probes:  probes,
 		pool:    opts.Pool,
 		stub:    opts.Auth,
 		audit:   auditWriter,
@@ -251,28 +304,34 @@ func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 }
 
-// handleReadyz is a readiness probe: returns 200 only if every dependency
-// required to serve real traffic is healthy. For the foundation milestone
-// the sole dependency is the PostgreSQL pool.
-func (s *Server) handleReadyz(w http.ResponseWriter, _ *http.Request) {
-	if s.db == nil {
+// handleReadyz is a readiness probe: iterates through all registered
+// ReadinessProbes and aggregates their results into the /readyz checks map.
+// Returns 200 {"status":"ready","checks":{...}} when every probe passes, or
+// 503 {"status":"not_ready","checks":{...}} when any probe fails.
+// When no probes are registered the server is always considered ready (useful
+// during integration tests that wire no dependencies).
+func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	checks := make(map[string]string, len(s.probes))
+	failed := false
+	for _, p := range s.probes {
+		if err := p.Ping(ctx); err != nil {
+			checks[p.ProbeName()] = err.Error()
+			failed = true
+		} else {
+			checks[p.ProbeName()] = "ok"
+		}
+	}
+	if failed {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
 			"status": "not_ready",
-			"db":     "unconfigured",
+			"checks": checks,
 		})
 		return
 	}
-	if s.db.IsHealthy() {
-		writeJSON(w, http.StatusOK, map[string]any{
-			"status": "ready",
-			"db":     "ok",
-		})
-		return
-	}
-	writeJSON(w, http.StatusServiceUnavailable, map[string]any{
-		"status": "not_ready",
-		"db":     "down",
-		"reason": s.db.LastError(),
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status": "ready",
+		"checks": checks,
 	})
 }
 
