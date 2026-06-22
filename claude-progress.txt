@@ -5561,3 +5561,68 @@ PROGRESS METRIC
 ---------------
 Stats at session start: 54/108 passing, 2 in_progress.
 This session: feature #40 completed and marked passing -> 55/108 passing.
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #42 (Direct call to /metrics succeeds without auth)
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #42 requires /metrics to be operational and unauthenticated:
+  1. GET /metrics returns 200
+  2. Content-Type: text/plain; version=0.0.4; charset=utf-8
+  3. Body contains 'go_goroutines' (standard Go runtime metric)
+  4. Body contains 'http_requests_total' (custom arena metric)
+  5. Body contains '# HELP' and '# TYPE' lines for every metric
+  6. No Authorization header was needed
+
+ANALYSIS
+--------
+The /metrics endpoint was already implemented in server.go. The observability.New()
+function already registers GoCollector (go_goroutines) and custom arena metrics.
+Existing tests either used a stub handler or promhttp.Handler() on the DEFAULT
+global registry -- none verified all 6 steps with the REAL observability.Metrics.
+
+CHANGES
+-------
+
+1. apps/backend/internal/platform/httpserver/metrics_endpoint_test.go (NEW)
+   15 tests covering all 6 feature steps with REAL observability.Metrics:
+
+   buildMetricsTestServer: calls observability.New(prometheus.NewRegistry())
+   giving a fresh registry with Go+process collectors AND all 6 arena metrics.
+   Pre-seeds arena_http_requests_total so it surfaces in Gather output.
+
+   Step 1: TestMetricsEndpoint_Returns200
+   Step 2: TestMetricsEndpoint_ContentTypeIsPlainText, ContentTypeExact
+           (uses HasPrefix to tolerate "escaping=values" param in client_golang >= 1.20)
+   Step 3: TestMetricsEndpoint_BodyContainsGoGoroutines, GoGoroutinesHasHELPLine
+   Step 4: TestMetricsEndpoint_BodyContainsHTTPRequestsTotal, HTTPRequestsTotalHasHELPLine,
+           HTTPRequestsTotalHasTYPELine
+   Step 5: TestMetricsEndpoint_AllArenaMetricsHaveHELPLines (6 arena metrics),
+           AllArenaMetricsHaveTYPELines, BodyHasHELPAndTYPEForGoGoroutines
+   Step 6: TestMetricsEndpoint_NoAuthHeaderNeeded, NoSetCookieHeader,
+           NoWWWAuthenticateHeader
+   Summary: TestMetricsEndpoint_FullVerification (all 6 steps in one sweep)
+
+KEY NOTES
+---------
+  - prometheus/client_golang appends "; escaping=values" to Content-Type in newer
+    versions. Tests use HasPrefix "text/plain; version=0.0.4; charset=utf-8".
+  - All Vec metrics pre-seeded so they appear in Gather output.
+
+VERIFICATION
+------------
+  - docker build --target build: SUCCESS
+  - 15/15 TestMetricsEndpoint_* tests PASS
+  - No regressions in httpserver package
+  - No forbidden patterns
+  - git commit: 18e0308
+
+PROGRESS METRIC
+---------------
+Stats at session start: 56/108 passing.
+This session: feature #42 completed and marked passing -> 57/108 passing.
+================================================================================
