@@ -39,6 +39,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/sync/singleflight"
 )
 
 // HeaderName is the canonical HTTP header used to carry the idempotency key.
@@ -56,6 +57,16 @@ var (
 	ErrConflict   = errors.New("idempotency: key reused with different request body")
 	ErrInternalDB = errors.New("idempotency: database error")
 )
+
+// concurrentEntry is the value shared between concurrent requests for the
+// same Idempotency-Key via the singleflight group. The winning goroutine
+// captures the handler's response here; all waiting goroutines replay it.
+type concurrentEntry struct {
+	status  int
+	body    []byte
+	ct      string
+	reqHash string
+}
 
 // StoredResponse is the cached HTTP response replayed on a duplicate request.
 type StoredResponse struct {
@@ -192,6 +203,12 @@ type Options struct {
 //   - otherwise invokes downstream handler, captures the response, and best-
 //     effort INSERTs it after handler returns.
 //
+// Concurrent requests with the same Idempotency-Key are coalesced via
+// singleflight: exactly one goroutine executes the downstream handler while
+// any concurrent duplicates wait and share the captured result. This
+// guarantees that audit_events, outbox_events, and idempotency_keys each
+// receive at most one row even under parallel load.
+//
 // Routes that need to persist the idempotency row atomically with their
 // business writes should call SaveTx from inside their own pgx.Tx; SaveTx
 // marks the response so the middleware skips its own auto-save.
@@ -206,11 +223,16 @@ func Middleware(store Store, opts Options) func(http.Handler) http.Handler {
 		opts.ActorID = func(context.Context) string { return "" }
 	}
 
+	// group coalesces concurrent requests for the same key+scope. One goroutine
+	// executes the handler; all concurrent duplicates wait and share the result.
+	// The group is scoped to this middleware instance (i.e. per-route).
+	var group singleflight.Group
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			key := strings.TrimSpace(r.Header.Get(HeaderName))
 			if key == "" {
-				writeIdempError(w, r, http.StatusBadRequest, "idempotency_missing_key", ErrMissingKey.Error())
+				writeIdempError(w, r, http.StatusBadRequest, "idempotency.missing_key", ErrMissingKey.Error())
 				return
 			}
 			if len(key) > MaxKeyLength {
@@ -250,36 +272,72 @@ func Middleware(store Store, opts Options) func(http.Handler) http.Handler {
 				return
 			}
 
-			rec := &capturingWriter{ResponseWriter: w, status: http.StatusOK, body: &bytes.Buffer{}}
-			ctx := contextWithMiddlewareState(r.Context(), &state{
-				key:     key,
-				scope:   opts.Scope,
-				ttl:     opts.TTL,
-				reqHash: reqHash,
-				actor:   opts.ActorID(r.Context()),
-				store:   store,
-			})
-			next.ServeHTTP(rec, r.WithContext(ctx))
+			// MISS: use singleflight to coalesce concurrent requests for the same
+			// key+scope. The winning goroutine runs the handler and captures the
+			// response. Concurrent waiters share the captured result and replay it
+			// to their own ResponseWriter (with the Idempotent-Replay marker set).
+			sfKey := key + "\x00" + opts.Scope
 
-			if rec.Header().Get(persistedHeader) == "true" {
-				rec.Header().Del(persistedHeader)
-				return
-			}
-			if rec.status < 200 || rec.status >= 300 {
-				return
-			}
-			now := time.Now().UTC()
-			saveErr := store.Save(r.Context(), key, opts.Scope, opts.ActorID(r.Context()), StoredResponse{
-				Status:      rec.status,
-				ContentType: rec.Header().Get("Content-Type"),
-				Body:        rec.body.Bytes(),
-				RequestHash: reqHash,
-				CreatedAt:   now,
-				ExpiresAt:   now.Add(opts.TTL),
+			val, _, shared := group.Do(sfKey, func() (any, error) {
+				rec := &capturingWriter{ResponseWriter: w, status: http.StatusOK, body: &bytes.Buffer{}}
+				ctx := contextWithMiddlewareState(r.Context(), &state{
+					key:     key,
+					scope:   opts.Scope,
+					ttl:     opts.TTL,
+					reqHash: reqHash,
+					actor:   opts.ActorID(r.Context()),
+					store:   store,
+				})
+				next.ServeHTTP(rec, r.WithContext(ctx))
+
+				if rec.Header().Get(persistedHeader) == "true" {
+					rec.Header().Del(persistedHeader)
+				} else if rec.status >= 200 && rec.status < 300 {
+					now := time.Now().UTC()
+					saveErr := store.Save(r.Context(), key, opts.Scope, opts.ActorID(r.Context()), StoredResponse{
+						Status:      rec.status,
+						ContentType: rec.Header().Get("Content-Type"),
+						Body:        rec.body.Bytes(),
+						RequestHash: reqHash,
+						CreatedAt:   now,
+						ExpiresAt:   now.Add(opts.TTL),
+					})
+					if saveErr != nil {
+						rec.Header().Set("X-Idempotency-Save-Error", saveErr.Error())
+					}
+				}
+
+				// Clone the body so concurrent waiters can read it safely after
+				// the capturingWriter's buffer is reused/GC'd.
+				bodyClone := make([]byte, rec.body.Len())
+				copy(bodyClone, rec.body.Bytes())
+				ct := rec.Header().Get("Content-Type")
+				if ct == "" {
+					ct = "application/json; charset=utf-8"
+				}
+				return &concurrentEntry{
+					status:  rec.status,
+					body:    bodyClone,
+					ct:      ct,
+					reqHash: reqHash,
+				}, nil
 			})
-			if saveErr != nil {
-				rec.Header().Set("X-Idempotency-Save-Error", saveErr.Error())
+
+			if shared {
+				// This goroutine waited for the in-flight request to complete.
+				// Replay the captured response to our own ResponseWriter.
+				entry := val.(*concurrentEntry)
+				if opts.OnReplay != nil {
+					opts.OnReplay()
+				}
+				replayStored(w, StoredResponse{
+					Status:      entry.status,
+					Body:        entry.body,
+					ContentType: entry.ct,
+					RequestHash: entry.reqHash,
+				})
 			}
+			// else: winner — response was already written to w by capturingWriter.
 		})
 	}
 }
