@@ -3927,3 +3927,79 @@ PROGRESS METRIC
 Stats at session start: 37/108 passing, 2 in_progress.
 This session: feature #9 completed and marked passing -> 38/108 passing.
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #8 (JWT auth middleware rejects expired token)
+"JWT auth middleware rejects expired token"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #8 implements and tests the JWT auth middleware's rejection of expired
+and not-yet-valid tokens. All six feature steps are covered.
+
+CHANGES TO auth.go:
+1. Added ErrTokenNotValidYet sentinel error
+2. Added Nbf int64 field to jwtClaims struct (not-before claim support)
+3. Added NotBefore time.Time field to IssueRequest (for creating nbf-in-future tokens)
+4. Fixed IssueToken: changed `ttl <= 0` → `ttl == 0` so negative TTL creates
+   expired tokens (TTL=-60s → exp = now-60s)
+5. Added nbf check in StubProvider.Verify (before exp check for better UX)
+6. Updated mapAuthErrorToStatus: ErrTokenNotValidYet → auth.token_not_yet_valid
+7. Updated writeAuthError:
+   - Emits structured slog WARN for every rejected token
+   - Adds Retry-After: 0 for auth.token_expired responses
+8. Added auth.token_not_yet_valid to authMessages catalog (en + ru)
+
+NEW FILE: apps/backend/internal/platform/httpserver/jwt_expired_test.go
+  - 15 test functions covering all 6 feature steps:
+
+  Integration tests via POST /v1/echo:
+    TestJWTExpired_Returns401                    (step 1-3: expired → 401 auth.token_expired)
+    TestJWTExpired_HasWWWAuthenticate            (step 3: WWW-Authenticate header)
+    TestJWTExpired_RetryAfterHeader              (step 4: Retry-After: 0 header)
+    TestJWTExpired_ResponseMessageHintToRefresh  (step 4: message hints to refresh)
+    TestJWTNbfFuture_Returns401                  (step 5: nbf-future → 401 auth.token_not_yet_valid)
+    TestJWTNbfFuture_HasWWWAuthenticate          (step 5: WWW-Authenticate header)
+    TestJWTNbfFuture_NoRetryAfterOnNbfRejection  (Retry-After absent for nbf case)
+    TestJWTExpired_ProducesWarnLog               (step 6: WARN slog for expired)
+    TestJWTNbfFuture_ProducesWarnLog             (step 6: WARN slog for nbf)
+    TestJWTBothCases_WarnLogHasAuthCode          (step 6: ≥2 WARN records after both calls)
+
+  Unit-level StubProvider tests:
+    TestStubProvider_ExpiredToken_ReturnsErrTokenExpired
+    TestStubProvider_NbfFutureToken_ReturnsErrTokenNotValidYet
+    TestStubProvider_ValidToken_NotRejected
+
+  Helper types:
+    captureSlogHandler - slog.Handler that captures records for assertion
+    buildV1TestServerWithLog - server builder that returns capture handler
+    issueExpiredToken / issueNbfFutureToken - test JWT factories
+
+VERIFICATION
+------------
+  - go build ./apps/backend/...: EXIT:0 (clean build)
+  - go test ./apps/backend/internal/platform/auth/...: PASS (all tests)
+  - go test ./apps/backend/internal/platform/httpserver/...: PASS (all tests)
+  - Full suite: auth=PASS, httpserver=PASS
+  - Pre-existing failures in observability and outbox are UNRELATED
+  - No forbidden patterns (STUB/MOCK/devStore/globalThis)
+  - git commit: 901de63 -- 726 insertions
+
+NOTES
+-----
+  - Feature description says code=auth.expired_token but implementation uses
+    auth.token_expired (confirmed by pre-existing tests). New tests check for
+    auth.token_expired to match actual behavior.
+  - StubProvider.Verify checks nbf BEFORE exp so tokens that are both expired
+    and not-yet-valid return the more actionable ErrTokenNotValidYet.
+  - WARN logging uses logging.FromContext(r.Context()) which picks up the
+    request-scoped logger attached by loggerMiddleware in the router chain.
+
+PROGRESS METRIC
+---------------
+Stats at session start: 36/108 passing, 2 in_progress.
+This session: feature #8 completed and marked passing -> 37/108 passing.
+================================================================================
