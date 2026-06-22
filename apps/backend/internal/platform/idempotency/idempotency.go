@@ -248,7 +248,8 @@ func Middleware(store Store, opts Options) func(http.Handler) http.Handler {
 				return
 			}
 			if len(key) > MaxKeyLength {
-				writeIdempError(w, r, http.StatusBadRequest, "idempotency_key_too_long", ErrKeyTooLong.Error())
+				writeIdempError(w, r, http.StatusBadRequest, "idempotency.key_too_long",
+					fmt.Sprintf("Idempotency-Key exceeds max length of %d bytes", MaxKeyLength))
 				return
 			}
 
