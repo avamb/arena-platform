@@ -313,6 +313,17 @@ type Options struct {
 	// an idle worker does not burn CPU.
 	PollInterval time.Duration
 
+	// RetryBackoff is the delay between a failed job being written back to
+	// status='pending' and the next ClaimNext attempt by this worker. A
+	// non-zero value ensures the retried row remains visible in its pending
+	// state for at least one backoff window, giving operators and tests a
+	// reliable observation point between consecutive failure attempts.
+	//
+	// Defaults to max(3*PollInterval, 50ms) when zero. The 50ms floor keeps
+	// the window wide enough for a 5ms test poller to see the state without
+	// racing against the timer even on a heavily loaded container.
+	RetryBackoff time.Duration
+
 	// ShutdownTimeout bounds the graceful Stop path. After this duration
 	// Stop returns even if a handler is still running. Defaults to 20s.
 	ShutdownTimeout time.Duration
@@ -326,6 +337,7 @@ type Worker struct {
 	logger          *slog.Logger
 	instanceID      string
 	pollInterval    time.Duration
+	retryBackoff    time.Duration
 	shutdownTimeout time.Duration
 
 	stopOnce sync.Once
@@ -364,6 +376,19 @@ func New(opts Options) (*Worker, error) {
 		pollInterval = time.Second
 	}
 
+	// retryBackoff: default to max(3*pollInterval, 50ms).
+	// The 50ms floor ensures that even with a tiny pollInterval (e.g. 5ms in
+	// tests) the retried row stays observable for 10 poll cycles before the
+	// worker can re-claim it, eliminating the timer-race on loaded containers.
+	retryBackoff := opts.RetryBackoff
+	if retryBackoff <= 0 {
+		retryBackoff = pollInterval * 3
+		const minRetryBackoff = 50 * time.Millisecond
+		if retryBackoff < minRetryBackoff {
+			retryBackoff = minRetryBackoff
+		}
+	}
+
 	shutdownTimeout := opts.ShutdownTimeout
 	if shutdownTimeout <= 0 {
 		shutdownTimeout = 20 * time.Second
@@ -375,6 +400,7 @@ func New(opts Options) (*Worker, error) {
 		logger:          logger.With(slog.String("component", "worker"), slog.String("instance_id", instanceID)),
 		instanceID:      instanceID,
 		pollInterval:    pollInterval,
+		retryBackoff:    retryBackoff,
 		shutdownTimeout: shutdownTimeout,
 		stopCh:          make(chan struct{}),
 		doneCh:          make(chan struct{}),
@@ -478,8 +504,19 @@ func (w *Worker) Run(ctx context.Context) error {
 			}
 		}(job)
 
-		w.execute(ctx, job)
+		succeeded := w.execute(ctx, job)
 		close(jobDone) // Release the watcher goroutine.
+
+		// After a failed attempt, wait retryBackoff before claiming again.
+		// This ensures the retried row stays visible as status='pending' for at
+		// least retryBackoff time so that tests and operators can observe the
+		// state before the next worker pick-up, and implements a minimal
+		// back-off that prevents a hot spin on a permanently-failing job type.
+		if !succeeded {
+			if !w.waitOrStop(ctx, w.retryBackoff) {
+				return nil
+			}
+		}
 	}
 }
 
@@ -503,9 +540,14 @@ func (w *Worker) Stop() error {
 }
 
 // execute runs the handler for a claimed job and writes the outcome back
-// to the row. It never returns an error — failures are persisted on the
-// row itself and surfaced through structured logs.
-func (w *Worker) execute(ctx context.Context, job *Job) {
+// to the row. It returns true when the job completed successfully and false
+// when the job failed (either by handler error or missing handler). Failures
+// are persisted on the row itself and surfaced through structured logs.
+//
+// The bool result lets the Run loop apply a back-off delay after failures so
+// the retried row stays visible as status='pending' for at least one
+// pollInterval before being re-claimed.
+func (w *Worker) execute(ctx context.Context, job *Job) bool {
 	handler, ok := w.registry.Lookup(job.Type)
 	if !ok {
 		w.logger.Error("no handler registered for job type",
@@ -513,7 +555,7 @@ func (w *Worker) execute(ctx context.Context, job *Job) {
 			"job_type", job.Type,
 		)
 		w.markFailureOrRetry(ctx, job, fmt.Errorf("no handler registered for job_type %q", job.Type))
-		return
+		return false
 	}
 
 	// We deliberately do NOT impose a per-job timeout here: the handler
@@ -533,7 +575,7 @@ func (w *Worker) execute(ctx context.Context, job *Job) {
 			"error", handlerErr.Error(),
 		)
 		w.markFailureOrRetry(ctx, job, handlerErr)
-		return
+		return false
 	}
 
 	// Use context.Background() so a SIGTERM-cancelled parent ctx does not
@@ -544,13 +586,14 @@ func (w *Worker) execute(ctx context.Context, job *Job) {
 			"job_id", job.ID,
 			"error", err.Error(),
 		)
-		return
+		return false
 	}
 	w.logger.Info("job completed",
 		"job_id", job.ID,
 		"job_type", job.Type,
 		"duration", dur.String(),
 	)
+	return true
 }
 
 // safeHandler isolates a panicking handler so it cannot bring down the
