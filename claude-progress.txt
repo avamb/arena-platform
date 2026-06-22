@@ -5,6 +5,90 @@ arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
 --------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #45 (Concurrent identical Idempotency-Key requests)
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #45 requires that two parallel POST /v1/echo requests with the same
+Idempotency-Key both:
+  - Return HTTP 200
+  - Return byte-identical response bodies
+  - Produce at most 1 audit_events row
+  - Produce at most 1 outbox_events row
+  - Produce exactly 1 idempotency_keys row
+  - Never deadlock or 500
+
+ANALYSIS
+--------
+The previous idempotency Middleware had no concurrency protection: both parallel
+requests could get a MISS from Lookup, run the handler independently (producing
+different request_ids / echo_event_ids in the body), then the second Save would
+be a no-op (ON CONFLICT DO NOTHING). This left identical bodies unguaranteed.
+
+SOLUTION: golang.org/x/sync/singleflight
+-----------------------------------------
+Added `var group singleflight.Group` inside the Middleware closure (per-route).
+In the MISS path, wrapped the handler invocation in `group.Do(sfKey, fn)`:
+  - Winner goroutine: runs the handler, captures response, saves to store
+  - Waiter goroutines: block in group.Do, share the captured result
+
+KEY BUG DISCOVERED: singleflight.Do sets `shared=true` for ALL callers when
+duplicates exist — including the winner. Using `shared` directly caused the winner
+to ALSO call replayStored, resulting in double responses.
+
+FIX: Track `wasWinner` bool set inside the fn closure (only executed by winner):
+  - winner: wasWinner=true → falls through (response written by capturingWriter)
+  - waiter: wasWinner=false → calls replayStored to write replay to their w
+
+CHANGES
+-------
+
+1. apps/backend/internal/platform/idempotency/idempotency.go (MODIFIED)
+   - Added import golang.org/x/sync/singleflight
+   - Added package-level type concurrentEntry{status,body,ct,reqHash}
+   - Added var group singleflight.Group in Middleware closure (per-route)
+   - Replaced MISS path with group.Do wrapping; wasWinner flag for winner/waiter
+   - Waiter path: calls replayStored + opts.OnReplay for waiting goroutines
+
+2. go.mod (MODIFIED)
+   - golang.org/x/sync: removed // indirect (now a direct import)
+
+3. apps/backend/internal/platform/idempotency/idempotency_concurrent_test.go (NEW)
+   7 unit tests using latchHandler to reliably trigger concurrent window:
+   - TestConcurrent_BothReturn200WithIdenticalBody (steps 1-7)
+   - TestConcurrent_SecondRequestGetsReplayHeader
+   - TestConcurrent_NoDeadlockWithTimeout (step 7)
+   - TestConcurrent_Repeat10DifferentKeys (step 8: 10 different keys)
+   - TestConcurrent_StoreHasExactlyOneEntryAfterConcurrentPair (step 6)
+   - TestConcurrent_SequentialAfterConcurrentStillReplays
+   - TestConcurrent_DifferentKeysNeverCoalesce
+
+4. apps/backend/internal/platform/httpserver/echo_concurrent_idem_test.go (NEW)
+   3 integration tests through full server stack:
+   - TestConcurrentIdem_BothReturn200WithIdenticalBody
+   - TestConcurrentIdem_NoDeadlock
+   - TestConcurrentIdem_Repeat10DifferentKeys (10 parallel subtests)
+   Uses blockingCaptureTx (latch on Exec) to reliably trigger concurrent window
+
+VERIFICATION
+------------
+  - docker build --target build: SUCCESS (all 4 binaries compile)
+  - 7/7 idempotency package TestConcurrent_* tests PASS
+  - 3/3 httpserver TestConcurrentIdem_* tests PASS (incl. 10-key parallel subtests)
+  - All pre-existing idempotency tests PASS (no regressions)
+  - httpserver pre-existing failures unchanged (3 README/Dockerfile path tests)
+  - No forbidden patterns (STUB/MOCK/devStore/globalThis)
+  - git commit: 24f1968
+
+PROGRESS METRIC
+---------------
+Stats at session start: 59/108 passing, 2 in_progress.
+This session: feature #45 completed and marked passing -> 60/108 passing.
+
+================================================================================
+
+--------------------------------------------------------------------------------
 Session: 2026-06-22 -- Feature #44 (Duplicate Idempotency-Key returns original response)
 --------------------------------------------------------------------------------
 
