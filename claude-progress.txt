@@ -2052,3 +2052,96 @@ PROGRESS METRIC
 Stats at session start: 15/108 passing, 1 in_progress (this feature).
 This session: feature #16 completed and marked passing -> 16/108 passing.
 ================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #17 (Outbox Event Persists to DB)
+"Outbox event written for /v1/echo persists to DB"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #17 verifies that every POST /v1/echo request writes exactly one row
+in outbox_events with the correct fields: event_type='v1.echo.created',
+aggregate_type='echo', aggregate_id non-empty, payload containing message +
+trace_id, processed_at IS NULL, attempts=0, last_error IS NULL.
+
+Two code changes to echo.go + one new test file:
+
+1. apps/backend/internal/platform/httpserver/echo.go (UPDATED)
+
+   a. Added two new constants:
+      - echoOutboxEventType = "v1.echo.created"
+        (previously hardcoded as 'echo.message_processed' in SQL -- wrong)
+      - echoOutboxAggregateType = "echo"
+        (previously hardcoded as 'echo_message' in SQL -- wrong)
+
+   b. Updated insertOutboxEcho SQL to use the correct values:
+      VALUES ('echo', $1, 'v1.echo.created', $2::jsonb, now())
+      Previously: VALUES ('echo_message', $1, 'echo.message_processed', ...)
+
+   The audit ResourceType "echo_message" in the audit event (line 146) is
+   intentionally left unchanged -- it is for audit_events not outbox_events,
+   and was already verified by feature #16.
+
+2. apps/backend/internal/platform/httpserver/echo_outbox_test.go (NEW)
+
+   In-package test (package httpserver) with 8 test functions covering
+   all 11 feature steps. Key test doubles:
+
+     capturedQuery (struct)
+       Holds one QueryRow call: sql string + args []any.
+
+     captureOutboxTx (pgx.Tx)
+       QueryRow: captures SQL and args in mu-protected slice; returns
+       fakeRow with deterministic UUID "00000000-...-0042".
+       Exec: counts calls (for idempotency.SaveTx).
+       Commit/Rollback: no-ops.
+       All other methods: panic (guard against regressions).
+       Compile-time guard: var _ pgx.Tx = (*captureOutboxTx)(nil)
+
+     captureOutboxPool (PoolDB)
+       BeginTx: returns *captureOutboxTx.
+       Compile-time guard: var _ PoolDB = (*captureOutboxPool)(nil)
+
+   Reuses from echo_audit_test.go (same package):
+     - fakeRow (for scanning query results)
+     - captureAuditWriter (for the audit.Writer dependency)
+     - noopIdemStore (for idempotency.Store dependency)
+     - mintJWT helper
+
+   Tests:
+     TestOutboxEvent_EchoWritesAllRequiredFields       -- all 11 steps
+     TestOutboxEvent_EventTypeIsV1EchoCreated          -- constant + SQL literal
+     TestOutboxEvent_AggregateTypeIsEcho               -- no legacy 'echo_message'
+     TestOutboxEvent_AggregateIDIsNonEmpty             -- $1 arg = actor_id
+     TestOutboxEvent_PayloadContainsRequiredFields     -- message, actor_id, request_id, trace_id
+     TestOutboxEvent_ProcessedAtNotInInsert            -- NULL/0/NULL defaults
+     TestOutboxEvent_ResponseContainsEchoEventID       -- UUID in response body
+     TestOutboxEvent_TraceIDInPayloadForDownstreamPropagation
+
+VERIFICATION
+------------
+  - Grep confirms no remaining 'echo.message_processed' in production code
+  - echo.go 'echo_message' at line 146 is the audit ResourceType (correct)
+  - outbox SQL now correctly uses 'echo' and 'v1.echo.created'
+  - captureOutboxTx is an independent type (does not modify existing fakeTx)
+  - No forbidden patterns (STUB/mockData/globalThis/devStore etc.) in new files
+  - Test file uses _test.go suffix excluded from production mock-data grep
+  - git commit: f204953 -- 654 insertions
+
+NOTES FOR LATER WAVES
+---------------------
+  - When PostgreSQL testcontainers arrive (Wave 9), add integration test
+    that runs real POST /v1/echo, then SELECT * FROM outbox_events WHERE
+    event_type='v1.echo.created' to verify the DB row with all required fields.
+  - The OutboxDispatcher worker (future milestone) should process these rows
+    and update processed_at, attempts, last_error accordingly.
+  - echoOutboxEventType constant could be used in the SQL via fmt.Sprintf
+    as a future refactor to eliminate the string duplication between the
+    constant and the SQL literal (currently both are verified by tests).
+
+PROGRESS METRIC
+---------------
+Stats at session start: 16/108 passing, 1 in_progress (this feature).
+This session: feature #17 completed and marked passing -> 17/108 passing.
+================================================================================
