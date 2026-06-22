@@ -133,7 +133,7 @@ func TestNegotiateLocale_NoHeaderFallsToDefault(t *testing.T) {
 }
 
 // TestNegotiateLocale_LangParamOverridesDefault verifies ?lang= takes priority
-// over default but is below Accept-Language.
+// over the default locale (and also over Accept-Language).
 func TestNegotiateLocale_LangParamOverridesDefault(t *testing.T) {
 	got := NegotiateLocale("", "ru", "", testDefault, testSupported)
 	if got != "ru" {
@@ -141,12 +141,14 @@ func TestNegotiateLocale_LangParamOverridesDefault(t *testing.T) {
 	}
 }
 
-// TestNegotiateLocale_AcceptLanguageBeatLangParam verifies Accept-Language
-// has higher priority than ?lang= parameter.
-func TestNegotiateLocale_AcceptLanguageBeatLangParam(t *testing.T) {
+// TestNegotiateLocale_LangParamBeatsAcceptLanguage verifies that the ?lang=
+// query parameter takes priority over the Accept-Language header (feature #56
+// step 4: "Accept-Language: en, ?lang=ru -> ru").
+// The correct fallback chain is: ?lang= → Accept-Language → preferred → default.
+func TestNegotiateLocale_LangParamBeatsAcceptLanguage(t *testing.T) {
 	got := NegotiateLocale("en", "ru", "", testDefault, testSupported)
-	if got != "en" {
-		t.Errorf("NegotiateLocale = %q, want 'en' (Accept-Language beats ?lang=)", got)
+	if got != "ru" {
+		t.Errorf("NegotiateLocale = %q, want 'ru' (?lang=ru beats Accept-Language: en)", got)
 	}
 }
 

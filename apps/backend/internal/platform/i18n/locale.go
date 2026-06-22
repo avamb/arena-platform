@@ -1,6 +1,11 @@
 // Package i18n provides locale negotiation and message translation helpers for
-// the arena_new platform. It implements the "Accept-Language → ?lang= →
+// the arena_new platform. It implements the "?lang= → Accept-Language →
 // user.preferred_locale → default" resolution chain described in app_spec.txt.
+//
+// The ?lang= query parameter takes highest priority and overrides the
+// Accept-Language header when it is present and maps to a supported locale.
+// This matches the spec deliverable: "explicit ?lang → Accept-Language →
+// user.preferred_locale → default 'en'".
 //
 // For this milestone the supported locales are "en" and "ru". The package is
 // designed to scale: callers pass the supported set explicitly so adding a new
@@ -22,8 +27,10 @@ const DefaultLocale = "en"
 // NegotiateLocale resolves the best-match locale using the following priority
 // chain (first non-empty match wins):
 //
-//  1. Accept-Language HTTP header (RFC 7231 §5.3.5 with quality factors).
-//  2. lang query parameter (caller must pass it pre-extracted).
+//  1. lang query parameter (caller must pass it pre-extracted). The ?lang=
+//     parameter explicitly overrides the Accept-Language header when present
+//     and maps to a supported locale.
+//  2. Accept-Language HTTP header (RFC 7231 §5.3.5 with quality factors).
 //  3. preferred (caller-supplied user preference, e.g. from a JWT claim or DB).
 //  4. defaultLocale (the configured DEFAULT_LOCALE environment variable).
 //
@@ -38,16 +45,19 @@ func NegotiateLocale(acceptLang, lang, preferred, defaultLocale string, supporte
 		defaultLocale = DefaultLocale
 	}
 
-	// 1. Accept-Language header
-	if acceptLang != "" {
-		if l := fromAcceptLanguage(acceptLang, supported); l != "" {
+	// 1. ?lang= query parameter — takes priority over Accept-Language header.
+	// An invalid/unsupported ?lang= value is silently ignored so the fallback
+	// chain continues (feature #56: "?lang=klingon returns default locale,
+	// not error").
+	if lang != "" {
+		if l := canonicalize(strings.TrimSpace(lang), supported); l != "" {
 			return l
 		}
 	}
 
-	// 2. ?lang= query parameter
-	if lang != "" {
-		if l := canonicalize(strings.TrimSpace(lang), supported); l != "" {
+	// 2. Accept-Language header
+	if acceptLang != "" {
+		if l := fromAcceptLanguage(acceptLang, supported); l != "" {
 			return l
 		}
 	}
