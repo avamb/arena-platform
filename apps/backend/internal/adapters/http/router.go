@@ -59,6 +59,13 @@
 //                                bodies so an oversized payload cannot
 //                                exhaust process memory before Timeout
 //                                fires.
+//      10. RequireJSONContentType — enforces Content-Type: application/json
+//                                on POST/PUT/PATCH requests. Returns 415
+//                                Unsupported Media Type with the project-
+//                                standard JSON error envelope when the
+//                                header is absent or uses an unsupported
+//                                media type. Adds Accept-Post: application/json
+//                                to every 415 response.
 //
 // The chain is ordered so the outermost middleware (Recoverer) covers a
 // panic anywhere downstream — including the OTel span finaliser — and the
