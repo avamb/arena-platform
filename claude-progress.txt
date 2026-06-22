@@ -7120,3 +7120,86 @@ Stats at session start: 73/108 passing, 2 in_progress.
 This session: feature #59 completed and marked passing -> 74/108 passing.
 
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #62 (trace_id propagated to logs and error envelope)
+"OpenTelemetry trace_id is captured per request and surfaced in error
+envelopes and slog output, enabling end-to-end debugging."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #62: Verify and extend trace_id propagation infrastructure, ensuring:
+  - Step 1: GET /v1/info response body includes trace_id
+  - Step 2: POST /v1/echo with bad JSON → error envelope includes trace_id
+  - Step 3: trace_id captured from error response is non-empty
+  - Step 4: slog records carry trace_id on multiple lines (request start/end)
+  - Step 5: trace_id is exactly 32 lowercase hex chars (W3C Trace Context format)
+  - Step 6: Incoming W3C Traceparent header → server continues same trace_id
+
+ANALYSIS
+--------
+The trace_id infrastructure was mostly in place already:
+- tracerMiddleware in router.go extracts incoming OTel context and starts spans
+- errorEnvelope() includes trace_id from logging context
+- slog logging.FromContext(ctx) auto-enriches logger with trace_id
+- GET /v1/info already returned trace_id in response body
+
+The missing piece for Step 6: when OTel SDK is in disabled/NeverSample mode,
+the local span has an invalid (zeroed) TraceID. The middleware fell through to
+the X-Trace-Id request header fallback, NOT to the incoming W3C traceparent.
+
+FIX: Modified tracerMiddleware to directly parse the W3C "Traceparent" header
+as a fallback (priority b), after the live OTel span (priority a) but before
+X-Trace-Id header (priority c) and random fallback (priority d). This avoids
+the unavailable trace.RemoteSpanContextFromContext API and is simpler.
+
+CHANGES
+-------
+1. apps/backend/internal/adapters/http/router.go (MODIFIED)
+   - Updated tracerMiddleware to parse "Traceparent" header directly:
+     if span.SpanContext().TraceID() is invalid (NeverSample/disabled),
+     parse the W3C traceparent header format "{ver}-{32hex traceID}-{16hex}-{flags}"
+     and use the trace_id component as fallback priority (b)
+   - Updated comment to document all 4 priority levels: (a) live OTel span,
+     (b) W3C traceparent, (c) X-Trace-Id header, (d) random fallback
+
+2. apps/backend/internal/adapters/http/router_traceparent_test.go (NEW)
+   9 tests for Step 6 (W3C traceparent propagation):
+   - AlwaysSample: TraceIDMatchesParent, ContextCarriesParentTraceID,
+     NoTraceparent_GeneratesNew
+   - NeverSample: TraceIDHonoured, UnsampledHonoured (sampled=00 flag),
+     ContextAlsoCarriesParentTraceID, NoTraceparent_GeneratesRandom
+   - InvalidTraceparent_GeneratesNew (malformed header ignored)
+   - DifferentRequests_DifferentTraceIDs (uniqueness)
+
+3. apps/backend/internal/platform/httpserver/trace_id_propagation_test.go (NEW)
+   14 tests for Steps 1-5:
+   - Step 1: InfoResponseBodyHasTraceIDField, InfoResponseBodyTraceIDMatchesHeader
+   - Step 2: ErrorEnvelopeIncludesTraceID, ErrorEnvelopeTraceIDMatchesResponseHeader
+   - Step 3: CapturedTraceIDIsNonEmpty
+   - Step 4: SlogLinesCarryTraceID, SlogRequestStartCarriesTraceID,
+     SlogRequestEndCarriesTraceID, SlogTraceIDConsistentWithinRequest
+   - Step 5: TraceIDIs32LowercaseHexChars, ErrorEnvelopeTraceIDIs32HexChars,
+     HeaderTraceIDIs32HexChars, SlogTraceIDIs32HexChars
+   - Integration: FullVerification (all 4 steps as sub-tests)
+
+   Uses captureHandler (custom slog.Handler wrapping JSON handler) to capture
+   log output and assert trace_id presence and format.
+
+VERIFICATION
+------------
+  - docker build --target build: SUCCESS
+  - 9/9 TestTraceparent_* tests in httpadapter package: PASS
+  - 14/14 TestTraceID_* tests in httpserver package: PASS
+  - Pre-existing README doc tests continue to fail (unrelated to this feature)
+  - git commit: 936070a
+
+PROGRESS METRIC
+---------------
+Stats at session start: 76/108 passing, 1 in_progress.
+This session: feature #62 completed and marked passing -> 77/108 passing.
+
+================================================================================
