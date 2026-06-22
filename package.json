@@ -8,6 +8,7 @@
     "check-ts": "tsc --noEmit apps/backend/openapi/clients/ts/index.d.ts"
   },
   "devDependencies": {
+    "@stoplight/spectral-cli": "^6.16.0",
     "openapi-typescript": "^7.13.0",
     "typescript": "^5.8.3"
   }

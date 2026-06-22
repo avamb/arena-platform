@@ -40,6 +40,16 @@ commands:
   - name: ./init.sh
     description: Project initialization script
 
+  # Node.js tools for OpenAPI validation
+  - name: node
+    description: Node.js runtime
+  - name: npx
+    description: Node package runner
+  - name: spectral
+    description: Spectral OpenAPI linter
+  - name: ./node_modules/.bin/spectral
+    description: Spectral OpenAPI linter (local)
+
   # Process launching helpers needed for Windows
   - name: cmd.exe
     description: Windows command interpreter (used to start GUI apps)

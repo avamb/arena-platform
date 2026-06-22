@@ -17,6 +17,14 @@ servers:
   - url: http://localhost:8080
     description: Local development server (docker compose)
 
+tags:
+  - name: operational
+    description: Liveness, readiness, and observability endpoints (healthz, readyz, metrics)
+  - name: v1
+    description: Version 1 API endpoints
+  - name: dev
+    description: Development-only endpoints (available only when ENABLE_DEV_AUTH=true)
+
 components:
   securitySchemes:
     bearerAuth:
@@ -58,9 +66,10 @@ components:
               description: Distributed trace ID (also in X-Trace-Id response header)
               example: "4bf92f3577b34da6a3ce929d0e0e4736"
             details:
-              type: object
-              additionalProperties: true
-              nullable: true
+              anyOf:
+                - type: object
+                  additionalProperties: true
+                - type: "null"
               description: |
                 Optional structured details about the error (analogous to a JSONB object).
                 May contain field-level validation errors, conflict context, or other
@@ -229,9 +238,10 @@ components:
           description: UUID to embed as the "sub" (subject) claim. Defaults to 00000000-0000-0000-0000-000000000001.
           example: "00000000-0000-0000-0000-000000000042"
         org_id:
-          type: string
-          format: uuid
-          nullable: true
+          anyOf:
+            - type: string
+              format: uuid
+            - type: "null"
           description: Optional organisation UUID embedded as the "org_id" claim.
           example: "11111111-1111-1111-1111-111111111111"
         roles:
