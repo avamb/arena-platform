@@ -7735,3 +7735,87 @@ Stats at session start: 83/108 passing, 1 in_progress.
 This session: feature #69 completed and marked passing -> 84/108 passing.
 
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #70 (expires_at calculations correct across DST boundaries)
+"Idempotency expires_at = created_at + TTL must be correct when DST transitions
+occur during TTL. Since we use timestamptz + interval, DST is irrelevant; verify behavior."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #70: Verified that idempotency expires_at = created_at + 24h is exact
+even when DST transitions fall within the TTL window. Since Go uses time.Duration
+arithmetic and PostgreSQL uses timestamptz (UTC), DST has zero effect.
+
+Steps verified:
+  Step 1: Spring-forward: created_at = 2026-03-08 01:30:00 UTC (just before US
+          Eastern spring-forward from 02:00 -> 03:00 local = 07:00 UTC)
+  Step 2: Simulated POST /v1/echo with Idempotency-Key: DST_KEY_1, TTL=24h
+  Step 3: expires_at = 2026-03-09 01:30:00 UTC exactly (+24h, not +23h)
+  Step 4: Fall-back: created_at = 2026-11-01 06:30:00 UTC (during US Eastern
+          fall-back from 02:00 -> 01:00 local = 07:00 UTC)
+  Step 5: expires_at = 2026-11-02 06:30:00 UTC exactly (+24h, not +25h)
+  Step 6: Static scan of idempotency.go confirms no AddDate() usage; TTL
+          always added via .Add(time.Duration)
+
+ANALYSIS
+--------
+The idempotency.go code already uses DST-safe arithmetic:
+  - Middleware auto-save: now.Add(opts.TTL) (line 327)
+  - PGStore.Save default: resp.CreatedAt.Add(24 * time.Hour) (line 174)
+  - SaveTx default: resp.CreatedAt.Add(ttl) (line 487)
+
+Go's time.Add(duration) adds exact nanoseconds, completely unaffected by DST.
+PostgreSQL's timestamptz stores in UTC; interval arithmetic is also UTC-based.
+
+No production code changes needed -- only tests were added.
+
+CHANGES
+-------
+1. apps/backend/internal/platform/idempotency/dst_boundary_test.go (NEW)
+   9 top-level tests (13 assertions with subtests) covering all 6 steps:
+
+   Step 1-3 (spring-forward):
+     TestDST_SpringForward_ExpiresAtIsExactly24hLater
+     TestDST_SpringForward_NotShortBy1Hour
+
+   Step 4-5 (fall-back):
+     TestDST_FallBack_ExpiresAtIsExactly24hLater
+     TestDST_FallBack_NotLongBy1Hour
+
+   Middleware integration:
+     TestDST_MiddlewareExpiresAtDeltaIsExactlyTTL
+     TestDST_SaveTxExpiresAtDeltaIsExactlyTTL (spring-forward + fall-back subtests)
+
+   Step 6 (static scan):
+     TestDST_StaticScan_TTLUsedAsDuration
+     TestDST_StaticScan_NoAddDateInPackage
+
+   Full sweep:
+     TestDST_FullVerification (steps 1-3, 4-5, 6 as sub-tests)
+
+KEY DESIGN NOTE
+---------------
+Since we cannot change the OS system clock during tests, DST boundary instants
+are constructed directly as time.Time values:
+  springForwardUTC = time.Date(2026, 3, 8, 1, 30, 0, 0, time.UTC)
+  fallBackUTC      = time.Date(2026, 11, 1, 6, 30, 0, 0, time.UTC)
+Then created_at.Add(24*time.Hour) is computed and the delta verified to be
+exactly 24h (not 23h for spring-forward or 25h for fall-back).
+
+VERIFICATION
+------------
+  - 9/9 TestDST_* tests: PASS (0.028s)
+  - Full idempotency suite: PASS (zero regressions)
+  - go build ./...: EXIT 0 (all packages compile)
+  - git commit: 2adcdd8
+
+PROGRESS METRIC
+---------------
+Stats at session start: 84/108 passing, 0 in_progress.
+This session: feature #70 completed and marked passing -> 85/108 passing.
+
+================================================================================
