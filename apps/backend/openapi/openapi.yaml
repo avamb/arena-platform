@@ -35,15 +35,19 @@ components:
       properties:
         error:
           type: object
-          required: [code, message]
+          required: [code, message, request_id, trace_id]
           properties:
             code:
               type: string
-              description: Machine-readable error code (dotted namespace, e.g. "http.not_found")
-              example: "auth_required"
+              pattern: '^[a-z][a-z0-9_]+\.[a-z0-9_.]+$'
+              description: |
+                Machine-readable error code in dotted-namespace format
+                (e.g. "http.not_found", "auth.token_expired", "echo.invalid_body").
+                Always lowercase; namespace component followed by dot-separated sub-codes.
+              example: "auth.token_expired"
             message:
               type: string
-              description: Human-readable error description
+              description: Human-readable error description (may be localised)
               example: "authentication required"
             request_id:
               type: string
@@ -53,6 +57,18 @@ components:
               type: string
               description: Distributed trace ID (also in X-Trace-Id response header)
               example: "4bf92f3577b34da6a3ce929d0e0e4736"
+            details:
+              type: object
+              additionalProperties: true
+              nullable: true
+              description: |
+                Optional structured details about the error (analogous to a JSONB object).
+                May contain field-level validation errors, conflict context, or other
+                machine-readable diagnostic data. Omitted when there are no additional
+                details.
+              example:
+                field: "message"
+                reason: "must not be empty"
 
     HealthzResponse:
       type: object
@@ -350,6 +366,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/InfoResponse"
+        "500":
+          description: Internal server error — unexpected failure in request processing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/dev/token:
     post:
@@ -442,8 +464,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Idempotency-Key conflict — a different request body was submitted with the same key by the same actor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "413":
           description: Request body exceeds 8 KiB limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "415":
+          description: Content-Type is not application/json
           content:
             application/json:
               schema:
