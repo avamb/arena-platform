@@ -23,6 +23,9 @@ WORKDIR /src
 # Cache module downloads in a dedicated layer.
 COPY go.mod go.sum* ./
 
+# Copy .env.example so documentation tests can verify env var defaults.
+COPY .env.example ./
+
 # Copy the rest of the source tree.
 COPY apps ./apps
 
