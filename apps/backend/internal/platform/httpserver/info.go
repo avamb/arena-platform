@@ -50,12 +50,20 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 	// negotiation chain (Accept-Language → ?lang= → default). The result is
 	// included in the response so clients know which language will be used for
 	// localized messages on this and subsequent calls.
+	acceptLang := r.Header.Get("Accept-Language")
 	activeLocale := i18n.NegotiateLocale(
-		r.Header.Get("Accept-Language"),
+		acceptLang,
 		r.URL.Query().Get("lang"),
 		"", // no user preferred_locale at this (unauthenticated) endpoint
 		s.cfg.DefaultLocale,
 		s.cfg.ActiveLocales,
+	)
+	// Emit a structured DEBUG log for every locale resolution so operators can
+	// audit which locale was selected and what the client originally requested.
+	// This satisfies feature #55 step 4: "locale_resolved=en, locale_requested=xx".
+	logger.Debug("locale resolved",
+		"locale_resolved", activeLocale,
+		"locale_requested", acceptLang,
 	)
 
 	resp := infoResponse{
