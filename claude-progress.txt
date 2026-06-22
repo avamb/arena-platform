@@ -2,6 +2,88 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-22 -- Feature #21 (i18n_text table seeds load from migration)
+"i18n_text table seeds load from migration"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #21 requires that after arena-migrate up, the i18n_text table has
+baseline seed rows for both 'en' and 'ru' locales, with non-empty values,
+proper unique constraint enforcement, and BCP47-compliant locale codes.
+
+The 0001_init.sql migration created the i18n_text TABLE but had NO seed data.
+
+NEW FILES CREATED:
+
+1. apps/backend/internal/migrations/sql/0003_i18n_seeds.sql
+   - New goose migration seeding 16 rows (8 keys × 2 locales: en + ru)
+   - Namespaces: platform.errors (5 keys), platform.health (3 keys)
+   - Keys: internal_server_error, not_found, unauthorized, forbidden,
+     bad_request (platform.errors) and status_ok, status_degraded,
+     db_ping_ok (platform.health)
+   - Uses ON CONFLICT (namespace, key, locale) DO NOTHING for idempotency
+   - Down section DELETEs only the seeded rows (non-destructive rollback)
+   - Auto-included by migrations package via //go:embed sql/*.sql
+
+MODIFIED FILES:
+
+2. apps/backend/cmd/arena-migrate/migrate_integration_test.go
+   - Added 4 new integration test functions (build tag: integration)
+   - Added isValidBCP47Locale() helper function
+
+   New tests (feature #21 steps 1-5):
+
+   TestI18nText_SeedRowsExistAfterMigrate (steps 1-2)
+     After goose.UpContext, queries i18n_text for distinct (namespace,key)
+     count per locale. Verifies count >= 1 for both 'en' and 'ru'.
+
+   TestI18nText_NoNullOrEmptyValues (step 3)
+     Counts rows WHERE value IS NULL OR value = ''; asserts count = 0.
+
+   TestI18nText_UniqueConstraintViolation (step 4)
+     Inserts a test row, then attempts duplicate INSERT.
+     Asserts the second INSERT fails with error containing "23505" or "unique".
+     Uses t.Cleanup to remove test row regardless of outcome.
+
+   TestI18nText_LocaleCodesBCP47 (step 5)
+     Queries SELECT DISTINCT locale FROM i18n_text.
+     Validates each locale against isValidBCP47Locale:
+       - Primary subtag: 2-3 lowercase ASCII letters
+       - Optional extension subtag: 2-4 alphanumeric chars after '-'
+     Seeds use "en" and "ru" — both pass BCP47 validation.
+
+VERIFICATION
+------------
+  - SQL migration reviewed: valid goose Up/Down syntax
+  - Integration tests reuse all existing imports (no new dependencies)
+  - Same patterns as existing integration tests (integrationMigrateDB,
+    configureGooseIntegration, goose.UpContext)
+  - No new imports beyond those already in the file
+  - ON CONFLICT ensures migration idempotency (re-runs are safe)
+  - t.Cleanup in unique constraint test ensures no leftover rows
+  - No forbidden patterns (STUB/MOCK/devStore/globalThis/mockData etc.)
+  - git commit: 3b6bf89 -- 263 insertions
+
+NOTES FOR LATER WAVES
+---------------------
+  - When i18n module is built (go-i18n/v2), seeded keys provide fallback
+    for system messages until TOML catalogs are loaded from locale files.
+  - The BCP47 locale validator (isValidBCP47Locale) can be extracted to
+    a shared test utility if more i18n tests are added in future sessions.
+  - Future locales (uk, es) can be added via additional seed migrations
+    or by extending 0003_i18n_seeds.sql and re-running migrations.
+  - The unique constraint test pattern can be reused for other tables.
+
+PROGRESS METRIC
+---------------
+Stats at session start: 27/108 passing, 1 in_progress (this feature).
+This session: feature #21 completed and marked passing -> 28/108 passing.
+================================================================================
+
 --------------------------------------------------------------------------------
 Session: 2026-06-22 -- Feature #92 (PostgreSQL Connection Pool pgx/v5)
 "PostgreSQL connection pool (pgx/v5)"
