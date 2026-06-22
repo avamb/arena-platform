@@ -117,6 +117,8 @@ func run() error {
 		defer cancel()
 		if err := tracerShutdown(flushCtx); err != nil {
 			logger.Warn("tracer shutdown failed", "error", err.Error())
+		} else {
+			logger.Info("opentelemetry trace exporter flushed")
 		}
 	}()
 
@@ -132,6 +134,9 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
+	// pool.Close() is called explicitly after graceful HTTP shutdown so the
+	// "database pool closed" log message appears in the right order. The defer
+	// below is a safety net for early-return error paths only.
 	defer pool.Close()
 
 	// 6. Auth provider (dev stub; production swaps for real IdP) -------------
@@ -203,6 +208,9 @@ func run() error {
 	// cancelled at this point — so we hand http.Server a fresh deadline
 	// equal to cfg.ShutdownTimeout. http.Server.Shutdown stops accepting
 	// new connections and waits for in-flight handlers up to the deadline.
+	//
+	// srv.Shutdown logs "shutdown initiated" before stopping the listener and
+	// "shutdown complete" once all in-flight requests have drained.
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancelShutdown()
 
@@ -215,6 +223,12 @@ func run() error {
 	case <-listenErrCh:
 	case <-time.After(cfg.ShutdownTimeout):
 	}
+
+	// Close the database pool explicitly so the pgx background health-checker
+	// goroutine is stopped and the close is visible in logs.
+	logger.Info("database pool closing")
+	pool.Close()
+	logger.Info("database pool closed")
 
 	logger.Info("arena-api stopped cleanly")
 	return nil

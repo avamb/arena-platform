@@ -112,6 +112,11 @@ type Server struct {
 	// This proves that both writes are in the same transaction: neither row
 	// persists when the fault fires. Enabled by FAULT_INJECT_OUTBOX_AFTER_AUDIT=true.
 	faultInjectOutboxAfterAudit bool
+
+	// slowDelay is the artificial sleep used by GET /v1/info-slow to simulate
+	// long-running requests for graceful-shutdown testing. Defaults to 5s when
+	// zero. Only meaningful in development/test environments.
+	slowDelay time.Duration
 }
 
 // Options bundles the dependencies that New requires. Using a struct rather
@@ -162,6 +167,11 @@ type Options struct {
 	// Only meaningful in development/test environments.
 	// Corresponds to env var FAULT_INJECT_OUTBOX_AFTER_AUDIT=true.
 	FaultInjectOutboxAfterAudit bool
+
+	// SlowDelay overrides the sleep duration used by GET /v1/info-slow.
+	// Defaults to 5s when zero. Set to a small value in tests so graceful-
+	// shutdown assertions complete quickly. Only meaningful in development/test.
+	SlowDelay time.Duration
 }
 
 // New constructs (but does not start) the HTTP server.
@@ -217,6 +227,7 @@ func New(opts Options) *Server {
 		metrics: opts.MetricsHandler,
 
 		faultInjectOutboxAfterAudit: opts.FaultInjectOutboxAfterAudit,
+		slowDelay:                   opts.SlowDelay,
 	}
 
 	s.mountOperationalRoutes()
@@ -247,9 +258,13 @@ func (s *Server) ListenAndServe() error {
 }
 
 // Shutdown attempts a graceful shutdown bounded by ctx.
+// It logs "shutdown initiated" before stopping the listener and
+// "shutdown complete" once all in-flight requests have drained.
 func (s *Server) Shutdown(ctx context.Context) error {
-	s.logger.Info("http server shutting down")
-	return s.srv.Shutdown(ctx)
+	s.logger.Info("shutdown initiated")
+	err := s.srv.Shutdown(ctx)
+	s.logger.Info("shutdown complete")
+	return err
 }
 
 // -----------------------------------------------------------------------------
@@ -283,6 +298,12 @@ func (s *Server) mountV1Routes() {
 	s.router.Route("/v1", func(r chi.Router) {
 		// Anonymous (or authenticated) routes
 		r.Get("/info", s.handleInfo)
+		// /v1/info-slow is a synthetic endpoint used to test graceful shutdown.
+		// It sleeps for slowDelay (default 5s) before responding so integration
+		// tests can verify that in-flight requests complete when SIGTERM is sent.
+		// This endpoint is always mounted (not guarded by stub auth) because it
+		// must be reachable without credentials during graceful-shutdown tests.
+		r.Get("/info-slow", s.handleInfoSlow)
 
 		// Dev-only token mint endpoints — only mounted when the stub provider is on.
 		if s.stub != nil && s.stub.Enabled() {
