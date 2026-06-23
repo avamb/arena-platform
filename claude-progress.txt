@@ -10779,3 +10779,53 @@ Stats before session: 128/171 passing.
 This session: feature #127 completed and marked passing -> 129/171 passing.
 
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-24 -- Feature #129 (Pricing calculator - tier to promo to fees to tax to all-in)
+"Pricing pipeline: tier price x qty, promo discount, platform fee, provider fee,
+tax, all-in total. Each step audit-logged. Currency-aware.
+[test: unit each pipeline step; property sum of breakdown == all-in total to cent]"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #129 was already committed by a previous session (commit 523871f).
+This session verified the implementation was complete and all tests pass.
+
+Committed implementation (523871f):
+  - pricing_calculator.go: ComputePricing pure function + handleQuote HTTP handler
+  - pricing_129_test.go: 18 tests (all passing)
+  - 0023_pricing_calculator.sql: RBAC seed for pricing.quote permission
+  - server.go: GET /v1/checkout/quote route (pricing.quote permission)
+  - ticket_tiers.sql.go / ticket_tiers.sql: GetTicketTierByIDGlobal query
+  - querier.go: GetTicketTierByIDGlobal interface method
+  - testfilehelpers_test.go: pricing_calculator.go file lookup case
+
+Pipeline steps (all integer cents, basis points for rates):
+  1. subtotal = unit_price x quantity
+  2. discount = computeDiscount(promo, subtotal) -- 0 if no promo
+  3. subtotal_after = subtotal - discount
+  4. platform_fee = subtotal_after x PlatformFeeRate / 10000
+  5. provider_fee = subtotal_after x ProviderFeeRate / 10000
+  6. tax = subtotal_after x TaxRate / 10000
+  7. total = subtotal_after + platform_fee + provider_fee + tax
+
+Invariant: total == subtotal_after + fees + tax (by construction, no rounding drift)
+
+Audit: every quote is logged via slog.Info with full breakdown fields.
+
+VERIFICATION
+------------
+  - 18/18 TestPricing129_* tests: PASS (Docker golang:1.24-alpine)
+  - go build ./apps/backend/...: BUILD_SUCCESS
+  - Pre-existing failures unchanged: TestInfoP99Latency_LoggingNotBottleneck
+  - Feature #129 already marked passing in backlog
+  - git commit: 523871f (previous session)
+
+PROGRESS METRIC
+---------------
+Stats: 133/171 passing (77.8%). Feature #129 was already counted.
+
+================================================================================
