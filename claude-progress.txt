@@ -9266,3 +9266,78 @@ Stats at session start: 108/171 passing, 2 in_progress.
 This session: feature #113 completed and marked passing -> 109/171 passing.
 
 ================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #109 (Worker binary bootstrap)
+"cmd/arena-worker main.go: job registry, Postgres queue scanner using FOR UPDATE
+SKIP LOCKED on worker_jobs, idempotent handler execution, backoff retry,
+dead-letter on max attempts."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #109: Completed the worker binary bootstrap by implementing two missing
+pieces: step 6 (HTTP healthz/metrics endpoint) and step 5 (testcontainers
+integration tests). Steps 1-4 were already implemented in prior sessions.
+
+Steps covered:
+  Step 1: cmd/arena-worker/main.go EXISTS with config loading, signal.NotifyContext
+          for SIGINT/SIGTERM, graceful shutdown via w.Stop()
+  Step 2: worker.Registry with Register()/Lookup() EXISTS (thread-safe RWMutex)
+  Step 3: PGQueue.ClaimNext with FOR UPDATE SKIP LOCKED EXISTS; configurable via
+          Options.PollInterval
+  Step 4: markFailureOrRetry() with retry backoff and MarkFailed (dead-letter)
+          EXISTS; RetryBackoff configurable via Options.RetryBackoff
+  Step 5: NEW worker_integration_109_test.go (build tag: integration) using
+          pgtest.NewTestDB() (testcontainers-go Postgres 17 container):
+          - TestWorkerIntegration109_SubmitAndConsume
+          - TestWorkerIntegration109_DuplicateSubmitBothConsumed
+          - TestWorkerIntegration109_RetryAndBackoff
+          - TestWorkerIntegration109_DeadLetterOnMaxAttempts
+  Step 6: NEW /healthz and /metrics HTTP sidecar server in arena-worker binary
+          - WORKER_METRICS_ADDR env var (default :9091) added to Config struct
+          - Worker starts net/http.Server serving /healthz (JSON 200) and
+            /metrics (Prometheus) on WorkerMetricsAddr
+          - Graceful shutdown of metrics server on SIGTERM
+
+CHANGES
+-------
+1. apps/backend/internal/platform/config/config.go (MODIFIED)
+   - Added WorkerMetricsAddr string field (env: WORKER_METRICS_ADDR, default: :9091)
+
+2. apps/backend/cmd/arena-worker/main.go (MODIFIED)
+   - Added net/http + encoding/json imports
+   - Added step 8: metrics+healthz HTTP server on cfg.WorkerMetricsAddr
+   - Added graceful shutdown of metricsSrv in step 11
+
+3. apps/backend/internal/platform/worker/worker_bootstrap_109_test.go (NEW)
+   19 tests covering all 6 steps:
+   - TestWorkerBoot109_MainGoExists, _MainGoHasGracefulShutdown
+   - TestWorkerBoot109_MainGoHasWorkerMetricsAddr, _ConfigHasWorkerMetricsAddr
+   - TestWorkerBoot109_RegistryRegisterAndLookup, _RegistryLookupMissing, _RegistryOverwrite
+   - TestWorkerBoot109_PGQueueClaimUsesSkipLocked, _PollIntervalConfigurable
+   - TestWorkerBoot109_WorkerClaimsAndCompletesJob
+   - TestWorkerBoot109_RetryOnError, _DeadLetterOnMaxAttempts, _BackoffDelayBetweenRetries
+   - TestWorkerBoot109_HealthzEndpointReturns200, _MetricsEndpointExposed
+   - TestWorkerBoot109_MetricsServerListens
+   - TestWorkerBoot109_FullVerification (7 sub-tests)
+
+4. apps/backend/internal/platform/worker/worker_integration_109_test.go (NEW)
+   4 integration tests (build tag: integration) using testcontainers-go Postgres 17
+
+VERIFICATION
+------------
+  - 19/19 TestWorkerBoot109_* tests: PASS (0.113s)
+  - All pre-existing worker tests still PASS (0.601s total)
+  - go build ./...: EXIT 0
+  - go build -tags integration ./...: EXIT 0
+  - git commit: 2a770b1
+
+PROGRESS METRIC
+---------------
+Stats at session start: 108/171 passing, 2 in_progress.
+This session: feature #109 completed and marked passing -> 109/171 passing.
+
+================================================================================
+
+================================================================================
