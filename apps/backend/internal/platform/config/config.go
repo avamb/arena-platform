@@ -30,48 +30,59 @@ const (
 
 // Config is the validated runtime configuration consumed by every binary.
 //
-// The canonical environment variables map to fields as documented in
-// .env.example at the repository root.
+// Field tags document the environment variable name, whether the field is
+// required, and (where applicable) the default value applied when the
+// variable is absent. Tags follow the convention:
+//
+//	env:"VAR_NAME"         — environment variable that populates this field
+//	required:"true"        — Load() returns an error when the variable is absent/empty
+//	default:"<value>"      — value used when the environment variable is unset
+//
+// These tags are also read by the .env.example generator and documentation
+// tooling. Required fields with no default must be supplied in every
+// deployment environment; see .env.example at the repository root for the
+// authoritative list and per-variable comments.
 type Config struct {
 	// Application
-	AppEnv     AppEnv
-	AppName    string
-	AppVersion string
-	AppCommit  string
+	AppEnv     AppEnv `env:"APP_ENV"     required:"false" default:"development"`
+	AppName    string `env:"APP_NAME"    required:"false" default:"arena-api"`
+	AppVersion string `env:"APP_VERSION" required:"false" default:"0.0.0-dev"`
+	AppCommit  string `env:"APP_COMMIT"  required:"false" default:"local"`
 
 	// HTTP
-	HTTPListenAddr     string
-	BodyLimitBytes     int64
-	RequestTimeout     time.Duration
-	CORSAllowedOrigins []string
-	ShutdownTimeout    time.Duration
+	HTTPListenAddr     string        `env:"HTTP_LISTEN_ADDR"         required:"true"  default:":8080"`
+	WorkerMetricsAddr  string        `env:"WORKER_METRICS_ADDR"      required:"false" default:":9091"`
+	BodyLimitBytes     int64         `env:"BODY_LIMIT_BYTES"         required:"false" default:"1048576"`
+	RequestTimeout     time.Duration `env:"REQUEST_TIMEOUT_SECONDS"  required:"false" default:"30s"`
+	CORSAllowedOrigins []string      `env:"CORS_ALLOWED_ORIGINS"     required:"false" default:"*"`
+	ShutdownTimeout    time.Duration `env:"SHUTDOWN_TIMEOUT"         required:"false" default:"20s"`
 
 	// Database
-	DatabaseURL       string
-	DBPoolMinConns    int32
-	DBPoolMaxConns    int32
-	DBPoolMaxConnLife time.Duration
-	DBPoolMaxConnIdle time.Duration
-	DBLogQueries      bool
+	DatabaseURL       string        `env:"DATABASE_URL"              required:"true"`
+	DBPoolMinConns    int32         `env:"DB_POOL_MIN_CONNS"         required:"false" default:"2"`
+	DBPoolMaxConns    int32         `env:"DB_POOL_MAX_CONNS"         required:"false" default:"20"`
+	DBPoolMaxConnLife time.Duration `env:"DB_POOL_MAX_CONN_LIFETIME" required:"false" default:"1h"`
+	DBPoolMaxConnIdle time.Duration `env:"DB_POOL_MAX_CONN_IDLE_TIME" required:"false" default:"30m"`
+	DBLogQueries      bool          `env:"DB_LOG_QUERIES"            required:"false" default:"false"`
 
 	// Redis
-	RedisURL string
+	RedisURL string `env:"REDIS_URL" required:"false" default:""`
 
 	// Internationalization
-	DefaultLocale string
-	ActiveLocales []string
+	DefaultLocale string   `env:"DEFAULT_LOCALE" required:"true"  default:"en"`
+	ActiveLocales []string `env:"ACTIVE_LOCALES" required:"true"  default:"en"`
 
 	// Observability
-	LogLevel           string
-	LogFormat          string
-	OTLPEndpoint       string
-	OTELServiceName    string
-	OTELTracesSampler  float64
-	OTELInsecure       bool
+	LogLevel          string  `env:"LOG_LEVEL"                   required:"false" default:"info"`
+	LogFormat         string  `env:"LOG_FORMAT"                  required:"false" default:"json"`
+	OTLPEndpoint      string  `env:"OTEL_EXPORTER_OTLP_ENDPOINT" required:"false" default:""`
+	OTELServiceName   string  `env:"OTEL_SERVICE_NAME"           required:"false" default:""`
+	OTELTracesSampler float64 `env:"OTEL_TRACES_SAMPLER_ARG"     required:"false" default:"1.0"`
+	OTELInsecure      bool    `env:"OTEL_EXPORTER_OTLP_INSECURE" required:"false" default:"true"`
 
 	// Auth (dev-only placeholder — replaced by real identity module in a later milestone)
-	JWTSecretStub  string
-	EnableStubAuth bool
+	JWTSecretStub  string `env:"JWT_SIGNING_SECRET" required:"false" default:""`
+	EnableStubAuth bool   `env:"ENABLE_DEV_AUTH"    required:"false" default:"false"`
 }
 
 // DBDSN is an alias for DatabaseURL that matches the terminology used in the
@@ -89,6 +100,7 @@ func Load() (*Config, error) {
 		AppCommit:  getenv("APP_COMMIT", "local"),
 
 		HTTPListenAddr:     getenv("HTTP_LISTEN_ADDR", ":8080"),
+		WorkerMetricsAddr:  getenv("WORKER_METRICS_ADDR", ":9091"),
 		CORSAllowedOrigins: splitCSV(getenv("CORS_ALLOWED_ORIGINS", "*")),
 
 		DatabaseURL: getenv("DATABASE_URL", ""),
