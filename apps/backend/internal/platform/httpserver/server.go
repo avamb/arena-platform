@@ -194,6 +194,11 @@ type Server struct {
 	// Nil when no PgxPool was supplied. Feature #128.
 	promoQueries *gen.Queries
 
+	// pricingRules holds the platform fee and tax basis-point rates used by the
+	// pricing pipeline (GET /v1/checkout/quote). Zero value is valid (all rates 0).
+	// Feature #129.
+	pricingRules PricingRules
+
 	// faultInjectOutboxAfterAudit is a dev/test-only fault injection flag.
 	// When true, handleEcho forces a transaction rollback immediately after
 	// the audit_events INSERT succeeds, before writing to outbox_events.
@@ -396,6 +401,11 @@ type Options struct {
 	// Inject gen.New(nil) in tests that need promo routes mounted without a real pool.
 	// Feature #128.
 	PromoQueries *gen.Queries
+
+	// PricingRules sets the platform fee and tax basis-point rates for the
+	// pricing pipeline (GET /v1/checkout/quote). Zero value is valid (all rates 0).
+	// Feature #129.
+	PricingRules PricingRules
 }
 
 // New constructs (but does not start) the HTTP server.
@@ -610,6 +620,7 @@ func New(opts Options) *Server {
 		inventoryQueries:            inventoryQueries,
 		reservationQueries:          reservationQueries,
 		promoQueries:                promoQueries,
+		pricingRules:                opts.PricingRules,
 	}
 
 	s.mountOperationalRoutes()
@@ -1269,6 +1280,22 @@ func (s *Server) mountV1Routes() {
 				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
 				pr.Use(permissions.RequirePermission(s.perms, "promo.delete", "promo-codes"))
 				pr.Delete("/organizations/{org_id}/promo-codes/{id}", s.handleDeletePromoCode)
+			})
+		}
+
+		// ── Pricing calculator (feature #129) ────────────────────────────────────
+		//
+		// Returns an itemized price quote for a ticket tier + optional promo code.
+		// Pure read endpoint; does not write to the database.
+		//
+		//   GET /v1/checkout/quote  — quote (pricing.quote)
+		//     Query params: tier_id, session_id, quantity, org_id, promo_code (opt),
+		//                   chosen_price (opt, pwyw tiers only)
+		if s.stub != nil && s.stub.Enabled() && s.tierQueries != nil {
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "pricing.quote", "checkout"))
+				pr.Get("/checkout/quote", s.handleQuote)
 			})
 		}
 

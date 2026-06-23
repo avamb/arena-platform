@@ -26,6 +26,17 @@ WHERE  id         = $1
   AND  session_id = $2
   AND  deleted_at IS NULL;
 
+-- name: GetTicketTierByIDGlobal :one
+-- GetTicketTierByIDGlobal fetches an active tier by its UUID primary key without
+-- requiring a session_id. Used by the checkout/quote endpoint where only the
+-- tier_id is known. Returns pgx.ErrNoRows when not found or soft-deleted.
+SELECT id, session_id, name, pricing_mode, price_amount, currency,
+       pwyw_min, pwyw_max, capacity, sale_window_start, sale_window_end,
+       sort_order, created_at, updated_at, deleted_at
+FROM   ticket_tiers
+WHERE  id         = $1
+  AND  deleted_at IS NULL;
+
 -- name: ListTicketTiersBySession :many
 -- ListTicketTiersBySession returns all active tiers for the given session.
 -- Ordered by sort_order ASC then id ASC so the display order is stable.

@@ -123,9 +123,13 @@ type Querier interface {
 	// Ticket tiers — pricing modes for sessions (feature #127)
 	InsertTicketTier(ctx context.Context, sessionID uuid.UUID, name, pricingMode string, priceAmount int64, currency string, pwywMin, pwywMax *int64, capacity *int32, saleWindowStart, saleWindowEnd *time.Time, sortOrder int32) (TicketTierRow, error)
 	GetTicketTierByID(ctx context.Context, id, sessionID uuid.UUID) (TicketTierRow, error)
+	GetTicketTierByIDGlobal(ctx context.Context, id uuid.UUID) (TicketTierRow, error)
 	ListTicketTiersBySession(ctx context.Context, sessionID uuid.UUID) ([]TicketTierRow, error)
 	UpdateTicketTier(ctx context.Context, id, sessionID uuid.UUID, name, pricingMode string, priceAmount *int64, currency string, pwywMin, pwywMax *int64, capacity *int32, saleWindowStart, saleWindowEnd *time.Time, sortOrder *int32) (TicketTierRow, error)
 	SoftDeleteTicketTier(ctx context.Context, id, sessionID uuid.UUID) (TicketTierRow, error)
+
+	// Pricing calculator — checkout quote (feature #129)
+	// (no dedicated DB table — pricing is pure computation using tier + promo data)
 
 	// GDPR data workflows — export / delete / consent (feature #164)
 	InsertDataSubjectRequest(ctx context.Context, userID uuid.UUID, requestType string) (DataSubjectRequestRow, error)

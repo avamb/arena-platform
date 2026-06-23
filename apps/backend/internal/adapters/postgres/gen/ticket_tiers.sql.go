@@ -130,6 +130,26 @@ func (q *Queries) GetTicketTierByID(ctx context.Context, id, sessionID uuid.UUID
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GetTicketTierByIDGlobal
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getTicketTierByIDGlobal = `-- name: GetTicketTierByIDGlobal :one
+SELECT id, session_id, name, pricing_mode, price_amount, currency,
+       pwyw_min, pwyw_max, capacity, sale_window_start, sale_window_end,
+       sort_order, created_at, updated_at, deleted_at
+FROM   ticket_tiers
+WHERE  id         = $1
+  AND  deleted_at IS NULL`
+
+// GetTicketTierByIDGlobal fetches an active tier by its UUID primary key without
+// requiring a session_id. Used by the checkout/quote endpoint where only the
+// tier_id is known. Returns pgx.ErrNoRows when not found or soft-deleted.
+func (q *Queries) GetTicketTierByIDGlobal(ctx context.Context, id uuid.UUID) (TicketTierRow, error) {
+	row := q.db.QueryRow(ctx, getTicketTierByIDGlobal, id)
+	return scanTicketTierRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ListTicketTiersBySession
 // ─────────────────────────────────────────────────────────────────────────────
 
