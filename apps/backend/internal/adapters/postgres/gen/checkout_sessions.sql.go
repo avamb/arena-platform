@@ -187,6 +187,30 @@ func (q *Queries) CompleteCheckoutSession(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CompleteFreeCheckoutSession — pricing_confirmed (total=0) → completed
+// ─────────────────────────────────────────────────────────────────────────────
+
+const completeFreeCheckoutSession = `-- name: CompleteFreeCheckoutSession :one
+UPDATE checkout_sessions
+SET    state        = 'completed',
+       completed_at = now(),
+       updated_at   = now()
+WHERE  id    = $1
+  AND  state = 'pricing_confirmed'
+  AND  total = 0
+RETURNING ` + selectCheckoutSessionColumns
+
+// CompleteFreeCheckoutSession transitions pricing_confirmed → completed for
+// sessions with total = 0 (free tier or 100 %-off promo).
+// No payment intent is required.
+// Returns pgx.ErrNoRows when the session does not exist, is not
+// 'pricing_confirmed', or has a non-zero total.
+func (q *Queries) CompleteFreeCheckoutSession(ctx context.Context, id uuid.UUID) (CheckoutSessionRow, error) {
+	row := q.db.QueryRow(ctx, completeFreeCheckoutSession, id)
+	return scanCheckoutSessionRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // AbandonCheckoutSession — any non-terminal → abandoned
 // ─────────────────────────────────────────────────────────────────────────────
 

@@ -136,6 +136,7 @@ type Querier interface {
 	GetCheckoutSessionByID(ctx context.Context, id uuid.UUID) (CheckoutSessionRow, error)
 	ConfirmCheckoutSession(ctx context.Context, id uuid.UUID, subtotal, discount, platformFee, providerFee, tax, total int64, currency string, promoCodeID *uuid.UUID) (CheckoutSessionRow, error)
 	CompleteCheckoutSession(ctx context.Context, id uuid.UUID, paymentIntentID, paymentProvider string) (CheckoutSessionRow, error)
+	CompleteFreeCheckoutSession(ctx context.Context, id uuid.UUID) (CheckoutSessionRow, error)
 	AbandonCheckoutSession(ctx context.Context, id uuid.UUID) (CheckoutSessionRow, error)
 	ExpireCheckoutSession(ctx context.Context, id uuid.UUID) (CheckoutSessionRow, error)
 	ListCheckoutSessionsByReservation(ctx context.Context, reservationID uuid.UUID) ([]CheckoutSessionRow, error)

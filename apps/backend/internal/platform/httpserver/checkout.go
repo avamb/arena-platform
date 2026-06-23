@@ -474,8 +474,16 @@ type completeCheckoutRequest struct {
 }
 
 // handleCompleteCheckout serves POST /v1/checkout/{id}/complete.
-// Transitions pricing_confirmed → completed and records the payment intent.
-// Returns 409 if the session is not in 'pricing_confirmed' state.
+//
+// For paid checkouts (total > 0): body must include payment_intent_id and
+// payment_provider.  Transitions pricing_confirmed → completed.
+//
+// For free checkouts (total = 0, i.e. free tier or 100 %-off promo): body
+// may be empty or omit payment fields.  The session is completed immediately
+// without a payment provider call and an audit entry is emitted.
+//
+// Returns 409 if the session is not in 'pricing_confirmed' state or (for
+// free path) if the session's total is not zero.
 // Requires JWT + "checkout.complete" permission.
 func (s *Server) handleCompleteCheckout(w http.ResponseWriter, r *http.Request) {
 	if s.checkoutQueries == nil || s.pool == nil {
@@ -497,24 +505,51 @@ func (s *Server) handleCompleteCheckout(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, http.StatusBadRequest, errorEnvelope("checkout.invalid_body", "cannot read request body: "+err.Error(), r))
 		return
 	}
-	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("checkout.empty_body", "request body is required", r))
-		return
-	}
 
 	var req completeCheckoutRequest
-	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("checkout.invalid_json", "request body is not valid JSON", r))
+	if len(body) > 0 {
+		if err := json.Unmarshal(body, &req); err != nil {
+			writeJSON(w, http.StatusBadRequest, errorEnvelope("checkout.invalid_json", "request body is not valid JSON", r))
+			return
+		}
+	}
+
+	// ── Free checkout branch (total = 0) ─────────────────────────────────────
+	// When no payment_intent_id is supplied, attempt the free-checkout
+	// completion path.  The DB query only succeeds if the session's total = 0.
+	if req.PaymentIntentID == "" {
+		cs, err := s.checkoutQueries.CompleteFreeCheckoutSession(ctx, id)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				// Session not found, not pricing_confirmed, or total != 0.
+				writeJSON(w, http.StatusConflict, errorEnvelope(
+					"checkout.payment_required",
+					"this checkout session requires payment (total > 0); provide payment_intent_id",
+					r,
+				))
+				return
+			}
+			s.logger.Error("checkout: free complete failed",
+				slog.String("id", id.String()),
+				slog.String("error", err.Error()),
+			)
+			writeJSON(w, http.StatusInternalServerError, errorEnvelope("checkout.complete_failed", "failed to complete checkout session", r))
+			return
+		}
+
+		s.logger.Info("checkout: free issuance completed",
+			slog.String("id", id.String()),
+			slog.String("reservation_id", cs.ReservationID.String()),
+			slog.String("org_id", cs.OrgID.String()),
+		)
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"checkout_session": checkoutSessionFromRow(cs),
+		})
 		return
 	}
 
-	if req.PaymentIntentID == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
-			"checkout.missing_payment_intent", "payment_intent_id is required", r,
-			map[string]any{"field": "payment_intent_id"},
-		))
-		return
-	}
+	// ── Paid checkout branch ──────────────────────────────────────────────────
 	if req.PaymentProvider == "" {
 		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
 			"checkout.missing_payment_provider", "payment_provider is required", r,
