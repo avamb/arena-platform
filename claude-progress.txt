@@ -9108,3 +9108,109 @@ Stats at session start: 103/108 passing, 3 in_progress.
 This session: feature #107 completed and marked passing -> 104/108 passing.
 
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #104 (Example read endpoint GET /v1/server-info)
+"Minimal read endpoint demonstrating router -> handler -> sqlc -> response chain.
+Without auth (public)."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #104: Created the complete GET /v1/server-info endpoint demonstrating
+the full arena_new request chain: router → handler → sqlc → JSON response.
+
+Steps covered:
+  Step 1: GET /v1/server-info described in openapi.yaml:
+          - ServerInfoResponse schema: version, build_sha, server_time, environment,
+            locales (array), welcome_message
+          - Path: GET /v1/server-info with 200 + 500 responses
+          - ServerInfoResponse type added to types_gen.go (manually - no oapi-codegen binary)
+
+  Step 2: Handler implemented as *Server method (handleServerInfo) — same pattern as
+          existing handlers (handleInfo, handleHealthz, etc.)
+          Route mounted: r.Get("/server-info", s.handleServerInfo) in mountV1Routes()
+
+  Step 3: platform/clock.Clock injected via Server.clk field + Options.Clock.
+          - FakeClock injectable for deterministic tests
+          - runtime/debug.ReadBuildInfo extracts vcs.revision → build_sha ("dev" fallback)
+          - gen.Queries.SelectServerTime (sqlc) queries SELECT now() from Postgres
+          - siQueries *gen.Queries constructed from PgxPool when available
+
+  Step 4: welcome_message localised via go-i18n:
+          - "server.welcome" key added to en.toml: "Welcome to Arena Platform!"
+          - "server.welcome" key added to ru.toml: "Добро пожаловать на платформу Arena!"
+          - i18n.Localize(ctx, "server.welcome", ...) resolves via LocaleMiddleware
+
+  Step 5: 20 unit tests cover all 5 feature steps:
+          - openapi.yaml inspection (3 tests)
+          - Route mount + 200 response + public access (3 tests)
+          - Clock-driven server_time + UTC normalisation + build_sha (4 tests)
+          - welcome_message in en + ru + quality factors + ?lang= override (4 tests)
+          - All required fields present + field assertions (6 tests)
+
+ANALYSIS
+--------
+sqlc integration: Added SelectServerTime :one query (SELECT now()) to system.sql
+and manually generated system.sql.go entry. gen.New(*pgxpool.Pool) is called in
+New(Options) when PgxPool is non-nil. When nil (unit tests), handler falls back to
+s.clk.Now() for server_time — endpoint always returns 200.
+
+Clock field: s.clk defaults to clock.New() (real clock). Tests inject FakeClock
+for deterministic server_time assertions.
+
+CHANGES
+-------
+1. apps/backend/internal/platform/httpserver/server_info.go (NEW)
+   - serverInfoResponse struct
+   - handleServerInfo(*Server method)
+   - readBuildSHA() helper (runtime/debug.ReadBuildInfo)
+
+2. apps/backend/internal/platform/httpserver/server_info_test.go (NEW)
+   20 tests: TestServerInfo104_OpenAPIHasPath through TestServerInfo104_FullVerification
+
+3. apps/backend/internal/platform/httpserver/server.go (MODIFIED)
+   - Added imports: gen, clock packages
+   - Added Server.clk clock.Clock field
+   - Added Server.siQueries *gen.Queries field
+   - Added Options.Clock field
+   - Wiring in New(): clk defaults to clock.New(), siQueries = gen.New(PgxPool)
+   - mountV1Routes: r.Get("/server-info", s.handleServerInfo)
+
+4. apps/backend/internal/adapters/postgres/gen/system.sql.go (MODIFIED)
+   - Added "time" import
+   - Added SelectServerTime function + SQL constant
+
+5. apps/backend/internal/adapters/postgres/queries/system.sql (MODIFIED)
+   - Added SelectServerTime :one query (SELECT now() AS server_time)
+
+6. apps/backend/internal/platform/i18n/locales/en.toml (MODIFIED)
+   - Added ["server.welcome"] = "Welcome to Arena Platform!"
+
+7. apps/backend/internal/platform/i18n/locales/ru.toml (MODIFIED)
+   - Added ["server.welcome"] = "Добро пожаловать на платформу Arena!"
+
+8. apps/backend/openapi/openapi.yaml (MODIFIED)
+   - Added ServerInfoResponse schema in components/schemas
+   - Added GET /v1/server-info path
+
+9. apps/backend/internal/adapters/http/openapi/types_gen.go (MODIFIED)
+   - Added ServerInfoResponse struct
+
+VERIFICATION
+------------
+  - 20/20 TestServerInfo104_* tests: PASS (0.049s)
+  - go build ./...: EXIT 0 (all packages compile)
+  - Pre-existing failures unchanged: TestScaffoldEcho105_*, TestOpenAPIDriftCheck_CodeCoversAllSpecRoutes,
+    TestPromtoolFormat_*, TestPingProbe_ErrorPropagated, TestHandler_ReturnsHTTP200WithNonEmptyBody,
+    TestSkipLocked_*
+  - git commit: 59c3af3
+
+PROGRESS METRIC
+---------------
+Stats at session start: 106/108 passing, 2 in_progress.
+This session: feature #104 completed and marked passing -> 107/108 passing.
+
+================================================================================
