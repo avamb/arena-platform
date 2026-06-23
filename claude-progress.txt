@@ -9632,3 +9632,75 @@ Feature #123 completed and marked passing.
 ================================================================================
 
 ================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #117 (Permission engine - RBAC scoped by org)
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #117: Full RBAC permission engine replacing AllowAll() placeholder.
+
+Steps covered:
+  Step 1: Migration 0008_rbac.sql
+          - roles table (id uuid PK, name, org_id nullable, description, created_at)
+          - permissions table (id uuid PK, name UNIQUE, description, created_at)
+          - role_permissions table M:N (role_id FK, permission_id FK)
+          - user_roles table (user_id FK, role_id FK, org_id nullable)
+          - Unique indexes: roles_global_name_idx (WHERE org_id IS NULL),
+            roles_org_name_idx (WHERE org_id IS NOT NULL)
+          - Goose Up/Down sections, COMMENT ON TABLE docs
+
+  Step 2: Permission resolver (cached per request)
+          - DBChecker struct implementing permissions.Checker interface
+          - RBACQuerier interface in permissions package (clean architecture boundary,
+            no platform->adapter import)
+          - sync.Map in-process cache keyed by sorted role-set string
+          - roleSetKey() normalizes {"a","b"} and {"b","a"} to same cache key
+          - InvalidateCache() method for tests and live config changes
+
+  Step 3: Update RequirePermission middleware to use real checker
+          - server.go: when PgxPool != nil, wires permissions.NewDBChecker(gen.New(pool))
+          - Falls back to AllowAll() when no pool (unit tests without DB)
+          - RequirePermission middleware itself unchanged (Checker interface is stable)
+
+  Step 4: Seed default permissions for built-in roles
+          - admin role: all permissions (via cross join)
+          - geo_admin role: 'geo.admin'
+          - scaffold_user role: 'scaffold.echo.create'
+
+  Step 5: Tests
+          - 15 new RBAC tests in permissions package covering all steps
+          - 8 migration content verification tests (TestRBAC117_Migration*, Seeds*)
+          - fakeRBACQuerier + countingQuerier test doubles (no DB required)
+
+CHANGES
+-------
+New files:
+  - apps/backend/internal/migrations/sql/0008_rbac.sql
+  - apps/backend/internal/adapters/postgres/queries/rbac.sql
+  - apps/backend/internal/adapters/postgres/gen/rbac.sql.go
+  - apps/backend/internal/platform/permissions/rbac_checker.go
+  - apps/backend/internal/platform/permissions/rbac_checker_test.go
+  - apps/backend/internal/platform/permissions/rbac_migration_test.go
+
+Modified files:
+  - apps/backend/internal/adapters/postgres/gen/querier.go (+2 RBAC methods)
+  - apps/backend/internal/platform/httpserver/server.go (wire DBChecker)
+  - apps/backend/internal/platform/httpserver/testfilehelpers_test.go
+
+VERIFICATION
+------------
+  - 47/47 permissions package tests: PASS (0.056s)
+  - go build all cmds and internal packages: EXIT 0
+  - httpserver package tests: PASS (STATUS:0)
+  - git commit: d855c43
+
+PROGRESS METRIC
+---------------
+Stats before: 112/171 passing.
+This session: feature #117 completed and marked passing -> 113/171 passing.
+
+================================================================================
+
+================================================================================
