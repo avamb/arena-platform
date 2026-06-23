@@ -5,6 +5,77 @@ arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
 --------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #120 (Membership + role assignment)
+"Grant/revoke org membership roles. Permission resolver picks up membership-
+derived permissions immediately (no JWT re-issue needed)."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #120: Implemented the full membership management system.
+
+Steps covered:
+  Step 1: Migration 0011_memberships.sql
+          - memberships table: uuidv7() PK, user_id FK→users, org_id FK→organizations
+          - role text CHECK constraint (organizer, agent, platform_operator,
+            external_ticketing_operator, platform_superadmin)
+          - status text CHECK ('active','revoked'), joined_at timestamptz
+          - UNIQUE (user_id, org_id, role), partial indexes WHERE status='active'
+          - Seeds 5 roles, 3 permissions (membership.grant/revoke/read),
+            role_permissions grants
+
+  Step 2: memberships.sql + memberships.sql.go
+          - InsertMembership :one, RevokeMembership :one (DELETE RETURNING),
+            ListMembershipsByOrg :many, GetActiveRolesForUser :many
+          - MembershipRow struct, scanMembershipRow helper
+
+  Step 3: permissions/rbac_checker.go extended
+          - MembershipQuerier interface declared in platform layer (clean arch)
+          - DBChecker.memberships field + WithMembershipQuerier() builder
+          - Check() unions JWT roles with GetActiveRolesForUser() result
+          - Falls back to JWT-only roles if membership DB query fails (safe)
+
+  Step 4: server.go wiring
+          - membershipQueries *gen.Queries field on Server
+          - Lazy construction: created from PgxPool if not explicitly provided
+          - DBChecker.WithMembershipQuerier() called when pool available
+          - 3 route groups: POST/GET/DELETE /v1/organizations/{org_id}/members
+            each with own permission guard
+
+  Step 5: 32 unit tests covering migration structure, route auth-gating,
+          input validation, permission resolver union, grant/revoke cycle,
+          multi-org user scenario, gen file structure
+
+CHANGES
+-------
+New files:
+  - apps/backend/internal/migrations/sql/0011_memberships.sql
+  - apps/backend/internal/adapters/postgres/queries/memberships.sql
+  - apps/backend/internal/adapters/postgres/gen/memberships.sql.go
+  - apps/backend/internal/platform/httpserver/memberships.go
+  - apps/backend/internal/platform/httpserver/memberships_test.go
+
+Modified files:
+  - apps/backend/internal/platform/permissions/rbac_checker.go
+      MembershipQuerier interface, memberships field, WithMembershipQuerier,
+      Check() role union logic
+  (server.go, querier.go, testfilehelpers_test.go were part of prior commit)
+
+VERIFICATION
+------------
+  - 32/32 TestMembership120_* tests: PASS
+  - go build ./apps/backend/...: EXIT 0
+  - Pre-existing failures unchanged (openapi drift, docker runtime.Caller)
+  - git commit: 3995a3d
+
+PROGRESS METRIC
+---------------
+Stats at session start: (prior session ended at ~118/171 passing)
+This session: feature #120 completed and marked passing.
+
+================================================================================
+
+--------------------------------------------------------------------------------
 Session: 2026-06-23 -- Feature #110 (Outbox dispatcher)
 "Worker-based publisher: consume outbox_events transactionally, sign payloads,
 hand off to webhook delivery. HMAC signature, exactly-once-effectful."
@@ -9996,5 +10067,90 @@ PROGRESS METRIC
 ---------------
 Stats before: 116/171 passing.
 This session: feature #112 completed and marked passing -> 117/171 passing.
+
+================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #121 (Sales channel model + per-channel config)
+"sales_channels table (org_id, name, payment_mode 'direct_merchant'|'merchant_of_record',
+provider 'stripe'|'allpay', provider_account_id, fee_percent, reservation_ttl_override).
+CRUD scoped to org. Config validator. Integration tests."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #121: All 4 feature steps completed and verified.
+
+Steps covered:
+  Step 1: Migration 0010_sales_channels.sql
+          - sales_channels table with uuidv7 PK
+          - org_id uuid FK -> organizations(id) NOT NULL
+          - payment_mode CHECK ('direct_merchant', 'merchant_of_record') DEFAULT 'direct_merchant'
+          - provider CHECK ('stripe', 'allpay') DEFAULT 'stripe'
+          - provider_account_id text (nullable)
+          - fee_percent numeric(5,2) NOT NULL DEFAULT 0.00
+          - reservation_ttl_override integer (nullable - overrides org default)
+          - created_at, updated_at, deleted_at (soft-delete)
+          - Partial unique index channels_name_org_unique_active on (org_id, name)
+          - RBAC seeds: channel.create/read/update/delete for admin + org_admin roles
+          - Goose Up/Down sections
+
+  Step 2: Channel CRUD endpoints
+          - POST   /v1/organizations/{org_id}/channels   (channel.create)
+          - GET    /v1/organizations/{org_id}/channels   (channel.read)
+          - GET    /v1/organizations/{org_id}/channels/{id} (channel.read)
+          - PATCH  /v1/organizations/{org_id}/channels/{id} (channel.update)
+          - DELETE /v1/organizations/{org_id}/channels/{id} (channel.delete, soft-delete + audit)
+          - All gated by JWT auth + named permission (RequirePermission middleware)
+          - Server struct: channelQueries *gen.Queries + ChannelQueries Options field
+          - Wired in mountV1Routes() alongside org routes
+
+  Step 3: Config validator (validateChannelConfig)
+          - payment_mode must be 'direct_merchant' or 'merchant_of_record'
+          - provider must be 'stripe' or 'allpay'
+          - provider_account_id REQUIRED when payment_mode = 'direct_merchant' (ADR-011)
+          - merchant_of_record does NOT require provider_account_id
+          - Checked before any DB write in handleCreateChannel
+
+  Step 4: Integration/unit tests (channels_test.go, 40+ tests)
+          - Migration file content verified (8 tests)
+          - Route auth gating verified - all 5 endpoints return 401 without JWT
+          - POST/PATCH include Content-Type: application/json (router requirement)
+          - Config validation: 9 unit tests for validateChannelConfig()
+          - HTTP request flow: empty body -> 400, invalid JSON -> 400, missing name -> 400
+          - Invalid config (direct_merchant without provider_account_id) -> 400
+          - sqlc query file: 4 tests
+          - gen Go file: 5 tests including SalesChannelRow type + nullable fields
+          - TTL override: SalesChannelRow.ReservationTTLOverride is *int32 (nullable)
+          - channelResponse JSON shape verified
+          - Handlers return Content-Type: application/json
+
+CHANGES
+-------
+New files:
+  - apps/backend/internal/migrations/sql/0010_sales_channels.sql
+  - apps/backend/internal/adapters/postgres/queries/channels.sql
+  - apps/backend/internal/adapters/postgres/gen/channels.sql.go
+  - apps/backend/internal/platform/httpserver/channels.go
+  - apps/backend/internal/platform/httpserver/channels_test.go
+
+Modified files:
+  - apps/backend/internal/adapters/postgres/gen/querier.go (+5 channel methods)
+  - apps/backend/internal/platform/httpserver/server.go (channelQueries field + wiring + routes)
+  - apps/backend/internal/platform/httpserver/testfilehelpers_test.go (+3 channel file cases)
+
+VERIFICATION
+------------
+  - 40+ TestChannel121_* tests: PASS (0.110s)
+  - go build ./apps/backend/...: EXIT 0
+  - httpserver package tests: PASS (7.388s, 0 failures)
+  - git commit: 143847b
+
+PROGRESS METRIC
+---------------
+Stats before session: 117/171 passing.
+This session: feature #121 completed and marked passing -> 118/171 passing.
 
 ================================================================================
