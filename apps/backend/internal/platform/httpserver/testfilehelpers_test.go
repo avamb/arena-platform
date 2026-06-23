@@ -287,6 +287,32 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "ticket_tiers.sql.go"),
 		}
+	// Inventory ledger (feature #130)
+	case "0020_inventory_ledger.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0020_inventory_ledger.sql"),
+		}
+	case "inventory_ledger.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "inventory_ledger.sql"),
+		}
+	case "inventory_ledger.sql.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "inventory_ledger.sql.go"),
+		}
+	// Shared gen/httpserver files referenced by multiple test files
+	case "querier.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "querier.go"),
+		}
+	case "sessions.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "sessions.go"),
+		}
+	case "server.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "server.go"),
+		}
 	default:
 		// Generic fallback: try the file directly at the repo root.
 		candidates = []string{

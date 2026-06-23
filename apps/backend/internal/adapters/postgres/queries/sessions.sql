@@ -1,0 +1,70 @@
+-- sessions.sql — sqlc query definitions for the sessions table (feature #126).
+-- Sessions are scoped to an event via the event_id foreign key.
+-- All queries filter WHERE deleted_at IS NULL to respect the soft-delete policy.
+
+-- name: InsertSession :one
+-- InsertSession creates a new session for the given event.
+-- status defaults to 'scheduled' when empty.
+-- Returns the created row including the uuidv7 PK assigned by the database.
+INSERT INTO sessions (event_id, start_at, end_at, capacity_total, status)
+VALUES ($1, $2, $3, $4, COALESCE(NULLIF($5, ''), 'scheduled'))
+RETURNING id, event_id, start_at, end_at, capacity_total, status, created_at, updated_at, deleted_at;
+
+-- name: GetSessionByID :one
+-- GetSessionByID fetches an active session by its UUID primary key scoped to the event.
+-- Returns pgx.ErrNoRows when not found, already deleted, or belongs to a different event.
+SELECT id, event_id, start_at, end_at, capacity_total, status, created_at, updated_at, deleted_at
+FROM   sessions
+WHERE  id       = $1
+  AND  event_id = $2
+  AND  deleted_at IS NULL;
+
+-- name: ListSessionsByEvent :many
+-- ListSessionsByEvent returns all active sessions for the given event.
+-- Ordered by start_at ASC so the earliest session is first.
+SELECT id, event_id, start_at, end_at, capacity_total, status, created_at, updated_at, deleted_at
+FROM   sessions
+WHERE  event_id = $1
+  AND  deleted_at IS NULL
+ORDER BY start_at ASC, id ASC;
+
+-- name: UpdateSession :one
+-- UpdateSession applies a partial update to an active session.
+-- Scoped by event_id. NULL/zero optional fields keep the existing values.
+-- capacity_total can only be updated to a positive value (CHECK enforced by DB).
+UPDATE sessions
+SET    start_at       = CASE WHEN $3::timestamptz IS NOT NULL THEN $3::timestamptz ELSE start_at END,
+       end_at         = CASE WHEN $4::timestamptz IS NOT NULL THEN $4::timestamptz ELSE end_at END,
+       capacity_total = CASE WHEN $5::integer     IS NOT NULL THEN $5::integer     ELSE capacity_total END,
+       status         = COALESCE(NULLIF($6, ''), status),
+       updated_at     = now()
+WHERE  id       = $1
+  AND  event_id = $2
+  AND  deleted_at IS NULL
+RETURNING id, event_id, start_at, end_at, capacity_total, status, created_at, updated_at, deleted_at;
+
+-- name: SoftDeleteSession :one
+-- SoftDeleteSession marks a session as deleted by setting deleted_at.
+-- Scoped by event_id to enforce owner-gated mutation policy.
+-- The row is not physically removed.
+UPDATE sessions
+SET    deleted_at = now(),
+       updated_at = now()
+WHERE  id       = $1
+  AND  event_id = $2
+  AND  deleted_at IS NULL
+RETURNING id, event_id, start_at, end_at, capacity_total, status, created_at, updated_at, deleted_at;
+
+-- name: CountOverlappingSessions :one
+-- CountOverlappingSessions counts active sessions for the given event whose
+-- time range overlaps with [start_at, end_at). The session with id=exclude_id
+-- is excluded from the count so update operations can check against their
+-- siblings without counting themselves.
+-- Overlap condition: a.start_at < end_at AND a.end_at > start_at.
+SELECT COUNT(*)::int
+FROM   sessions
+WHERE  event_id    = $1
+  AND  id         <> $2
+  AND  deleted_at  IS NULL
+  AND  start_at    < $4
+  AND  end_at      > $3;

@@ -136,6 +136,15 @@ type Querier interface {
 	AnonymizeUser(ctx context.Context, id uuid.UUID) error
 	RecordUserConsent(ctx context.Context, id uuid.UUID, marketingConsent bool) error
 	GetUserExportData(ctx context.Context, id uuid.UUID) (UserExportDataRow, error)
+
+	// Inventory ledger — GA capacity tracking (feature #130)
+	InsertInventoryLedger(ctx context.Context, sessionID uuid.UUID, tierID *uuid.UUID, capacityTotal *int32) (InventoryLedgerRow, error)
+	GetInventoryLedger(ctx context.Context, sessionID uuid.UUID, tierID *uuid.UUID) (InventoryLedgerRow, error)
+	ListInventoryLedgersBySession(ctx context.Context, sessionID uuid.UUID) ([]InventoryLedgerRow, error)
+	ReserveCapacity(ctx context.Context, sessionID uuid.UUID, tierID *uuid.UUID, amount int32) (InventoryLedgerRow, error)
+	ReleaseCapacity(ctx context.Context, sessionID uuid.UUID, tierID *uuid.UUID, amount int32) (InventoryLedgerRow, error)
+	ConfirmCapacity(ctx context.Context, sessionID uuid.UUID, tierID *uuid.UUID, amount int32) (InventoryLedgerRow, error)
+	UpdateCapacityTotal(ctx context.Context, sessionID uuid.UUID, tierID *uuid.UUID, newTotal *int32) (InventoryLedgerRow, error)
 }
 
 // Compile-time assertion: *Queries must implement Querier.

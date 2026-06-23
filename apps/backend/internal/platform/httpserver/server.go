@@ -181,6 +181,11 @@ type Server struct {
 	// Nil when no PgxPool was supplied. Feature #127.
 	tierQueries *gen.Queries
 
+	// inventoryQueries is the sqlc Queries instance used by the inventory ledger
+	// endpoints and by the session capacity propagation hook.
+	// Nil when no PgxPool was supplied. Feature #130.
+	inventoryQueries *gen.Queries
+
 	// faultInjectOutboxAfterAudit is a dev/test-only fault injection flag.
 	// When true, handleEcho forces a transaction rollback immediately after
 	// the audit_events INSERT succeeds, before writing to outbox_events.
@@ -365,6 +370,12 @@ type Options struct {
 	// Inject gen.New(nil) in tests that need tier routes mounted without a real pool.
 	// Feature #127.
 	TierQueries *gen.Queries
+
+	// InventoryQueries injects a pre-constructed *gen.Queries for the inventory
+	// ledger endpoints. When nil and PgxPool is non-nil, gen.New(PgxPool) is used.
+	// Inject gen.New(nil) in tests that need inventory routes mounted without a real pool.
+	// Feature #130.
+	InventoryQueries *gen.Queries
 }
 
 // New constructs (but does not start) the HTTP server.
@@ -508,6 +519,12 @@ func New(opts Options) *Server {
 		tierQueries = gen.New(opts.PgxPool)
 	}
 
+	// sqlc Queries for inventory ledger endpoints (feature #130).
+	inventoryQueries := opts.InventoryQueries
+	if inventoryQueries == nil && opts.PgxPool != nil {
+		inventoryQueries = gen.New(opts.PgxPool)
+	}
+
 	// Extend the permission checker with membership-derived role resolution
 	// (feature #120 step 3). When a PgxPool is available, the DBChecker is
 	// augmented so that each Check() call unions the JWT roles with the user's
@@ -558,6 +575,7 @@ func New(opts Options) *Server {
 		sessionQueries:              sessionQueries,
 		gdprQueries:                 gdprQueries,
 		tierQueries:                 tierQueries,
+		inventoryQueries:            inventoryQueries,
 	}
 
 	s.mountOperationalRoutes()
@@ -1058,6 +1076,51 @@ func (s *Server) mountV1Routes() {
 				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
 				pr.Use(permissions.RequirePermission(s.perms, "tier.delete", "tiers"))
 				pr.Delete("/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}", s.handleDeleteTier)
+			})
+		}
+
+		// ── Inventory Ledger (feature #130) ──────────────────────────────────────
+		//
+		// GA capacity tracking for sessions and their tiers.
+		// Endpoints are nested under the session path:
+		//
+		//   GET  .../inventory          — list all ledger rows (inventory.read)
+		//   POST .../inventory          — initialise ledger entry (inventory.reserve)
+		//   POST .../inventory/reserve  — reserve capacity (inventory.reserve)
+		//   POST .../inventory/release  — release held capacity (inventory.release)
+		//   POST .../inventory/confirm  — confirm held → sold (inventory.confirm)
+		if s.stub != nil && s.stub.Enabled() && s.inventoryQueries != nil {
+			// GET .../inventory (inventory.read)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "inventory.read", "inventory"))
+				pr.Get("/organizations/{org_id}/events/{event_id}/sessions/{session_id}/inventory", s.handleListInventory)
+			})
+		}
+		if s.stub != nil && s.stub.Enabled() && s.inventoryQueries != nil && s.pool != nil {
+			// POST .../inventory (init — inventory.reserve)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "inventory.reserve", "inventory"))
+				pr.Post("/organizations/{org_id}/events/{event_id}/sessions/{session_id}/inventory", s.handleInitInventory)
+			})
+			// POST .../inventory/reserve (inventory.reserve)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "inventory.reserve", "inventory"))
+				pr.Post("/organizations/{org_id}/events/{event_id}/sessions/{session_id}/inventory/reserve", s.handleReserveCapacity)
+			})
+			// POST .../inventory/release (inventory.release)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "inventory.release", "inventory"))
+				pr.Post("/organizations/{org_id}/events/{event_id}/sessions/{session_id}/inventory/release", s.handleReleaseCapacity)
+			})
+			// POST .../inventory/confirm (inventory.confirm)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "inventory.confirm", "inventory"))
+				pr.Post("/organizations/{org_id}/events/{event_id}/sessions/{session_id}/inventory/confirm", s.handleConfirmCapacity)
 			})
 		}
 
