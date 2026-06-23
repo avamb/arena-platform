@@ -286,6 +286,48 @@ type PostV1ScaffoldEchoParams struct {
 	IdempotencyKey openapi_types.UUID `json:"Idempotency-Key"`
 }
 
+// RegisterRequest defines the request body for POST /v1/auth/register (feature #114).
+type RegisterRequest struct {
+	// Email The user's email address. Will be normalised to lowercase.
+	Email string `json:"email"`
+
+	// Password Plaintext password; 8–72 characters. Stored as bcrypt hash (cost ≥ 12).
+	Password string `json:"password"`
+
+	// Locale Preferred BCP-47 locale (e.g. "en", "ru"). Defaults to "en" when omitted.
+	Locale *string `json:"locale,omitempty"`
+}
+
+// RegisterResponse is returned by POST /v1/auth/register on success (201 Created).
+type RegisterResponse struct {
+	// UserId UUIDv7 primary key of the newly created user.
+	UserId string `json:"user_id"`
+
+	// Email Normalised email address stored for this user.
+	Email string `json:"email"`
+
+	// Message Human-readable confirmation. Instructs the user to check their inbox.
+	Message string `json:"message"`
+
+	// CreatedAt Server-side timestamp when the user row was created (RFC3339).
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// VerifyEmailResponse is returned by GET /v1/auth/verify on success (200 OK).
+type VerifyEmailResponse struct {
+	// UserId UUID of the user whose email was verified.
+	UserId string `json:"user_id"`
+
+	// Email The now-verified email address.
+	Email string `json:"email"`
+
+	// EmailVerifiedAt Server-side timestamp when email_verified_at was set (RFC3339).
+	EmailVerifiedAt time.Time `json:"email_verified_at"`
+
+	// Message Human-readable confirmation.
+	Message string `json:"message"`
+}
+
 // PostV1DevAuthTokenJSONRequestBody defines body for PostV1DevAuthToken for application/json ContentType.
 type PostV1DevAuthTokenJSONRequestBody = DevAuthTokenRequest
 

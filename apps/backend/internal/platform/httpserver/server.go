@@ -124,6 +124,11 @@ type Server struct {
 	// case handleServerInfo falls back to the server's clock.
 	siQueries *gen.Queries
 
+	// geoQueries is the sqlc Queries instance used by the geo reference
+	// endpoints (GET /v1/geo/countries, GET /v1/geo/cities, and the admin
+	// POST/PATCH endpoints). Nil when no PgxPool was supplied.
+	geoQueries *gen.Queries
+
 	// faultInjectOutboxAfterAudit is a dev/test-only fault injection flag.
 	// When true, handleEcho forces a transaction rollback immediately after
 	// the audit_events INSERT succeeds, before writing to outbox_events.
@@ -240,6 +245,12 @@ type Options struct {
 	// clock.New() (real system clock) is used. Inject clock.NewFake in tests
 	// to make time deterministic.
 	Clock clock.Clock
+
+	// GeoQueries injects a pre-constructed *gen.Queries for the geo reference
+	// endpoints. When nil and PgxPool is non-nil, gen.New(PgxPool) is used.
+	// Inject an explicit value in tests that need geo routes mounted without a
+	// real *pgxpool.Pool (e.g. passing gen.New(nil) to exercise auth guards).
+	GeoQueries *gen.Queries
 }
 
 // New constructs (but does not start) the HTTP server.
@@ -308,6 +319,14 @@ func New(opts Options) *Server {
 		siQueries = gen.New(opts.PgxPool)
 	}
 
+	// sqlc Queries for geo reference endpoints.
+	// Prefer the explicitly injected value (opts.GeoQueries) so tests can wire
+	// a gen.New(nil) to exercise auth guards without a real *pgxpool.Pool.
+	geoQueries := opts.GeoQueries
+	if geoQueries == nil && opts.PgxPool != nil {
+		geoQueries = gen.New(opts.PgxPool)
+	}
+
 	// Assemble the readiness probe list.
 	// If the legacy DB Pinger is set, prepend it as a "database" probe so
 	// existing callers (main.go, integration tests) continue to work without
@@ -338,6 +357,7 @@ func New(opts Options) *Server {
 		slowDelay:                   opts.SlowDelay,
 		debugRoutesEnabled:          opts.DebugRoutesEnabled,
 		debugSlowDelay:              opts.DebugSlowDelay,
+		geoQueries:                  geoQueries,
 	}
 
 	s.mountOperationalRoutes()
@@ -465,6 +485,43 @@ func (s *Server) mountV1Routes() {
 				}
 				pr.Use(idempotency.Middleware(s.idem, idemOpts))
 				pr.Post("/echo", s.handleEcho)
+			})
+		}
+
+		// POST /v1/auth/register — public registration endpoint (feature #114).
+		// GET  /v1/auth/verify   — email verification (feature #114).
+		// Both require the pool to be wired; no auth header needed (they are
+		// intentionally public endpoints used before the user has a JWT).
+		if s.pool != nil {
+			r.Post("/auth/register", s.handleAuthRegister)
+			r.Get("/auth/verify", s.handleAuthVerifyEmail)
+		}
+
+		// ── Geo reference data (feature #123) ──────────────────────────────────
+		//
+		// Public read routes: no authentication required.
+		//   GET /v1/geo/countries — list all countries with localized names
+		//   GET /v1/geo/cities   — list cities (optional ?country_id= filter)
+		//
+		// Admin write routes: mounted only when stub auth + pool are available.
+		//   POST  /v1/admin/geo/countries
+		//   PATCH /v1/admin/geo/countries/{iso2}
+		//   POST  /v1/admin/geo/cities
+		//   PATCH /v1/admin/geo/cities/{id}
+		if s.geoQueries != nil {
+			r.Get("/geo/countries", s.handleListCountries)
+			r.Get("/geo/cities", s.handleListCities)
+		}
+		if s.stub != nil && s.stub.Enabled() && s.geoQueries != nil && s.pool != nil {
+			r.Route("/admin/geo", func(ar chi.Router) {
+				ar.Group(func(pr chi.Router) {
+					pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+					pr.Use(permissions.RequirePermission(s.perms, "geo.admin", "geo"))
+					pr.Post("/countries", s.handleCreateCountry)
+					pr.Patch("/countries/{iso2}", s.handleUpdateCountry)
+					pr.Post("/cities", s.handleCreateCity)
+					pr.Patch("/cities/{id}", s.handleUpdateCity)
+				})
 			})
 		}
 

@@ -6,6 +6,7 @@ package gen
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -16,6 +17,26 @@ import (
 type Querier interface {
 	SelectUUIDv7(ctx context.Context) (uuid.UUID, error)
 	InsertScaffoldEcho(ctx context.Context, actorID string, message string) (InsertScaffoldEchoRow, error)
+
+	// Users & email-verification (feature #114)
+	InsertUser(ctx context.Context, email, passwordHash, preferredLocale string) (InsertUserRow, error)
+	GetUserByEmail(ctx context.Context, email string) (GetUserByEmailRow, error)
+	InsertEmailVerificationToken(ctx context.Context, token string, userID uuid.UUID, expiresAt time.Time) error
+	GetEmailVerificationToken(ctx context.Context, token string) (GetEmailVerificationTokenRow, error)
+	MarkEmailVerified(ctx context.Context, id uuid.UUID) (MarkEmailVerifiedRow, error)
+	MarkVerificationTokenUsed(ctx context.Context, token string) error
+
+	// Geo reference data — countries & cities (feature #123)
+	ListCountries(ctx context.Context, locale string) ([]ListCountryRow, error)
+	ListCities(ctx context.Context, locale string, countryID *uuid.UUID) ([]ListCityRow, error)
+	GetCountryByISO2(ctx context.Context, iso2 string) (CountryRow, error)
+	GetCountryBySlug(ctx context.Context, slug string) (CountryRow, error)
+	InsertCountry(ctx context.Context, iso2, iso3, slug string) (CountryRow, error)
+	UpdateCountry(ctx context.Context, iso2, iso3, slug string) (CountryRow, error)
+	GetCityByID(ctx context.Context, id uuid.UUID) (CityRow, error)
+	GetCityBySlug(ctx context.Context, slug string) (CityRow, error)
+	InsertCity(ctx context.Context, countryID uuid.UUID, slug string) (CityRow, error)
+	UpdateCity(ctx context.Context, id uuid.UUID, slug string) (CityRow, error)
 }
 
 // Compile-time assertion: *Queries must implement Querier.
