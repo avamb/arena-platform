@@ -9214,3 +9214,55 @@ Stats at session start: 106/108 passing, 2 in_progress.
 This session: feature #104 completed and marked passing -> 107/108 passing.
 
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #113 (Config validation on boot)
+"Fail-fast on missing/invalid env vars; struct field tags; document vars in .env.example."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #113: Completed all 5 feature steps for config validation on boot.
+
+Prior state: config.go had Config struct with Validate() and Load() implemented.
+All three binaries (arena-api, arena-worker, arena-migrate) called config.Load()
+at boot. 22 tests existed for validation logic.
+
+Missing: Step 1 - Config struct lacked field tags (env, required, default).
+
+CHANGES
+-------
+1. apps/backend/internal/platform/config/config.go (MODIFIED)
+   - Added env/required/default struct tags to all 27 Config fields
+   - env:"VAR_NAME" documents the environment variable name
+   - required:"true|false" indicates mandatory fields
+   - default:"value" documents the default when variable is absent
+   - Added doc comment explaining the tag convention
+
+2. apps/backend/internal/platform/config/config_test.go (MODIFIED)
+   - Added reflect import
+   - Added 9 new tests (31 total, all passing):
+     * TestConfigFieldTags_EnvTagPresent: reflection check all 27 fields have correct env tag
+     * TestConfigFieldTags_RequiredTagPresent: all fields have required tag
+     * TestConfigFieldTags_RequiredFieldsAreMarkedTrue: key fields tagged required:"true"
+     * TestConfigFieldTags_DefaultTagOnNonRequiredFields: key fields have correct defaults
+     * TestConfigFieldTags_AllEnvTagsNonEmpty: no field has empty env tag
+     * TestConfigFieldTags_RequiredTagValueIsBoolean: required tag is only "true" or "false"
+     * TestConfig113_BootValidation_MissingRequired: missing DATABASE_URL fails Load()
+     * TestConfig113_BootValidation_InvalidType: non-integer BODY_LIMIT_BYTES fails Load()
+     * TestConfig113_BootValidation_DefaultsApplyWhenAbsent: 13 default value assertions
+
+VERIFICATION
+------------
+  - 31/31 config tests: PASS
+  - go build ./...: EXIT 0
+  - git commit: 41c1e90
+
+PROGRESS METRIC
+---------------
+Stats at session start: 108/171 passing, 2 in_progress.
+This session: feature #113 completed and marked passing -> 109/171 passing.
+
+================================================================================
