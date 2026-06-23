@@ -10691,3 +10691,91 @@ Stats before session: 125/171 passing (approx).
 This session: feature #151 completed and marked passing -> 127/171 passing.
 
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #127 (Ticket tier model - free / fixed / PWYW)
+"ticket_tiers table (session_id, name, pricing_mode 'fixed'|'free'|'pwyw',
+price_amount, currency, pwyw_min, pwyw_max, capacity, sale_window_start,
+sale_window_end, sort_order). Validators per pricing mode."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #127: Full ticket tier model with CRUD API, pricing validators, and 70 unit tests.
+
+Steps covered:
+  Step 1: Migration 0019_ticket_tiers.sql
+          - ticket_tiers table with uuidv7() PK
+          - session_id uuid FK -> sessions(id) ON DELETE CASCADE
+          - pricing_mode text CHECK ('fixed'|'free'|'pwyw')
+          - price_amount bigint NOT NULL DEFAULT 0 (cents / smallest currency unit)
+          - currency text NOT NULL DEFAULT 'USD' (ISO 4217)
+          - pwyw_min bigint nullable (minimum amount for pay-what-you-want)
+          - pwyw_max bigint nullable (maximum amount for pay-what-you-want)
+          - capacity integer nullable (NULL = unlimited)
+          - sale_window_start / sale_window_end timestamptz nullable
+          - sort_order integer NOT NULL DEFAULT 0
+          - soft-delete (deleted_at IS NULL = active)
+          - DB CHECK constraints:
+            * ticket_tiers_pwyw_range: pwyw_min <= pwyw_max when both non-null
+            * ticket_tiers_free_price: free mode requires price_amount = 0
+            * ticket_tiers_capacity_positive: capacity > 0 when non-null
+            * ticket_tiers_sale_window_order: end > start when both non-null
+          - RBAC seeds: tier.create/read/update/delete for admin + org_admin roles
+          - Goose Up/Down sections
+
+  Step 2: CRUD endpoints
+          - POST   /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers
+          - GET    .../tiers
+          - GET    .../tiers/{id}
+          - PATCH  .../tiers/{id}
+          - DELETE .../tiers/{id}
+          - All require JWT + named permission (tier.create/read/update/delete)
+          - Content-Type: application/json enforced on write endpoints
+
+  Step 3: Validators per pricing mode
+          - free: price_amount MUST be 0; non-zero -> 400 tier.invalid_free_price
+          - fixed: price_amount MUST be > 0; zero/negative -> 400 tier.invalid_fixed_price
+          - pwyw: pwyw_min and pwyw_max optional; if both provided, min <= max required
+            (violation -> 400 tier.invalid_pwyw_range)
+          - All modes: capacity must be > 0 if provided; sale_window_end > start if both
+          - validatePricingMode() pure function, re-validated on PATCH using effective values
+
+  Step 4: SQL queries + gen file
+          - ticket_tiers.sql: InsertTicketTier, GetTicketTierByID, ListTicketTiersBySession
+            (ORDER BY sort_order ASC), UpdateTicketTier (partial), SoftDeleteTicketTier
+          - gen/ticket_tiers.sql.go: TicketTierRow struct with 15 fields
+            (PwywMin *int64, PwywMax *int64, Capacity *int32, SaleWindow* *time.Time)
+          - Querier interface updated (+5 tier methods)
+          - Server struct: tierQueries *gen.Queries field + TierQueries Options field
+          - testfilehelpers_test.go: 3 new file lookup cases
+
+CHANGES
+-------
+New files:
+  - apps/backend/internal/migrations/sql/0019_ticket_tiers.sql
+  - apps/backend/internal/adapters/postgres/queries/ticket_tiers.sql
+  - apps/backend/internal/adapters/postgres/gen/ticket_tiers.sql.go
+  - apps/backend/internal/platform/httpserver/ticket_tiers.go
+  - apps/backend/internal/platform/httpserver/ticket_tiers_test.go (70 tests)
+
+Modified files:
+  - apps/backend/internal/adapters/postgres/gen/querier.go (+5 tier methods)
+  - apps/backend/internal/platform/httpserver/server.go (tierQueries field + wiring + routes)
+  - apps/backend/internal/platform/httpserver/testfilehelpers_test.go (+3 file cases)
+
+VERIFICATION
+------------
+  - 70/70 TestTier127_* tests: PASS (0.221s)
+  - go build ./apps/backend/...: EXIT 0
+  - Pre-existing failures: TestTimestamp_FullVerification (publications.go, feature #151)
+  - git commit: 18cecbe
+
+PROGRESS METRIC
+---------------
+Stats before session: 128/171 passing.
+This session: feature #127 completed and marked passing -> 129/171 passing.
+
+================================================================================
