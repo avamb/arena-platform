@@ -83,6 +83,17 @@ type Config struct {
 	// Auth (dev-only placeholder — replaced by real identity module in a later milestone)
 	JWTSecretStub  string `env:"JWT_SIGNING_SECRET" required:"false" default:""`
 	EnableStubAuth bool   `env:"ENABLE_DEV_AUTH"    required:"false" default:"false"`
+
+	// Outbox dispatcher (feature #110)
+	// OutboxWebhookURL is the HTTP endpoint where outbox_events are POSTed.
+	// When empty the dispatcher uses the NoopDispatcher (log-only mode).
+	OutboxWebhookURL string `env:"OUTBOX_WEBHOOK_URL" required:"false" default:""`
+	// OutboxSigningSecret is the HMAC-SHA256 key used to sign webhook payloads.
+	// When empty, no X-Arena-Signature header is added.
+	OutboxSigningSecret string `env:"OUTBOX_SIGNING_SECRET" required:"false" default:""`
+	// OutboxPollInterval is the wait between empty outbox_events queue polls.
+	// Defaults to 1s when 0.
+	OutboxPollInterval time.Duration `env:"OUTBOX_POLL_INTERVAL" required:"false" default:"1s"`
 }
 
 // DBDSN is an alias for DatabaseURL that matches the terminology used in the
@@ -115,6 +126,9 @@ func Load() (*Config, error) {
 		OTELServiceName: getenv("OTEL_SERVICE_NAME", ""),
 
 		JWTSecretStub: getenv("JWT_SIGNING_SECRET", ""),
+
+		OutboxWebhookURL:    getenv("OUTBOX_WEBHOOK_URL", ""),
+		OutboxSigningSecret: getenv("OUTBOX_SIGNING_SECRET", ""),
 	}
 
 	// Parse errors are collected together with Validate() errors so a single
@@ -202,6 +216,13 @@ func Load() (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.EnableStubAuth = b
+
+	// Outbox dispatcher poll interval (feature #110).
+	d, err = getenvDuration("OUTBOX_POLL_INTERVAL", time.Second, false)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.OutboxPollInterval = d
 
 	if validateErr := cfg.Validate(); validateErr != nil {
 		parseErrs = append(parseErrs, validateErr)

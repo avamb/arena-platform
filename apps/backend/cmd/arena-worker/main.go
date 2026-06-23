@@ -45,6 +45,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/idempotency"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -137,6 +138,34 @@ func run() error {
 	})
 	pollerErrCh := make(chan error, 1)
 	go func() { pollerErrCh <- poller.Run(rootCtx) }()
+
+	// 6b. Outbox events dispatcher (feature #110) --------------------------------
+	// Polls the outbox_events table (populated transactionally by domain
+	// mutations, e.g. POST /v1/echo) and delivers each unprocessed row to the
+	// configured Dispatcher implementation.
+	//
+	// When OUTBOX_WEBHOOK_URL is set the dispatcher POSTs each event to that
+	// URL with an HMAC-SHA256 X-Arena-Signature header (using OUTBOX_SIGNING_SECRET).
+	// When OUTBOX_WEBHOOK_URL is empty, the NoopDispatcher is used so the worker
+	// starts cleanly in environments that have not yet wired a webhook target.
+	outboxDispatcher := buildOutboxDispatcher(cfg, logger)
+	outboxStore := outbox.NewPGOutboxEventStore(pool.Pool)
+	outboxEventsDisp, outboxDispErr := outbox.NewOutboxEventsDispatcher(outbox.OutboxEventsDispatcherOptions{
+		Store:            outboxStore,
+		Dispatcher:       outboxDispatcher,
+		Logger:           logger,
+		PollInterval:     cfg.OutboxPollInterval,
+		ShutdownTimeout:  cfg.ShutdownTimeout,
+	})
+	if outboxDispErr != nil {
+		return fmt.Errorf("init outbox events dispatcher: %w", outboxDispErr)
+	}
+	go func() { _ = outboxEventsDisp.Run(rootCtx) }()
+	logger.Info("outbox events dispatcher started",
+		"webhook_url", cfg.OutboxWebhookURL,
+		"signed", cfg.OutboxSigningSecret != "",
+		"poll_interval", cfg.OutboxPollInterval.String(),
+	)
 
 	// 7. Handler registry -----------------------------------------------------
 	// The platform foundation milestone ships two handlers:
@@ -268,6 +297,11 @@ func run() error {
 		logger.Warn("outbox backlog poller did not stop within 2s")
 	}
 
+	// Gracefully stop the outbox events dispatcher (feature #110).
+	if err := outboxEventsDisp.Stop(); err != nil && !errors.Is(err, context.DeadlineExceeded) {
+		logger.Warn("outbox events dispatcher stop returned error", "error", err.Error())
+	}
+
 	logger.Info("arena-worker stopped cleanly")
 	return nil
 }
@@ -298,6 +332,31 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, metrics *
 		DeletedCounter: metrics.IdempotencyCleanupDeletedTotal,
 		Scheduler:      idempotency.NewPGCleanupScheduler(pool),
 	}))
+}
+
+// buildOutboxDispatcher constructs the Dispatcher for the outbox events loop.
+//
+// When OUTBOX_WEBHOOK_URL is configured a WebhookDispatcher is returned that
+// POSTs signed payloads to that URL. Otherwise NoopDispatcher is returned so
+// the dispatcher starts cleanly in environments without a webhook target.
+func buildOutboxDispatcher(cfg *config.Config, logger *slog.Logger) outbox.Dispatcher {
+	if cfg.OutboxWebhookURL == "" {
+		logger.Info("outbox events dispatcher: no OUTBOX_WEBHOOK_URL configured; using noop dispatcher")
+		return outbox.NoopDispatcher{}
+	}
+	d, err := outbox.NewWebhookDispatcher(outbox.WebhookDispatcherOptions{
+		TargetURL:     cfg.OutboxWebhookURL,
+		SigningSecret: []byte(cfg.OutboxSigningSecret),
+	})
+	if err != nil {
+		// TargetURL is non-empty — this should never fail. Fall back to noop
+		// and log the error rather than crashing the worker.
+		logger.Error("outbox events dispatcher: failed to build webhook dispatcher; falling back to noop",
+			"error", err.Error(),
+		)
+		return outbox.NoopDispatcher{}
+	}
+	return d
 }
 
 // coalesce returns the first non-empty argument.
