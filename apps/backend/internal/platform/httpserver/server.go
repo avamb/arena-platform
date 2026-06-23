@@ -144,6 +144,17 @@ type Server struct {
 	// Nil when no PgxPool was supplied. Feature #120.
 	membershipQueries *gen.Queries
 
+	// venueQueries is the sqlc Queries instance used by the venue CRUD endpoints.
+	// Read endpoints (GET /v1/venues, GET /v1/venues/{id}) are shared across orgs.
+	// Write endpoints (POST/PATCH/DELETE /v1/organizations/{org_id}/venues/*) are
+	// gated to the owning org. Nil when no PgxPool was supplied. Feature #124.
+	venueQueries *gen.Queries
+
+	// feedTokenQueries is the sqlc Queries instance used by the agent feed token
+	// management endpoints and the public feed read endpoint.
+	// Nil when no PgxPool was supplied. Feature #122.
+	feedTokenQueries *gen.Queries
+
 	// faultInjectOutboxAfterAudit is a dev/test-only fault injection flag.
 	// When true, handleEcho forces a transaction rollback immediately after
 	// the audit_events INSERT succeeds, before writing to outbox_events.
@@ -284,6 +295,19 @@ type Options struct {
 	// Inject gen.New(nil) in tests that need membership routes mounted without a real pool.
 	// Feature #120.
 	MembershipQueries *gen.Queries
+
+	// VenueQueries injects a pre-constructed *gen.Queries for the venue CRUD endpoints.
+	// When nil and PgxPool is non-nil, gen.New(PgxPool) is used.
+	// Inject gen.New(nil) in tests that need venue routes mounted without a real pool.
+	// Feature #124.
+	VenueQueries *gen.Queries
+
+	// FeedTokenQueries injects a pre-constructed *gen.Queries for the agent feed
+	// token management endpoints and the public feed read endpoint.
+	// When nil and PgxPool is non-nil, gen.New(PgxPool) is used.
+	// Inject gen.New(nil) in tests that need feed token routes without a real pool.
+	// Feature #122.
+	FeedTokenQueries *gen.Queries
 }
 
 // New constructs (but does not start) the HTTP server.
@@ -385,6 +409,18 @@ func New(opts Options) *Server {
 		membershipQueries = gen.New(opts.PgxPool)
 	}
 
+	// sqlc Queries for venue CRUD endpoints (feature #124).
+	venueQueries := opts.VenueQueries
+	if venueQueries == nil && opts.PgxPool != nil {
+		venueQueries = gen.New(opts.PgxPool)
+	}
+
+	// sqlc Queries for agent feed token management endpoints (feature #122).
+	feedTokenQueries := opts.FeedTokenQueries
+	if feedTokenQueries == nil && opts.PgxPool != nil {
+		feedTokenQueries = gen.New(opts.PgxPool)
+	}
+
 	// Extend the permission checker with membership-derived role resolution
 	// (feature #120 step 3). When a PgxPool is available, the DBChecker is
 	// augmented so that each Check() call unions the JWT roles with the user's
@@ -428,6 +464,8 @@ func New(opts Options) *Server {
 		orgQueries:                  orgQueries,
 		channelQueries:              channelQueries,
 		membershipQueries:           membershipQueries,
+		venueQueries:                venueQueries,
+		feedTokenQueries:            feedTokenQueries,
 	}
 
 	s.mountOperationalRoutes()
@@ -707,6 +745,89 @@ func (s *Server) mountV1Routes() {
 				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
 				pr.Use(permissions.RequirePermission(s.perms, "membership.revoke", "memberships"))
 				pr.Delete("/organizations/{org_id}/members/{user_id}", s.handleRevokeMembership)
+			})
+		}
+
+		// ── Venues (feature #124) ────────────────────────────────────────────
+		//
+		// Read endpoints are shared across all organizations (any authenticated
+		// user with venue.read can list/get any active venue). Write endpoints
+		// are owner-gated: the org_id in the path must match the venue's owning org.
+		//
+		//   POST   /v1/organizations/{org_id}/venues        — create (venue.create)
+		//   GET    /v1/venues                               — list all (venue.read, shared)
+		//   GET    /v1/venues/{id}                          — get by ID (venue.read, shared)
+		//   GET    /v1/organizations/{org_id}/venues        — list by org (venue.read)
+		//   PATCH  /v1/organizations/{org_id}/venues/{id}   — update (venue.update, owner only)
+		//   DELETE /v1/organizations/{org_id}/venues/{id}   — soft-delete (venue.delete, owner only)
+		if s.stub != nil && s.stub.Enabled() && s.venueQueries != nil {
+			// Shared read routes (venue.read) — any org can read any venue.
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "venue.read", "venues"))
+				pr.Get("/venues", s.handleListVenues)
+				pr.Get("/venues/{id}", s.handleGetVenue)
+				pr.Get("/organizations/{org_id}/venues", s.handleListVenuesByOrg)
+			})
+		}
+		if s.stub != nil && s.stub.Enabled() && s.venueQueries != nil && s.pool != nil {
+			// POST /v1/organizations/{org_id}/venues (venue.create)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "venue.create", "venues"))
+				pr.Post("/organizations/{org_id}/venues", s.handleCreateVenue)
+			})
+			// PATCH /v1/organizations/{org_id}/venues/{id} (venue.update)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "venue.update", "venues"))
+				pr.Patch("/organizations/{org_id}/venues/{id}", s.handleUpdateVenue)
+			})
+			// DELETE /v1/organizations/{org_id}/venues/{id} (venue.delete)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "venue.delete", "venues"))
+				pr.Delete("/organizations/{org_id}/venues/{id}", s.handleDeleteVenue)
+			})
+		}
+
+		// ── Agent Feed Tokens (feature #122) ────────────────────────────────
+		//
+		// Management endpoints require JWT auth + a named permission.
+		// Routes are nested under /v1/organizations/{org_id}/channels/{channel_id}/feed-tokens.
+		//
+		//   POST   .../feed-tokens        — issue token (feed_token.create)
+		//   GET    .../feed-tokens        — list tokens (feed_token.read)
+		//   GET    .../feed-tokens/{id}   — get single  (feed_token.read)
+		//   DELETE .../feed-tokens/{id}   — revoke token (feed_token.delete)
+		//
+		// Public feed read endpoint (no JWT required):
+		//   GET /v1/feeds/{token} — validates token, updates last_used_at
+		if s.feedTokenQueries != nil {
+			// Public feed read (no auth — token in path is the credential).
+			r.Get("/feeds/{token}", s.handlePublicFeed)
+		}
+		if s.stub != nil && s.stub.Enabled() && s.feedTokenQueries != nil {
+			// GET .../feed-tokens and GET .../feed-tokens/{id} (feed_token.read)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "feed_token.read", "feed_tokens"))
+				pr.Get("/organizations/{org_id}/channels/{channel_id}/feed-tokens", s.handleListFeedTokens)
+				pr.Get("/organizations/{org_id}/channels/{channel_id}/feed-tokens/{id}", s.handleGetFeedToken)
+			})
+		}
+		if s.stub != nil && s.stub.Enabled() && s.feedTokenQueries != nil && s.pool != nil {
+			// POST .../feed-tokens (feed_token.create)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "feed_token.create", "feed_tokens"))
+				pr.Post("/organizations/{org_id}/channels/{channel_id}/feed-tokens", s.handleCreateFeedToken)
+			})
+			// DELETE .../feed-tokens/{id} (feed_token.delete)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "feed_token.delete", "feed_tokens"))
+				pr.Delete("/organizations/{org_id}/channels/{channel_id}/feed-tokens/{id}", s.handleRevokeFeedToken)
 			})
 		}
 

@@ -183,6 +183,32 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "memberships.sql.go"),
 		}
+	// Venues (feature #124)
+	case "0012_venues.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0012_venues.sql"),
+		}
+	case "venues.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "venues.sql"),
+		}
+	case "venues.sql.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "venues.sql.go"),
+		}
+	// Agent feed tokens (feature #122)
+	case "0013_agent_feed_tokens.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0013_agent_feed_tokens.sql"),
+		}
+	case "feed_tokens.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "feed_tokens.sql"),
+		}
+	case "feed_tokens.sql.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "feed_tokens.sql.go"),
+		}
 	default:
 		// Generic fallback: try the file directly at the repo root.
 		candidates = []string{

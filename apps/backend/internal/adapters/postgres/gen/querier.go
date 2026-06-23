@@ -57,6 +57,22 @@ type Querier interface {
 	ListMembershipsByOrg(ctx context.Context, orgID uuid.UUID) ([]MembershipRow, error)
 	GetActiveRolesForUser(ctx context.Context, userID uuid.UUID) ([]string, error)
 
+	// Agent feed tokens — public read-only channel credentials (feature #122)
+	InsertFeedToken(ctx context.Context, token string, salesChannelID uuid.UUID, label string) (FeedTokenRow, error)
+	GetFeedTokenByID(ctx context.Context, id, salesChannelID uuid.UUID) (FeedTokenRow, error)
+	ListFeedTokensByChannel(ctx context.Context, salesChannelID uuid.UUID) ([]FeedTokenRow, error)
+	RevokeFeedToken(ctx context.Context, id, salesChannelID uuid.UUID) (FeedTokenRow, error)
+	TouchFeedTokenLastUsed(ctx context.Context, token string) error
+	GetFeedTokenByToken(ctx context.Context, token string) (FeedTokenRow, error)
+
+	// Venues — physical event locations (feature #124)
+	InsertVenue(ctx context.Context, orgID uuid.UUID, cityID *uuid.UUID, name string, address *string, capacityDefault *int32) (VenueRow, error)
+	GetVenueByID(ctx context.Context, id uuid.UUID) (VenueRow, error)
+	ListVenues(ctx context.Context) ([]VenueRow, error)
+	ListVenuesByOrg(ctx context.Context, orgID uuid.UUID) ([]VenueRow, error)
+	UpdateVenue(ctx context.Context, id, orgID uuid.UUID, cityID *uuid.UUID, name string, address *string, capacityDefault *int32) (VenueRow, error)
+	SoftDeleteVenue(ctx context.Context, id, orgID uuid.UUID) (VenueRow, error)
+
 	// Geo reference data — countries & cities (feature #123)
 	ListCountries(ctx context.Context, locale string) ([]ListCountryRow, error)
 	ListCities(ctx context.Context, locale string, countryID *uuid.UUID) ([]ListCityRow, error)
