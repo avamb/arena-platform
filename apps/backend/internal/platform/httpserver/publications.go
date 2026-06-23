@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
@@ -51,7 +52,7 @@ func publicationFromRow(ep gen.EventPublicationRow) publicationResponse {
 		ID:          ep.ID.String(),
 		EventID:     ep.EventID.String(),
 		FeedTokenID: ep.FeedTokenID.String(),
-		PublishedAt: ep.PublishedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
+		PublishedAt: ep.PublishedAt.UTC().Format(time.RFC3339),
 	}
 	if ep.CityID != nil {
 		s := ep.CityID.String()

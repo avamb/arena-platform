@@ -217,7 +217,13 @@ func NewRouter(deps Deps) chi.Router {
 	//     POST/PUT/PATCH so mutating endpoints never receive non-JSON bodies
 	//     without an explicit client mistake being surfaced as a 415 early in
 	//     the chain, before any handler logic runs.
-	r.Use(RequireJSONContentType)
+	//
+	//     The route-aware wrapper is used here so that requests with the wrong
+	//     HTTP method on an EXISTING path (405 case) receive 405 Method Not
+	//     Allowed from chi rather than 415 Unsupported Media Type.  For
+	//     completely unknown paths (404 case) the middleware still returns 415
+	//     before chi's 404 handler runs, preserving the existing behaviour.
+	r.Use(routeAwareContentTypeMiddleware(r))
 
 	return r
 }
@@ -813,6 +819,84 @@ func RequireJSONContentType(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// routeAwareContentTypeMiddleware wraps RequireJSONContentType with route
+// awareness so that the 405 Method Not Allowed case is handled correctly.
+//
+// When a PUT/PATCH/POST request arrives without the correct Content-Type:
+//   - If the URL path is registered in the router but the HTTP method is not
+//     (i.e. chi would respond with 405), the middleware passes the request
+//     through so chi's MethodNotAllowed handler can run and return 405.
+//   - If the URL path is not registered at all (i.e. chi would respond with
+//     404), the middleware still returns 415 before routing — preserving the
+//     existing "415 before 404" behaviour tested by content_type_test.go.
+//   - If the method IS registered (a handler would run), the middleware
+//     returns 415 as before — the handler must not receive a non-JSON body.
+//
+// The router argument is captured by closure; since routes are mounted after
+// NewRouter returns but before any request is served, Match() sees the full
+// route tree at request time.
+func routeAwareContentTypeMiddleware(router chi.Router) func(http.Handler) http.Handler {
+	// methodsToCheck is the ordered set of HTTP methods used to detect whether
+	// a path is registered under *any* method (to distinguish 404 from 405).
+	methodsToCheck := []string{
+		http.MethodGet, http.MethodPost, http.MethodPut,
+		http.MethodPatch, http.MethodDelete, http.MethodHead, http.MethodOptions,
+	}
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method {
+			case http.MethodPost, http.MethodPut, http.MethodPatch:
+				ct := r.Header.Get("Content-Type")
+				mediaType := strings.ToLower(strings.TrimSpace(ct))
+				if idx := strings.IndexByte(mediaType, ';'); idx >= 0 {
+					mediaType = strings.TrimSpace(mediaType[:idx])
+				}
+				if mediaType != "application/json" {
+					// Check if this exact method+path is registered.
+					rctx := chi.NewRouteContext()
+					if !router.Match(rctx, r.Method, r.URL.Path) {
+						// Method not registered for this path. Check whether the path
+						// itself exists under any other method (405 vs 404 detection).
+						for _, m := range methodsToCheck {
+							if m == r.Method {
+								continue
+							}
+							rctx2 := chi.NewRouteContext()
+							if router.Match(rctx2, m, r.URL.Path) {
+								// Path is known; wrong method → let chi return 405.
+								next.ServeHTTP(w, r)
+								return
+							}
+						}
+						// Path is not registered at all → fall through to 415.
+					}
+					// Either the method IS registered (handler would run) or the path
+					// doesn't exist entirely (404 case): enforce Content-Type → 415.
+					w.Header().Set("Accept-Post", "application/json")
+					requestID := logging.RequestID(r.Context())
+					if requestID == "" {
+						requestID = strings.TrimSpace(r.Header.Get(HeaderRequestID))
+					}
+					traceID := strings.TrimSpace(r.Header.Get(HeaderTraceID))
+					w.Header().Set("Content-Type", "application/json; charset=utf-8")
+					w.WriteHeader(http.StatusUnsupportedMediaType)
+					_ = json.NewEncoder(w).Encode(map[string]any{
+						"error": map[string]any{
+							"code":       "http.unsupported_media_type",
+							"message":    "Content-Type must be application/json",
+							"request_id": requestID,
+							"trace_id":   traceID,
+						},
+					})
+					return
+				}
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // -----------------------------------------------------------------------------

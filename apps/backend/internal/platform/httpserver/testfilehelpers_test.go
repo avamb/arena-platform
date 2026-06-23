@@ -300,6 +300,19 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "inventory_ledger.sql.go"),
 		}
+	// Reservations state machine (feature #131)
+	case "0021_reservations.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0021_reservations.sql"),
+		}
+	case "reservations.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "reservations.sql"),
+		}
+	case "reservations.sql.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "reservations.sql.go"),
+		}
 	// Shared gen/httpserver files referenced by multiple test files
 	case "querier.go":
 		candidates = []string{
@@ -312,6 +325,14 @@ func resolveFileInRepo(repoRoot, name string) string {
 	case "server.go":
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "server.go"),
+		}
+	case "reservations.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "reservations.go"),
+		}
+	case "reservation_processor.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "reservation_processor.go"),
 		}
 	default:
 		// Generic fallback: try the file directly at the repo root.

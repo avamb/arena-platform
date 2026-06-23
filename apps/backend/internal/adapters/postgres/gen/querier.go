@@ -145,6 +145,14 @@ type Querier interface {
 	ReleaseCapacity(ctx context.Context, sessionID uuid.UUID, tierID *uuid.UUID, amount int32) (InventoryLedgerRow, error)
 	ConfirmCapacity(ctx context.Context, sessionID uuid.UUID, tierID *uuid.UUID, amount int32) (InventoryLedgerRow, error)
 	UpdateCapacityTotal(ctx context.Context, sessionID uuid.UUID, tierID *uuid.UUID, newTotal *int32) (InventoryLedgerRow, error)
+
+	// Reservations — state machine for capacity holds (feature #131)
+	InsertReservation(ctx context.Context, orgID, channelID, sessionID uuid.UUID, tierID, userID *uuid.UUID, quantity int32, expiresAt time.Time) (ReservationRow, error)
+	GetReservationByID(ctx context.Context, id uuid.UUID) (ReservationRow, error)
+	UpdateReservationState(ctx context.Context, id uuid.UUID, state string) (ReservationRow, error)
+	GetExpiredReservations(ctx context.Context, limit int32) ([]ReservationRow, error)
+	ListReservationsBySession(ctx context.Context, sessionID uuid.UUID) ([]ReservationRow, error)
+	ListReservationsByUser(ctx context.Context, userID uuid.UUID) ([]ReservationRow, error)
 }
 
 // Compile-time assertion: *Queries must implement Querier.

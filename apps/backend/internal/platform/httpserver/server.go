@@ -186,6 +186,10 @@ type Server struct {
 	// Nil when no PgxPool was supplied. Feature #130.
 	inventoryQueries *gen.Queries
 
+	// reservationQueries is the sqlc Queries instance used by the reservation
+	// endpoints and TTL processor. Nil when no PgxPool was supplied. Feature #131.
+	reservationQueries *gen.Queries
+
 	// faultInjectOutboxAfterAudit is a dev/test-only fault injection flag.
 	// When true, handleEcho forces a transaction rollback immediately after
 	// the audit_events INSERT succeeds, before writing to outbox_events.
@@ -376,6 +380,12 @@ type Options struct {
 	// Inject gen.New(nil) in tests that need inventory routes mounted without a real pool.
 	// Feature #130.
 	InventoryQueries *gen.Queries
+
+	// ReservationQueries injects a pre-constructed *gen.Queries for the reservation
+	// endpoints. When nil and PgxPool is non-nil, gen.New(PgxPool) is used.
+	// Inject gen.New(nil) in tests that need reservation routes mounted without a real pool.
+	// Feature #131.
+	ReservationQueries *gen.Queries
 }
 
 // New constructs (but does not start) the HTTP server.
@@ -525,6 +535,12 @@ func New(opts Options) *Server {
 		inventoryQueries = gen.New(opts.PgxPool)
 	}
 
+	// sqlc Queries for reservation endpoints (feature #131).
+	reservationQueries := opts.ReservationQueries
+	if reservationQueries == nil && opts.PgxPool != nil {
+		reservationQueries = gen.New(opts.PgxPool)
+	}
+
 	// Extend the permission checker with membership-derived role resolution
 	// (feature #120 step 3). When a PgxPool is available, the DBChecker is
 	// augmented so that each Check() call unions the JWT roles with the user's
@@ -576,6 +592,7 @@ func New(opts Options) *Server {
 		gdprQueries:                 gdprQueries,
 		tierQueries:                 tierQueries,
 		inventoryQueries:            inventoryQueries,
+		reservationQueries:          reservationQueries,
 	}
 
 	s.mountOperationalRoutes()
@@ -1121,6 +1138,43 @@ func (s *Server) mountV1Routes() {
 				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
 				pr.Use(permissions.RequirePermission(s.perms, "inventory.confirm", "inventory"))
 				pr.Post("/organizations/{org_id}/events/{event_id}/sessions/{session_id}/inventory/confirm", s.handleConfirmCapacity)
+			})
+		}
+
+		// ── Reservations (feature #131) ─────────────────────────────────────
+		//
+		// Reservation state machine endpoints. All require JWT auth.
+		//
+		//   POST   /v1/reservations              — create draft (reservation.create)
+		//   GET    /v1/reservations/{id}         — get by ID (reservation.read)
+		//   PATCH  /v1/reservations/{id}/activate — draft → active (reservation.activate)
+		//   DELETE /v1/reservations/{id}         — cancel (reservation.cancel)
+		if s.stub != nil && s.stub.Enabled() && s.reservationQueries != nil {
+			// GET /v1/reservations/{id} (reservation.read)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "reservation.read", "reservations"))
+				pr.Get("/reservations/{id}", s.handleGetReservation)
+			})
+			// PATCH /v1/reservations/{id}/activate (reservation.activate)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "reservation.activate", "reservations"))
+				pr.Patch("/reservations/{id}/activate", s.handleActivateReservation)
+			})
+		}
+		if s.stub != nil && s.stub.Enabled() && s.reservationQueries != nil && s.inventoryQueries != nil && s.pool != nil {
+			// POST /v1/reservations (reservation.create)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "reservation.create", "reservations"))
+				pr.Post("/reservations", s.handleCreateReservation)
+			})
+			// DELETE /v1/reservations/{id} (reservation.cancel)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "reservation.cancel", "reservations"))
+				pr.Delete("/reservations/{id}", s.handleCancelReservation)
 			})
 		}
 
