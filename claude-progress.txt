@@ -5,6 +5,82 @@ arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
 --------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #110 (Outbox dispatcher)
+"Worker-based publisher: consume outbox_events transactionally, sign payloads,
+hand off to webhook delivery. HMAC signature, exactly-once-effectful."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #110: Implemented the full outbox dispatcher with HMAC-signed webhook delivery.
+
+Steps covered:
+  Step 1: Wired OutboxEventsDispatcher into cmd/arena-worker/main.go
+          - New section 6b starts the dispatcher alongside the job queue
+          - buildOutboxDispatcher() helper: uses WebhookDispatcher when
+            OUTBOX_WEBHOOK_URL is set, falls back to NoopDispatcher otherwise
+          - Graceful Stop() call added to the shutdown sequence
+
+  Step 2: Stable JSON serialisation
+          - StableJSONPayload(v any) — wraps encoding/json.Marshal (struct
+            fields in declaration order, map keys alphabetically sorted)
+          - StableJSONMap(m map[string]any) — explicit sort.Strings + marshal
+            for flat maps, identical input always produces identical bytes
+          - webhookEnvelope struct ensures outer field order is deterministic
+
+  Step 3: HMAC-SHA256 signature header X-Arena-Signature: sha256=<hex>
+          - ComputeHMAC(body, secret []byte) string
+          - VerifyHMACSignature(body, secret, sigHeader) bool
+          - Constant-time comparison prevents timing attacks
+          - WebhookDispatcher only adds header when SigningSecret is non-nil
+
+  Step 4: WebhookDispatcher HTTP delivery client
+          - POSTs webhookEnvelope JSON to TargetURL
+          - Headers: Content-Type, X-Arena-Event-Type, X-Arena-Aggregate-Type,
+            X-Arena-Event-ID (from payload event_id), X-Arena-Signature
+          - 4xx/5xx responses returned as non-nil error → at-least-once retry
+          - Default HTTP client with 10-second timeout
+
+  Step 5: Integration contract (in-memory simulation)
+          - TxCommitEventPublished: seeded row → dispatcher delivers via HTTP
+          - TxRollbackEventAbsent: no seeded row → no HTTP delivery
+          - ReplaySafety: once processed_at is set, no re-delivery
+
+CHANGES
+-------
+New files:
+  - apps/backend/internal/platform/outbox/webhook_dispatcher.go
+      WebhookDispatcher, webhookEnvelope, StableJSONPayload, StableJSONMap,
+      ComputeHMAC, VerifyHMACSignature, sortedMapCopy
+  - apps/backend/internal/platform/outbox/outbox_dispatcher_110_test.go
+      27 tests covering all 5 feature steps
+
+Modified files:
+  - apps/backend/internal/platform/config/config.go
+      Added OutboxWebhookURL, OutboxSigningSecret, OutboxPollInterval fields
+      with env/required/default tags; OutboxPollInterval parsed in Load()
+  - apps/backend/cmd/arena-worker/main.go
+      Added outbox import, section 6b (OutboxEventsDispatcher startup),
+      buildOutboxDispatcher() function, graceful Stop() in shutdown
+
+VERIFICATION
+------------
+  - 27/27 TestOutboxDispatcher110_* tests: PASS (0.253s)
+  - All TestProcessedAt_*, TestNoDoubleDelivery_*, TestOutboxDispatcher_*: PASS
+  - go build ./apps/backend/...: EXIT 0 (all packages compile)
+  - Pre-existing failures unchanged (adapters/postgres, observability metrics)
+  - git commit: 0150ed1
+
+PROGRESS METRIC
+---------------
+Stats at session start: 113/171 passing, 2 in_progress.
+This session: feature #110 completed and marked passing -> 114/171 passing.
+
+================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
 Session: 2026-06-23 -- Feature #115 (Login + JWT session issuance)
 "POST /v1/auth/login: email+password -> JWT access token (15min) + refresh token
 (30d). Replaces StubProvider in production builds. Rate limit per IP+email."
