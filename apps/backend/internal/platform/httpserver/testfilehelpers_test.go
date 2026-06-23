@@ -235,6 +235,32 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "password_reset_tokens.sql.go"),
 		}
+	// Sessions (feature #126)
+	case "0016_sessions.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0016_sessions.sql"),
+		}
+	case "sessions.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "sessions.sql"),
+		}
+	case "sessions.sql.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "sessions.sql.go"),
+		}
+	// Event publications (feature #151)
+	case "0017_event_publications.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0017_event_publications.sql"),
+		}
+	case "event_publications.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "event_publications.sql"),
+		}
+	case "event_publications.sql.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "event_publications.sql.go"),
+		}
 	default:
 		// Generic fallback: try the file directly at the repo root.
 		candidates = []string{

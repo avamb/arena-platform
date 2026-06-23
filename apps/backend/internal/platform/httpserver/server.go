@@ -161,6 +161,16 @@ type Server struct {
 	// gated to the owning org. Nil when no PgxPool was supplied. Feature #125.
 	eventQueries *gen.Queries
 
+	// publicationQueries is the sqlc Queries instance used by the event publication
+	// endpoints (publish/unpublish/list). Nil when no PgxPool was supplied. Feature #151.
+	publicationQueries *gen.Queries
+
+	// sessionQueries is the sqlc Queries instance used by the session CRUD endpoints.
+	// Sessions are scoped to an event. All write endpoints require the org_id in the
+	// path to match the event's owning org (enforced via the event hierarchy).
+	// Nil when no PgxPool was supplied. Feature #126.
+	sessionQueries *gen.Queries
+
 	// faultInjectOutboxAfterAudit is a dev/test-only fault injection flag.
 	// When true, handleEcho forces a transaction rollback immediately after
 	// the audit_events INSERT succeeds, before writing to outbox_events.
@@ -320,6 +330,19 @@ type Options struct {
 	// Inject gen.New(nil) in tests that need event routes mounted without a real pool.
 	// Feature #125.
 	EventQueries *gen.Queries
+
+	// PublicationQueries injects a pre-constructed *gen.Queries for the event
+	// publication endpoints (publish/unpublish/list).
+	// When nil and PgxPool is non-nil, gen.New(PgxPool) is used.
+	// Inject gen.New(nil) in tests that need publication routes mounted without a real pool.
+	// Feature #151.
+	PublicationQueries *gen.Queries
+
+	// SessionQueries injects a pre-constructed *gen.Queries for the session CRUD
+	// endpoints. When nil and PgxPool is non-nil, gen.New(PgxPool) is used.
+	// Inject gen.New(nil) in tests that need session routes mounted without a real pool.
+	// Feature #126.
+	SessionQueries *gen.Queries
 }
 
 // New constructs (but does not start) the HTTP server.
@@ -439,6 +462,18 @@ func New(opts Options) *Server {
 		eventQueries = gen.New(opts.PgxPool)
 	}
 
+	// sqlc Queries for event publication endpoints (feature #151).
+	publicationQueries := opts.PublicationQueries
+	if publicationQueries == nil && opts.PgxPool != nil {
+		publicationQueries = gen.New(opts.PgxPool)
+	}
+
+	// sqlc Queries for session CRUD endpoints (feature #126).
+	sessionQueries := opts.SessionQueries
+	if sessionQueries == nil && opts.PgxPool != nil {
+		sessionQueries = gen.New(opts.PgxPool)
+	}
+
 	// Extend the permission checker with membership-derived role resolution
 	// (feature #120 step 3). When a PgxPool is available, the DBChecker is
 	// augmented so that each Check() call unions the JWT roles with the user's
@@ -485,6 +520,8 @@ func New(opts Options) *Server {
 		venueQueries:                venueQueries,
 		feedTokenQueries:            feedTokenQueries,
 		eventQueries:                eventQueries,
+		publicationQueries:          publicationQueries,
+		sessionQueries:              sessionQueries,
 	}
 
 	s.mountOperationalRoutes()
@@ -901,6 +938,79 @@ func (s *Server) mountV1Routes() {
 				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
 				pr.Use(permissions.RequirePermission(s.perms, "event.delete", "events"))
 				pr.Delete("/organizations/{org_id}/events/{id}", s.handleDeleteEvent)
+			})
+		}
+
+		// ── Sessions (feature #126) ─────────────────────────────────────────
+		//
+		// Sessions are time slots for an event with independent inventory.
+		// All session endpoints require JWT auth + a named permission.
+		// Routes are nested under /v1/organizations/{org_id}/events/{event_id}/sessions
+		// so both the org scope and event scope are enforced at the path level.
+		//
+		//   POST   .../sessions        — create (session.create)
+		//   GET    .../sessions        — list   (session.read)
+		//   GET    .../sessions/{id}   — get    (session.read)
+		//   PATCH  .../sessions/{id}   — update (session.update)
+		//   DELETE .../sessions/{id}   — delete (session.delete)
+		if s.stub != nil && s.stub.Enabled() && s.sessionQueries != nil {
+			// GET .../sessions and GET .../sessions/{id} (session.read)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "session.read", "sessions"))
+				pr.Get("/organizations/{org_id}/events/{event_id}/sessions", s.handleListSessions)
+				pr.Get("/organizations/{org_id}/events/{event_id}/sessions/{id}", s.handleGetSession)
+			})
+		}
+		if s.stub != nil && s.stub.Enabled() && s.sessionQueries != nil && s.pool != nil {
+			// POST .../sessions (session.create)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "session.create", "sessions"))
+				pr.Post("/organizations/{org_id}/events/{event_id}/sessions", s.handleCreateSession)
+			})
+			// PATCH .../sessions/{id} (session.update)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "session.update", "sessions"))
+				pr.Patch("/organizations/{org_id}/events/{event_id}/sessions/{id}", s.handleUpdateSession)
+			})
+			// DELETE .../sessions/{id} (session.delete)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "session.delete", "sessions"))
+				pr.Delete("/organizations/{org_id}/events/{event_id}/sessions/{id}", s.handleDeleteSession)
+			})
+		}
+
+		// ── Event Publications (feature #151) ────────────────────────────────
+		//
+		// Manage which agent feed tokens an event is published to.  Mirrors
+		// the legacy Bil24 Subscriptions panel for migration compatibility.
+		//
+		//   POST   /v1/events/{event_id}/publications                        — publish (publication.create)
+		//   DELETE /v1/events/{event_id}/publications/{feed_token_id}        — unpublish (publication.delete)
+		//   GET    /v1/events/{event_id}/publications                        — list (publication.read)
+		if s.stub != nil && s.stub.Enabled() && s.publicationQueries != nil {
+			// GET /v1/events/{event_id}/publications (publication.read)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "publication.read", "publications"))
+				pr.Get("/events/{event_id}/publications", s.handleListPublications)
+			})
+		}
+		if s.stub != nil && s.stub.Enabled() && s.publicationQueries != nil && s.pool != nil {
+			// POST /v1/events/{event_id}/publications (publication.create)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "publication.create", "publications"))
+				pr.Post("/events/{event_id}/publications", s.handlePublishEvent)
+			})
+			// DELETE /v1/events/{event_id}/publications/{feed_token_id} (publication.delete)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "publication.delete", "publications"))
+				pr.Delete("/events/{event_id}/publications/{feed_token_id}", s.handleUnpublishEvent)
 			})
 		}
 

@@ -104,6 +104,21 @@ type Querier interface {
 	SoftDeleteEvent(ctx context.Context, id, orgID uuid.UUID) (EventRow, error)
 	UpsertEventI18nName(ctx context.Context, eventIDStr, locale, value string) error
 	UpsertEventI18nDescription(ctx context.Context, eventIDStr, locale, value string) error
+
+	// Event publications — publish events to agent feed channels (feature #151)
+	PublishEvent(ctx context.Context, eventID, feedTokenID uuid.UUID, cityID *uuid.UUID) (EventPublicationRow, error)
+	UnpublishEvent(ctx context.Context, eventID, feedTokenID uuid.UUID) error
+	ListPublicationsByEvent(ctx context.Context, eventID uuid.UUID) ([]EventPublicationRow, error)
+	ListPublicationsByFeedToken(ctx context.Context, feedTokenID uuid.UUID) ([]EventPublicationRow, error)
+	GetPublication(ctx context.Context, eventID, feedTokenID uuid.UUID) (EventPublicationRow, error)
+
+	// Sessions — time slots for an event with independent inventory (feature #126)
+	InsertSession(ctx context.Context, eventID uuid.UUID, startAt, endAt time.Time, capacityTotal int32, status string) (SessionRow, error)
+	GetSessionByID(ctx context.Context, id, eventID uuid.UUID) (SessionRow, error)
+	ListSessionsByEvent(ctx context.Context, eventID uuid.UUID) ([]SessionRow, error)
+	UpdateSession(ctx context.Context, id, eventID uuid.UUID, startAt, endAt *time.Time, capacityTotal *int32, status string) (SessionRow, error)
+	SoftDeleteSession(ctx context.Context, id, eventID uuid.UUID) (SessionRow, error)
+	CountOverlappingSessions(ctx context.Context, eventID, excludeID uuid.UUID, startAt, endAt time.Time) (int32, error)
 }
 
 // Compile-time assertion: *Queries must implement Querier.
