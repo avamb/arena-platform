@@ -10154,3 +10154,77 @@ Stats before session: 117/171 passing.
 This session: feature #121 completed and marked passing -> 118/171 passing.
 
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #134 (Payment provider adapter interface + routing policy)
+ADR-008 adapter, ADR-011 direct-merchant+MOR
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #134: All 5 feature steps completed and verified.
+
+Steps covered:
+  Step 1: PaymentProvider interface in internal/payments/provider.go
+          - PaymentProvider interface with 5 methods:
+            ProviderName, CreateIntent, CapturePayment, RefundPayment, HandleWebhook
+          - Full request/response types for each method
+          - Sentinel errors: ErrUnknownProvider, ErrInvalidWebhookSignature
+
+  Step 2: PaymentRoutingPolicy in internal/payments/routing.go
+          - ChannelConfig struct with Provider and PaymentMode fields
+          - NewPaymentRoutingPolicy + Register + ResolveProvider
+          - Validates payment_mode (direct_merchant or merchant_of_record)
+          - Returns ErrUnknownProvider for unregistered/invalid providers
+          - HTTP handlers should map ErrUnknownProvider -> 400 Bad Request
+
+  Step 3: Webhook signature verification in internal/payments/webhook.go
+          - VerifyStripeSignature: parses Stripe-Signature header t=ts,v1=hmac
+            with replay-attack protection via configurable tolerance window
+          - VerifyAllPaySignature: X-AllPay-Signature hex HMAC verification
+          - ComputeHMACSHA256: helper for generating valid signatures in tests
+          - DefaultWebhookTolerance = 5 * time.Minute
+
+  Step 4: Mock provider in internal/payments/mock.go
+          - MockProvider: configurable per-method stubs, RecordedCalls tracking
+          - NewMockProvider: default stubs returning zero-value success responses
+          - ErrorProvider: always returns a preset error
+          - NewErrorProvider: factory function for error-path testing
+
+  Step 5: Unit tests in internal/payments/provider_134_test.go
+          - 47 tests covering all steps
+          - Compile-time interface assertions
+          - MockProvider default stubs + custom stub injection
+          - RoutingPolicy: registration, resolution, all valid provider/mode combos
+          - RoutingPolicy: unknown provider -> ErrUnknownProvider (maps to HTTP 400)
+          - RoutingPolicy: invalid payment_mode -> ErrUnknownProvider
+          - Register panics on nil/empty-name adapters
+          - StripeSignature: valid, wrong secret, tampered body, expired timestamp
+          - AllPaySignature: valid, wrong secret, uppercase header normalisation
+          - ComputeHMACSHA256: lowercase hex, deterministic, differs on different input
+          - ErrorProvider all methods return configured error
+          - Full integration scenario: routing + CreateIntent + Refund + wrong provider
+
+CHANGES
+-------
+New files:
+  - apps/backend/internal/payments/provider.go
+  - apps/backend/internal/payments/routing.go
+  - apps/backend/internal/payments/webhook.go
+  - apps/backend/internal/payments/mock.go
+  - apps/backend/internal/payments/provider_134_test.go
+
+VERIFICATION
+------------
+  - 47/47 TestPayment134_* tests: PASS (0.008s)
+  - go build ./apps/backend/...: EXIT 0
+  - git commit: 20c8247
+
+PROGRESS METRIC
+---------------
+Stats before session: 118/171 passing.
+This session: feature #134 completed and marked passing -> 121/171 passing.
+
+================================================================================
