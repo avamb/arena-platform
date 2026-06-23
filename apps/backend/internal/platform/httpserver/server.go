@@ -23,12 +23,16 @@ import (
 	"time"
 
 	httpadapter "github.com/abhteam/arena_new/apps/backend/internal/adapters/http"
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/clock"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/idempotency"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -107,6 +111,18 @@ type Server struct {
 	idem    idempotency.Store
 	metrics       http.Handler
 	typedMetrics  *observability.Metrics
+	outboxWriter  outbox.Writer
+	perms         permissions.Checker
+
+	// clock provides the wall-clock time used by handleServerInfo (and any
+	// future handler that needs deterministic time in tests). Defaults to
+	// clock.New() (real system clock) when nil.
+	clk clock.Clock
+
+	// siQueries is the sqlc Queries instance used by handleServerInfo to
+	// execute SelectServerTime. Nil when no PgxPool was supplied — in that
+	// case handleServerInfo falls back to the server's clock.
+	siQueries *gen.Queries
 
 	// faultInjectOutboxAfterAudit is a dev/test-only fault injection flag.
 	// When true, handleEcho forces a transaction rollback immediately after
@@ -210,6 +226,20 @@ type Options struct {
 	// When nil, locale negotiation still occurs (for the active_locale response
 	// field in /v1/info) but error messages fall back to hardcoded English strings.
 	Bundle *i18n.Bundle
+
+	// Outbox is the outbox.Writer used by POST /v1/scaffold/echo to append
+	// domain events within the same transaction as the scaffold_echo INSERT.
+	// When nil and PgxPool is non-nil, a PGWriter is constructed lazily.
+	Outbox outbox.Writer
+
+	// Permissions is the permissions.Checker used by POST /v1/scaffold/echo.
+	// When nil, AllowAllChecker is used (foundation milestone placeholder).
+	Permissions permissions.Checker
+
+	// Clock overrides the time source used by handleServerInfo. When nil,
+	// clock.New() (real system clock) is used. Inject clock.NewFake in tests
+	// to make time deterministic.
+	Clock clock.Clock
 }
 
 // New constructs (but does not start) the HTTP server.
@@ -247,8 +277,8 @@ func New(opts Options) *Server {
 		r.Use(i18n.LocaleMiddleware(opts.Bundle, defaultLocale, supported))
 	}
 
-	// Lazily construct PG-backed audit + idempotency stores when the caller
-	// didn't supply concrete implementations.
+	// Lazily construct PG-backed audit + idempotency + outbox stores when
+	// the caller didn't supply concrete implementations.
 	auditWriter := opts.Audit
 	if auditWriter == nil && opts.PgxPool != nil {
 		auditWriter = audit.NewPGWriter(opts.PgxPool)
@@ -256,6 +286,26 @@ func New(opts Options) *Server {
 	idemStore := opts.Idem
 	if idemStore == nil && opts.PgxPool != nil {
 		idemStore = idempotency.NewPGStore(opts.PgxPool)
+	}
+	outboxWriter := opts.Outbox
+	if outboxWriter == nil && opts.PgxPool != nil {
+		outboxWriter = outbox.NewPGWriter(opts.PgxPool)
+	}
+	permsChecker := opts.Permissions
+	if permsChecker == nil {
+		permsChecker = permissions.AllowAll()
+	}
+
+	// Clock defaults to the real system clock.
+	clk := opts.Clock
+	if clk == nil {
+		clk = clock.New()
+	}
+
+	// sqlc Queries for GET /v1/server-info — constructed from PgxPool when available.
+	var siQueries *gen.Queries
+	if opts.PgxPool != nil {
+		siQueries = gen.New(opts.PgxPool)
 	}
 
 	// Assemble the readiness probe list.
@@ -279,6 +329,10 @@ func New(opts Options) *Server {
 		idem:         idemStore,
 		metrics:      opts.MetricsHandler,
 		typedMetrics: opts.Metrics,
+		outboxWriter: outboxWriter,
+		perms:        permsChecker,
+		clk:          clk,
+		siQueries:    siQueries,
 
 		faultInjectOutboxAfterAudit: opts.FaultInjectOutboxAfterAudit,
 		slowDelay:                   opts.SlowDelay,
@@ -354,6 +408,9 @@ func (s *Server) mountV1Routes() {
 	s.router.Route("/v1", func(r chi.Router) {
 		// Anonymous (or authenticated) routes
 		r.Get("/info", s.handleInfo)
+		// GET /v1/server-info — minimal public endpoint demonstrating the full
+		// router → handler → sqlc → response chain (feature #104). No auth required.
+		r.Get("/server-info", s.handleServerInfo)
 
 		// Debug routes — only mounted when DEBUG_ROUTES_ENABLED=true. These
 		// routes exist solely for integration tests and developer tooling; they
@@ -408,6 +465,40 @@ func (s *Server) mountV1Routes() {
 				}
 				pr.Use(idempotency.Middleware(s.idem, idemOpts))
 				pr.Post("/echo", s.handleEcho)
+			})
+		}
+
+		// POST /v1/scaffold/echo — scaffolding example demonstrating the full
+		// cross-cutting boundary stack:
+		//   auth → permission('scaffold.echo.create') → idempotency →
+		//   BEGIN tx → InsertScaffoldEcho → audit → outbox → COMMIT → 201
+		//
+		// Mounted when all four dependencies are wired (pool, audit, idem, outbox).
+		// This endpoint is a scaffolding example and will be removed when real
+		// domain command endpoints arrive.
+		if s.stub != nil && s.stub.Enabled() && s.idem != nil && s.audit != nil && s.pool != nil && s.outboxWriter != nil {
+			r.Route("/scaffold", func(sr chi.Router) {
+				sr.Group(func(pr chi.Router) {
+					pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+					pr.Use(permissions.RequirePermission(s.perms, "scaffold.echo.create", "scaffold_echo"))
+					scaffoldIdemOpts := idempotency.Options{
+						Scope: "POST /v1/scaffold/echo",
+						TTL:   24 * time.Hour,
+						ActorID: func(ctx context.Context) string {
+							if a, ok := auth.ActorFromContext(ctx); ok {
+								return a.ID
+							}
+							return ""
+						},
+					}
+					if s.typedMetrics != nil {
+						scaffoldIdemOpts.OnReplay = func() {
+							s.typedMetrics.IdempotencyReplaysTotal.Inc()
+						}
+					}
+					pr.Use(idempotency.Middleware(s.idem, scaffoldIdemOpts))
+					pr.Post("/echo", s.handleScaffoldEcho)
+				})
 			})
 		}
 	})

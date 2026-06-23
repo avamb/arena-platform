@@ -234,6 +234,58 @@ type PaginationMeta struct {
 	TotalPages int `json:"total_pages"`
 }
 
+// ServerInfoResponse defines model for ServerInfoResponse (GET /v1/server-info).
+// Demonstrates the full router → handler → sqlc → response chain.
+type ServerInfoResponse struct {
+	// BuildSha Git commit SHA embedded at build time via runtime/debug.ReadBuildInfo
+	BuildSha string `json:"build_sha"`
+
+	// Environment Deployment environment (development, staging, production)
+	Environment string `json:"environment"`
+
+	// Locales BCP-47 locale tags active on this server
+	Locales []string `json:"locales"`
+
+	// ServerTime Current UTC timestamp from the PostgreSQL server (via sqlc SelectServerTime)
+	ServerTime time.Time `json:"server_time"`
+
+	// Version Semantic version string from build metadata
+	Version string `json:"version"`
+
+	// WelcomeMessage Localised greeting resolved via Accept-Language → ?lang= → default negotiation
+	WelcomeMessage string `json:"welcome_message"`
+}
+
+// ScaffoldEchoRequest defines model for ScaffoldEchoRequest.
+// This endpoint is a scaffolding example and will be removed when real domain
+// command endpoints arrive.
+type ScaffoldEchoRequest struct {
+	// Message Message to store. Must be non-empty. Maximum 8 KiB.
+	Message string `json:"message"`
+}
+
+// ScaffoldEchoResponse defines model for ScaffoldEchoResponse.
+// This endpoint is a scaffolding example and will be removed when real domain
+// command endpoints arrive.
+type ScaffoldEchoResponse struct {
+	// CreatedAt Server-side timestamp when the row was created (RFC3339Nano)
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id UUIDv7 primary key of the newly created scaffold_echo row
+	Id openapi_types.UUID `json:"id"`
+
+	// Message The stored message from the request body
+	Message string `json:"message"`
+}
+
+// PostV1ScaffoldEchoParams defines parameters for PostV1ScaffoldEcho.
+type PostV1ScaffoldEchoParams struct {
+	// IdempotencyKey Client-generated UUID that uniquely identifies this mutation request.
+	// Replays (same actor + same key) return the originally cached response
+	// without re-executing the handler. TTL is 24 hours.
+	IdempotencyKey openapi_types.UUID `json:"Idempotency-Key"`
+}
+
 // PostV1DevAuthTokenJSONRequestBody defines body for PostV1DevAuthToken for application/json ContentType.
 type PostV1DevAuthTokenJSONRequestBody = DevAuthTokenRequest
 
@@ -242,3 +294,6 @@ type PostV1DevTokenJSONRequestBody = DevTokenRequest
 
 // PostV1EchoJSONRequestBody defines body for PostV1Echo for application/json ContentType.
 type PostV1EchoJSONRequestBody = EchoRequest
+
+// PostV1ScaffoldEchoJSONRequestBody defines body for PostV1ScaffoldEcho for application/json ContentType.
+type PostV1ScaffoldEchoJSONRequestBody = ScaffoldEchoRequest

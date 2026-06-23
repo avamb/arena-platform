@@ -7,6 +7,7 @@ package gen
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -27,4 +28,18 @@ func (q *Queries) SelectUUIDv7(ctx context.Context) (uuid.UUID, error) {
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
+}
+
+const selectServerTime = `-- name: SelectServerTime :one
+SELECT now() AS server_time
+`
+
+// SelectServerTime returns the current PostgreSQL server timestamp.
+// It is used by GET /v1/server-info to demonstrate the full
+// router → handler → sqlc → response chain.
+func (q *Queries) SelectServerTime(ctx context.Context) (time.Time, error) {
+	row := q.db.QueryRow(ctx, selectServerTime)
+	var serverTime time.Time
+	err := row.Scan(&serverTime)
+	return serverTime, err
 }

@@ -10,6 +10,9 @@
 #
 # Structure is ready for uk and es: add a locale file with the same keys.
 
+["server.welcome"]
+other = "Welcome to Arena Platform!"
+
 ["error.unauthorized"]
 other = "Authentication required: provide a valid Bearer token."
 

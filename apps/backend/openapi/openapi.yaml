@@ -201,6 +201,44 @@ components:
           description: Distributed trace ID
           example: "4bf92f3577b34da6a3ce929d0e0e4736"
 
+    ServerInfoResponse:
+      type: object
+      required:
+        - version
+        - build_sha
+        - server_time
+        - environment
+        - locales
+        - welcome_message
+      properties:
+        version:
+          type: string
+          description: Semantic version string from build metadata
+          example: "0.1.0"
+        build_sha:
+          type: string
+          description: Git commit SHA embedded at build time via runtime/debug.ReadBuildInfo
+          example: "a1b2c3d4e5f6"
+        server_time:
+          type: string
+          format: date-time
+          description: Current UTC timestamp from the PostgreSQL server (via sqlc SelectServerTime)
+          example: "2026-06-22T05:00:00.000000000Z"
+        environment:
+          type: string
+          description: Deployment environment (development, staging, production)
+          example: "development"
+        locales:
+          type: array
+          items:
+            type: string
+          description: BCP-47 locale tags active on this server (ru, en)
+          example: ["ru", "en"]
+        welcome_message:
+          type: string
+          description: Localised greeting resolved via Accept-Language → ?lang= → default negotiation
+          example: "Welcome to Arena Platform!"
+
     DevTokenRequest:
       type: object
       properties:
@@ -369,6 +407,45 @@ components:
           description: Server-side timestamp when the response was built (RFC3339Nano)
           example: "2026-06-22T05:00:00.000000000Z"
 
+    ScaffoldEchoRequest:
+      type: object
+      required: [message]
+      additionalProperties: false
+      description: |
+        Request body for POST /v1/scaffold/echo.
+        This endpoint is a scaffolding example demonstrating the full
+        cross-cutting boundary stack. It will be removed when real domain
+        command endpoints exist.
+      properties:
+        message:
+          type: string
+          minLength: 1
+          maxLength: 8192
+          description: Message to store. Must be non-empty. Maximum 8 KiB.
+          example: "hello scaffold"
+
+    ScaffoldEchoResponse:
+      type: object
+      required: [id, message, created_at]
+      description: |
+        Response from POST /v1/scaffold/echo. Returns the newly created
+        scaffold_echo row fields.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the newly created scaffold_echo row
+          example: "01929d0e-0e47-7000-8000-000000000042"
+        message:
+          type: string
+          description: The stored message from the request body
+          example: "hello scaffold"
+        created_at:
+          type: string
+          format: date-time
+          description: Server-side timestamp when the row was created (RFC3339Nano)
+          example: "2026-06-22T05:00:00.000000000Z"
+
     PaginationMeta:
       type: object
       required: [page, page_size, total, total_pages]
@@ -513,6 +590,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/InfoResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/server-info:
+    get:
+      operationId: getV1ServerInfo
+      summary: Server metadata with sqlc DB query and i18n welcome message
+      description: |
+        Minimal public read endpoint that demonstrates the full
+        router → handler → sqlc → response chain. Returns build metadata,
+        a PostgreSQL server timestamp (via sqlc SelectServerTime), supported
+        locales, and a locale-resolved welcome_message. No authentication required.
+      tags: [v1]
+      responses:
+        "200":
+          description: Server info (server_time reflects the PostgreSQL clock via sqlc)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerInfoResponse"
         "500":
           description: Internal server error
           content:
@@ -675,6 +776,101 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Echo dependencies not wired (pool, audit, or idempotency store missing)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/scaffold/echo:
+    post:
+      operationId: postV1ScaffoldEcho
+      summary: Scaffold transactional echo command
+      description: |
+        Scaffolding example endpoint that exercises the full cross-cutting boundary
+        stack in a single PostgreSQL transaction:
+          1. Auth boundary      — verifies Bearer JWT (401 if missing/invalid)
+          2. Permission check   — requires 'scaffold.echo.create' (403 if denied)
+          3. Idempotency        — deduplicates by Idempotency-Key header; replays cached response
+          4. Scaffold INSERT    — writes scaffold_echo row via sqlc-generated query
+          5. Audit boundary     — writes audit_events row in the same TX
+          6. Outbox             — writes outbox row in the same TX (worker picks it up later)
+
+        On success returns the created scaffold_echo row (id, message, created_at) with HTTP 201.
+        On retry with the same Idempotency-Key returns the original cached response without re-inserting.
+
+        NOTE: This endpoint is a scaffolding example and will be removed when real
+        domain command endpoints arrive in later milestones.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: |
+            Client-generated UUID that uniquely identifies this mutation request.
+            Replays (same actor + same key) return the originally cached response
+            without re-executing the handler. TTL is 24 hours.
+          schema:
+            type: string
+            format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScaffoldEchoRequest"
+      responses:
+        "201":
+          description: Scaffold echo created successfully
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/X-Request-Id"
+            X-Idempotency-Key:
+              $ref: "#/components/headers/X-Idempotency-Key"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScaffoldEchoResponse"
+        "400":
+          description: Request body missing, not valid JSON, Idempotency-Key missing, or "message" field is empty
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (scaffold.echo.create)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: Request body exceeds 8 KiB limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "415":
+          description: Content-Type is not application/json
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (DB unavailable, audit failure, or commit failure)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Scaffold echo dependencies not wired (pool, audit, or idempotency store missing)
           content:
             application/json:
               schema:
