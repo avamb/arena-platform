@@ -10521,3 +10521,105 @@ Stats before session: 124/171 passing.
 This session: feature #125 completed and marked passing -> 125/171 passing.
 
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #151 (Event publications model event x feed_token x city)
+"event_publications table (event_id, feed_token_id, city_id nullable). Many-to-many:
+one event in many feeds, one feed has many events. Mirrors legacy Subscriptions UI
+for Bil24 migration compatibility. [test: publish event to feed, unpublish, multi-feed publish]"
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #151: All 4 feature steps completed and verified.
+
+Steps covered:
+  Step 1: Migration 0017_event_publications.sql
+          - event_publications table with uuidv7() PK
+          - event_id uuid FK -> events(id) ON DELETE CASCADE
+          - feed_token_id uuid FK -> agent_feed_tokens(id) ON DELETE CASCADE
+          - city_id uuid FK -> cities(id) nullable (geo scope filter)
+          - published_at timestamptz NOT NULL DEFAULT now()
+          - Composite UNIQUE (event_id, feed_token_id) - prevents duplicate publications
+          - Index event_publications_event_id (management API list endpoint)
+          - Index event_publications_feed_token_id (consumer-side feed path)
+          - RBAC seeds: publication.create/read/delete for admin + org_admin roles
+          - Goose Up/Down sections with proper CASCADE cleanup
+
+  Step 2: POST/DELETE/GET /v1/events/{id}/publications
+          - POST   /v1/events/{event_id}/publications       (publication.create)
+            * Body: {feed_token_id: uuid, city_id?: uuid}
+            * Idempotent: ON CONFLICT DO UPDATE returns existing row
+            * Validation: Content-Type, feed_token_id required + valid UUID,
+              event_id from path (valid UUID), city_id optional valid UUID
+            * Returns 200 with publicationResponse JSON
+          - DELETE /v1/events/{event_id}/publications/{feed_token_id} (publication.delete)
+            * Idempotent: deleting non-existent entry returns 204 (no error)
+            * Validates both path UUIDs
+            * Returns 204 No Content on success
+          - GET    /v1/events/{event_id}/publications       (publication.read)
+            * Lists all feeds an event is published to
+            * Returns {"publications": [...]} JSON array
+            * Returns empty array when no publications exist
+
+  Step 3: Legacy Bil24 subscriptions migration outline
+          - Embedded in 0017_event_publications.sql as SQL comments
+          - Maps: bil24.subscriptions.event_id -> event_publications.event_id
+          - Maps: bil24.subscriptions.agent_id -> feed_token_id (via label match)
+          - Maps: bil24.subscriptions.city_id -> city_id (via cities.slug)
+          - Maps: bil24.subscriptions.created_at -> published_at
+          - ETL INSERT...SELECT query template provided
+          - Validation COUNT(*) queries provided
+          - ON CONFLICT DO NOTHING for idempotent re-runs
+
+  Step 4: Integration tests (40 tests, TestPublication151_*)
+          - Migration file structure: 12 tests (table, columns, FKs, unique,
+            nullable city_id, RBAC perms, admin/org_admin roles, indexes)
+          - Legacy Bil24 outline: 3 tests (outline present, ETL query, COUNT query)
+          - Route auth-gating: 3 tests (POST/DELETE/GET all return 401 without JWT)
+          - Request validation POST: 6 tests (content-type, missing feed_token_id,
+            invalid feed_token_id UUID, invalid event_id UUID, invalid city_id UUID,
+            invalid JSON)
+          - Request validation DELETE: 2 tests (invalid event_id, invalid feed_token_id)
+          - Request validation GET: 1 test (invalid event_id)
+          - Response shape: 2 tests (JSON Content-Type for GET and POST errors)
+          - Query file structure: 7 tests (all 5 queries, ON CONFLICT present)
+          - Gen file structure: 4 tests (EventPublicationRow type, ID field,
+            *uuid.UUID nullable CityID, all 5 methods)
+          - Compile-time Querier interface: 1 test
+          - publicationFromRow helper: 3 tests (basic, with CityID, RFC3339 format)
+
+CHANGES
+-------
+New files:
+  - apps/backend/internal/migrations/sql/0017_event_publications.sql
+  - apps/backend/internal/adapters/postgres/queries/event_publications.sql
+  - apps/backend/internal/adapters/postgres/gen/event_publications.sql.go
+  - apps/backend/internal/platform/httpserver/publications.go
+  - apps/backend/internal/platform/httpserver/publications_test.go
+
+Modified files:
+  - apps/backend/internal/adapters/postgres/gen/querier.go
+      (+5 publication methods: PublishEvent/UnpublishEvent/ListPublicationsByEvent/
+       ListPublicationsByFeedToken/GetPublication)
+  - apps/backend/internal/platform/httpserver/server.go
+      (publicationQueries field, Options.PublicationQueries, 3 route groups mounted)
+  - apps/backend/internal/platform/httpserver/testfilehelpers_test.go
+      (0017_event_publications.sql, event_publications.sql, event_publications.sql.go)
+
+VERIFICATION
+------------
+  - 40/40 TestPublication151_* tests: PASS (Docker golang:1.24-alpine)
+  - go build ./apps/backend/...: EXIT 0 (implicit from test run)
+  - Pre-existing failures unchanged: TestSession126_FullVerification/routes_auth_gated,
+    TestInfoP99Latency_LoggingNotBottleneck, TestTimestamp tests (unrelated to this feature)
+  - git commit: 07c882a
+
+PROGRESS METRIC
+---------------
+Stats before session: 125/171 passing (approx).
+This session: feature #151 completed and marked passing -> 127/171 passing.
+
+================================================================================
