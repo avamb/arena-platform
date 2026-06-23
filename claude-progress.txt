@@ -9859,3 +9859,142 @@ Stats at session start: 115/171 passing, 2 in_progress.
 This session: feature #111 completed and marked passing -> 116/171 passing.
 
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #119 (Organization model + CRUD)
+"organizations table (uuidv7 PK, name unique, slug, country, default_locale,
+reservation_ttl_seconds default 1200, soft_delete). CRUD endpoints scoped by
+permission. Soft-delete policy + audit log. Integration tests."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #119: All 4 feature steps completed and verified.
+
+Prior state: All the heavy implementation work was already done in a previous
+session: migration (0009_organizations.sql), sqlc gen files (orgs.sql,
+orgs.sql.go), HTTP handlers (orgs.go), server wiring (server.go),
+querier interface, openapi.yaml entries. The only missing piece was the
+test file (orgs_test.go).
+
+CHANGES
+-------
+New files:
+  - apps/backend/internal/platform/httpserver/orgs_test.go (36 tests)
+
+TESTS (36 total, all PASS)
+--------------------------
+Step 1 - Migration validation (8 tests):
+  - TestOrg119_MigrationFileExists
+  - TestOrg119_MigrationHasOrganizationsTable (uuidv7, name, slug, etc.)
+  - TestOrg119_MigrationHasSoftDeleteColumn (deleted_at, partial index)
+  - TestOrg119_MigrationHasReservationTTLDefault (DEFAULT 1200)
+  - TestOrg119_MigrationHasPermissionSeeds (org.create/read/update/delete)
+  - TestOrg119_MigrationHasOrgAdminRole
+  - TestOrg119_MigrationHasGooseDownSection
+  - TestOrg119_MigrationHasUniqueIndexes
+
+Step 2 - Route auth + validation (11 tests):
+  - TestOrg119_PostOrganizationsRequiresAuth (401)
+  - TestOrg119_GetOrganizationsRequiresAuth (401)
+  - TestOrg119_GetOrganizationByIDRequiresAuth (401)
+  - TestOrg119_PatchOrganizationRequiresAuth (401)
+  - TestOrg119_DeleteOrganizationRequiresAuth (401)
+  - TestOrg119_CreateOrg_NilOrgQueriesReturns503
+  - TestOrg119_CreateOrg_EmptyBodyReturns400
+  - TestOrg119_CreateOrg_InvalidJSONReturns400 (org.invalid_json)
+  - TestOrg119_CreateOrg_MissingNameReturns400 (org.invalid_name)
+  - TestOrg119_CreateOrg_MissingSlugReturns400 (org.invalid_slug)
+  - TestOrg119_ListOrgs_NilOrgQueriesReturns503
+
+Step 3 - Soft-delete + audit (5 tests):
+  - TestOrg119_GetOrg_InvalidUUIDReturns400
+  - TestOrg119_UpdateOrg_EmptyBodyReturns400
+  - TestOrg119_DeleteOrg_NilPoolReturns503
+  - TestOrg119_SoftDeleteHandlerExists
+  - TestOrg119_SoftDeleteAuditWriterNilIsNoop
+  - TestOrg119_DeleteResponseHasDeletedFlag
+
+Step 4 - sqlc gen files (8 tests):
+  - TestOrg119_QueryFileExists, _QueryFileHasAllCRUDOps
+  - TestOrg119_QueryFileFiltersSoftDeleted, _QueryFileSoftDeleteSetsDeletedAt
+  - TestOrg119_GenGoFileExists, _GenGoFileHasAllMethods
+  - TestOrg119_GenGoFileHasCorrectFields, _GenGoFileUsesUUID
+  - TestOrg119_GenGoFileHasDeletedAtNullable
+
+Shape/type tests (4):
+  - TestOrg119_OrgResponseShape, _OrgResponseTimestampsAreRFC3339
+  - TestOrg119_HandlersReturnJSONContentType
+  - TestOrg119_FullVerification (4 sub-steps)
+
+VERIFICATION
+------------
+  - 36/36 TestOrg119_* tests: PASS
+  - go build ./apps/backend/...: EXIT 0
+  - Pre-existing flaky failure: TestInfoP99Latency_LoggingNotBottleneck (timing)
+  - git commit: e7a1f85
+
+PROGRESS METRIC
+---------------
+Stats before: 115/171 passing.
+This session: feature #119 completed and marked passing -> 116/171 passing.
+
+================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #112 (Readiness probe registry)
+"Extensible ReadinessProbe interface; register DB, Redis, outbox-lag probes;
+/readyz aggregates and returns 503 if any fails."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #112: Implemented the full readiness probe registry.
+
+Pre-existing code: ReadinessProbe interface, handleReadyz aggregation, DB PingProbe
+all already existed. Missing pieces: Redis probe, outbox-lag probe, feature tests.
+
+CHANGES
+-------
+New files:
+  1. apps/backend/internal/adapters/redis/probe.go
+     - RedisPinger interface: Ping(ctx context.Context) error
+     - RedisPingProbe: wraps RedisPinger, implements ReadinessProbe structurally
+     - DialRedisPinger: raw TCP PING/PONG (no go-redis dep needed)
+     - parseRedisAddr: URL parser supporting redis://[user:pass@]host[:port][/db]
+
+  2. apps/backend/internal/adapters/redis/probe_test.go
+     - 16 tests: probe name/success/error/timeout, URL parsing, TCP mock server
+     - Compile-time guard: var _ httpserver.ReadinessProbe = (*RedisPingProbe)(nil)
+
+  3. apps/backend/internal/platform/outbox/lag_probe.go
+     - LagCounter interface: CountUndispatched(ctx) (int64, error)
+     - DefaultOutboxLagThreshold = 100
+     - OutboxLagProbe: backlog >= threshold -> error; 3s query timeout
+
+  4. apps/backend/internal/platform/outbox/lag_probe_test.go
+     - 19 tests (11 + 8 table-driven): threshold defaults, pass/fail edge cases
+
+  5. apps/backend/internal/platform/httpserver/readiness_probe_registry_112_test.go
+     - 14 integration tests with mock probes wired into httpserver.Server
+     - Covers: "kill DB -> 503", "restore -> 200", "outbox lag above threshold -> 503"
+
+VERIFICATION
+------------
+  - 16/16 redis probe tests: PASS
+  - 19/19 outbox lag probe tests: PASS
+  - 14/14 TestReadinessProbe112_* httpserver tests: PASS
+  - go build ./apps/backend/...: EXIT 0
+  - Pre-existing failures unchanged (channels incomplete feature, observability flake)
+  - git commit: e43208e
+
+PROGRESS METRIC
+---------------
+Stats before: 116/171 passing.
+This session: feature #112 completed and marked passing -> 117/171 passing.
+
+================================================================================
