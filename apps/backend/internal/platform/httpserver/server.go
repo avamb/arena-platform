@@ -171,6 +171,16 @@ type Server struct {
 	// Nil when no PgxPool was supplied. Feature #126.
 	sessionQueries *gen.Queries
 
+	// gdprQueries is the sqlc Queries instance used by the GDPR data subject request
+	// endpoints (POST /v1/me/data-export, POST /v1/me/data-delete, GET /v1/me/data-requests,
+	// POST /v1/me/consent). Nil when no PgxPool was supplied. Feature #164.
+	gdprQueries *gen.Queries
+
+	// tierQueries is the sqlc Queries instance used by the ticket tier CRUD endpoints.
+	// Tiers are scoped to a session. All write endpoints require auth + tier permission.
+	// Nil when no PgxPool was supplied. Feature #127.
+	tierQueries *gen.Queries
+
 	// faultInjectOutboxAfterAudit is a dev/test-only fault injection flag.
 	// When true, handleEcho forces a transaction rollback immediately after
 	// the audit_events INSERT succeeds, before writing to outbox_events.
@@ -343,6 +353,18 @@ type Options struct {
 	// Inject gen.New(nil) in tests that need session routes mounted without a real pool.
 	// Feature #126.
 	SessionQueries *gen.Queries
+
+	// GDPRQueries injects a pre-constructed *gen.Queries for the GDPR data subject
+	// request endpoints. When nil and PgxPool is non-nil, gen.New(PgxPool) is used.
+	// Inject gen.New(nil) in tests that need GDPR routes mounted without a real pool.
+	// Feature #164.
+	GDPRQueries *gen.Queries
+
+	// TierQueries injects a pre-constructed *gen.Queries for the ticket tier CRUD
+	// endpoints. When nil and PgxPool is non-nil, gen.New(PgxPool) is used.
+	// Inject gen.New(nil) in tests that need tier routes mounted without a real pool.
+	// Feature #127.
+	TierQueries *gen.Queries
 }
 
 // New constructs (but does not start) the HTTP server.
@@ -474,6 +496,18 @@ func New(opts Options) *Server {
 		sessionQueries = gen.New(opts.PgxPool)
 	}
 
+	// sqlc Queries for GDPR data subject request endpoints (feature #164).
+	gdprQueries := opts.GDPRQueries
+	if gdprQueries == nil && opts.PgxPool != nil {
+		gdprQueries = gen.New(opts.PgxPool)
+	}
+
+	// sqlc Queries for ticket tier CRUD endpoints (feature #127).
+	tierQueries := opts.TierQueries
+	if tierQueries == nil && opts.PgxPool != nil {
+		tierQueries = gen.New(opts.PgxPool)
+	}
+
 	// Extend the permission checker with membership-derived role resolution
 	// (feature #120 step 3). When a PgxPool is available, the DBChecker is
 	// augmented so that each Check() call unions the JWT roles with the user's
@@ -522,6 +556,8 @@ func New(opts Options) *Server {
 		eventQueries:                eventQueries,
 		publicationQueries:          publicationQueries,
 		sessionQueries:              sessionQueries,
+		gdprQueries:                 gdprQueries,
+		tierQueries:                 tierQueries,
 	}
 
 	s.mountOperationalRoutes()
@@ -983,6 +1019,48 @@ func (s *Server) mountV1Routes() {
 			})
 		}
 
+		// ── Ticket Tiers (feature #127) ─────────────────────────────────────
+		//
+		// Ticket tiers define pricing options within a session.
+		// All tier endpoints require JWT auth + a named permission.
+		// Routes are nested under .../sessions/{session_id}/tiers so both
+		// the org, event, and session scopes are enforced at the path level.
+		//
+		//   POST   .../tiers        — create (tier.create)
+		//   GET    .../tiers        — list   (tier.read)
+		//   GET    .../tiers/{id}   — get    (tier.read)
+		//   PATCH  .../tiers/{id}   — update (tier.update)
+		//   DELETE .../tiers/{id}   — delete (tier.delete)
+		if s.stub != nil && s.stub.Enabled() && s.tierQueries != nil {
+			// GET .../tiers and GET .../tiers/{id} (tier.read)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "tier.read", "tiers"))
+				pr.Get("/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers", s.handleListTiers)
+				pr.Get("/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}", s.handleGetTier)
+			})
+		}
+		if s.stub != nil && s.stub.Enabled() && s.tierQueries != nil && s.pool != nil {
+			// POST .../tiers (tier.create)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "tier.create", "tiers"))
+				pr.Post("/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers", s.handleCreateTier)
+			})
+			// PATCH .../tiers/{id} (tier.update)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "tier.update", "tiers"))
+				pr.Patch("/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}", s.handleUpdateTier)
+			})
+			// DELETE .../tiers/{id} (tier.delete)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "tier.delete", "tiers"))
+				pr.Delete("/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}", s.handleDeleteTier)
+			})
+		}
+
 		// ── Event Publications (feature #151) ────────────────────────────────
 		//
 		// Manage which agent feed tokens an event is published to.  Mirrors
@@ -1011,6 +1089,32 @@ func (s *Server) mountV1Routes() {
 				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
 				pr.Use(permissions.RequirePermission(s.perms, "publication.delete", "publications"))
 				pr.Delete("/events/{event_id}/publications/{feed_token_id}", s.handleUnpublishEvent)
+			})
+		}
+
+		// ── GDPR data subject requests (feature #164) ───────────────────────
+		//
+		// Self-service GDPR endpoints. All require JWT auth.
+		// The authenticated user can only access their own data.
+		//
+		//   POST /v1/me/data-export     — queue an export request (202 Accepted)
+		//   POST /v1/me/data-delete     — queue a deletion request (202 Accepted)
+		//   GET  /v1/me/data-requests   — list the user's own GDPR requests
+		//   POST /v1/me/consent         — record consent (at registration or update)
+		if s.stub != nil && s.stub.Enabled() && s.gdprQueries != nil {
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "gdpr.request", "gdpr"))
+				pr.Get("/me/data-requests", s.handleListDataRequests)
+			})
+		}
+		if s.stub != nil && s.stub.Enabled() && s.gdprQueries != nil && s.pool != nil {
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "gdpr.request", "gdpr"))
+				pr.Post("/me/data-export", s.handleDataExportRequest)
+				pr.Post("/me/data-delete", s.handleDataDeleteRequest)
+				pr.Post("/me/consent", s.handleRecordConsent)
 			})
 		}
 

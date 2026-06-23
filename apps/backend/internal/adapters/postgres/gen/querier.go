@@ -119,6 +119,23 @@ type Querier interface {
 	UpdateSession(ctx context.Context, id, eventID uuid.UUID, startAt, endAt *time.Time, capacityTotal *int32, status string) (SessionRow, error)
 	SoftDeleteSession(ctx context.Context, id, eventID uuid.UUID) (SessionRow, error)
 	CountOverlappingSessions(ctx context.Context, eventID, excludeID uuid.UUID, startAt, endAt time.Time) (int32, error)
+
+	// Ticket tiers — pricing modes for sessions (feature #127)
+	InsertTicketTier(ctx context.Context, sessionID uuid.UUID, name, pricingMode string, priceAmount int64, currency string, pwywMin, pwywMax *int64, capacity *int32, saleWindowStart, saleWindowEnd *time.Time, sortOrder int32) (TicketTierRow, error)
+	GetTicketTierByID(ctx context.Context, id, sessionID uuid.UUID) (TicketTierRow, error)
+	ListTicketTiersBySession(ctx context.Context, sessionID uuid.UUID) ([]TicketTierRow, error)
+	UpdateTicketTier(ctx context.Context, id, sessionID uuid.UUID, name, pricingMode string, priceAmount *int64, currency string, pwywMin, pwywMax *int64, capacity *int32, saleWindowStart, saleWindowEnd *time.Time, sortOrder *int32) (TicketTierRow, error)
+	SoftDeleteTicketTier(ctx context.Context, id, sessionID uuid.UUID) (TicketTierRow, error)
+
+	// GDPR data workflows — export / delete / consent (feature #164)
+	InsertDataSubjectRequest(ctx context.Context, userID uuid.UUID, requestType string) (DataSubjectRequestRow, error)
+	GetDataSubjectRequestByID(ctx context.Context, id, userID uuid.UUID) (DataSubjectRequestRow, error)
+	ListDataSubjectRequestsByUser(ctx context.Context, userID uuid.UUID) ([]DataSubjectRequestRow, error)
+	GetPendingDataSubjectRequests(ctx context.Context, limit int32) ([]DataSubjectRequestRow, error)
+	UpdateDataSubjectRequestStatus(ctx context.Context, id uuid.UUID, status string, payloadURL, errorMsg *string) (DataSubjectRequestRow, error)
+	AnonymizeUser(ctx context.Context, id uuid.UUID) error
+	RecordUserConsent(ctx context.Context, id uuid.UUID, marketingConsent bool) error
+	GetUserExportData(ctx context.Context, id uuid.UUID) (UserExportDataRow, error)
 }
 
 // Compile-time assertion: *Queries must implement Querier.

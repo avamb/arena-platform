@@ -261,6 +261,32 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "event_publications.sql.go"),
 		}
+	// GDPR data workflows (feature #164)
+	case "0018_gdpr.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0018_gdpr.sql"),
+		}
+	case "gdpr.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "gdpr.sql"),
+		}
+	case "gdpr.sql.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "gdpr.sql.go"),
+		}
+	// Ticket tiers (feature #127)
+	case "0019_ticket_tiers.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0019_ticket_tiers.sql"),
+		}
+	case "ticket_tiers.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "ticket_tiers.sql"),
+		}
+	case "ticket_tiers.sql.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "ticket_tiers.sql.go"),
+		}
 	default:
 		// Generic fallback: try the file directly at the repo root.
 		candidates = []string{
