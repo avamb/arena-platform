@@ -126,6 +126,15 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "users.sql.go"),
 		}
+	// Refresh tokens (feature #115)
+	case "0007_refresh_tokens.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0007_refresh_tokens.sql"),
+		}
+	case "refresh_tokens.sql.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "refresh_tokens.sql.go"),
+		}
 	default:
 		// Generic fallback: try the file directly at the repo root.
 		candidates = []string{
