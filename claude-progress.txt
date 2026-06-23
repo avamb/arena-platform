@@ -9442,4 +9442,85 @@ Feature #114 completed and marked passing.
 
 ================================================================================
 
+--------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #123 (Country & city reference data)
+"ISO country seeds, city list (IL+EE focus), GET /v1/geo/* public endpoints,
+admin POST/PATCH endpoints gated by geo.admin permission, i18n_text linkage."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #123: Full geo reference data layer (countries + cities).
+
+Steps covered:
+  Step 1: Migration 0006_geo.sql
+          - countries table (id uuid PK DEFAULT uuidv7(), iso2 CHAR(2) UNIQUE,
+            iso3 CHAR(3), slug TEXT UNIQUE, created_at) with uppercase CHECKs
+          - cities table (id uuid PK, country_id FK to countries ON DELETE RESTRICT,
+            slug TEXT UNIQUE, created_at)
+          - Seeds: 10 countries (IL, EE, US, DE, GB, FR, LV, LT, FI, SE)
+          - Seeds: 7 cities for IL (tel-aviv, jerusalem, haifa) and EE
+            (tallinn, tartu, parnu, narva)
+          - i18n_text seeds for en/ru locale names in geo.countries/geo.cities
+          - goose Down section drops tables and i18n_text rows
+
+  Step 2: sqlc queries (geo.sql + geo.sql.go)
+          - ListCountries with COALESCE locale JOIN on i18n_text
+          - ListCities with optional country_id filter
+          - InsertCountry, UpdateCountry, InsertCity, UpdateCity
+          - GetCountryByISO2, GetCountryBySlug, GetCityByID, GetCityBySlug
+          - All 10 methods added to Querier interface in querier.go
+
+  Step 3: HTTP handlers (geo.go)
+          - geoLocale(r) helper using i18n.NegotiateLocale
+          - handleListCountries, handleListCities (public GET endpoints)
+          - handleCreateCountry, handleUpdateCountry (admin)
+          - handleCreateCity, handleUpdateCity (admin)
+          - geoUpsertI18nSQL + geoUpsertI18nName for i18n_text upserts
+
+  Step 4: Server wiring (server.go)
+          - geoQueries + GeoQueries fields on Server + Options
+          - Public geo routes when geoQueries != nil
+          - Admin routes gated by stub+pool+geoQueries + RequirePermission
+
+  OpenAPI + drift fix:
+          - openapi.yaml: geo paths (countries, cities, admin CRUD) and
+            auth paths (register, login, refresh, verify) plus all schemas
+          - buildDriftTestServer wires GeoQueries: gen.New(nil)
+          - All TestOpenAPIDriftCheck_* and TestOpenAPIDocs_* pass
+
+  Bug fix (pre-existing auth_login.go compile errors from feature #115):
+          - Removed duplicate clientIP() function
+          - Removed unused uuid import
+          - Changed gen.New(s.pool) to BeginTx+gen.New(tx) pattern
+
+New files:
+  - apps/backend/internal/migrations/sql/0006_geo.sql
+  - apps/backend/internal/adapters/postgres/queries/geo.sql
+  - apps/backend/internal/adapters/postgres/gen/geo.sql.go
+  - apps/backend/internal/platform/httpserver/geo.go
+  - apps/backend/internal/platform/httpserver/geo_test.go (30 tests)
+  - apps/backend/internal/platform/httpserver/auth_login.go (fixed)
+
+Modified files:
+  - apps/backend/internal/adapters/postgres/gen/querier.go
+  - apps/backend/internal/platform/httpserver/server.go
+  - apps/backend/internal/platform/httpserver/openapi_drift_test.go
+  - apps/backend/openapi/openapi.yaml
+
+VERIFICATION
+------------
+  - All TestGeo123_* tests: PASS
+  - TestOpenAPIDriftCheck_SpecCoversAllCodeRoutes: PASS
+  - TestOpenAPIDriftCheck_CodeCoversAllSpecRoutes: PASS
+  - TestOpenAPIDocs_SchemaPropertiesDescription: PASS
+  - go test ./apps/backend/internal/platform/httpserver/...: PASS
+  - git commit: 95f4725
+
+PROGRESS METRIC
+---------------
+Feature #123 completed and marked passing.
+
+================================================================================
+
 ================================================================================
