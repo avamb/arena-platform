@@ -29,6 +29,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/go-chi/chi/v5"
@@ -282,6 +283,8 @@ func buildDriftTestServer(t *testing.T) *Server {
 		Pool:           &fakePoolDB{tx: &fakeTx{}},
 		Outbox:         &scaffold105OutboxWriter{},
 		MetricsHandler: noopHandler,
+		// Wire geo queries so /v1/geo/* and /v1/admin/geo/* routes are mounted.
+		GeoQueries: gen.New(nil),
 	})
 }
 

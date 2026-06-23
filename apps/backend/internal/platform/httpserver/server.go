@@ -490,11 +490,15 @@ func (s *Server) mountV1Routes() {
 
 		// POST /v1/auth/register — public registration endpoint (feature #114).
 		// GET  /v1/auth/verify   — email verification (feature #114).
-		// Both require the pool to be wired; no auth header needed (they are
-		// intentionally public endpoints used before the user has a JWT).
+		// POST /v1/auth/login    — email+password → JWT + refresh token (feature #115).
+		// POST /v1/auth/refresh  — refresh token → new JWT access token (feature #115).
+		// All require the pool to be wired; no auth header needed (they are
+		// intentionally public endpoints used before or during authentication).
 		if s.pool != nil {
 			r.Post("/auth/register", s.handleAuthRegister)
 			r.Get("/auth/verify", s.handleAuthVerifyEmail)
+			r.Post("/auth/login", s.handleAuthLogin)
+			r.Post("/auth/refresh", s.handleAuthRefresh)
 		}
 
 		// ── Geo reference data (feature #123) ──────────────────────────────────

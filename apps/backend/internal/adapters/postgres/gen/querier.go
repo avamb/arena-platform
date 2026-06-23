@@ -26,6 +26,12 @@ type Querier interface {
 	MarkEmailVerified(ctx context.Context, id uuid.UUID) (MarkEmailVerifiedRow, error)
 	MarkVerificationTokenUsed(ctx context.Context, token string) error
 
+	// Refresh tokens — login session management (feature #115)
+	InsertRefreshToken(ctx context.Context, token string, userID uuid.UUID, expiresAt time.Time) error
+	GetRefreshToken(ctx context.Context, token string) (GetRefreshTokenRow, error)
+	RevokeRefreshToken(ctx context.Context, token string) error
+	GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByEmailRow, error)
+
 	// Geo reference data — countries & cities (feature #123)
 	ListCountries(ctx context.Context, locale string) ([]ListCountryRow, error)
 	ListCities(ctx context.Context, locale string, countryID *uuid.UUID) ([]ListCityRow, error)

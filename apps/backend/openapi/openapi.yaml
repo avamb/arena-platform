@@ -471,6 +471,368 @@ components:
           description: Total number of pages computed as ceil(total / page_size)
           example: 5
 
+    # Auth schemas — feature #114
+    AuthLoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's registered email address
+          example: "user@example.com"
+        password:
+          type: string
+          description: Plain-text password for verification
+          example: "Secr3tP@ss"
+
+    AuthLoginResponse:
+      type: object
+      required: [access_token, refresh_token, token_type, expires_at, user_id]
+      properties:
+        access_token:
+          type: string
+          description: Short-lived HS256 JWT access token (15-minute TTL)
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        refresh_token:
+          type: string
+          description: Long-lived opaque refresh token (30-day TTL); store securely
+          example: "a3f8c2d1e0b9..."
+        token_type:
+          type: string
+          description: Token type — always "Bearer"
+          example: "Bearer"
+        expires_at:
+          type: string
+          format: date-time
+          description: RFC 3339 expiry timestamp of the access token
+          example: "2024-01-01T12:15:00Z"
+        user_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the authenticated user
+          example: "01900000-0000-7000-8000-000000000001"
+
+    AuthRefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+          description: Opaque refresh token issued by POST /v1/auth/login
+          example: "a3f8c2d1e0b9..."
+
+    AuthRefreshResponse:
+      type: object
+      required: [access_token, token_type, expires_at, user_id]
+      properties:
+        access_token:
+          type: string
+          description: New short-lived HS256 JWT access token (15-minute TTL)
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        token_type:
+          type: string
+          description: Token type — always "Bearer"
+          example: "Bearer"
+        expires_at:
+          type: string
+          format: date-time
+          description: RFC 3339 expiry timestamp of the new access token
+          example: "2024-01-01T12:30:00Z"
+        user_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the authenticated user
+          example: "01900000-0000-7000-8000-000000000001"
+
+    AuthRegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address (normalised to lowercase before storage)
+          example: "user@example.com"
+        password:
+          type: string
+          minLength: 8
+          maxLength: 72
+          description: Plain-text password (bcrypt-hashed server-side; 8–72 chars)
+          example: "Secr3tP@ss"
+
+    AuthRegisterResponse:
+      type: object
+      required: [user_id, email, created_at, message]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the newly created user
+          example: "01900000-0000-7000-8000-000000000001"
+        email:
+          type: string
+          format: email
+          description: Normalised email address stored in the DB
+          example: "user@example.com"
+        created_at:
+          type: string
+          format: date-time
+          description: ISO 8601 / RFC 3339 timestamp of account creation
+          example: "2024-01-01T12:00:00Z"
+        message:
+          type: string
+          description: Human-readable confirmation message
+          example: "Registration successful. Please check your email to verify your address."
+
+    AuthVerifyResponse:
+      type: object
+      required: [user_id, email, email_verified_at, message]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the verified user
+          example: "01900000-0000-7000-8000-000000000001"
+        email:
+          type: string
+          format: email
+          description: Verified email address
+          example: "user@example.com"
+        email_verified_at:
+          type: string
+          format: date-time
+          description: ISO 8601 / RFC 3339 timestamp of verification
+          example: "2024-01-01T12:05:00Z"
+        message:
+          type: string
+          description: Human-readable confirmation message
+          example: "Email address verified successfully."
+
+    # Geo schemas — feature #123
+    GeoCountryItem:
+      type: object
+      required: [id, iso2, iso3, slug, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key
+          example: "01900000-0000-7000-8000-000000000010"
+        iso2:
+          type: string
+          minLength: 2
+          maxLength: 2
+          description: ISO 3166-1 alpha-2 code
+          example: "IL"
+        iso3:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: ISO 3166-1 alpha-3 code
+          example: "ISR"
+        slug:
+          type: string
+          description: URL-safe slug
+          example: "israel"
+        name:
+          type: string
+          description: Localised display name (resolved from i18n_text)
+          example: "Israel"
+
+    GeoCountriesResponse:
+      type: object
+      required: [countries]
+      properties:
+        countries:
+          type: array
+          description: Ordered list of reference countries with localised names
+          items:
+            $ref: "#/components/schemas/GeoCountryItem"
+
+    GeoCityItem:
+      type: object
+      required: [id, country_id, country_iso2, slug, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key
+          example: "01900000-0000-7000-8000-000000000020"
+        country_id:
+          type: string
+          format: uuid
+          description: FK to countries.id
+          example: "01900000-0000-7000-8000-000000000010"
+        country_iso2:
+          type: string
+          minLength: 2
+          maxLength: 2
+          description: ISO 3166-1 alpha-2 code of the parent country
+          example: "IL"
+        slug:
+          type: string
+          description: URL-safe slug
+          example: "tel-aviv"
+        name:
+          type: string
+          description: Localised display name (resolved from i18n_text)
+          example: "Tel Aviv"
+
+    GeoCitiesResponse:
+      type: object
+      required: [cities]
+      properties:
+        cities:
+          type: array
+          description: Ordered list of reference cities with localised names
+          items:
+            $ref: "#/components/schemas/GeoCityItem"
+
+    GeoCountryResponse:
+      type: object
+      required: [id, iso2, iso3, slug, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the country row
+          example: "01900000-0000-7000-8000-000000000010"
+        iso2:
+          type: string
+          minLength: 2
+          maxLength: 2
+          description: ISO 3166-1 alpha-2 country code
+          example: "IL"
+        iso3:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: ISO 3166-1 alpha-3 country code
+          example: "ISR"
+        slug:
+          type: string
+          description: URL-safe identifier slug
+          example: "israel"
+        created_at:
+          type: string
+          format: date-time
+          description: ISO 8601 / RFC 3339 timestamp of row creation
+          example: "2024-01-01T00:00:00Z"
+
+    GeoCityResponse:
+      type: object
+      required: [id, country_id, slug, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the city row
+          example: "01900000-0000-7000-8000-000000000020"
+        country_id:
+          type: string
+          format: uuid
+          description: UUID of the parent country (FK → countries.id)
+          example: "01900000-0000-7000-8000-000000000010"
+        slug:
+          type: string
+          description: URL-safe identifier slug
+          example: "tel-aviv"
+        created_at:
+          type: string
+          format: date-time
+          description: ISO 8601 / RFC 3339 timestamp of row creation
+          example: "2024-01-01T00:00:00Z"
+
+    GeoCreateCountryRequest:
+      type: object
+      required: [iso2, iso3, slug]
+      properties:
+        iso2:
+          type: string
+          minLength: 2
+          maxLength: 2
+          description: ISO 3166-1 alpha-2 code (uppercase)
+          example: "IL"
+        iso3:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: ISO 3166-1 alpha-3 code (uppercase)
+          example: "ISR"
+        slug:
+          type: string
+          description: URL-safe slug
+          example: "israel"
+        name_en:
+          type: string
+          description: English localised name (seeded into i18n_text)
+          example: "Israel"
+        name_ru:
+          type: string
+          description: Russian localised name (seeded into i18n_text)
+          example: "Израиль"
+
+    GeoUpdateCountryRequest:
+      type: object
+      properties:
+        iso3:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: Updated ISO 3166-1 alpha-3 code
+          example: "ISR"
+        slug:
+          type: string
+          description: Updated URL-safe slug
+          example: "israel"
+        name_en:
+          type: string
+          description: Updated English localised name
+          example: "Israel"
+        name_ru:
+          type: string
+          description: Updated Russian localised name
+          example: "Израиль"
+
+    GeoCreateCityRequest:
+      type: object
+      required: [country_id, slug]
+      properties:
+        country_id:
+          type: string
+          format: uuid
+          description: UUID of the parent country
+          example: "01900000-0000-7000-8000-000000000010"
+        slug:
+          type: string
+          description: URL-safe slug
+          example: "tel-aviv"
+        name_en:
+          type: string
+          description: English localised name (seeded into i18n_text)
+          example: "Tel Aviv"
+        name_ru:
+          type: string
+          description: Russian localised name (seeded into i18n_text)
+          example: "Тель-Авив"
+
+    GeoUpdateCityRequest:
+      type: object
+      properties:
+        slug:
+          type: string
+          description: Updated URL-safe slug
+          example: "tel-aviv"
+        name_en:
+          type: string
+          description: Updated English localised name
+          example: "Tel Aviv"
+        name_ru:
+          type: string
+          description: Updated Russian localised name
+          example: "Тель-Авив"
+
 paths:
   /healthz:
     get:
@@ -776,6 +1138,472 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Echo dependencies not wired (pool, audit, or idempotency store missing)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/auth/register:
+    post:
+      operationId: postV1AuthRegister
+      summary: Register a new user account
+      description: |
+        Creates a new user account with the supplied email and password.
+        The email is normalised (lowercased, trimmed) before storage.
+        On success a verification email is dispatched (outbox pattern) and the
+        caller receives the new user_id, normalised email, and a message asking
+        them to check their inbox. Requires no authentication.
+      tags: [v1, auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthRegisterRequest"
+      responses:
+        "201":
+          description: User created — verification email dispatched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthRegisterResponse"
+        "400":
+          description: Missing or invalid fields (email / password validation failure)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Email address is already registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/auth/login:
+    post:
+      operationId: postV1AuthLogin
+      summary: Authenticate with email and password
+      description: |
+        Validates the supplied email and password, enforces a per-IP+email
+        sliding-window rate limit (5 attempts / 15 min), and on success returns
+        a short-lived JWT access token (15 min) and a long-lived refresh token
+        (30 days). Both tokens are in the response body; the refresh token must
+        be stored securely by the client. No authentication header required.
+      tags: [v1, auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthLoginRequest"
+      responses:
+        "200":
+          description: Authentication successful — access and refresh tokens returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthLoginResponse"
+        "400":
+          description: Missing or invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Invalid credentials (email not found or password incorrect)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limit exceeded — too many login attempts for this IP+email
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool not available or JWT secret not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/auth/refresh:
+    post:
+      operationId: postV1AuthRefresh
+      summary: Exchange a refresh token for a new access token
+      description: |
+        Accepts a valid, non-expired, non-revoked refresh token and issues a
+        new short-lived JWT access token (15 min). The refresh token itself is
+        not rotated. No Authorization header required.
+      tags: [v1, auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthRefreshRequest"
+      responses:
+        "200":
+          description: New access token issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthRefreshResponse"
+        "400":
+          description: Missing or invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Refresh token invalid, expired, or revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool not available or JWT secret not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/auth/verify:
+    get:
+      operationId: getV1AuthVerify
+      summary: Verify email address via one-time token
+      description: |
+        Marks the user's email as verified when a valid, unexpired one-time
+        token is supplied in the ?token= query parameter. The token is
+        generated at registration time and emailed to the user. Each token
+        may only be used once.
+      tags: [v1, auth]
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: One-time verification token sent by email at registration
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Email verified successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthVerifyResponse"
+        "400":
+          description: Token parameter missing or malformed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Token not found or already used
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/geo/countries:
+    get:
+      operationId: getV1GeoCountries
+      summary: List all reference countries
+      description: |
+        Returns the full list of ISO reference countries ordered by name.
+        Names are resolved from the i18n_text table using the negotiated locale
+        (Accept-Language header → ?lang= query parameter → "en" default).
+        No authentication required.
+      tags: [v1, geo]
+      parameters:
+        - name: lang
+          in: query
+          required: false
+          description: Preferred language code (e.g. "en", "ru"). Overrides Accept-Language.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of countries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeoCountriesResponse"
+        "503":
+          description: Geo queries not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/geo/cities:
+    get:
+      operationId: getV1GeoCities
+      summary: List reference cities, optionally filtered by country
+      description: |
+        Returns reference cities ordered by slug. Pass ?country_id=<uuid> to
+        restrict results to one country. Names are locale-resolved from i18n_text.
+        No authentication required.
+      tags: [v1, geo]
+      parameters:
+        - name: country_id
+          in: query
+          required: false
+          description: Filter cities by country UUID
+          schema:
+            type: string
+            format: uuid
+        - name: lang
+          in: query
+          required: false
+          description: Preferred language code (e.g. "en", "ru"). Overrides Accept-Language.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of cities
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeoCitiesResponse"
+        "503":
+          description: Geo queries not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/geo/countries:
+    post:
+      operationId: postV1AdminGeoCountries
+      summary: Create a new reference country (admin)
+      description: |
+        Inserts a new ISO country row and optionally seeds localised names in
+        i18n_text. Requires the geo.admin permission (platform_operator role).
+        Only available when ENABLE_DEV_AUTH=true.
+      tags: [v1, geo, admin]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GeoCreateCountryRequest"
+      responses:
+        "201":
+          description: Country created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeoCountryResponse"
+        "400":
+          description: Invalid iso2, iso3, or slug field
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the geo.admin permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or geo queries not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/geo/countries/{iso2}:
+    patch:
+      operationId: patchV1AdminGeoCountriesIso2
+      summary: Update a reference country (admin)
+      description: |
+        Partial update of iso3 and/or slug for the country identified by its
+        iso2 code. Requires the geo.admin permission.
+      tags: [v1, geo, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: iso2
+          in: path
+          required: true
+          description: Two-letter ISO 3166-1 alpha-2 country code (e.g. "IL")
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GeoUpdateCountryRequest"
+      responses:
+        "200":
+          description: Country updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeoCountryResponse"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the geo.admin permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Country not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or geo queries not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/geo/cities:
+    post:
+      operationId: postV1AdminGeoCities
+      summary: Create a new reference city (admin)
+      description: |
+        Inserts a new city row linked to the specified country and optionally
+        seeds localised names in i18n_text. Requires the geo.admin permission.
+      tags: [v1, geo, admin]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GeoCreateCityRequest"
+      responses:
+        "201":
+          description: City created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeoCityResponse"
+        "400":
+          description: Invalid country_id or slug
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the geo.admin permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or geo queries not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/geo/cities/{id}:
+    patch:
+      operationId: patchV1AdminGeoCitiesId
+      summary: Update a reference city (admin)
+      description: |
+        Partial update of slug and/or localised names for the city identified
+        by its UUID. Requires the geo.admin permission.
+      tags: [v1, geo, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: City UUID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GeoUpdateCityRequest"
+      responses:
+        "200":
+          description: City updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeoCityResponse"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the geo.admin permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: City not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or geo queries not available
           content:
             application/json:
               schema:
