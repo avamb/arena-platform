@@ -134,6 +134,16 @@ type Server struct {
 	// PgxPool was supplied. Feature #119.
 	orgQueries *gen.Queries
 
+	// channelQueries is the sqlc Queries instance used by the sales channel
+	// CRUD endpoints (POST/GET/PATCH/DELETE /v1/organizations/{org_id}/channels).
+	// Nil when no PgxPool was supplied. Feature #121.
+	channelQueries *gen.Queries
+
+	// membershipQueries is the sqlc Queries instance used by the membership
+	// grant/revoke/list endpoints (POST/GET/DELETE /v1/organizations/{org_id}/members).
+	// Nil when no PgxPool was supplied. Feature #120.
+	membershipQueries *gen.Queries
+
 	// faultInjectOutboxAfterAudit is a dev/test-only fault injection flag.
 	// When true, handleEcho forces a transaction rollback immediately after
 	// the audit_events INSERT succeeds, before writing to outbox_events.
@@ -262,6 +272,18 @@ type Options struct {
 	// Inject gen.New(nil) in tests that need org routes mounted without a real pool.
 	// Feature #119.
 	OrgQueries *gen.Queries
+
+	// ChannelQueries injects a pre-constructed *gen.Queries for the sales channel
+	// CRUD endpoints. When nil and PgxPool is non-nil, gen.New(PgxPool) is used.
+	// Inject gen.New(nil) in tests that need channel routes mounted without a real pool.
+	// Feature #121.
+	ChannelQueries *gen.Queries
+
+	// MembershipQueries injects a pre-constructed *gen.Queries for the membership
+	// grant/revoke/list endpoints. When nil and PgxPool is non-nil, gen.New(PgxPool) is used.
+	// Inject gen.New(nil) in tests that need membership routes mounted without a real pool.
+	// Feature #120.
+	MembershipQueries *gen.Queries
 }
 
 // New constructs (but does not start) the HTTP server.
@@ -351,6 +373,27 @@ func New(opts Options) *Server {
 		orgQueries = gen.New(opts.PgxPool)
 	}
 
+	// sqlc Queries for sales channel CRUD endpoints (feature #121).
+	channelQueries := opts.ChannelQueries
+	if channelQueries == nil && opts.PgxPool != nil {
+		channelQueries = gen.New(opts.PgxPool)
+	}
+
+	// sqlc Queries for membership grant/revoke/list endpoints (feature #120).
+	membershipQueries := opts.MembershipQueries
+	if membershipQueries == nil && opts.PgxPool != nil {
+		membershipQueries = gen.New(opts.PgxPool)
+	}
+
+	// Extend the permission checker with membership-derived role resolution
+	// (feature #120 step 3). When a PgxPool is available, the DBChecker is
+	// augmented so that each Check() call unions the JWT roles with the user's
+	// active membership roles fetched fresh from the DB. This makes grant/revoke
+	// operations take effect on the next request without a new JWT.
+	if dbChecker, ok := permsChecker.(*permissions.DBChecker); ok && opts.PgxPool != nil {
+		permsChecker = dbChecker.WithMembershipQuerier(gen.New(opts.PgxPool))
+	}
+
 	// Assemble the readiness probe list.
 	// If the legacy DB Pinger is set, prepend it as a "database" probe so
 	// existing callers (main.go, integration tests) continue to work without
@@ -383,6 +426,8 @@ func New(opts Options) *Server {
 		debugSlowDelay:              opts.DebugSlowDelay,
 		geoQueries:                  geoQueries,
 		orgQueries:                  orgQueries,
+		channelQueries:              channelQueries,
+		membershipQueries:           membershipQueries,
 	}
 
 	s.mountOperationalRoutes()
@@ -594,6 +639,74 @@ func (s *Server) mountV1Routes() {
 				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
 				pr.Use(permissions.RequirePermission(s.perms, "org.delete", "organizations"))
 				pr.Delete("/organizations/{id}", s.handleDeleteOrg)
+			})
+		}
+
+		// ── Sales Channels (feature #121) ────────────────────────────────────
+		//
+		// All channel endpoints require JWT auth + a named permission.
+		// Routes are nested under /v1/organizations/{org_id}/channels so the
+		// org scope is enforced at the path level and in every query.
+		//
+		//   POST   /v1/organizations/{org_id}/channels        — create (channel.create)
+		//   GET    /v1/organizations/{org_id}/channels        — list   (channel.read)
+		//   GET    /v1/organizations/{org_id}/channels/{id}   — get    (channel.read)
+		//   PATCH  /v1/organizations/{org_id}/channels/{id}   — update (channel.update)
+		//   DELETE /v1/organizations/{org_id}/channels/{id}   — delete (channel.delete)
+		if s.stub != nil && s.stub.Enabled() && s.channelQueries != nil && s.pool != nil {
+			// GET /v1/organizations/{org_id}/channels and GET …/{id} (channel.read)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "channel.read", "channels"))
+				pr.Get("/organizations/{org_id}/channels", s.handleListChannels)
+				pr.Get("/organizations/{org_id}/channels/{id}", s.handleGetChannel)
+			})
+			// POST /v1/organizations/{org_id}/channels (channel.create)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "channel.create", "channels"))
+				pr.Post("/organizations/{org_id}/channels", s.handleCreateChannel)
+			})
+			// PATCH /v1/organizations/{org_id}/channels/{id} (channel.update)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "channel.update", "channels"))
+				pr.Patch("/organizations/{org_id}/channels/{id}", s.handleUpdateChannel)
+			})
+			// DELETE /v1/organizations/{org_id}/channels/{id} (channel.delete)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "channel.delete", "channels"))
+				pr.Delete("/organizations/{org_id}/channels/{id}", s.handleDeleteChannel)
+			})
+		}
+
+		// ── Memberships (feature #120) ──────────────────────────────────────
+		//
+		// All membership endpoints require JWT auth + a named permission.
+		// Routes are nested under /v1/organizations/{org_id}/members.
+		//
+		//   POST   /v1/organizations/{org_id}/members           — grant (membership.grant)
+		//   GET    /v1/organizations/{org_id}/members           — list  (membership.read)
+		//   DELETE /v1/organizations/{org_id}/members/{user_id} — revoke (membership.revoke)
+		if s.stub != nil && s.stub.Enabled() && s.membershipQueries != nil && s.pool != nil {
+			// GET /v1/organizations/{org_id}/members (membership.read)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "membership.read", "memberships"))
+				pr.Get("/organizations/{org_id}/members", s.handleListMembers)
+			})
+			// POST /v1/organizations/{org_id}/members (membership.grant)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "membership.grant", "memberships"))
+				pr.Post("/organizations/{org_id}/members", s.handleGrantMembership)
+			})
+			// DELETE /v1/organizations/{org_id}/members/{user_id} (membership.revoke)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "membership.revoke", "memberships"))
+				pr.Delete("/organizations/{org_id}/members/{user_id}", s.handleRevokeMembership)
 			})
 		}
 

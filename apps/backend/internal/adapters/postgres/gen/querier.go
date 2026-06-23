@@ -44,6 +44,19 @@ type Querier interface {
 	UpdateOrganization(ctx context.Context, id uuid.UUID, name, slug, country, defaultLocale string, reservationTTL int32) (OrganizationRow, error)
 	SoftDeleteOrganization(ctx context.Context, id uuid.UUID) (OrganizationRow, error)
 
+	// Sales channels — per-org payment configuration (feature #121)
+	InsertSalesChannel(ctx context.Context, orgID uuid.UUID, name, paymentMode, provider string, providerAccountID *string, feePercent string, reservationTTLOverride *int32) (SalesChannelRow, error)
+	GetSalesChannelByID(ctx context.Context, id, orgID uuid.UUID) (SalesChannelRow, error)
+	ListSalesChannelsByOrg(ctx context.Context, orgID uuid.UUID) ([]SalesChannelRow, error)
+	UpdateSalesChannel(ctx context.Context, id, orgID uuid.UUID, name, paymentMode, provider string, providerAccountID *string, feePercent *string, reservationTTLOverride *int32) (SalesChannelRow, error)
+	SoftDeleteSalesChannel(ctx context.Context, id, orgID uuid.UUID) (SalesChannelRow, error)
+
+	// Memberships — user → org role assignments (feature #120)
+	InsertMembership(ctx context.Context, userID, orgID uuid.UUID, role string) (MembershipRow, error)
+	RevokeMembership(ctx context.Context, userID, orgID uuid.UUID, role string) (MembershipRow, error)
+	ListMembershipsByOrg(ctx context.Context, orgID uuid.UUID) ([]MembershipRow, error)
+	GetActiveRolesForUser(ctx context.Context, userID uuid.UUID) ([]string, error)
+
 	// Geo reference data — countries & cities (feature #123)
 	ListCountries(ctx context.Context, locale string) ([]ListCountryRow, error)
 	ListCities(ctx context.Context, locale string, countryID *uuid.UUID) ([]ListCityRow, error)
