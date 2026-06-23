@@ -78,7 +78,7 @@ COMMENT ON COLUMN events.visibility IS
     'unlisted (direct link only).';
 
 COMMENT ON COLUMN events.deleted_at IS
-    'Soft-delete timestamp. NULL means the event is active.';
+    'Soft-delete marker (timestamptz). NULL means the event is active.';
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Seed RBAC permissions for event management

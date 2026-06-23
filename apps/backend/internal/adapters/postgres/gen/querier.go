@@ -153,6 +153,17 @@ type Querier interface {
 	GetExpiredReservations(ctx context.Context, limit int32) ([]ReservationRow, error)
 	ListReservationsBySession(ctx context.Context, sessionID uuid.UUID) ([]ReservationRow, error)
 	ListReservationsByUser(ctx context.Context, userID uuid.UUID) ([]ReservationRow, error)
+
+	// Promo codes — discount codes for checkout (feature #128)
+	InsertPromoCode(ctx context.Context, orgID uuid.UUID, code, discountType string, discountValue int64, appliesToTierIDs []string, maxUses, maxUsesPerCustomer *int32, validFrom, validUntil *time.Time, minOrderAmount int64, status string) (PromoCodeRow, error)
+	GetPromoCodeByID(ctx context.Context, id, orgID uuid.UUID) (PromoCodeRow, error)
+	GetPromoCodeByCode(ctx context.Context, orgID uuid.UUID, code string) (PromoCodeRow, error)
+	ListPromoCodesByOrg(ctx context.Context, orgID uuid.UUID) ([]PromoCodeRow, error)
+	UpdatePromoCode(ctx context.Context, id, orgID uuid.UUID, discountType string, discountValue *int64, appliesToTierIDs []string, maxUses, maxUsesPerCustomer *int32, validFrom, validUntil *time.Time, minOrderAmount *int64, status string) (PromoCodeRow, error)
+	SoftDeletePromoCode(ctx context.Context, id, orgID uuid.UUID) (PromoCodeRow, error)
+	CountPromoCodeRedemptions(ctx context.Context, promoCodeID uuid.UUID) (int32, error)
+	CountUserRedemptions(ctx context.Context, promoCodeID, userID uuid.UUID) (int32, error)
+	InsertPromoCodeRedemption(ctx context.Context, promoCodeID uuid.UUID, userID, reservationID *uuid.UUID, discountAmount, orderAmount int64) (PromoCodeRedemptionRow, error)
 }
 
 // Compile-time assertion: *Queries must implement Querier.

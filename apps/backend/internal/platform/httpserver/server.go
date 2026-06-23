@@ -190,6 +190,10 @@ type Server struct {
 	// endpoints and TTL processor. Nil when no PgxPool was supplied. Feature #131.
 	reservationQueries *gen.Queries
 
+	// promoQueries is the sqlc Queries instance used by the promo code endpoints.
+	// Nil when no PgxPool was supplied. Feature #128.
+	promoQueries *gen.Queries
+
 	// faultInjectOutboxAfterAudit is a dev/test-only fault injection flag.
 	// When true, handleEcho forces a transaction rollback immediately after
 	// the audit_events INSERT succeeds, before writing to outbox_events.
@@ -386,6 +390,12 @@ type Options struct {
 	// Inject gen.New(nil) in tests that need reservation routes mounted without a real pool.
 	// Feature #131.
 	ReservationQueries *gen.Queries
+
+	// PromoQueries injects a pre-constructed *gen.Queries for the promo code
+	// endpoints. When nil and PgxPool is non-nil, gen.New(PgxPool) is used.
+	// Inject gen.New(nil) in tests that need promo routes mounted without a real pool.
+	// Feature #128.
+	PromoQueries *gen.Queries
 }
 
 // New constructs (but does not start) the HTTP server.
@@ -541,6 +551,12 @@ func New(opts Options) *Server {
 		reservationQueries = gen.New(opts.PgxPool)
 	}
 
+	// sqlc Queries for promo code endpoints (feature #128).
+	promoQueries := opts.PromoQueries
+	if promoQueries == nil && opts.PgxPool != nil {
+		promoQueries = gen.New(opts.PgxPool)
+	}
+
 	// Extend the permission checker with membership-derived role resolution
 	// (feature #120 step 3). When a PgxPool is available, the DBChecker is
 	// augmented so that each Check() call unions the JWT roles with the user's
@@ -593,6 +609,7 @@ func New(opts Options) *Server {
 		tierQueries:                 tierQueries,
 		inventoryQueries:            inventoryQueries,
 		reservationQueries:          reservationQueries,
+		promoQueries:                promoQueries,
 	}
 
 	s.mountOperationalRoutes()
@@ -1206,6 +1223,52 @@ func (s *Server) mountV1Routes() {
 				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
 				pr.Use(permissions.RequirePermission(s.perms, "publication.delete", "publications"))
 				pr.Delete("/events/{event_id}/publications/{feed_token_id}", s.handleUnpublishEvent)
+			})
+		}
+
+		// ── Promo Codes (feature #128) ────────────────────────────────────────────
+		//
+		// Discount codes scoped to an organization, with checkout validation.
+		//
+		//   POST   /v1/organizations/{org_id}/promo-codes        — create (promo.create)
+		//   GET    /v1/organizations/{org_id}/promo-codes        — list   (promo.read)
+		//   GET    /v1/organizations/{org_id}/promo-codes/{id}   — get    (promo.read)
+		//   PATCH  /v1/organizations/{org_id}/promo-codes/{id}   — update (promo.update)
+		//   DELETE /v1/organizations/{org_id}/promo-codes/{id}   — delete (promo.delete)
+		//   POST   /v1/checkout/promo-validate                   — validate (promo.validate)
+		if s.stub != nil && s.stub.Enabled() && s.promoQueries != nil {
+			// GET routes (promo.read) — list and get single
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "promo.read", "promo-codes"))
+				pr.Get("/organizations/{org_id}/promo-codes", s.handleListPromoCodes)
+				pr.Get("/organizations/{org_id}/promo-codes/{id}", s.handleGetPromoCode)
+			})
+			// POST /v1/checkout/promo-validate (promo.validate)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "promo.validate", "promo-codes"))
+				pr.Post("/checkout/promo-validate", s.handleValidatePromoCode)
+			})
+		}
+		if s.stub != nil && s.stub.Enabled() && s.promoQueries != nil && s.pool != nil {
+			// POST /v1/organizations/{org_id}/promo-codes (promo.create)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "promo.create", "promo-codes"))
+				pr.Post("/organizations/{org_id}/promo-codes", s.handleCreatePromoCode)
+			})
+			// PATCH /v1/organizations/{org_id}/promo-codes/{id} (promo.update)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "promo.update", "promo-codes"))
+				pr.Patch("/organizations/{org_id}/promo-codes/{id}", s.handleUpdatePromoCode)
+			})
+			// DELETE /v1/organizations/{org_id}/promo-codes/{id} (promo.delete)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "promo.delete", "promo-codes"))
+				pr.Delete("/organizations/{org_id}/promo-codes/{id}", s.handleDeletePromoCode)
 			})
 		}
 

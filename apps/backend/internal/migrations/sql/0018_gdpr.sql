@@ -24,7 +24,7 @@ ALTER TABLE users
     ADD COLUMN IF NOT EXISTS anonymized_at     timestamptz;
 
 COMMENT ON COLUMN users.consent_given_at IS
-    'Timestamp when the user accepted the terms of service and privacy policy. '
+    'Time at which the user accepted the terms of service and privacy policy. '
     'NULL for users registered before consent tracking was introduced. '
     'Feature #164 GDPR compliance.';
 
@@ -33,7 +33,7 @@ COMMENT ON COLUMN users.marketing_consent IS
     'Defaults to false (opt-in model). Feature #164 GDPR compliance.';
 
 COMMENT ON COLUMN users.anonymized_at IS
-    'Timestamp when the user''s PII was anonymized per a GDPR deletion request. '
+    'Time at which the user''s PII was anonymized per a GDPR deletion request. '
     'When set, email and password_hash are replaced with placeholder values. '
     'Financial records linked to this user_id are retained per accounting law. '
     'Feature #164 GDPR compliance.';

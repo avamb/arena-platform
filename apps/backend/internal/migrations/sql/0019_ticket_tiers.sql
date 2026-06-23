@@ -76,7 +76,7 @@ COMMENT ON COLUMN ticket_tiers.capacity IS
     'Maximum number of tickets available for this tier. NULL = unlimited.';
 
 COMMENT ON COLUMN ticket_tiers.deleted_at IS
-    'Soft-delete timestamp.  NULL means the tier is active.';
+    'Soft-delete marker (timestamptz).  NULL means the tier is active.';
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Seed RBAC permissions for ticket tier management

@@ -55,13 +55,13 @@ COMMENT ON COLUMN reservations.expires_at IS
     'or org.reservation_ttl_seconds or the system default of 1200s.';
 
 COMMENT ON COLUMN reservations.cancelled_at IS
-    'Timestamp when the reservation transitioned to cancelled. NULL otherwise.';
+    'Set when the reservation transitioned to cancelled state. NULL otherwise.';
 
 COMMENT ON COLUMN reservations.converted_at IS
-    'Timestamp when the reservation transitioned to converted (purchase complete). NULL otherwise.';
+    'Set when the reservation transitioned to converted (purchase complete). NULL otherwise.';
 
 COMMENT ON COLUMN reservations.expired_at IS
-    'Timestamp when the TTL worker marked the reservation as expired. NULL otherwise.';
+    'Set by the TTL worker when the reservation expired. NULL otherwise.';
 
 -- Worker polling: find expirable reservations efficiently
 CREATE INDEX reservations_expires_at_active ON reservations (expires_at)

@@ -64,7 +64,7 @@ COMMENT ON COLUMN sales_channels.reservation_ttl_override IS
     'organization''s reservation_ttl_seconds. Takes precedence when set.';
 
 COMMENT ON COLUMN sales_channels.deleted_at IS
-    'Soft-delete timestamp. NULL means the channel is active.';
+    'Soft-delete marker (timestamptz). NULL means the channel is active.';
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Seed RBAC permissions for sales channel management

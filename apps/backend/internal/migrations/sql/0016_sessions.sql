@@ -65,7 +65,7 @@ COMMENT ON COLUMN sessions.status IS
     'scheduled→cancelled, scheduled→completed.';
 
 COMMENT ON COLUMN sessions.deleted_at IS
-    'Soft-delete timestamp.  NULL means the session is active.';
+    'Soft-delete marker (timestamptz).  NULL means the session is active.';
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Seed RBAC permissions for session management

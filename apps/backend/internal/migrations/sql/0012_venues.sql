@@ -62,7 +62,7 @@ COMMENT ON COLUMN venues.capacity_default IS
     'Individual events may override this with their own capacity.';
 
 COMMENT ON COLUMN venues.deleted_at IS
-    'Soft-delete timestamp. NULL means the venue is active.';
+    'Soft-delete marker (timestamptz). NULL means the venue is active.';
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Seed RBAC permissions for venue management

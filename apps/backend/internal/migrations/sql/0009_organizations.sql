@@ -52,7 +52,7 @@ COMMENT ON COLUMN organizations.reservation_ttl_seconds IS
     'The inventory module uses this value to expire unpaid reservations.';
 
 COMMENT ON COLUMN organizations.deleted_at IS
-    'Soft-delete timestamp. NULL means the organization is active. '
+    'Soft-delete marker (timestamptz). NULL means the organization is active. '
     'Non-NULL means the org has been deactivated; all downstream queries '
     'must filter WHERE deleted_at IS NULL.';
 

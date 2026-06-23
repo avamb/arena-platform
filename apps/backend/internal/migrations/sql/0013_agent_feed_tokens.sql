@@ -52,11 +52,11 @@ COMMENT ON COLUMN agent_feed_tokens.is_active IS
     'every public feed read. The row is retained for audit purposes.';
 
 COMMENT ON COLUMN agent_feed_tokens.revoked_at IS
-    'Timestamp when the token was explicitly revoked via DELETE endpoint. '
+    'Time at which the token was explicitly revoked via DELETE endpoint. '
     'NULL means the token is still potentially active (check is_active).';
 
 COMMENT ON COLUMN agent_feed_tokens.last_used_at IS
-    'Timestamp of the most recent successful public feed read using this token. '
+    'Time of the most recent successful public feed read using this token. '
     'Updated asynchronously (best-effort) to avoid blocking the feed response.';
 
 -- ─────────────────────────────────────────────────────────────────────────────
