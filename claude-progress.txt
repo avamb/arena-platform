@@ -10829,3 +10829,40 @@ PROGRESS METRIC
 Stats: 133/171 passing (77.8%). Feature #129 was already counted.
 
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-24 -- Feature #133 (Free / PWYW checkout flow) - ALREADY DONE
+"[scope: production-api] [arch: Q4.2] When pricing_calculator returns total=0
+(free tier or 100%-off promo), skip PaymentIntent creation, jump to ticket
+issuance. PWYW reads amount from request body, validates min/max, then normal
+payment flow."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #133 was already implemented and marked passing by a previous session.
+
+This session verified the implementation was correct:
+
+Existing implementation (checkout.go):
+  - handleCompleteCheckout: branches on payment_intent_id == ""
+    * Free path → CompleteFreeCheckoutSession (SQL total=0 guard)
+    * Paid path → CompleteCheckoutSession (requires payment_provider too)
+  - handleConfirmCheckout: PWYW validation (chosen_price required, min/max bounds)
+  - Free issuance audit: slog.Info("checkout: free issuance completed", ...) with
+    id, reservation_id, org_id fields
+  - CompleteFreeCheckoutSession in gen/checkout_sessions.sql.go: enforces
+    WHERE state='pricing_confirmed' AND total=0
+
+Verified:
+  - 12/12 TestCheckout133_* tests: PASS (golang:1.24-alpine)
+  - go build ./apps/backend/...: SUCCESS
+  - Feature already marked passing in backlog (passes=true)
+
+PROGRESS METRIC
+---------------
+Current stats: 135/171 passing (79.0%). Feature #133 already counted.
+
+================================================================================
