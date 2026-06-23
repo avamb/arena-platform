@@ -33,9 +33,10 @@ import (
 
 // ReservationProcessor handles background TTL expiration of reservations.
 type ReservationProcessor struct {
-	pool    PoolDB
-	queries *gen.Queries
-	logger  *slog.Logger
+	pool            PoolDB
+	queries         *gen.Queries
+	checkoutQueries *gen.Queries // optional; when non-nil, cascades expiry to checkout_sessions
+	logger          *slog.Logger
 }
 
 // NewReservationProcessor constructs a ReservationProcessor.
@@ -50,6 +51,15 @@ func NewReservationProcessor(pool PoolDB, queries *gen.Queries, logger *slog.Log
 		queries: queries,
 		logger:  logger,
 	}
+}
+
+// WithCheckoutQueries sets an optional *gen.Queries instance for cascading
+// checkout session expiry when a reservation expires (feature #132).
+// When set, expireReservation will call ExpireCheckoutSession for each open
+// checkout session linked to the expired reservation.
+func (p *ReservationProcessor) WithCheckoutQueries(q *gen.Queries) *ReservationProcessor {
+	p.checkoutQueries = q
+	return p
 }
 
 // ProcessExpiredReservations polls up to limit expired reservations, releases their
@@ -143,5 +153,35 @@ func (p *ReservationProcessor) expireReservation(ctx context.Context, r gen.Rese
 		slog.String("session_id", r.SessionID.String()),
 		slog.Int("quantity", int(r.Quantity)),
 	)
+
+	// ── Cascade expiry to linked checkout sessions (feature #132) ────────────
+	// This is best-effort: checkout sessions for an expired reservation should
+	// also be expired, but a failure here must not cause the reservation itself
+	// to be re-processed.
+	if p.checkoutQueries != nil {
+		sessions, err := p.checkoutQueries.ListCheckoutSessionsByReservation(ctx, r.ID)
+		if err != nil {
+			p.logger.Warn("reservation_processor: list checkout sessions failed (non-fatal)",
+				slog.String("reservation_id", r.ID.String()),
+				slog.String("error", err.Error()),
+			)
+		} else {
+			for _, cs := range sessions {
+				if _, err := p.checkoutQueries.ExpireCheckoutSession(ctx, cs.ID); err != nil {
+					p.logger.Warn("reservation_processor: expire checkout session failed (non-fatal)",
+						slog.String("checkout_session_id", cs.ID.String()),
+						slog.String("reservation_id", r.ID.String()),
+						slog.String("error", err.Error()),
+					)
+				} else {
+					p.logger.Info("reservation_processor: checkout session expired",
+						slog.String("checkout_session_id", cs.ID.String()),
+						slog.String("reservation_id", r.ID.String()),
+					)
+				}
+			}
+		}
+	}
+
 	return nil
 }

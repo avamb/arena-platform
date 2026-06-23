@@ -199,6 +199,10 @@ type Server struct {
 	// Feature #129.
 	pricingRules PricingRules
 
+	// checkoutQueries is the sqlc Queries instance used by the checkout session
+	// state machine endpoints. Nil when no PgxPool was supplied. Feature #132.
+	checkoutQueries *gen.Queries
+
 	// faultInjectOutboxAfterAudit is a dev/test-only fault injection flag.
 	// When true, handleEcho forces a transaction rollback immediately after
 	// the audit_events INSERT succeeds, before writing to outbox_events.
@@ -406,6 +410,12 @@ type Options struct {
 	// pricing pipeline (GET /v1/checkout/quote). Zero value is valid (all rates 0).
 	// Feature #129.
 	PricingRules PricingRules
+
+	// CheckoutQueries injects a pre-constructed *gen.Queries for the checkout
+	// session state machine endpoints. When nil and PgxPool is non-nil,
+	// gen.New(PgxPool) is used. Inject gen.New(nil) in tests that need checkout
+	// routes mounted without a real pool. Feature #132.
+	CheckoutQueries *gen.Queries
 }
 
 // New constructs (but does not start) the HTTP server.
@@ -567,6 +577,12 @@ func New(opts Options) *Server {
 		promoQueries = gen.New(opts.PgxPool)
 	}
 
+	// sqlc Queries for checkout session state machine endpoints (feature #132).
+	checkoutQueries := opts.CheckoutQueries
+	if checkoutQueries == nil && opts.PgxPool != nil {
+		checkoutQueries = gen.New(opts.PgxPool)
+	}
+
 	// Extend the permission checker with membership-derived role resolution
 	// (feature #120 step 3). When a PgxPool is available, the DBChecker is
 	// augmented so that each Check() call unions the JWT roles with the user's
@@ -621,6 +637,7 @@ func New(opts Options) *Server {
 		reservationQueries:          reservationQueries,
 		promoQueries:                promoQueries,
 		pricingRules:                opts.PricingRules,
+		checkoutQueries:             checkoutQueries,
 	}
 
 	s.mountOperationalRoutes()
@@ -1296,6 +1313,50 @@ func (s *Server) mountV1Routes() {
 				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
 				pr.Use(permissions.RequirePermission(s.perms, "pricing.quote", "checkout"))
 				pr.Get("/checkout/quote", s.handleQuote)
+			})
+		}
+
+		// ── Checkout sessions (feature #132) ─────────────────────────────────────
+		//
+		// Checkout session state machine: reservation + pricing + payment intent.
+		//
+		//   POST /v1/checkout/start          — create session      (checkout.start)
+		//   GET  /v1/checkout/{id}           — read session        (checkout.read)
+		//   POST /v1/checkout/{id}/confirm   — lock in pricing     (checkout.confirm)
+		//   POST /v1/checkout/{id}/complete  — mark paid           (checkout.complete)
+		//   POST /v1/checkout/{id}/abandon   — abandon session     (checkout.abandon)
+		if s.stub != nil && s.stub.Enabled() && s.checkoutQueries != nil {
+			// Read route (no pool required).
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "checkout.read", "checkout"))
+				pr.Get("/checkout/{id}", s.handleGetCheckoutSession)
+			})
+		}
+		if s.stub != nil && s.stub.Enabled() && s.checkoutQueries != nil && s.pool != nil {
+			// POST /v1/checkout/start (checkout.start)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "checkout.start", "checkout"))
+				pr.Post("/checkout/start", s.handleStartCheckout)
+			})
+			// POST /v1/checkout/{id}/confirm (checkout.confirm)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "checkout.confirm", "checkout"))
+				pr.Post("/checkout/{id}/confirm", s.handleConfirmCheckout)
+			})
+			// POST /v1/checkout/{id}/complete (checkout.complete)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "checkout.complete", "checkout"))
+				pr.Post("/checkout/{id}/complete", s.handleCompleteCheckout)
+			})
+			// POST /v1/checkout/{id}/abandon (checkout.abandon)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "checkout.abandon", "checkout"))
+				pr.Post("/checkout/{id}/abandon", s.handleAbandonCheckout)
 			})
 		}
 

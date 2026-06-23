@@ -131,6 +131,15 @@ type Querier interface {
 	// Pricing calculator — checkout quote (feature #129)
 	// (no dedicated DB table — pricing is pure computation using tier + promo data)
 
+	// Checkout sessions — state machine wrapping reservation + pricing + payment (feature #132)
+	InsertCheckoutSession(ctx context.Context, orgID, channelID, reservationID uuid.UUID, userID *uuid.UUID) (CheckoutSessionRow, error)
+	GetCheckoutSessionByID(ctx context.Context, id uuid.UUID) (CheckoutSessionRow, error)
+	ConfirmCheckoutSession(ctx context.Context, id uuid.UUID, subtotal, discount, platformFee, providerFee, tax, total int64, currency string, promoCodeID *uuid.UUID) (CheckoutSessionRow, error)
+	CompleteCheckoutSession(ctx context.Context, id uuid.UUID, paymentIntentID, paymentProvider string) (CheckoutSessionRow, error)
+	AbandonCheckoutSession(ctx context.Context, id uuid.UUID) (CheckoutSessionRow, error)
+	ExpireCheckoutSession(ctx context.Context, id uuid.UUID) (CheckoutSessionRow, error)
+	ListCheckoutSessionsByReservation(ctx context.Context, reservationID uuid.UUID) ([]CheckoutSessionRow, error)
+
 	// GDPR data workflows — export / delete / consent (feature #164)
 	InsertDataSubjectRequest(ctx context.Context, userID uuid.UUID, requestType string) (DataSubjectRequestRow, error)
 	GetDataSubjectRequestByID(ctx context.Context, id, userID uuid.UUID) (DataSubjectRequestRow, error)
