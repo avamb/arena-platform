@@ -209,6 +209,32 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "feed_tokens.sql.go"),
 		}
+	// Events (feature #125)
+	case "0014_events.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0014_events.sql"),
+		}
+	case "events.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "events.sql"),
+		}
+	case "events.sql.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "events.sql.go"),
+		}
+	// Password reset tokens (feature #116)
+	case "0015_password_reset_tokens.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0015_password_reset_tokens.sql"),
+		}
+	case "password_reset_tokens.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "password_reset_tokens.sql"),
+		}
+	case "password_reset_tokens.sql.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "password_reset_tokens.sql.go"),
+		}
 	default:
 		// Generic fallback: try the file directly at the repo root.
 		candidates = []string{

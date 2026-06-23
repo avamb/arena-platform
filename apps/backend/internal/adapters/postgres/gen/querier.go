@@ -32,6 +32,14 @@ type Querier interface {
 	RevokeRefreshToken(ctx context.Context, token string) error
 	GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByEmailRow, error)
 
+	// Password reset tokens — one-time reset flow (feature #116)
+	InsertPasswordResetToken(ctx context.Context, token string, userID uuid.UUID, expiresAt time.Time) error
+	GetPasswordResetToken(ctx context.Context, token string) (GetPasswordResetTokenRow, error)
+	MarkPasswordResetTokenUsed(ctx context.Context, token string) error
+
+	// UpdateUserPassword — used by password reset confirm (feature #116)
+	UpdateUserPassword(ctx context.Context, id uuid.UUID, passwordHash string) error
+
 	// RBAC — permission engine (feature #117)
 	HasPermissionForRoles(ctx context.Context, roleNames []string, permName string) (bool, error)
 	GetPermissionsForRoles(ctx context.Context, roleNames []string) ([]string, error)
@@ -84,6 +92,18 @@ type Querier interface {
 	GetCityBySlug(ctx context.Context, slug string) (CityRow, error)
 	InsertCity(ctx context.Context, countryID uuid.UUID, slug string) (CityRow, error)
 	UpdateCity(ctx context.Context, id uuid.UUID, slug string) (CityRow, error)
+
+	// Events — dated occurrences in the catalog (feature #125)
+	InsertEvent(ctx context.Context, orgID uuid.UUID, venueID *uuid.UUID, name string, description *string, status string, startAt, endAt time.Time, visibility string, imageURL *string) (EventRow, error)
+	GetEventByID(ctx context.Context, id uuid.UUID, locale string) (EventRow, error)
+	GetEventRaw(ctx context.Context, id uuid.UUID) (EventRow, error)
+	ListEvents(ctx context.Context, locale, visibilityFilter string) ([]EventRow, error)
+	ListEventsByOrg(ctx context.Context, orgID uuid.UUID, locale string) ([]EventRow, error)
+	UpdateEvent(ctx context.Context, id, orgID uuid.UUID, venueID *uuid.UUID, name string, description *string, startAt, endAt *time.Time, visibility string, imageURL *string) (EventRow, error)
+	UpdateEventStatus(ctx context.Context, id, orgID uuid.UUID, status string) (EventRow, error)
+	SoftDeleteEvent(ctx context.Context, id, orgID uuid.UUID) (EventRow, error)
+	UpsertEventI18nName(ctx context.Context, eventIDStr, locale, value string) error
+	UpsertEventI18nDescription(ctx context.Context, eventIDStr, locale, value string) error
 }
 
 // Compile-time assertion: *Queries must implement Querier.

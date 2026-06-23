@@ -545,6 +545,54 @@ components:
           description: UUIDv7 of the authenticated user
           example: "01900000-0000-7000-8000-000000000001"
 
+    PasswordResetRequestBody:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          description: Email address of the account for which a reset link is requested
+          example: "user@example.com"
+
+    PasswordResetRequestResponse:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          description: Informational message (same for found / not-found to prevent enumeration)
+          example: "If that email address is registered, you will receive a password reset link."
+
+    PasswordResetConfirmBody:
+      type: object
+      required: [token, new_password]
+      properties:
+        token:
+          type: string
+          description: One-time reset token received in the password-reset email
+          example: "a3f8c2d1e0b9..."
+        new_password:
+          type: string
+          minLength: 8
+          maxLength: 72
+          description: New plain-text password (bcrypt-hashed server-side; 8–72 chars)
+          example: "NewSecr3tP@ss"
+
+    PasswordResetConfirmResponse:
+      type: object
+      required: [user_id, message]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the user whose password was reset
+          example: "01900000-0000-7000-8000-000000000001"
+        message:
+          type: string
+          description: Confirmation message
+          example: "Password has been reset successfully. Please log in with your new password."
+
     AuthRegisterRequest:
       type: object
       required: [email, password]
@@ -1371,6 +1419,90 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database pool not available or JWT secret not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/auth/password-reset/request:
+    post:
+      operationId: postV1AuthPasswordResetRequest
+      summary: Request a password-reset link
+      description: |
+        Generates a one-time password-reset token (1-hour TTL) and logs the
+        reset link to stdout (dev-mode email delivery). Returns 202 Accepted
+        in all cases — whether or not the email is registered — to prevent
+        user enumeration. No Authorization header required.
+      tags: [v1, auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetRequestBody"
+      responses:
+        "202":
+          description: Request acknowledged (email queued if address is registered)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PasswordResetRequestResponse"
+        "400":
+          description: Missing or invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/auth/password-reset/confirm:
+    post:
+      operationId: postV1AuthPasswordResetConfirm
+      summary: Confirm password reset with a one-time token
+      description: |
+        Accepts a valid, unexpired, single-use reset token and a new password.
+        Updates the user's password hash and marks the token as used. Returns
+        410 Gone when the token has already been consumed or has expired.
+        No Authorization header required.
+      tags: [v1, auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetConfirmBody"
+      responses:
+        "200":
+          description: Password reset successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PasswordResetConfirmResponse"
+        "400":
+          description: Missing or invalid request body / password validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Token not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "410":
+          description: Token already used or expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool not available
           content:
             application/json:
               schema:

@@ -155,6 +155,12 @@ type Server struct {
 	// Nil when no PgxPool was supplied. Feature #122.
 	feedTokenQueries *gen.Queries
 
+	// eventQueries is the sqlc Queries instance used by the event CRUD endpoints.
+	// Read endpoints (GET /v1/events, GET /v1/events/{id}) are shared across orgs.
+	// Write endpoints (POST/PATCH/DELETE /v1/organizations/{org_id}/events/*) are
+	// gated to the owning org. Nil when no PgxPool was supplied. Feature #125.
+	eventQueries *gen.Queries
+
 	// faultInjectOutboxAfterAudit is a dev/test-only fault injection flag.
 	// When true, handleEcho forces a transaction rollback immediately after
 	// the audit_events INSERT succeeds, before writing to outbox_events.
@@ -308,6 +314,12 @@ type Options struct {
 	// Inject gen.New(nil) in tests that need feed token routes without a real pool.
 	// Feature #122.
 	FeedTokenQueries *gen.Queries
+
+	// EventQueries injects a pre-constructed *gen.Queries for the event CRUD
+	// endpoints. When nil and PgxPool is non-nil, gen.New(PgxPool) is used.
+	// Inject gen.New(nil) in tests that need event routes mounted without a real pool.
+	// Feature #125.
+	EventQueries *gen.Queries
 }
 
 // New constructs (but does not start) the HTTP server.
@@ -421,6 +433,12 @@ func New(opts Options) *Server {
 		feedTokenQueries = gen.New(opts.PgxPool)
 	}
 
+	// sqlc Queries for event CRUD endpoints (feature #125).
+	eventQueries := opts.EventQueries
+	if eventQueries == nil && opts.PgxPool != nil {
+		eventQueries = gen.New(opts.PgxPool)
+	}
+
 	// Extend the permission checker with membership-derived role resolution
 	// (feature #120 step 3). When a PgxPool is available, the DBChecker is
 	// augmented so that each Check() call unions the JWT roles with the user's
@@ -466,6 +484,7 @@ func New(opts Options) *Server {
 		membershipQueries:           membershipQueries,
 		venueQueries:                venueQueries,
 		feedTokenQueries:            feedTokenQueries,
+		eventQueries:                eventQueries,
 	}
 
 	s.mountOperationalRoutes()
@@ -596,10 +615,12 @@ func (s *Server) mountV1Routes() {
 			})
 		}
 
-		// POST /v1/auth/register — public registration endpoint (feature #114).
-		// GET  /v1/auth/verify   — email verification (feature #114).
-		// POST /v1/auth/login    — email+password → JWT + refresh token (feature #115).
-		// POST /v1/auth/refresh  — refresh token → new JWT access token (feature #115).
+		// POST /v1/auth/register              — public registration endpoint (feature #114).
+		// GET  /v1/auth/verify                — email verification (feature #114).
+		// POST /v1/auth/login                 — email+password → JWT + refresh token (feature #115).
+		// POST /v1/auth/refresh               — refresh token → new JWT access token (feature #115).
+		// POST /v1/auth/password-reset/request  — request a password-reset link (feature #116).
+		// POST /v1/auth/password-reset/confirm  — confirm reset with token + new password (feature #116).
 		// All require the pool to be wired; no auth header needed (they are
 		// intentionally public endpoints used before or during authentication).
 		if s.pool != nil {
@@ -607,6 +628,8 @@ func (s *Server) mountV1Routes() {
 			r.Get("/auth/verify", s.handleAuthVerifyEmail)
 			r.Post("/auth/login", s.handleAuthLogin)
 			r.Post("/auth/refresh", s.handleAuthRefresh)
+			r.Post("/auth/password-reset/request", s.handleAuthPasswordResetRequest)
+			r.Post("/auth/password-reset/confirm", s.handleAuthPasswordResetConfirm)
 		}
 
 		// ── Geo reference data (feature #123) ──────────────────────────────────
@@ -828,6 +851,56 @@ func (s *Server) mountV1Routes() {
 				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
 				pr.Use(permissions.RequirePermission(s.perms, "feed_token.delete", "feed_tokens"))
 				pr.Delete("/organizations/{org_id}/channels/{channel_id}/feed-tokens/{id}", s.handleRevokeFeedToken)
+			})
+		}
+
+		// ── Events (feature #125) ────────────────────────────────────────────
+		//
+		// Read endpoints are shared across all organizations (any authenticated
+		// user with event.read can list/get any active event). Write endpoints
+		// are owner-gated: the org_id in the path must match the event's owning org.
+		//
+		//   POST   /v1/organizations/{org_id}/events            — create (event.create)
+		//   GET    /v1/events                                   — list public events (event.read, shared)
+		//   GET    /v1/events/{id}                              — get by ID (event.read, shared)
+		//   GET    /v1/organizations/{org_id}/events            — list by org (event.read)
+		//   PATCH  /v1/organizations/{org_id}/events/{id}       — update (event.update, owner only)
+		//   POST   /v1/organizations/{org_id}/events/{id}/status — status transition (event.publish)
+		//   DELETE /v1/organizations/{org_id}/events/{id}       — soft-delete (event.delete, owner only)
+		if s.stub != nil && s.stub.Enabled() && s.eventQueries != nil {
+			// Shared read routes (event.read) — any org can read any active event.
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "event.read", "events"))
+				pr.Get("/events", s.handleListEvents)
+				pr.Get("/events/{id}", s.handleGetEvent)
+				pr.Get("/organizations/{org_id}/events", s.handleListEventsByOrg)
+			})
+		}
+		if s.stub != nil && s.stub.Enabled() && s.eventQueries != nil && s.pool != nil {
+			// POST /v1/organizations/{org_id}/events (event.create)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "event.create", "events"))
+				pr.Post("/organizations/{org_id}/events", s.handleCreateEvent)
+			})
+			// PATCH /v1/organizations/{org_id}/events/{id} (event.update)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "event.update", "events"))
+				pr.Patch("/organizations/{org_id}/events/{id}", s.handleUpdateEvent)
+			})
+			// POST /v1/organizations/{org_id}/events/{id}/status (event.publish)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "event.publish", "events"))
+				pr.Post("/organizations/{org_id}/events/{id}/status", s.handleUpdateEventStatus)
+			})
+			// DELETE /v1/organizations/{org_id}/events/{id} (event.delete)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "event.delete", "events"))
+				pr.Delete("/organizations/{org_id}/events/{id}", s.handleDeleteEvent)
 			})
 		}
 
