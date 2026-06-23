@@ -9780,3 +9780,82 @@ This session: feature #117 completed and marked passing -> 113/171 passing.
 ================================================================================
 
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #111 (Webhook delivery client)
+"HTTP client with timeouts, retry with exponential backoff, dead-letter on max
+attempts, subscriber routing by event type, signed payloads, idempotency key
+header."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #111: Verified and confirmed all 5 steps fully implemented in prior sessions.
+
+The webhook_client.go and webhook_client_111_test.go files were already present
+in apps/backend/internal/platform/outbox/ but had not been committed or marked
+passing. This session verified everything and closed it out.
+
+Steps covered:
+  Step 1: Subscriber model (URL, Secret []byte, EventTypes []string, Active bool)
+          - matchesEventType() method: empty slice = wildcard, specific list = filter
+          - Compile-time Dispatcher interface guard
+
+  Step 2: HTTP client with timeout + retry/exponential backoff
+          - WebhookClientOptions: MaxAttempts (default 3), InitialBackoff (default 1s),
+            MaxBackoff (default 30s), HTTPTimeout (default 10s)
+          - calcBackoff(n): InitialBackoff * 2^(n-1), capped at MaxBackoff
+          - Per-subscriber retry loop with context cancellation support
+          - Dead-letter on exhaustion (logs error, increments metric, continues)
+
+  Step 3: Subscriber routing/filtering by event type
+          - Dispatch() iterates all subscribers, skips inactive and non-matching
+          - Wildcard subscribers (empty EventTypes) receive all events
+          - Multiple subscribers can have the same EventType (fan-out)
+
+  Step 4: Prometheus metrics (WebhookClientMetrics)
+          - arena_webhook_delivery_duration_seconds (HistogramVec)
+          - arena_webhook_retry_total (CounterVec)
+          - arena_webhook_dead_letter_total (CounterVec)
+          - Labels: subscriber_url, event_type
+          - NewWebhookClientMetrics() registers all three in supplied Registerer
+
+  Step 5: Integration test with mock subscriber (httptest.Server)
+          - TestWebhookClient111_IntegrationMockSubscriber: 3 subscriber scenarios
+          - Order subscriber: receives matching events, verifies HMAC signature
+          - Payment subscriber: fails once, retries, succeeds
+          - Dead-letter wildcard subscriber: exhausts retries, Dispatch returns nil
+          - Signed payloads: X-Arena-Signature: sha256=<hex>
+          - Idempotency key header: X-Arena-Idempotency-Key = event_id from payload
+
+CHANGES
+-------
+Committed (were already implemented, just unstaged):
+  - apps/backend/internal/platform/outbox/webhook_client.go (NEW)
+  - apps/backend/internal/platform/outbox/webhook_client_111_test.go (NEW, 20 tests)
+
+Also committed (leftover from prior session):
+  - apps/backend/internal/adapters/postgres/gen/orgs.sql.go
+  - apps/backend/internal/adapters/postgres/queries/orgs.sql
+  - apps/backend/internal/migrations/sql/0009_organizations.sql
+  - apps/backend/internal/platform/httpserver/orgs.go
+  - apps/backend/internal/adapters/postgres/gen/querier.go (modified)
+  - apps/backend/internal/platform/httpserver/openapi_drift_test.go (modified)
+  - apps/backend/internal/platform/httpserver/server.go (modified)
+  - apps/backend/internal/platform/httpserver/testfilehelpers_test.go (modified)
+  - apps/backend/openapi/openapi.yaml (modified)
+
+VERIFICATION
+------------
+  - 20/20 TestWebhookClient111_* tests: PASS (0.147s via Docker golang:1.24-alpine)
+  - go build ./apps/backend/...: EXIT 0 (all packages compile)
+  - git commit: 9247960
+
+PROGRESS METRIC
+---------------
+Stats at session start: 115/171 passing, 2 in_progress.
+This session: feature #111 completed and marked passing -> 116/171 passing.
+
+================================================================================
