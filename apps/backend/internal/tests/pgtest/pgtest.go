@@ -167,7 +167,9 @@ func TruncateAll(t *testing.T, pool *pgxpool.Pool) {
 			audit_events,
 			i18n_text,
 			idempotency_keys,
+			outbox,
 			outbox_events,
+			scaffold_echo,
 			worker_dead_letter,
 			worker_jobs
 		RESTART IDENTITY CASCADE

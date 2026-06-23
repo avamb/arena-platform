@@ -225,20 +225,38 @@ func TestPromtoolFormat_Step3_HELPAndTYPEPrecedeDefinitions(t *testing.T) {
 		if familyName == "" {
 			continue
 		}
+		// Resolve the actual family name used in TYPE/HELP declarations.
+		// metricFamilyNameFromLine strips _count/_sum/_bucket/_created suffixes to
+		// recover the histogram/summary base name. However, some standalone Gauge
+		// metrics legitimately end in _count (e.g. arena_db_pool_wait_count).
+		// For those, the TYPE/HELP declaration uses the full name; we fall back to
+		// the raw metric name when the stripped family is not in the TYPE map.
+		resolvedFamily := familyName
 		if !seenTYPE[familyName] {
+			// Extract the raw metric name from the line (before labels or spaces).
+			rawEnd := strings.IndexAny(line, "{ \t")
+			rawName := line
+			if rawEnd != -1 {
+				rawName = line[:rawEnd]
+			}
+			if seenTYPE[rawName] {
+				resolvedFamily = rawName
+			}
+		}
+		if !seenTYPE[resolvedFamily] {
 			t.Errorf("step 3 (line %d): data line for %q has no preceding # TYPE:\n  %s",
-				lineNum, familyName, truncate(line, 120))
+				lineNum, resolvedFamily, truncate(line, 120))
 			failures++
 			if failures >= 5 {
 				t.Log("step 3: stopping after 5 failures; fix the above before continuing")
 				break
 			}
 		}
-		if !seenHELP[familyName] {
+		if !seenHELP[resolvedFamily] {
 			// HELP is technically optional in Prometheus text format but
 			// client_golang always emits it; flag the absence as an error.
 			t.Errorf("step 3 (line %d): data line for %q has no preceding # HELP:\n  %s",
-				lineNum, familyName, truncate(line, 120))
+				lineNum, resolvedFamily, truncate(line, 120))
 			failures++
 			if failures >= 5 {
 				break
@@ -596,8 +614,24 @@ func TestPromtoolFormat_FullVerification(t *testing.T) {
 				continue
 			}
 			family := metricFamilyNameFromLine(line)
-			if family != "" && !seenTYPE[family] {
-				t.Errorf("line %d: data line for %q has no preceding # TYPE", lineNum, family)
+			if family != "" {
+				resolvedFamily := family
+				if !seenTYPE[family] {
+					// Standalone Gauge metrics whose names end in _count (e.g.
+					// arena_db_pool_wait_count) declare TYPE under their full name.
+					// Fall back to the raw metric name before stripping suffixes.
+					rawEnd := strings.IndexAny(line, "{ \t")
+					rawName := line
+					if rawEnd != -1 {
+						rawName = line[:rawEnd]
+					}
+					if seenTYPE[rawName] {
+						resolvedFamily = rawName
+					}
+				}
+				if !seenTYPE[resolvedFamily] {
+					t.Errorf("line %d: data line for %q has no preceding # TYPE", lineNum, resolvedFamily)
+				}
 			}
 		}
 	})

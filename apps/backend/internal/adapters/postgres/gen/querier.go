@@ -15,6 +15,7 @@ import (
 // a mock without a live PostgreSQL connection.
 type Querier interface {
 	SelectUUIDv7(ctx context.Context) (uuid.UUID, error)
+	InsertScaffoldEcho(ctx context.Context, actorID string, message string) (InsertScaffoldEchoRow, error)
 }
 
 // Compile-time assertion: *Queries must implement Querier.

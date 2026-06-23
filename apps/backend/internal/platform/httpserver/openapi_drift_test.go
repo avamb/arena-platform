@@ -280,6 +280,7 @@ func buildDriftTestServer(t *testing.T) *Server {
 		Audit:          &captureAuditWriter{},
 		Idem:           &noopIdemStore{},
 		Pool:           &fakePoolDB{tx: &fakeTx{}},
+		Outbox:         &scaffold105OutboxWriter{},
 		MetricsHandler: noopHandler,
 	})
 }

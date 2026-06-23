@@ -205,6 +205,17 @@ curl -s http://localhost:8080/v1/echo \
   -d '{"message":"hello"}'
 ```
 
+#### POST /v1/scaffold/echo — scaffolding example (will be removed)
+
+`POST /v1/scaffold/echo` is a **scaffolding example endpoint** that demonstrates
+the full cross-cutting boundary stack in a single PostgreSQL transaction:
+auth → permission check (`scaffold.echo.create`) → idempotency →
+`scaffold_echo` table INSERT (sqlc) → audit event → outbox event → COMMIT → 201.
+
+> **Note:** This endpoint is a scaffolding example and will be removed when real
+> domain command endpoints (orders, tickets, etc.) arrive in later milestones.
+> It is safe to call in development but should not be used for any real business logic.
+
 #### POST /v1/echo — strict schema policy
 
 `POST /v1/echo` enforces a **strict schema** on the request body: any field not
