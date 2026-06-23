@@ -36,6 +36,14 @@ type Querier interface {
 	HasPermissionForRoles(ctx context.Context, roleNames []string, permName string) (bool, error)
 	GetPermissionsForRoles(ctx context.Context, roleNames []string) ([]string, error)
 
+	// Organizations — primary tenant boundary (feature #119)
+	InsertOrganization(ctx context.Context, name, slug, country, defaultLocale string, reservationTTL int32) (OrganizationRow, error)
+	GetOrganizationByID(ctx context.Context, id uuid.UUID) (OrganizationRow, error)
+	GetOrganizationBySlug(ctx context.Context, slug string) (OrganizationRow, error)
+	ListOrganizations(ctx context.Context) ([]OrganizationRow, error)
+	UpdateOrganization(ctx context.Context, id uuid.UUID, name, slug, country, defaultLocale string, reservationTTL int32) (OrganizationRow, error)
+	SoftDeleteOrganization(ctx context.Context, id uuid.UUID) (OrganizationRow, error)
+
 	// Geo reference data — countries & cities (feature #123)
 	ListCountries(ctx context.Context, locale string) ([]ListCountryRow, error)
 	ListCities(ctx context.Context, locale string, countryID *uuid.UUID) ([]ListCityRow, error)

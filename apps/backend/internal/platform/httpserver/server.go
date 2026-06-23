@@ -129,6 +129,11 @@ type Server struct {
 	// POST/PATCH endpoints). Nil when no PgxPool was supplied.
 	geoQueries *gen.Queries
 
+	// orgQueries is the sqlc Queries instance used by the organization CRUD
+	// endpoints (POST/GET/PATCH/DELETE /v1/organizations). Nil when no
+	// PgxPool was supplied. Feature #119.
+	orgQueries *gen.Queries
+
 	// faultInjectOutboxAfterAudit is a dev/test-only fault injection flag.
 	// When true, handleEcho forces a transaction rollback immediately after
 	// the audit_events INSERT succeeds, before writing to outbox_events.
@@ -251,6 +256,12 @@ type Options struct {
 	// Inject an explicit value in tests that need geo routes mounted without a
 	// real *pgxpool.Pool (e.g. passing gen.New(nil) to exercise auth guards).
 	GeoQueries *gen.Queries
+
+	// OrgQueries injects a pre-constructed *gen.Queries for the organization
+	// CRUD endpoints. When nil and PgxPool is non-nil, gen.New(PgxPool) is used.
+	// Inject gen.New(nil) in tests that need org routes mounted without a real pool.
+	// Feature #119.
+	OrgQueries *gen.Queries
 }
 
 // New constructs (but does not start) the HTTP server.
@@ -334,6 +345,12 @@ func New(opts Options) *Server {
 		geoQueries = gen.New(opts.PgxPool)
 	}
 
+	// sqlc Queries for organization CRUD endpoints (feature #119).
+	orgQueries := opts.OrgQueries
+	if orgQueries == nil && opts.PgxPool != nil {
+		orgQueries = gen.New(opts.PgxPool)
+	}
+
 	// Assemble the readiness probe list.
 	// If the legacy DB Pinger is set, prepend it as a "database" probe so
 	// existing callers (main.go, integration tests) continue to work without
@@ -365,6 +382,7 @@ func New(opts Options) *Server {
 		debugRoutesEnabled:          opts.DebugRoutesEnabled,
 		debugSlowDelay:              opts.DebugSlowDelay,
 		geoQueries:                  geoQueries,
+		orgQueries:                  orgQueries,
 	}
 
 	s.mountOperationalRoutes()
@@ -533,6 +551,49 @@ func (s *Server) mountV1Routes() {
 					pr.Post("/cities", s.handleCreateCity)
 					pr.Patch("/cities/{id}", s.handleUpdateCity)
 				})
+			})
+		}
+
+		// ── Organizations (feature #119) ──────────────────────────────────────
+		//
+		// All org endpoints require JWT auth. Write endpoints require specific
+		// permissions. Read endpoints require "org.read" to keep the org
+		// registry non-enumerable without authentication.
+		//
+		//   POST   /v1/organizations        — create (org.create)
+		//   GET    /v1/organizations        — list   (org.read)
+		//   GET    /v1/organizations/{id}   — get    (org.read)
+		//   PATCH  /v1/organizations/{id}   — update (org.update)
+		//   DELETE /v1/organizations/{id}   — delete (org.delete)
+		//
+		// Routes are registered directly (not via r.Route) to avoid trailing-slash
+		// path canonicalization by chi. Each permission is enforced in a separate
+		// group so GET and POST on the same base path can carry different permissions.
+		if s.stub != nil && s.stub.Enabled() && s.orgQueries != nil && s.pool != nil {
+			// GET /v1/organizations and GET /v1/organizations/{id} (org.read)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "org.read", "organizations"))
+				pr.Get("/organizations", s.handleListOrgs)
+				pr.Get("/organizations/{id}", s.handleGetOrg)
+			})
+			// POST /v1/organizations (org.create)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "org.create", "organizations"))
+				pr.Post("/organizations", s.handleCreateOrg)
+			})
+			// PATCH /v1/organizations/{id} (org.update)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "org.update", "organizations"))
+				pr.Patch("/organizations/{id}", s.handleUpdateOrg)
+			})
+			// DELETE /v1/organizations/{id} (org.delete)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "org.delete", "organizations"))
+				pr.Delete("/organizations/{id}", s.handleDeleteOrg)
 			})
 		}
 

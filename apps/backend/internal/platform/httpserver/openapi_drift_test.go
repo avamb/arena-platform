@@ -285,6 +285,8 @@ func buildDriftTestServer(t *testing.T) *Server {
 		MetricsHandler: noopHandler,
 		// Wire geo queries so /v1/geo/* and /v1/admin/geo/* routes are mounted.
 		GeoQueries: gen.New(nil),
+		// Wire org queries so /v1/organizations/* routes are mounted (feature #119).
+		OrgQueries: gen.New(nil),
 	})
 }
 

@@ -609,6 +609,106 @@ components:
           description: Human-readable confirmation message
           example: "Email address verified successfully."
 
+    # Organization schemas — feature #119
+    OrganizationItem:
+      type: object
+      required: [id, name, slug, country, default_locale, reservation_ttl_seconds, created_at, updated_at]
+      description: A single active organization (primary tenant boundary).
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the organization row
+          example: "01929d0e-0e47-7000-8000-000000000001"
+        name:
+          type: string
+          description: Human-readable display name (unique among active organizations)
+          example: "My Ticket Company"
+        slug:
+          type: string
+          description: URL-safe identifier (unique among active organizations, lowercase)
+          example: "my-ticket-company"
+        country:
+          type: string
+          description: ISO 3166-1 alpha-2 country code or empty string
+          example: "IL"
+        default_locale:
+          type: string
+          description: BCP 47 locale tag used as default for this organization
+          example: "en"
+        reservation_ttl_seconds:
+          type: integer
+          description: Seat-hold expiry window in seconds (default 1200 = 20 minutes)
+          example: 1200
+        created_at:
+          type: string
+          format: date-time
+          description: ISO 8601 / RFC 3339 timestamp of row creation
+          example: "2024-01-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: ISO 8601 / RFC 3339 timestamp of last update
+          example: "2024-01-01T00:00:00Z"
+
+    CreateOrganizationRequest:
+      type: object
+      required: [name, slug]
+      additionalProperties: false
+      description: Request body for POST /v1/organizations.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Human-readable display name (must be unique among active organizations)
+          example: "My Ticket Company"
+        slug:
+          type: string
+          minLength: 1
+          description: URL-safe identifier (lowercase; must be unique among active organizations)
+          example: "my-ticket-company"
+        country:
+          type: string
+          description: ISO 3166-1 alpha-2 country code (optional)
+          example: "IL"
+        default_locale:
+          type: string
+          description: BCP 47 locale tag (optional; defaults to "en")
+          example: "en"
+        reservation_ttl_seconds:
+          type: integer
+          description: Seat-hold expiry window in seconds (optional; defaults to 1200)
+          example: 1200
+
+    UpdateOrganizationRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Request body for PATCH /v1/organizations/{id}.
+        All fields are optional — omitted or empty-string fields leave the
+        existing value unchanged.
+      properties:
+        name:
+          type: string
+          description: New display name (optional; empty string leaves existing value)
+          example: "My Ticket Company Renamed"
+        slug:
+          type: string
+          description: New URL-safe slug (optional; empty string leaves existing value)
+          example: "my-ticket-company-renamed"
+        country:
+          type: string
+          description: New country code (optional; empty string leaves existing value)
+          example: "EE"
+        default_locale:
+          type: string
+          description: New default locale (optional; empty string leaves existing value)
+          example: "ru"
+        reservation_ttl_seconds:
+          type: integer
+          description: New TTL in seconds (optional; 0 leaves existing value)
+          example: 900
+
     # Geo schemas — feature #123
     GeoCountryItem:
       type: object
@@ -1604,6 +1704,329 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database pool or geo queries not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations:
+    post:
+      operationId: postV1Organizations
+      summary: Create a new organization
+      description: |
+        Creates a new organization (primary tenant boundary). Requires JWT authentication
+        and the "org.create" permission. Name and slug must be unique among active
+        (non-deleted) organizations.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrganizationRequest"
+      responses:
+        "201":
+          description: Organization created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [organization]
+                properties:
+                  organization:
+                    $ref: "#/components/schemas/OrganizationItem"
+        "400":
+          description: Request body missing, not valid JSON, or required fields empty
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (org.create)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: An organization with that name or slug already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or org queries not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    get:
+      operationId: getV1Organizations
+      summary: List all active organizations
+      description: |
+        Returns a JSON array of all active (non-soft-deleted) organizations ordered
+        by creation time ascending. Requires JWT authentication and "org.read" permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Array of active organizations
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [organizations]
+                properties:
+                  organizations:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/OrganizationItem"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (org.read)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or org queries not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{id}:
+    get:
+      operationId: getV1OrganizationsId
+      summary: Get a single organization by ID
+      description: |
+        Returns the details of a single active (non-deleted) organization.
+        Requires JWT authentication and "org.read" permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the organization
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Organization details
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [organization]
+                properties:
+                  organization:
+                    $ref: "#/components/schemas/OrganizationItem"
+        "400":
+          description: id path parameter is not a valid UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (org.read)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Organization not found or has been soft-deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or org queries not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      operationId: patchV1OrganizationsId
+      summary: Update an organization
+      description: |
+        Applies a partial update to an active organization. Empty or omitted fields
+        leave the existing value unchanged. Requires JWT authentication and "org.update"
+        permission. Returns 409 if the new name or slug conflicts with another active org.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the organization to update
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrganizationRequest"
+      responses:
+        "200":
+          description: Organization updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [organization]
+                properties:
+                  organization:
+                    $ref: "#/components/schemas/OrganizationItem"
+        "400":
+          description: Request body missing, not valid JSON, or id path parameter invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (org.update)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Organization not found or has been soft-deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: New name or slug conflicts with an existing active organization
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or org queries not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      operationId: deleteV1OrganizationsId
+      summary: Soft-delete an organization
+      description: |
+        Marks an organization as deleted (sets deleted_at = now()). The row is not
+        physically removed — it is excluded from all active-org queries. An audit event
+        is written inside the same transaction. Requires JWT authentication and "org.delete"
+        permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the organization to soft-delete
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Organization soft-deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [organization, deleted]
+                properties:
+                  organization:
+                    $ref: "#/components/schemas/OrganizationItem"
+                  deleted:
+                    type: boolean
+                    example: true
+        "400":
+          description: id path parameter is not a valid UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (org.delete)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Organization not found or already soft-deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or org queries not available
           content:
             application/json:
               schema:
