@@ -5,6 +5,114 @@ arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
 --------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #115 (Login + JWT session issuance)
+"POST /v1/auth/login: email+password -> JWT access token (15min) + refresh token
+(30d). Replaces StubProvider in production builds. Rate limit per IP+email."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #115: Implemented the full login + JWT session issuance stack.
+
+Note: auth_login.go, querier.go updates, and server.go route mounts were
+already committed by the feature #123 agent (as "good-neighbour" fixes to
+make auth_login.go compile). This session completed the remaining pieces.
+
+Steps covered:
+  Step 1: POST /v1/auth/login
+          - Normalises email, validates password presence
+          - Checks in-memory sliding-window rate limit (5 attempts / 15 min per
+            IP+email composite key) BEFORE hitting DB
+          - Looks up user by normalised email; bcrypt.CompareHashAndPassword
+          - Issues HS256 JWT access token (15min) via auth.IssueJWT
+          - Generates refresh token (32 random bytes = 64-char hex), stores in
+            refresh_tokens table (30d TTL), begins+commits Postgres transaction
+          - Returns 200: {access_token, refresh_token, token_type, expires_at, user_id}
+          - Resets rate-limit counter on successful authentication
+
+  Step 2: JWT signing with env-configured key (JWT_SIGNING_SECRET)
+          - Uses existing auth.IssueJWT (jwt/v5, HS256)
+          - 503 + auth.not_configured when JWT_SIGNING_SECRET is empty
+
+  Step 3: Refresh token storage in DB
+          - 0007_refresh_tokens.sql: CREATE TABLE refresh_tokens (token PK,
+            user_id FK, expires_at, revoked_at, created_at) with 2 indexes
+          - refresh_tokens.sql + refresh_tokens.sql.go: InsertRefreshToken,
+            GetRefreshToken, RevokeRefreshToken, GetUserByID queries
+
+  Step 4: Rate limit middleware (per IP+email, sliding window)
+          - ratelimit.SlidingWindow: thread-safe in-memory implementation
+          - ratelimit.Config: MaxAttempts, Window, injectable Now() clock
+          - ratelimit.Limiter interface for test substitution
+          - Allow(), Count(), Reset(), Purge() methods
+          - 429 TooManyRequests when exceeded; includes retry_after_seconds
+
+  Step 5: POST /v1/auth/refresh (expired access -> new access token)
+          - Validates refresh token exists in DB
+          - 401 if revoked (revoked_at IS NOT NULL)
+          - 401 if expired (expires_at < now)
+          - Issues new 15-min JWT access token
+          - Returns 200: {access_token, token_type, expires_at, user_id}
+
+  Unit tests (24 total, all passing):
+    TestAuthLogin115_EmptyBody
+    TestAuthLogin115_InvalidJSON
+    TestAuthLogin115_MissingEmail
+    TestAuthLogin115_MissingPassword
+    TestAuthLogin115_NoPoolReturns503
+    TestAuthLogin115_NoJWTSecretReturns503
+    TestAuthLogin115_RateLimitBlocks
+    TestAuthLogin115_RateLimitCounterIncrements
+    TestAuthLogin115_RateLimitDifferentEmails
+    TestAuthRefresh115_EmptyBody
+    TestAuthRefresh115_MissingRefreshToken
+    TestAuthRefresh115_NoPoolReturns503
+    TestAuthRefresh115_NoJWTSecretReturns503
+    TestRateLimiter115_AllowsUpToMax
+    TestRateLimiter115_ResetClearsCount
+    TestRateLimiter115_WindowExpiry
+    TestRateLimiter115_CountReturnsActiveAttempts
+    TestRateLimiter115_PurgeRemovesAll
+    TestRateLimiter115_IndependentKeys
+    TestAuthLogin115_RoutesAreMounted
+    TestAuthLogin115_FullVerification (4 sub-tests)
+    TestAuthLogin115_JWTConstants
+    TestAuthLogin115_DBMigrationExists
+
+CHANGES
+-------
+New files:
+  - apps/backend/internal/migrations/sql/0007_refresh_tokens.sql
+  - apps/backend/internal/adapters/postgres/queries/refresh_tokens.sql
+  - apps/backend/internal/adapters/postgres/gen/refresh_tokens.sql.go
+  - apps/backend/internal/platform/ratelimit/ratelimit.go
+  - apps/backend/internal/platform/httpserver/auth_login_test.go
+
+Modified files (committed by feature #123 agent's good-neighbour session):
+  - apps/backend/internal/adapters/postgres/gen/querier.go (4 new interface methods)
+  - apps/backend/internal/platform/httpserver/auth_login.go (NEW - 370 lines)
+  - apps/backend/internal/platform/httpserver/server.go (2 new auth routes)
+
+Modified in this session:
+  - apps/backend/internal/platform/httpserver/testfilehelpers_test.go
+    (added 0007_refresh_tokens.sql and refresh_tokens.sql.go lookup cases)
+
+VERIFICATION
+------------
+  - 24/24 TestAuthLogin115_* + TestAuthRefresh115_* + TestRateLimiter115_*: PASS
+  - go build ./apps/backend/...: EXIT 0 (all packages compile)
+  - git commit: 8983b4f
+
+PROGRESS METRIC
+---------------
+Stats at session start: 111/171 passing, 2 in_progress.
+This session: feature #115 completed and marked passing -> 112/171 passing.
+
+================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
 Session: 2026-06-23 -- Feature #101 (go-i18n setup + ru/en TOML catalogs + locale middleware)
 "go-i18n/v2 Bundle, TOML message catalogs, locale negotiation middleware, context
 plumbing, and integration into httpserver error envelopes."
