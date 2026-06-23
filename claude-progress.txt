@@ -5,6 +5,74 @@ arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
 --------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #126 (Session model + CRUD)
+"sessions table (event_id, start_at, end_at, capacity_total, status).
+Each session has independent inventory."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #126: All implementation was already complete from a prior session.
+This session fixed the only remaining failing test.
+
+Root cause of the single test failure:
+  TestSession126_FullVerification/routes_auth_gated was sending POST and PATCH
+  requests WITHOUT Content-Type: application/json. The global RequireJSONContentType
+  middleware (position 10 in the httpadapter chain) intercepts POST/PATCH without
+  the correct Content-Type and returns 415 BEFORE chi routes the request and
+  BEFORE the per-route auth middleware runs. So the test was getting 415 instead
+  of the expected 401.
+
+  Fix: Added Content-Type: application/json header for POST and PATCH cases in
+  the routes_auth_gated subtest struct, matching the pattern already used by the
+  individual TestSession126_CreateRequiresAuth and TestSession126_UpdateRequiresAuth
+  tests.
+
+  Also: sessions_test.go was previously untracked in git (existed on disk but
+  never git-added). It's now committed properly.
+
+Pre-existing implementation (from prior sessions, already in git):
+  - apps/backend/internal/migrations/sql/0016_sessions.sql
+      sessions table, capacity_total > 0 CHECK, end_at > start_at CHECK,
+      status enum (draft/scheduled/cancelled/completed), soft-delete,
+      RBAC seeds (session.create/read/update/delete for admin + org_admin)
+  - apps/backend/internal/adapters/postgres/queries/sessions.sql
+      InsertSession, GetSessionByID, ListSessionsByEvent, UpdateSession,
+      SoftDeleteSession, CountOverlappingSessions
+  - apps/backend/internal/adapters/postgres/gen/sessions.sql.go
+      SessionRow struct, all 6 query methods
+  - apps/backend/internal/platform/httpserver/sessions.go
+      5 endpoints, status transition table, detectSessionOverlaps, sessionFromRow,
+      onCapacityChange hook (placeholder log), full validation
+
+CHANGES THIS SESSION
+--------------------
+Modified files:
+  - apps/backend/internal/platform/httpserver/sessions_test.go
+      routes_auth_gated subtest: added Content-Type: application/json for POST
+      and PATCH cases so the global RequireJSONContentType middleware passes,
+      allowing auth middleware to run and return the expected 401.
+      Also: first time this file was committed to git (was previously untracked).
+
+VERIFICATION
+------------
+  - 65/65 TestSession126_* tests: PASS (0.122s)
+  - go build ./apps/backend/...: EXIT 0
+  - Pre-existing failure: TestTimestamp_FullVerification/Step5_StaticScan_RFC3339NanoWithUTC
+    (publications.go:54 uses .Format("2006-01-02T15:04:05Z07:00") instead of
+    time.RFC3339 — this is a pre-existing issue from feature #151, not caused here)
+  - git commit: 48c1f40
+
+PROGRESS METRIC
+---------------
+Stats before session: 127/171 passing.
+This session: feature #126 completed and marked passing -> 128/171 passing.
+
+================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
 Session: 2026-06-23 -- Feature #120 (Membership + role assignment)
 "Grant/revoke org membership roles. Permission resolver picks up membership-
 derived permissions immediately (no JWT re-issue needed)."
