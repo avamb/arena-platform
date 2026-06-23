@@ -10228,3 +10228,79 @@ Stats before session: 118/171 passing.
 This session: feature #134 completed and marked passing -> 121/171 passing.
 
 ================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #124 (Venue model + CRUD)
+"venues table (org_id owner, city_id, name, address, capacity_default,
+soft_delete). Other orgs see read-only; cannot mutate. Owner CRUD; foreign
+org sees read-only; merge/fork policy is deferred."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #124: Full venue model + CRUD implementation.
+
+Steps covered:
+  Step 1: Migration 0012_venues.sql
+          - venues table with uuidv7 PK
+          - org_id uuid FK -> organizations(id) NOT NULL (owner)
+          - city_id uuid FK -> cities(id) ON DELETE RESTRICT (nullable)
+          - name text NOT NULL, address text (nullable), capacity_default int (nullable)
+          - created_at, updated_at, deleted_at (soft-delete)
+          - Partial unique index venues_name_org_unique_active (org_id, name)
+          - RBAC seeds: venue.create/read/update/delete for admin + org_admin roles
+          - Goose Up/Down sections
+
+  Step 2: CRUD endpoints with owner-gated mutations
+          - POST   /v1/organizations/{org_id}/venues        (venue.create)
+          - PATCH  /v1/organizations/{org_id}/venues/{id}   (venue.update)
+          - DELETE /v1/organizations/{org_id}/venues/{id}   (venue.delete)
+          - Owner-gating enforced by org_id in WHERE clause of all write queries
+          - Body validation: empty body, invalid JSON, missing name, invalid city_id UUID
+          - Soft-delete with audit event in same transaction
+
+  Step 3: GET shared across orgs read-only
+          - GET /v1/venues                               (venue.read, shared all orgs)
+          - GET /v1/venues/{id}                          (venue.read, shared all orgs)
+          - GET /v1/organizations/{org_id}/venues        (venue.read, org-scoped)
+          - GetVenueByID and ListVenues queries NOT scoped by org_id
+
+  Step 4: sqlc gen + queries + tests (42 tests)
+          - venues.sql: 6 queries (Insert, GetByID, List, ListByOrg, Update, SoftDelete)
+          - venues.sql.go: VenueRow struct with nullable CityID/*uuid.UUID,
+            Address/*string, CapacityDefault/*int32
+          - venueFromRow() helper with RFC3339 timestamps
+          - Querier interface updated (+6 venue methods)
+          - Server struct + Options updated (venueQueries field)
+          - Route wiring in mountV1Routes()
+          - testfilehelpers_test.go: 3 new file cases for venues
+
+CHANGES
+-------
+New files:
+  - apps/backend/internal/migrations/sql/0012_venues.sql
+  - apps/backend/internal/adapters/postgres/queries/venues.sql
+  - apps/backend/internal/adapters/postgres/gen/venues.sql.go
+  - apps/backend/internal/platform/httpserver/venues.go
+  - apps/backend/internal/platform/httpserver/venues_test.go (42 tests)
+
+Modified files:
+  - apps/backend/internal/adapters/postgres/gen/querier.go (+6 venue methods)
+  - apps/backend/internal/platform/httpserver/server.go (venueQueries field + wiring)
+  - apps/backend/internal/platform/httpserver/testfilehelpers_test.go (+3 venue cases)
+
+VERIFICATION
+------------
+  - 42/42 TestVenue124_* tests: PASS (0.142s)
+  - go build ./apps/backend/...: EXIT 0
+  - Pre-existing failures: TestFeedToken122_* (2 tests, not caused by this session)
+  - git commit: 7adb921
+
+PROGRESS METRIC
+---------------
+Stats before session: 121/171 passing.
+This session: feature #124 completed and marked passing -> 122/171 passing.
+
+================================================================================
+
+================================================================================
