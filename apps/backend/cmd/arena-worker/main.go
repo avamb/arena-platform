@@ -16,17 +16,25 @@
 //   - Placeholder job handler ("placeholder.log") registered via
 //     worker.ShouldRunPlaceholderJob / worker.PlaceholderJobHandler.
 //
+// Feature #109 additions:
+//
+//   - /healthz and /metrics HTTP endpoints served by a lightweight sidecar
+//     HTTP server bound to WORKER_METRICS_ADDR (default :9091). This
+//     lets ops teams scrape the worker's Prometheus metrics and probe its
+//     liveness independently of arena-api.
+//
 // This binary is intentionally lean: it loads configuration, opens a
 // pgx pool, builds a handler registry, runs the worker loop, and exits
-// cleanly on SIGINT/SIGTERM. The HTTP surface (metrics, healthz) is
-// served by arena-api in the same compose stack.
+// cleanly on SIGINT/SIGTERM.
 package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -151,7 +159,41 @@ func run() error {
 		logger.Info("idempotency cleanup job scheduled at startup")
 	}
 
-	// 8. Worker loop ----------------------------------------------------------
+	// 8. Metrics + healthz HTTP server (feature #109, step 6) ----------------
+	// A lightweight sidecar HTTP server exposes:
+	//   GET /healthz  — liveness probe (always 200 while the process is up)
+	//   GET /metrics  — Prometheus scrape endpoint
+	//
+	// The server is bound to WORKER_METRICS_ADDR (default :9091) so it does
+	// not conflict with arena-api on :8080. Both endpoints are intentionally
+	// unauthenticated because they are expected to sit inside a private
+	// network boundary — the same posture as the arena-api /metrics endpoint.
+	metricsMux := http.NewServeMux()
+	metricsMux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	})
+	metricsMux.Handle("/metrics", metrics.Handler())
+
+	metricsSrv := &http.Server{
+		Addr:         cfg.WorkerMetricsAddr,
+		Handler:      metricsMux,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+	metricsSrvErrCh := make(chan error, 1)
+	go func() {
+		logger.Info("arena-worker metrics server listening", "addr", cfg.WorkerMetricsAddr)
+		if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			metricsSrvErrCh <- err
+		} else {
+			metricsSrvErrCh <- nil
+		}
+	}()
+
+	// 9. Worker loop ----------------------------------------------------------
 	w, err := worker.New(worker.Options{
 		Pool:            pool,
 		Registry:        registry,
@@ -167,6 +209,7 @@ func run() error {
 		"instance_id", w.InstanceID(),
 		"poll_interval", "1s",
 		"outbox_backlog_interval", worker.DefaultOutboxBacklogPollInterval.String(),
+		"metrics_addr", cfg.WorkerMetricsAddr,
 	)
 
 	// Run the loop in a goroutine so we can react to the signal-bound
@@ -174,7 +217,7 @@ func run() error {
 	runErrCh := make(chan error, 1)
 	go func() { runErrCh <- w.Run(rootCtx) }()
 
-	// 9. Wait for shutdown signal or fatal error -------------------------------
+	// 10. Wait for shutdown signal or fatal error ------------------------------
 	select {
 	case <-rootCtx.Done():
 		logger.Info("shutdown signal received; stopping worker")
@@ -184,10 +227,18 @@ func run() error {
 			return fmt.Errorf("worker run: %w", err)
 		}
 		logger.Info("worker run exited cleanly without signal")
+		// Shut down the metrics server too before returning.
+		shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutCancel()
+		_ = metricsSrv.Shutdown(shutCtx)
 		return nil
+	case err := <-metricsSrvErrCh:
+		// Metrics server crashed — surface the error but keep going;
+		// the job queue must not stop just because the scrape port is busy.
+		logger.Error("metrics server failed", "error", err)
 	}
 
-	// 10. Graceful shutdown ---------------------------------------------------
+	// 11. Graceful shutdown ---------------------------------------------------
 	if err := w.Stop(); err != nil && !errors.Is(err, context.DeadlineExceeded) {
 		logger.Warn("worker stop returned error", "error", err.Error())
 	}
@@ -200,6 +251,13 @@ func run() error {
 		}
 	case <-time.After(cfg.ShutdownTimeout):
 		logger.Warn("worker goroutine did not exit within shutdown timeout")
+	}
+
+	// Shut down the metrics/healthz HTTP server gracefully.
+	shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutCancel()
+	if err := metricsSrv.Shutdown(shutCtx); err != nil {
+		logger.Warn("metrics server shutdown error", "error", err.Error())
 	}
 
 	// The poller goroutine exits when rootCtx is cancelled (already done).
