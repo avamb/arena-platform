@@ -32,6 +32,10 @@ type Querier interface {
 	RevokeRefreshToken(ctx context.Context, token string) error
 	GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByEmailRow, error)
 
+	// RBAC — permission engine (feature #117)
+	HasPermissionForRoles(ctx context.Context, roleNames []string, permName string) (bool, error)
+	GetPermissionsForRoles(ctx context.Context, roleNames []string) ([]string, error)
+
 	// Geo reference data — countries & cities (feature #123)
 	ListCountries(ctx context.Context, locale string) ([]ListCountryRow, error)
 	ListCities(ctx context.Context, locale string, countryID *uuid.UUID) ([]ListCityRow, error)

@@ -303,7 +303,14 @@ func New(opts Options) *Server {
 		outboxWriter = outbox.NewPGWriter(opts.PgxPool)
 	}
 	permsChecker := opts.Permissions
-	if permsChecker == nil {
+	if permsChecker == nil && opts.PgxPool != nil {
+		// Wire the real RBAC engine when a PgxPool is available (feature #117).
+		// The DBChecker reads roles/permissions/role_permissions created by
+		// migration 0008_rbac and resolves permissions from the actor's JWT roles.
+		permsChecker = permissions.NewDBChecker(gen.New(opts.PgxPool))
+	} else if permsChecker == nil {
+		// No pool → fall back to AllowAll for dev/test environments that run
+		// without a database (e.g. unit tests with fake pool adapters).
 		permsChecker = permissions.AllowAll()
 	}
 
