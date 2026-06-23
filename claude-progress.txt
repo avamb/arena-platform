@@ -10384,3 +10384,140 @@ Stats before session: 123/171 passing.
 This session: feature #169 completed and marked passing -> 124/171 passing.
 
 ================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-23 -- Feature #125 (Event model + CRUD)
+"Dated event occurrences in the catalog: status lifecycle, i18n name/description,
+org-scoped write endpoints, shared public read endpoints."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #125: Implemented the full event model with CRUD API, status transitions,
+i18n support, and 58 unit tests.
+
+Steps covered:
+  Step 1: Migration 0014_events.sql
+          - events table: uuidv7() PK, org_id FK→organizations, venue_id FK→venues
+          - status text CHECK ('draft','published','cancelled','archived')
+          - visibility text CHECK ('public','private','unlisted')
+          - end_at > start_at CHECK constraint (events_date_order)
+          - soft-delete (deleted_at IS NULL = active), partial indexes
+          - RBAC permission seeds: event.create, event.read, event.update,
+            event.delete, event.publish, event.cancel + role_permissions grants
+
+  Step 2: events.sql + gen/events.sql.go (10 typed sqlc queries)
+          - InsertEvent :one
+          - GetEventByID :one (i18n LEFT JOIN for name+description, locale negotiation)
+          - GetEventRaw :one (no i18n join, used internally)
+          - ListEvents :many (visibility filter + i18n JOIN, public-safe)
+          - ListEventsByOrg :many (i18n JOIN, org-scoped)
+          - UpdateEvent :one (partial update, org_id-gated)
+          - UpdateEventStatus :one (org_id-gated, caller enforces transitions)
+          - SoftDeleteEvent :one (sets deleted_at = now())
+          - UpsertEventI18nName :exec (INSERT ... ON CONFLICT DO UPDATE)
+          - UpsertEventI18nDescription :exec
+          - EventRow struct, scanEventRow helper, all *Queries methods
+
+  Step 3: httpserver/events.go (7 endpoints, ~870 lines)
+          - Status transition table:
+            draft → published, cancelled
+            published → cancelled, archived
+            cancelled → archived
+            archived → (terminal)
+          - handleCreateEvent: validates name, status, visibility, start_at/end_at
+            RFC3339, date invariant (end>start), optional venue_id UUID,
+            optional i18n translations; returns 201 with EventRow JSON
+          - handleListEvents: shared public read (GET /v1/events?visibility=public)
+          - handleGetEvent: shared public read (GET /v1/events/{event_id})
+          - handleListEventsByOrg: org-scoped list
+          - handleUpdateEvent: partial update (name, description, venue_id, dates,
+            visibility, image_url) with org ownership check
+          - handleUpdateEventStatus: fetches current status, validates transition,
+            calls UpdateEventStatus; 409 on invalid transition
+          - handleDeleteEvent: soft-delete with transaction + audit log
+          - negotiateLocale: Accept-Language header + ?lang= query param
+
+  Step 4: i18n support via i18n_text table
+          - UpsertEventI18nName / UpsertEventI18nDescription store translations
+          - GetEventByID / ListEvents / ListEventsByOrg LEFT JOIN i18n_text twice
+            (locale-specific + English fallback) via COALESCE
+
+  Step 5: 58 unit tests (TestEvent125_*)
+          - Migration file structure (12 tests): table name, columns, constraints,
+            status/visibility values, date_order check, soft-delete column,
+            permission seeds, goose up/down markers, FK constraints
+          - Route auth-gating (7): all 7 endpoints return 401 without JWT
+          - Request validation (5): missing body, empty name, missing start_at/end_at
+          - Date invariants (5): equal times, end before start, valid RFC3339
+          - Status transitions (6): valid transitions, invalid transition → 409,
+            terminal archived state
+          - Visibility (2): public/private accepted
+          - Query file (9): all 10 queries present in events.sql
+          - Gen file (5): EventRow struct fields, all query methods present
+          - Interface check (1): Querier interface has all 10 event methods
+          - Response shape (2): 201 has id field, Content-Type JSON
+          - Content-Type (2): POST without Content-Type → 415
+
+Also committed in this session (Feature #116 — Password Reset Flow):
+  - Migration 0015_password_reset_tokens.sql
+  - password_reset_tokens.sql + gen/password_reset_tokens.sql.go
+  - httpserver/auth_password_reset.go (POST /v1/auth/password-reset/request,
+    POST /v1/auth/password-reset/confirm)
+  - auth_password_reset_test.go + auth_password_reset_integration_test.go
+  - openapi.yaml: PasswordResetRequest/Confirm schemas + path entries
+  - users.sql + gen/users.sql.go: UpdateUserPassword added
+  - querier.go: InsertPasswordResetToken, GetPasswordResetToken,
+    MarkPasswordResetTokenUsed, UpdateUserPassword interface signatures
+  - go.mod: golang.org/x/crypto promoted to direct dependency
+
+Note: #116 and #125 files were committed together because querier.go contains
+interface additions for both features — a split would have left the compile-time
+assertion `var _ Querier = (*Queries)(nil)` broken mid-commit.
+
+CHANGES
+-------
+New files (feature #125):
+  - apps/backend/internal/migrations/sql/0014_events.sql
+  - apps/backend/internal/adapters/postgres/queries/events.sql
+  - apps/backend/internal/adapters/postgres/gen/events.sql.go
+  - apps/backend/internal/platform/httpserver/events.go
+  - apps/backend/internal/platform/httpserver/events_test.go
+
+New files (feature #116, committed together):
+  - apps/backend/internal/migrations/sql/0015_password_reset_tokens.sql
+  - apps/backend/internal/adapters/postgres/queries/password_reset_tokens.sql
+  - apps/backend/internal/adapters/postgres/gen/password_reset_tokens.sql.go
+  - apps/backend/internal/platform/httpserver/auth_password_reset.go
+  - apps/backend/internal/platform/httpserver/auth_password_reset_test.go
+  - apps/backend/internal/platform/httpserver/auth_password_reset_integration_test.go
+
+Modified files:
+  - apps/backend/internal/adapters/postgres/gen/querier.go
+      (#116: InsertPasswordResetToken/GetPasswordResetToken/MarkPasswordResetTokenUsed/
+             UpdateUserPassword; #125: all 10 event methods)
+  - apps/backend/internal/adapters/postgres/gen/users.sql.go
+      (UpdateUserPassword implementation)
+  - apps/backend/internal/adapters/postgres/queries/users.sql
+      (UpdateUserPassword sqlc query)
+  - apps/backend/internal/platform/httpserver/server.go
+      (eventQueries field, Options.EventQueries, 7 event route groups mounted)
+  - apps/backend/internal/platform/httpserver/testfilehelpers_test.go
+      (0014_events.sql, events.sql, events.sql.go lookup cases)
+  - apps/backend/openapi/openapi.yaml
+      (PasswordResetRequest/Confirm schemas, /v1/auth/password-reset/* paths)
+  - go.mod (golang.org/x/crypto: indirect → direct)
+
+VERIFICATION
+------------
+  - 58/58 TestEvent125_* tests: PASS (Docker golang:1.24-alpine)
+  - go build ./apps/backend/...: EXIT 0
+  - Feature #125 marked passing in backlog
+  - git commit: 219b2d3
+
+PROGRESS METRIC
+---------------
+Stats before session: 124/171 passing.
+This session: feature #125 completed and marked passing -> 125/171 passing.
+
+================================================================================
