@@ -1316,21 +1316,25 @@ func (s *Server) mountV1Routes() {
 			})
 		}
 
-		// ── Checkout sessions (feature #132) ─────────────────────────────────────
+		// ── Checkout sessions (feature #132) + price breakdown (feature #163) ──────
 		//
 		// Checkout session state machine: reservation + pricing + payment intent.
 		//
-		//   POST /v1/checkout/start          — create session      (checkout.start)
-		//   GET  /v1/checkout/{id}           — read session        (checkout.read)
-		//   POST /v1/checkout/{id}/confirm   — lock in pricing     (checkout.confirm)
-		//   POST /v1/checkout/{id}/complete  — mark paid           (checkout.complete)
-		//   POST /v1/checkout/{id}/abandon   — abandon session     (checkout.abandon)
+		//   POST /v1/checkout/start                    — create session      (checkout.start)
+		//   GET  /v1/checkout/{id}                     — read session        (checkout.read)
+		//   GET  /v1/checkout/{id}/price-breakdown     — itemised total       (checkout.read)
+		//   POST /v1/checkout/{id}/confirm             — lock in pricing     (checkout.confirm)
+		//   POST /v1/checkout/{id}/complete            — mark paid           (checkout.complete)
+		//   POST /v1/checkout/{id}/abandon             — abandon session     (checkout.abandon)
 		if s.stub != nil && s.stub.Enabled() && s.checkoutQueries != nil {
-			// Read route (no pool required).
+			// Read routes (no pool required).
+			//   GET /v1/checkout/{id}                  — session state (checkout.read)
+			//   GET /v1/checkout/{id}/price-breakdown  — itemised pricing (checkout.read)
 			r.Group(func(pr chi.Router) {
 				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
 				pr.Use(permissions.RequirePermission(s.perms, "checkout.read", "checkout"))
 				pr.Get("/checkout/{id}", s.handleGetCheckoutSession)
+				pr.Get("/checkout/{id}/price-breakdown", s.handlePriceBreakdown)
 			})
 		}
 		if s.stub != nil && s.stub.Enabled() && s.checkoutQueries != nil && s.pool != nil {
