@@ -23,6 +23,7 @@ import (
 	"time"
 
 	httpadapter "github.com/abhteam/arena_new/apps/backend/internal/adapters/http"
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
@@ -230,6 +231,23 @@ type Server struct {
 	// Feature #142.
 	barcodeQueries *gen.Queries
 
+	// deliveryJobQueries is the sqlc Queries instance used to insert and update
+	// delivery_jobs rows. When non-nil, issueTicketsForCheckout enqueues a
+	// ticket.deliver worker job for each issued ticket that has a recipient email.
+	// Nil when no PgxPool was supplied. Feature #141.
+	deliveryJobQueries *gen.Queries
+
+	// workerPool is the raw *pgxpool.Pool used to insert worker_jobs rows for
+	// ticket.deliver jobs. Separate from the PoolDB interface (which may not
+	// implement QueryRow with the same signature as pgxpool.Pool). When nil,
+	// delivery job enqueueing is skipped. Feature #141.
+	workerPool *pgxpool.Pool
+
+	// emailSender is the email.Sender used by the delivery worker handler to
+	// send transactional ticket emails. When nil, the delivery handler logs
+	// the email instead of sending it (development/test mode). Feature #141.
+	emailSender email.Sender
+
 	// stripeConnect is the helper used by the Stripe Connect OAuth onboarding
 	// endpoints (GET /v1/stripe/connect/authorize and …/callback). Nil when
 	// Stripe Connect is not configured. When nil these routes are not mounted.
@@ -274,6 +292,11 @@ type Server struct {
 	// timeout always fires in the default configuration). Only meaningful in
 	// development/test environments and only when debugRoutesEnabled is true.
 	debugSlowDelay time.Duration
+
+	// bil24Enabled controls whether the /compat/bil24/* gateway subtree is
+	// mounted. Disabled by default; set BIL24_COMPAT_ENABLED=true to enable.
+	// Feature #157.
+	bil24Enabled bool
 }
 
 // Options bundles the dependencies that New requires. Using a struct rather
@@ -343,6 +366,13 @@ type Options struct {
 	// in tests so request-timeout assertions complete quickly. Only meaningful in
 	// development/test environments when DebugRoutesEnabled=true.
 	DebugSlowDelay time.Duration
+
+	// Bil24CompatEnabled mounts the /compat/bil24/* gateway subtree when true.
+	// Disabled by default; set BIL24_COMPAT_ENABLED=true in the environment to
+	// enable the legacy Bil24 command API compatibility layer (feature #157).
+	// MUST remain false in production deployments unless explicitly required for
+	// a migration window.
+	Bil24CompatEnabled bool
 
 	// Bundle is the go-i18n/v2 message catalog bundle used by LocaleMiddleware
 	// to localize error messages. When non-nil, LocaleMiddleware is added to
@@ -494,6 +524,22 @@ type Options struct {
 	// Inject gen.New(nil) in tests that need barcode routes mounted without a real pool.
 	// Feature #142.
 	BarcodeQueries *gen.Queries
+
+	// DeliveryJobQueries injects a pre-constructed *gen.Queries for the
+	// delivery_jobs tracking table. When nil and PgxPool is non-nil,
+	// gen.New(PgxPool) is used. Inject gen.New(nil) in tests that want
+	// delivery routes wired without a real pool. Feature #141.
+	DeliveryJobQueries *gen.Queries
+
+	// WorkerPool is the *pgxpool.Pool used to enqueue ticket.deliver jobs into
+	// worker_jobs. When nil, delivery job enqueueing is skipped gracefully.
+	// Feature #141.
+	WorkerPool *pgxpool.Pool
+
+	// EmailSender is the email.Sender used by the delivery worker handler.
+	// When nil, the handler writes the email to the logger instead of sending
+	// it (development / test mode). Feature #141.
+	EmailSender email.Sender
 
 	// StripeConnect injects the Stripe Connect OAuth helper used by
 	// GET /v1/stripe/connect/authorize and GET /v1/stripe/connect/callback.
@@ -713,6 +759,12 @@ func New(opts Options) *Server {
 		barcodeQueries = gen.New(opts.PgxPool)
 	}
 
+	// sqlc Queries for delivery_jobs table (feature #141).
+	deliveryJobQueries := opts.DeliveryJobQueries
+	if deliveryJobQueries == nil && opts.PgxPool != nil {
+		deliveryJobQueries = gen.New(opts.PgxPool)
+	}
+
 	// Extend the permission checker with membership-derived role resolution
 	// (feature #120 step 3). When a PgxPool is available, the DBChecker is
 	// augmented so that each Check() call unions the JWT roles with the user's
@@ -752,6 +804,7 @@ func New(opts Options) *Server {
 		slowDelay:                   opts.SlowDelay,
 		debugRoutesEnabled:          opts.DebugRoutesEnabled,
 		debugSlowDelay:              opts.DebugSlowDelay,
+		bil24Enabled:                opts.Bil24CompatEnabled,
 		geoQueries:                  geoQueries,
 		orgQueries:                  orgQueries,
 		channelQueries:              channelQueries,
@@ -773,6 +826,9 @@ func New(opts Options) *Server {
 		credentialQueries:           credentialQueries,
 		refundQueries:               refundQueries,
 		barcodeQueries:              barcodeQueries,
+		deliveryJobQueries:          deliveryJobQueries,
+		workerPool:                  opts.WorkerPool,
+		emailSender:                 opts.EmailSender,
 		stripeConnect:               opts.StripeConnect,
 		sessionStore:                opts.SessionStore,
 		maxConcurrentSessions:       opts.MaxConcurrentSessionsPerUser,
@@ -780,6 +836,7 @@ func New(opts Options) *Server {
 
 	s.mountOperationalRoutes()
 	s.mountV1Routes()
+	s.mountCompatRoutes()
 
 	s.srv = &http.Server{
 		Addr:              opts.Config.HTTPListenAddr,
@@ -1746,6 +1803,24 @@ func (s *Server) mountV1Routes() {
 				})
 			})
 		}
+	})
+}
+
+// mountCompatRoutes mounts the Bil24-compatible API gateway under /compat/bil24/*.
+//
+// The subtree is only mounted when bil24Enabled is true (env: BIL24_COMPAT_ENABLED).
+// When disabled the paths do not exist in the router; chi returns 404 via handleNotFound.
+// Feature #157.
+func (s *Server) mountCompatRoutes() {
+	if !s.bil24Enabled {
+		return
+	}
+	s.router.Route("/compat/bil24", func(r chi.Router) {
+		// POST /compat/bil24/json — Bil24 command gateway.
+		// Accepts { "command": "...", "fid": "...", "token": "...", ... }
+		// and dispatches to the appropriate domain adapter.
+		// No JWT auth — the gateway uses fid/token credentials from the request body.
+		r.Post("/json", s.handleBil24Command)
 	})
 }
 

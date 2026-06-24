@@ -137,6 +137,10 @@ func (s *Server) issueTicketsForCheckout(ctx context.Context, cs gen.CheckoutSes
 	// (feature #143). Best-effort: errors are logged internally, not returned.
 	s.publishTicketIssuedEvents(ctx, tickets)
 
+	// Enqueue email delivery jobs for each issued ticket (feature #141).
+	// Best-effort: errors are logged internally, not returned.
+	s.enqueueDeliveryJobs(ctx, tickets)
+
 	return tickets, nil
 }
 

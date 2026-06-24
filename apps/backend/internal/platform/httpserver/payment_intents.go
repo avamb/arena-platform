@@ -702,6 +702,8 @@ func (s *Server) handlePaymentIntentWebhook(w http.ResponseWriter, r *http.Reque
 					slog.String("checkout_session_id", cs.ID.String()),
 					slog.Int("count", len(tickets)),
 				)
+				// Enqueue email delivery jobs (feature #141). Best-effort.
+				s.enqueueDeliveryJobs(ctx, tickets)
 			}
 		}
 	}

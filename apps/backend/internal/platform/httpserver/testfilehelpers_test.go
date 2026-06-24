@@ -468,6 +468,31 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "scanner_events.go"),
 		}
+	// Ticket delivery via email (feature #141)
+	case "0030_delivery_jobs.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0030_delivery_jobs.sql"),
+		}
+	case "delivery_jobs.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "delivery_jobs.sql"),
+		}
+	case "delivery_jobs.sql.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "delivery_jobs.sql.go"),
+		}
+	case "sender.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "email", "sender.go"),
+		}
+	case "delivery_handler.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "delivery", "handler.go"),
+		}
+	case "delivery_enqueue.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "delivery_enqueue.go"),
+		}
 	default:
 		// Generic fallback: try the file directly at the repo root.
 		candidates = []string{

@@ -84,6 +84,11 @@ type Config struct {
 	JWTSecretStub  string `env:"JWT_SIGNING_SECRET" required:"false" default:""`
 	EnableStubAuth bool   `env:"ENABLE_DEV_AUTH"    required:"false" default:"false"`
 
+	// Bil24 compatibility gateway (feature #157)
+	// Bil24CompatEnabled mounts the /compat/bil24/* API gateway when true.
+	// Disabled by default; set BIL24_COMPAT_ENABLED=true to enable.
+	Bil24CompatEnabled bool `env:"BIL24_COMPAT_ENABLED" required:"false" default:"false"`
+
 	// Outbox dispatcher (feature #110)
 	// OutboxWebhookURL is the HTTP endpoint where outbox_events are POSTed.
 	// When empty the dispatcher uses the NoopDispatcher (log-only mode).
@@ -216,6 +221,15 @@ func Load() (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.EnableStubAuth = b
+
+	// Bil24 compatibility gateway feature flag (feature #157).
+	// Defaults to false so the /compat/bil24/* routes are not exposed unless
+	// explicitly enabled by the operator.
+	b, err = getenvBool("BIL24_COMPAT_ENABLED", false)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.Bil24CompatEnabled = b
 
 	// Outbox dispatcher poll interval (feature #110).
 	d, err = getenvDuration("OUTBOX_POLL_INTERVAL", time.Second, false)

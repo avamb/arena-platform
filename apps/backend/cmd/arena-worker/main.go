@@ -40,8 +40,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/database"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/idempotency"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
@@ -332,7 +335,44 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, metrics *
 		DeletedCounter: metrics.IdempotencyCleanupDeletedTotal,
 		Scheduler:      idempotency.NewPGCleanupScheduler(pool),
 	}))
+
+	// ticket.deliver sends transactional emails with PDF attachments for
+	// issued tickets. Feature #141.
+	// In development (no SMTP configured), a LogSender writes emails to
+	// the structured logger instead of delivering them.
+	queries := gen.New(pool)
+	reg.Register(delivery.JobType, delivery.NewHandler(delivery.HandlerOptions{
+		TicketQueries:      queries,
+		DeliveryJobQueries: queries,
+		CredentialQueries:  queries,
+		Sender:             buildEmailSender(logger),
+		FromAddress:        coalesce(getEmailFrom(), "tickets@arena.example.com"),
+		Logger:             logger,
+	}))
 }
+
+// buildEmailSender returns an email.Sender appropriate for the current
+// environment.  When SMTP_HOST is set, an SMTPSender is returned;
+// otherwise a LogSender is returned so development/CI environments work
+// without an SMTP server.
+func buildEmailSender(logger *slog.Logger) email.Sender {
+	host := coalesce(os.Getenv("SMTP_HOST"), "")
+	if host == "" {
+		logger.Info("email: SMTP_HOST not configured; using LogSender (emails logged, not sent)")
+		return &email.LogSender{Logger: logger}
+	}
+	return email.NewSMTPSender(email.SMTPConfig{
+		Host:     host,
+		Port:     coalesce(os.Getenv("SMTP_PORT"), "25"),
+		Username: os.Getenv("SMTP_USERNAME"),
+		Password: os.Getenv("SMTP_PASSWORD"),
+		From:     coalesce(os.Getenv("SMTP_FROM"), "tickets@arena.example.com"),
+		UseTLS:   os.Getenv("SMTP_USE_TLS") == "true",
+	})
+}
+
+// getEmailFrom returns the SMTP_FROM environment variable.
+func getEmailFrom() string { return os.Getenv("SMTP_FROM") }
 
 // buildOutboxDispatcher constructs the Dispatcher for the outbox events loop.
 //

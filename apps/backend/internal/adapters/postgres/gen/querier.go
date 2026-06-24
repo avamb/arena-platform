@@ -220,6 +220,12 @@ type Querier interface {
 	MarkBarcodeScanned(ctx context.Context, id uuid.UUID) (BarcodeRow, error)
 	RevokeBarcode(ctx context.Context, id uuid.UUID) (BarcodeRow, error)
 	ListBarcodesByTicketID(ctx context.Context, ticketID uuid.UUID) ([]BarcodeRow, error)
+
+	// Ticket delivery jobs — email delivery tracking (feature #141)
+	InsertDeliveryJob(ctx context.Context, ticketID uuid.UUID, recipientEmail *string) (DeliveryJobRow, error)
+	GetDeliveryJobByTicketID(ctx context.Context, ticketID uuid.UUID) (DeliveryJobRow, error)
+	UpdateDeliveryJobStatus(ctx context.Context, id uuid.UUID, newStatus string, lastError *string) (DeliveryJobRow, error)
+	ListPendingDeliveryJobs(ctx context.Context, limit int32) ([]DeliveryJobRow, error)
 }
 
 // Compile-time assertion: *Queries must implement Querier.
