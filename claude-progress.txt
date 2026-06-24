@@ -5,6 +5,62 @@ arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
 --------------------------------------------------------------------------------
+Session: 2026-06-24 -- Feature #162 (Stripe Billing adapter for SaaS invoices)
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #162: Full Stripe Billing adapter for SaaS invoices.
+
+NEW FILES:
+  - apps/backend/internal/migrations/sql/0037_stripe_billing.sql
+    Creates stripe_customers table (org_id UNIQUE, stripe_customer_id UNIQUE,
+    email, name). Adds stripe_invoice_id text UNIQUE column to invoices table.
+
+  - apps/backend/internal/adapters/postgres/queries/stripe_billing.sql
+    4 queries: UpsertStripeCustomer, GetStripeCustomerByOrgID,
+    UpdateInvoiceStripeID, GetInvoiceByStripeID.
+
+  - apps/backend/internal/adapters/postgres/gen/stripe_billing.sql.go
+    StripeCustomerRow + InvoiceStripeRow structs + 4 query implementations.
+
+  - apps/backend/internal/adapters/stripebilling/adapter.go
+    New package. CreateOrUpdateCustomer (POST /customers), CreateInvoiceItem
+    (POST /invoiceitems), CreateAndFinalizeInvoice (POST /invoices + finalize),
+    HandleBillingWebhook (verifies Stripe-Signature, parses event).
+    EventInvoicePaid + EventInvoicePaymentFailed constants.
+
+  - apps/backend/internal/platform/httpserver/stripe_billing.go
+    stripeBillingHelper interface + compile-time guard.
+    handlePushInvoiceToStripe: POST /v1/billing/stripe/push-invoice/{id}
+      6-step flow: fetch invoice -> fetch lines -> ensure Stripe customer ->
+      create InvoiceItems -> CreateAndFinalizeInvoice -> UpdateInvoiceStripeID.
+    handleStripeBillingWebhook: POST /v1/billing/stripe/webhook (public)
+      Verifies Stripe-Signature. invoice.paid -> syncStripeBillingInvoicePaid.
+      Always returns HTTP 200 to prevent Stripe retries.
+    syncStripeBillingInvoicePaid: with defer/recover for nil-pool safety.
+
+MODIFIED FILES:
+  - querier.go: 4 new Stripe Billing methods
+  - server.go: stripeBilling field + StripeBilling option + routes
+  - testfilehelpers_test.go: 5 new case entries
+
+VERIFICATION
+------------
+  - 27/27 TestStripeBilling162_* tests: PASS
+  - go build ./apps/backend/...: EXIT 0 (Docker build)
+  - Pre-existing failures unchanged
+  - Feature #162 marked passing
+  - git commit: d1b1884
+
+PROGRESS METRIC
+---------------
+Stats before session: 161/171 passing (94.2%).
+This session: feature #162 completed -> 163/171 passing (95.3%).
+
+================================================================================
+
+--------------------------------------------------------------------------------
 Session: 2026-06-24 -- Feature #158 (Bil24 compatibility regression tests - Vino&Co)
 "[scope: scaffold] Captured request/response fixtures from Vino&Co integration;
 contract tests pin behavior so migration is safe."

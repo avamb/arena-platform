@@ -951,6 +951,55 @@ components:
           description: Updated Russian localised name
           example: "Тель-Авив"
 
+    ImpersonateRequest:
+      type: object
+      required: [user_id, reason]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: UUID of the target user to impersonate.
+          example: "aaaaaaaa-0000-0000-0000-000000000001"
+        reason:
+          type: string
+          description: Mandatory human-readable business justification for the impersonation.
+          example: "Investigating user-reported bug #1234 — checking ticket assignment"
+        duration_seconds:
+          type: integer
+          description: |
+            Token lifetime in seconds. Capped at 1800 (30 minutes).
+            When absent or zero, defaults to 1800.
+          minimum: 1
+          maximum: 1800
+          example: 900
+
+    ImpersonateResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: Scoped impersonation bearer JWT. Use in Authorization header to act as the target user.
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        expires_at:
+          type: string
+          format: date-time
+          description: Absolute UTC expiry time of the impersonation token (RFC 3339).
+          example: "2026-06-24T13:20:00Z"
+        impersonated_user_id:
+          type: string
+          format: uuid
+          description: UUID of the target user being impersonated.
+          example: "aaaaaaaa-0000-0000-0000-000000000001"
+        impersonated_by:
+          type: string
+          format: uuid
+          description: UUID of the admin actor who issued this impersonation token.
+          example: "00000000-0000-0000-0000-000000000167"
+        reason:
+          type: string
+          description: Echoed-back business justification (as stored in audit_events).
+          example: "Investigating user-reported bug #1234 — checking ticket assignment"
+
 paths:
   /healthz:
     get:
@@ -2186,6 +2235,75 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database pool or org queries not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/impersonate:
+    post:
+      operationId: postV1AdminImpersonate
+      summary: Issue a scoped impersonation JWT (feature #167)
+      description: |
+        Platform superadmins can issue a short-lived JWT that acts as a target
+        user, enabling diagnosis of user-specific issues without sharing credentials.
+
+        Every issuance is audit-logged (action="impersonation.issue",
+        resource_type="user", resource_id=<user_id>). The returned token carries
+        extra JWT claims ("impersonated_by", "impersonation_reason") so all
+        downstream audit entries can tag the real actor.
+
+        Constraints:
+          - Requires superadmin.read permission (platform_superadmin / admin role).
+          - Token lifetime is capped at 30 minutes (1800 seconds).
+          - user_id must be a valid UUID.
+          - reason is mandatory (human-readable business justification).
+
+        Only available when ENABLE_DEV_AUTH=true (foundation milestone).
+      tags: [v1, admin, superadmin, impersonation]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImpersonateRequest"
+      responses:
+        "200":
+          description: Impersonation token issued successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImpersonateResponse"
+        "400":
+          description: |
+            Validation error — missing or invalid user_id, missing reason,
+            or duration_seconds exceeds 1800.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the superadmin.read permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Token mint failed (internal error)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Dev auth stub not enabled
           content:
             application/json:
               schema:
