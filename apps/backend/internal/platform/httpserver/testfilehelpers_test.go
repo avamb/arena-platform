@@ -468,6 +468,16 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "scanner_events.go"),
 		}
+	// Bil24 command gateway (feature #157)
+	case "bil24_compat.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "bil24_compat.go"),
+		}
+	// Platform config file (referenced by feature #157 tests)
+	case "config.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "config", "config.go"),
+		}
 	// Ticket delivery via email (feature #141)
 	case "0030_delivery_jobs.sql":
 		candidates = []string{

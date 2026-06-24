@@ -1806,23 +1806,7 @@ func (s *Server) mountV1Routes() {
 	})
 }
 
-// mountCompatRoutes mounts the Bil24-compatible API gateway under /compat/bil24/*.
-//
-// The subtree is only mounted when bil24Enabled is true (env: BIL24_COMPAT_ENABLED).
-// When disabled the paths do not exist in the router; chi returns 404 via handleNotFound.
-// Feature #157.
-func (s *Server) mountCompatRoutes() {
-	if !s.bil24Enabled {
-		return
-	}
-	s.router.Route("/compat/bil24", func(r chi.Router) {
-		// POST /compat/bil24/json — Bil24 command gateway.
-		// Accepts { "command": "...", "fid": "...", "token": "...", ... }
-		// and dispatches to the appropriate domain adapter.
-		// No JWT auth — the gateway uses fid/token credentials from the request body.
-		r.Post("/json", s.handleBil24Command)
-	})
-}
+// mountCompatRoutes is defined in bil24_compat.go (feature #157).
 
 // handleNotFound is the chi NotFound handler. It replaces chi's built-in
 // plain-text "404 page not found\n" response with the project-standard JSON
