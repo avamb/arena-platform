@@ -233,6 +233,42 @@ func (q *Queries) ConfirmCapacity(ctx context.Context, sessionID uuid.UUID, tier
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// RestoreSoldCapacity
+// ─────────────────────────────────────────────────────────────────────────────
+
+const restoreSoldCapacity = `-- name: RestoreSoldCapacity :one
+WITH locked AS (
+    SELECT id, capacity_sold
+    FROM   inventory_ledger
+    WHERE  session_id = $1
+      AND  (tier_id = $2::uuid OR (tier_id IS NULL AND $2::uuid IS NULL))
+    FOR UPDATE
+)
+UPDATE inventory_ledger il
+SET    capacity_sold = il.capacity_sold - $3::integer,
+       version       = il.version + 1,
+       updated_at    = now()
+FROM   locked
+WHERE  il.id = locked.id
+  AND  locked.capacity_sold >= $3::integer
+RETURNING il.id, il.session_id, il.tier_id, il.capacity_total,
+          il.capacity_held, il.capacity_sold, il.version, il.created_at, il.updated_at`
+
+// RestoreSoldCapacity decrements capacity_sold by `amount`, moving units back
+// to available. This is the inverse of ConfirmCapacity.
+//
+// Used when a complimentary issuance is revoked so the freed capacity becomes
+// available for new reservations. Runs inside the revocation transaction.
+//
+// Returns pgx.ErrNoRows when:
+//   - the ledger row does not exist, OR
+//   - capacity_sold < amount (cannot restore more than was confirmed).
+func (q *Queries) RestoreSoldCapacity(ctx context.Context, sessionID uuid.UUID, tierID *uuid.UUID, amount int32) (InventoryLedgerRow, error) {
+	row := q.db.QueryRow(ctx, restoreSoldCapacity, sessionID, tierID, amount)
+	return scanInventoryLedgerRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // UpdateCapacityTotal
 // ─────────────────────────────────────────────────────────────────────────────
 

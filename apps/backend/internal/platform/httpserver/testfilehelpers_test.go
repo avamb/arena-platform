@@ -607,6 +607,11 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "complimentary.go"),
 		}
+	// Complimentary revocation flow (feature #150)
+	case "0038_complimentary_revocation.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0038_complimentary_revocation.sql"),
+		}
 	// Report delivery + recipient deduplication (feature #160)
 	case "reportdelivery_handler.go":
 		candidates = []string{
@@ -641,6 +646,23 @@ func resolveFileInRepo(repoRoot, name string) string {
 	case "stripebilling_adapter.go":
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "stripebilling", "adapter.go"),
+		}
+	// External barcode batch import (feature #146)
+	case "0039_barcode_batches.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0039_barcode_batches.sql"),
+		}
+	case "barcode_batches.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "barcode_batches.sql"),
+		}
+	case "barcode_batches.sql.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "barcode_batches.sql.go"),
+		}
+	case "barcode_batches.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "barcode_batches.go"),
 		}
 	default:
 		// Generic fallback: try the file directly at the repo root.

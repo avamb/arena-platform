@@ -341,6 +341,11 @@ type Server struct {
 	// ticket issuance endpoints (POST/GET /v1/organizations/{org_id}/complimentary).
 	// Nil when no PgxPool was supplied. Feature #148.
 	complimentaryQueries *gen.Queries
+
+	// barcodeBatchQueries is the sqlc Queries instance used by the barcode batch
+	// import endpoints (upload CSV, approve/reject). Nil when no PgxPool was supplied.
+	// Feature #146.
+	barcodeBatchQueries *gen.Queries
 }
 
 // Options bundles the dependencies that New requires. Using a struct rather
@@ -438,6 +443,12 @@ type Options struct {
 	// Inject gen.New(nil) in tests that need complimentary routes mounted without a real pool.
 	// Feature #148.
 	ComplimentaryQueries *gen.Queries
+
+	// BarcodeBatchQueries injects a pre-constructed *gen.Queries for the barcode
+	// batch import endpoints. When nil and PgxPool is non-nil, gen.New(PgxPool) is used.
+	// Inject gen.New(nil) in tests that need barcode batch routes mounted without a real pool.
+	// Feature #146.
+	BarcodeBatchQueries *gen.Queries
 
 	// Bundle is the go-i18n/v2 message catalog bundle used by LocaleMiddleware
 	// to localize error messages. When non-nil, LocaleMiddleware is added to
@@ -892,6 +903,12 @@ func New(opts Options) *Server {
 		complimentaryQueries = gen.New(opts.PgxPool)
 	}
 
+	// sqlc Queries for barcode batch import endpoints (feature #146).
+	barcodeBatchQueries := opts.BarcodeBatchQueries
+	if barcodeBatchQueries == nil && opts.PgxPool != nil {
+		barcodeBatchQueries = gen.New(opts.PgxPool)
+	}
+
 	// Extend the permission checker with membership-derived role resolution
 	// (feature #120 step 3). When a PgxPool is available, the DBChecker is
 	// augmented so that each Check() call unions the JWT roles with the user's
@@ -967,6 +984,7 @@ func New(opts Options) *Server {
 		superadminQueries:           superadminQueries,
 		allocationQueries:           allocationQueries,
 		complimentaryQueries:        complimentaryQueries,
+		barcodeBatchQueries:         barcodeBatchQueries,
 	}
 
 	s.mountOperationalRoutes()
@@ -2098,6 +2116,49 @@ func (s *Server) mountV1Routes() {
 				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
 				pr.Use(permissions.RequirePermission(s.perms, "complimentary.issue", "complimentary"))
 				pr.Post("/organizations/{org_id}/complimentary", s.handleCreateComplimentaryIssuance)
+			})
+			// complimentary.revoke endpoint (feature #150)
+			// POST /v1/complimentary/{id}/revoke — revokes an issuance by ID.
+			// Uses complimentary.issue permission (same actor who can issue can revoke).
+			// Scan-status check: if any ticket is scanned → 409 manual_review.
+			// On clean revoke: tickets + barcodes + credentials revoked, inventory restored.
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "complimentary.issue", "complimentary"))
+				pr.Post("/complimentary/{id}/revoke", s.handleRevokeComplimentaryIssuance)
+			})
+		}
+
+		// ── External barcode batch import (feature #146) ─────────────────────────
+		//
+		// Operators upload CSV files of external barcodes. Batches require approval
+		// before barcodes are activated for scanning.
+		//
+		//   POST  /v1/barcode-batches              — upload CSV (barcode_batch.upload)
+		//   GET   /v1/barcode-batches              — list batches (barcode_batch.read)
+		//   GET   /v1/barcode-batches/{id}         — get detail (barcode_batch.read)
+		//   POST  /v1/barcode-batches/{id}/approve — approve (barcode_batch.approve)
+		//   POST  /v1/barcode-batches/{id}/reject  — reject  (barcode_batch.approve)
+		if s.stub != nil && s.stub.Enabled() && s.barcodeBatchQueries != nil {
+			// barcode_batch.read endpoints
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "barcode_batch.read", "barcode_batches"))
+				pr.Get("/barcode-batches", s.handleListBarcodeBatches)
+				pr.Get("/barcode-batches/{id}", s.handleGetBarcodeBatch)
+			})
+			// barcode_batch.upload endpoint (multipart/form-data)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "barcode_batch.upload", "barcode_batches"))
+				pr.Post("/barcode-batches", s.handleUploadBarcodeBatch)
+			})
+			// barcode_batch.approve endpoints (platform_operator)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "barcode_batch.approve", "barcode_batches"))
+				pr.Post("/barcode-batches/{id}/approve", s.handleApproveBarcodeBatch)
+				pr.Post("/barcode-batches/{id}/reject", s.handleRejectBarcodeBatch)
 			})
 		}
 	})

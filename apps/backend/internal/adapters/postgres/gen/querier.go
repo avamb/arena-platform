@@ -166,6 +166,7 @@ type Querier interface {
 	ReserveCapacity(ctx context.Context, sessionID uuid.UUID, tierID *uuid.UUID, amount int32) (InventoryLedgerRow, error)
 	ReleaseCapacity(ctx context.Context, sessionID uuid.UUID, tierID *uuid.UUID, amount int32) (InventoryLedgerRow, error)
 	ConfirmCapacity(ctx context.Context, sessionID uuid.UUID, tierID *uuid.UUID, amount int32) (InventoryLedgerRow, error)
+	RestoreSoldCapacity(ctx context.Context, sessionID uuid.UUID, tierID *uuid.UUID, amount int32) (InventoryLedgerRow, error)
 	UpdateCapacityTotal(ctx context.Context, sessionID uuid.UUID, tierID *uuid.UUID, newTotal *int32) (InventoryLedgerRow, error)
 
 	// Reservations — state machine for capacity holds (feature #131)
@@ -286,12 +287,26 @@ type Querier interface {
 	UpdateComplimentaryIssuanceStatus(ctx context.Context, id uuid.UUID, newStatus string) (ComplimentaryIssuanceRow, error)
 	InsertComplimentaryTicket(ctx context.Context, complimentaryIssuanceID uuid.UUID, sessionID uuid.UUID, tierID *uuid.UUID, holderEmail *string) (ComplimentaryTicketRow, error)
 	ListTicketsByComplimentaryIssuance(ctx context.Context, complimentaryIssuanceID uuid.UUID) ([]ComplimentaryTicketRow, error)
+	// Complimentary revocation — feature #150
+	HasScannedTicketsForIssuance(ctx context.Context, complimentaryIssuanceID uuid.UUID) (bool, error)
+	RevokeComplimentaryTickets(ctx context.Context, complimentaryIssuanceID uuid.UUID) ([]ComplimentaryTicketRow, error)
 
 	// Stripe Billing adapter — push SaaS invoices to Stripe, sync payment status (feature #162)
 	UpsertStripeCustomer(ctx context.Context, orgID uuid.UUID, stripeCustomerID string, email *string, name *string) (StripeCustomerRow, error)
 	GetStripeCustomerByOrgID(ctx context.Context, orgID uuid.UUID) (StripeCustomerRow, error)
 	UpdateInvoiceStripeID(ctx context.Context, id uuid.UUID, stripeInvoiceID string) (InvoiceStripeRow, error)
 	GetInvoiceByStripeID(ctx context.Context, stripeInvoiceID string) (InvoiceStripeRow, error)
+
+	// External barcode batch import — CSV upload, operator approval, scanner activation (feature #146)
+	InsertBarcodeBatch(ctx context.Context, allocationID *uuid.UUID, source string, status string, filename string, rowCount int32, authorityID *uuid.UUID, notes *string, uploadedBy *string) (BarcodeBatchRow, error)
+	GetBarcodeBatchByID(ctx context.Context, id uuid.UUID) (BarcodeBatchRow, error)
+	ListBarcodeBatchesByAllocation(ctx context.Context, allocationID uuid.UUID) ([]BarcodeBatchRow, error)
+	ListAllBarcodeBatches(ctx context.Context) ([]BarcodeBatchRow, error)
+	UpdateBarcodeBatchStatus(ctx context.Context, id uuid.UUID, newStatus string) (BarcodeBatchRow, error)
+	UpdateBarcodeBatchAuthorityAndStatus(ctx context.Context, id uuid.UUID, authorityID *uuid.UUID, newStatus string) (BarcodeBatchRow, error)
+	InsertBarcodeBatchEntry(ctx context.Context, batchID uuid.UUID, externalRef string, status string) (BarcodeBatchEntryRow, error)
+	ListBatchEntriesByBatchID(ctx context.Context, batchID uuid.UUID) ([]BarcodeBatchEntryRow, error)
+	UpdateBatchEntriesStatus(ctx context.Context, batchID uuid.UUID, newStatus string) (int64, error)
 }
 
 // Compile-time assertion: *Queries must implement Querier.

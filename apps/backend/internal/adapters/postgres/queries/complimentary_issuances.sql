@@ -66,3 +66,26 @@ SELECT id, complimentary_issuance_id, session_id, tier_id, holder_email,
 FROM   tickets
 WHERE  complimentary_issuance_id = $1
 ORDER BY issued_at ASC, id ASC;
+
+-- name: HasScannedTicketsForIssuance :one
+-- Returns true if any ticket belonging to the issuance has a scanned barcode.
+-- Used during revocation to detect when human review is required.
+-- A barcode is considered scanned when its status column equals 'scanned'.
+SELECT EXISTS (
+    SELECT 1
+    FROM   barcodes b
+    JOIN   tickets  t ON t.id = b.ticket_id
+    WHERE  t.complimentary_issuance_id = $1
+      AND  b.status = 'scanned'
+) AS has_scanned;
+
+-- name: RevokeComplimentaryTickets :many
+-- Transitions all active tickets for a complimentary issuance to 'revoked' status.
+-- Called within the revocation transaction before inventory is restored.
+-- Returns the updated ticket rows (used for barcode/credential clean-up loop).
+UPDATE tickets
+SET    status     = 'revoked',
+       updated_at = now()
+WHERE  complimentary_issuance_id = $1
+RETURNING id, complimentary_issuance_id, session_id, tier_id, holder_email,
+          status, issued_at, created_at, updated_at;

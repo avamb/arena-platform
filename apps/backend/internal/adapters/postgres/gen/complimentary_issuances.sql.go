@@ -284,3 +284,69 @@ ORDER BY issued_at ASC, id ASC`
 	}
 	return result, rows.Err()
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HasScannedTicketsForIssuance
+// ─────────────────────────────────────────────────────────────────────────────
+
+// HasScannedTicketsForIssuance returns true when at least one ticket belonging
+// to the complimentary issuance has a barcode with status='scanned'.
+//
+// Used in the revocation flow to determine whether clean revocation is possible
+// (no scanned tickets) or whether the issuance must be queued for manual review
+// (one or more tickets already scanned at the door).
+func (q *Queries) HasScannedTicketsForIssuance(
+	ctx context.Context,
+	complimentaryIssuanceID uuid.UUID,
+) (bool, error) {
+	const sql = `
+SELECT EXISTS (
+    SELECT 1
+    FROM   barcodes b
+    JOIN   tickets  t ON t.id = b.ticket_id
+    WHERE  t.complimentary_issuance_id = $1
+      AND  b.status = 'scanned'
+) AS has_scanned`
+	row := q.db.QueryRow(ctx, sql, complimentaryIssuanceID)
+	var hasScanned bool
+	err := row.Scan(&hasScanned)
+	return hasScanned, err
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RevokeComplimentaryTickets
+// ─────────────────────────────────────────────────────────────────────────────
+
+// RevokeComplimentaryTickets transitions all active tickets for the given
+// complimentary issuance to 'revoked' status in a single UPDATE statement.
+//
+// Called within the revocation transaction so that inventory restoration and
+// ticket revocation are atomic. Returns the updated rows so the caller can
+// iterate over ticket IDs for barcode and credential clean-up.
+func (q *Queries) RevokeComplimentaryTickets(
+	ctx context.Context,
+	complimentaryIssuanceID uuid.UUID,
+) ([]ComplimentaryTicketRow, error) {
+	const sql = `
+UPDATE tickets
+SET    status     = 'revoked',
+       updated_at = now()
+WHERE  complimentary_issuance_id = $1
+RETURNING id, complimentary_issuance_id, session_id, tier_id, holder_email,
+          status, issued_at, created_at, updated_at`
+	rows, err := q.db.Query(ctx, sql, complimentaryIssuanceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []ComplimentaryTicketRow
+	for rows.Next() {
+		r, err := scanComplimentaryTicketRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, r)
+	}
+	return result, rows.Err()
+}

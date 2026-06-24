@@ -109,6 +109,30 @@ WHERE  il.id = locked.id
 RETURNING il.id, il.session_id, il.tier_id, il.capacity_total,
           il.capacity_held, il.capacity_sold, il.version, il.created_at, il.updated_at;
 
+-- name: RestoreSoldCapacity :one
+-- Decrements capacity_sold by `amount`, moving units back to available.
+-- This is the inverse of ConfirmCapacity and is used when a complimentary
+-- issuance is revoked to restore the inventory capacity.
+-- Fails (ErrNoRows) when:
+--   • the row does not exist, OR
+--   • capacity_sold < amount (cannot restore more than was sold).
+WITH locked AS (
+    SELECT id, capacity_sold
+    FROM   inventory_ledger
+    WHERE  session_id = $1
+      AND  (tier_id = $2::uuid OR (tier_id IS NULL AND $2::uuid IS NULL))
+    FOR UPDATE
+)
+UPDATE inventory_ledger il
+SET    capacity_sold = il.capacity_sold - $3::integer,
+       version       = il.version + 1,
+       updated_at    = now()
+FROM   locked
+WHERE  il.id = locked.id
+  AND  locked.capacity_sold >= $3::integer
+RETURNING il.id, il.session_id, il.tier_id, il.capacity_total,
+          il.capacity_held, il.capacity_sold, il.version, il.created_at, il.updated_at;
+
 -- name: UpdateCapacityTotal :one
 -- Propagates a capacity_total change from the session or tier.
 -- Fails (ErrNoRows) when:
