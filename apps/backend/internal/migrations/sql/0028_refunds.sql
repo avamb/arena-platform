@@ -97,25 +97,44 @@ CREATE INDEX refund_events_provider_refund_id ON refund_events (provider_refund_
 --   org_admin → refund.create, refund.read, refund.approve
 --   member    → refund.read
 
-INSERT INTO permissions (name) VALUES
-    ('refund.create'),
-    ('refund.read'),
-    ('refund.approve')
+INSERT INTO permissions (name, description) VALUES
+    ('refund.create',  'Request a new refund for a payment intent (feature #138)'),
+    ('refund.read',    'Read refund state and history (feature #138)'),
+    ('refund.approve', 'Approve or reject a pending refund request (feature #138)')
 ON CONFLICT (name) DO NOTHING;
 
-INSERT INTO role_permissions (role_name, permission_name) VALUES
-    ('admin',     'refund.create'),
-    ('admin',     'refund.read'),
-    ('admin',     'refund.approve'),
-    ('org_admin', 'refund.create'),
-    ('org_admin', 'refund.read'),
-    ('org_admin', 'refund.approve'),
-    ('member',    'refund.read')
+-- Grant all refund permissions to admin.
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id
+FROM   roles r CROSS JOIN permissions p
+WHERE  r.name = 'admin'
+  AND  p.name IN ('refund.create', 'refund.read', 'refund.approve')
+ON CONFLICT DO NOTHING;
+
+-- Grant all refund permissions to org_admin.
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id
+FROM   roles r CROSS JOIN permissions p
+WHERE  r.name = 'org_admin'
+  AND  p.name IN ('refund.create', 'refund.read', 'refund.approve')
+ON CONFLICT DO NOTHING;
+
+-- Grant read to member (buyers can view their own refund status).
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id
+FROM   roles r CROSS JOIN permissions p
+WHERE  r.name = 'member'
+  AND  p.name IN ('refund.read')
 ON CONFLICT DO NOTHING;
 
 -- +goose Down
 
-DELETE FROM role_permissions WHERE permission_name IN ('refund.create', 'refund.read', 'refund.approve');
+DELETE FROM role_permissions
+WHERE permission_id IN (
+    SELECT id FROM permissions
+    WHERE name IN ('refund.create', 'refund.read', 'refund.approve')
+);
+
 DELETE FROM permissions WHERE name IN ('refund.create', 'refund.read', 'refund.approve');
 
 DROP TABLE IF EXISTS refund_events;
