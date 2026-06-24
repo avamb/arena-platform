@@ -96,13 +96,10 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "README.md"),
 		}
-	case "0004_scaffold_echo.sql":
+	// scaffold_echo cleanup migration (feature #171)
+	case "0031_remove_scaffold_echo.sql":
 		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0004_scaffold_echo.sql"),
-		}
-	case "scaffold_echo.sql.go":
-		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "scaffold_echo.sql.go"),
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0031_remove_scaffold_echo.sql"),
 		}
 	// Geo reference data (feature #123)
 	case "0006_geo.sql":
@@ -502,6 +499,19 @@ func resolveFileInRepo(repoRoot, name string) string {
 	case "delivery_enqueue.go":
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "delivery_enqueue.go"),
+		}
+	// Public feed events API (feature #152)
+	case "public_feed.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "public_feed.sql"),
+		}
+	case "public_feed.sql.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "public_feed.sql.go"),
+		}
+	case "public_feed.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "public_feed.go"),
 		}
 	default:
 		// Generic fallback: try the file directly at the repo root.

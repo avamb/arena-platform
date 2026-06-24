@@ -6,9 +6,13 @@
 //
 //   - /healthz, /readyz       — operational probes (liveness + readiness)
 //   - /v1/info                — service metadata + real SELECT against PG
-//   - /v1/dev/token           — dev-only JWT mint (StubProvider)
+//   - /v1/dev/token           — dev-only JWT mint (StubProvider, gated by ENABLE_DEV_AUTH)
 //   - /v1/echo                — example transactional command (audit + outbox
 //                                + idempotency, JWT-protected)
+//
+// Dev-only routes (/v1/dev/*, /v1/debug/*) are runtime-gated by ENABLE_DEV_AUTH
+// and DEBUG_ROUTES_ENABLED respectively. They are not registered in the router
+// when those environment variables are false (production default).
 //
 // Additional /v1 routes can be attached by later features through Router().
 package httpserver
@@ -166,6 +170,15 @@ type Server struct {
 	// publicationQueries is the sqlc Queries instance used by the event publication
 	// endpoints (publish/unpublish/list). Nil when no PgxPool was supplied. Feature #151.
 	publicationQueries *gen.Queries
+
+	// publicFeedQueries is the sqlc Queries instance used by the unauthenticated
+	// public feed event endpoints (GET /v1/public/feeds/{token}/events and
+	// GET /v1/public/feeds/{token}/events/{event_id}). Feature #152.
+	publicFeedQueries *gen.Queries
+
+	// publicFeedRL is the in-memory rate limiter for public feed endpoints.
+	// Limits: 100 req/min per token, 300 req/min per IP. Feature #152.
+	publicFeedRL *publicFeedRateLimiter
 
 	// sessionQueries is the sqlc Queries instance used by the session CRUD endpoints.
 	// Sessions are scoped to an event. All write endpoints require the org_id in the
@@ -382,12 +395,12 @@ type Options struct {
 	// field in /v1/info) but error messages fall back to hardcoded English strings.
 	Bundle *i18n.Bundle
 
-	// Outbox is the outbox.Writer used by POST /v1/scaffold/echo to append
-	// domain events within the same transaction as the scaffold_echo INSERT.
+	// Outbox is the outbox.Writer used by scanner event handlers (POST /v1/scan)
+	// to publish domain events within a transaction.
 	// When nil and PgxPool is non-nil, a PGWriter is constructed lazily.
 	Outbox outbox.Writer
 
-	// Permissions is the permissions.Checker used by POST /v1/scaffold/echo.
+	// Permissions is the permissions.Checker used by authenticated write endpoints.
 	// When nil, AllowAllChecker is used (foundation milestone placeholder).
 	Permissions permissions.Checker
 
@@ -445,6 +458,12 @@ type Options struct {
 	// Inject gen.New(nil) in tests that need publication routes mounted without a real pool.
 	// Feature #151.
 	PublicationQueries *gen.Queries
+
+	// PublicFeedQueries injects a pre-constructed *gen.Queries for the public feed
+	// event endpoints. When nil and PgxPool is non-nil, gen.New(PgxPool) is used.
+	// Inject gen.New(nil) in tests that need public feed routes without a real pool.
+	// Feature #152.
+	PublicFeedQueries *gen.Queries
 
 	// SessionQueries injects a pre-constructed *gen.Queries for the session CRUD
 	// endpoints. When nil and PgxPool is non-nil, gen.New(PgxPool) is used.
@@ -687,6 +706,12 @@ func New(opts Options) *Server {
 		publicationQueries = gen.New(opts.PgxPool)
 	}
 
+	// sqlc Queries for public feed event endpoints (feature #152).
+	publicFeedQueries := opts.PublicFeedQueries
+	if publicFeedQueries == nil && opts.PgxPool != nil {
+		publicFeedQueries = gen.New(opts.PgxPool)
+	}
+
 	// sqlc Queries for session CRUD endpoints (feature #126).
 	sessionQueries := opts.SessionQueries
 	if sessionQueries == nil && opts.PgxPool != nil {
@@ -813,6 +838,8 @@ func New(opts Options) *Server {
 		feedTokenQueries:            feedTokenQueries,
 		eventQueries:                eventQueries,
 		publicationQueries:          publicationQueries,
+		publicFeedQueries:           publicFeedQueries,
+		publicFeedRL:                newPublicFeedRateLimiter(100, 300),
 		sessionQueries:              sessionQueries,
 		gdprQueries:                 gdprQueries,
 		tierQueries:                 tierQueries,
@@ -1770,38 +1797,19 @@ func (s *Server) mountV1Routes() {
 			})
 		}
 
-		// POST /v1/scaffold/echo — scaffolding example demonstrating the full
-		// cross-cutting boundary stack:
-		//   auth → permission('scaffold.echo.create') → idempotency →
-		//   BEGIN tx → InsertScaffoldEcho → audit → outbox → COMMIT → 201
+		// ── Public feed events API (feature #152) ──────────────────────────────
 		//
-		// Mounted when all four dependencies are wired (pool, audit, idem, outbox).
-		// This endpoint is a scaffolding example and will be removed when real
-		// domain command endpoints arrive.
-		if s.stub != nil && s.stub.Enabled() && s.idem != nil && s.audit != nil && s.pool != nil && s.outboxWriter != nil {
-			r.Route("/scaffold", func(sr chi.Router) {
-				sr.Group(func(pr chi.Router) {
-					pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
-					pr.Use(permissions.RequirePermission(s.perms, "scaffold.echo.create", "scaffold_echo"))
-					scaffoldIdemOpts := idempotency.Options{
-						Scope: "POST /v1/scaffold/echo",
-						TTL:   24 * time.Hour,
-						ActorID: func(ctx context.Context) string {
-							if a, ok := auth.ActorFromContext(ctx); ok {
-								return a.ID
-							}
-							return ""
-						},
-					}
-					if s.typedMetrics != nil {
-						scaffoldIdemOpts.OnReplay = func() {
-							s.typedMetrics.IdempotencyReplaysTotal.Inc()
-						}
-					}
-					pr.Use(idempotency.Middleware(s.idem, scaffoldIdemOpts))
-					pr.Post("/echo", s.handleScaffoldEcho)
-				})
-			})
+		// Unauthenticated read-only endpoints. The feed token in the path is
+		// the credential (ADR-013 federated feeds). No JWT required.
+		//
+		//   GET /v1/public/feeds/{feed_token}/events              — list events
+		//   GET /v1/public/feeds/{feed_token}/events/{event_id}   — detail + tiers
+		//
+		// Rate limit: 100 req/min per token, 300 req/min per IP.
+		// Cache-Control set per response (60s for list, 30s for detail).
+		if s.publicFeedQueries != nil {
+			r.Get("/public/feeds/{feed_token}/events", s.handlePublicFeedEvents)
+			r.Get("/public/feeds/{feed_token}/events/{event_id}", s.handlePublicFeedEvent)
 		}
 	})
 }

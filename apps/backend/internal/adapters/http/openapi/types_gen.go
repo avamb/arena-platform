@@ -256,36 +256,6 @@ type ServerInfoResponse struct {
 	WelcomeMessage string `json:"welcome_message"`
 }
 
-// ScaffoldEchoRequest defines model for ScaffoldEchoRequest.
-// This endpoint is a scaffolding example and will be removed when real domain
-// command endpoints arrive.
-type ScaffoldEchoRequest struct {
-	// Message Message to store. Must be non-empty. Maximum 8 KiB.
-	Message string `json:"message"`
-}
-
-// ScaffoldEchoResponse defines model for ScaffoldEchoResponse.
-// This endpoint is a scaffolding example and will be removed when real domain
-// command endpoints arrive.
-type ScaffoldEchoResponse struct {
-	// CreatedAt Server-side timestamp when the row was created (RFC3339Nano)
-	CreatedAt time.Time `json:"created_at"`
-
-	// Id UUIDv7 primary key of the newly created scaffold_echo row
-	Id openapi_types.UUID `json:"id"`
-
-	// Message The stored message from the request body
-	Message string `json:"message"`
-}
-
-// PostV1ScaffoldEchoParams defines parameters for PostV1ScaffoldEcho.
-type PostV1ScaffoldEchoParams struct {
-	// IdempotencyKey Client-generated UUID that uniquely identifies this mutation request.
-	// Replays (same actor + same key) return the originally cached response
-	// without re-executing the handler. TTL is 24 hours.
-	IdempotencyKey openapi_types.UUID `json:"Idempotency-Key"`
-}
-
 // RegisterRequest defines the request body for POST /v1/auth/register (feature #114).
 type RegisterRequest struct {
 	// Email The user's email address. Will be normalised to lowercase.
@@ -336,6 +306,3 @@ type PostV1DevTokenJSONRequestBody = DevTokenRequest
 
 // PostV1EchoJSONRequestBody defines body for PostV1Echo for application/json ContentType.
 type PostV1EchoJSONRequestBody = EchoRequest
-
-// PostV1ScaffoldEchoJSONRequestBody defines body for PostV1ScaffoldEcho for application/json ContentType.
-type PostV1ScaffoldEchoJSONRequestBody = ScaffoldEchoRequest

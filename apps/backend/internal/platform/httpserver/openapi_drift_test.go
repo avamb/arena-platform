@@ -281,7 +281,6 @@ func buildDriftTestServer(t *testing.T) *Server {
 		Audit:          &captureAuditWriter{},
 		Idem:           &noopIdemStore{},
 		Pool:           &fakePoolDB{tx: &fakeTx{}},
-		Outbox:         &scaffold105OutboxWriter{},
 		MetricsHandler: noopHandler,
 		// Wire geo queries so /v1/geo/* and /v1/admin/geo/* routes are mounted.
 		GeoQueries: gen.New(nil),

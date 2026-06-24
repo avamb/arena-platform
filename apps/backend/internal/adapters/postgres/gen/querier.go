@@ -16,7 +16,6 @@ import (
 // a mock without a live PostgreSQL connection.
 type Querier interface {
 	SelectUUIDv7(ctx context.Context) (uuid.UUID, error)
-	InsertScaffoldEcho(ctx context.Context, actorID string, message string) (InsertScaffoldEchoRow, error)
 
 	// Users & email-verification (feature #114)
 	InsertUser(ctx context.Context, email, passwordHash, preferredLocale string) (InsertUserRow, error)
@@ -226,6 +225,11 @@ type Querier interface {
 	GetDeliveryJobByTicketID(ctx context.Context, ticketID uuid.UUID) (DeliveryJobRow, error)
 	UpdateDeliveryJobStatus(ctx context.Context, id uuid.UUID, newStatus string, lastError *string) (DeliveryJobRow, error)
 	ListPendingDeliveryJobs(ctx context.Context, limit int32) ([]DeliveryJobRow, error)
+
+	// Public feed events API — unauthenticated event browsing by feed token (feature #152)
+	ListPublishedEventsByFeedToken(ctx context.Context, token string, cityID *uuid.UUID, dateFrom, dateTo *time.Time, limit, offset int32) ([]EventRow, error)
+	CountPublishedEventsByFeedToken(ctx context.Context, token string, cityID *uuid.UUID, dateFrom, dateTo *time.Time) (int32, error)
+	GetPublishedEventByFeedToken(ctx context.Context, token string, eventID uuid.UUID) (EventRow, error)
 }
 
 // Compile-time assertion: *Queries must implement Querier.
