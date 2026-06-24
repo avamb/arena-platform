@@ -31,6 +31,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/go-chi/chi/v5"
@@ -209,7 +210,7 @@ func (s *Server) handleListWebhookSubscribers(w http.ResponseWriter, r *http.Req
 			CallbackURL:  row.CallbackURL,
 			EventTypes:   row.EventTypes,
 			Active:       row.Active,
-			CreatedAt:    row.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
+			CreatedAt:    row.CreatedAt.UTC().Format(time.RFC3339),
 		})
 	}
 
@@ -255,7 +256,7 @@ func (s *Server) handleGetWebhookSubscriber(w http.ResponseWriter, r *http.Reque
 		CallbackURL:  row.CallbackURL,
 		EventTypes:   row.EventTypes,
 		Active:       row.Active,
-		CreatedAt:    row.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
+		CreatedAt:    row.CreatedAt.UTC().Format(time.RFC3339),
 	})
 }
 

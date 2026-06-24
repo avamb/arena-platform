@@ -107,13 +107,13 @@ func checkoutSessionFromRow(cs gen.CheckoutSessionRow) checkoutSessionResponse {
 // validCheckoutTransitions defines the valid state transitions for the
 // checkout session state machine.  Terminal states map to empty sets.
 var validCheckoutTransitions = map[string]map[string]bool{
-	"created":            {"pricing_confirmed": true, "abandoned": true, "expired": true},
-	"pricing_confirmed":  {"completed": true, "payment_started": true, "abandoned": true, "expired": true},
-	"payment_started":    {"completed": true, "manual_review": true, "abandoned": true, "expired": true},
-	"completed":          {},
-	"abandoned":          {},
-	"expired":            {},
-	"manual_review":      {"completed": true, "abandoned": true},
+	"created":           {"pricing_confirmed": true, "abandoned": true, "expired": true},
+	"pricing_confirmed": {"completed": true, "payment_started": true, "abandoned": true, "expired": true},
+	"payment_started":   {"completed": true, "manual_review": true, "abandoned": true, "expired": true},
+	"completed":         {},
+	"abandoned":         {},
+	"expired":           {},
+	"manual_review":     {"completed": true, "abandoned": true},
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -261,7 +261,7 @@ func (s *Server) handleGetCheckoutSession(w http.ResponseWriter, r *http.Request
 // the snapshot.
 type confirmCheckoutRequest struct {
 	TierID      string  `json:"tier_id"`
-	SessionID   string  `json:"session_id"`    // event session (not checkout session)
+	SessionID   string  `json:"session_id"` // event session (not checkout session)
 	Quantity    int32   `json:"quantity"`
 	OrgID       string  `json:"org_id"`
 	PromoCode   *string `json:"promo_code"`
@@ -512,6 +512,14 @@ func (s *Server) handleCompleteCheckout(w http.ResponseWriter, r *http.Request) 
 			writeJSON(w, http.StatusBadRequest, errorEnvelope("checkout.invalid_json", "request body is not valid JSON", r))
 			return
 		}
+	}
+
+	if req.PaymentIntentID == "" && req.PaymentProvider != "" {
+		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+			"checkout.missing_payment_intent", "payment_intent_id is required when payment_provider is supplied", r,
+			map[string]any{"field": "payment_intent_id"},
+		))
+		return
 	}
 
 	// ── Free checkout branch (total = 0) ─────────────────────────────────────

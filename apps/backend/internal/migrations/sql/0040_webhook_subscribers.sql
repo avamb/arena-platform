@@ -34,10 +34,16 @@ CREATE INDEX IF NOT EXISTS idx_webhook_subscribers_active
     WHERE active = TRUE;
 
 -- RBAC seed: platform superadmins and org_admins can manage webhook subscribers.
-INSERT INTO rbac_role_permissions (role, permission)
-VALUES
-    ('admin',     'webhook.subscriber.manage'),
-    ('org_admin', 'webhook.subscriber.manage')
+INSERT INTO permissions (name, description)
+VALUES ('webhook.subscriber.manage', 'Manage webhook subscribers')
+ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id
+FROM roles r
+CROSS JOIN permissions p
+WHERE r.name IN ('admin', 'org_admin')
+  AND p.name = 'webhook.subscriber.manage'
 ON CONFLICT DO NOTHING;
 
 -- +goose StatementEnd
@@ -47,6 +53,10 @@ ON CONFLICT DO NOTHING;
 DROP INDEX  IF EXISTS idx_webhook_subscribers_active;
 DROP TABLE  IF EXISTS webhook_subscribers;
 
-DELETE FROM rbac_role_permissions
-WHERE permission = 'webhook.subscriber.manage';
+DELETE FROM role_permissions
+WHERE permission_id IN (
+    SELECT id FROM permissions WHERE name = 'webhook.subscriber.manage'
+);
+
+DELETE FROM permissions WHERE name = 'webhook.subscriber.manage';
 -- +goose StatementEnd

@@ -27,8 +27,23 @@ If the user asks you to modify code, explain that you're a project assistant and
 
 ## Project Specification
 
+<current_implementation_status date="2026-06-24">
+  The checked-in implementation is no longer limited to the original Backend
+  Foundation Milestone described below. AutoForge now tracks 171/171 passed
+  features through Wave 20, and the codebase contains broad domain scaffolding
+  for identity, organizations, catalog, inventory, checkout, payments, tickets,
+  scanner integration boundaries, WordPress/Bil24 compatibility, reporting,
+  billing, superadmin, webhook delivery, and reconciliation.
+
+  Treat the foundation-only project specification below as the historical seed
+  spec unless a newer approved master specification supersedes it. Current
+  readiness is not production-ready until the architecture/spec status is
+  reconciled with the implementation, generated clients are current, tests pass,
+  and runtime databases are migrated to the latest embedded migration.
+</current_implementation_status>
+
 <project_specification>
-  <project_name>arena_new — Backend Foundation Milestone</project_name>
+  <project_name>arena_new — Broad Scaffold Status; original Backend Foundation Milestone superseded by implementation</project_name>
 
   <overview>
     Production-grade backend scaffold for a multi-tenant ticketing platform (successor to the legacy Bil24/TixGear ecosystem). This first milestone delivers a clean Go modular monolith foundation: HTTP API server, background worker, migration tool, observability, database access, cross-cutting boundaries (auth/permission/idempotency/audit/outbox placeholders), internationalization, and Dokploy-ready Docker deployment. Business logic for identity, organizations, catalog, inventory, checkout, payments, tickets, scanner integration, WordPress integration, and Bil24 compatibility gateway is OUT OF SCOPE for this milestone — they will be added in subsequent milestones on top of this foundation.

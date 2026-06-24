@@ -44,6 +44,7 @@ export type ErrorEnvelope = components["schemas"]["ErrorEnvelope"];
 export type HealthzResponse = components["schemas"]["HealthzResponse"];
 export type ReadyzResponse = components["schemas"]["ReadyzResponse"];
 export type InfoResponse = components["schemas"]["InfoResponse"];
+export type PaginationMeta = components["schemas"]["PaginationMeta"];
 
 /** Request body for POST /v1/echo */
 export type EchoRequest = components["schemas"]["EchoRequest"];

@@ -2,15 +2,24 @@
 
 [![CI](https://github.com/abhteam/arena_new/actions/workflows/ci.yml/badge.svg)](https://github.com/abhteam/arena_new/actions/workflows/ci.yml)
 
-Production-grade backend scaffold for a multi-tenant ticketing platform — the
-successor to the legacy Bil24 / TixGear ecosystem.
+Production-grade backend for a multi-tenant ticketing platform — the successor
+to the legacy Bil24 / TixGear ecosystem.
 
-This repository is currently in its **Backend Foundation Milestone**: only the
-architectural scaffolding for a clean Go modular monolith is delivered.
-Business modules (identity, organizations, catalog, inventory, checkout,
-payments, tickets, scanner integration, WordPress and Bil24 gateways) are
-explicitly out of scope for this milestone and will land in subsequent waves on
-top of this foundation.
+## Current implementation status
+
+As of 2026-06-24, the checked-in implementation is no longer limited to the
+original **Backend Foundation Milestone**. The codebase and AutoForge backlog
+now cover a broad scaffold through Wave 20 / 171 features, including identity,
+organizations, catalog, inventory, reservations, checkout, payments, tickets,
+scanner integration boundaries, WordPress/Bil24 compatibility, reporting,
+billing, superadmin, webhook delivery, and reconciliation.
+
+The original foundation-only text is retained below where it explains the
+initial architecture, but it is historical context rather than the current
+implementation scope. Current readiness remains **not production-ready** until
+the architecture/specification status is reconciled with the implementation,
+tests pass, generated clients are current, and runtime databases are migrated to
+the latest embedded migration.
 
 > Кратко по-русски: первый milestone строит чистый production-ready
 > backend-скелет на Go (modular monolith, `net/http` + chi, PostgreSQL 17,
@@ -315,7 +324,11 @@ on the `EchoRequest` schema.
 
 ---
 
-## Scope of this milestone
+## Original foundation scope (historical)
+
+This section documents the original foundation milestone. It is not a complete
+description of the current implementation, which has since advanced into broad
+domain scaffolding.
 
 **In scope**: repository layout, three binaries (`arena-api`,
 `arena-worker`, `arena-migrate`), config + slog + health + graceful shutdown,

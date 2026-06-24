@@ -4,7 +4,7 @@
   "private": true,
   "description": "Backend foundation for arena_new multi-tenant ticketing platform",
   "scripts": {
-    "gen-ts-client": "openapi-typescript apps/backend/openapi/openapi.yaml --output apps/backend/openapi/clients/ts/index.d.ts",
+    "gen-ts-client": "node scripts/gen-ts-client.mjs",
     "check-ts": "tsc --noEmit apps/backend/openapi/clients/ts/index.d.ts"
   },
   "devDependencies": {

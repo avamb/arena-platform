@@ -2,9 +2,10 @@
 // "GET /v1/info p99 latency under 100ms"
 //
 // Feature description:
-//   Sanity perf test: under low concurrency on a developer laptop, /v1/info p99
-//   latency stays under 100ms. Validates that auth/middleware overhead isn't
-//   pathological.
+//
+//	Sanity perf test: under low concurrency on a developer laptop, /v1/info p99
+//	latency stays under 100ms. Validates that auth/middleware overhead isn't
+//	pathological.
 //
 // Seven feature steps verified here:
 //
@@ -342,12 +343,10 @@ func TestInfoP99Latency_HighConcurrency(t *testing.T) {
 // 10× improvement in p99.
 //
 // In practice both servers produce nearly identical p99 values because:
-//   1. The default log level is already "error" in buildInfoLatencyServer.
-//   2. Even at "debug" level, slog's JSON writer is synchronous and fast.
-//   3. The bottleneck is OS loopback + net/http framing, not log I/O.
+//  1. The default log level is already "error" in buildInfoLatencyServer.
+//  2. Even at "debug" level, slog's JSON writer is synchronous and fast.
+//  3. The bottleneck is OS loopback + net/http framing, not log I/O.
 func TestInfoP99Latency_LoggingNotBottleneck(t *testing.T) {
-	t.Parallel()
-
 	// Verbose server: info-level logging (more log writes per request).
 	cfgVerbose := &config.Config{
 		AppEnv:         config.EnvDevelopment,

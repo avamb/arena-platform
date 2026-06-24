@@ -67,6 +67,11 @@ var validInvoiceTransitions = map[string]map[string]bool{
 // allInvoiceStates is the complete set of valid invoice states.
 var allInvoiceStates = []string{"draft", "issued", "paid", "void"}
 
+const (
+	billingPeriodLayout = "2006-01"
+	billingDateLayout   = "2006-01-02"
+)
+
 // isTerminalInvoiceState returns true for invoice states that admit no further transitions.
 func isTerminalInvoiceState(state string) bool {
 	targets, exists := validInvoiceTransitions[state]
@@ -78,7 +83,7 @@ func isTerminalInvoiceState(state string) bool {
 // ─────────────────────────────────────────────────────────────────────────────
 
 func billingPeriodForTime(t time.Time) string {
-	return t.UTC().Format("2006-01")
+	return t.UTC().Format(billingPeriodLayout)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -654,12 +659,12 @@ func tariffToResponse(r gen.TariffRow) map[string]any {
 	resp := map[string]any{
 		"id":                   r.ID.String(),
 		"plan_name":            r.PlanName,
-		"effective_from":       r.EffectiveFrom.Format("2006-01-02"),
+		"effective_from":       r.EffectiveFrom.UTC().Format(billingDateLayout),
 		"per_ticket_fee_minor": r.PerTicketFeeMinor,
 		"per_event_fee_minor":  r.PerEventFeeMinor,
 		"monthly_fee_minor":    r.MonthlyFeeMinor,
 		"currency":             r.Currency,
-		"created_at":           r.CreatedAt.Format(time.RFC3339),
+		"created_at":           r.CreatedAt.UTC().Format(time.RFC3339),
 	}
 	if r.OrgID != nil {
 		resp["org_id"] = r.OrgID.String()
@@ -687,8 +692,8 @@ func usageToResponse(r gen.UsageRecordRow) map[string]any {
 		"tickets_sold":         r.TicketsSold,
 		"complimentary_issued": r.ComplimentaryIssued,
 		"events_published":     r.EventsPublished,
-		"created_at":           r.CreatedAt.Format(time.RFC3339),
-		"updated_at":           r.UpdatedAt.Format(time.RFC3339),
+		"created_at":           r.CreatedAt.UTC().Format(time.RFC3339),
+		"updated_at":           r.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 }
 
@@ -700,21 +705,21 @@ func invoiceToResponse(r gen.InvoiceRow) map[string]any {
 		"state":              r.State,
 		"total_amount_minor": r.TotalAmountMinor,
 		"currency":           r.Currency,
-		"created_at":         r.CreatedAt.Format(time.RFC3339),
-		"updated_at":         r.UpdatedAt.Format(time.RFC3339),
+		"created_at":         r.CreatedAt.UTC().Format(time.RFC3339),
+		"updated_at":         r.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 	if r.IssuedAt != nil {
-		resp["issued_at"] = r.IssuedAt.Format(time.RFC3339)
+		resp["issued_at"] = r.IssuedAt.UTC().Format(time.RFC3339)
 	} else {
 		resp["issued_at"] = nil
 	}
 	if r.PaidAt != nil {
-		resp["paid_at"] = r.PaidAt.Format(time.RFC3339)
+		resp["paid_at"] = r.PaidAt.UTC().Format(time.RFC3339)
 	} else {
 		resp["paid_at"] = nil
 	}
 	if r.VoidedAt != nil {
-		resp["voided_at"] = r.VoidedAt.Format(time.RFC3339)
+		resp["voided_at"] = r.VoidedAt.UTC().Format(time.RFC3339)
 	} else {
 		resp["voided_at"] = nil
 	}
@@ -730,7 +735,7 @@ func invoiceLineToResponse(r gen.InvoiceLineRow) map[string]any {
 		"unit_amount_minor":  r.UnitAmountMinor,
 		"total_amount_minor": r.TotalAmountMinor,
 		"currency":           r.Currency,
-		"created_at":         r.CreatedAt.Format(time.RFC3339),
+		"created_at":         r.CreatedAt.UTC().Format(time.RFC3339),
 	}
 	if r.TariffID != nil {
 		resp["tariff_id"] = r.TariffID.String()

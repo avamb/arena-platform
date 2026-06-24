@@ -351,6 +351,11 @@ type Server struct {
 	// management endpoints (POST/GET/DELETE /v1/webhooks/subscribers). Nil when no
 	// PgxPool was supplied. Feature #156.
 	webhookSubQueries *gen.Queries
+
+	// reconciliationQueries is the sqlc Queries instance used by the external
+	// reconciliation endpoints (POST /v1/reconciliation/reports, etc.).
+	// Nil when no PgxPool was supplied. Feature #147.
+	reconciliationQueries *gen.Queries
 }
 
 // Options bundles the dependencies that New requires. Using a struct rather
@@ -461,6 +466,12 @@ type Options struct {
 	// Inject gen.New(nil) in tests that need webhook subscriber routes without a real pool.
 	// Feature #156.
 	WebhookSubQueries *gen.Queries
+
+	// ReconciliationQueries injects a pre-constructed *gen.Queries for the external
+	// reconciliation endpoints. When nil and PgxPool is non-nil, gen.New(PgxPool) is used.
+	// Inject gen.New(nil) in tests that need reconciliation routes without a real pool.
+	// Feature #147.
+	ReconciliationQueries *gen.Queries
 
 	// Bundle is the go-i18n/v2 message catalog bundle used by LocaleMiddleware
 	// to localize error messages. When non-nil, LocaleMiddleware is added to
@@ -927,6 +938,12 @@ func New(opts Options) *Server {
 		webhookSubQueries = gen.New(opts.PgxPool)
 	}
 
+	// sqlc Queries for external reconciliation endpoints (feature #147).
+	reconciliationQueries := opts.ReconciliationQueries
+	if reconciliationQueries == nil && opts.PgxPool != nil {
+		reconciliationQueries = gen.New(opts.PgxPool)
+	}
+
 	// Extend the permission checker with membership-derived role resolution
 	// (feature #120 step 3). When a PgxPool is available, the DBChecker is
 	// augmented so that each Check() call unions the JWT roles with the user's
@@ -1004,6 +1021,7 @@ func New(opts Options) *Server {
 		complimentaryQueries:        complimentaryQueries,
 		barcodeBatchQueries:         barcodeBatchQueries,
 		webhookSubQueries:           webhookSubQueries,
+		reconciliationQueries:       reconciliationQueries,
 	}
 
 	s.mountOperationalRoutes()
@@ -2223,6 +2241,42 @@ func (s *Server) mountV1Routes() {
 					pr.Use(permissions.RequirePermission(s.perms, "webhook.subscriber.manage", "webhooks"))
 					pr.Post("/webhooks/subscribers", s.handleRegisterWebhookSubscriber)
 					pr.Delete("/webhooks/subscribers/{id}", s.handleDeactivateWebhookSubscriber)
+				})
+			}
+		}
+
+		// ── External Reconciliation (feature #147) ────────────────────────────
+		//
+		// Partner organisations submit sales/returns reports against their active
+		// external allocation quota. The platform auto-matches lines to barcodes
+		// and queues unmatched lines for operator review.
+		//
+		//   POST  /v1/reconciliation/reports                      — submit report (reconciliation.submit)
+		//   GET   /v1/reconciliation/reports/{id}                 — get report + lines (reconciliation.read)
+		//   GET   /v1/reconciliation/exceptions                   — operator exception queue (reconciliation.review)
+		//   PATCH /v1/reconciliation/reports/{id}/review          — mark report reviewed (reconciliation.review)
+		//   PATCH /v1/reconciliation/reports/{id}/lines/{line_id} — resolve exception line (reconciliation.review)
+		if s.stub != nil && s.stub.Enabled() && s.reconciliationQueries != nil {
+			// reconciliation.read endpoints
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "reconciliation.read", "reconciliation"))
+				pr.Get("/reconciliation/reports/{id}", s.handleGetReconciliationReport)
+			})
+			// reconciliation.review endpoints (operator queue)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "reconciliation.review", "reconciliation"))
+				pr.Get("/reconciliation/exceptions", s.handleListReconciliationExceptions)
+				pr.Patch("/reconciliation/reports/{id}/review", s.handleReviewReconciliationReport)
+				pr.Patch("/reconciliation/reports/{id}/lines/{line_id}", s.handleResolveReconciliationException)
+			})
+			// reconciliation.submit endpoints — require pool for writes
+			if s.pool != nil {
+				r.Group(func(pr chi.Router) {
+					pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+					pr.Use(permissions.RequirePermission(s.perms, "reconciliation.submit", "reconciliation"))
+					pr.Post("/reconciliation/reports", s.handleSubmitReconciliationReport)
 				})
 			}
 		}

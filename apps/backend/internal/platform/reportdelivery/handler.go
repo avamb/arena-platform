@@ -224,12 +224,12 @@ func formatMinorAmount(minor int64) string {
 func formatReportWindowLine(report gen.EventReportRow) string {
 	if report.ReportWindowStart != nil && report.ReportWindowEnd != nil {
 		return fmt.Sprintf("%s – %s",
-			report.ReportWindowStart.Format(time.RFC1123),
-			report.ReportWindowEnd.Format(time.RFC1123),
+			report.ReportWindowStart.UTC().Format(time.RFC3339),
+			report.ReportWindowEnd.UTC().Format(time.RFC3339),
 		)
 	}
 	if report.GeneratedAt != nil {
-		return report.GeneratedAt.Format(time.RFC1123)
+		return report.GeneratedAt.UTC().Format(time.RFC3339)
 	}
 	return "N/A"
 }

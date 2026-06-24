@@ -64,18 +64,22 @@ INSERT INTO permissions (name, description) VALUES
 ON CONFLICT (name) DO NOTHING;
 
 -- Grant all promo permissions to admin and org_admin roles.
-INSERT INTO role_permissions (role_name, permission_name)
-SELECT r.role_name, p.name
-FROM (VALUES ('admin'), ('org_admin')) AS r(role_name)
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id
+FROM roles r
 CROSS JOIN permissions p
-WHERE p.name IN ('promo.create','promo.read','promo.update','promo.delete','promo.validate')
+WHERE r.name IN ('admin', 'org_admin')
+  AND p.name IN ('promo.create','promo.read','promo.update','promo.delete','promo.validate')
 ON CONFLICT DO NOTHING;
 
 -- +goose Down
 
 -- Revoke role_permissions rows inserted by this migration.
 DELETE FROM role_permissions
-WHERE permission_name IN ('promo.create','promo.read','promo.update','promo.delete','promo.validate');
+WHERE permission_id IN (
+    SELECT id FROM permissions
+    WHERE name IN ('promo.create','promo.read','promo.update','promo.delete','promo.validate')
+);
 
 -- Remove permissions inserted by this migration.
 DELETE FROM permissions

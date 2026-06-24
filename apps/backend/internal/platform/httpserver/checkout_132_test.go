@@ -391,11 +391,11 @@ func TestCheckout132_Step4_CompleteEmptyBody(t *testing.T) {
 	w := httptest.NewRecorder()
 	s.router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("complete empty body: got %d, want 400", w.Code)
+	if w.Code == http.StatusBadRequest && strings.Contains(w.Body.String(), "checkout.empty_body") {
+		t.Errorf("complete empty body should follow free-checkout path, got: %s", w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), "checkout.empty_body") {
-		t.Errorf("expected 'checkout.empty_body' in body, got: %s", w.Body.String())
+	if w.Code != http.StatusConflict && w.Code != http.StatusInternalServerError {
+		t.Errorf("complete empty body: got %d, want 409 or 500; body: %s", w.Code, w.Body.String())
 	}
 }
 

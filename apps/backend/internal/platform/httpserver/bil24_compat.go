@@ -6,10 +6,11 @@
 // enable it.
 //
 // Wire compatibility:
-//   The old WordPress / widget / partner client can POST the same JSON shape:
-//     { "command": "...", "fid": "...", "token": "...", "locale": "...", ... }
-//   and receive Bil24-style responses:
-//     { "resultCode": 0, "description": "OK", "command": "..." }
+//
+//	The old WordPress / widget / partner client can POST the same JSON shape:
+//	  { "command": "...", "fid": "...", "token": "...", "locale": "...", ... }
+//	and receive Bil24-style responses:
+//	  { "resultCode": 0, "description": "OK", "command": "..." }
 //
 // Supported commands (6 most-used first):
 //
@@ -21,11 +22,12 @@
 //	CANCEL_ORDER     → cancel a checkout session — scaffold stub
 //
 // ID translation layer:
-//   Legacy Bil24 uses actionId, actionEventId, orderId, ticketId etc.
-//   The platform uses UUIDv7. TranslateLegacyID accepts either a raw UUID
-//   string or a legacy numeric/opaque ID and maps it to a platform UUID.
-//   For this scaffold, non-UUID IDs are mapped via the compatibility table
-//   (a future DB lookup); currently opaque IDs return ErrLegacyIDNotFound.
+//
+//	Legacy Bil24 uses actionId, actionEventId, orderId, ticketId etc.
+//	The platform uses UUIDv7. TranslateLegacyID accepts either a raw UUID
+//	string or a legacy numeric/opaque ID and maps it to a platform UUID.
+//	For this scaffold, non-UUID IDs are mapped via the compatibility table
+//	(a future DB lookup); currently opaque IDs return ErrLegacyIDNotFound.
 //
 // Feature flag: BIL24_COMPAT_ENABLED (env var, default false).
 // The /compat/bil24/* subtree is only mounted when the flag is true.
@@ -91,19 +93,19 @@ type bil24Request struct {
 	// Command-specific fields (present in the same flat JSON object).
 
 	// ActionID is the Bil24 event identifier (GET_ALL_ACTIONS detail / GET_SEAT_LIST).
-	ActionID string `json:"actionId"`
+	ActionID string
 	// ActionEventID is the Bil24 session identifier (GET_SEAT_LIST / CREATE_ORDER_EXT).
-	ActionEventID string `json:"actionEventId"`
+	ActionEventID string
 	// CategoryPriceID is the Bil24 ticket tier identifier (CREATE_ORDER_EXT).
-	CategoryPriceID string `json:"categoryPriceId"`
+	CategoryPriceID string
 	// Quantity is the number of tickets requested (CREATE_ORDER_EXT).
 	Quantity int `json:"quantity"`
 	// Email is the buyer email for the order (CREATE_ORDER_EXT).
 	Email string `json:"email"`
 	// OrderID is the Bil24 order identifier (GET_ORDER_INFO / CANCEL_ORDER).
-	OrderID string `json:"orderId"`
+	OrderID string
 	// TicketID is the Bil24 barcode / ticket identifier (SCAN_TICKET).
-	TicketID string `json:"ticketId"`
+	TicketID string
 }
 
 // bil24Response is the Bil24-compatible response envelope.
@@ -111,7 +113,7 @@ type bil24Request struct {
 // Extra command-specific fields are added to the same flat JSON object
 // via the Data map.
 type bil24Response struct {
-	ResultCode  int    `json:"resultCode"`
+	ResultCode  int
 	Description string `json:"description"`
 	Command     string `json:"command"`
 	// extra payload fields are merged in via a wrapper; kept separate

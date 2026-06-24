@@ -122,6 +122,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/server-info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Server metadata with sqlc DB query and i18n welcome message
+         * @description Minimal public read endpoint that demonstrates the full
+         *     router → handler → sqlc → response chain. Returns build metadata,
+         *     a PostgreSQL server timestamp (via sqlc SelectServerTime), supported
+         *     locales, and a locale-resolved welcome_message. No authentication required.
+         */
+        get: operations["getV1ServerInfo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/dev/token": {
         parameters: {
             query?: never;
@@ -199,11 +222,404 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register a new user account
+         * @description Creates a new user account with the supplied email and password.
+         *     The email is normalised (lowercased, trimmed) before storage.
+         *     On success a verification email is dispatched (outbox pattern) and the
+         *     caller receives the new user_id, normalised email, and a message asking
+         *     them to check their inbox. Requires no authentication.
+         */
+        post: operations["postV1AuthRegister"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Authenticate with email and password
+         * @description Validates the supplied email and password, enforces a per-IP+email
+         *     sliding-window rate limit (5 attempts / 15 min), and on success returns
+         *     a short-lived JWT access token (15 min) and a long-lived refresh token
+         *     (30 days). Both tokens are in the response body; the refresh token must
+         *     be stored securely by the client. No authentication header required.
+         */
+        post: operations["postV1AuthLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange a refresh token for a new access token
+         * @description Accepts a valid, non-expired, non-revoked refresh token and issues a
+         *     new short-lived JWT access token (15 min). The refresh token itself is
+         *     not rotated. No Authorization header required.
+         */
+        post: operations["postV1AuthRefresh"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke a refresh token (logout)
+         * @description Revokes the supplied refresh token in the database and removes it from
+         *     the Redis session store. Returns 204 No Content on success. The operation
+         *     is idempotent — revoking an already-revoked token still returns 204.
+         *
+         *     Requires a valid JWT Authorization header. The refresh token in the
+         *     request body must belong to the authenticated user; tokens belonging to
+         *     other users are rejected with 403.
+         *
+         *     Feature #118 — Session management (Redis-backed).
+         */
+        post: operations["postV1AuthLogout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/password-reset/request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request a password-reset link
+         * @description Generates a one-time password-reset token (1-hour TTL) and logs the
+         *     reset link to stdout (dev-mode email delivery). Returns 202 Accepted
+         *     in all cases — whether or not the email is registered — to prevent
+         *     user enumeration. No Authorization header required.
+         */
+        post: operations["postV1AuthPasswordResetRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/password-reset/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm password reset with a one-time token
+         * @description Accepts a valid, unexpired, single-use reset token and a new password.
+         *     Updates the user's password hash and marks the token as used. Returns
+         *     410 Gone when the token has already been consumed or has expired.
+         *     No Authorization header required.
+         */
+        post: operations["postV1AuthPasswordResetConfirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Verify email address via one-time token
+         * @description Marks the user's email as verified when a valid, unexpired one-time
+         *     token is supplied in the ?token= query parameter. The token is
+         *     generated at registration time and emailed to the user. Each token
+         *     may only be used once.
+         */
+        get: operations["getV1AuthVerify"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/geo/countries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all reference countries
+         * @description Returns the full list of ISO reference countries ordered by name.
+         *     Names are resolved from the i18n_text table using the negotiated locale
+         *     (Accept-Language header → ?lang= query parameter → "en" default).
+         *     No authentication required.
+         */
+        get: operations["getV1GeoCountries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/geo/cities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List reference cities, optionally filtered by country
+         * @description Returns reference cities ordered by slug. Pass ?country_id=<uuid> to
+         *     restrict results to one country. Names are locale-resolved from i18n_text.
+         *     No authentication required.
+         */
+        get: operations["getV1GeoCities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/geo/countries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a new reference country (admin)
+         * @description Inserts a new ISO country row and optionally seeds localised names in
+         *     i18n_text. Requires the geo.admin permission (platform_operator role).
+         *     Only available when ENABLE_DEV_AUTH=true.
+         */
+        post: operations["postV1AdminGeoCountries"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/geo/countries/{iso2}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update a reference country (admin)
+         * @description Partial update of iso3 and/or slug for the country identified by its
+         *     iso2 code. Requires the geo.admin permission.
+         */
+        patch: operations["patchV1AdminGeoCountriesIso2"];
+        trace?: never;
+    };
+    "/v1/admin/geo/cities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a new reference city (admin)
+         * @description Inserts a new city row linked to the specified country and optionally
+         *     seeds localised names in i18n_text. Requires the geo.admin permission.
+         */
+        post: operations["postV1AdminGeoCities"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/geo/cities/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update a reference city (admin)
+         * @description Partial update of slug and/or localised names for the city identified
+         *     by its UUID. Requires the geo.admin permission.
+         */
+        patch: operations["patchV1AdminGeoCitiesId"];
+        trace?: never;
+    };
+    "/v1/organizations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all active organizations
+         * @description Returns a JSON array of all active (non-soft-deleted) organizations ordered
+         *     by creation time ascending. Requires JWT authentication and "org.read" permission.
+         */
+        get: operations["getV1Organizations"];
+        put?: never;
+        /**
+         * Create a new organization
+         * @description Creates a new organization (primary tenant boundary). Requires JWT authentication
+         *     and the "org.create" permission. Name and slug must be unique among active
+         *     (non-deleted) organizations.
+         */
+        post: operations["postV1Organizations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a single organization by ID
+         * @description Returns the details of a single active (non-deleted) organization.
+         *     Requires JWT authentication and "org.read" permission.
+         */
+        get: operations["getV1OrganizationsId"];
+        put?: never;
+        post?: never;
+        /**
+         * Soft-delete an organization
+         * @description Marks an organization as deleted (sets deleted_at = now()). The row is not
+         *     physically removed — it is excluded from all active-org queries. An audit event
+         *     is written inside the same transaction. Requires JWT authentication and "org.delete"
+         *     permission.
+         */
+        delete: operations["deleteV1OrganizationsId"];
+        options?: never;
+        head?: never;
+        /**
+         * Update an organization
+         * @description Applies a partial update to an active organization. Empty or omitted fields
+         *     leave the existing value unchanged. Requires JWT authentication and "org.update"
+         *     permission. Returns 409 if the new name or slug conflicts with another active org.
+         */
+        patch: operations["patchV1OrganizationsId"];
+        trace?: never;
+    };
+    "/v1/admin/impersonate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue a scoped impersonation JWT (feature
+         * @description Platform superadmins can issue a short-lived JWT that acts as a target
+         *     user, enabling diagnosis of user-specific issues without sharing credentials.
+         *
+         *     Every issuance is audit-logged (action="impersonation.issue",
+         *     resource_type="user", resource_id=<user_id>). The returned token carries
+         *     extra JWT claims ("impersonated_by", "impersonation_reason") so all
+         *     downstream audit entries can tag the real actor.
+         *
+         *     Constraints:
+         *       - Requires superadmin.read permission (platform_superadmin / admin role).
+         *       - Token lifetime is capped at 30 minutes (1800 seconds).
+         *       - user_id must be a valid UUID.
+         *       - reason is mandatory (human-readable business justification).
+         *
+         *     Only available when ENABLE_DEV_AUTH=true (foundation milestone).
+         */
+        post: operations["postV1AdminImpersonate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         ErrorEnvelope: {
+            /** @description Error details object containing machine-readable code, human-readable message, and correlation IDs. */
             error: {
                 /**
                  * @description Machine-readable error code in dotted-namespace format
@@ -333,6 +749,42 @@ export interface components {
              * @example 4bf92f3577b34da6a3ce929d0e0e4736
              */
             trace_id: string;
+        };
+        ServerInfoResponse: {
+            /**
+             * @description Semantic version string from build metadata
+             * @example 0.1.0
+             */
+            version: string;
+            /**
+             * @description Git commit SHA embedded at build time via runtime/debug.ReadBuildInfo
+             * @example a1b2c3d4e5f6
+             */
+            build_sha: string;
+            /**
+             * Format: date-time
+             * @description Current UTC timestamp from the PostgreSQL server (via sqlc SelectServerTime)
+             * @example 2026-06-22T05:00:00.000000000Z
+             */
+            server_time: string;
+            /**
+             * @description Deployment environment (development, staging, production)
+             * @example development
+             */
+            environment: string;
+            /**
+             * @description BCP-47 locale tags active on this server (ru, en)
+             * @example [
+             *       "ru",
+             *       "en"
+             *     ]
+             */
+            locales: string[];
+            /**
+             * @description Localised greeting resolved via Accept-Language → ?lang= → default negotiation
+             * @example Welcome to Arena Platform!
+             */
+            welcome_message: string;
         };
         DevTokenRequest: {
             /**
@@ -503,11 +955,603 @@ export interface components {
              */
             issued_at: string;
         };
+        /**
+         * @description Standard pagination metadata returned by list endpoints.
+         *     Clients use this object to implement "load more" buttons or
+         *     paginator UI components. All fields are always present in list responses.
+         */
+        PaginationMeta: {
+            /**
+             * @description Current page number (1-based; first page is 1)
+             * @example 1
+             */
+            page: number;
+            /**
+             * @description Maximum number of items per page as requested by the caller
+             * @example 20
+             */
+            page_size: number;
+            /**
+             * @description Total number of items that match the applied query filters
+             * @example 100
+             */
+            total: number;
+            /**
+             * @description Total number of pages computed as ceil(total / page_size)
+             * @example 5
+             */
+            total_pages: number;
+        };
+        AuthLoginRequest: {
+            /**
+             * Format: email
+             * @description User's registered email address
+             * @example user@example.com
+             */
+            email: string;
+            /**
+             * @description Plain-text password for verification
+             * @example Secr3tP@ss
+             */
+            password: string;
+        };
+        AuthLoginResponse: {
+            /**
+             * @description Short-lived HS256 JWT access token (15-minute TTL)
+             * @example eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+             */
+            access_token: string;
+            /**
+             * @description Long-lived opaque refresh token (30-day TTL); store securely
+             * @example a3f8c2d1e0b9...
+             */
+            refresh_token: string;
+            /**
+             * @description Token type — always "Bearer"
+             * @example Bearer
+             */
+            token_type: string;
+            /**
+             * Format: date-time
+             * @description RFC 3339 expiry timestamp of the access token
+             * @example 2024-01-01T12:15:00Z
+             */
+            expires_at: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the authenticated user
+             * @example 01900000-0000-7000-8000-000000000001
+             */
+            user_id: string;
+        };
+        AuthRefreshRequest: {
+            /**
+             * @description Opaque refresh token issued by POST /v1/auth/login
+             * @example a3f8c2d1e0b9...
+             */
+            refresh_token: string;
+        };
+        AuthLogoutRequest: {
+            /**
+             * @description Opaque refresh token to revoke (issued by POST /v1/auth/login)
+             * @example a3f8c2d1e0b9...
+             */
+            refresh_token: string;
+        };
+        AuthRefreshResponse: {
+            /**
+             * @description New short-lived HS256 JWT access token (15-minute TTL)
+             * @example eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+             */
+            access_token: string;
+            /**
+             * @description Token type — always "Bearer"
+             * @example Bearer
+             */
+            token_type: string;
+            /**
+             * Format: date-time
+             * @description RFC 3339 expiry timestamp of the new access token
+             * @example 2024-01-01T12:30:00Z
+             */
+            expires_at: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the authenticated user
+             * @example 01900000-0000-7000-8000-000000000001
+             */
+            user_id: string;
+        };
+        PasswordResetRequestBody: {
+            /**
+             * Format: email
+             * @description Email address of the account for which a reset link is requested
+             * @example user@example.com
+             */
+            email: string;
+        };
+        PasswordResetRequestResponse: {
+            /**
+             * @description Informational message (same for found / not-found to prevent enumeration)
+             * @example If that email address is registered, you will receive a password reset link.
+             */
+            message: string;
+        };
+        PasswordResetConfirmBody: {
+            /**
+             * @description One-time reset token received in the password-reset email
+             * @example a3f8c2d1e0b9...
+             */
+            token: string;
+            /**
+             * @description New plain-text password (bcrypt-hashed server-side; 8–72 chars)
+             * @example NewSecr3tP@ss
+             */
+            new_password: string;
+        };
+        PasswordResetConfirmResponse: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the user whose password was reset
+             * @example 01900000-0000-7000-8000-000000000001
+             */
+            user_id: string;
+            /**
+             * @description Confirmation message
+             * @example Password has been reset successfully. Please log in with your new password.
+             */
+            message: string;
+        };
+        AuthRegisterRequest: {
+            /**
+             * Format: email
+             * @description User's email address (normalised to lowercase before storage)
+             * @example user@example.com
+             */
+            email: string;
+            /**
+             * @description Plain-text password (bcrypt-hashed server-side; 8–72 chars)
+             * @example Secr3tP@ss
+             */
+            password: string;
+        };
+        AuthRegisterResponse: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the newly created user
+             * @example 01900000-0000-7000-8000-000000000001
+             */
+            user_id: string;
+            /**
+             * Format: email
+             * @description Normalised email address stored in the DB
+             * @example user@example.com
+             */
+            email: string;
+            /**
+             * Format: date-time
+             * @description ISO 8601 / RFC 3339 timestamp of account creation
+             * @example 2024-01-01T12:00:00Z
+             */
+            created_at: string;
+            /**
+             * @description Human-readable confirmation message
+             * @example Registration successful. Please check your email to verify your address.
+             */
+            message: string;
+        };
+        AuthVerifyResponse: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the verified user
+             * @example 01900000-0000-7000-8000-000000000001
+             */
+            user_id: string;
+            /**
+             * Format: email
+             * @description Verified email address
+             * @example user@example.com
+             */
+            email: string;
+            /**
+             * Format: date-time
+             * @description ISO 8601 / RFC 3339 timestamp of verification
+             * @example 2024-01-01T12:05:00Z
+             */
+            email_verified_at: string;
+            /**
+             * @description Human-readable confirmation message
+             * @example Email address verified successfully.
+             */
+            message: string;
+        };
+        /** @description A single active organization (primary tenant boundary). */
+        OrganizationItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the organization row
+             * @example 01929d0e-0e47-7000-8000-000000000001
+             */
+            id: string;
+            /**
+             * @description Human-readable display name (unique among active organizations)
+             * @example My Ticket Company
+             */
+            name: string;
+            /**
+             * @description URL-safe identifier (unique among active organizations, lowercase)
+             * @example my-ticket-company
+             */
+            slug: string;
+            /**
+             * @description ISO 3166-1 alpha-2 country code or empty string
+             * @example IL
+             */
+            country: string;
+            /**
+             * @description BCP 47 locale tag used as default for this organization
+             * @example en
+             */
+            default_locale: string;
+            /**
+             * @description Seat-hold expiry window in seconds (default 1200 = 20 minutes)
+             * @example 1200
+             */
+            reservation_ttl_seconds: number;
+            /**
+             * Format: date-time
+             * @description ISO 8601 / RFC 3339 timestamp of row creation
+             * @example 2024-01-01T00:00:00Z
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description ISO 8601 / RFC 3339 timestamp of last update
+             * @example 2024-01-01T00:00:00Z
+             */
+            updated_at: string;
+        };
+        /** @description Request body for POST /v1/organizations. */
+        CreateOrganizationRequest: {
+            /**
+             * @description Human-readable display name (must be unique among active organizations)
+             * @example My Ticket Company
+             */
+            name: string;
+            /**
+             * @description URL-safe identifier (lowercase; must be unique among active organizations)
+             * @example my-ticket-company
+             */
+            slug: string;
+            /**
+             * @description ISO 3166-1 alpha-2 country code (optional)
+             * @example IL
+             */
+            country?: string;
+            /**
+             * @description BCP 47 locale tag (optional; defaults to "en")
+             * @example en
+             */
+            default_locale?: string;
+            /**
+             * @description Seat-hold expiry window in seconds (optional; defaults to 1200)
+             * @example 1200
+             */
+            reservation_ttl_seconds?: number;
+        };
+        /**
+         * @description Request body for PATCH /v1/organizations/{id}.
+         *     All fields are optional — omitted or empty-string fields leave the
+         *     existing value unchanged.
+         */
+        UpdateOrganizationRequest: {
+            /**
+             * @description New display name (optional; empty string leaves existing value)
+             * @example My Ticket Company Renamed
+             */
+            name?: string;
+            /**
+             * @description New URL-safe slug (optional; empty string leaves existing value)
+             * @example my-ticket-company-renamed
+             */
+            slug?: string;
+            /**
+             * @description New country code (optional; empty string leaves existing value)
+             * @example EE
+             */
+            country?: string;
+            /**
+             * @description New default locale (optional; empty string leaves existing value)
+             * @example ru
+             */
+            default_locale?: string;
+            /**
+             * @description New TTL in seconds (optional; 0 leaves existing value)
+             * @example 900
+             */
+            reservation_ttl_seconds?: number;
+        };
+        GeoCountryItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key
+             * @example 01900000-0000-7000-8000-000000000010
+             */
+            id: string;
+            /**
+             * @description ISO 3166-1 alpha-2 code
+             * @example IL
+             */
+            iso2: string;
+            /**
+             * @description ISO 3166-1 alpha-3 code
+             * @example ISR
+             */
+            iso3: string;
+            /**
+             * @description URL-safe slug
+             * @example israel
+             */
+            slug: string;
+            /**
+             * @description Localised display name (resolved from i18n_text)
+             * @example Israel
+             */
+            name: string;
+        };
+        GeoCountriesResponse: {
+            /** @description Ordered list of reference countries with localised names */
+            countries: components["schemas"]["GeoCountryItem"][];
+        };
+        GeoCityItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key
+             * @example 01900000-0000-7000-8000-000000000020
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description FK to countries.id
+             * @example 01900000-0000-7000-8000-000000000010
+             */
+            country_id: string;
+            /**
+             * @description ISO 3166-1 alpha-2 code of the parent country
+             * @example IL
+             */
+            country_iso2: string;
+            /**
+             * @description URL-safe slug
+             * @example tel-aviv
+             */
+            slug: string;
+            /**
+             * @description Localised display name (resolved from i18n_text)
+             * @example Tel Aviv
+             */
+            name: string;
+        };
+        GeoCitiesResponse: {
+            /** @description Ordered list of reference cities with localised names */
+            cities: components["schemas"]["GeoCityItem"][];
+        };
+        GeoCountryResponse: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the country row
+             * @example 01900000-0000-7000-8000-000000000010
+             */
+            id: string;
+            /**
+             * @description ISO 3166-1 alpha-2 country code
+             * @example IL
+             */
+            iso2: string;
+            /**
+             * @description ISO 3166-1 alpha-3 country code
+             * @example ISR
+             */
+            iso3: string;
+            /**
+             * @description URL-safe identifier slug
+             * @example israel
+             */
+            slug: string;
+            /**
+             * Format: date-time
+             * @description ISO 8601 / RFC 3339 timestamp of row creation
+             * @example 2024-01-01T00:00:00Z
+             */
+            created_at: string;
+        };
+        GeoCityResponse: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the city row
+             * @example 01900000-0000-7000-8000-000000000020
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUID of the parent country (FK → countries.id)
+             * @example 01900000-0000-7000-8000-000000000010
+             */
+            country_id: string;
+            /**
+             * @description URL-safe identifier slug
+             * @example tel-aviv
+             */
+            slug: string;
+            /**
+             * Format: date-time
+             * @description ISO 8601 / RFC 3339 timestamp of row creation
+             * @example 2024-01-01T00:00:00Z
+             */
+            created_at: string;
+        };
+        GeoCreateCountryRequest: {
+            /**
+             * @description ISO 3166-1 alpha-2 code (uppercase)
+             * @example IL
+             */
+            iso2: string;
+            /**
+             * @description ISO 3166-1 alpha-3 code (uppercase)
+             * @example ISR
+             */
+            iso3: string;
+            /**
+             * @description URL-safe slug
+             * @example israel
+             */
+            slug: string;
+            /**
+             * @description English localised name (seeded into i18n_text)
+             * @example Israel
+             */
+            name_en?: string;
+            /**
+             * @description Russian localised name (seeded into i18n_text)
+             * @example Израиль
+             */
+            name_ru?: string;
+        };
+        GeoUpdateCountryRequest: {
+            /**
+             * @description Updated ISO 3166-1 alpha-3 code
+             * @example ISR
+             */
+            iso3?: string;
+            /**
+             * @description Updated URL-safe slug
+             * @example israel
+             */
+            slug?: string;
+            /**
+             * @description Updated English localised name
+             * @example Israel
+             */
+            name_en?: string;
+            /**
+             * @description Updated Russian localised name
+             * @example Израиль
+             */
+            name_ru?: string;
+        };
+        GeoCreateCityRequest: {
+            /**
+             * Format: uuid
+             * @description UUID of the parent country
+             * @example 01900000-0000-7000-8000-000000000010
+             */
+            country_id: string;
+            /**
+             * @description URL-safe slug
+             * @example tel-aviv
+             */
+            slug: string;
+            /**
+             * @description English localised name (seeded into i18n_text)
+             * @example Tel Aviv
+             */
+            name_en?: string;
+            /**
+             * @description Russian localised name (seeded into i18n_text)
+             * @example Тель-Авив
+             */
+            name_ru?: string;
+        };
+        GeoUpdateCityRequest: {
+            /**
+             * @description Updated URL-safe slug
+             * @example tel-aviv
+             */
+            slug?: string;
+            /**
+             * @description Updated English localised name
+             * @example Tel Aviv
+             */
+            name_en?: string;
+            /**
+             * @description Updated Russian localised name
+             * @example Тель-Авив
+             */
+            name_ru?: string;
+        };
+        ImpersonateRequest: {
+            /**
+             * Format: uuid
+             * @description UUID of the target user to impersonate.
+             * @example aaaaaaaa-0000-0000-0000-000000000001
+             */
+            user_id: string;
+            /**
+             * @description Mandatory human-readable business justification for the impersonation.
+             * @example Investigating user-reported bug #1234 — checking ticket assignment
+             */
+            reason: string;
+            /**
+             * @description Token lifetime in seconds. Capped at 1800 (30 minutes).
+             *     When absent or zero, defaults to 1800.
+             * @example 900
+             */
+            duration_seconds?: number;
+        };
+        ImpersonateResponse: {
+            /**
+             * @description Scoped impersonation bearer JWT. Use in Authorization header to act as the target user.
+             * @example eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+             */
+            token?: string;
+            /**
+             * Format: date-time
+             * @description Absolute UTC expiry time of the impersonation token (RFC 3339).
+             * @example 2026-06-24T13:20:00Z
+             */
+            expires_at?: string;
+            /**
+             * Format: uuid
+             * @description UUID of the target user being impersonated.
+             * @example aaaaaaaa-0000-0000-0000-000000000001
+             */
+            impersonated_user_id?: string;
+            /**
+             * Format: uuid
+             * @description UUID of the admin actor who issued this impersonation token.
+             * @example 00000000-0000-0000-0000-000000000167
+             */
+            impersonated_by?: string;
+            /**
+             * @description Echoed-back business justification (as stored in audit_events).
+             * @example Investigating user-reported bug #1234 — checking ticket assignment
+             */
+            reason?: string;
+        };
     };
     responses: never;
     parameters: never;
     requestBodies: never;
-    headers: never;
+    headers: {
+        /**
+         * @description Per-request correlation ID that uniquely identifies this HTTP exchange.
+         *     Propagated through the distributed tracing pipeline and echoed back in
+         *     every API response (also available in the ErrorEnvelope.error.request_id field).
+         */
+        "X-Request-Id": string;
+        /**
+         * @description The Idempotency-Key UUID that was presented by the client for this request.
+         *     Echoed back in the response so clients can correlate cached replays with the
+         *     original mutation request (TTL 24 hours).
+         */
+        "X-Idempotency-Key": string;
+        /**
+         * @description Distributed trace ID (OpenTelemetry W3C TraceContext format) for this request.
+         *     Use this value to correlate logs, metrics, and spans in your observability
+         *     backend. Also available in the ErrorEnvelope.error.trace_id field.
+         */
+        "X-Trace-Id": string;
+    };
     pathItems: never;
 }
 export type $defs = Record<string, never>;
@@ -652,6 +1696,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InfoResponse"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1ServerInfo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Server info (server_time reflects the PostgreSQL clock via sqlc) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerInfoResponse"];
                 };
             };
             /** @description Internal server error */
@@ -844,6 +1917,1179 @@ export interface operations {
             };
         };
     };
+    postV1AuthRegister: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthRegisterRequest"];
+            };
+        };
+        responses: {
+            /** @description User created — verification email dispatched */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthRegisterResponse"];
+                };
+            };
+            /** @description Missing or invalid fields (email / password validation failure) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Email address is already registered */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AuthLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Authentication successful — access and refresh tokens returned */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthLoginResponse"];
+                };
+            };
+            /** @description Missing or invalid request body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Invalid credentials (email not found or password incorrect) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limit exceeded — too many login attempts for this IP+email */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool not available or JWT secret not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AuthRefresh: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthRefreshRequest"];
+            };
+        };
+        responses: {
+            /** @description New access token issued */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthRefreshResponse"];
+                };
+            };
+            /** @description Missing or invalid request body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Refresh token invalid, expired, or revoked */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool not available or JWT secret not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AuthLogout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthLogoutRequest"];
+            };
+        };
+        responses: {
+            /** @description Refresh token successfully revoked (or was already revoked) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid request body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT Authorization header */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Refresh token belongs to a different user */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Refresh token not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AuthPasswordResetRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordResetRequestBody"];
+            };
+        };
+        responses: {
+            /** @description Request acknowledged (email queued if address is registered) */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasswordResetRequestResponse"];
+                };
+            };
+            /** @description Missing or invalid request body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AuthPasswordResetConfirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordResetConfirmBody"];
+            };
+        };
+        responses: {
+            /** @description Password reset successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasswordResetConfirmResponse"];
+                };
+            };
+            /** @description Missing or invalid request body / password validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Token not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Token already used or expired */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1AuthVerify: {
+        parameters: {
+            query: {
+                /** @description One-time verification token sent by email at registration */
+                token: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Email verified successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthVerifyResponse"];
+                };
+            };
+            /** @description Token parameter missing or malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Token not found or already used */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1GeoCountries: {
+        parameters: {
+            query?: {
+                /** @description Preferred language code (e.g. "en", "ru"). Overrides Accept-Language. */
+                lang?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of countries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeoCountriesResponse"];
+                };
+            };
+            /** @description Geo queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1GeoCities: {
+        parameters: {
+            query?: {
+                /** @description Filter cities by country UUID */
+                country_id?: string;
+                /** @description Preferred language code (e.g. "en", "ru"). Overrides Accept-Language. */
+                lang?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of cities */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeoCitiesResponse"];
+                };
+            };
+            /** @description Geo queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminGeoCountries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeoCreateCountryRequest"];
+            };
+        };
+        responses: {
+            /** @description Country created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeoCountryResponse"];
+                };
+            };
+            /** @description Invalid iso2, iso3, or slug field */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the geo.admin permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or geo queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    patchV1AdminGeoCountriesIso2: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Two-letter ISO 3166-1 alpha-2 country code (e.g. "IL") */
+                iso2: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeoUpdateCountryRequest"];
+            };
+        };
+        responses: {
+            /** @description Country updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeoCountryResponse"];
+                };
+            };
+            /** @description Invalid request body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the geo.admin permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Country not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or geo queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminGeoCities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeoCreateCityRequest"];
+            };
+        };
+        responses: {
+            /** @description City created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeoCityResponse"];
+                };
+            };
+            /** @description Invalid country_id or slug */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the geo.admin permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or geo queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    patchV1AdminGeoCitiesId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description City UUID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeoUpdateCityRequest"];
+            };
+        };
+        responses: {
+            /** @description City updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeoCityResponse"];
+                };
+            };
+            /** @description Invalid request body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the geo.admin permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description City not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or geo queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1Organizations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Array of active organizations */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        organizations: components["schemas"]["OrganizationItem"][];
+                    };
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (org.read) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or org queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1Organizations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOrganizationRequest"];
+            };
+        };
+        responses: {
+            /** @description Organization created successfully */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        organization: components["schemas"]["OrganizationItem"];
+                    };
+                };
+            };
+            /** @description Request body missing, not valid JSON, or required fields empty */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (org.create) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description An organization with that name or slug already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or org queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 primary key of the organization */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Organization details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        organization: components["schemas"]["OrganizationItem"];
+                    };
+                };
+            };
+            /** @description id path parameter is not a valid UUID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (org.read) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Organization not found or has been soft-deleted */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or org queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteV1OrganizationsId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 primary key of the organization to soft-delete */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Organization soft-deleted successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        organization: components["schemas"]["OrganizationItem"];
+                        /** @example true */
+                        deleted: boolean;
+                    };
+                };
+            };
+            /** @description id path parameter is not a valid UUID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (org.delete) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Organization not found or already soft-deleted */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or org queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    patchV1OrganizationsId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 primary key of the organization to update */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateOrganizationRequest"];
+            };
+        };
+        responses: {
+            /** @description Organization updated successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        organization: components["schemas"]["OrganizationItem"];
+                    };
+                };
+            };
+            /** @description Request body missing, not valid JSON, or id path parameter invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (org.update) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Organization not found or has been soft-deleted */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description New name or slug conflicts with an existing active organization */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or org queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminImpersonate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImpersonateRequest"];
+            };
+        };
+        responses: {
+            /** @description Impersonation token issued successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpersonateResponse"];
+                };
+            };
+            /**
+             * @description Validation error — missing or invalid user_id, missing reason,
+             *     or duration_seconds exceeds 1800.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the superadmin.read permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Token mint failed (internal error) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Dev auth stub not enabled */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -858,6 +3104,7 @@ export type ErrorEnvelope = components["schemas"]["ErrorEnvelope"];
 export type HealthzResponse = components["schemas"]["HealthzResponse"];
 export type ReadyzResponse = components["schemas"]["ReadyzResponse"];
 export type InfoResponse = components["schemas"]["InfoResponse"];
+export type PaginationMeta = components["schemas"]["PaginationMeta"];
 
 /** Request body for POST /v1/echo */
 export type EchoRequest = components["schemas"]["EchoRequest"];
@@ -868,9 +3115,6 @@ export type DevTokenRequest    = components["schemas"]["DevTokenRequest"];
 export type DevTokenResponse   = components["schemas"]["DevTokenResponse"];
 export type DevAuthTokenRequest  = components["schemas"]["DevAuthTokenRequest"];
 export type DevAuthTokenResponse = components["schemas"]["DevAuthTokenResponse"];
-
-/** Pagination metadata for list endpoints. */
-export type PaginationMeta = components["schemas"]["PaginationMeta"];
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Error code string-literal union types.

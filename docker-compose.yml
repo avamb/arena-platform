@@ -189,6 +189,11 @@ services:
       DB_POOL_MAX_CONN_IDLE_TIME: "30m"
       DB_LOG_QUERIES: "false"
 
+      # The shared image healthcheck defaults to arena-api on :8080. Worker
+      # exposes its own /healthz on the metrics server instead.
+      WORKER_METRICS_ADDR: ":9091"
+      HEALTH_ADDR: "http://localhost:9091"
+
       DEFAULT_LOCALE: "en"
       ACTIVE_LOCALES: "ru,en"
 
