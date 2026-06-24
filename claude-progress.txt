@@ -12156,3 +12156,36 @@ Stats before session: 158/171 passing (92.4%).
 This session: feature #149 -> 159/171 passing (93.0%).
 
 ================================================================================
+
+================================================================================
+
+Session: 2026-06-24 -- Feature #160 (Report delivery + recipient deduplication)
+
+40/40 TestReportDelivery160_* tests PASS. go build OK. Feature #160 marked passing.
+
+NEW FILES:
+  - apps/backend/internal/platform/reportdelivery/handler.go
+    Worker package: JobType="report.deliver", Payload{ReportID}, NewHandler.
+    Resolves recipients via GetReportRecipientsForOrg (dedup via SQL GROUP BY
+    user_id with string_agg roles). Sends one email per unique recipient.
+    Retries while report is pending; skips if failed. Dev mode: nil sender logs.
+
+  - apps/backend/internal/platform/httpserver/report_delivery_enqueue.go
+    enqueueReportDeliveryJob called from handleTriggerEventReport after creating
+    the pending report. Inserts worker_jobs row of type "report.deliver".
+
+  - apps/backend/internal/platform/httpserver/report_160_test.go
+    40 tests: JobType/Payload, ReportRecipientRow, SQL query content,
+    querier interface, enqueue file, delivery hook, helpers, nil guards,
+    retry/skip states, email renderers, dedup assertions, audit logs.
+
+MODIFIED FILES:
+  - event_reports.sql: GetReportRecipientsForOrg query added
+  - event_reports.sql.go: ReportRecipientRow + GetReportRecipientsForOrg
+  - querier.go: GetReportRecipientsForOrg in Querier interface
+  - event_reports.go: handleTriggerEventReport calls enqueueReportDeliveryJob
+  - testfilehelpers_test.go: case entries for new files
+
+Stats: 158/171 -> 160/171 passing (93.6%). git commit: a8efac3
+
+================================================================================
