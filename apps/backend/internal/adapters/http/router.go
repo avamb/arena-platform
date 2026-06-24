@@ -792,7 +792,7 @@ func RequireJSONContentType(next http.Handler) http.Handler {
 			if idx := strings.IndexByte(mediaType, ';'); idx >= 0 {
 				mediaType = strings.TrimSpace(mediaType[:idx])
 			}
-			if mediaType != "application/json" {
+			if mediaType != "application/json" && mediaType != "multipart/form-data" {
 				// The Accept-Post response header (RFC 7240 / draft-wilde-accept-post)
 				// tells the client which media types are accepted for POST.
 				w.Header().Set("Accept-Post", "application/json")
@@ -860,7 +860,7 @@ func routeAwareContentTypeMiddleware(router chi.Router) func(http.Handler) http.
 				if idx := strings.IndexByte(mediaType, ';'); idx >= 0 {
 					mediaType = strings.TrimSpace(mediaType[:idx])
 				}
-				if mediaType != "application/json" {
+				if mediaType != "application/json" && mediaType != "multipart/form-data" {
 					// Check if this exact method+path is registered.
 					rctx := chi.NewRouteContext()
 					if !router.Match(rctx, r.Method, r.URL.Path) {
