@@ -11709,3 +11709,66 @@ Stats before session: 149/171 passing (87.1%).
 This session: feature #152 completed -> 151/171 passing (88.3%).
 
 ================================================================================
+
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-24 -- Feature #161 (Service billing ledger)
+"[scope: production-api] [arch: ADR-012] tariffs (versioned), usage_records,
+invoices, invoice_lines. Month-end batch generates invoices."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #161 was largely pre-implemented by a previous session.
+This session found and fixed one failing test, verified all 57 tests pass.
+
+Existing implementation (already in place):
+  - Migration 0033_billing_ledger.sql: tariffs, usage_records, invoices,
+    invoice_lines tables + RBAC seeds (billing.read, billing.admin)
+  - SQL queries (billing_ledger.sql): InsertTariff, GetActiveTariff,
+    IncrementUsageRecord, InsertInvoice, GetInvoiceByID,
+    GetInvoiceByOrgAndPeriod, ListInvoicesByOrg, UpdateInvoiceState,
+    UpdateInvoiceTotal, InsertInvoiceLine, ListInvoiceLines
+  - Gen file (billing_ledger.sql.go): TariffRow, UsageRecordRow, InvoiceRow,
+    InvoiceLineRow structs with all fields
+  - HTTP handlers (billing_ledger.go): all endpoints, generateInvoicesForPeriod,
+    IncrementBillingUsage hook
+  - server.go: billingQueries field, BillingQueries option, routes mounted
+
+BUG FIXED: routeAwareContentTypeMiddleware bodyless POST bypass
+  Problem: TestBilling161_IssueInvoiceRequiresJWT sent POST to
+  /v1/billing/invoices/{id}/issue with no Content-Type header and no body.
+  Expected 401 (auth check first). Got 415 because the global content-type
+  middleware ran BEFORE auth middleware and enforced JSON Content-Type on all
+  registered POST routes (even when they have no body).
+
+  Root cause: routeAwareContentTypeMiddleware in router.go matches the route
+  with router.Match() and then returns 415 without checking if body is empty.
+  Auth middleware runs inside chi route groups, AFTER global middleware.
+
+  Fix: Added `if r.ContentLength == 0 { break }` at top of POST/PUT/PATCH case
+  in routeAwareContentTypeMiddleware. Bodyless POST requests (action endpoints
+  like /issue, /pay, /void) now bypass content-type check and reach auth first.
+
+CHANGES
+-------
+Modified files:
+  - apps/backend/internal/adapters/http/router.go
+    (routeAwareContentTypeMiddleware: skip enforcement when ContentLength==0)
+
+VERIFICATION
+------------
+  - 57/57 TestBilling161_* tests: PASS
+  - 13/13 TestContentType_* tests: PASS (no regressions)
+  - go build ./apps/backend/...: EXIT 0
+  - Feature #161 marked passing
+  - git commit: dacdb0c
+
+PROGRESS METRIC
+---------------
+Stats before session: 152/171 passing (88.9%).
+This session: feature #161 verified and fixed -> 153/171 passing (89.5%).
+
+================================================================================
