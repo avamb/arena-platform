@@ -1,20 +1,35 @@
 # ============================================================
 # arena_new — local development stack
 # ============================================================
-# Brings up:
-#   - postgres : PostgreSQL 17 (source of truth)
-#   - redis    : Redis 7 (locks / hot cache, not yet wired)
-#   - api      : arena-api HTTP server
+# Core services (always started):
+#   - postgres   : PostgreSQL 17 (source of truth)
+#   - redis      : Redis 7 (locks / hot cache)
+#   - api        : arena-api HTTP server  (port 8080)
+#   - worker     : arena-worker background job dispatcher
 #
-# `migrate` and `worker` services will be added once their
-# binaries do real work (subsequent features). Their stubs
-# already build cleanly inside the same image.
+# Observability stack (profile: observability):
+#   - prometheus : Prometheus metrics scraper  (port 9090)
+#   - grafana    : Grafana dashboards          (port 3000)
+#
+# One-shot tools (profile: tools):
+#   - migrate    : arena-migrate database migration runner
 #
 # Usage:
-#   docker compose up -d postgres
-#   docker compose up -d api
+#   # Start core services only
+#   docker compose up -d
+#
+#   # Start core + observability
+#   docker compose --profile observability up -d
+#
+#   # Run migrations
+#   docker compose --profile tools run --rm migrate up
+#
+#   # Open Grafana
+#   open http://localhost:3000   (admin / admin)
+#
 #   curl localhost:8080/healthz
 #   curl localhost:8080/readyz
+#   curl localhost:8080/metrics
 # ============================================================
 
 services:
@@ -185,6 +200,66 @@ services:
       # insist on a signing secret being present.
       ENABLE_DEV_AUTH: "false"
 
+  # ------------------------------------------------------------------
+  # prometheus : scrapes /metrics from api (and worker when it exposes
+  #              metrics). Opt-in via --profile observability.
+  # ------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: arena_prometheus
+    restart: unless-stopped
+    profiles: ["observability"]
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=7d"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - arena_prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ------------------------------------------------------------------
+  # grafana : reads dashboards from ops/grafana/dashboards/ via
+  #           provisioning. Default credentials: admin / admin.
+  #           Opt-in via --profile observability.
+  # ------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana-oss:10.4.2
+    container_name: arena_grafana
+    restart: unless-stopped
+    profiles: ["observability"]
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/arena_platform_overview.json
+      GF_FEATURE_TOGGLES_ENABLE: publicDashboards
+    volumes:
+      - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./ops/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - arena_grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
 volumes:
   arena_pg_data:
   arena_redis_data:
+  arena_prometheus_data:
+  arena_grafana_data:

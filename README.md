@@ -86,6 +86,89 @@ Useful URLs once `init.sh` reports readiness:
 
 ---
 
+## Observability stack (Prometheus + Grafana)
+
+The repo ships ready-to-import Grafana dashboard templates in `ops/grafana/dashboards/`.
+A matching Prometheus scrape config lives in `ops/prometheus/prometheus.yml`.
+
+### Quick start
+
+```bash
+# Start core services + observability stack
+docker compose --profile observability up -d
+
+# Open Grafana in your browser (credentials: admin / admin)
+open http://localhost:3000
+
+# Prometheus UI (metric browser, target health)
+open http://localhost:9090
+```
+
+Grafana is pre-provisioned with a datasource pointing at the local Prometheus
+container.  The "Arena Platform Overview" dashboard loads automatically on first
+start (via `ops/grafana/provisioning/`).
+
+### Dashboard panels
+
+The **Arena Platform Overview** dashboard (`ops/grafana/dashboards/arena_platform_overview.json`)
+covers all key operational signals:
+
+| Section | Panels |
+|---------|--------|
+| **HTTP — Latency by Route** | p50/p95/p99 request latency per route; request rate by route & status; error rate (4xx/5xx); handler panics; idempotency replays |
+| **Worker — Queue Lag** | Age of oldest ready job per queue (time-series + gauge); alert threshold at 60 s |
+| **Outbox — Event Backlog** | Pending outbox events (time-series + stat); alert threshold at 100 events |
+| **Webhooks — Delivery Success Rate** | Success rate per event_type; delivery latency p50/p95/p99; retries & dead-letter counts |
+| **Payment Provider — Error Rate** | 4xx/5xx error rate on `/v1/checkout*` and `/v1/payments*` routes; request volume |
+| **Database — Connection Pool** | Open / in-use / idle connections; pool wait count & cumulative wait duration |
+
+### Metric reference
+
+All arena_new metrics use the `arena_` namespace.  The full list:
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `arena_http_request_duration_seconds` | Histogram | method, route, status | HTTP request latency |
+| `arena_http_requests_total` | Counter | method, route, status | HTTP request count |
+| `arena_http_panics_total` | Counter | — | Handler panics caught by Recoverer |
+| `arena_db_pool_open_connections` | Gauge | — | Total open pgx pool connections |
+| `arena_db_pool_idle` | Gauge | — | Idle pgx pool connections |
+| `arena_db_pool_in_use` | Gauge | — | Acquired pgx pool connections |
+| `arena_db_pool_wait_count` | Gauge | — | Cumulative pool exhaustion events |
+| `arena_db_pool_wait_duration_seconds` | Gauge | — | Cumulative pool wait time |
+| `arena_worker_jobs_lag_seconds` | Gauge | queue | Age of oldest ready job |
+| `arena_outbox_backlog` | Gauge | — | Pending outbox events |
+| `arena_idempotency_replays_total` | Counter | — | Idempotency key replay hits |
+| `arena_idempotency_cleanup_deleted_total` | Counter | — | Idempotency rows purged by maintenance |
+| `arena_webhook_delivery_duration_seconds` | Histogram | subscriber_url, event_type | Webhook delivery round-trip |
+| `arena_webhook_retry_total` | Counter | subscriber_url, event_type | Webhook retry attempts |
+| `arena_webhook_dead_letter_total` | Counter | subscriber_url, event_type | Webhook dead-letter events |
+
+### Importing dashboards manually into an existing Grafana
+
+If you run your own Grafana instance (not the docker-compose one above):
+
+1. In Grafana, go to **Dashboards → Import**.
+2. Upload the JSON file from `ops/grafana/dashboards/arena_platform_overview.json`.
+3. Select your Prometheus datasource when prompted.
+4. Click **Import**.
+
+The dashboard uses `${DS_PROMETHEUS}` as a datasource variable so it adapts
+to any Prometheus instance.
+
+### Production deployment (Dokploy)
+
+For Dokploy-managed production:
+
+1. Deploy Prometheus as a separate service pointing at the `arena-api` /metrics endpoint.
+2. Deploy Grafana as a separate service, mounting `ops/grafana/provisioning/` and
+   `ops/grafana/dashboards/` as read-only volumes (or bake them into a custom Grafana image).
+3. Set `GF_SECURITY_ADMIN_PASSWORD` via Dokploy environment variables (never use the
+   default `admin/admin` in production).
+4. Restrict `/metrics` at the ingress layer (firewall rule or nginx `deny all; allow <prometheus_ip>;`).
+
+---
+
 ## Code generation
 
 The backend uses two code-generation tools.  Both must be re-run and the output
