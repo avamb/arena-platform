@@ -12780,3 +12780,12 @@ Stats before session: 169/171 passing (98.8%).
 This session: feature #165 -> 170/171 passing (99.4%).
 
 ================================================================================
+
+=== Session 2026-06-25 (feature #172) ===
+Removed stray empty dirs:
+- Projectsarena_new/ (artifact of bad 'cd C:Projectsarena_new')
+- apps/backend;C/ (artifact of ';C' in path)
+Added .gitignore guard patterns (*;*, Projectsarena_new/, /Projects*/).
+Neither dir was tracked by git; verified empty before deletion.
+Commit: d08adb7. Marked #172 passing. Stats: 172/188 passing.
+
