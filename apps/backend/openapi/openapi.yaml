@@ -522,6 +522,15 @@ components:
           description: Opaque refresh token issued by POST /v1/auth/login
           example: "a3f8c2d1e0b9..."
 
+    AuthLogoutRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+          description: Opaque refresh token to revoke (issued by POST /v1/auth/login)
+          example: "a3f8c2d1e0b9..."
+
     AuthRefreshResponse:
       type: object
       required: [access_token, token_type, expires_at, user_id]
@@ -1419,6 +1428,63 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database pool not available or JWT secret not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/auth/logout:
+    post:
+      operationId: postV1AuthLogout
+      summary: Revoke a refresh token (logout)
+      description: |
+        Revokes the supplied refresh token in the database and removes it from
+        the Redis session store. Returns 204 No Content on success. The operation
+        is idempotent — revoking an already-revoked token still returns 204.
+
+        Requires a valid JWT Authorization header. The refresh token in the
+        request body must belong to the authenticated user; tokens belonging to
+        other users are rejected with 403.
+
+        Feature #118 — Session management (Redis-backed).
+      tags: [v1, auth]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthLogoutRequest"
+      responses:
+        "204":
+          description: Refresh token successfully revoked (or was already revoked)
+        "400":
+          description: Missing or invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT Authorization header
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Refresh token belongs to a different user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Refresh token not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available
           content:
             application/json:
               schema:

@@ -33,6 +33,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/redissession"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -207,6 +208,24 @@ type Server struct {
 	// state machine endpoints (SCA-aware, webhook idempotency). Nil when no
 	// PgxPool was supplied. Feature #137.
 	paymentIntentQueries *gen.Queries
+
+	// ticketQueries is the sqlc Queries instance used by the ticket issuance
+	// helper (issueTicketsForCheckout) and the GET /v1/checkout/{id}/tickets
+	// read endpoint. Nil when no PgxPool was supplied. Feature #139.
+	ticketQueries *gen.Queries
+
+	// sessionStore is the Redis-backed store for refresh token tracking and fast
+	// revocation lookups. Nil when Redis is not configured or the SessionStore
+	// option was not supplied. When nil, session management degrades gracefully:
+	// revocation is DB-only, concurrent-session limits are not enforced.
+	// Feature #118.
+	sessionStore redissession.Store
+
+	// maxConcurrentSessions is the maximum number of simultaneous active refresh
+	// token sessions permitted per user. 0 = unlimited (default). When > 0,
+	// the oldest sessions are evicted on login to enforce the limit.
+	// Feature #118.
+	maxConcurrentSessions int
 
 	// faultInjectOutboxAfterAudit is a dev/test-only fault injection flag.
 	// When true, handleEcho forces a transaction rollback immediately after
@@ -427,6 +446,25 @@ type Options struct {
 	// PgxPool is non-nil, gen.New(PgxPool) is used. Inject gen.New(nil) in tests
 	// that need payment intent routes mounted without a real pool. Feature #137.
 	PaymentIntentQueries *gen.Queries
+
+	// TicketQueries injects a pre-constructed *gen.Queries for the ticket issuance
+	// helper and GET /v1/checkout/{id}/tickets read endpoint. When nil and
+	// PgxPool is non-nil, gen.New(PgxPool) is used. Inject gen.New(nil) in tests
+	// that need ticket routes mounted without a real pool. Feature #139.
+	TicketQueries *gen.Queries
+
+	// SessionStore injects the Redis-backed store used for refresh token tracking
+	// and fast revocation checks (feature #118). When nil, session management
+	// degrades gracefully: revocation is DB-only, concurrent-session limits are
+	// not enforced. Inject a *redissession.MemStore in unit tests that want to
+	// exercise session management without a real Redis instance.
+	SessionStore redissession.Store
+
+	// MaxConcurrentSessionsPerUser limits the number of simultaneous refresh
+	// token sessions allowed per user. 0 = unlimited (default). When > 0,
+	// the oldest sessions beyond the limit are revoked on every login.
+	// Feature #118.
+	MaxConcurrentSessionsPerUser int
 }
 
 // New constructs (but does not start) the HTTP server.
@@ -600,6 +638,12 @@ func New(opts Options) *Server {
 		paymentIntentQueries = gen.New(opts.PgxPool)
 	}
 
+	// sqlc Queries for ticket issuance and read endpoints (feature #139).
+	ticketQueries := opts.TicketQueries
+	if ticketQueries == nil && opts.PgxPool != nil {
+		ticketQueries = gen.New(opts.PgxPool)
+	}
+
 	// Extend the permission checker with membership-derived role resolution
 	// (feature #120 step 3). When a PgxPool is available, the DBChecker is
 	// augmented so that each Check() call unions the JWT roles with the user's
@@ -656,6 +700,9 @@ func New(opts Options) *Server {
 		pricingRules:                opts.PricingRules,
 		checkoutQueries:             checkoutQueries,
 		paymentIntentQueries:        paymentIntentQueries,
+		ticketQueries:               ticketQueries,
+		sessionStore:                opts.SessionStore,
+		maxConcurrentSessions:       opts.MaxConcurrentSessionsPerUser,
 	}
 
 	s.mountOperationalRoutes()
@@ -801,6 +848,16 @@ func (s *Server) mountV1Routes() {
 			r.Post("/auth/refresh", s.handleAuthRefresh)
 			r.Post("/auth/password-reset/request", s.handleAuthPasswordResetRequest)
 			r.Post("/auth/password-reset/confirm", s.handleAuthPasswordResetConfirm)
+		}
+
+		// POST /v1/auth/logout — JWT-protected; revokes the supplied refresh token
+		// and removes it from the Redis session store (feature #118).
+		// Requires stub auth + pool. Returns 204 on success (idempotent).
+		if s.stub != nil && s.stub.Enabled() && s.pool != nil {
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Post("/auth/logout", s.handleAuthLogout)
+			})
 		}
 
 		// ── Geo reference data (feature #123) ──────────────────────────────────
@@ -1415,6 +1472,21 @@ func (s *Server) mountV1Routes() {
 				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
 				pr.Use(permissions.RequirePermission(s.perms, "payment_intent.update", "payment_intents"))
 				pr.Post("/payment-intents/{id}/transition", s.handleTransitionPaymentIntent)
+			})
+		}
+
+		// ── Tickets (feature #139) ──────────────────────────────────────────
+		//
+		// Read endpoint for issued tickets. Tickets are issued automatically when
+		// a payment succeeds (webhook) or a free checkout is completed. There is
+		// no create endpoint exposed directly — issuance is triggered internally.
+		//
+		//   GET /v1/checkout/{id}/tickets — list issued tickets (ticket.read)
+		if s.stub != nil && s.stub.Enabled() && s.ticketQueries != nil {
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "ticket.read", "tickets"))
+				pr.Get("/checkout/{id}/tickets", s.handleListTickets)
 			})
 		}
 

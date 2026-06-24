@@ -8,16 +8,20 @@
 //  4. Verify the bcrypt password hash.
 //  5. Issue an HS256 JWT access token (15-minute TTL) via auth.IssueJWT.
 //  6. Generate a 64-char hex refresh token and store it in the DB (30-day TTL).
-//  7. Return 200 with {access_token, refresh_token, token_type, expires_at}.
+//  7. If a session store is wired (feature #118): evict excess sessions and
+//     track the new session in Redis.
+//  8. Return 200 with {access_token, refresh_token, token_type, expires_at}.
 //
 // Refresh flow:
 //  1. Parse the refresh token from the request body.
-//  2. Fetch the token row from DB; return 401 when not found.
-//  3. Verify the token is not revoked (revoked_at IS NULL) → 401.
-//  4. Verify the token has not expired → 401.
-//  5. Fetch the owning user to populate the new JWT claims.
-//  6. Issue a new JWT access token (15-minute TTL).
-//  7. Return 200 with {access_token, token_type, expires_at}.
+//  2. If a session store is wired (feature #118): check the Redis revocation
+//     store before querying PostgreSQL (fast O(1) path).
+//  3. Fetch the token row from DB; return 401 when not found.
+//  4. Verify the token is not revoked (revoked_at IS NULL) → 401.
+//  5. Verify the token has not expired → 401.
+//  6. Fetch the owning user to populate the new JWT claims.
+//  7. Issue a new JWT access token (15-minute TTL).
+//  8. Return 200 with {access_token, token_type, expires_at}.
 //
 // Both endpoints are intentionally PUBLIC — no Authorization header required.
 package httpserver
@@ -237,6 +241,56 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// --- Feature #118: session tracking + concurrent-session enforcement ---
+	// These operations are post-commit and best-effort: a Redis or DB failure
+	// here does NOT roll back the login (the main transaction already committed).
+	// Session eviction ensures the user never has more than maxConcurrentSessions
+	// active refresh tokens simultaneously.
+	if s.sessionStore != nil {
+		userIDStr := actorID.String()
+		now := time.Now().UTC()
+
+		// 1. Prune expired and evict oldest sessions if over the per-user limit.
+		//    We pass maxSessions-1 to PruneAndEvict so that after eviction there
+		//    is room for exactly one new session. When maxConcurrentSessions=1,
+		//    this passes 0 → "evict all", leaving room for the new token.
+		if s.maxConcurrentSessions > 0 {
+			tokensToEvict, evictErr := s.sessionStore.PruneAndEvict(ctx, userIDStr, s.maxConcurrentSessions-1, now)
+			if evictErr != nil {
+				logger.Warn("auth.login: session prune failed (continuing)", "error", evictErr)
+			} else if len(tokensToEvict) > 0 {
+				// Revoke evicted tokens in the database in a single new transaction.
+				evictTx, txErr := s.pool.BeginTx(ctx, pgx.TxOptions{})
+				if txErr != nil {
+					logger.Warn("auth.login: cannot begin evict tx", "error", txErr)
+				} else {
+					eq := gen.New(evictTx)
+					for _, tok := range tokensToEvict {
+						if rErr := eq.RevokeRefreshToken(ctx, tok); rErr != nil {
+							logger.Warn("auth.login: DB revoke evicted session failed",
+								"error", rErr,
+								"token_prefix", tok[:min(len(tok), 8)],
+							)
+						}
+						// Best-effort Redis revocation with conservative TTL.
+						// The exact expiry of the evicted token is unknown here so
+						// we use refreshTokenTTL as a safe upper bound.
+						_ = s.sessionStore.RevokeSession(ctx, userIDStr, tok, now.Add(refreshTokenTTL))
+					}
+					if cErr := evictTx.Commit(ctx); cErr != nil {
+						logger.Warn("auth.login: commit evict tx failed", "error", cErr)
+						_ = evictTx.Rollback(ctx)
+					}
+				}
+			}
+		}
+
+		// 2. Track the new session.
+		if trackErr := s.sessionStore.TrackSession(ctx, userIDStr, refreshToken, refreshExp); trackErr != nil {
+			logger.Warn("auth.login: session track failed (continuing)", "error", trackErr)
+		}
+	}
+
 	slog.Info("auth.login: successful login",
 		"user_id", actorID.String(),
 		"email_prefix", email[:min(len(email), 5)],
@@ -294,6 +348,21 @@ func (s *Server) handleAuthRefresh(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(s.cfg.JWTSecretStub) == "" {
 		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("auth.not_configured", "authentication is not configured", r))
 		return
+	}
+
+	// --- 2.5 Fast Redis revocation check (feature #118) ---
+	// Check the Redis revocation store before opening a DB transaction. This
+	// O(1) EXISTS lookup short-circuits the refresh flow for revoked tokens
+	// without a database round-trip.
+	if s.sessionStore != nil {
+		revoked, checkErr := s.sessionStore.IsRevoked(ctx, req.RefreshToken)
+		if checkErr != nil {
+			// Redis unavailable — log a warning and fall through to the DB check.
+			logger.Warn("auth.refresh: redis revocation check failed (falling back to DB)", "error", checkErr)
+		} else if revoked {
+			writeJSON(w, http.StatusUnauthorized, errorEnvelope("auth.refresh_token_revoked", "refresh token has been revoked", r))
+			return
+		}
 	}
 
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
