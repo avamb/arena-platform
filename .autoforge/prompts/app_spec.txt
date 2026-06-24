@@ -9,10 +9,22 @@
     reconciliation.
 
     Treat the foundation-only scope below as historical seed context until a
-    newer approved master specification replaces it. Current readiness is not
-    production-ready until architecture/spec status is reconciled with the
-    implementation, generated clients are current, tests pass, and runtime
-    databases are migrated to the latest embedded migration.
+    newer approved master specification replaces it.
+
+    Verified reconciliation status on 2026-06-24:
+    - architecture/spec status reconciled for the current broad-scaffold stage;
+    - OpenAPI -> Go generation passes with the known oapi-codegen warning that
+      OpenAPI 3.1 is not fully supported by oapi-codegen v2.4.1;
+    - OpenAPI -> TypeScript generation and TypeScript declaration check pass;
+    - go test ./... and go test -race -coverprofile=/tmp/coverage.out
+      -covermode=atomic ./... pass in golang:1.24;
+    - local docker-compose runtime is healthy and PostgreSQL is migrated through
+      embedded migration 0041_reconciliation_reports.sql;
+    - golangci-lint:latest loads the v2 config but still fails with 563
+      existing lint issues.
+
+    Current readiness is not production-ready / not CI-green until the lint
+    gate is cleaned up.
   </implementation_status_override>
 
   <project_name>arena_new — Broad Scaffold Status; original Backend Foundation Milestone superseded by implementation</project_name>

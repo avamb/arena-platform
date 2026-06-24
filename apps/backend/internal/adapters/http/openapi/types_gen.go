@@ -24,13 +24,124 @@ const (
 	Ready    ReadyzResponseStatus = "ready"
 )
 
+// AuthLoginRequest defines model for AuthLoginRequest.
+type AuthLoginRequest struct {
+	// Email User's registered email address
+	Email openapi_types.Email `json:"email"`
+
+	// Password Plain-text password for verification
+	Password string `json:"password"`
+}
+
+// AuthLoginResponse defines model for AuthLoginResponse.
+type AuthLoginResponse struct {
+	// AccessToken Short-lived HS256 JWT access token (15-minute TTL)
+	AccessToken string `json:"access_token"`
+
+	// ExpiresAt RFC 3339 expiry timestamp of the access token
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// RefreshToken Long-lived opaque refresh token (30-day TTL); store securely
+	RefreshToken string `json:"refresh_token"`
+
+	// TokenType Token type — always "Bearer"
+	TokenType string `json:"token_type"`
+
+	// UserId UUIDv7 of the authenticated user
+	UserId openapi_types.UUID `json:"user_id"`
+}
+
+// AuthLogoutRequest defines model for AuthLogoutRequest.
+type AuthLogoutRequest struct {
+	// RefreshToken Opaque refresh token to revoke (issued by POST /v1/auth/login)
+	RefreshToken string `json:"refresh_token"`
+}
+
+// AuthRefreshRequest defines model for AuthRefreshRequest.
+type AuthRefreshRequest struct {
+	// RefreshToken Opaque refresh token issued by POST /v1/auth/login
+	RefreshToken string `json:"refresh_token"`
+}
+
+// AuthRefreshResponse defines model for AuthRefreshResponse.
+type AuthRefreshResponse struct {
+	// AccessToken New short-lived HS256 JWT access token (15-minute TTL)
+	AccessToken string `json:"access_token"`
+
+	// ExpiresAt RFC 3339 expiry timestamp of the new access token
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// TokenType Token type — always "Bearer"
+	TokenType string `json:"token_type"`
+
+	// UserId UUIDv7 of the authenticated user
+	UserId openapi_types.UUID `json:"user_id"`
+}
+
+// AuthRegisterRequest defines model for AuthRegisterRequest.
+type AuthRegisterRequest struct {
+	// Email User's email address (normalised to lowercase before storage)
+	Email openapi_types.Email `json:"email"`
+
+	// Password Plain-text password (bcrypt-hashed server-side; 8–72 chars)
+	Password string `json:"password"`
+}
+
+// AuthRegisterResponse defines model for AuthRegisterResponse.
+type AuthRegisterResponse struct {
+	// CreatedAt ISO 8601 / RFC 3339 timestamp of account creation
+	CreatedAt time.Time `json:"created_at"`
+
+	// Email Normalised email address stored in the DB
+	Email openapi_types.Email `json:"email"`
+
+	// Message Human-readable confirmation message
+	Message string `json:"message"`
+
+	// UserId UUIDv7 of the newly created user
+	UserId openapi_types.UUID `json:"user_id"`
+}
+
+// AuthVerifyResponse defines model for AuthVerifyResponse.
+type AuthVerifyResponse struct {
+	// Email Verified email address
+	Email openapi_types.Email `json:"email"`
+
+	// EmailVerifiedAt ISO 8601 / RFC 3339 timestamp of verification
+	EmailVerifiedAt time.Time `json:"email_verified_at"`
+
+	// Message Human-readable confirmation message
+	Message string `json:"message"`
+
+	// UserId UUIDv7 of the verified user
+	UserId openapi_types.UUID `json:"user_id"`
+}
+
+// CreateOrganizationRequest Request body for POST /v1/organizations.
+type CreateOrganizationRequest struct {
+	// Country ISO 3166-1 alpha-2 country code (optional)
+	Country *string `json:"country,omitempty"`
+
+	// DefaultLocale BCP 47 locale tag (optional; defaults to "en")
+	DefaultLocale *string `json:"default_locale,omitempty"`
+
+	// Name Human-readable display name (must be unique among active organizations)
+	Name string `json:"name"`
+
+	// ReservationTtlSeconds Seat-hold expiry window in seconds (optional; defaults to 1200)
+	ReservationTtlSeconds *int `json:"reservation_ttl_seconds,omitempty"`
+
+	// Slug URL-safe identifier (lowercase; must be unique among active organizations)
+	Slug string `json:"slug"`
+}
+
 // DevAuthTokenRequest defines model for DevAuthTokenRequest.
 type DevAuthTokenRequest struct {
 	// ActorId UUID to embed as the "sub" (subject) claim. Defaults to 00000000-0000-0000-0000-000000000001.
 	ActorId *openapi_types.UUID `json:"actor_id,omitempty"`
 
 	// OrgId Optional organisation UUID embedded as the "org_id" claim.
-	OrgId *openapi_types.UUID `json:"org_id"`
+	OrgId *openapi_types.UUID `json:"org_id,omitempty"`
 
 	// Roles Coarse-grained role labels embedded in the "roles" claim.
 	Roles *[]string `json:"roles,omitempty"`
@@ -96,7 +207,11 @@ type DevTokenResponse struct {
 	Token string `json:"token"`
 }
 
-// EchoRequest defines model for EchoRequest.
+// EchoRequest Strict schema — the server rejects any field not defined here with
+// HTTP 400 code='validation.unknown_field'. This protects against
+// typos (e.g. "messsage" instead of "message") and forward-compat
+// issues where clients inadvertently include private data in unknown
+// fields.
 type EchoRequest struct {
 	// Message Message to echo. Must be non-empty. Maximum 8 KiB.
 	Message string `json:"message"`
@@ -128,6 +243,7 @@ type EchoResponse struct {
 
 // ErrorEnvelope defines model for ErrorEnvelope.
 type ErrorEnvelope struct {
+	// Error Error details object containing machine-readable code, human-readable message, and correlation IDs.
 	Error struct {
 		// Code Machine-readable error code in dotted-namespace format
 		// (e.g. "http.not_found", "auth.token_expired", "echo.invalid_body").
@@ -138,7 +254,7 @@ type ErrorEnvelope struct {
 		// May contain field-level validation errors, conflict context, or other
 		// machine-readable diagnostic data. Omitted when there are no additional
 		// details.
-		Details *map[string]interface{} `json:"details"`
+		Details *map[string]interface{} `json:"details,omitempty"`
 
 		// Message Human-readable error description (may be localised)
 		Message string `json:"message"`
@@ -151,6 +267,157 @@ type ErrorEnvelope struct {
 	} `json:"error"`
 }
 
+// GeoCitiesResponse defines model for GeoCitiesResponse.
+type GeoCitiesResponse struct {
+	// Cities Ordered list of reference cities with localised names
+	Cities []GeoCityItem `json:"cities"`
+
+	// Meta Standard pagination metadata returned by list endpoints.
+	// Clients use this object to implement "load more" buttons or
+	// paginator UI components. All fields are always present in list responses.
+	Meta *PaginationMeta `json:"meta,omitempty"`
+}
+
+// GeoCityItem defines model for GeoCityItem.
+type GeoCityItem struct {
+	// CountryId FK to countries.id
+	CountryId openapi_types.UUID `json:"country_id"`
+
+	// CountryIso2 ISO 3166-1 alpha-2 code of the parent country
+	CountryIso2 string `json:"country_iso2"`
+
+	// Id UUIDv7 primary key
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Localised display name (resolved from i18n_text)
+	Name string `json:"name"`
+
+	// Slug URL-safe slug
+	Slug string `json:"slug"`
+}
+
+// GeoCityResponse defines model for GeoCityResponse.
+type GeoCityResponse struct {
+	// CountryId UUID of the parent country (FK → countries.id)
+	CountryId openapi_types.UUID `json:"country_id"`
+
+	// CreatedAt ISO 8601 / RFC 3339 timestamp of row creation
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id UUIDv7 primary key of the city row
+	Id openapi_types.UUID `json:"id"`
+
+	// Slug URL-safe identifier slug
+	Slug string `json:"slug"`
+}
+
+// GeoCountriesResponse defines model for GeoCountriesResponse.
+type GeoCountriesResponse struct {
+	// Countries Ordered list of reference countries with localised names
+	Countries []GeoCountryItem `json:"countries"`
+
+	// Meta Standard pagination metadata returned by list endpoints.
+	// Clients use this object to implement "load more" buttons or
+	// paginator UI components. All fields are always present in list responses.
+	Meta *PaginationMeta `json:"meta,omitempty"`
+}
+
+// GeoCountryItem defines model for GeoCountryItem.
+type GeoCountryItem struct {
+	// Id UUIDv7 primary key
+	Id openapi_types.UUID `json:"id"`
+
+	// Iso2 ISO 3166-1 alpha-2 code
+	Iso2 string `json:"iso2"`
+
+	// Iso3 ISO 3166-1 alpha-3 code
+	Iso3 string `json:"iso3"`
+
+	// Name Localised display name (resolved from i18n_text)
+	Name string `json:"name"`
+
+	// Slug URL-safe slug
+	Slug string `json:"slug"`
+}
+
+// GeoCountryResponse defines model for GeoCountryResponse.
+type GeoCountryResponse struct {
+	// CreatedAt ISO 8601 / RFC 3339 timestamp of row creation
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id UUIDv7 primary key of the country row
+	Id openapi_types.UUID `json:"id"`
+
+	// Iso2 ISO 3166-1 alpha-2 country code
+	Iso2 string `json:"iso2"`
+
+	// Iso3 ISO 3166-1 alpha-3 country code
+	Iso3 string `json:"iso3"`
+
+	// Slug URL-safe identifier slug
+	Slug string `json:"slug"`
+}
+
+// GeoCreateCityRequest defines model for GeoCreateCityRequest.
+type GeoCreateCityRequest struct {
+	// CountryId UUID of the parent country
+	CountryId openapi_types.UUID `json:"country_id"`
+
+	// NameEn English localised name (seeded into i18n_text)
+	NameEn *string `json:"name_en,omitempty"`
+
+	// NameRu Russian localised name (seeded into i18n_text)
+	NameRu *string `json:"name_ru,omitempty"`
+
+	// Slug URL-safe slug
+	Slug string `json:"slug"`
+}
+
+// GeoCreateCountryRequest defines model for GeoCreateCountryRequest.
+type GeoCreateCountryRequest struct {
+	// Iso2 ISO 3166-1 alpha-2 code (uppercase)
+	Iso2 string `json:"iso2"`
+
+	// Iso3 ISO 3166-1 alpha-3 code (uppercase)
+	Iso3 string `json:"iso3"`
+
+	// NameEn English localised name (seeded into i18n_text)
+	NameEn *string `json:"name_en,omitempty"`
+
+	// NameRu Russian localised name (seeded into i18n_text)
+	NameRu *string `json:"name_ru,omitempty"`
+
+	// Slug URL-safe slug
+	Slug string `json:"slug"`
+}
+
+// GeoUpdateCityRequest defines model for GeoUpdateCityRequest.
+type GeoUpdateCityRequest struct {
+	// NameEn Updated English localised name
+	NameEn *string `json:"name_en,omitempty"`
+
+	// NameRu Updated Russian localised name
+	NameRu *string `json:"name_ru,omitempty"`
+
+	// Slug Updated URL-safe slug
+	Slug *string `json:"slug,omitempty"`
+}
+
+// GeoUpdateCountryRequest defines model for GeoUpdateCountryRequest.
+type GeoUpdateCountryRequest struct {
+	// Iso3 Updated ISO 3166-1 alpha-3 code
+	Iso3 *string `json:"iso3,omitempty"`
+
+	// NameEn Updated English localised name
+	NameEn *string `json:"name_en,omitempty"`
+
+	// NameRu Updated Russian localised name
+	NameRu *string `json:"name_ru,omitempty"`
+
+	// Slug Updated URL-safe slug
+	Slug *string `json:"slug,omitempty"`
+}
+
 // HealthzResponse defines model for HealthzResponse.
 type HealthzResponse struct {
 	// Status Always "ok" when the process is alive
@@ -159,6 +426,37 @@ type HealthzResponse struct {
 
 // HealthzResponseStatus Always "ok" when the process is alive
 type HealthzResponseStatus string
+
+// ImpersonateRequest defines model for ImpersonateRequest.
+type ImpersonateRequest struct {
+	// DurationSeconds Token lifetime in seconds. Capped at 1800 (30 minutes).
+	// When absent or zero, defaults to 1800.
+	DurationSeconds *int `json:"duration_seconds,omitempty"`
+
+	// Reason Mandatory human-readable business justification for the impersonation.
+	Reason string `json:"reason"`
+
+	// UserId UUID of the target user to impersonate.
+	UserId openapi_types.UUID `json:"user_id"`
+}
+
+// ImpersonateResponse defines model for ImpersonateResponse.
+type ImpersonateResponse struct {
+	// ExpiresAt Absolute UTC expiry time of the impersonation token (RFC 3339).
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+
+	// ImpersonatedBy UUID of the admin actor who issued this impersonation token.
+	ImpersonatedBy *openapi_types.UUID `json:"impersonated_by,omitempty"`
+
+	// ImpersonatedUserId UUID of the target user being impersonated.
+	ImpersonatedUserId *openapi_types.UUID `json:"impersonated_user_id,omitempty"`
+
+	// Reason Echoed-back business justification (as stored in audit_events).
+	Reason *string `json:"reason,omitempty"`
+
+	// Token Scoped impersonation bearer JWT. Use in Authorization header to act as the target user.
+	Token *string `json:"token,omitempty"`
+}
 
 // InfoResponse defines model for InfoResponse.
 type InfoResponse struct {
@@ -199,27 +497,36 @@ type InfoResponse struct {
 	Version string `json:"version"`
 }
 
-// ReadyzResponse defines model for ReadyzResponse.
-type ReadyzResponse struct {
-	// Checks Map of probe name to status string ("ok" or error message)
-	Checks map[string]string `json:"checks"`
+// OrganizationItem A single active organization (primary tenant boundary).
+type OrganizationItem struct {
+	// Country ISO 3166-1 alpha-2 country code or empty string
+	Country string `json:"country"`
 
-	// Status "ready" when all probes pass, "not_ready" when any probe fails
-	Status ReadyzResponseStatus `json:"status"`
+	// CreatedAt ISO 8601 / RFC 3339 timestamp of row creation
+	CreatedAt time.Time `json:"created_at"`
+
+	// DefaultLocale BCP 47 locale tag used as default for this organization
+	DefaultLocale string `json:"default_locale"`
+
+	// Id UUIDv7 primary key of the organization row
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Human-readable display name (unique among active organizations)
+	Name string `json:"name"`
+
+	// ReservationTtlSeconds Seat-hold expiry window in seconds (default 1200 = 20 minutes)
+	ReservationTtlSeconds int `json:"reservation_ttl_seconds"`
+
+	// Slug URL-safe identifier (unique among active organizations, lowercase)
+	Slug string `json:"slug"`
+
+	// UpdatedAt ISO 8601 / RFC 3339 timestamp of last update
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// ReadyzResponseStatus "ready" when all probes pass, "not_ready" when any probe fails
-type ReadyzResponseStatus string
-
-// PostV1EchoParams defines parameters for PostV1Echo.
-type PostV1EchoParams struct {
-	// IdempotencyKey Client-generated UUID that uniquely identifies this mutation request.
-	// Replays (same actor + same key) return the originally cached response
-	// without re-executing the handler. TTL is 24 hours.
-	IdempotencyKey openapi_types.UUID `json:"Idempotency-Key"`
-}
-
-// PaginationMeta defines model for PaginationMeta.
+// PaginationMeta Standard pagination metadata returned by list endpoints.
+// Clients use this object to implement "load more" buttons or
+// paginator UI components. All fields are always present in list responses.
 type PaginationMeta struct {
 	// Page Current page number (1-based; first page is 1)
 	Page int `json:"page"`
@@ -234,8 +541,49 @@ type PaginationMeta struct {
 	TotalPages int `json:"total_pages"`
 }
 
-// ServerInfoResponse defines model for ServerInfoResponse (GET /v1/server-info).
-// Demonstrates the full router → handler → sqlc → response chain.
+// PasswordResetConfirmBody defines model for PasswordResetConfirmBody.
+type PasswordResetConfirmBody struct {
+	// NewPassword New plain-text password (bcrypt-hashed server-side; 8–72 chars)
+	NewPassword string `json:"new_password"`
+
+	// Token One-time reset token received in the password-reset email
+	Token string `json:"token"`
+}
+
+// PasswordResetConfirmResponse defines model for PasswordResetConfirmResponse.
+type PasswordResetConfirmResponse struct {
+	// Message Confirmation message
+	Message string `json:"message"`
+
+	// UserId UUIDv7 of the user whose password was reset
+	UserId openapi_types.UUID `json:"user_id"`
+}
+
+// PasswordResetRequestBody defines model for PasswordResetRequestBody.
+type PasswordResetRequestBody struct {
+	// Email Email address of the account for which a reset link is requested
+	Email openapi_types.Email `json:"email"`
+}
+
+// PasswordResetRequestResponse defines model for PasswordResetRequestResponse.
+type PasswordResetRequestResponse struct {
+	// Message Informational message (same for found / not-found to prevent enumeration)
+	Message string `json:"message"`
+}
+
+// ReadyzResponse defines model for ReadyzResponse.
+type ReadyzResponse struct {
+	// Checks Map of probe name to status string ("ok" or error message)
+	Checks map[string]string `json:"checks"`
+
+	// Status "ready" when all probes pass, "not_ready" when any probe fails
+	Status ReadyzResponseStatus `json:"status"`
+}
+
+// ReadyzResponseStatus "ready" when all probes pass, "not_ready" when any probe fails
+type ReadyzResponseStatus string
+
+// ServerInfoResponse defines model for ServerInfoResponse.
 type ServerInfoResponse struct {
 	// BuildSha Git commit SHA embedded at build time via runtime/debug.ReadBuildInfo
 	BuildSha string `json:"build_sha"`
@@ -243,7 +591,7 @@ type ServerInfoResponse struct {
 	// Environment Deployment environment (development, staging, production)
 	Environment string `json:"environment"`
 
-	// Locales BCP-47 locale tags active on this server
+	// Locales BCP-47 locale tags active on this server (ru, en)
 	Locales []string `json:"locales"`
 
 	// ServerTime Current UTC timestamp from the PostgreSQL server (via sqlc SelectServerTime)
@@ -256,47 +604,87 @@ type ServerInfoResponse struct {
 	WelcomeMessage string `json:"welcome_message"`
 }
 
-// RegisterRequest defines the request body for POST /v1/auth/register (feature #114).
-type RegisterRequest struct {
-	// Email The user's email address. Will be normalised to lowercase.
-	Email string `json:"email"`
+// UpdateOrganizationRequest Request body for PATCH /v1/organizations/{id}.
+// All fields are optional — omitted or empty-string fields leave the
+// existing value unchanged.
+type UpdateOrganizationRequest struct {
+	// Country New country code (optional; empty string leaves existing value)
+	Country *string `json:"country,omitempty"`
 
-	// Password Plaintext password; 8–72 characters. Stored as bcrypt hash (cost ≥ 12).
-	Password string `json:"password"`
+	// DefaultLocale New default locale (optional; empty string leaves existing value)
+	DefaultLocale *string `json:"default_locale,omitempty"`
 
-	// Locale Preferred BCP-47 locale (e.g. "en", "ru"). Defaults to "en" when omitted.
-	Locale *string `json:"locale,omitempty"`
+	// Name New display name (optional; empty string leaves existing value)
+	Name *string `json:"name,omitempty"`
+
+	// ReservationTtlSeconds New TTL in seconds (optional; 0 leaves existing value)
+	ReservationTtlSeconds *int `json:"reservation_ttl_seconds,omitempty"`
+
+	// Slug New URL-safe slug (optional; empty string leaves existing value)
+	Slug *string `json:"slug,omitempty"`
 }
 
-// RegisterResponse is returned by POST /v1/auth/register on success (201 Created).
-type RegisterResponse struct {
-	// UserId UUIDv7 primary key of the newly created user.
-	UserId string `json:"user_id"`
-
-	// Email Normalised email address stored for this user.
-	Email string `json:"email"`
-
-	// Message Human-readable confirmation. Instructs the user to check their inbox.
-	Message string `json:"message"`
-
-	// CreatedAt Server-side timestamp when the user row was created (RFC3339).
-	CreatedAt time.Time `json:"created_at"`
+// GetV1AuthVerifyParams defines parameters for GetV1AuthVerify.
+type GetV1AuthVerifyParams struct {
+	// Token One-time verification token sent by email at registration
+	Token string `form:"token" json:"token"`
 }
 
-// VerifyEmailResponse is returned by GET /v1/auth/verify on success (200 OK).
-type VerifyEmailResponse struct {
-	// UserId UUID of the user whose email was verified.
-	UserId string `json:"user_id"`
-
-	// Email The now-verified email address.
-	Email string `json:"email"`
-
-	// EmailVerifiedAt Server-side timestamp when email_verified_at was set (RFC3339).
-	EmailVerifiedAt time.Time `json:"email_verified_at"`
-
-	// Message Human-readable confirmation.
-	Message string `json:"message"`
+// PostV1EchoParams defines parameters for PostV1Echo.
+type PostV1EchoParams struct {
+	// IdempotencyKey Client-generated UUID that uniquely identifies this mutation request.
+	// Replays (same actor + same key) return the originally cached response
+	// without re-executing the handler. TTL is 24 hours.
+	IdempotencyKey openapi_types.UUID `json:"Idempotency-Key"`
 }
+
+// GetV1GeoCitiesParams defines parameters for GetV1GeoCities.
+type GetV1GeoCitiesParams struct {
+	// CountryId Filter cities by country UUID
+	CountryId *openapi_types.UUID `form:"country_id,omitempty" json:"country_id,omitempty"`
+
+	// Lang Preferred language code (e.g. "en", "ru"). Overrides Accept-Language.
+	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
+}
+
+// GetV1GeoCountriesParams defines parameters for GetV1GeoCountries.
+type GetV1GeoCountriesParams struct {
+	// Lang Preferred language code (e.g. "en", "ru"). Overrides Accept-Language.
+	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
+}
+
+// PostV1AdminGeoCitiesJSONRequestBody defines body for PostV1AdminGeoCities for application/json ContentType.
+type PostV1AdminGeoCitiesJSONRequestBody = GeoCreateCityRequest
+
+// PatchV1AdminGeoCitiesIdJSONRequestBody defines body for PatchV1AdminGeoCitiesId for application/json ContentType.
+type PatchV1AdminGeoCitiesIdJSONRequestBody = GeoUpdateCityRequest
+
+// PostV1AdminGeoCountriesJSONRequestBody defines body for PostV1AdminGeoCountries for application/json ContentType.
+type PostV1AdminGeoCountriesJSONRequestBody = GeoCreateCountryRequest
+
+// PatchV1AdminGeoCountriesIso2JSONRequestBody defines body for PatchV1AdminGeoCountriesIso2 for application/json ContentType.
+type PatchV1AdminGeoCountriesIso2JSONRequestBody = GeoUpdateCountryRequest
+
+// PostV1AdminImpersonateJSONRequestBody defines body for PostV1AdminImpersonate for application/json ContentType.
+type PostV1AdminImpersonateJSONRequestBody = ImpersonateRequest
+
+// PostV1AuthLoginJSONRequestBody defines body for PostV1AuthLogin for application/json ContentType.
+type PostV1AuthLoginJSONRequestBody = AuthLoginRequest
+
+// PostV1AuthLogoutJSONRequestBody defines body for PostV1AuthLogout for application/json ContentType.
+type PostV1AuthLogoutJSONRequestBody = AuthLogoutRequest
+
+// PostV1AuthPasswordResetConfirmJSONRequestBody defines body for PostV1AuthPasswordResetConfirm for application/json ContentType.
+type PostV1AuthPasswordResetConfirmJSONRequestBody = PasswordResetConfirmBody
+
+// PostV1AuthPasswordResetRequestJSONRequestBody defines body for PostV1AuthPasswordResetRequest for application/json ContentType.
+type PostV1AuthPasswordResetRequestJSONRequestBody = PasswordResetRequestBody
+
+// PostV1AuthRefreshJSONRequestBody defines body for PostV1AuthRefresh for application/json ContentType.
+type PostV1AuthRefreshJSONRequestBody = AuthRefreshRequest
+
+// PostV1AuthRegisterJSONRequestBody defines body for PostV1AuthRegister for application/json ContentType.
+type PostV1AuthRegisterJSONRequestBody = AuthRegisterRequest
 
 // PostV1DevAuthTokenJSONRequestBody defines body for PostV1DevAuthToken for application/json ContentType.
 type PostV1DevAuthTokenJSONRequestBody = DevAuthTokenRequest
@@ -306,3 +694,9 @@ type PostV1DevTokenJSONRequestBody = DevTokenRequest
 
 // PostV1EchoJSONRequestBody defines body for PostV1Echo for application/json ContentType.
 type PostV1EchoJSONRequestBody = EchoRequest
+
+// PostV1OrganizationsJSONRequestBody defines body for PostV1Organizations for application/json ContentType.
+type PostV1OrganizationsJSONRequestBody = CreateOrganizationRequest
+
+// PatchV1OrganizationsIdJSONRequestBody defines body for PatchV1OrganizationsId for application/json ContentType.
+type PatchV1OrganizationsIdJSONRequestBody = UpdateOrganizationRequest

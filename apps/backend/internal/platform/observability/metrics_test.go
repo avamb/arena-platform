@@ -132,7 +132,11 @@ func TestHandler_ReturnsHTTP200WithNonEmptyBody(t *testing.T) {
 	}
 	// Push at least one observation so the scrape output contains business
 	// metrics in addition to the always-emitted runtime metrics.
+	m.HTTPRequestDuration.WithLabelValues("GET", "/healthz", "200").Observe(0.01)
 	m.HTTPRequestsTotal.WithLabelValues("GET", "/healthz", "200").Inc()
+	m.DBPoolConnections.WithLabelValues("acquired").Set(1)
+	m.WorkerJobsLagSeconds.WithLabelValues("default").Set(0)
+	m.OutboxBacklog.Set(0)
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)

@@ -16,10 +16,23 @@ billing, superadmin, webhook delivery, and reconciliation.
 
 The original foundation-only text is retained below where it explains the
 initial architecture, but it is historical context rather than the current
-implementation scope. Current readiness remains **not production-ready** until
-the architecture/specification status is reconciled with the implementation,
-tests pass, generated clients are current, and runtime databases are migrated to
-the latest embedded migration.
+implementation scope.
+
+Verified reconciliation status as of 2026-06-24:
+
+| Gate | Status | Evidence |
+|------|--------|----------|
+| Architecture/spec status | Reconciled for current broad-scaffold stage | `CLAUDE.md` and `.autoforge/prompts/app_spec.txt` now explicitly mark the foundation-only text as historical seed context |
+| OpenAPI -> Go generation | Passing with warning | `oapi-codegen v2.4.1` regenerates `apps/backend/internal/adapters/http/openapi/types_gen.go`; warning remains that OpenAPI 3.1 is not fully supported by the generator |
+| OpenAPI -> TypeScript generation | Passing | `npm.cmd run gen-ts-client` and `npm.cmd run check-ts` |
+| Go tests | Passing | `go test ./... -count=1` in `golang:1.24` |
+| Race/coverage tests | Passing | `go test -race -coverprofile=/tmp/coverage.out -covermode=atomic ./...` in `golang:1.24` |
+| Runtime DB migrations | Passing locally | `docker compose` runtime healthy; DB applied through embedded migration `0041_reconciliation_reports.sql` |
+| Lint | Failing | `golangci-lint:latest` now loads the v2 config, but reports 563 existing issues |
+
+Current readiness remains **not production-ready / not CI-green** because the
+lint gate is still red. The next engineering stage is lint cleanup, not new
+feature implementation.
 
 > Кратко по-русски: первый milestone строит чистый production-ready
 > backend-скелет на Go (modular monolith, `net/http` + chi, PostgreSQL 17,

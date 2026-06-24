@@ -655,7 +655,7 @@ export interface components {
                  */
                 details?: {
                     [key: string]: unknown;
-                } | null;
+                };
             };
         };
         HealthzResponse: {
@@ -856,10 +856,11 @@ export interface components {
              */
             actor_id?: string;
             /**
+             * Format: uuid
              * @description Optional organisation UUID embedded as the "org_id" claim.
              * @example 11111111-1111-1111-1111-111111111111
              */
-            org_id?: string | null;
+            org_id?: string;
             /**
              * @description Coarse-grained role labels embedded in the "roles" claim.
              * @example [
@@ -1302,6 +1303,8 @@ export interface components {
         GeoCountriesResponse: {
             /** @description Ordered list of reference countries with localised names */
             countries: components["schemas"]["GeoCountryItem"][];
+            /** @description Optional pagination metadata for clients that render paginated country lists. */
+            meta?: components["schemas"]["PaginationMeta"];
         };
         GeoCityItem: {
             /**
@@ -1335,6 +1338,8 @@ export interface components {
         GeoCitiesResponse: {
             /** @description Ordered list of reference cities with localised names */
             cities: components["schemas"]["GeoCityItem"][];
+            /** @description Optional pagination metadata for clients that render paginated city lists. */
+            meta?: components["schemas"]["PaginationMeta"];
         };
         GeoCountryResponse: {
             /**

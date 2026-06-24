@@ -94,10 +94,8 @@ components:
               description: Distributed trace ID (also in X-Trace-Id response header)
               example: "4bf92f3577b34da6a3ce929d0e0e4736"
             details:
-              anyOf:
-                - type: object
-                  additionalProperties: true
-                - type: "null"
+              type: object
+              additionalProperties: true
               description: |
                 Optional structured details about the error (analogous to a JSONB object).
                 May contain field-level validation errors, conflict context, or other
@@ -304,10 +302,8 @@ components:
           description: UUID to embed as the "sub" (subject) claim. Defaults to 00000000-0000-0000-0000-000000000001.
           example: "00000000-0000-0000-0000-000000000042"
         org_id:
-          anyOf:
-            - type: string
-              format: uuid
-            - type: "null"
+          type: string
+          format: uuid
           description: Optional organisation UUID embedded as the "org_id" claim.
           example: "11111111-1111-1111-1111-111111111111"
         roles:
@@ -767,6 +763,9 @@ components:
           description: Ordered list of reference countries with localised names
           items:
             $ref: "#/components/schemas/GeoCountryItem"
+        meta:
+          description: Optional pagination metadata for clients that render paginated country lists.
+          $ref: "#/components/schemas/PaginationMeta"
 
     GeoCityItem:
       type: object
@@ -806,6 +805,9 @@ components:
           description: Ordered list of reference cities with localised names
           items:
             $ref: "#/components/schemas/GeoCityItem"
+        meta:
+          description: Optional pagination metadata for clients that render paginated city lists.
+          $ref: "#/components/schemas/PaginationMeta"
 
     GeoCountryResponse:
       type: object

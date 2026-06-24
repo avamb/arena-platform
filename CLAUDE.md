@@ -27,22 +27,35 @@ If the user asks you to modify code, explain that you're a project assistant and
 
 ## Project Specification
 
-<current_implementation_status date="2026-06-24">
-  The checked-in implementation is no longer limited to the original Backend
-  Foundation Milestone described below. AutoForge now tracks 171/171 passed
-  features through Wave 20, and the codebase contains broad domain scaffolding
-  for identity, organizations, catalog, inventory, checkout, payments, tickets,
-  scanner integration boundaries, WordPress/Bil24 compatibility, reporting,
-  billing, superadmin, webhook delivery, and reconciliation.
-
-  Treat the foundation-only project specification below as the historical seed
-  spec unless a newer approved master specification supersedes it. Current
-  readiness is not production-ready until the architecture/spec status is
-  reconciled with the implementation, generated clients are current, tests pass,
-  and runtime databases are migrated to the latest embedded migration.
-</current_implementation_status>
-
 <project_specification>
+  <implementation_status_override date="2026-06-24">
+    The checked-in implementation is no longer limited to this original
+    foundation-only seed specification. AutoForge currently tracks 171/171
+    passed features through Wave 20, and the codebase contains broad domain
+    scaffolding for identity, organizations, catalog, inventory, checkout,
+    payments, tickets, scanner integration boundaries, WordPress/Bil24
+    compatibility, reporting, billing, superadmin, webhook delivery, and
+    reconciliation.
+
+    Treat the foundation-only scope below as historical seed context until a
+    newer approved master specification replaces it.
+
+    Verified reconciliation status on 2026-06-24:
+    - architecture/spec status reconciled for the current broad-scaffold stage;
+    - OpenAPI -> Go generation passes with the known oapi-codegen warning that
+      OpenAPI 3.1 is not fully supported by oapi-codegen v2.4.1;
+    - OpenAPI -> TypeScript generation and TypeScript declaration check pass;
+    - go test ./... and go test -race -coverprofile=/tmp/coverage.out
+      -covermode=atomic ./... pass in golang:1.24;
+    - local docker-compose runtime is healthy and PostgreSQL is migrated through
+      embedded migration 0041_reconciliation_reports.sql;
+    - golangci-lint:latest loads the v2 config but still fails with 563
+      existing lint issues.
+
+    Current readiness is not production-ready / not CI-green until the lint
+    gate is cleaned up.
+  </implementation_status_override>
+
   <project_name>arena_new — Broad Scaffold Status; original Backend Foundation Milestone superseded by implementation</project_name>
 
   <overview>
@@ -88,19 +101,37 @@ If the user asks you to modify code, explain that you're a project assistant and
       <library>go-i18n/v2 with TOML message catalogs</library>
       <initial_languages>ru, en (active); structure ready for uk, es and additional locales</initial_languages>
       <locale_negotiation>Accept-Language header → ?lang= query parameter → user.preferred_locale → default "en"</locale_negotiation>
-      <user_content_translations>Stored in DB (i18n_text table with locale, key, value); system messages — in file catalogs</user_content_translations>
+      <user_content_translations>Stored in DB (i18n_text table with locale, key, value); system messages — in file catalog
+      </user_content_translations>
     </internationalization>
-    <deployment>
-      <containerization>Docker multi-stage build → gcr.io/distroless/static-debian12 final image</containerization>
-      <orchestration>Dokploy (self-hosted PaaS) — Dockerfile in repo root, optional docker-compose.yml for local dev, HEALTHCHECK directive bound to /healthz</orchestration>
-      <ci>GitHub Actions: lint (golangci-lint) + test (with race detector) + build + push image to registry</ci>
-      <local_dev>docker compose up → starts API, worker, PostgreSQL 17, Redis 7</local_dev>
-      <secrets>.env.example documents every required variable; production values injected by Dokploy environment configuration</secrets>
-    </deployment>
-    <auth_scaffold_only>
-      <method>JWT-based AuthContext boundary as PLACEHOLDER. Real identity module (OAuth, magic link, password) is out of scope for this milestone.</method>
-      <stub_identity_provider>Issues test JWTs for development/integratio
-... (truncated)
+  </technology_stack>
+
+  <source_of_truth>
+    The full project specification is maintained in .autoforge/prompts/app_spec.txt.
+    Keep this CLAUDE.md section concise so Project Assistant context does not
+    truncate or corrupt the embedded specification.
+  </source_of_truth>
+
+  <current_stage>
+    Wave 20 broad scaffold is complete in AutoForge feature tracking.
+    Reconciliation gate evidence is now partially green: generated clients,
+    tests, race/coverage tests, and local runtime migrations are verified.
+    The active stage is lint cleanup to make CI fully green.
+  </current_stage>
+
+  <domain_coverage>
+    identity, organizations, catalog, inventory, checkout, payments, tickets,
+    scanner integration boundaries, WordPress/Bil24 compatibility, reporting,
+    billing, superadmin, webhook delivery, reconciliation
+  </domain_coverage>
+
+  <readiness_gate>
+    Passing feature backlog is not equivalent to production readiness. Treat
+    generated-code drift checks, CI-equivalent test results, applied runtime
+    migrations, and golangci-lint as required evidence before reporting
+    readiness. As of 2026-06-24, lint remains the blocking red gate.
+  </readiness_gate>
+</project_specification>
 
 ## Available Tools
 

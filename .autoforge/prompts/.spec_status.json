@@ -1,7 +1,7 @@
 {
   "status": "complete",
   "version": 1,
-  "timestamp": "2026-06-21T18:15:00.000Z",
+  "timestamp": "2026-06-24T22:05:00.000+02:00",
   "files_written": [
     ".autoforge/prompts/app_spec.txt",
     ".autoforge/prompts/initializer_prompt.md"
@@ -9,10 +9,24 @@
   "feature_count": 80,
   "implementation_status": {
     "as_of": "2026-06-24",
-    "stage": "wave_20_broad_scaffold",
+    "stage": "wave_20_broad_scaffold_reconciliation",
     "features_db_total": 171,
     "features_db_passed": 171,
-    "spec_alignment": "foundation_prompt_superseded_by_current_code",
-    "readiness": "not_production_ready_until_tests_generated_clients_and_runtime_migrations_are_current"
+    "spec_alignment": "foundation_prompt_superseded_by_current_code_and_reconciled_as_historical_seed_context",
+    "readiness": "not_production_ready_ci_lint_gate_failing",
+    "verified_reconciliation": {
+      "architecture_spec_status": "reconciled_for_current_broad_scaffold_stage",
+      "openapi_go_codegen": "pass_with_oapi_codegen_openapi_3_1_warning",
+      "openapi_typescript_codegen": "pass",
+      "typescript_declaration_check": "pass",
+      "go_test_all": "pass",
+      "go_test_race_coverage": "pass",
+      "local_runtime_health": "pass",
+      "local_runtime_readiness": "pass",
+      "latest_embedded_migration": 41,
+      "runtime_applied_migration": 41,
+      "golangci_lint_latest": "fail",
+      "golangci_lint_issue_count": 563
+    }
   }
 }

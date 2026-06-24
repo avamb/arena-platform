@@ -12,6 +12,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -304,7 +305,7 @@ func (p *testPingProbe) Ping(ctx context.Context) error {
 	pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	if err := p.pool.Ping(pingCtx); err != nil {
-		return errors.New("postgres ping: " + err.Error())
+		return fmt.Errorf("postgres ping: %w", err)
 	}
 	return nil
 }
@@ -329,9 +330,9 @@ func (fp *fakeTxPool) BeginTx(_ context.Context, _ pgx.TxOptions) (pgx.Tx, error
 // Only Commit and Rollback are implemented meaningfully; all other methods
 // panic to catch unexpected usage.
 type fakeTxImpl struct {
-	committed   bool
-	rolledBack  bool
-	commitErr   error
+	committed  bool
+	rolledBack bool
+	commitErr  error
 }
 
 func (f *fakeTxImpl) Commit(_ context.Context) error {

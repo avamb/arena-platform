@@ -1,88 +1,77 @@
-# golangci-lint configuration for arena_new
-# Compatible with golangci-lint v1.x
-# Run: golangci-lint run ./...
-
+version: "2"
 run:
-  timeout: 5m
   go: "1.24"
-  # Show only new issues when using --new-from-rev
   allow-parallel-runners: true
-
 linters:
-  disable-all: false
   enable:
-    - errcheck      # Checks for unchecked errors
-    - govet         # Reports suspicious constructs (like fmt.Sprintf misuse)
-    - staticcheck   # Comprehensive static analysis (SA*, S1*, ST*, QF*)
-    - gosec         # Security linter (G*)
-    - revive        # Fast, configurable, extensible linter for Go
-    - ineffassign   # Detects ineffectual assignments
-    - unused        # Finds unused code
-    - gofmt         # Checks code is formatted with gofmt
-    - goimports     # Checks that imports are properly formatted and grouped
-
-linters-settings:
-  goimports:
-    # Group local imports separately from stdlib and third-party
-    local-prefixes: github.com/abhteam/arena_new
-
-  govet:
-    # Enable all analyzers
-    enable-all: true
-    # Disable analyzers that produce too much noise in typical code
-    disable:
-      - fieldalignment  # Not required for this project stage
-
-  revive:
+    - gosec
+    - revive
+  settings:
+    errcheck:
+      check-type-assertions: false
+      exclude-functions:
+        - (io.Closer).Close
+        - (io.ReadCloser).Close
+    gosec:
+      excludes:
+        - G104
+      config:
+        global:
+          audit: false
+    govet:
+      disable:
+        - fieldalignment
+      enable-all: true
+    revive:
+      rules:
+        - name: exported
+          arguments:
+            - checkPrivateReceivers
+        - name: unused-parameter
+        - name: unreachable-code
+        - name: error-return
+        - name: error-strings
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
     rules:
-      - name: exported
-        arguments:
-          - checkPrivateReceivers
-      - name: unused-parameter
-      - name: unreachable-code
-      - name: error-return
-      - name: error-strings
-
-  gosec:
-    # Skip generated files
-    excludes:
-      - G104  # Unhandled errors in defer — covered by errcheck with exceptions
-    config:
-      global:
-        audit: false
-
-  errcheck:
-    # Report errors from type assertions (e.g., x := y.(T))
-    check-type-assertions: false
-    # Ignore common patterns
-    exclude-functions:
-      - (io.Closer).Close
-      - (io.ReadCloser).Close
-
+      - linters:
+          - errcheck
+          - gosec
+          - unused
+        path: _test\.go$
+      - linters:
+          - govet
+          - revive
+        path: queries/.*\.go$
+      - linters:
+          - govet
+          - revive
+        path: openapi/.*\.go$
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 issues:
-  # Show all issues (no cap per linter)
   max-issues-per-linter: 0
   max-same-issues: 0
-
-  exclude-rules:
-    # Relax rules in test files
-    - path: "_test\\.go$"
-      linters:
-        - gosec
-        - errcheck
-        - unused
-
-    # Generated files (sqlc, oapi-codegen output)
-    - path: "queries/.*\\.go$"
-      linters:
-        - govet
-        - revive
-        - gofmt
-        - goimports
-
-    - path: "openapi/.*\\.go$"
-      linters:
-        - govet
-        - revive
-        - gofmt
-        - goimports
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/abhteam/arena_new
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+      - queries/.*\.go$
+      - openapi/.*\.go$
