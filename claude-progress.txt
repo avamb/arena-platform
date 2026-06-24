@@ -11317,3 +11317,101 @@ This session: feature #140 completed and marked passing -> 143/171 passing (83.6
 
 ================================================================================
 
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-24 -- Feature #138 (Refund state machine)
+"[scope: production-api] [arch: 09_domain_state_machines_ru.md §Refund] refunds
+table (states: requested → approved → provider_pending → succeeded/failed/manual_review).
+Refund-approval policy (scanned tickets block partial refunds, etc.). Ticket
+revocation on success."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #138: Full refund state machine with HTTP API, webhook idempotency,
+ticket revocation, and 50 unit tests.
+
+Steps covered:
+  Step 1: Migration 0028_refunds.sql (renamed from 0027 to avoid conflict with ticket_credentials)
+          - refunds table with uuidv7() PK
+          - payment_intent_id FK -> payment_intents(id)
+          - org_id uuid NOT NULL
+          - amount bigint, currency text
+          - state text CHECK with 7 values: requested/approved/rejected/provider_pending/succeeded/failed/manual_review
+          - provider_refund_id, failure_reason nullable
+          - Timestamps: requested_at, approved_at, succeeded_at, failed_at
+          - Indexes: refunds_payment_intent_id, refunds_state_idx
+          - refund_events table with UNIQUE (provider_refund_id, event_type) for idempotency
+          - RBAC seeds: refund.create/read/approve for admin + org_admin; refund.read for member
+
+  Step 2: POST /v1/refunds endpoint with policy check
+          - POST /v1/refunds (refund.create): creates refund in 'requested' state
+          - GET  /v1/refunds/{id} (refund.read): read current state
+          - POST /v1/refunds/{id}/approve (refund.approve): transitions requested → approved → provider_pending
+            Policy check: partial refund + scanned tickets → goes to manual_review instead
+          - POST /v1/refunds/{id}/reject (refund.approve): transitions requested → rejected (terminal)
+          - POST /v1/refunds/webhook (no auth): provider webhook for state transitions
+
+  Step 3: Provider call + webhook handling
+          - refundWebhookEventTypeToState map: charge.refund.updated/refund.succeeded/refund.failed/
+            refund.manual_review + mock.* variants
+          - InsertRefundEvent with ON CONFLICT DO NOTHING for idempotency
+          - Duplicate webhook delivery returns 204 without reprocessing
+          - Unknown event type returns 200 with acknowledged=true, processed=false
+          - Terminal state guard: no further transitions once succeeded/failed/rejected
+
+  Step 4: Ticket revocation hook
+          - On webhook succeeded: CancelTicketsByCheckoutSession called via PaymentIntent.CheckoutSessionID
+          - Sets all active tickets to 'cancelled'
+          - Logged with refund_id, checkout_session_id, cancelled_count
+
+  Step 5: Tests (50 tests, TestRefund138_*)
+          - Migration file structure: 11 tests (tables, columns, state enum, indexes, RBAC, Down section)
+          - State transition matrix: 4 tests (valid/invalid transitions, terminal states, all states present)
+          - SQL query file: 9 tests (all 7 named queries, ON CONFLICT, COALESCE)
+          - Gen file: 5 tests (RefundRow/RefundEventRow structs, nullable fields, all 7 functions)
+          - Querier interface: 1 test (compile-time check)
+          - Route auth-gating: 5 tests (POST/GET/approve/reject all 401; webhook not 401)
+          - Nil refundQueries: 1 test (webhook returns 404/not-200 when not mounted)
+          - Request validation: 8 tests (invalid UUID, zero/negative amount, missing currency, empty body)
+          - Webhook validation: 4 tests (missing provider_refund_id/event_type/refund_id, unknown event type)
+          - Webhook event type mapping: 1 test (all 7 mapped types)
+          - Response Content-Type: 1 test (JSON)
+          - Server wiring: 6 tests (refundQueries field, route registration, ticket revocation, manual review)
+
+CHANGES
+-------
+New files:
+  - apps/backend/internal/migrations/sql/0028_refunds.sql
+  - apps/backend/internal/adapters/postgres/queries/refunds.sql
+  - apps/backend/internal/adapters/postgres/gen/refunds.sql.go
+  - apps/backend/internal/platform/httpserver/refunds.go
+  - apps/backend/internal/platform/httpserver/refunds_138_test.go
+
+Modified files:
+  - apps/backend/internal/platform/httpserver/server.go
+      (refundQueries field + Options.RefundQueries + route groups)
+  - apps/backend/internal/platform/httpserver/testfilehelpers_test.go
+      (+4 file cases: 0028_refunds.sql, refunds.sql, refunds.sql.go, refunds.go)
+
+NOTES
+-----
+  - Migration numbering conflict: 0027_refunds.sql was renamed to 0028_refunds.sql
+    (0027_ticket_credentials.sql was already committed by feature #140)
+  - buildRefundServer includes PaymentIntentQueries + TicketQueries for policy checks
+
+VERIFICATION
+------------
+  - 50/50 TestRefund138_* tests: PASS (arena-build-test Docker image, 0.246s)
+  - go build ./apps/backend/...: EXIT 0
+  - Pre-existing failures unchanged (TestOpenAPI, TestCheckout132, staticanalysis)
+  - git commit: 66aaff1
+
+PROGRESS METRIC
+---------------
+Stats before session: 143/171 passing (83.6%).
+This session: feature #138 completed and marked passing -> 144/171 passing (84.2%).
+
+================================================================================
+
