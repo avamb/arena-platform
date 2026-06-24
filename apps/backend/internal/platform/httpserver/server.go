@@ -220,6 +220,10 @@ type Server struct {
 	// Feature #140.
 	credentialQueries *gen.Queries
 
+	// refundQueries is the sqlc Queries instance used by the refund state machine
+	// endpoints (feature #138). Nil when no PgxPool was supplied.
+	refundQueries *gen.Queries
+
 	// stripeConnect is the helper used by the Stripe Connect OAuth onboarding
 	// endpoints (GET /v1/stripe/connect/authorize and …/callback). Nil when
 	// Stripe Connect is not configured. When nil these routes are not mounted.
@@ -472,6 +476,12 @@ type Options struct {
 	// credential routes mounted without a real pool. Feature #140.
 	CredentialQueries *gen.Queries
 
+	// RefundQueries injects a pre-constructed *gen.Queries for the refund state
+	// machine endpoints. When nil and PgxPool is non-nil, gen.New(PgxPool) is used.
+	// Inject gen.New(nil) in tests that need refund routes mounted without a real pool.
+	// Feature #138.
+	RefundQueries *gen.Queries
+
 	// StripeConnect injects the Stripe Connect OAuth helper used by
 	// GET /v1/stripe/connect/authorize and GET /v1/stripe/connect/callback.
 	// When nil the Stripe Connect routes are not mounted.
@@ -678,6 +688,12 @@ func New(opts Options) *Server {
 		credentialQueries = gen.New(opts.PgxPool)
 	}
 
+	// sqlc Queries for refund state machine endpoints (feature #138).
+	refundQueries := opts.RefundQueries
+	if refundQueries == nil && opts.PgxPool != nil {
+		refundQueries = gen.New(opts.PgxPool)
+	}
+
 	// Extend the permission checker with membership-derived role resolution
 	// (feature #120 step 3). When a PgxPool is available, the DBChecker is
 	// augmented so that each Check() call unions the JWT roles with the user's
@@ -736,6 +752,7 @@ func New(opts Options) *Server {
 		paymentIntentQueries:        paymentIntentQueries,
 		ticketQueries:               ticketQueries,
 		credentialQueries:           credentialQueries,
+		refundQueries:               refundQueries,
 		stripeConnect:               opts.StripeConnect,
 		sessionStore:                opts.SessionStore,
 		maxConcurrentSessions:       opts.MaxConcurrentSessionsPerUser,
@@ -1586,6 +1603,49 @@ func (s *Server) mountV1Routes() {
 				pr.Post("/me/data-export", s.handleDataExportRequest)
 				pr.Post("/me/data-delete", s.handleDataDeleteRequest)
 				pr.Post("/me/consent", s.handleRecordConsent)
+			})
+		}
+
+		// ── Refunds (feature #138) ──────────────────────────────────────────
+		//
+		// Refund state machine: requested → approved → provider_pending →
+		// succeeded|failed|manual_review. Also: requested → rejected (terminal).
+		// Ticket revocation fires on webhook succeeded event.
+		//
+		//   POST /v1/refunds                  — create refund request (refund.create)
+		//   GET  /v1/refunds/{id}             — read refund state (refund.read)
+		//   POST /v1/refunds/{id}/approve     — approve refund (refund.approve)
+		//   POST /v1/refunds/{id}/reject      — reject refund (refund.approve)
+		//   POST /v1/refunds/webhook          — provider webhook (no JWT)
+		//
+		// Routes not mounted in the drift-test server (refundQueries not wired there)
+		// and therefore not in openapi.yaml (following the payment-intents webhook
+		// and stripe-connect convention for provider-integration routes).
+		if s.refundQueries != nil {
+			// Webhook — intentionally unauthenticated.
+			r.Post("/refunds/webhook", s.handleRefundWebhook)
+		}
+		if s.stub != nil && s.stub.Enabled() && s.refundQueries != nil {
+			// GET /v1/refunds/{id} (refund.read)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "refund.read", "refunds"))
+				pr.Get("/refunds/{id}", s.handleGetRefund)
+			})
+		}
+		if s.stub != nil && s.stub.Enabled() && s.refundQueries != nil && s.pool != nil {
+			// POST /v1/refunds (refund.create)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "refund.create", "refunds"))
+				pr.Post("/refunds", s.handleCreateRefund)
+			})
+			// POST /v1/refunds/{id}/approve and …/{id}/reject (refund.approve)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "refund.approve", "refunds"))
+				pr.Post("/refunds/{id}/approve", s.handleApproveRefund)
+				pr.Post("/refunds/{id}/reject", s.handleRejectRefund)
 			})
 		}
 
