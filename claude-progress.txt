@@ -11236,3 +11236,84 @@ This session: feature #135 verified and marked passing -> 142/171 passing (83.0%
 
 ================================================================================
 
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-24 -- Feature #140 (Ticket credentials - static QR + PDF)
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #140: Full ticket credential system with 44 unit tests.
+
+Steps covered:
+  Step 1: Migration 0027_ticket_credentials.sql
+          - ticket_credentials table with uuidv7() PK
+          - ticket_id uuid FK -> tickets(id) with cascade delete
+          - type text CHECK ('static_qr', 'pdf')
+          - payload text NOT NULL (hex token or base64 PDF)
+          - issued_at timestamptz NOT NULL DEFAULT now()
+          - revoked_at timestamptz nullable (NULL = active)
+          - UNIQUE (ticket_id, type) constraint
+          - Index ticket_credentials_ticket_id
+          - RBAC seeds: credential.read/revoke for admin + org_admin; read for member
+
+  Step 2: QR token generator (generateQRToken)
+          - crypto/rand 32 bytes encoded as 64-char lowercase hex
+          - Opaque token NOT equal to ticket UUID (prevents enumeration)
+          - Binding stored server-side in ticket_credentials.payload
+
+  Step 3: PDF renderer (renderTicketPDF)
+          - Pure Go stdlib implementation (no external deps)
+          - Valid PDF/1.4 with dynamically-calculated xref table offsets
+          - Helvetica built-in Type1 font (no embedding required)
+          - US Letter (612x792pt) page with ticket ID, QR token preview, timestamp
+          - Payload stored as standard base64 in ticket_credentials
+
+  Step 4: GET /v1/tickets/{id}/credential
+          - ?type=static_qr (default) or ?type=pdf query parameter
+          - Lazy generation: credential created on first access, cached in DB
+          - Subsequent requests return the stored credential (no regeneration)
+          - 401 without JWT; 400 on invalid UUID or invalid type param
+          - 503 when credentialQueries nil
+
+  Step 5: Tests (44 tests, TestCredential140_*)
+          - Migration structure: 10 tests
+          - SQL query file: 6 tests
+          - Gen file: 5 tests (TicketCredentialRow, nullable RevokedAt)
+          - Querier interface: 2 tests (compile-time check)
+          - QR token: 4 tests (length=64, lowercase hex, uniqueness)
+          - PDF renderer: 5 tests (non-empty, PDF header, EOF marker, ticket ID present)
+          - Route auth: 1 test (401 without JWT)
+          - Route mounted: 2 tests (static_qr and pdf types both work)
+          - credentialFromRow: 5 tests (timestamps RFC3339, nil/non-nil RevokedAt)
+          - Validation: 4 tests (invalid UUID/type 400, default=static_qr, nil queries 503)
+
+CHANGES
+-------
+New files:
+  - apps/backend/internal/migrations/sql/0027_ticket_credentials.sql
+  - apps/backend/internal/adapters/postgres/queries/ticket_credentials.sql
+  - apps/backend/internal/adapters/postgres/gen/ticket_credentials.sql.go
+  - apps/backend/internal/platform/httpserver/credentials.go
+  - apps/backend/internal/platform/httpserver/credentials_140_test.go
+
+Modified files:
+  - apps/backend/internal/adapters/postgres/gen/querier.go (+4 credential methods)
+  - apps/backend/internal/platform/httpserver/server.go (credentialQueries wiring + route)
+  - apps/backend/internal/platform/httpserver/testfilehelpers_test.go (+4 file cases)
+
+VERIFICATION
+------------
+  - 44/44 TestCredential140_* tests: PASS (arena-build-test Docker image)
+  - go build ./apps/backend/...: EXIT 0
+  - Feature #140 marked passing in backlog
+  - git commit: c030d9a
+
+PROGRESS METRIC
+---------------
+Stats before session: 142/171 passing (83.0%).
+This session: feature #140 completed and marked passing -> 143/171 passing (83.6%).
+
+================================================================================
+
