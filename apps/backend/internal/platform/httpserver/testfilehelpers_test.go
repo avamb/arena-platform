@@ -446,6 +446,23 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "refunds.go"),
 		}
+	// Barcode authority federation (feature #142)
+	case "0029_barcode_authorities.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0029_barcode_authorities.sql"),
+		}
+	case "barcodes.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "barcodes.sql"),
+		}
+	case "barcodes.sql.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "barcodes.sql.go"),
+		}
+	case "barcodes.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "barcodes.go"),
+		}
 	default:
 		// Generic fallback: try the file directly at the repo root.
 		candidates = []string{

@@ -208,6 +208,18 @@ type Querier interface {
 	InsertRefundEvent(ctx context.Context, refundID uuid.UUID, providerRefundID string, eventType string, eventPayload []byte, resultingState *string) (RefundEventRow, error)
 	GetRefundEvent(ctx context.Context, providerRefundID string, eventType string) (RefundEventRow, error)
 	CancelTicketsByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID) (int64, error)
+
+	// Barcode authority federation — multi-system barcode validation (feature #142)
+	InsertBarcodeAuthority(ctx context.Context, authorityType string, label string) (BarcodeAuthorityRow, error)
+	GetBarcodeAuthorityByID(ctx context.Context, id uuid.UUID) (BarcodeAuthorityRow, error)
+	GetBarcodeAuthorityByType(ctx context.Context, authorityType string) (BarcodeAuthorityRow, error)
+	ListBarcodeAuthorities(ctx context.Context) ([]BarcodeAuthorityRow, error)
+	InsertBarcode(ctx context.Context, authorityID uuid.UUID, externalRef string, ticketID *uuid.UUID) (BarcodeRow, error)
+	GetBarcodeByRef(ctx context.Context, authorityID uuid.UUID, externalRef string) (BarcodeRow, error)
+	GetBarcodeByID(ctx context.Context, id uuid.UUID) (BarcodeRow, error)
+	MarkBarcodeScanned(ctx context.Context, id uuid.UUID) (BarcodeRow, error)
+	RevokeBarcode(ctx context.Context, id uuid.UUID) (BarcodeRow, error)
+	ListBarcodesByTicketID(ctx context.Context, ticketID uuid.UUID) ([]BarcodeRow, error)
 }
 
 // Compile-time assertion: *Queries must implement Querier.

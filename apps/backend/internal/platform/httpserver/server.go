@@ -224,6 +224,12 @@ type Server struct {
 	// endpoints (feature #138). Nil when no PgxPool was supplied.
 	refundQueries *gen.Queries
 
+	// barcodeQueries is the sqlc Queries instance used by the barcode authority
+	// federation endpoints: authority management, barcode registration, and the
+	// scan validation endpoint (POST /v1/scan). Nil when no PgxPool was supplied.
+	// Feature #142.
+	barcodeQueries *gen.Queries
+
 	// stripeConnect is the helper used by the Stripe Connect OAuth onboarding
 	// endpoints (GET /v1/stripe/connect/authorize and …/callback). Nil when
 	// Stripe Connect is not configured. When nil these routes are not mounted.
@@ -482,6 +488,13 @@ type Options struct {
 	// Feature #138.
 	RefundQueries *gen.Queries
 
+	// BarcodeQueries injects a pre-constructed *gen.Queries for the barcode
+	// authority federation endpoints (authority management, barcode registration,
+	// scan validation). When nil and PgxPool is non-nil, gen.New(PgxPool) is used.
+	// Inject gen.New(nil) in tests that need barcode routes mounted without a real pool.
+	// Feature #142.
+	BarcodeQueries *gen.Queries
+
 	// StripeConnect injects the Stripe Connect OAuth helper used by
 	// GET /v1/stripe/connect/authorize and GET /v1/stripe/connect/callback.
 	// When nil the Stripe Connect routes are not mounted.
@@ -694,6 +707,12 @@ func New(opts Options) *Server {
 		refundQueries = gen.New(opts.PgxPool)
 	}
 
+	// sqlc Queries for barcode authority federation endpoints (feature #142).
+	barcodeQueries := opts.BarcodeQueries
+	if barcodeQueries == nil && opts.PgxPool != nil {
+		barcodeQueries = gen.New(opts.PgxPool)
+	}
+
 	// Extend the permission checker with membership-derived role resolution
 	// (feature #120 step 3). When a PgxPool is available, the DBChecker is
 	// augmented so that each Check() call unions the JWT roles with the user's
@@ -753,6 +772,7 @@ func New(opts Options) *Server {
 		ticketQueries:               ticketQueries,
 		credentialQueries:           credentialQueries,
 		refundQueries:               refundQueries,
+		barcodeQueries:              barcodeQueries,
 		stripeConnect:               opts.StripeConnect,
 		sessionStore:                opts.SessionStore,
 		maxConcurrentSessions:       opts.MaxConcurrentSessionsPerUser,
@@ -1646,6 +1666,50 @@ func (s *Server) mountV1Routes() {
 				pr.Use(permissions.RequirePermission(s.perms, "refund.approve", "refunds"))
 				pr.Post("/refunds/{id}/approve", s.handleApproveRefund)
 				pr.Post("/refunds/{id}/reject", s.handleRejectRefund)
+			})
+		}
+
+		// ── Barcode authority federation (feature #142) ────────────────────
+		//
+		// Multi-system barcode validation. Each barcode belongs to one authority
+		// (platform, legacy_bil24, external_platform, or guest_list). The scan
+		// endpoint resolves the authority context first; unknown types are rejected
+		// before any barcode lookup occurs.
+		//
+		//   POST   /v1/barcodes/authorities   — create authority (barcode.create)
+		//   GET    /v1/barcodes/authorities   — list authorities (barcode.read)
+		//   POST   /v1/barcodes               — register barcode (barcode.create)
+		//   GET    /v1/barcodes/{id}          — read barcode    (barcode.read)
+		//   DELETE /v1/barcodes/{id}          — revoke barcode  (barcode.revoke)
+		//   POST   /v1/scan                   — scan validation (barcode.scan)
+		if s.stub != nil && s.stub.Enabled() && s.barcodeQueries != nil {
+			// Read routes (barcode.read)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "barcode.read", "barcodes"))
+				pr.Get("/barcodes/authorities", s.handleListBarcodeAuthorities)
+				pr.Get("/barcodes/{id}", s.handleGetBarcode)
+			})
+			// Scan route (barcode.scan)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "barcode.scan", "barcodes"))
+				pr.Post("/scan", s.handleScan)
+			})
+		}
+		if s.stub != nil && s.stub.Enabled() && s.barcodeQueries != nil && s.pool != nil {
+			// Create authority (barcode.create)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "barcode.create", "barcodes"))
+				pr.Post("/barcodes/authorities", s.handleCreateBarcodeAuthority)
+				pr.Post("/barcodes", s.handleRegisterBarcode)
+			})
+			// Revoke barcode (barcode.revoke)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "barcode.revoke", "barcodes"))
+				pr.Delete("/barcodes/{id}", s.handleRevokeBarcode)
 			})
 		}
 
