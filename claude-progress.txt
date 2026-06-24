@@ -12451,3 +12451,80 @@ Stats before session: ~161/171 passing (based on previous sessions).
 This session: feature #150 completed -> 164/171 passing (95.9%).
 
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-24 -- Feature #154 (WordPress plugin core)
+"[scope: scaffold] [arch: 13_backend_go_initial_specification_ru.md §WordPress]
+WP plugin in separate repo: arena_event custom post type, settings page for
+feed_token + API base URL, sync events from public feed API into local cache."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #154: WordPress plugin scaffold (PHP) — arena_event CPT + feed sync.
+
+Dependencies satisfied: #150 (complimentary revocation) + #152 (public feed API).
+
+NEW FILES:
+  apps/wp-plugin/arena-events/arena-events.php
+    Main plugin entry. WordPress plugin header (Plugin Name: Arena Events,
+    Version: 0.1.0, Requires PHP: 8.0). Loads three includes via require_once.
+    Hooks into plugins_loaded → arena_events_init() to bootstrap components.
+    register_activation_hook: wp_schedule_event(hourly, arena_events_sync).
+    register_deactivation_hook: wp_unschedule_event(arena_events_sync).
+
+  apps/wp-plugin/arena-events/includes/class-post-type.php
+    Arena_Events_Post_Type class. Registers arena_event custom post type via
+    register_post_type(). Labels: "Arena Events" / "Arena Event". Supports:
+    title, editor, thumbnail, custom-fields, excerpt. Public=true,
+    show_in_rest=true, menu_icon=dashicons-tickets-alt, rewrite slug
+    arena-events.
+
+  apps/wp-plugin/arena-events/includes/class-settings.php
+    Arena_Events_Settings class. WordPress Settings API: register_setting,
+    add_settings_section, add_settings_field. Options stored:
+      - arena_feed_token (text input, sanitize_text_field)
+      - arena_api_base_url (url input, esc_url_raw, default:
+        https://api.arena.abhteam.com)
+    Admin settings page added under Settings menu. Helper methods:
+    get_feed_token() and get_api_base_url() (with DEFAULT_API_BASE_URL fallback).
+
+  apps/wp-plugin/arena-events/includes/class-sync.php
+    Arena_Events_Sync class. WP-Cron action: arena_events_sync (hourly).
+    fetch_events_page(): wp_remote_get to
+      {api_base_url}/v1/public/feeds/{feed_token}/events?page=N&per_page=100
+    Paginates until all pages fetched (reads total_pages from API response).
+    upsert_event(): find_post_by_arena_id() via WP_Query on _arena_event_id meta,
+    then wp_insert_post (new) or wp_update_post (existing). Stores meta:
+      - _arena_event_id (Arena UUIDv7)
+      - _arena_event_sessions (serialized session/tier data)
+      - _arena_event_start_date
+      - _arena_event_city_id
+    run() returns {synced: int, errors: int} summary. trigger_manual_sync() for
+    WP-CLI / admin tools.
+
+MODIFIED FILES:
+  apps/backend/internal/platform/httpserver/testfilehelpers_test.go
+    Added case entries for arena-events.php, class-post-type.php,
+    class-settings.php, class-sync.php.
+
+NEW TEST FILE:
+  apps/backend/internal/platform/httpserver/wordpress_plugin_154_test.go
+    25 tests covering all plugin components. All file-content checks
+    (no live WordPress required).
+
+VERIFICATION
+------------
+  - 25/25 TestWordPressPlugin154_* tests: PASS
+  - go build ./apps/backend/...: PASS
+  - Feature #154 marked passing in backlog
+  - git commit: 31cae8e
+
+PROGRESS METRIC
+---------------
+Stats before session: 164/171 passing (95.9%).
+This session: feature #154 -> 165/171 passing (96.5%).
+
+================================================================================
