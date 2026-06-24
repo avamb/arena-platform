@@ -10866,3 +10866,103 @@ PROGRESS METRIC
 Current stats: 135/171 passing (79.0%). Feature #133 already counted.
 
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-24 -- Feature #168 (Observability dashboard templates)
+"[scope: operational-extension] Grafana dashboard JSON templates committed to
+repo: HTTP latency by route, worker queue lag, outbox backlog, webhook delivery
+success rate, payment provider error rate."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #168: Grafana dashboard templates + Prometheus/Grafana compose services.
+
+Steps covered:
+  Step 1: Grafana dashboard JSON in ops/grafana/
+          - ops/grafana/dashboards/arena_platform_overview.json: single
+            comprehensive dashboard with 6 sections and ~20 panels:
+            * HTTP latency by route (p50/p95/p99 histogram_quantile)
+            * HTTP request rate by route and status
+            * HTTP error rate 4xx/5xx by route
+            * Handler panics stat + idempotency replays stat
+            * Worker queue lag time-series + gauge (alert threshold 60s)
+            * Outbox backlog time-series + stat (alert threshold 100)
+            * Webhook delivery success rate (1 - dead_letters / total)
+            * Webhook delivery latency p50/p95/p99
+            * Webhook retries and dead-letters
+            * Payment/checkout error rate (proxy via HTTP metrics on /v1/checkout*)
+            * DB connection pool state (open/in-use/idle)
+            * DB pool wait count and duration
+
+          - ops/grafana/provisioning/datasources/prometheus.yaml:
+            auto-provisions Prometheus datasource (uid: arena_prometheus)
+          - ops/grafana/provisioning/dashboards/dashboards.yaml:
+            auto-loads dashboards from /var/lib/grafana/dashboards/
+
+          - ops/prometheus/prometheus.yml: scrape config for arena-api:8080
+            and arena-worker:9091 at 15s intervals
+
+  Step 2: Document deployment in README
+          - Added "Observability stack" section in README.md with:
+            * Quick-start commands (docker compose --profile observability up -d)
+            * Dashboard panel inventory table
+            * Complete metric reference table (all 15 arena_* metrics)
+            * Manual Grafana import instructions
+            * Production/Dokploy deployment guidance
+
+  Step 3: Smoke test in dev compose
+          - docker-compose.yml: added prometheus and grafana services
+            under 'observability' Docker Compose profile (opt-in, do not
+            auto-start with core services)
+          - Grafana home dashboard pre-set to arena_platform_overview.json
+          - Grafana credentials: admin / admin (env vars for production override)
+          - arena_prometheus_data and arena_grafana_data volumes added
+
+METRIC NAMES USED (verified against source code)
+-------------------------------------------------
+  arena_http_request_duration_seconds (histogram, method/route/status)
+  arena_http_requests_total (counter, method/route/status)
+  arena_http_panics_total (counter)
+  arena_db_pool_open_connections (gauge)
+  arena_db_pool_idle (gauge)
+  arena_db_pool_in_use (gauge)
+  arena_db_pool_wait_count (gauge)
+  arena_db_pool_wait_duration_seconds (gauge)
+  arena_worker_jobs_lag_seconds (gauge, queue)
+  arena_outbox_backlog (gauge)
+  arena_idempotency_replays_total (counter)
+  arena_idempotency_cleanup_deleted_total (counter)
+  arena_webhook_delivery_duration_seconds (histogram, subscriber_url/event_type)
+  arena_webhook_retry_total (counter, subscriber_url/event_type)
+  arena_webhook_dead_letter_total (counter, subscriber_url/event_type)
+
+CHANGES
+-------
+New files:
+  - ops/grafana/dashboards/arena_platform_overview.json
+  - ops/grafana/provisioning/datasources/prometheus.yaml
+  - ops/grafana/provisioning/dashboards/dashboards.yaml
+  - ops/prometheus/prometheus.yml
+
+Modified files:
+  - docker-compose.yml (prometheus + grafana services + new volumes)
+  - README.md (observability stack documentation section)
+
+VERIFICATION
+------------
+  - Dashboard JSON validated as well-formed (jsonlint via npx)
+  - No Go code changes; compile unaffected
+  - git commit: 187e484
+  - Feature #168 marked passing
+
+PROGRESS METRIC
+---------------
+Stats before session: 137/171 passing (80.1%).
+This session: feature #168 completed and marked passing -> 138/171 passing.
+
+================================================================================
+
+================================================================================
