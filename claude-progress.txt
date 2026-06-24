@@ -12662,3 +12662,56 @@ This session: feature #156 -> 168/171 passing (98.2%).
 ================================================================================
 
 ================================================================================
+
+Session: 2026-06-24 -- Feature #155 (WordPress checkout integration)
+
+WHAT WAS BUILT
+--------------
+Feature #155: WP plugin tier display shortcode + checkout proxy + redirect.
+
+Dependencies: #153 (public checkout start) + #154 (WP plugin core) -- both passing.
+
+NEW FILE: apps/wp-plugin/arena-events/includes/class-checkout.php
+  Arena_Events_Checkout class. init() hooks:
+    add_shortcode('arena_event_tiers', render_tiers_shortcode)
+    add_action('rest_api_init', register_routes)
+    add_action('wp_enqueue_scripts', enqueue_scripts)
+
+  Two WP REST routes (permission_callback='__return_true'):
+    POST /wp-json/arena-events/v1/checkout/start
+      handle_checkout_start(): validates params, checks feed token (503 on missing),
+      wp_remote_post to /v1/public/feeds/{token}/checkout/start,
+      returns {checkout_session, redirect_url, local_redirect_url} on 201.
+    GET /wp-json/arena-events/v1/checkout/redirect/{session_id}
+      handle_checkout_redirect(): builds {api_base}/checkout/{session_id},
+      calls wp_redirect(302) + exit.
+
+  render_tiers_shortcode(): resolves arena_event_id, calls fetch_tier_availability
+    and render_tiers_html.
+  fetch_tier_availability(): wp_remote_get to /v1/public/feeds/{token}/sessions,
+    filters by event_id, flattens tiers with injected session_id.
+  render_tiers_html(): per-tier .arena-checkout-form with hidden tier_id/session_id,
+    qty number input, holder_email email input, .arena-checkout-btn button.
+    Sold-out tiers show .sold-out label only (no form).
+  enqueue_scripts(): inline JS (fetch + redirect) + inline CSS on arena_event pages.
+
+MODIFIED: apps/wp-plugin/arena-events/arena-events.php
+  Added require_once class-checkout.php + Arena_Events_Checkout::init() call.
+
+MODIFIED: testfilehelpers_test.go -- added case for class-checkout.php.
+
+NEW TEST FILE: wordpress_checkout_155_test.go -- 30 tests, all PASS.
+
+VERIFICATION
+------------
+  - 30/30 TestWordPressCheckout155_* tests: PASS
+  - go build ./apps/backend/...: PASS
+  - Feature #155 marked passing
+  - git commit: c1e78cd
+
+PROGRESS METRIC
+---------------
+Stats before session: 168/171 passing (98.2%).
+This session: feature #155 -> 169/171 passing (98.8%).
+
+================================================================================
