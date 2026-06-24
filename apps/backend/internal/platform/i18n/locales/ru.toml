@@ -24,3 +24,18 @@ other = "Запрос содержит некорректные данные."
 
 ["error.internal"]
 other = "Произошла непредвиденная ошибка. Пожалуйста, попробуйте позже."
+
+# ── Pricing breakdown labels (feature #163) ──────────────────────────────────
+# Used by GET /v1/checkout/{id}/price-breakdown to label each line item.
+
+["pricing.breakdown.promo_discount"]
+other = "Скидка по промокоду"
+
+["pricing.breakdown.platform_fee"]
+other = "Комиссия платформы"
+
+["pricing.breakdown.provider_fee"]
+other = "Комиссия платёжного провайдера"
+
+["pricing.breakdown.vat"]
+other = "НДС"

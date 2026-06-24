@@ -11183,3 +11183,56 @@ This session: feature #168 completed and marked passing -> 138/171 passing.
 ================================================================================
 
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-24 -- Feature #135 (Stripe adapter - direct-merchant + MOR)
+"[scope: production-api] [arch: ADR-010 (Stripe), ADR-011] Stripe adapter
+implementing PaymentProvider. Direct-merchant via Stripe Connect Standard
+(OAuth onboarding, Application Fee for our cut). MOR mode via platform account.
+Webhook signature verification. SCA/3DS handling."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #135 was already fully implemented by a previous session.
+
+This session verified the implementation was complete and all tests pass.
+
+Existing implementation (apps/backend/internal/adapters/stripe/adapter.go):
+  - Implements payments.PaymentProvider interface (compile-time guard)
+  - New(Config) constructor with 30s HTTP client timeout and sane defaults
+  - ProviderName() → "stripe"
+  - CreateIntent: POST /v1/payment_intents with capture_method=manual,
+    ApplicationFeePercent → application_fee_amount (direct-merchant),
+    Idempotency-Key header forwarded, SCA status surfaced
+  - CapturePayment: POST /v1/payment_intents/{id}/capture with optional
+    amount_to_capture for partial captures
+  - RefundPayment: POST /v1/refunds with optional amount (0=full refund) + reason
+  - HandleWebhook: VerifyStripeSignature (HMAC-SHA256 t=<ts>,v1=<sig>),
+    parses event type, ProviderIntentID, Status
+  - ConnectAuthorizeURL: builds OAuth authorize URL with response_type=code,
+    scope=read_write, client_id, redirect_uri, state params
+  - ConnectExchangeCode: POST /oauth/token → returns stripe_user_id
+
+Config struct covers:
+  - SecretKey, WebhookSecret, ClientID
+  - ApplicationFeePercent (direct-merchant Connect flow)
+  - PlatformAccountID (MOR mode)
+  - WebhookTolerance (replay protection window)
+  - BaseURL / OAuthBaseURL (overridable for tests)
+
+VERIFICATION
+------------
+  - 18/18 TestStripe135_* tests: PASS (arena-build-test Docker image)
+  - go build ./apps/backend/...: EXIT 0
+  - Feature #135 marked passing
+
+PROGRESS METRIC
+---------------
+Stats before session: 141/171 passing (82.5%).
+This session: feature #135 verified and marked passing -> 142/171 passing (83.0%).
+
+================================================================================
+

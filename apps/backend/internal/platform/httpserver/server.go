@@ -214,6 +214,12 @@ type Server struct {
 	// read endpoint. Nil when no PgxPool was supplied. Feature #139.
 	ticketQueries *gen.Queries
 
+	// stripeConnect is the helper used by the Stripe Connect OAuth onboarding
+	// endpoints (GET /v1/stripe/connect/authorize and …/callback). Nil when
+	// Stripe Connect is not configured. When nil these routes are not mounted.
+	// Feature #135.
+	stripeConnect stripeConnectHelper
+
 	// sessionStore is the Redis-backed store for refresh token tracking and fast
 	// revocation lookups. Nil when Redis is not configured or the SessionStore
 	// option was not supplied. When nil, session management degrades gracefully:
@@ -452,6 +458,15 @@ type Options struct {
 	// PgxPool is non-nil, gen.New(PgxPool) is used. Inject gen.New(nil) in tests
 	// that need ticket routes mounted without a real pool. Feature #139.
 	TicketQueries *gen.Queries
+
+	// StripeConnect injects the Stripe Connect OAuth helper used by
+	// GET /v1/stripe/connect/authorize and GET /v1/stripe/connect/callback.
+	// When nil the Stripe Connect routes are not mounted.
+	// In production, pass a *stripe.Adapter constructed from the platform's
+	// Stripe credentials. In tests, pass a minimal stub that implements
+	// stripeConnectHelper (defined in stripe_connect.go).
+	// Feature #135.
+	StripeConnect stripeConnectHelper
 
 	// SessionStore injects the Redis-backed store used for refresh token tracking
 	// and fast revocation checks (feature #118). When nil, session management
@@ -701,6 +716,7 @@ func New(opts Options) *Server {
 		checkoutQueries:             checkoutQueries,
 		paymentIntentQueries:        paymentIntentQueries,
 		ticketQueries:               ticketQueries,
+		stripeConnect:               opts.StripeConnect,
 		sessionStore:                opts.SessionStore,
 		maxConcurrentSessions:       opts.MaxConcurrentSessionsPerUser,
 	}
@@ -1472,6 +1488,27 @@ func (s *Server) mountV1Routes() {
 				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
 				pr.Use(permissions.RequirePermission(s.perms, "payment_intent.update", "payment_intents"))
 				pr.Post("/payment-intents/{id}/transition", s.handleTransitionPaymentIntent)
+			})
+		}
+
+		// ── Stripe Connect OAuth onboarding (feature #135) ─────────────────
+		//
+		// Direct-merchant channels require organizers to connect their Stripe
+		// account via Stripe Connect Standard OAuth.
+		//
+		//   GET /v1/stripe/connect/authorize — build OAuth URL (payment_intent.create)
+		//   GET /v1/stripe/connect/callback  — exchange code for account ID
+		//
+		// Routes are only mounted when StripeConnect is wired. The drift-test
+		// server does not wire StripeConnect, so these routes are absent from the
+		// chi.Walk output and from openapi.yaml (same convention as checkout/payment
+		// routes that are not yet in the spec).
+		if s.stripeConnect != nil && s.stub != nil && s.stub.Enabled() {
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "payment_intent.create", "stripe_connect"))
+				pr.Get("/stripe/connect/authorize", s.handleStripeConnectAuthorize)
+				pr.Get("/stripe/connect/callback", s.handleStripeConnectCallback)
 			})
 		}
 

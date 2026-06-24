@@ -27,3 +27,18 @@ other = "The request contains invalid data."
 
 ["error.internal"]
 other = "An unexpected error occurred. Please try again later."
+
+# ── Pricing breakdown labels (feature #163) ──────────────────────────────────
+# Used by GET /v1/checkout/{id}/price-breakdown to label each line item.
+
+["pricing.breakdown.promo_discount"]
+other = "Promo discount"
+
+["pricing.breakdown.platform_fee"]
+other = "Platform fee"
+
+["pricing.breakdown.provider_fee"]
+other = "Provider fee"
+
+["pricing.breakdown.vat"]
+other = "VAT"
