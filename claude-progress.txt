@@ -12189,3 +12189,58 @@ MODIFIED FILES:
 Stats: 158/171 -> 160/171 passing (93.6%). git commit: a8efac3
 
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-24 -- Feature #153 (Public checkout start endpoint)
+"[scope: production-api] [arch: ADR-013] POST /v1/public/feeds/{feed_token}/
+checkout/start — unauthenticated public checkout via feed token."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #153 was fully pre-implemented by a previous session. This session
+verified all tests pass and marked it as passing.
+
+Implementation already in place:
+  - apps/backend/internal/adapters/postgres/queries/public_feed.sql
+    GetPublicCheckoutContext query: validates session belongs to published event
+    on given feed token; returns org_id + sales_channel_id for checkout context.
+
+  - apps/backend/internal/adapters/postgres/gen/public_feed.sql.go
+    PublicCheckoutContextRow struct + GetPublicCheckoutContext function.
+
+  - apps/backend/internal/adapters/postgres/gen/querier.go
+    GetPublicCheckoutContext in Querier interface.
+
+  - apps/backend/internal/platform/httpserver/public_feed_checkout.go
+    handlePublicFeedCheckoutStart: full 10-step flow:
+    1. Rate limit (shared publicFeedRL: 100/min per token, 300/min per IP)
+    2. Parse + validate body (tier_id UUID, session_id UUID, qty 1-50, holder_email)
+    3. GetPublicCheckoutContext — 403 if session not on feed (ADR-013)
+    4. GetTicketTierByID — 404 if tier not in session
+    5. Determine unit price (free/fixed; PWYW → 422 not supported on public path)
+    6. Optional promo code validation
+    7. ComputePricing pipeline
+    8. Atomic tx: ReserveCapacity + InsertReservation
+    9. InsertCheckoutSession + ConfirmCheckoutSession (pricing_confirmed)
+    10. redirect_url: /checkout/{id} (paid) or /checkout/{id}/complete (free)
+
+  - server.go route: POST /v1/public/feeds/{feed_token}/checkout/start
+    Mounted when publicFeedQueries + checkoutQueries + reservationQueries non-nil.
+
+VERIFICATION
+------------
+  - 13/13 TestPublicCheckout153_* tests: PASS
+  - 7/7 TestPublicCheckout153_Step* tests: PASS
+  - go build ./apps/backend/...: clean (no errors)
+  - Feature #153 marked passing in backlog
+  - git commit: a978dd4
+
+PROGRESS METRIC
+---------------
+Stats before session: 160/171 passing (93.6%).
+This session: feature #153 verified -> 161/171 passing (94.2%).
+
+================================================================================
