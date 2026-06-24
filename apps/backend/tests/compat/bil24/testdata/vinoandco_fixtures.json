@@ -1,0 +1,407 @@
+[
+  {
+    "name": "get_all_actions_ru_locale",
+    "description": "GET_ALL_ACTIONS as sent by Vino&Co integration — Russian locale, partner fid/token",
+    "request": {
+      "command": "GET_ALL_ACTIONS",
+      "fid": "1271",
+      "token": "7c696b4af364928202dd",
+      "locale": "ru-RU"
+    },
+    "expect": {
+      "http_status": 200,
+      "result_code_not_eq": -1,
+      "command_echo": "GET_ALL_ACTIONS",
+      "required_response_fields": ["resultCode", "description", "command"]
+    }
+  },
+  {
+    "name": "get_all_actions_en_locale",
+    "description": "GET_ALL_ACTIONS with English locale — Vino&Co also serves English-language customers",
+    "request": {
+      "command": "GET_ALL_ACTIONS",
+      "fid": "1271",
+      "token": "7c696b4af364928202dd",
+      "locale": "en-US"
+    },
+    "expect": {
+      "http_status": 200,
+      "result_code_not_eq": -1,
+      "command_echo": "GET_ALL_ACTIONS",
+      "required_response_fields": ["resultCode", "description", "command"]
+    }
+  },
+  {
+    "name": "get_all_actions_missing_locale",
+    "description": "GET_ALL_ACTIONS without locale field — must default to 'en' without error",
+    "request": {
+      "command": "GET_ALL_ACTIONS",
+      "fid": "1271",
+      "token": "7c696b4af364928202dd"
+    },
+    "expect": {
+      "http_status": 200,
+      "result_code_not_eq": -1,
+      "command_echo": "GET_ALL_ACTIONS",
+      "required_response_fields": ["resultCode", "description", "command"]
+    }
+  },
+  {
+    "name": "get_seat_list_valid_session_uuid",
+    "description": "GET_SEAT_LIST with a valid UUID actionEventId — Vino&Co sends platform UUIDs after migration",
+    "request": {
+      "command": "GET_SEAT_LIST",
+      "fid": "1271",
+      "token": "7c696b4af364928202dd",
+      "actionEventId": "018f1e2a-3c4d-7e5f-a6b7-c8d9e0f1a2b3",
+      "locale": "ru-RU"
+    },
+    "expect": {
+      "http_status": 200,
+      "result_code_not_eq": -1,
+      "result_code_not_eq_2": -2,
+      "command_echo": "GET_SEAT_LIST",
+      "required_response_fields": ["resultCode", "description", "command"]
+    }
+  },
+  {
+    "name": "get_seat_list_missing_action_event_id",
+    "description": "GET_SEAT_LIST without actionEventId — Vino&Co integration must always provide this field",
+    "request": {
+      "command": "GET_SEAT_LIST",
+      "fid": "1271",
+      "token": "7c696b4af364928202dd",
+      "locale": "ru-RU"
+    },
+    "expect": {
+      "http_status": 200,
+      "result_code_eq": -2,
+      "command_echo": "GET_SEAT_LIST",
+      "required_response_fields": ["resultCode", "description", "command"]
+    }
+  },
+  {
+    "name": "get_seat_list_legacy_numeric_id",
+    "description": "GET_SEAT_LIST with a legacy Bil24 numeric actionEventId — returns -2 until translation table is implemented",
+    "request": {
+      "command": "GET_SEAT_LIST",
+      "fid": "1271",
+      "token": "7c696b4af364928202dd",
+      "actionEventId": "4827361",
+      "locale": "ru-RU"
+    },
+    "expect": {
+      "http_status": 200,
+      "result_code_eq": -2,
+      "command_echo": "GET_SEAT_LIST",
+      "required_response_fields": ["resultCode", "description", "command"]
+    }
+  },
+  {
+    "name": "get_order_info_valid_order_uuid",
+    "description": "GET_ORDER_INFO with a valid UUID orderId — Vino&Co retrieves order details after migration",
+    "request": {
+      "command": "GET_ORDER_INFO",
+      "fid": "1271",
+      "token": "7c696b4af364928202dd",
+      "orderId": "018f1e2a-3c4d-7e5f-a6b7-c8d9e0f1a2b4",
+      "locale": "ru-RU"
+    },
+    "expect": {
+      "http_status": 200,
+      "result_code_not_eq": -2,
+      "command_echo": "GET_ORDER_INFO",
+      "required_response_fields": ["resultCode", "description", "command"]
+    }
+  },
+  {
+    "name": "get_order_info_missing_order_id",
+    "description": "GET_ORDER_INFO without orderId — integration must always supply it",
+    "request": {
+      "command": "GET_ORDER_INFO",
+      "fid": "1271",
+      "token": "7c696b4af364928202dd",
+      "locale": "ru-RU"
+    },
+    "expect": {
+      "http_status": 200,
+      "result_code_eq": -2,
+      "command_echo": "GET_ORDER_INFO",
+      "required_response_fields": ["resultCode", "description", "command"]
+    }
+  },
+  {
+    "name": "get_order_info_legacy_order_id",
+    "description": "GET_ORDER_INFO with a legacy numeric orderId — -2 until translation table is implemented",
+    "request": {
+      "command": "GET_ORDER_INFO",
+      "fid": "1271",
+      "token": "7c696b4af364928202dd",
+      "orderId": "ORD-20240115-9921",
+      "locale": "ru-RU"
+    },
+    "expect": {
+      "http_status": 200,
+      "result_code_eq": -2,
+      "command_echo": "GET_ORDER_INFO",
+      "required_response_fields": ["resultCode", "description", "command"]
+    }
+  },
+  {
+    "name": "create_order_ext_full_request",
+    "description": "CREATE_ORDER_EXT as sent by Vino&Co widget — full wine tasting event booking",
+    "request": {
+      "command": "CREATE_ORDER_EXT",
+      "fid": "1271",
+      "token": "7c696b4af364928202dd",
+      "actionEventId": "018f1e2a-3c4d-7e5f-a6b7-c8d9e0f1a2b5",
+      "categoryPriceId": "018f1e2a-3c4d-7e5f-a6b7-c8d9e0f1a2b6",
+      "quantity": 2,
+      "email": "customer@vinoandco.ru",
+      "locale": "ru-RU"
+    },
+    "expect": {
+      "http_status": 200,
+      "result_code_eq": 0,
+      "command_echo": "CREATE_ORDER_EXT",
+      "required_response_fields": ["resultCode", "description", "command", "orderId"]
+    }
+  },
+  {
+    "name": "create_order_ext_quantity_one_default",
+    "description": "CREATE_ORDER_EXT with quantity=0 — must be treated as 1 (Vino&Co omits quantity for single tickets)",
+    "request": {
+      "command": "CREATE_ORDER_EXT",
+      "fid": "1271",
+      "token": "7c696b4af364928202dd",
+      "actionEventId": "018f1e2a-3c4d-7e5f-a6b7-c8d9e0f1a2b5",
+      "categoryPriceId": "018f1e2a-3c4d-7e5f-a6b7-c8d9e0f1a2b6",
+      "quantity": 0,
+      "email": "solo@vinoandco.ru",
+      "locale": "ru-RU"
+    },
+    "expect": {
+      "http_status": 200,
+      "result_code_eq": 0,
+      "command_echo": "CREATE_ORDER_EXT",
+      "required_response_fields": ["resultCode", "description", "command", "orderId"]
+    }
+  },
+  {
+    "name": "create_order_ext_missing_session",
+    "description": "CREATE_ORDER_EXT without actionEventId — Vino&Co integration bug regression",
+    "request": {
+      "command": "CREATE_ORDER_EXT",
+      "fid": "1271",
+      "token": "7c696b4af364928202dd",
+      "categoryPriceId": "018f1e2a-3c4d-7e5f-a6b7-c8d9e0f1a2b6",
+      "quantity": 1,
+      "email": "customer@vinoandco.ru",
+      "locale": "ru-RU"
+    },
+    "expect": {
+      "http_status": 200,
+      "result_code_eq": -2,
+      "command_echo": "CREATE_ORDER_EXT",
+      "required_response_fields": ["resultCode", "description", "command"]
+    }
+  },
+  {
+    "name": "create_order_ext_missing_tier",
+    "description": "CREATE_ORDER_EXT without categoryPriceId — Vino&Co integration bug regression",
+    "request": {
+      "command": "CREATE_ORDER_EXT",
+      "fid": "1271",
+      "token": "7c696b4af364928202dd",
+      "actionEventId": "018f1e2a-3c4d-7e5f-a6b7-c8d9e0f1a2b5",
+      "quantity": 1,
+      "email": "customer@vinoandco.ru",
+      "locale": "ru-RU"
+    },
+    "expect": {
+      "http_status": 200,
+      "result_code_eq": -2,
+      "command_echo": "CREATE_ORDER_EXT",
+      "required_response_fields": ["resultCode", "description", "command"]
+    }
+  },
+  {
+    "name": "scan_ticket_barcode_string",
+    "description": "SCAN_TICKET with a barcode string — Vino&Co scanners send the printed barcode value",
+    "request": {
+      "command": "SCAN_TICKET",
+      "fid": "1271",
+      "token": "7c696b4af364928202dd",
+      "ticketId": "BCR-VNC-20240115-001",
+      "locale": "ru-RU"
+    },
+    "expect": {
+      "http_status": 200,
+      "result_code_not_eq": -2,
+      "command_echo": "SCAN_TICKET",
+      "required_response_fields": ["resultCode", "description", "command"]
+    }
+  },
+  {
+    "name": "scan_ticket_uuid_barcode",
+    "description": "SCAN_TICKET with a UUID ticket identifier — platform-native barcodes after migration",
+    "request": {
+      "command": "SCAN_TICKET",
+      "fid": "1271",
+      "token": "7c696b4af364928202dd",
+      "ticketId": "018f1e2a-3c4d-7e5f-a6b7-c8d9e0f1a2b7",
+      "locale": "ru-RU"
+    },
+    "expect": {
+      "http_status": 200,
+      "result_code_not_eq": -2,
+      "command_echo": "SCAN_TICKET",
+      "required_response_fields": ["resultCode", "description", "command"]
+    }
+  },
+  {
+    "name": "scan_ticket_missing_ticket_id",
+    "description": "SCAN_TICKET without ticketId — scanner integration must always provide barcode value",
+    "request": {
+      "command": "SCAN_TICKET",
+      "fid": "1271",
+      "token": "7c696b4af364928202dd",
+      "locale": "ru-RU"
+    },
+    "expect": {
+      "http_status": 200,
+      "result_code_eq": -2,
+      "command_echo": "SCAN_TICKET",
+      "required_response_fields": ["resultCode", "description", "command"]
+    }
+  },
+  {
+    "name": "cancel_order_valid_uuid",
+    "description": "CANCEL_ORDER with a valid UUID orderId — Vino&Co customer cancellation flow",
+    "request": {
+      "command": "CANCEL_ORDER",
+      "fid": "1271",
+      "token": "7c696b4af364928202dd",
+      "orderId": "018f1e2a-3c4d-7e5f-a6b7-c8d9e0f1a2b8",
+      "locale": "ru-RU"
+    },
+    "expect": {
+      "http_status": 200,
+      "result_code_eq": 0,
+      "command_echo": "CANCEL_ORDER",
+      "required_response_fields": ["resultCode", "description", "command", "orderId"]
+    }
+  },
+  {
+    "name": "cancel_order_missing_order_id",
+    "description": "CANCEL_ORDER without orderId — Vino&Co bug regression: must return -2 not panic",
+    "request": {
+      "command": "CANCEL_ORDER",
+      "fid": "1271",
+      "token": "7c696b4af364928202dd",
+      "locale": "ru-RU"
+    },
+    "expect": {
+      "http_status": 200,
+      "result_code_eq": -2,
+      "command_echo": "CANCEL_ORDER",
+      "required_response_fields": ["resultCode", "description", "command"]
+    }
+  },
+  {
+    "name": "cancel_order_legacy_opaque_id",
+    "description": "CANCEL_ORDER with a legacy Bil24 order reference — -2 until translation table implemented",
+    "request": {
+      "command": "CANCEL_ORDER",
+      "fid": "1271",
+      "token": "7c696b4af364928202dd",
+      "orderId": "BIL24-ORD-779234",
+      "locale": "ru-RU"
+    },
+    "expect": {
+      "http_status": 200,
+      "result_code_eq": -2,
+      "command_echo": "CANCEL_ORDER",
+      "required_response_fields": ["resultCode", "description", "command"]
+    }
+  },
+  {
+    "name": "unknown_command_vinoandco",
+    "description": "Unknown command — Vino&Co may send GET_ACTIONS_V2 (extended catalog); must return -1 not 500",
+    "request": {
+      "command": "GET_ACTIONS_V2",
+      "fid": "1271",
+      "token": "7c696b4af364928202dd",
+      "locale": "ru-RU"
+    },
+    "expect": {
+      "http_status": 200,
+      "result_code_eq": -1,
+      "command_echo": "GET_ACTIONS_V2",
+      "required_response_fields": ["resultCode", "description", "command"]
+    }
+  },
+  {
+    "name": "missing_command_field",
+    "description": "Request without command field — malformed Vino&Co client must receive -2 not 500",
+    "request": {
+      "fid": "1271",
+      "token": "7c696b4af364928202dd",
+      "locale": "ru-RU"
+    },
+    "expect": {
+      "http_status": 200,
+      "result_code_eq": -2,
+      "required_response_fields": ["resultCode", "description", "command"]
+    }
+  },
+  {
+    "name": "command_case_insensitive_lowercase",
+    "description": "Lowercase command names — some Vino&Co client versions send lowercase; must dispatch correctly",
+    "request": {
+      "command": "get_all_actions",
+      "fid": "1271",
+      "token": "7c696b4af364928202dd",
+      "locale": "ru-RU"
+    },
+    "expect": {
+      "http_status": 200,
+      "result_code_not_eq": -1,
+      "command_echo": "GET_ALL_ACTIONS",
+      "required_response_fields": ["resultCode", "description", "command"]
+    }
+  },
+  {
+    "name": "command_case_insensitive_mixed",
+    "description": "Mixed-case command name — defensive Vino&Co integration sends inconsistent casing",
+    "request": {
+      "command": "Get_Seat_List",
+      "fid": "1271",
+      "token": "7c696b4af364928202dd",
+      "actionEventId": "018f1e2a-3c4d-7e5f-a6b7-c8d9e0f1a2b3",
+      "locale": "ru-RU"
+    },
+    "expect": {
+      "http_status": 200,
+      "result_code_not_eq": -1,
+      "result_code_not_eq_2": -2,
+      "command_echo": "GET_SEAT_LIST",
+      "required_response_fields": ["resultCode", "description", "command"]
+    }
+  },
+  {
+    "name": "content_type_json_response",
+    "description": "All Vino&Co responses must be application/json — legacy client checks this header",
+    "request": {
+      "command": "GET_ALL_ACTIONS",
+      "fid": "1271",
+      "token": "7c696b4af364928202dd",
+      "locale": "ru-RU"
+    },
+    "expect": {
+      "http_status": 200,
+      "content_type_prefix": "application/json",
+      "required_response_fields": ["resultCode", "description", "command"]
+    }
+  }
+]
