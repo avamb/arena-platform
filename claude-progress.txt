@@ -5,6 +5,101 @@ arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
 --------------------------------------------------------------------------------
+Session: 2026-06-24 -- Feature #141 (Ticket delivery via email)
+"[scope: production-api] [arch: 13_backend_go_initial_specification_ru.md §Delivery]
+On ticket issuance, queue delivery job (worker): render email with PDF attachment +
+QR image inline, send via configured SMTP/transactional provider. SMS/wallet deferred."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #141 was largely pre-implemented by a previous session. This session
+verified all components were in place and all tests pass.
+
+Existing implementation:
+  Step 1: Migration 0030_delivery_jobs.sql
+          - delivery_jobs table with uuidv7() PK
+          - ticket_id FK -> tickets(id) ON DELETE CASCADE
+          - status text CHECK ('pending'|'sent'|'failed')
+          - attempts int, last_error text nullable
+          - queued_at, sent_at, created_at, updated_at timestamptz
+          - Indexes: delivery_jobs_ticket_id, delivery_jobs_status_pending (partial)
+          - RBAC seeds: delivery.read/manage for admin + org_admin; delivery.read for member
+
+  Step 2: Worker job (platform/delivery/handler.go)
+          - JobType = "ticket.deliver"
+          - Payload struct: {ticket_id string}
+          - HandlerOptions: TicketQueries, DeliveryJobQueries, CredentialQueries, Sender
+          - Decode payload → validate UUID → load delivery_jobs row →
+            resolve recipient email → generate PDF credential → build MIME email →
+            send via email.Sender → update status='sent' → audit log
+          - Transient SMTP errors return error (worker retries via max_attempts)
+          - Permanent failures (malformed payload, invalid UUID) return nil (no retry)
+          - renderMinimalPDF: pure Go PDF/1.4 generation (no external deps)
+          - renderTicketEmailHTML/Text: minimal HTML/plain-text email templates
+
+  Step 3: Email sender (adapters/email/sender.go)
+          - Sender interface: Send(ctx, Message) error
+          - Message: To, Subject, HTMLBody, TextBody, Attachments
+          - Attachment: Filename, ContentType, Data
+          - LogSender: writes to slog.Logger (dev/test/CI, always returns nil)
+          - SMTPSender: delivers via net/smtp (no external deps)
+            * NewSMTPSender(SMTPConfig)
+            * Implicit TLS (port 465) or STARTTLS
+            * PLAIN auth when Username non-empty
+            * buildMIMEMessage: multipart/mixed with text/plain + text/html + attachments
+
+  Step 4: Server wiring
+          - server.go: deliveryJobQueries, workerPool, emailSender fields
+          - Options: DeliveryJobQueries, WorkerPool, EmailSender
+          - delivery_enqueue.go: enqueueDeliveryJobs (best-effort, nil-safe)
+            * Inserts delivery_jobs row and worker_jobs row per ticket
+            * Called from checkout.go (free path), payment_intents.go (webhook), tickets.go
+
+  Step 5: DB queries
+          - delivery_jobs.sql: InsertDeliveryJob, GetDeliveryJobByTicketID,
+            UpdateDeliveryJobStatus, ListPendingDeliveryJobs
+          - delivery_jobs.sql.go: DeliveryJobRow struct, all 4 functions
+          - querier.go: all 4 methods in Querier interface
+
+CHANGES
+-------
+New files:
+  - apps/backend/internal/migrations/sql/0030_delivery_jobs.sql
+  - apps/backend/internal/adapters/postgres/queries/delivery_jobs.sql
+  - apps/backend/internal/adapters/postgres/gen/delivery_jobs.sql.go
+  - apps/backend/internal/adapters/email/sender.go
+  - apps/backend/internal/platform/delivery/handler.go
+  - apps/backend/internal/platform/httpserver/delivery_enqueue.go
+  - apps/backend/internal/platform/httpserver/delivery_141_test.go
+
+Modified files:
+  - apps/backend/internal/adapters/postgres/gen/querier.go (+4 delivery methods)
+  - apps/backend/internal/platform/config/config.go (SMTP config fields)
+  - apps/backend/cmd/arena-worker/main.go (delivery handler registration)
+  - apps/backend/internal/platform/httpserver/server.go (delivery fields + wiring)
+  - apps/backend/internal/platform/httpserver/checkout.go (enqueueDeliveryJobs call)
+  - apps/backend/internal/platform/httpserver/payment_intents.go (enqueueDeliveryJobs call)
+  - apps/backend/internal/platform/httpserver/tickets.go (enqueueDeliveryJobs call)
+  - apps/backend/internal/platform/httpserver/testfilehelpers_test.go (+delivery cases)
+
+VERIFICATION
+------------
+  - 50+/50+ TestDelivery141_* tests: PASS (golang:1.24-alpine, 0.211s)
+  - go build ./...: EXIT 0 (full build clean)
+  - Feature #141 marked passing in backlog
+  - git commit: 3b5d045
+
+PROGRESS METRIC
+---------------
+Stats before session: 146/171 passing (85.4%).
+This session: feature #141 completed and marked passing -> 147/171 passing.
+
+================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
 Session: 2026-06-24 -- Feature #139 (Ticket issuance on payment success / free checkout)
 "tickets table (uuidv7 PK, checkout_session_id FK, session_id FK, tier_id FK,
 holder_email, status: active/cancelled/transferred). Issue tickets on
