@@ -1,0 +1,181 @@
+name: Load Test (k6)
+
+# Triggered manually OR when a PR receives the "load-test" label.
+# This keeps load tests opt-in so they don't run on every PR.
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'API base URL to test'
+        required: false
+        default: 'http://localhost:8080'
+      feed_token:
+        description: 'Public feed token (optional; skips feed test if absent)'
+        required: false
+        default: ''
+      vus:
+        description: 'Virtual users per scenario'
+        required: false
+        default: '20'
+      duration:
+        description: 'Test duration per scenario (e.g. 30s, 1m)'
+        required: false
+        default: '30s'
+
+  pull_request:
+    types: [labeled]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Guard: only run when the "load-test" label is applied to a PR,
+  # or when triggered manually via workflow_dispatch.
+  # ─────────────────────────────────────────────────────────────────────────
+  check-label:
+    name: Check trigger
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.decide.outputs.should_run }}
+    steps:
+      - name: Decide whether to run
+        id: decide
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.event.label.name }}" == "load-test" ]]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Load tests: spin up the full stack in Docker, then run k6 scenarios.
+  # ─────────────────────────────────────────────────────────────────────────
+  load-test:
+    name: k6 Load Tests
+    runs-on: ubuntu-latest
+    needs: check-label
+    if: needs.check-label.outputs.should_run == 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Start the full stack ─────────────────────────────────────────────
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Start services
+        run: |
+          cp .env.example .env
+          docker compose up -d --build --wait
+        env:
+          COMPOSE_DOCKER_CLI_BUILD: 1
+
+      - name: Wait for API readiness
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/readyz; then
+              echo "API is ready"
+              break
+            fi
+            echo "Waiting for API... ($i/30)"
+            sleep 2
+          done
+
+      # ── Install k6 ───────────────────────────────────────────────────────
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring \
+            --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+            --keyserver hkp://keyserver.ubuntu.com:80 \
+            --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] \
+            https://dl.k6.io/deb stable main" | \
+            sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update -q
+          sudo apt-get install -q k6
+
+      # ── Run load tests ────────────────────────────────────────────────────
+      - name: Create results directory
+        run: mkdir -p ops/loadtest/results
+
+      - name: Run scanner load test
+        run: |
+          BASE_URL=${{ github.event.inputs.base_url || 'http://localhost:8080' }} \
+          VUS=${{ github.event.inputs.vus || '20' }} \
+          DURATION=${{ github.event.inputs.duration || '30s' }} \
+          k6 run ops/loadtest/scanner.js \
+            --out json=ops/loadtest/results/scanner-raw.json \
+            --summary-export=ops/loadtest/results/scanner-summary.json
+        continue-on-error: true  # collect results even if thresholds fail
+
+      - name: Run public feed load test
+        if: ${{ github.event.inputs.feed_token != '' || env.FEED_TOKEN != '' }}
+        run: |
+          BASE_URL=${{ github.event.inputs.base_url || 'http://localhost:8080' }} \
+          FEED_TOKEN=${{ github.event.inputs.feed_token || env.FEED_TOKEN }} \
+          VUS=${{ github.event.inputs.vus || '20' }} \
+          DURATION=${{ github.event.inputs.duration || '30s' }} \
+          k6 run ops/loadtest/feed.js \
+            --out json=ops/loadtest/results/feed-raw.json \
+            --summary-export=ops/loadtest/results/feed-summary.json
+        continue-on-error: true
+        env:
+          FEED_TOKEN: ${{ secrets.LOAD_TEST_FEED_TOKEN }}
+
+      # Checkout test requires pre-seeded data; run only when secrets are set.
+      - name: Run checkout load test
+        if: ${{ env.ORG_ID != '' }}
+        run: |
+          BASE_URL=${{ github.event.inputs.base_url || 'http://localhost:8080' }} \
+          ORG_ID=${{ env.ORG_ID }} \
+          CHANNEL_ID=${{ env.CHANNEL_ID }} \
+          RESERVATION_ID=${{ env.RESERVATION_ID }} \
+          VUS=${{ github.event.inputs.vus || '10' }} \
+          DURATION=${{ github.event.inputs.duration || '30s' }} \
+          k6 run ops/loadtest/checkout.js \
+            --out json=ops/loadtest/results/checkout-raw.json \
+            --summary-export=ops/loadtest/results/checkout-summary.json
+        continue-on-error: true
+        env:
+          ORG_ID:         ${{ secrets.LOAD_TEST_ORG_ID }}
+          CHANNEL_ID:     ${{ secrets.LOAD_TEST_CHANNEL_ID }}
+          RESERVATION_ID: ${{ secrets.LOAD_TEST_RESERVATION_ID }}
+
+      # ── Upload results as artifact ────────────────────────────────────────
+      - name: Upload load test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: load-test-results
+          path: ops/loadtest/results/
+          retention-days: 30
+
+      # ── Print summary to job log ──────────────────────────────────────────
+      - name: Print results summary
+        if: always()
+        run: |
+          echo "=== Load Test Results ==="
+          for f in ops/loadtest/results/*-summary.json; do
+            [ -f "$f" ] || continue
+            echo ""
+            echo "--- $(basename $f) ---"
+            if command -v jq &>/dev/null; then
+              jq -r '
+                "  http_req_duration p95: " + (.metrics.http_req_duration.values["p(95)" | tostring] // "N/A") + " ms",
+                "  http_req_failed rate: " + ((.metrics.http_req_failed.values.rate // 0) * 100 | tostring) + "%"
+              ' "$f" 2>/dev/null || cat "$f"
+            else
+              cat "$f"
+            fi
+          done
+
+      # ── Stop services ────────────────────────────────────────────────────
+      - name: Stop services
+        if: always()
+        run: docker compose down -v

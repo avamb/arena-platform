@@ -16,3 +16,9 @@ scrape_configs:
       - targets: ['worker:9091']
     metrics_path: /metrics
     scrape_interval: 15s
+
+  # k6 Prometheus remote-write receiver (optional; used during load test runs).
+  # k6 pushes metrics via: k6 run --out experimental-prometheus-rw <script>
+  # with K6_PROMETHEUS_RW_SERVER_URL=http://prometheus:9090/api/v1/write
+  # The metrics land as k6_* series and are displayed on the Load Test
+  # Results row in the arena_platform_overview Grafana dashboard.

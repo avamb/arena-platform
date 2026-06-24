@@ -55,3 +55,7 @@ logs/
 # Playwright (legacy)
 .playwright-cli/
 .playwright/
+
+# k6 load test results (generated artifacts; not source)
+ops/loadtest/results/*.json
+ops/loadtest/results/*.gz
