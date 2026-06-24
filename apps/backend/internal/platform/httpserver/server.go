@@ -244,6 +244,16 @@ type Server struct {
 	// Feature #142.
 	barcodeQueries *gen.Queries
 
+	// reportQueries is the sqlc Queries instance used by the post-event report
+	// generation endpoints (GET /v1/events/{id}/report, POST /v1/events/{id}/report).
+	// Nil when no PgxPool was supplied. Feature #159.
+	reportQueries *gen.Queries
+
+	// billingQueries is the sqlc Queries instance used by the service billing
+	// ledger endpoints (tariffs, usage_records, invoices, invoice_lines).
+	// Nil when no PgxPool was supplied. Feature #161.
+	billingQueries *gen.Queries
+
 	// deliveryJobQueries is the sqlc Queries instance used to insert and update
 	// delivery_jobs rows. When non-nil, issueTicketsForCheckout enqueues a
 	// ticket.deliver worker job for each issued ticket that has a recipient email.
@@ -544,6 +554,18 @@ type Options struct {
 	// Feature #142.
 	BarcodeQueries *gen.Queries
 
+	// ReportQueries injects a pre-constructed *gen.Queries for the post-event report
+	// generation endpoints (GET/POST /v1/events/{id}/report). When nil and PgxPool
+	// is non-nil, gen.New(PgxPool) is used. Inject gen.New(nil) in tests that need
+	// report routes mounted without a real pool. Feature #159.
+	ReportQueries *gen.Queries
+
+	// BillingQueries injects a pre-constructed *gen.Queries for the service billing
+	// ledger endpoints (tariffs, usage_records, invoices, invoice_lines). When nil
+	// and PgxPool is non-nil, gen.New(PgxPool) is used. Inject gen.New(nil) in tests
+	// that need billing routes mounted without a real pool. Feature #161.
+	BillingQueries *gen.Queries
+
 	// DeliveryJobQueries injects a pre-constructed *gen.Queries for the
 	// delivery_jobs tracking table. When nil and PgxPool is non-nil,
 	// gen.New(PgxPool) is used. Inject gen.New(nil) in tests that want
@@ -784,6 +806,18 @@ func New(opts Options) *Server {
 		barcodeQueries = gen.New(opts.PgxPool)
 	}
 
+	// sqlc Queries for post-event report endpoints (feature #159).
+	reportQueries := opts.ReportQueries
+	if reportQueries == nil && opts.PgxPool != nil {
+		reportQueries = gen.New(opts.PgxPool)
+	}
+
+	// sqlc Queries for service billing ledger endpoints (feature #161).
+	billingQueries := opts.BillingQueries
+	if billingQueries == nil && opts.PgxPool != nil {
+		billingQueries = gen.New(opts.PgxPool)
+	}
+
 	// sqlc Queries for delivery_jobs table (feature #141).
 	deliveryJobQueries := opts.DeliveryJobQueries
 	if deliveryJobQueries == nil && opts.PgxPool != nil {
@@ -854,6 +888,8 @@ func New(opts Options) *Server {
 		refundQueries:               refundQueries,
 		barcodeQueries:              barcodeQueries,
 		deliveryJobQueries:          deliveryJobQueries,
+		reportQueries:               reportQueries,
+		billingQueries:              billingQueries,
 		workerPool:                  opts.WorkerPool,
 		emailSender:                 opts.EmailSender,
 		stripeConnect:               opts.StripeConnect,
@@ -1797,6 +1833,25 @@ func (s *Server) mountV1Routes() {
 			})
 		}
 
+		// ── Post-event reports (feature #159) ──────────────────────────────────
+		//
+		// Report endpoints. Auth + permission enforced by route-level middleware.
+		//
+		//   GET  /v1/events/{event_id}/report  — read latest report + lines (report.read)
+		//   POST /v1/events/{event_id}/report  — trigger on-demand generation (report.generate)
+		if s.stub != nil && s.stub.Enabled() && s.reportQueries != nil {
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "report.read", "reports"))
+				pr.Get("/events/{event_id}/report", s.handleGetEventReport)
+			})
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "report.generate", "reports"))
+				pr.Post("/events/{event_id}/report", s.handleTriggerEventReport)
+			})
+		}
+
 		// ── Public feed events API (feature #152) ──────────────────────────────
 		//
 		// Unauthenticated read-only endpoints. The feed token in the path is
@@ -1810,6 +1865,42 @@ func (s *Server) mountV1Routes() {
 		if s.publicFeedQueries != nil {
 			r.Get("/public/feeds/{feed_token}/events", s.handlePublicFeedEvents)
 			r.Get("/public/feeds/{feed_token}/events/{event_id}", s.handlePublicFeedEvent)
+		}
+
+		// ── Service billing ledger (feature #161) ───────────────────────────────
+		//
+		// Billing is about platform service fees charged to organizers/agents.
+		// Separate from customer ticket payments (those are in the payment layer).
+		//
+		//   POST /v1/billing/tariffs                            — create tariff version (billing.admin)
+		//   GET  /v1/billing/tariffs/active                    — get active tariff     (billing.read)
+		//   GET  /v1/organizations/{org_id}/billing/usage      — current usage         (billing.read)
+		//   POST /v1/billing/invoices/generate                 — month-end batch       (billing.admin)
+		//   GET  /v1/organizations/{org_id}/billing/invoices   — list invoices         (billing.read)
+		//   GET  /v1/billing/invoices/{id}                     — get invoice + lines   (billing.read)
+		//   POST /v1/billing/invoices/{id}/issue               — draft → issued        (billing.admin)
+		//   POST /v1/billing/invoices/{id}/pay                 — issued → paid         (billing.admin)
+		//   POST /v1/billing/invoices/{id}/void                — void                  (billing.admin)
+		if s.stub != nil && s.stub.Enabled() && s.billingQueries != nil {
+			// billing.read endpoints
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "billing.read", "billing"))
+				pr.Get("/billing/tariffs/active", s.handleGetActiveTariff)
+				pr.Get("/billing/invoices/{id}", s.handleGetInvoice)
+				pr.Get("/organizations/{org_id}/billing/usage", s.handleGetUsage)
+				pr.Get("/organizations/{org_id}/billing/invoices", s.handleListOrgInvoices)
+			})
+			// billing.admin endpoints
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "billing.admin", "billing"))
+				pr.Post("/billing/tariffs", s.handleCreateTariff)
+				pr.Post("/billing/invoices/generate", s.handleGenerateInvoices)
+				pr.Post("/billing/invoices/{id}/issue", s.handleIssueInvoice)
+				pr.Post("/billing/invoices/{id}/pay", s.handlePayInvoice)
+				pr.Post("/billing/invoices/{id}/void", s.handleVoidInvoice)
+			})
 		}
 	})
 }

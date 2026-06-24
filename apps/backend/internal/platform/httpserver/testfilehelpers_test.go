@@ -513,6 +513,44 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "public_feed.go"),
 		}
+	// Post-event report generation (feature #159)
+	case "0032_event_reports.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0032_event_reports.sql"),
+		}
+	case "event_reports.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "event_reports.sql"),
+		}
+	case "event_reports.sql.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "event_reports.sql.go"),
+		}
+	case "event_reports.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "event_reports.go"),
+		}
+	case "reporting_handler.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "reporting", "handler.go"),
+		}
+	// Service billing ledger (feature #161)
+	case "0033_billing_ledger.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0033_billing_ledger.sql"),
+		}
+	case "billing_ledger.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "billing_ledger.sql"),
+		}
+	case "billing_ledger.sql.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "billing_ledger.sql.go"),
+		}
+	case "billing_ledger.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "billing_ledger.go"),
+		}
 	default:
 		// Generic fallback: try the file directly at the repo root.
 		candidates = []string{
