@@ -67,3 +67,30 @@ SELECT id, authority_id, external_ref, ticket_id, status, scanned_at, created_at
 FROM   barcodes
 WHERE  ticket_id = $1
 ORDER BY created_at ASC;
+
+-- name: ListSnapshotBarcodesBySession :many
+-- Returns non-revoked barcodes for all tickets in the given session.
+-- The since parameter acts as a cursor: only barcodes with updated_at > since are returned.
+-- Pass the zero timestamp (1970-01-01) to receive the full snapshot.
+-- Results are ordered by (updated_at ASC, id ASC) so the client can use the last
+-- returned updated_at as the next since cursor for incremental delta fetches.
+-- Used by GET /v1/scanner/snapshot for offline scanner cache hydration.
+SELECT b.id, b.authority_id, b.external_ref, b.ticket_id, b.status, b.scanned_at, b.created_at, b.updated_at
+FROM   barcodes b
+JOIN   tickets  t ON t.id = b.ticket_id
+WHERE  t.session_id  = $1
+  AND  b.status     != 'revoked'
+  AND  b.updated_at  > $2
+ORDER BY b.updated_at ASC, b.id ASC
+LIMIT  $3
+OFFSET $4;
+
+-- name: CountSnapshotBarcodesBySession :one
+-- Returns the total count of non-revoked barcodes for the given session and since cursor.
+-- Used by GET /v1/scanner/snapshot to populate pagination metadata.
+SELECT COUNT(*)
+FROM   barcodes b
+JOIN   tickets  t ON t.id = b.ticket_id
+WHERE  t.session_id  = $1
+  AND  b.status     != 'revoked'
+  AND  b.updated_at  > $2;

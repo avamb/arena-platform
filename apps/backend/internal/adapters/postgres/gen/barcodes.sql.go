@@ -280,3 +280,61 @@ func (q *Queries) ListBarcodesByTicketID(ctx context.Context, ticketID uuid.UUID
 	}
 	return result, rows.Err()
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ListSnapshotBarcodesBySession
+// ─────────────────────────────────────────────────────────────────────────────
+
+const listSnapshotBarcodesBySession = `-- name: ListSnapshotBarcodesBySession :many
+SELECT b.id, b.authority_id, b.external_ref, b.ticket_id, b.status, b.scanned_at, b.created_at, b.updated_at
+FROM   barcodes b
+JOIN   tickets  t ON t.id = b.ticket_id
+WHERE  t.session_id  = $1
+  AND  b.status     != 'revoked'
+  AND  b.updated_at  > $2
+ORDER BY b.updated_at ASC, b.id ASC
+LIMIT  $3
+OFFSET $4`
+
+// ListSnapshotBarcodesBySession returns non-revoked barcodes for all tickets
+// in the given session, filtered by the since cursor (only barcodes with
+// updated_at > since). Pass time.Time{} to retrieve the full snapshot.
+// Used by GET /v1/scanner/snapshot for offline scanner cache hydration.
+func (q *Queries) ListSnapshotBarcodesBySession(ctx context.Context, sessionID uuid.UUID, since time.Time, limit, offset int32) ([]BarcodeRow, error) {
+	rows, err := q.db.Query(ctx, listSnapshotBarcodesBySession, sessionID, since, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []BarcodeRow
+	for rows.Next() {
+		r, err := scanBarcodeRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, r)
+	}
+	return result, rows.Err()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CountSnapshotBarcodesBySession
+// ─────────────────────────────────────────────────────────────────────────────
+
+const countSnapshotBarcodesBySession = `-- name: CountSnapshotBarcodesBySession :one
+SELECT COUNT(*)
+FROM   barcodes b
+JOIN   tickets  t ON t.id = b.ticket_id
+WHERE  t.session_id  = $1
+  AND  b.status     != 'revoked'
+  AND  b.updated_at  > $2`
+
+// CountSnapshotBarcodesBySession returns the total count of non-revoked barcodes
+// for the given session and since cursor. Used to populate pagination metadata
+// in the GET /v1/scanner/snapshot response.
+func (q *Queries) CountSnapshotBarcodesBySession(ctx context.Context, sessionID uuid.UUID, since time.Time) (int64, error) {
+	var count int64
+	err := q.db.QueryRow(ctx, countSnapshotBarcodesBySession, sessionID, since).Scan(&count)
+	return count, err
+}

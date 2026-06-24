@@ -465,6 +465,11 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "scanner_events.go"),
 		}
+	// Offline scanner snapshot + online validate (feature #144)
+	case "scanner_snapshot.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "scanner_snapshot.go"),
+		}
 	// Bil24 command gateway (feature #157)
 	case "bil24_compat.go":
 		candidates = []string{

@@ -1923,6 +1923,23 @@ func (s *Server) mountV1Routes() {
 			})
 		}
 
+		// ── Offline scanner snapshot + online validate (feature #144) ───────────
+		//
+		// Offline scanners download a barcode snapshot for an event session so they
+		// can admit tickets without network connectivity. On reconnect they switch
+		// back to the online validate endpoint for real-time checks.
+		//
+		//   GET  /v1/scanner/snapshot   — paginated snapshot with since-cursor delta (barcode.scan)
+		//   POST /v1/scanner/validate   — read-only barcode validity check (barcode.scan)
+		if s.stub != nil && s.stub.Enabled() && s.barcodeQueries != nil {
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "barcode.scan", "barcodes"))
+				pr.Get("/scanner/snapshot", s.handleScannerSnapshot)
+				pr.Post("/scanner/validate", s.handleScannerValidate)
+			})
+		}
+
 		// ── Post-event reports (feature #159) ──────────────────────────────────
 		//
 		// Report endpoints. Auth + permission enforced by route-level middleware.

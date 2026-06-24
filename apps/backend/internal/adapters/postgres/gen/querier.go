@@ -220,6 +220,9 @@ type Querier interface {
 	MarkBarcodeScanned(ctx context.Context, id uuid.UUID) (BarcodeRow, error)
 	RevokeBarcode(ctx context.Context, id uuid.UUID) (BarcodeRow, error)
 	ListBarcodesByTicketID(ctx context.Context, ticketID uuid.UUID) ([]BarcodeRow, error)
+	// Offline scanner snapshot — delta barcode cache for offline scanner devices (feature #144)
+	ListSnapshotBarcodesBySession(ctx context.Context, sessionID uuid.UUID, since time.Time, limit, offset int32) ([]BarcodeRow, error)
+	CountSnapshotBarcodesBySession(ctx context.Context, sessionID uuid.UUID, since time.Time) (int64, error)
 
 	// Ticket delivery jobs — email delivery tracking (feature #141)
 	InsertDeliveryJob(ctx context.Context, ticketID uuid.UUID, recipientEmail *string) (DeliveryJobRow, error)
