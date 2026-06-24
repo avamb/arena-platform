@@ -11648,3 +11648,64 @@ Stats before session: 146/171 passing (85.4%).
 This session: feature #157 completed -> 149/171 passing (87.1%).
 
 ================================================================================
+
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-24 -- Feature #152 (Public feed: events list + detail)
+"[scope: production-api] [arch: ADR-013] Unauthenticated public feed endpoints
+with rate limiting and cache headers."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #152: Full public feed events API with 35 tests.
+
+New SQL query file (public_feed.sql):
+  - ListPublishedEventsByFeedToken: joins events+event_publications+agent_feed_tokens
+    filters: city_id (nullable UUID), date_from/date_to (nullable timestamptz)
+    limit/offset for page support
+  - CountPublishedEventsByFeedToken: same joins+filters, returns COUNT(*)::int
+  - GetPublishedEventByFeedToken: single event fetch for detail endpoint
+
+Gen file (public_feed.sql.go):
+  - ListPublishedEventsByFeedToken(ctx, token, cityID, dateFrom, dateTo, limit, offset)
+  - CountPublishedEventsByFeedToken(ctx, token, cityID, dateFrom, dateTo)
+  - GetPublishedEventByFeedToken(ctx, token, eventID)
+
+HTTP handlers (public_feed.go):
+  - publicFeedRateLimiter: in-memory 1-minute fixed window, sync.Mutex
+    * Per-token: 100 req/min; Per-IP: 300 req/min
+  - handlePublicFeedEvents: GET /v1/public/feeds/{feed_token}/events
+    * Validates token via feedTokenQueries (404 if revoked/unknown)
+    * Filters: city_id, date_from, date_to, page, per_page query params
+    * Returns events array + total/page/per_page/total_pages metadata
+    * Cache-Control: public, max-age=60, stale-while-revalidate=30
+  - handlePublicFeedEvent: GET /v1/public/feeds/{feed_token}/events/{event_id}
+    * UUID validation for event_id (400 if invalid)
+    * GetPublishedEventByFeedToken (404 if not found/revoked/not-published)
+    * Lists sessions + tiers for each session (tier availability)
+    * Cache-Control: public, max-age=30, stale-while-revalidate=15
+
+CHANGES (committed at 931b206)
+-------------------------------
+New files:
+  - apps/backend/internal/adapters/postgres/queries/public_feed.sql
+  - apps/backend/internal/adapters/postgres/gen/public_feed.sql.go
+  - apps/backend/internal/platform/httpserver/public_feed.go
+  - apps/backend/internal/platform/httpserver/public_feed_152_test.go
+
+VERIFICATION
+------------
+  - 35/35 TestPublicFeed152_* tests: PASS
+  - go build ./apps/backend/...: EXIT 0
+  - Feature #152 marked passing in backlog
+  - git commit: 931b206
+
+PROGRESS METRIC
+---------------
+Stats before session: 149/171 passing (87.1%).
+This session: feature #152 completed -> 151/171 passing (88.3%).
+
+================================================================================
