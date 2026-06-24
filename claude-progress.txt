@@ -5,6 +5,72 @@ arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
 --------------------------------------------------------------------------------
+Session: 2026-06-24 -- Feature #158 (Bil24 compatibility regression tests - Vino&Co)
+"[scope: scaffold] Captured request/response fixtures from Vino&Co integration;
+contract tests pin behavior so migration is safe."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #158: Full Bil24 compatibility regression test suite with 23 Vino&Co
+fixtures and 10 named test functions.
+
+New files:
+  apps/backend/tests/compat/bil24/testdata/vinoandco_fixtures.json
+    - 23 request/response fixture scenarios covering all 6 Bil24 commands
+    - Based on documented Bil24.pro API protocol and Vino&Co integration patterns
+    - Each fixture has: name, description, request (JSON), expect (assertions)
+    - fid=1271, token=7c696b4af364928202dd (official test credentials from docs)
+    - Covers: Russian/English locales, valid UUIDs, legacy numeric IDs, edge cases
+
+  apps/backend/tests/compat/bil24/regression_158_test.go
+    - Package: compat_bil24_test (external test package, no internal access)
+    - TestCompatBil24_158_VinoAndCoFixtures: fixture-driven table test (23 sub-tests)
+    - TestCompatBil24_158_FixtureFileExists: guards against accidental deletion
+    - TestCompatBil24_158_FixtureNamesAreUnique: prevents t.Run sub-test collisions
+    - TestCompatBil24_158_FixtureRequestsAreValidJSON: validates fixture file integrity
+    - TestCompatBil24_158_FixtureDescriptionsPresent: enforces documentation
+    - TestCompatBil24_158_AllKnownCommandsReturn200: protocol invariant
+    - TestCompatBil24_158_GatewayDisabledReturns404: feature flag guard
+    - TestCompatBil24_158_ResponseEnvelopeShape: wire format contract
+    - TestCompatBil24_158_MalformedJSONReturnsResultCode_Neg2: buggy client safety
+    - TestCompatBil24_158_CommandDispatchIsNotUnknown: dispatch regression guard
+    - TestCompatBil24_158_BehaviorDifferencesDocExists: doc existence check
+    - TestCompatBil24_158_FixtureFileTestdataDir: testdata directory structure
+
+  apps/backend/tests/compat/bil24/BEHAVIOR_DIFFERENCES.md
+    - Summary table of 13 documented behavior differences
+    - Detailed sections for: legacy ID translation (-2 until compat table),
+      CREATE_ORDER_EXT scaffold stub, CANCEL_ORDER scaffold stub,
+      SCAN_TICKET barcode authority setup, GET_ACTIONS_V2 not supported,
+      fid/token auth not yet validated
+    - Vino&Co migration checklist with 5 action items
+
+FIXTURE SCENARIOS COVERED
+--------------------------
+  GET_ALL_ACTIONS: ru-RU locale, en-US locale, missing locale (defaults to en)
+  GET_SEAT_LIST: valid UUID, missing actionEventId (-2), legacy numeric ID (-2)
+  GET_ORDER_INFO: valid UUID, missing orderId (-2), legacy opaque ID (-2)
+  CREATE_ORDER_EXT: full request (qty=2), qty=0 defaults to 1, missing session (-2), missing tier (-2)
+  SCAN_TICKET: barcode string, UUID barcode, missing ticketId (-2)
+  CANCEL_ORDER: valid UUID (resultCode=0), missing orderId (-2), legacy opaque ID (-2)
+  Protocol: unknown command (-1), missing command field (-2), lowercase commands, content-type
+
+VERIFICATION
+------------
+  - go test ./apps/backend/tests/compat/bil24/...: OK (0.042s)
+  - go build ./apps/backend/...: EXIT 0
+  - Feature #158 marked passing
+  - git commit: 80d249c
+
+PROGRESS METRIC
+---------------
+Stats before session: 154/171 passing (90.1%).
+This session: feature #158 completed -> 157/171 passing (91.8%).
+
+================================================================================
+
+--------------------------------------------------------------------------------
 Session: 2026-06-24 -- Feature #145 (External allocation quota model)
 "[scope: production-api] [arch: 09_domain_state_machines_ru.md §ExternalAllocation]
 external_allocations table (session_id, partner_org_id, tier_id, quota_qty,
@@ -11885,5 +11951,81 @@ Session: 2026-06-24 -- Feature #166 (Platform superadmin console)
 
 17/17 TestSuperadmin166_* tests PASS. go build OK. Feature #166 marked passing.
 Stats: 153/171 -> 154/171 passing (90.1%). git commit: 13c0d74
+
+================================================================================
+
+================================================================================
+
+Session: 2026-06-24 -- Feature #148 (Complimentary issuance flow)
+
+ACCOMPLISHED
+------------
+Implemented the full complimentary ticket issuance flow (batch ticket issuance
+without payment).
+
+WHAT WAS BUILT
+--------------
+New files:
+  - apps/backend/internal/migrations/sql/0036_complimentary_issuances.sql
+    Creates complimentary_issuances table (org_id, session_id, tier_id, qty,
+    recipients[], batch_id, status, issued_by, notes). Also ALTERs tickets table:
+    makes checkout_session_id nullable, adds complimentary_issuance_id FK, adds
+    CHECK constraint ensuring exactly one source FK is non-null. RBAC seeds for
+    complimentary.issue and complimentary.read permissions.
+
+  - apps/backend/internal/adapters/postgres/queries/complimentary_issuances.sql
+    7 named queries: InsertComplimentaryIssuance, GetComplimentaryIssuanceByBatchID,
+    GetComplimentaryIssuanceByID, ListComplimentaryIssuancesByOrg,
+    UpdateComplimentaryIssuanceStatus, InsertComplimentaryTicket,
+    ListTicketsByComplimentaryIssuance
+
+  - apps/backend/internal/adapters/postgres/gen/complimentary_issuances.sql.go
+    Typed row structs (ComplimentaryIssuanceRow, ComplimentaryTicketRow) and
+    scanner implementations for all 7 queries.
+
+  - apps/backend/internal/platform/httpserver/complimentary.go
+    3 handlers: handleCreateComplimentaryIssuance (9-step transactional workflow:
+    idempotency check → ReserveCapacity + ConfirmCapacity atomically → insert
+    issuance → insert tickets × qty → update status "issued"),
+    handleListComplimentaryIssuances, handleGetComplimentaryIssuance.
+
+  - apps/backend/internal/platform/httpserver/complimentary_148_test.go
+    43 tests covering migration, queries, gen file, querier interface, HTTP routes,
+    validation, handler source checks, and compile-time type assertions.
+
+Modified files:
+  - apps/backend/internal/adapters/postgres/gen/querier.go
+    Added 7 new methods to the Querier interface for complimentary flow.
+
+  - apps/backend/internal/platform/httpserver/server.go
+    Added complimentaryQueries field + ComplimentaryQueries option + auto-init from
+    PgxPool + route group (GET list, GET detail, POST create) under feature guard.
+
+  - apps/backend/internal/platform/httpserver/testfilehelpers_test.go
+    Added 4 case entries so existing path-resolution helpers cover the new files.
+
+KEY DESIGN DECISIONS
+--------------------
+  - Complimentary tickets bypass reservation step: ReserveCapacity + ConfirmCapacity
+    run atomically in the same transaction (no separate hold step).
+  - tickets.checkout_session_id made nullable so complimentary tickets (which have
+    no checkout session) can be stored in the same table with a CHECK constraint
+    enforcing exactly one source FK.
+  - Idempotency via UNIQUE INDEX on (org_id, batch_id) — replay returns 200 with
+    original issuance + tickets, fresh create returns 201.
+  - Separate ComplimentaryTicketRow struct avoids scanning nulls into non-nullable
+    uuid.UUID fields in the existing TicketRow.
+
+VERIFICATION
+------------
+  - 43/43 TestComplimentary148_* tests: PASS
+  - go build ./apps/backend/...: EXIT 0
+  - Feature #148 marked passing
+  - git commit: 37139c4
+
+PROGRESS METRIC
+---------------
+Stats before session: 154/171 passing (90.1%).
+This session: feature #148 -> 155/171 passing (90.6%).
 
 ================================================================================
