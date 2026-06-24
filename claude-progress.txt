@@ -12789,3 +12789,51 @@ Added .gitignore guard patterns (*;*, Projectsarena_new/, /Projects*/).
 Neither dir was tracked by git; verified empty before deletion.
 Commit: d08adb7. Marked #172 passing. Stats: 172/188 passing.
 
+================================================================================
+
+Session: 2026-06-25 -- Feature #180 (Reconciliation: spec vs implementation)
+
+WHAT WAS DONE
+-------------
+Feature #180: Documentation reconciliation between architecture spec docs and
+actual broad-scaffold implementation (Wave 20).
+
+NEW FILE:
+  08_architecture/14_current_implementation_overview_ru.md
+    Living inventory:
+    - architectural shape (modular monolith, internal/adapters + internal/platform,
+      empty internal/domain + internal/app noted as drift)
+    - bounded-context table (identity, orgs, catalog, inventory, checkout,
+      payments, tickets/credentials, refunds, delivery, external allocations,
+      complimentary, reporting, billing, superadmin, webhooks, reconciliation,
+      public feed, GDPR) with migration/query-file pointers
+    - WordPress plugin pointer
+    - CI / generated clients / tests / lint gate status
+    - reconciliation notes for older docs 12 and 13
+    - known gaps (empty domain/app layers, lint 563 issues)
+    - update cadence rules
+
+MODIFIED:
+  08_architecture/13_backend_go_initial_specification_ru.md
+    Status banner: historical / superseded; points to doc 14.
+  08_architecture/12_master_platform_specification_ru.md
+    Status banner: initial draft / pending rewrite; inventory now in doc 14.
+  08_architecture/11_architecture_decision_log_ru.md
+    Added "ADR-protocol on scope expansion" section: any new bounded context,
+    adapter, layout change, platform service, or stack-level decision requires
+    a new ADR before merge; doc 14 must be updated in the same PR.
+  CLAUDE.md
+    implementation_status_override now points at doc 14 as primary source;
+    reference_architecture_documents reordered.
+
+VERIFICATION
+------------
+  - Doc-only changes; no Go code modified.
+  - Feature #180 marked passing.
+  - git commit: 54d350e
+
+PROGRESS METRIC
+---------------
+Stats before session: 171/188 passing (~91%).
+This session: feature #180 -> 173/188 passing.
+
