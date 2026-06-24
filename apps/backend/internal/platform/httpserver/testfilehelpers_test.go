@@ -647,6 +647,23 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "stripebilling", "adapter.go"),
 		}
+	// WordPress plugin core (feature #154)
+	case "arena-events.php":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "wp-plugin", "arena-events", "arena-events.php"),
+		}
+	case "class-post-type.php":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "wp-plugin", "arena-events", "includes", "class-post-type.php"),
+		}
+	case "class-settings.php":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "wp-plugin", "arena-events", "includes", "class-settings.php"),
+		}
+	case "class-sync.php":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "wp-plugin", "arena-events", "includes", "class-sync.php"),
+		}
 	// External barcode batch import (feature #146)
 	case "0039_barcode_batches.sql":
 		candidates = []string{
