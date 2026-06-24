@@ -12029,3 +12029,73 @@ Stats before session: 154/171 passing (90.1%).
 This session: feature #148 -> 155/171 passing (90.6%).
 
 ================================================================================
+
+================================================================================
+
+Session: 2026-06-24 -- Feature #136 (AllPay adapter — Israel)
+
+32/32 TestAllPay136_* tests PASS. go build OK. Feature #136 marked passing.
+
+NEW FILES:
+  - apps/backend/internal/payments/allpay.go
+    AllPayAdapter implementing PaymentProvider. Hosted-checkout flow: CreateIntent
+    → POST /v1/payments returns checkout_url (surfaces as ClientSecret for front-end
+    redirect). CapturePayment → POST /v1/payments/{id}/capture. RefundPayment →
+    POST /v1/payments/{id}/refund. HandleWebhook → VerifyAllPaySignature + JSON
+    parse. Israeli payment methods (Isracard, Leumi, Bit, tashlumim) included by
+    default; overridable via Metadata["payment_methods"]. AllPayConfig.WebhookSecret
+    as fallback when WebhookRequest.Secret is empty. AllPayAPIError exported for
+    errors.As in callers.
+
+  - apps/backend/internal/payments/allpay_136_test.go
+    32 tests: constructor validation, ProviderName, CreateIntent (success + request
+    shape + Israeli methods + custom methods + error paths), CapturePayment,
+    RefundPayment, HandleWebhook contract fixtures (payment.completed /
+    payment.failed), webhook error paths, HTTP transport details (auth header,
+    content-type), integration create→capture cycle with mock httptest server,
+    routing policy registration + wrong provider → ErrUnknownProvider.
+
+Stats: 156/171 -> 157/171 passing (91.8%). git commit: eae1244
+
+================================================================================
+
+================================================================================
+
+Session: 2026-06-24 -- Feature #136 (AllPay adapter - revisited/extended)
+
+CONTEXT
+-------
+Feature #136 was already implemented by a prior session in
+apps/backend/internal/payments/allpay.go (32 tests, marked passing at 157/171).
+
+This session created a SECOND AllPay adapter in the dedicated adapters package
+(matching the Stripe adapter package structure), adding 37 more tests.
+
+WHAT WAS BUILT (ADDITIONAL)
+----------------------------
+New files:
+  - apps/backend/internal/adapters/allpay/adapter.go
+    New package mirroring the stripe adapter structure. Implements
+    payments.PaymentProvider with compile-time guard. Adds Israeli-market
+    helpers: IsraelPaymentMethods(), ValidatePaymentMethod(), FormatAmount(),
+    InstallmentAmount(), IsValidInstallmentCount(), StatusToPaymentIntentState(),
+    EventTypeToPaymentIntentState(), HostedCheckoutURL(), BuildWebhookSignature(),
+    SandboxBaseURL constant.
+
+  - apps/backend/internal/adapters/allpay/allpay_136_test.go
+    37 tests (external test package, allpay_test) covering all adapter methods
+    and all helper functions.
+
+VERIFICATION
+------------
+  - 37/37 TestAllPay136_* tests in adapters/allpay: PASS
+  - 32/32 TestAllPay136_* tests in payments/ still PASS (no regression)
+  - go build ./apps/backend/...: EXIT 0
+  - Feature #136 was already marked passing
+  - git commit: ce4b011
+
+PROGRESS METRIC
+---------------
+Stats unchanged at 157/171 passing (91.8%) - feature was already counted.
+
+================================================================================
