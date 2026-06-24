@@ -12099,3 +12099,60 @@ PROGRESS METRIC
 Stats unchanged at 157/171 passing (91.8%) - feature was already counted.
 
 ================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-24 -- Feature #149 (Complimentary delivery)
+"[scope: production-api] Same delivery service as Wave 8 but template flagged as
+invitation. Batch email delivery."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #149: Complimentary ticket delivery with invitation email template.
+
+Dependencies satisfied: #141 (ticket delivery via email) + #148 (complimentary
+issuance flow) -- both already passing.
+
+Changes made:
+
+1. apps/backend/internal/platform/delivery/handler.go
+   - Added TemplateTicket = "ticket" and TemplateInvitation = "invitation" constants
+   - Added Template string field to Payload struct (omitempty JSON tag)
+   - Handler now branches on p.Template: invitation path uses "You're invited" subject
+     and renderInvitationEmailHTML/renderInvitationEmailText; default path unchanged
+   - Added renderInvitationEmailHTML and renderInvitationEmailText functions
+
+2. apps/backend/internal/platform/httpserver/delivery_enqueue.go
+   - Added enqueueComplimentaryDeliveryJobs(*Server method) that:
+     * Takes []gen.ComplimentaryTicketRow
+     * Inserts delivery_jobs row per ticket (reuses InsertDeliveryJob)
+     * Enqueues worker_jobs with Template=delivery.TemplateInvitation in payload
+     * Same nil guard as enqueueDeliveryJobs (no-op when deps absent)
+     * Logs with "invitation job enqueued" + template field
+
+3. apps/backend/internal/platform/httpserver/complimentary.go
+   - After tx.Commit(), calls s.enqueueComplimentaryDeliveryJobs(ctx, tickets)
+   - Best-effort: delivery issues cannot roll back committed issuance
+
+4. apps/backend/internal/platform/httpserver/complimentary_delivery_149_test.go (NEW)
+   - 35 tests covering all 9 steps (template constants, Payload.Template field,
+     enqueue function existence, nil guards, template flag in payload, hook in
+     handler, delivery handler branching, audit logs, invitation renderers)
+
+VERIFICATION
+------------
+  - 35/35 TestComplimentaryDelivery149_* tests: PASS
+  - go build ./apps/backend/...: EXIT 0 (confirmed via Docker)
+  - Pre-existing failures unchanged (TestSnakeCase/Timestamp static analysis,
+    TestCheckout132, TestPingProbe -- all pre-existing, not caused by this session)
+  - Feature #149 marked passing in backlog
+  - git commit: 7d94fd0
+
+PROGRESS METRIC
+---------------
+Stats before session: 158/171 passing (92.4%).
+This session: feature #149 -> 159/171 passing (93.0%).
+
+================================================================================
