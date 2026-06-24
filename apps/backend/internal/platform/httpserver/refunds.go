@@ -746,6 +746,14 @@ func (s *Server) handleRefundWebhook(w http.ResponseWriter, r *http.Request) {
 					slog.String("checkout_session_id", pi.CheckoutSessionID.String()),
 					slog.Int64("cancelled_count", cancelled),
 				)
+				// Publish Bil24-compatible scanner refund events (feature #143).
+				// Best-effort: errors are logged internally, not returned.
+				s.publishTicketRefundedEvents(ctx,
+					pi.CheckoutSessionID.String(),
+					updated.ID.String(),
+					updated.Currency,
+					updated.Amount,
+				)
 			}
 		}
 	}

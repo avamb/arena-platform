@@ -133,6 +133,10 @@ func (s *Server) issueTicketsForCheckout(ctx context.Context, cs gen.CheckoutSes
 		slog.Int("tickets_issued", len(tickets)),
 	)
 
+	// Publish Bil24-compatible scanner events for each newly issued ticket
+	// (feature #143). Best-effort: errors are logged internally, not returned.
+	s.publishTicketIssuedEvents(ctx, tickets)
+
 	return tickets, nil
 }
 
