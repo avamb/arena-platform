@@ -277,6 +277,12 @@ type Server struct {
 	// Feature #135.
 	stripeConnect stripeConnectHelper
 
+	// stripeBilling is the Stripe Billing adapter used by:
+	//   POST /v1/billing/stripe/push-invoice/{id} — push SaaS invoice to Stripe
+	//   POST /v1/billing/stripe/webhook           — receive Stripe Billing events
+	// Nil when not configured. When nil these routes are not mounted. Feature #162.
+	stripeBilling stripeBillingHelper
+
 	// sessionStore is the Redis-backed store for refresh token tracking and fast
 	// revocation lookups. Nil when Redis is not configured or the SessionStore
 	// option was not supplied. When nil, session management degrades gracefully:
@@ -627,6 +633,14 @@ type Options struct {
 	// Feature #135.
 	StripeConnect stripeConnectHelper
 
+	// StripeBilling injects the Stripe Billing adapter used by:
+	//   POST /v1/billing/stripe/push-invoice/{id} — push SaaS invoice to Stripe
+	//   POST /v1/billing/stripe/webhook           — receive Stripe Billing events
+	// When nil these routes are not mounted. In production pass a
+	// *stripebilling.Adapter. In tests pass a minimal stub that implements
+	// stripeBillingHelper (defined in stripe_billing.go). Feature #162.
+	StripeBilling stripeBillingHelper
+
 	// SessionStore injects the Redis-backed store used for refresh token tracking
 	// and fast revocation checks (feature #118). When nil, session management
 	// degrades gracefully: revocation is DB-only, concurrent-session limits are
@@ -947,6 +961,7 @@ func New(opts Options) *Server {
 		workerPool:                  opts.WorkerPool,
 		emailSender:                 opts.EmailSender,
 		stripeConnect:               opts.StripeConnect,
+		stripeBilling:               opts.StripeBilling,
 		sessionStore:                opts.SessionStore,
 		maxConcurrentSessions:       opts.MaxConcurrentSessionsPerUser,
 		superadminQueries:           superadminQueries,
@@ -1973,6 +1988,24 @@ func (s *Server) mountV1Routes() {
 				pr.Post("/billing/invoices/{id}/pay", s.handlePayInvoice)
 				pr.Post("/billing/invoices/{id}/void", s.handleVoidInvoice)
 			})
+		}
+
+		// ── Stripe Billing adapter (feature #162) ───────────────────────────────
+		//
+		// Pushes platform SaaS invoices to the platform's Estonia Stripe account
+		// and syncs payment status back via webhooks.
+		//
+		//   POST /v1/billing/stripe/push-invoice/{id} — push invoice to Stripe (billing.admin)
+		//   POST /v1/billing/stripe/webhook           — Stripe Billing webhook   (public)
+		if s.stub != nil && s.stub.Enabled() && s.stripeBilling != nil && s.billingQueries != nil {
+			// push-invoice requires billing.admin JWT
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "billing.admin", "billing"))
+				pr.Post("/billing/stripe/push-invoice/{id}", s.handlePushInvoiceToStripe)
+			})
+			// webhook is public (signature verification inside the handler)
+			r.Post("/billing/stripe/webhook", s.handleStripeBillingWebhook)
 		}
 
 		// ── Platform superadmin console (feature #166) ──────────────────────────

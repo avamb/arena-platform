@@ -621,6 +621,27 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "impersonation.go"),
 		}
+	// Stripe Billing adapter for SaaS invoices (feature #162)
+	case "0037_stripe_billing.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0037_stripe_billing.sql"),
+		}
+	case "stripe_billing.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "stripe_billing.sql"),
+		}
+	case "stripe_billing.sql.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "stripe_billing.sql.go"),
+		}
+	case "stripe_billing.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "stripe_billing.go"),
+		}
+	case "stripebilling_adapter.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "stripebilling", "adapter.go"),
+		}
 	default:
 		// Generic fallback: try the file directly at the repo root.
 		candidates = []string{

@@ -286,6 +286,12 @@ type Querier interface {
 	UpdateComplimentaryIssuanceStatus(ctx context.Context, id uuid.UUID, newStatus string) (ComplimentaryIssuanceRow, error)
 	InsertComplimentaryTicket(ctx context.Context, complimentaryIssuanceID uuid.UUID, sessionID uuid.UUID, tierID *uuid.UUID, holderEmail *string) (ComplimentaryTicketRow, error)
 	ListTicketsByComplimentaryIssuance(ctx context.Context, complimentaryIssuanceID uuid.UUID) ([]ComplimentaryTicketRow, error)
+
+	// Stripe Billing adapter — push SaaS invoices to Stripe, sync payment status (feature #162)
+	UpsertStripeCustomer(ctx context.Context, orgID uuid.UUID, stripeCustomerID string, email *string, name *string) (StripeCustomerRow, error)
+	GetStripeCustomerByOrgID(ctx context.Context, orgID uuid.UUID) (StripeCustomerRow, error)
+	UpdateInvoiceStripeID(ctx context.Context, id uuid.UUID, stripeInvoiceID string) (InvoiceStripeRow, error)
+	GetInvoiceByStripeID(ctx context.Context, stripeInvoiceID string) (InvoiceStripeRow, error)
 }
 
 // Compile-time assertion: *Queries must implement Querier.
