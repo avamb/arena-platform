@@ -5,6 +5,102 @@ arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
 --------------------------------------------------------------------------------
+Session: 2026-06-24 -- Feature #139 (Ticket issuance on payment success / free checkout)
+"tickets table (uuidv7 PK, checkout_session_id FK, session_id FK, tier_id FK,
+holder_email, status: active/cancelled/transferred). Issue tickets on
+payment.succeeded webhook or free-checkout completion. Idempotency per
+checkout_session_id. Audit log via slog."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #139: All implementation completed and verified. 36/36 tests pass.
+
+Steps covered:
+  Step 1: Migration 0026_tickets.sql
+          - tickets table: id uuidv7 PK, checkout_session_id FK → checkout_sessions,
+            session_id FK → sessions, tier_id FK → ticket_tiers (nullable),
+            holder_email text nullable, status CHECK (active/cancelled/transferred)
+            DEFAULT 'active', issued_at, created_at, updated_at
+          - Indexes: tickets_checkout_session_id, tickets_session_id,
+            tickets_status_active (partial: WHERE status = 'active')
+          - RBAC seeds: ticket.read/issue/cancel for admin/org_admin/member roles
+          - goose Up/Down directives
+
+  Step 2: SQL named queries (tickets.sql)
+          - InsertTicket :one (uuidv7() PK, returns full row)
+          - ListTicketsByCheckoutSession :many
+          - GetTicketByID :one
+          - CountTicketsByCheckoutSession :one
+
+  Step 3: Gen file (tickets.sql.go)
+          - TicketRow struct with all 9 fields
+          - scanTicketRow() helper
+          - All 4 Queries methods implemented
+
+  Step 4: Querier interface extended with 4 ticket methods
+
+  Step 5: Core issuance logic (tickets.go)
+          - issueTicketsForCheckout(): guards nil queries, idempotency via
+            ListTicketsByCheckoutSession (returns existing on replay),
+            loads reservation for quantity/session_id/tier_id, loops N times
+            calling InsertTicket, slog.Info audit log
+          - handleListTickets(): GET /v1/checkout/{id}/tickets
+
+  Step 6-7: Server wiring
+          - ticketQueries field + TicketQueries in Options
+          - Auto-initialised from PgxPool if nil
+          - Route: GET /v1/checkout/{id}/tickets (requires JWT + ticket.read perm)
+
+  Step 8: Webhook integration
+          - In handlePaymentIntentWebhook: after state=succeeded, loads checkout
+            session and calls issueTicketsForCheckout (non-fatal on error)
+          - Two-level idempotency: payment_intent_events UNIQUE prevents
+            double-processing; ListByCheckout check prevents double-issuance
+
+  Step 9: Free checkout integration
+          - In handleCompleteCheckout: after CompleteFreeCheckoutSession succeeds,
+            calls issueTicketsForCheckout (non-fatal on error)
+
+  Step 10: ticketFromRow conversion tests
+           - Nullable TierID, nullable HolderEmail, all status values
+
+CHANGES
+-------
+New files:
+  - apps/backend/internal/migrations/sql/0026_tickets.sql
+  - apps/backend/internal/adapters/postgres/queries/tickets.sql
+  - apps/backend/internal/adapters/postgres/gen/tickets.sql.go
+  - apps/backend/internal/platform/httpserver/tickets.go
+  - apps/backend/internal/platform/httpserver/tickets_139_test.go
+
+Modified files:
+  - apps/backend/internal/adapters/postgres/gen/querier.go
+      (+4 ticket methods: InsertTicket/ListTicketsByCheckoutSession/
+       GetTicketByID/CountTicketsByCheckoutSession)
+  - apps/backend/internal/platform/httpserver/server.go
+      (ticketQueries field, Options.TicketQueries, ticket route)
+  - apps/backend/internal/platform/httpserver/checkout.go
+      (+ticket issuance block in handleCompleteCheckout free-checkout path)
+  - apps/backend/internal/platform/httpserver/payment_intents.go
+      (+ticket issuance block in handlePaymentIntentWebhook state=succeeded)
+  - apps/backend/internal/platform/httpserver/testfilehelpers_test.go
+      (+4 file lookup cases for feature #139)
+
+VERIFICATION
+------------
+  - 36/36 TestTicket139_* tests: PASS (0.118s, Docker golang:1.24-alpine)
+  - go build ./apps/backend/...: EXIT 0
+  - Feature #139 marked passing in backlog
+  - git commit: d305608
+
+PROGRESS METRIC
+---------------
+Feature #139 completed and marked passing.
+
+================================================================================
+
+--------------------------------------------------------------------------------
 Session: 2026-06-24 -- Feature #137 (Payment intent SCA-aware lifecycle machine)
 "[scope: production-api] [arch: 09_domain_state_machines_ru.md §PaymentIntent]
 payment_intents table (phases: created → requires_action → processing →
