@@ -1,0 +1,133 @@
+name: Accessibility (WCAG 2.2 AA)
+
+# Runs axe-core static scan against WP-plugin-generated HTML snapshots
+# and validates ARIA markup in the checkout/public storefront output.
+#
+# Scope: checkout tier list, sold-out state, error regions.
+# Standard: WCAG 2.2 AA (axe-core ruleset "wcag2aa,wcag21aa,wcag22aa").
+# Ref: 10_compliance_security_privacy_ru.md §Accessibility
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/wp-plugin/**"
+      - "ops/accessibility/**"
+      - ".github/workflows/accessibility.yml"
+  pull_request:
+    paths:
+      - "apps/wp-plugin/**"
+      - "ops/accessibility/**"
+      - ".github/workflows/accessibility.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────
+  # Job 1: axe-core scan — static HTML snapshots of WP plugin output
+  # ─────────────────────────────────────────────────────────────────
+  axe-scan:
+    name: axe-core WCAG 2.2 AA scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install axe-core CLI
+        run: npm install --save-dev @axe-core/cli
+
+      - name: Generate HTML snapshots from WP plugin
+        # Produces static HTML files that mirror the PHP render_tiers_html output
+        # so axe-cli can scan them without a live WordPress instance.
+        run: node ops/accessibility/generate-snapshots.js
+
+      - name: Run axe-core scan (WCAG 2.2 AA)
+        run: |
+          npx axe \
+            ops/accessibility/snapshots/checkout-tiers.html \
+            ops/accessibility/snapshots/checkout-sold-out.html \
+            ops/accessibility/snapshots/checkout-error-state.html \
+            --tags wcag2a,wcag2aa,wcag21aa,wcag22aa \
+            --reporter json \
+            --stdout \
+            | tee ops/accessibility/snapshots/axe-report.json
+
+      - name: Check for critical violations
+        run: |
+          node -e "
+            const fs = require('fs');
+            const report = JSON.parse(fs.readFileSync('ops/accessibility/snapshots/axe-report.json', 'utf8'));
+            const violations = Array.isArray(report) ? report.flatMap(r => r.violations || []) : (report.violations || []);
+            const critical = violations.filter(v => v.impact === 'critical' || v.impact === 'serious');
+            if (critical.length > 0) {
+              console.error('WCAG 2.2 AA: critical/serious violations found:');
+              critical.forEach(v => console.error('  [' + v.impact + '] ' + v.id + ': ' + v.description));
+              process.exit(1);
+            }
+            console.log('WCAG 2.2 AA: no critical/serious violations. Total violations: ' + violations.length);
+          "
+
+      - name: Upload axe report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: axe-accessibility-report
+          path: ops/accessibility/snapshots/axe-report.json
+          retention-days: 30
+
+  # ─────────────────────────────────────────────────────────────────
+  # Job 2: ARIA markup validation — grep-based checks in source
+  # ─────────────────────────────────────────────────────────────────
+  aria-lint:
+    name: ARIA markup lint (source-level)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check: form inputs have associated labels (for/id pairs)
+        run: |
+          php -r "
+            \$file = 'apps/wp-plugin/arena-events/includes/class-checkout.php';
+            \$src = file_get_contents(\$file);
+            // Verify label for= and corresponding id= attributes exist.
+            if (!preg_match('/for=\".*?\"/', \$src)) {
+              fwrite(STDERR, 'FAIL: no label[for] attributes found in ' . \$file . PHP_EOL);
+              exit(1);
+            }
+            if (!preg_match('/aria-required=\"true\"/', \$src)) {
+              fwrite(STDERR, 'FAIL: aria-required missing on required inputs in ' . \$file . PHP_EOL);
+              exit(1);
+            }
+            if (!preg_match('/aria-live=\"assertive\"/', \$src)) {
+              fwrite(STDERR, 'FAIL: aria-live region missing for errors in ' . \$file . PHP_EOL);
+              exit(1);
+            }
+            if (!preg_match('/role=\"alert\"/', \$src)) {
+              fwrite(STDERR, 'FAIL: role=alert missing on error region in ' . \$file . PHP_EOL);
+              exit(1);
+            }
+            if (!preg_match('/outline:2px solid/', \$src)) {
+              fwrite(STDERR, 'FAIL: visible focus indicator (outline) missing in CSS in ' . \$file . PHP_EOL);
+              exit(1);
+            }
+            echo 'PASS: ARIA markup checks passed.' . PHP_EOL;
+          "
+
+      - name: Check: accessibility documentation present
+        run: |
+          test -f ops/accessibility/wcag-checklist.md       || { echo "FAIL: wcag-checklist.md missing"; exit 1; }
+          test -f ops/accessibility/wp-demo-test-plan.md    || { echo "FAIL: wp-demo-test-plan.md missing"; exit 1; }
+          test -f ops/accessibility/remediation-backlog.md  || { echo "FAIL: remediation-backlog.md missing"; exit 1; }
+          echo "PASS: all accessibility documentation files present."

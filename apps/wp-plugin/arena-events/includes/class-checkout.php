@@ -227,14 +227,35 @@ class Arena_Events_Checkout {
 			$html .= '</div>'; // arena-tier-info
 
 			if ( ! $is_sold_out ) {
-				$max_qty = min( $available, 10 );
+				$max_qty  = min( $available, 10 );
+				$form_id  = 'arena-form-' . esc_attr( $tier_id );
+				$qty_id   = 'arena-qty-' . esc_attr( $tier_id );
+				$email_id = 'arena-email-' . esc_attr( $tier_id );
+				$err_id   = 'arena-err-' . esc_attr( $tier_id );
+				/* translators: %s: tier name */
+				$form_label = sprintf( esc_attr__( 'Checkout form for %s', 'arena-events' ), esc_attr( $name ) );
 				$html .= '<form class="arena-checkout-form"'
+					. ' id="' . $form_id . '"'
+					. ' aria-label="' . $form_label . '"'
 					. ' data-rest-url="' . esc_url( $rest_url ) . '"'
-					. ' data-nonce="' . esc_attr( $nonce ) . '">';
+					. ' data-nonce="' . esc_attr( $nonce ) . '"'
+					. ' data-error-id="' . $err_id . '"'
+					. ' novalidate>';
 				$html .= '<input type="hidden" name="tier_id" value="' . $tier_id . '">';
 				$html .= '<input type="hidden" name="session_id" value="' . $session_id . '">';
-				$html .= '<input type="number" name="qty" value="1" min="1" max="' . esc_attr( (string) $max_qty ) . '" class="arena-qty">';
-				$html .= '<input type="email" name="holder_email" placeholder="' . esc_attr__( 'Your email', 'arena-events' ) . '" required class="arena-email">';
+				$html .= '<div class="arena-field">';
+				$html .= '<label for="' . $qty_id . '">' . esc_html__( 'Quantity', 'arena-events' ) . '</label>';
+				$html .= '<input type="number" id="' . $qty_id . '" name="qty" value="1" min="1" max="' . esc_attr( (string) $max_qty ) . '" class="arena-qty"'
+					. ' aria-describedby="' . $err_id . '">';
+				$html .= '</div>';
+				$html .= '<div class="arena-field">';
+				$html .= '<label for="' . $email_id . '">' . esc_html__( 'Email address', 'arena-events' ) . '</label>';
+				$html .= '<input type="email" id="' . $email_id . '" name="holder_email"'
+					. ' placeholder="' . esc_attr__( 'you@example.com', 'arena-events' ) . '"'
+					. ' required aria-required="true" class="arena-email"'
+					. ' autocomplete="email" aria-describedby="' . $err_id . '">';
+				$html .= '</div>';
+				$html .= '<div id="' . $err_id . '" class="arena-error" role="alert" aria-live="assertive" aria-atomic="true"></div>';
 				$html .= '<button type="submit" class="arena-checkout-btn">' . esc_html__( 'Buy Ticket', 'arena-events' ) . '</button>';
 				$html .= '</form>';
 			}
@@ -418,25 +439,29 @@ class Arena_Events_Checkout {
 	 * Return the inline JavaScript for form submission and redirect.
 	 */
 	protected static function get_checkout_inline_js(): string {
+		// WCAG 4.1.3: Status messages announced via aria-live="assertive" on
+		// the error region. aria-busy communicates loading state to screen readers.
 		return 'document.addEventListener("DOMContentLoaded",function(){' .
 			'document.querySelectorAll(".arena-checkout-form").forEach(function(form){' .
 				'form.addEventListener("submit",function(e){' .
 					'e.preventDefault();' .
-					'var restUrl=form.dataset.restUrl,nonce=form.dataset.nonce,data={};' .
+					'var restUrl=form.dataset.restUrl,nonce=form.dataset.nonce,errId=form.dataset.errorId,data={};' .
+					'var errEl=errId?document.getElementById(errId):null;' .
 					'new FormData(form).forEach(function(v,k){data[k]=k==="qty"?parseInt(v,10):v;});' .
 					'var btn=form.querySelector(".arena-checkout-btn");' .
-					'btn.disabled=true;btn.textContent="Processing...";' .
+					'btn.disabled=true;btn.setAttribute("aria-busy","true");btn.textContent="Processing...";' .
+					'if(errEl){errEl.textContent="";}' .
 					'fetch(restUrl,{method:"POST",headers:{"Content-Type":"application/json","X-WP-Nonce":nonce},body:JSON.stringify(data)})' .
 					'.then(function(r){return r.json().then(function(d){return{ok:r.ok,data:d};});})' .
 					'.then(function(res){' .
 						'if(res.ok&&res.data.redirect_url){window.location.href=res.data.redirect_url;}' .
 						'else{var msg=res.data.message||"Checkout failed. Please try again.";' .
-						'form.insertAdjacentHTML("beforeend","<p class=\\"arena-error\\">"+msg+"</p>");' .
-						'btn.disabled=false;btn.textContent="Buy Ticket";}' .
+						'if(errEl){errEl.textContent=msg;}' .
+						'btn.disabled=false;btn.removeAttribute("aria-busy");btn.textContent="Buy Ticket";}' .
 					'})' .
 					'.catch(function(){' .
-						'form.insertAdjacentHTML("beforeend","<p class=\\"arena-error\\">Network error. Please try again.</p>");' .
-						'btn.disabled=false;btn.textContent="Buy Ticket";' .
+						'if(errEl){errEl.textContent="Network error. Please try again.";}' .
+						'btn.disabled=false;btn.removeAttribute("aria-busy");btn.textContent="Buy Ticket";' .
 					'});' .
 				'});' .
 			'});' .
@@ -451,12 +476,21 @@ class Arena_Events_Checkout {
 			'.arena-tier{border:1px solid #e0e0e0;padding:1em;margin:.75em 0;border-radius:4px}' .
 			'.arena-tier-name{margin:0 0 .25em}' .
 			'.arena-tier-price{font-weight:bold}' .
-			'.arena-tier-availability{color:#666;font-size:.9em;margin-left:.5em}' .
+			/* WCAG 1.4.3: colour contrast ≥ 4.5:1 — #595959 on white = 7:1 */
+			'.arena-tier-availability{color:#595959;font-size:.9em;margin-left:.5em}' .
+			/* WCAG 1.4.3: #c00 on white = 5.9:1 — sufficient */
 			'.arena-tier-availability.sold-out{color:#c00}' .
-			'.arena-checkout-form{margin-top:.75em;display:flex;flex-wrap:wrap;gap:.5em;align-items:center}' .
+			'.arena-checkout-form{margin-top:.75em}' .
+			/* WCAG 1.3.1: field group with visible label */
+			'.arena-field{display:flex;flex-direction:column;gap:.25em;margin-bottom:.5em}' .
+			'.arena-field label{font-weight:600;font-size:.9em}' .
 			'.arena-qty{width:60px}' .
-			'.arena-email{flex:1;min-width:200px}' .
-			'.arena-checkout-btn{cursor:pointer}' .
-			'.arena-error{color:#c00;margin:.5em 0}';
+			'.arena-email{width:100%;max-width:320px}' .
+			/* WCAG 2.4.7: visible focus indicator — 2px solid offset */
+			'.arena-qty:focus,.arena-email:focus,.arena-checkout-btn:focus{outline:2px solid #005fcc;outline-offset:2px}' .
+			'.arena-checkout-btn{cursor:pointer;margin-top:.5em}' .
+			/* WCAG 1.4.3: error text contrast */
+			'.arena-error{color:#c00;margin:.5em 0;font-size:.9em}' .
+			'.arena-error:empty{display:none}';
 	}
 }

@@ -679,6 +679,27 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "wp-plugin", "arena-events", "includes", "class-checkout.php"),
 		}
+	// WCAG 2.2 AA accessibility audit (feature #165)
+	case "wcag-checklist.md":
+		candidates = []string{
+			filepath.Join(repoRoot, "ops", "accessibility", "wcag-checklist.md"),
+		}
+	case "wp-demo-test-plan.md":
+		candidates = []string{
+			filepath.Join(repoRoot, "ops", "accessibility", "wp-demo-test-plan.md"),
+		}
+	case "remediation-backlog.md":
+		candidates = []string{
+			filepath.Join(repoRoot, "ops", "accessibility", "remediation-backlog.md"),
+		}
+	case "generate-snapshots.js":
+		candidates = []string{
+			filepath.Join(repoRoot, "ops", "accessibility", "generate-snapshots.js"),
+		}
+	case "accessibility.yml":
+		candidates = []string{
+			filepath.Join(repoRoot, ".github", "workflows", "accessibility.yml"),
+		}
 	case "0040_webhook_subscribers.sql":
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0040_webhook_subscribers.sql"),
@@ -711,6 +732,23 @@ func resolveFileInRepo(repoRoot, name string) string {
 	case "barcode_batches.go":
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "barcode_batches.go"),
+		}
+	// External reconciliation (feature #147)
+	case "0041_reconciliation_reports.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0041_reconciliation_reports.sql"),
+		}
+	case "reconciliation.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "reconciliation.sql"),
+		}
+	case "reconciliation.sql.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "reconciliation.sql.go"),
+		}
+	case "reconciliation.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "reconciliation.go"),
 		}
 	default:
 		// Generic fallback: try the file directly at the repo root.
