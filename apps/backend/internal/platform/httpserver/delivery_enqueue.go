@@ -1,10 +1,14 @@
-// delivery_enqueue.go — post-issuance delivery job enqueueing (feature #141).
+// delivery_enqueue.go — post-issuance delivery job enqueueing (feature #141, #149).
 //
 // enqueueDeliveryJobs is called after issueTicketsForCheckout returns a
 // non-empty ticket slice. It inserts a delivery_jobs row and a worker_jobs
 // row (type "ticket.deliver") for each issued ticket that has not yet been
 // enqueued. The method is best-effort: individual errors are logged and
 // skipped so delivery infrastructure issues never block ticket issuance.
+//
+// enqueueComplimentaryDeliveryJobs (feature #149) works the same way but for
+// complimentary (invitation) tickets. It sets Template="invitation" in the
+// worker job payload so the delivery handler uses the invitation email template.
 //
 // Dependencies (no-op when absent):
 //   - s.deliveryJobQueries — delivery_jobs DB access
@@ -76,6 +80,72 @@ func (s *Server) enqueueDeliveryJobs(ctx context.Context, tickets []gen.TicketRo
 			slog.String("ticket_id", ticketID.String()),
 			slog.String("delivery_job_id", dj.ID.String()),
 			slog.String("worker_job_id", jobID),
+		)
+	}
+}
+
+// enqueueComplimentaryDeliveryJobs creates one delivery_jobs row and one
+// ticket.deliver worker_jobs row (with template="invitation") for each
+// complimentary ticket in the slice. (feature #149)
+//
+// The invitation template flag causes the delivery handler to send an
+// invitation-style email rather than the standard ticket delivery email.
+//
+// Best-effort: individual errors are logged and skipped so delivery issues
+// never roll back a committed complimentary issuance.
+func (s *Server) enqueueComplimentaryDeliveryJobs(ctx context.Context, tickets []gen.ComplimentaryTicketRow) {
+	if s.deliveryJobQueries == nil || s.workerPool == nil {
+		return
+	}
+
+	for _, t := range tickets {
+		ticketID := t.ID
+
+		// Insert delivery_jobs row.
+		dj, err := s.deliveryJobQueries.InsertDeliveryJob(ctx, ticketID, t.HolderEmail)
+		if err != nil {
+			s.logger.Warn("complimentary delivery: insert delivery_job failed",
+				slog.String("ticket_id", ticketID.String()),
+				slog.String("error", err.Error()),
+			)
+			continue
+		}
+
+		// Build the worker job payload with invitation template flag.
+		p := delivery.Payload{
+			TicketID: ticketID.String(),
+			Template: delivery.TemplateInvitation,
+		}
+		body, jsonErr := json.Marshal(p)
+		if jsonErr != nil {
+			s.logger.Warn("complimentary delivery: marshal payload failed",
+				slog.String("ticket_id", ticketID.String()),
+				slog.String("error", jsonErr.Error()),
+			)
+			continue
+		}
+
+		// Enqueue the ticket.deliver worker job.
+		const insertJobSQL = `
+			INSERT INTO worker_jobs (job_type, payload, max_attempts, status, scheduled_at)
+			VALUES ($1, $2::jsonb, $3, 'pending', now())
+			RETURNING id::text`
+		var jobID string
+		if qErr := s.workerPool.QueryRow(ctx, insertJobSQL,
+			delivery.JobType, body, 5,
+		).Scan(&jobID); qErr != nil {
+			s.logger.Warn("complimentary delivery: enqueue worker_job failed",
+				slog.String("ticket_id", ticketID.String()),
+				slog.String("error", qErr.Error()),
+			)
+			continue
+		}
+
+		s.logger.Info("complimentary delivery: invitation job enqueued",
+			slog.String("ticket_id", ticketID.String()),
+			slog.String("delivery_job_id", dj.ID.String()),
+			slog.String("worker_job_id", jobID),
+			slog.String("template", delivery.TemplateInvitation),
 		)
 	}
 }

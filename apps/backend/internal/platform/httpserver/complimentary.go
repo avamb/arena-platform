@@ -284,6 +284,10 @@ func (s *Server) handleCreateComplimentaryIssuance(w http.ResponseWriter, r *htt
 		slog.Int("tickets_issued", len(tickets)),
 	)
 
+	// Enqueue invitation delivery emails for each issued ticket (feature #149).
+	// Best-effort: runs after commit so delivery failures cannot roll back the issuance.
+	s.enqueueComplimentaryDeliveryJobs(ctx, tickets)
+
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"issuance": complimentaryIssuanceFromRow(issuance),
 		"tickets":  complimentaryTicketsFromRows(tickets),

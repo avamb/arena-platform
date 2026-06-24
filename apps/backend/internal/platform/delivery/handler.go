@@ -47,10 +47,22 @@ import (
 // JobType is the worker job type string for ticket email delivery.
 const JobType = "ticket.deliver"
 
+// Email template identifiers for the Template field of Payload.
+const (
+	// TemplateTicket is the standard ticket delivery email (paid/free checkout).
+	TemplateTicket = "ticket"
+	// TemplateInvitation is the complimentary/invitation email template (feature #149).
+	// Used when tickets are issued as complimentary invitations rather than purchases.
+	TemplateInvitation = "invitation"
+)
+
 // Payload is the JSON payload stored in worker_jobs.payload for
 // ticket.deliver jobs.
 type Payload struct {
 	TicketID string `json:"ticket_id"`
+	// Template selects the email template: "ticket" (default) or "invitation".
+	// When empty, TemplateTicket is used.
+	Template string `json:"template,omitempty"`
 }
 
 // HandlerOptions bundles the dependencies required by the delivery handler.
@@ -177,12 +189,23 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 		}
 
 		// ── 5. Build email ────────────────────────────────────────────────────
-		htmlBody := renderTicketEmailHTML(ticketID.String(), recipientEmail)
-		textBody := renderTicketEmailText(ticketID.String(), recipientEmail)
+		// Choose template based on the Payload.Template field.
+		// Empty template defaults to TemplateTicket.
+		var htmlBody, textBody, subject string
+		switch p.Template {
+		case TemplateInvitation:
+			htmlBody = renderInvitationEmailHTML(ticketID.String(), recipientEmail)
+			textBody = renderInvitationEmailText(ticketID.String(), recipientEmail)
+			subject = "You're invited — Arena Platform"
+		default:
+			htmlBody = renderTicketEmailHTML(ticketID.String(), recipientEmail)
+			textBody = renderTicketEmailText(ticketID.String(), recipientEmail)
+			subject = "Your ticket — Arena Platform"
+		}
 
 		msg := email.Message{
 			To:       recipientEmail,
-			Subject:  "Your ticket — Arena Platform",
+			Subject:  subject,
 			HTMLBody: htmlBody,
 			TextBody: textBody,
 		}
@@ -269,6 +292,41 @@ func renderTicketEmailText(ticketID, recipientEmail string) string {
 			"Ticket ID: %s\n"+
 			"Delivered to: %s\n\n"+
 			"Arena Platform — automated delivery\n",
+		ticketID, recipientEmail,
+	)
+}
+
+// renderInvitationEmailHTML returns the HTML body for complimentary invitation emails.
+// Used when Payload.Template == TemplateInvitation (feature #149).
+func renderInvitationEmailHTML(ticketID, recipientEmail string) string {
+	return fmt.Sprintf(`<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>You're Invited</title></head>
+<body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px">
+  <h1 style="color:#1a1a2e">You're invited!</h1>
+  <p>Hello,</p>
+  <p>You have been issued a complimentary invitation ticket. Please find the PDF attached to this email.</p>
+  <p>This ticket has been provided to you as a complimentary invitation — no payment is required.</p>
+  <p style="font-size:12px;color:#666">Ticket ID: %s</p>
+  <p style="font-size:12px;color:#666">Delivered to: %s</p>
+  <hr>
+  <p style="font-size:11px;color:#999">Arena Platform — automated invitation delivery</p>
+</body>
+</html>`, ticketID, recipientEmail)
+}
+
+// renderInvitationEmailText returns the plain-text fallback body for complimentary
+// invitation emails. Used when Payload.Template == TemplateInvitation (feature #149).
+func renderInvitationEmailText(ticketID, recipientEmail string) string {
+	return fmt.Sprintf(
+		"You're invited!\n\nHello,\n\n"+
+			"You have been issued a complimentary invitation ticket. "+
+			"Please find the PDF attached to this email.\n\n"+
+			"This ticket has been provided to you as a complimentary invitation — "+
+			"no payment is required.\n\n"+
+			"Ticket ID: %s\n"+
+			"Delivered to: %s\n\n"+
+			"Arena Platform — automated invitation delivery\n",
 		ticketID, recipientEmail,
 	)
 }
