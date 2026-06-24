@@ -849,6 +849,12 @@ func routeAwareContentTypeMiddleware(router chi.Router) func(http.Handler) http.
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodPost, http.MethodPut, http.MethodPatch:
+				// Skip content-type enforcement for bodyless requests (e.g. action
+				// endpoints like /issue, /pay, /void that transition state without
+				// a request body). ContentLength == 0 means the client sent no body.
+				if r.ContentLength == 0 {
+					break
+				}
 				ct := r.Header.Get("Content-Type")
 				mediaType := strings.ToLower(strings.TrimSpace(ct))
 				if idx := strings.IndexByte(mediaType, ';'); idx >= 0 {
