@@ -1,8 +1,8 @@
 # Initial Backend Specification: Go Stack
 
-Обновлено: 2026-06-21
+Обновлено: 2026-06-21 (status reconciled 2026-06-25)
 
-Статус: `initial specification`, backend stack decision accepted for Go. Не является полной master specification.
+Статус: `historical / superseded` — этот документ описывает первый foundation-only milestone и не отражает текущий broad scaffold. Актуальный снимок реализации — `14_current_implementation_overview_ru.md`. Stack-decision (Go, net/http+chi, PostgreSQL, sqlc, goose, pgx, OpenAPI 3.1) остаётся в силе и подтверждается реализацией.
 
 ## Назначение
 

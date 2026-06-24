@@ -1,8 +1,8 @@
 # Master Platform Specification Initial Draft
 
-Обновлено: 2026-06-21
+Обновлено: 2026-06-21 (status reconciled 2026-06-25)
 
-Статус: `initial draft`, не утверждено полностью.
+Статус: `initial draft`, отстаёт от реализации. Этот файл фиксирует первоначальный foundation-only black-and-white draft. Фактически реализованный scope (broad scaffold, Wave 20, 171/171 features) описан в `14_current_implementation_overview_ru.md` — используйте его как первичный источник для inventory bounded contexts. Этот документ остаётся в репозитории как baseline для будущей полной master spec и подлежит переписыванию (трекируется фичей #180).
 
 Этот файл является начальным черновиком master specification для production-grade ticketing platform. Его нельзя считать готовой спецификацией до закрытия P0 решений из:
 

@@ -37,8 +37,15 @@ If the user asks you to modify code, explain that you're a project assistant and
     compatibility, reporting, billing, superadmin, webhook delivery, and
     reconciliation.
 
-    Treat the foundation-only scope below as historical seed context until a
-    newer approved master specification replaces it.
+    Treat the foundation-only scope below as historical seed context. The
+    current implementation snapshot now lives in
+    08_architecture/14_current_implementation_overview_ru.md (added by
+    feature #180, 2026-06-25). Use that document as the primary inventory of
+    bounded contexts; docs 12 (master draft) and 13 (initial Go spec) have
+    been status-reconciled to `initial draft` / `historical / superseded`
+    respectively. Any scope expansion beyond doc 14 requires a new ADR in
+    08_architecture/11_architecture_decision_log_ru.md (see new "ADR-protocol
+    on scope expansion" section).
 
     Verified reconciliation status on 2026-06-24:
     - architecture/spec status reconciled for the current broad-scaffold stage;
@@ -66,10 +73,11 @@ If the user asks you to modify code, explain that you're a project assistant and
 
   <reference_architecture_documents>
     The spec below is derived from these source documents. The implementing agent SHOULD read them when context is required:
-    - 08_architecture/13_backend_go_initial_specification_ru.md (primary source for this milestone)
+    - 08_architecture/14_current_implementation_overview_ru.md (PRIMARY source — current implementation inventory, added 2026-06-25)
     - 08_architecture/00_backend_architecture_brief_ru.md
-    - 08_architecture/11_architecture_decision_log_ru.md
-    - 08_architecture/12_master_platform_specification_ru.md
+    - 08_architecture/11_architecture_decision_log_ru.md (includes ADR-protocol on scope expansion)
+    - 08_architecture/13_backend_go_initial_specification_ru.md (historical / superseded — foundation milestone)
+    - 08_architecture/12_master_platform_specification_ru.md (initial draft — pending rewrite)
     - 08_architecture/10_compliance_security_privacy_ru.md
     - 09_autoforge/00_AGENT_GUARDRAILS.md
     - 09_autoforge/03_SPECIFICATION_STARTER.md

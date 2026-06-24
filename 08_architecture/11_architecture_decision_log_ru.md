@@ -121,3 +121,15 @@ Open follow-ups:
 ```
 
 No master specification section should depend on an unmarked assumption. If a decision is not confirmed, the spec must say `proposed default` or `open decision`.
+
+## ADR-protocol on scope expansion (added 2026-06-25, feature #180)
+
+Любое расширение фактического scope сверх того, что зафиксировано в `14_current_implementation_overview_ru.md`, должно сопровождаться новой ADR-записью в этом файле ПЕРЕД merge изменений в основную ветку. Под "расширением scope" понимаются:
+
+- новый bounded context (новый набор таблиц/queries, отсутствующий в inventory раздела 2 doc 14);
+- новая внешняя интеграция (новый `internal/adapters/*` подкаталог);
+- смена архитектурного layout (например, ввод `internal/domain/` aggregates или `internal/app/` use cases);
+- новые cross-cutting платформенные сервисы (`internal/platform/*`);
+- изменение фундаментальных решений stack-уровня (язык, БД, router, миграционный движок, OpenAPI tooling).
+
+Формат ADR — как в разделе "Decision Update Protocol" выше. После принятия ADR обновляется `14_current_implementation_overview_ru.md` (раздел 2 и/или 1) в том же PR. Если изменение затрагивает master spec — обновляется и `12_master_platform_specification_ru.md`. PR, расширяющий scope без ADR, должен быть отклонён на review.
