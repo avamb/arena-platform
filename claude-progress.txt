@@ -12566,3 +12566,99 @@ MODIFIED FILES:
 Stats: 165/171 -> 167/171 passing (97.7%). git commit: 7fd3423
 
 ================================================================================
+
+Session: 2026-06-24 -- Feature #156 (WordPress webhook receiver)
+"[scope: scaffold] WP plugin endpoint receives signed events (order_paid,
+ticket_issued, refund_succeeded) from platform; updates local post + sends
+customer email if WP-side notifications configured."
+
+WHAT WAS DONE
+-------------
+Feature #156: WordPress webhook receiver -- WP plugin + platform subscriber registration.
+
+Dependencies satisfied: #111 (webhook delivery client) + #154 (WP plugin core).
+
+NEW WP PLUGIN FILE:
+  apps/wp-plugin/arena-events/includes/class-webhook.php
+    Arena_Events_Webhook class. WP REST API route: POST /wp-json/arena-events/v1/webhook.
+    REST_NAMESPACE = 'arena-events/v1'. init() registers rest_api_init hook.
+    register_routes() calls register_rest_route with the /webhook endpoint.
+    handle_webhook(): reads raw body, verifies X-Arena-Signature header, parses JSON,
+    dispatches to event-specific handlers.
+    verify_signature(): hash_hmac('sha256', body, secret) + hash_equals() (constant-time).
+    Returns 401 for invalid/missing signature; 400 for bad JSON; 422 for missing arena_event_id.
+    handle_order_paid(): update_post_meta(_arena_order_paid) + optional wp_mail.
+    handle_ticket_issued(): update_post_meta(_arena_ticket_id, _arena_ticket_code).
+    handle_refund_succeeded(): update_post_meta(_arena_refund_id) + optional wp_mail.
+    send_notification_email(): wp_mail() wrapper (only when notifications enabled).
+
+MODIFIED WP PLUGIN FILES:
+  apps/wp-plugin/arena-events/includes/class-settings.php
+    Added: OPTION_WEBHOOK_SECRET = 'arena_webhook_secret'
+           OPTION_EMAIL_NOTIFICATIONS = 'arena_email_notifications'
+    Added: arena_events_webhook_section settings section.
+    Added: render_webhook_secret_field() + render_email_notifications_field().
+    Added: get_webhook_secret() + is_email_notifications_enabled() helpers.
+
+  apps/wp-plugin/arena-events/arena-events.php
+    Added: require_once class-webhook.php
+    Added: Arena_Events_Webhook::init() call in arena_events_init()
+
+NEW BACKEND FILES:
+  apps/backend/internal/migrations/sql/0040_webhook_subscribers.sql
+    webhook_subscribers table: id UUID, site_url, callback_url, signing_secret TEXT,
+    event_types TEXT[], active BOOLEAN DEFAULT TRUE, created_at, updated_at.
+    Unique constraint on callback_url. Active-subscriber index.
+    RBAC seeds: webhook.subscriber.manage for admin + org_admin roles.
+
+  apps/backend/internal/adapters/postgres/queries/webhook_subscribers.sql
+    5 sqlc queries: CreateWebhookSubscriber, ListActiveWebhookSubscribers,
+    GetWebhookSubscriberByID, DeactivateWebhookSubscriber, UpdateWebhookSubscriberEventTypes.
+
+  apps/backend/internal/adapters/postgres/gen/webhook_subscribers.sql.go
+    WebhookSubscriberRow struct. 5 generated functions. scanWebhookSubscriberRow() helper.
+
+  apps/backend/internal/platform/httpserver/wp_webhooks.go
+    4 handlers: handleRegisterWebhookSubscriber (POST, generates crypto/rand 32-byte secret),
+    handleListWebhookSubscribers (GET, no secret in response),
+    handleGetWebhookSubscriber (GET /{id}),
+    handleDeactivateWebhookSubscriber (DELETE /{id}).
+    registerSubscriberResponse includes signing_secret (returned ONCE at registration).
+    webhookSubscriberSummary (no SigningSecret) used for GET responses.
+
+MODIFIED BACKEND FILES:
+  apps/backend/internal/adapters/postgres/gen/querier.go
+    Added 5 webhook subscriber methods to Querier interface.
+
+  apps/backend/internal/platform/httpserver/server.go
+    Server struct: added webhookSubQueries *gen.Queries field.
+    Options struct: added WebhookSubQueries *gen.Queries field.
+    New() constructor: initializes webhookSubQueries from opts or pool.
+    mountV1Routes(): POST/GET/DELETE /v1/webhooks/subscribers routes.
+
+  apps/backend/internal/platform/httpserver/testfilehelpers_test.go
+    Added case entries for class-webhook.php, 0040_webhook_subscribers.sql,
+    webhook_subscribers.sql, webhook_subscribers.sql.go, wp_webhooks.go.
+
+NEW TEST FILE:
+  apps/backend/internal/platform/httpserver/wordpress_webhook_156_test.go
+    45 tests covering all aspects: WP class existence, REST route registration,
+    HMAC signature verification, event dispatch, post meta updates, email notifications,
+    migration schema, SQL queries, generated Go types, Querier interface, platform
+    handler structure, server route registration.
+
+VERIFICATION
+------------
+  - 45/45 TestWordPressWebhook156_* tests: PASS
+  - go build ./apps/backend/...: PASS (via Docker build)
+  - Feature #156 marked passing in backlog
+  - git commit: 5ea4a75
+
+PROGRESS METRIC
+---------------
+Stats before session: 167/171 passing (97.7%).
+This session: feature #156 -> 168/171 passing (98.2%).
+
+================================================================================
+
+================================================================================
