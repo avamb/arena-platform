@@ -59,3 +59,12 @@ logs/
 # k6 load test results (generated artifacts; not source)
 ops/loadtest/results/*.json
 ops/loadtest/results/*.gz
+
+# Shell-mishap artifacts: ignore stray dirs that come from broken
+# PowerShell/bash paths like `cd C:Projectsarena_new` or `cd ...;C`.
+# Real project paths never contain ';' on POSIX, and the duplicated
+# "Projects*" prefix at the repo root is always an accident.
+*\;*/
+*\;*
+Projectsarena_new/
+/Projects*/
