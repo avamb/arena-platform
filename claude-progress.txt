@@ -5,6 +5,112 @@ arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
 --------------------------------------------------------------------------------
+Session: 2026-06-24 -- Feature #145 (External allocation quota model)
+"[scope: production-api] [arch: 09_domain_state_machines_ru.md §ExternalAllocation]
+external_allocations table (session_id, partner_org_id, tier_id, quota_qty,
+quota_consumed, status 'pending'|'active'|'reconciled'|'disputed').
+Allocating reduces platform inventory; partner reports consumption."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #145: Full external allocation quota model with inventory hooks.
+
+Migration (0035_external_allocations.sql):
+  - external_allocations table with all required columns
+  - Status CHECK constraint: pending, active, reconciled, disputed
+  - quota_consumed <= quota_qty CHECK constraint
+  - quota_qty > 0 CHECK constraint
+  - Indexes: session_id, partner_org_id, partial index for active/disputed
+  - RBAC seeds: allocation.read, allocation.create, allocation.update
+  - Grants to admin and org_admin roles
+
+SQL queries (external_allocations.sql):
+  - InsertExternalAllocation: create with any initial status
+  - GetExternalAllocationByID: fetch by UUID
+  - ListExternalAllocationsBySession: all allocations for a session
+  - ListExternalAllocationsByOrg: by partner_org_id with optional status filter
+  - UpdateExternalAllocationStatus: transition status only
+  - ReportAllocationConsumption: update quota_consumed + status atomically
+
+Gen file (external_allocations.sql.go):
+  - ExternalAllocationRow struct with all fields
+  - All 6 query methods implemented
+  - scanExternalAllocationRow helper
+
+HTTP handlers (external_allocations.go):
+  - POST /v1/organizations/{org_id}/external-allocations
+    * Validation: uuid org_id, uuid session_id, quota_qty>0, initial status
+    * If status='active': BeginTx → ReserveCapacity → Insert → Commit
+    * If status='pending': simple Insert (no inventory change)
+  - GET /v1/organizations/{org_id}/external-allocations
+    * Lists by partner_org_id, optional ?status= filter
+  - GET /v1/organizations/{org_id}/external-allocations/{id}
+    * Returns single allocation detail
+  - PATCH /v1/organizations/{org_id}/external-allocations/{id}
+    * State machine validation (validAllocationTransitions map)
+    * pending→active: BeginTx → ReserveCapacity → UpdateStatus → Commit
+    * active/disputed→reconciled: BeginTx → ConfirmCapacity(consumed) →
+        ReleaseCapacity(remainder) → ReportConsumption → Commit
+    * Other transitions: UpdateStatus or ReportConsumption directly
+
+Server wiring (server.go):
+  - allocationQueries *gen.Queries field
+  - AllocationQueries option in Options struct
+  - Lazy construction in New() from PgxPool
+  - Routes mounted under /v1/organizations/{org_id}/external-allocations
+  - auth.Middleware + permissions.RequirePermission guards on all routes
+
+Querier interface (querier.go):
+  - Added 6 allocation methods under feature #145 section
+
+Tests (external_allocations_145_test.go) — 34 tests:
+  - 6 migration tests (file exists, goose markers, table, status, RBAC, indexes)
+  - 2 SQL query tests (file exists, all queries present)
+  - 3 gen file tests (file exists, ExternalAllocationRow struct, all methods)
+  - 1 querier interface test (all 6 methods present)
+  - 2 server wiring tests (allocationQueries field, AllocationQueries option)
+  - 1 handler file test (file exists)
+  - 8 HTTP route tests (all 4 routes require JWT, validation tests)
+  - 4 state machine tests (valid/invalid transitions, terminal status)
+  - 2 quota/overflow tests
+  - 3 source code inspection tests (inventory hooks, state map, BeginTx)
+  - 2 response format tests (Content-Type JSON)
+
+CHANGES
+-------
+New files:
+  - apps/backend/internal/migrations/sql/0035_external_allocations.sql
+  - apps/backend/internal/adapters/postgres/queries/external_allocations.sql
+  - apps/backend/internal/adapters/postgres/gen/external_allocations.sql.go
+  - apps/backend/internal/platform/httpserver/external_allocations.go
+  - apps/backend/internal/platform/httpserver/external_allocations_145_test.go
+
+Modified files:
+  - apps/backend/internal/adapters/postgres/gen/querier.go
+      (added 6 allocation methods; also linter added complimentary issuance methods)
+  - apps/backend/internal/platform/httpserver/server.go
+      (allocationQueries field + Options.AllocationQueries + New() wiring + routes)
+  - apps/backend/internal/platform/httpserver/testfilehelpers_test.go
+      (added 4 case entries: 0035_external_allocations.sql, external_allocations.sql,
+       external_allocations.sql.go, external_allocations.go)
+
+VERIFICATION
+------------
+  - 34/34 TestExternalAllocation145_* tests: PASS (Docker golang:1.24-alpine)
+  - go build ./apps/backend/...: EXIT 0 (gen package builds clean)
+  - Pre-existing failures unchanged (TestSnakeCase/bil24_compat.go camelCase tags)
+  - Feature #145 marked passing in backlog
+  - git commit: 71193dd
+
+PROGRESS METRIC
+---------------
+Stats before session: 153/171 passing (89.5%).
+This session: feature #145 completed and marked passing -> 155/171 passing (90.6%).
+
+================================================================================
+
+--------------------------------------------------------------------------------
 Session: 2026-06-24 -- Feature #141 (Ticket delivery via email)
 "[scope: production-api] [arch: 13_backend_go_initial_specification_ru.md §Delivery]
 On ticket issuance, queue delivery job (worker): render email with PDF attachment +
@@ -11770,5 +11876,14 @@ PROGRESS METRIC
 ---------------
 Stats before session: 152/171 passing (88.9%).
 This session: feature #161 verified and fixed -> 153/171 passing (89.5%).
+
+================================================================================
+
+================================================================================
+
+Session: 2026-06-24 -- Feature #166 (Platform superadmin console)
+
+17/17 TestSuperadmin166_* tests PASS. go build OK. Feature #166 marked passing.
+Stats: 153/171 -> 154/171 passing (90.1%). git commit: 13c0d74
 
 ================================================================================
