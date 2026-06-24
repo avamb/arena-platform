@@ -320,6 +320,11 @@ type Server struct {
 	// mounted. Disabled by default; set BIL24_COMPAT_ENABLED=true to enable.
 	// Feature #157.
 	bil24Enabled bool
+
+	// superadminQueries is the sqlc Queries instance used by the platform
+	// superadmin console endpoints (GET /v1/admin/organizations, /orders,
+	// /tickets, /refunds). Nil when no PgxPool was supplied. Feature #166.
+	superadminQueries *gen.Queries
 }
 
 // Options bundles the dependencies that New requires. Using a struct rather
@@ -396,6 +401,13 @@ type Options struct {
 	// MUST remain false in production deployments unless explicitly required for
 	// a migration window.
 	Bil24CompatEnabled bool
+
+	// SuperadminQueries injects a pre-constructed *gen.Queries for the platform
+	// superadmin console endpoints (GET /v1/admin/organizations, /orders,
+	// /tickets, /refunds). When nil and PgxPool is non-nil, gen.New(PgxPool) is used.
+	// Inject gen.New(nil) in tests that need superadmin routes mounted without a real pool.
+	// Feature #166.
+	SuperadminQueries *gen.Queries
 
 	// Bundle is the go-i18n/v2 message catalog bundle used by LocaleMiddleware
 	// to localize error messages. When non-nil, LocaleMiddleware is added to
@@ -824,6 +836,12 @@ func New(opts Options) *Server {
 		deliveryJobQueries = gen.New(opts.PgxPool)
 	}
 
+	// sqlc Queries for platform superadmin console endpoints (feature #166).
+	superadminQueries := opts.SuperadminQueries
+	if superadminQueries == nil && opts.PgxPool != nil {
+		superadminQueries = gen.New(opts.PgxPool)
+	}
+
 	// Extend the permission checker with membership-derived role resolution
 	// (feature #120 step 3). When a PgxPool is available, the DBChecker is
 	// augmented so that each Check() call unions the JWT roles with the user's
@@ -895,6 +913,7 @@ func New(opts Options) *Server {
 		stripeConnect:               opts.StripeConnect,
 		sessionStore:                opts.SessionStore,
 		maxConcurrentSessions:       opts.MaxConcurrentSessionsPerUser,
+		superadminQueries:           superadminQueries,
 	}
 
 	s.mountOperationalRoutes()
@@ -1900,6 +1919,28 @@ func (s *Server) mountV1Routes() {
 				pr.Post("/billing/invoices/{id}/issue", s.handleIssueInvoice)
 				pr.Post("/billing/invoices/{id}/pay", s.handlePayInvoice)
 				pr.Post("/billing/invoices/{id}/void", s.handleVoidInvoice)
+			})
+		}
+
+		// ── Platform superadmin console (feature #166) ──────────────────────────
+		//
+		// Read-only cross-tenant endpoints for platform operators. Every request
+		// requires JWT auth, the platform_superadmin (or admin) role via the
+		// superadmin.read permission, and a mandatory X-Admin-Reason header.
+		// Every successful read is audit-logged.
+		//
+		//   GET /v1/admin/organizations  — list all organizations (all tenants)
+		//   GET /v1/admin/orders         — list all checkout sessions (all tenants)
+		//   GET /v1/admin/tickets        — list all tickets (all tenants)
+		//   GET /v1/admin/refunds        — list all refunds (all tenants)
+		if s.stub != nil && s.stub.Enabled() && s.superadminQueries != nil {
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "superadmin.read", "superadmin"))
+				pr.Get("/admin/organizations", s.handleSuperadminListOrganizations)
+				pr.Get("/admin/orders", s.handleSuperadminListOrders)
+				pr.Get("/admin/tickets", s.handleSuperadminListTickets)
+				pr.Get("/admin/refunds", s.handleSuperadminListRefunds)
 			})
 		}
 	})

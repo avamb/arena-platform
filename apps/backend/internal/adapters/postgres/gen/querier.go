@@ -243,6 +243,11 @@ type Querier interface {
 	AggregateRefundsForEvent(ctx context.Context, eventID uuid.UUID) (EventReportAggRow, error)
 	AggregateScansForEvent(ctx context.Context, eventID uuid.UUID) (EventReportAggRow, error)
 
+	// Platform superadmin console — cross-tenant read-only views (feature #166)
+	ListAllCheckoutSessions(ctx context.Context, orgID *uuid.UUID, stateFilter *string, limit int32, offset int32) ([]CheckoutSessionRow, error)
+	ListAllTickets(ctx context.Context, orgID *uuid.UUID, statusFilter *string, limit int32, offset int32) ([]TicketRow, error)
+	ListAllRefunds(ctx context.Context, orgID *uuid.UUID, stateFilter *string, limit int32, offset int32) ([]RefundRow, error)
+
 	// Service billing ledger — tariffs, usage records, invoices (feature #161)
 	InsertTariff(ctx context.Context, orgID *uuid.UUID, planName string, effectiveFrom time.Time, perTicketFeeMinor int64, perEventFeeMinor int64, monthlyFeeMinor int64, currency string, notes *string, createdBy *string) (TariffRow, error)
 	GetActiveTariff(ctx context.Context, orgID uuid.UUID, asOfDate time.Time) (TariffRow, error)
