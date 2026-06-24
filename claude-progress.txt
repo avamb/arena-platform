@@ -58,6 +58,59 @@ PROGRESS METRIC
 Stats before session: 161/171 passing (94.2%).
 This session: feature #162 completed -> 163/171 passing (95.3%).
 
+--------------------------------------------------------------------------------
+Session: 2026-06-24 -- Feature #146 (External barcode batch import)
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #146: External barcode batch import — CSV upload, operator approval, scanner activation.
+
+NEW FILES:
+  - apps/backend/internal/migrations/sql/0039_barcode_batches.sql
+    Creates barcode_batches table (id uuidv7, allocation_id FK nullable,
+    source CHECK 'csv'|'pdf', status CHECK 'uploaded'|'pending_approval'|'active'|'rejected',
+    filename, row_count, authority_id FK, notes, uploaded_by, timestamps).
+    Creates barcode_batch_entries table (id, batch_id FK CASCADE, external_ref,
+    status CHECK 'pending'|'active'|'rejected', UNIQUE batch_id+external_ref).
+    Seeds platform_operator role + barcode_batch.upload/.approve/.read permissions + RBAC grants.
+
+  - apps/backend/internal/adapters/postgres/queries/barcode_batches.sql
+    9 queries: InsertBarcodeBatch, GetBarcodeBatchByID, ListBarcodeBatchesByAllocation,
+    ListAllBarcodeBatches, UpdateBarcodeBatchStatus, UpdateBarcodeBatchAuthorityAndStatus,
+    InsertBarcodeBatchEntry, ListBatchEntriesByBatchID, UpdateBatchEntriesStatus.
+
+  - apps/backend/internal/adapters/postgres/gen/barcode_batches.sql.go
+    BarcodeBatchRow + BarcodeBatchEntryRow structs + 9 query implementations.
+
+  - apps/backend/internal/platform/httpserver/barcode_batches.go
+    handleUploadBarcodeBatch: POST /v1/barcode-batches (multipart CSV, 10MB/50k rows limit)
+    parseBarcodeBatchCSV: dedup, header detection, empty row skipping
+    handleListBarcodeBatches: GET /v1/barcode-batches (optional allocation_id filter)
+    handleGetBarcodeBatch: GET /v1/barcode-batches/{id}
+    handleApproveBarcodeBatch: POST /v1/barcode-batches/{id}/approve
+      (resolves external_platform authority, registers barcodes, activates entries+batch)
+    handleRejectBarcodeBatch: POST /v1/barcode-batches/{id}/reject
+
+MODIFIED FILES:
+  - querier.go: 9 new barcode batch methods (committed in 8eb528f by #150 session)
+  - server.go: barcodeBatchQueries field + BarcodeBatchQueries option + routes (committed in 8eb528f)
+  - testfilehelpers_test.go: 4 new case entries (committed in 8eb528f)
+  - router.go: allow multipart/form-data in RequireJSONContentType + routeAwareContentTypeMiddleware
+  - barcode_batches_146_test.go: 49 tests (committed in 8eb528f)
+
+VERIFICATION
+------------
+  - 49/49 TestBarcodeBatch146_* tests: PASS
+  - go build ./apps/backend/...: EXIT 0 (Docker build)
+  - Feature #146 marked passing (165/171, 96.5%)
+  - git commit: 30a9443
+
+PROGRESS METRIC
+---------------
+Stats before session: 163/171 passing (95.3%).
+This session: feature #146 completed -> 165/171 passing (96.5%).
+
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -12298,5 +12351,103 @@ PROGRESS METRIC
 ---------------
 Stats before session: 160/171 passing (93.6%).
 This session: feature #153 verified -> 161/171 passing (94.2%).
+
+================================================================================
+
+================================================================================
+
+--------------------------------------------------------------------------------
+Session: 2026-06-24 -- Feature #150 (Complimentary revocation)
+"[scope: production-api] [arch: 09_domain_state_machines_ru.md] Revoke unscanned
+invitation: refund inventory, mark ticket+credential revoked. Scanned tickets
+cannot revoke silently → manual_review."
+--------------------------------------------------------------------------------
+
+WHAT WAS DONE
+-------------
+Feature #150: Full complimentary revocation flow with 42 tests.
+
+Dependencies satisfied: #142 (scanner/barcodes) + #148 (complimentary issuance).
+
+New migration 0038_complimentary_revocation.sql:
+  - Extends complimentary_issuances.status CHECK: adds 'revoked', 'manual_review'
+  - Extends tickets.status CHECK: adds 'revoked'
+  - Seeds 'complimentary.revoke' RBAC permission for admin + org_admin roles
+
+New SQL queries in complimentary_issuances.sql:
+  - HasScannedTicketsForIssuance: EXISTS query joining barcodes+tickets to detect
+    scan-blocked revocations
+  - RevokeComplimentaryTickets: bulk UPDATE tickets SET status='revoked'
+
+New SQL query in inventory_ledger.sql:
+  - RestoreSoldCapacity: inverse of ConfirmCapacity — decrements capacity_sold
+    by qty, moving units back to available (restores inventory on revocation)
+
+New gen functions:
+  - complimentary_issuances.sql.go: HasScannedTicketsForIssuance (bool, error),
+    RevokeComplimentaryTickets ([]ComplimentaryTicketRow, error)
+  - inventory_ledger.sql.go: RestoreSoldCapacity (InventoryLedgerRow, error)
+
+Updated querier.go Querier interface: 3 new methods added
+
+New handler handleRevokeComplimentaryIssuance in complimentary.go:
+  POST /v1/complimentary/{id}/revoke
+  1. Guard: nil complimentaryQueries/pool → 503
+  2. Parse UUID from URL → 400 if invalid
+  3. GetComplimentaryIssuanceByID → 404 if not found
+  4. Guard: status=='revoked' already → 409 already_revoked
+  5. HasScannedTicketsForIssuance → if true: UpdateStatus('manual_review') → 409
+  6. Begin transaction
+  7. RevokeComplimentaryTickets (bulk) → get revoked ticket list
+  8. For each ticket: ListBarcodesByTicketID + RevokeBarcode each (if barcodeQueries)
+  9. For each ticket: RevokeCredential('qr') + RevokeCredential('pdf') (if credentialQueries)
+  10. RestoreSoldCapacity(session_id, tier_id, qty) → restore inventory
+  11. UpdateComplimentaryIssuanceStatus('revoked')
+  12. Commit → emit structured audit log (event=complimentary.revoked)
+  13. Return 200 with issuance + tickets_revoked count
+
+server.go route: POST /complimentary/{id}/revoke under complimentary.issue permission
+
+CHANGES
+-------
+New files:
+  - apps/backend/internal/migrations/sql/0038_complimentary_revocation.sql
+  - apps/backend/internal/platform/httpserver/complimentary_revocation_150_test.go
+
+Modified files:
+  - apps/backend/internal/adapters/postgres/queries/complimentary_issuances.sql
+    (HasScannedTicketsForIssuance, RevokeComplimentaryTickets queries added)
+  - apps/backend/internal/adapters/postgres/queries/inventory_ledger.sql
+    (RestoreSoldCapacity query added)
+  - apps/backend/internal/adapters/postgres/gen/complimentary_issuances.sql.go
+    (HasScannedTicketsForIssuance, RevokeComplimentaryTickets gen functions)
+  - apps/backend/internal/adapters/postgres/gen/inventory_ledger.sql.go
+    (RestoreSoldCapacity gen function)
+  - apps/backend/internal/adapters/postgres/gen/querier.go
+    (RestoreSoldCapacity, HasScannedTicketsForIssuance, RevokeComplimentaryTickets
+    added to Querier interface)
+  - apps/backend/internal/platform/httpserver/complimentary.go
+    (handleRevokeComplimentaryIssuance handler + package doc updated)
+  - apps/backend/internal/platform/httpserver/server.go
+    (POST /complimentary/{id}/revoke route registered)
+  - apps/backend/internal/platform/httpserver/testfilehelpers_test.go
+    (0038_complimentary_revocation.sql case entry added)
+  - apps/backend/internal/platform/httpserver/barcode_batches_146_test.go
+    (fixed pre-existing compile error: broken struct-field interface assertion
+    replaced with content check)
+
+VERIFICATION
+------------
+  - 42/42 TestComplimentaryRevocation150_* tests: PASS
+  - go build ./apps/backend/...: PASS (via Docker build)
+  - Pre-existing failures unchanged (TestCheckout132, TestTimestamp, TestSnakeCase,
+    TestPingProbe -- all pre-existing, not caused by this session)
+  - Feature #150 marked passing in backlog
+  - git commit: 8eb528f
+
+PROGRESS METRIC
+---------------
+Stats before session: ~161/171 passing (based on previous sessions).
+This session: feature #150 completed -> 164/171 passing (95.9%).
 
 ================================================================================
