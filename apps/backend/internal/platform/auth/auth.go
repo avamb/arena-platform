@@ -81,6 +81,20 @@ type Actor struct {
 	// RawToken is the original token string. Kept for downstream forwarding
 	// (e.g. service-to-service propagation) but never logged.
 	RawToken string
+	// ImpersonatedBy is the actor ID of the platform admin who issued this
+	// impersonation token. Empty string means this is a regular (non-impersonation)
+	// token. Set from the "impersonated_by" JWT claim (feature #167).
+	ImpersonatedBy string
+	// ImpersonationReason is the human-readable business justification provided
+	// by the admin when issuing this impersonation token. Empty for regular tokens.
+	// Set from the "impersonation_reason" JWT claim (feature #167).
+	ImpersonationReason string
+}
+
+// IsImpersonated reports whether this actor's token was issued as an
+// impersonation token by a platform admin.
+func (a Actor) IsImpersonated() bool {
+	return a.ImpersonatedBy != ""
 }
 
 // IsAuthenticated reports whether the actor has a non-empty ID and a
@@ -146,6 +160,13 @@ type IssueRequest struct {
 	// future time to produce a token that is not yet valid — useful in tests
 	// that verify the ErrTokenNotValidYet / auth.token_not_yet_valid path.
 	NotBefore time.Time
+	// ImpersonatedBy is the actor ID of the admin issuing an impersonation token.
+	// When non-empty, the resulting JWT carries an "impersonated_by" claim and
+	// the token is flagged as an audit-tracked impersonation session (feature #167).
+	ImpersonatedBy string
+	// ImpersonationReason is the human-readable business justification for
+	// impersonation. Should be set whenever ImpersonatedBy is non-empty.
+	ImpersonationReason string
 }
 
 // -----------------------------------------------------------------------------
@@ -272,14 +293,16 @@ func (p *StubProvider) IssueToken(_ context.Context, req IssueRequest) (string, 
 
 	header := map[string]string{"alg": "HS256", "typ": "JWT"}
 	payload := jwtClaims{
-		Sub:       req.ActorID,
-		Iss:       p.issuer,
-		Aud:       aud,
-		Iat:       now.Unix(),
-		Exp:       exp.Unix(),
-		Nbf:       nbf.Unix(),
-		ActorType: string(req.ActorType),
-		Roles:     req.Roles,
+		Sub:                 req.ActorID,
+		Iss:                 p.issuer,
+		Aud:                 aud,
+		Iat:                 now.Unix(),
+		Exp:                 exp.Unix(),
+		Nbf:                 nbf.Unix(),
+		ActorType:           string(req.ActorType),
+		Roles:               req.Roles,
+		ImpersonatedBy:      req.ImpersonatedBy,
+		ImpersonationReason: req.ImpersonationReason,
 	}
 
 	headerJSON, err := json.Marshal(header)
@@ -366,26 +389,32 @@ func (p *StubProvider) Verify(_ context.Context, token string) (Actor, error) {
 	}
 
 	return Actor{
-		ID:        claims.Sub,
-		Type:      actorType,
-		Roles:     claims.Roles,
-		Issuer:    claims.Iss,
-		ExpiresAt: time.Unix(claims.Exp, 0).UTC(),
-		IssuedAt:  time.Unix(claims.Iat, 0).UTC(),
-		RawToken:  token,
+		ID:                  claims.Sub,
+		Type:                actorType,
+		Roles:               claims.Roles,
+		Issuer:              claims.Iss,
+		ExpiresAt:           time.Unix(claims.Exp, 0).UTC(),
+		IssuedAt:            time.Unix(claims.Iat, 0).UTC(),
+		RawToken:            token,
+		ImpersonatedBy:      claims.ImpersonatedBy,
+		ImpersonationReason: claims.ImpersonationReason,
 	}, nil
 }
 
 // jwtClaims is the internal payload shape for stub JWTs.
 type jwtClaims struct {
-	Sub       string   `json:"sub"`
-	Iss       string   `json:"iss"`
-	Aud       string   `json:"aud,omitempty"`
-	Iat       int64    `json:"iat"`
-	Exp       int64    `json:"exp"`
-	Nbf       int64    `json:"nbf,omitempty"` // not-before; zero means no restriction
-	ActorType string   `json:"actor_type,omitempty"`
-	Roles     []string `json:"roles,omitempty"`
+	Sub                 string   `json:"sub"`
+	Iss                 string   `json:"iss"`
+	Aud                 string   `json:"aud,omitempty"`
+	Iat                 int64    `json:"iat"`
+	Exp                 int64    `json:"exp"`
+	Nbf                 int64    `json:"nbf,omitempty"` // not-before; zero means no restriction
+	ActorType           string   `json:"actor_type,omitempty"`
+	Roles               []string `json:"roles,omitempty"`
+	// Impersonation claims (feature #167). Set only when this token was issued
+	// by a platform admin via POST /v1/admin/impersonate.
+	ImpersonatedBy      string   `json:"impersonated_by,omitempty"`
+	ImpersonationReason string   `json:"impersonation_reason,omitempty"`
 }
 
 func signHS256(secret, msg []byte) []byte {

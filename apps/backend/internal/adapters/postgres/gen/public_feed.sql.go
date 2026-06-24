@@ -110,3 +110,50 @@ func (q *Queries) GetPublishedEventByFeedToken(ctx context.Context, token string
 	row := q.db.QueryRow(ctx, getPublishedEventByFeedToken, token, eventID)
 	return scanEventRow(row)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GetPublicCheckoutContext
+// ─────────────────────────────────────────────────────────────────────────────
+
+// PublicCheckoutContextRow holds the session/event/org/channel identifiers
+// returned by GetPublicCheckoutContext.  All fields are required to open a
+// reservation + checkout session for a public (unauthenticated) buyer.
+type PublicCheckoutContextRow struct {
+	SessionID      uuid.UUID `json:"session_id"`
+	EventID        uuid.UUID `json:"event_id"`
+	OrgID          uuid.UUID `json:"org_id"`
+	SalesChannelID uuid.UUID `json:"sales_channel_id"`
+}
+
+const getPublicCheckoutContext = `-- name: GetPublicCheckoutContext :one
+SELECT
+    s.id                  AS session_id,
+    s.event_id            AS event_id,
+    e.org_id              AS org_id,
+    ft.sales_channel_id   AS sales_channel_id
+FROM sessions s
+JOIN events e ON e.id = s.event_id
+JOIN event_publications ep ON ep.event_id = e.id
+JOIN agent_feed_tokens ft ON ft.id = ep.feed_token_id
+WHERE ft.token     = $1
+  AND ft.is_active  = true
+  AND s.id          = $2
+  AND e.status      = 'published'
+  AND e.deleted_at  IS NULL
+  AND s.deleted_at  IS NULL`
+
+// GetPublicCheckoutContext validates that the given session is published to the
+// given feed token and returns the context (org_id, sales_channel_id) needed to
+// create a reservation + checkout session.
+//
+// Returns pgx.ErrNoRows when:
+//   - the token is unknown or has been revoked
+//   - the session does not exist or is soft-deleted
+//   - the session's event is not in 'published' status
+//   - the session's event is not published to this feed token
+func (q *Queries) GetPublicCheckoutContext(ctx context.Context, token string, sessionID uuid.UUID) (PublicCheckoutContextRow, error) {
+	row := q.db.QueryRow(ctx, getPublicCheckoutContext, token, sessionID)
+	var r PublicCheckoutContextRow
+	err := row.Scan(&r.SessionID, &r.EventID, &r.OrgID, &r.SalesChannelID)
+	return r, err
+}

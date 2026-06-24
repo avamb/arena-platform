@@ -230,6 +230,8 @@ type Querier interface {
 	ListPublishedEventsByFeedToken(ctx context.Context, token string, cityID *uuid.UUID, dateFrom, dateTo *time.Time, limit, offset int32) ([]EventRow, error)
 	CountPublishedEventsByFeedToken(ctx context.Context, token string, cityID *uuid.UUID, dateFrom, dateTo *time.Time) (int32, error)
 	GetPublishedEventByFeedToken(ctx context.Context, token string, eventID uuid.UUID) (EventRow, error)
+	// GetPublicCheckoutContext validates a session belongs to a published event on the feed (feature #153)
+	GetPublicCheckoutContext(ctx context.Context, token string, sessionID uuid.UUID) (PublicCheckoutContextRow, error)
 
 	// Event reports — post-event aggregated financial reports (feature #159)
 	InsertEventReport(ctx context.Context, eventID uuid.UUID, orgID uuid.UUID, reportWindowStart *time.Time, reportWindowEnd *time.Time) (EventReportRow, error)

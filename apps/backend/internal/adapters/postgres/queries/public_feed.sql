@@ -61,3 +61,29 @@ WHERE ft.token    = $1
   AND e.id         = $2
   AND e.status     = 'published'
   AND e.deleted_at IS NULL;
+
+-- name: GetPublicCheckoutContext :one
+-- GetPublicCheckoutContext validates that a session belongs to an event published
+-- on the given feed token and returns the checkout context needed to create a
+-- reservation + checkout session (org_id, sales_channel_id).
+-- Returns pgx.ErrNoRows when:
+--   * the token is unknown or revoked (is_active = false)
+--   * the session is not found or is soft-deleted
+--   * the session's event is not published to this feed token
+-- This implements the ADR-013 policy: the feed token is the credential for
+-- public (unauthenticated) checkout flows.
+SELECT
+    s.id                  AS session_id,
+    s.event_id            AS event_id,
+    e.org_id              AS org_id,
+    ft.sales_channel_id   AS sales_channel_id
+FROM sessions s
+JOIN events e ON e.id = s.event_id
+JOIN event_publications ep ON ep.event_id = e.id
+JOIN agent_feed_tokens ft ON ft.id = ep.feed_token_id
+WHERE ft.token     = $1
+  AND ft.is_active  = true
+  AND s.id          = $2
+  AND e.status      = 'published'
+  AND e.deleted_at  IS NULL
+  AND s.deleted_at  IS NULL;

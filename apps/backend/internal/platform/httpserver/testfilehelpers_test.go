@@ -513,6 +513,11 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "public_feed.go"),
 		}
+	// Public feed checkout start (feature #153)
+	case "public_feed_checkout.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "public_feed_checkout.go"),
+		}
 	// Post-event report generation (feature #159)
 	case "0032_event_reports.sql":
 		candidates = []string{
@@ -610,6 +615,11 @@ func resolveFileInRepo(repoRoot, name string) string {
 	case "report_delivery_enqueue.go":
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "report_delivery_enqueue.go"),
+		}
+	// Admin impersonation (feature #167)
+	case "impersonation.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "impersonation.go"),
 		}
 	default:
 		// Generic fallback: try the file directly at the repo root.

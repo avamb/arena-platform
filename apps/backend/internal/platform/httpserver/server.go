@@ -1914,14 +1914,29 @@ func (s *Server) mountV1Routes() {
 		// Unauthenticated read-only endpoints. The feed token in the path is
 		// the credential (ADR-013 federated feeds). No JWT required.
 		//
-		//   GET /v1/public/feeds/{feed_token}/events              — list events
-		//   GET /v1/public/feeds/{feed_token}/events/{event_id}   — detail + tiers
+		//   GET  /v1/public/feeds/{feed_token}/events              — list events
+		//   GET  /v1/public/feeds/{feed_token}/events/{event_id}   — detail + tiers
 		//
 		// Rate limit: 100 req/min per token, 300 req/min per IP.
 		// Cache-Control set per response (60s for list, 30s for detail).
 		if s.publicFeedQueries != nil {
 			r.Get("/public/feeds/{feed_token}/events", s.handlePublicFeedEvents)
 			r.Get("/public/feeds/{feed_token}/events/{event_id}", s.handlePublicFeedEvent)
+		}
+
+		// ── Public feed checkout start (feature #153) ────────────────────────────
+		//
+		// Unauthenticated checkout initiation via feed token (ADR-013).
+		// The feed token + session_id pair is validated before creating the
+		// reservation + checkout session.
+		//
+		//   POST /v1/public/feeds/{feed_token}/checkout/start
+		//        body: { tier_id, session_id, qty, holder_email, promo_code? }
+		//        returns: { checkout_session, redirect_url }
+		//
+		// 403 when session_id does not belong to the feed identified by feed_token.
+		if s.publicFeedQueries != nil && s.checkoutQueries != nil && s.reservationQueries != nil {
+			r.Post("/public/feeds/{feed_token}/checkout/start", s.handlePublicFeedCheckoutStart)
 		}
 
 		// ── Service billing ledger (feature #161) ───────────────────────────────
@@ -1979,6 +1994,21 @@ func (s *Server) mountV1Routes() {
 				pr.Get("/admin/orders", s.handleSuperadminListOrders)
 				pr.Get("/admin/tickets", s.handleSuperadminListTickets)
 				pr.Get("/admin/refunds", s.handleSuperadminListRefunds)
+			})
+		}
+
+		// ── Admin impersonation (feature #167) ───────────────────────────────────
+		//
+		// Platform superadmins can issue a scoped JWT that temporarily acts as a
+		// target user, enabling diagnosis of user-specific issues without sharing
+		// credentials. Every issuance is audit-logged. Token lifetime ≤ 30 minutes.
+		//
+		//   POST /v1/admin/impersonate  — issue scoped impersonation JWT (superadmin.read)
+		if s.stub != nil && s.stub.Enabled() {
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "superadmin.read", "superadmin"))
+				pr.Post("/admin/impersonate", s.handleImpersonate)
 			})
 		}
 
