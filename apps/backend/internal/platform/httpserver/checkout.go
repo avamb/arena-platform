@@ -543,6 +543,23 @@ func (s *Server) handleCompleteCheckout(w http.ResponseWriter, r *http.Request) 
 			slog.String("org_id", cs.OrgID.String()),
 		)
 
+		// Issue tickets for the free checkout (idempotent).
+		if s.ticketQueries != nil && s.reservationQueries != nil {
+			tickets, ticketErr := s.issueTicketsForCheckout(ctx, cs)
+			if ticketErr != nil {
+				// Non-fatal: checkout is complete; tickets can be re-issued on retry.
+				s.logger.Error("checkout: ticket issuance failed after free checkout",
+					slog.String("checkout_session_id", id.String()),
+					slog.String("error", ticketErr.Error()),
+				)
+			} else {
+				s.logger.Info("checkout: free tickets issued",
+					slog.String("checkout_session_id", id.String()),
+					slog.Int("count", len(tickets)),
+				)
+			}
+		}
+
 		writeJSON(w, http.StatusOK, map[string]any{
 			"checkout_session": checkoutSessionFromRow(cs),
 		})

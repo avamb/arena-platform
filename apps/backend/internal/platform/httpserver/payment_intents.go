@@ -676,6 +676,36 @@ func (s *Server) handlePaymentIntentWebhook(w http.ResponseWriter, r *http.Reque
 		slog.String("to", updated.State),
 	)
 
+	// Issue tickets when payment reaches succeeded state and a checkout session is linked.
+	// Idempotent: issueTicketsForCheckout returns existing tickets if already issued.
+	if updated.State == "succeeded" && updated.CheckoutSessionID != nil &&
+		s.ticketQueries != nil && s.checkoutQueries != nil && s.reservationQueries != nil {
+		cs, csErr := s.checkoutQueries.GetCheckoutSessionByID(ctx, *updated.CheckoutSessionID)
+		if csErr != nil {
+			// Log but do not fail the webhook — payment state is already persisted.
+			s.logger.Error("webhook: checkout lookup failed for ticket issuance",
+				slog.String("payment_intent_id", pi.ID.String()),
+				slog.String("checkout_session_id", updated.CheckoutSessionID.String()),
+				slog.String("error", csErr.Error()),
+			)
+		} else {
+			tickets, ticketErr := s.issueTicketsForCheckout(ctx, cs)
+			if ticketErr != nil {
+				s.logger.Error("webhook: ticket issuance failed",
+					slog.String("payment_intent_id", pi.ID.String()),
+					slog.String("checkout_session_id", cs.ID.String()),
+					slog.String("error", ticketErr.Error()),
+				)
+			} else {
+				s.logger.Info("webhook: tickets issued on payment success",
+					slog.String("payment_intent_id", pi.ID.String()),
+					slog.String("checkout_session_id", cs.ID.String()),
+					slog.Int("count", len(tickets)),
+				)
+			}
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"acknowledged":   true,
 		"event_type":     req.EventType,

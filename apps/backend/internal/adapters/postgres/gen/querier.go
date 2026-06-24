@@ -187,6 +187,12 @@ type Querier interface {
 	CountPromoCodeRedemptions(ctx context.Context, promoCodeID uuid.UUID) (int32, error)
 	CountUserRedemptions(ctx context.Context, promoCodeID, userID uuid.UUID) (int32, error)
 	InsertPromoCodeRedemption(ctx context.Context, promoCodeID uuid.UUID, userID, reservationID *uuid.UUID, discountAmount, orderAmount int64) (PromoCodeRedemptionRow, error)
+
+	// Tickets — issued entitlements after payment.succeeded or free checkout (feature #139)
+	InsertTicket(ctx context.Context, checkoutSessionID uuid.UUID, sessionID uuid.UUID, tierID *uuid.UUID, holderEmail *string) (TicketRow, error)
+	ListTicketsByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID) ([]TicketRow, error)
+	GetTicketByID(ctx context.Context, id uuid.UUID) (TicketRow, error)
+	CountTicketsByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID) (int64, error)
 }
 
 // Compile-time assertion: *Queries must implement Querier.
