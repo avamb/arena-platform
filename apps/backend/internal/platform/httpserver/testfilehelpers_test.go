@@ -602,6 +602,15 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "complimentary.go"),
 		}
+	// Report delivery + recipient deduplication (feature #160)
+	case "reportdelivery_handler.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "reportdelivery", "handler.go"),
+		}
+	case "report_delivery_enqueue.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "report_delivery_enqueue.go"),
+		}
 	default:
 		// Generic fallback: try the file directly at the repo root.
 		candidates = []string{

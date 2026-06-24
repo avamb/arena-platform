@@ -243,6 +243,9 @@ type Querier interface {
 	AggregateRefundsForEvent(ctx context.Context, eventID uuid.UUID) (EventReportAggRow, error)
 	AggregateScansForEvent(ctx context.Context, eventID uuid.UUID) (EventReportAggRow, error)
 
+	// Report delivery recipient resolution — dedup by email (feature #160)
+	GetReportRecipientsForOrg(ctx context.Context, orgID uuid.UUID) ([]ReportRecipientRow, error)
+
 	// Platform superadmin console — cross-tenant read-only views (feature #166)
 	ListAllCheckoutSessions(ctx context.Context, orgID *uuid.UUID, stateFilter *string, limit int32, offset int32) ([]CheckoutSessionRow, error)
 	ListAllTickets(ctx context.Context, orgID *uuid.UUID, statusFilter *string, limit int32, offset int32) ([]TicketRow, error)

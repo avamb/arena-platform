@@ -164,6 +164,11 @@ func (s *Server) handleTriggerEventReport(w http.ResponseWriter, r *http.Request
 		"event_id", eventID,
 	)
 
+	// Enqueue a report.deliver worker job (feature #160).
+	// The delivery handler retries until the report reaches 'ready' state.
+	// Best-effort: errors are logged and swallowed inside enqueueReportDeliveryJob.
+	s.enqueueReportDeliveryJob(r.Context(), report.ID)
+
 	writeJSON(w, http.StatusAccepted, map[string]any{
 		"report_id": report.ID.String(),
 		"state":     report.State,

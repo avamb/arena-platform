@@ -405,3 +405,78 @@ func (q *Queries) AggregateScansForEvent(
 	row := q.db.QueryRow(ctx, aggregateScansForEvent, eventID)
 	return scanEventReportAggRow(row)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ReportRecipientRow — result type for GetReportRecipientsForOrg (feature #160)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ReportRecipientRow is the result of GetReportRecipientsForOrg.
+//
+// One row is returned per unique user (deduplicated by user_id / email).
+// When a user holds multiple qualifying roles (organizer, agent, platform_operator),
+// all roles are aggregated into Roles as a comma-separated string
+// (e.g. "agent,organizer"), ordered alphabetically.
+//
+// This implements the deduplication rule from feature #160:
+// "same human holds multiple roles → single combined package".
+type ReportRecipientRow struct {
+	UserID uuid.UUID `json:"user_id"`
+	Email  string    `json:"email"`
+	// Roles is a comma-separated list of roles this user holds in the org,
+	// e.g. "organizer" or "agent,organizer". Always non-empty.
+	Roles string `json:"roles"`
+}
+
+// scanReportRecipientRow scans a single GetReportRecipientsForOrg result row.
+func scanReportRecipientRow(row interface {
+	Scan(dest ...any) error
+}) (ReportRecipientRow, error) {
+	var r ReportRecipientRow
+	err := row.Scan(&r.UserID, &r.Email, &r.Roles)
+	return r, err
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GetReportRecipientsForOrg
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getReportRecipientsForOrg = `-- name: GetReportRecipientsForOrg :many
+SELECT
+    u.id                                             AS user_id,
+    u.email,
+    string_agg(m.role, ',' ORDER BY m.role)         AS roles
+FROM   memberships m
+JOIN   users u ON m.user_id = u.id
+WHERE  m.org_id = $1
+  AND  m.status = 'active'
+  AND  m.role IN ('organizer', 'agent', 'platform_operator')
+GROUP  BY u.id, u.email
+ORDER  BY lower(u.email)`
+
+// GetReportRecipientsForOrg resolves the deduplicated set of email recipients
+// for a post-event report delivery. Returns one row per unique user; each row's
+// Roles field contains a comma-separated list of the user's qualifying roles
+// within the org (sorted alphabetically).
+//
+// Feature #160: deduplication — when organizer == agent (same user), exactly
+// one ReportRecipientRow is returned for that user (Roles = "agent,organizer").
+func (q *Queries) GetReportRecipientsForOrg(
+	ctx context.Context,
+	orgID uuid.UUID,
+) ([]ReportRecipientRow, error) {
+	rows, err := q.db.Query(ctx, getReportRecipientsForOrg, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var recipients []ReportRecipientRow
+	for rows.Next() {
+		r, err := scanReportRecipientRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		recipients = append(recipients, r)
+	}
+	return recipients, rows.Err()
+}

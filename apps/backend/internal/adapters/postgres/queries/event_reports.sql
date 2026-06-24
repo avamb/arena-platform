@@ -134,3 +134,24 @@ JOIN   tickets t  ON b.ticket_id  = t.id
 JOIN   sessions s ON t.session_id = s.id
 WHERE  s.event_id     = $1
   AND  b.scanned_at  IS NOT NULL;
+
+-- ── Report delivery recipient resolution (feature #160) ──────────────────────
+
+-- name: GetReportRecipientsForOrg :many
+-- Returns one row per unique user who is an active member of the org with a
+-- report-relevant role (organizer, agent, or platform_operator).
+-- When a user holds multiple qualifying roles (e.g. both organizer and agent),
+-- those roles are aggregated into a single comma-separated string — this is the
+-- deduplication rule required by feature #160.
+-- Ordered by normalized email to produce stable, deterministic output.
+SELECT
+    u.id                                             AS user_id,
+    u.email,
+    string_agg(m.role, ',' ORDER BY m.role)         AS roles
+FROM   memberships m
+JOIN   users u ON m.user_id = u.id
+WHERE  m.org_id = $1
+  AND  m.status = 'active'
+  AND  m.role IN ('organizer', 'agent', 'platform_operator')
+GROUP  BY u.id, u.email
+ORDER  BY lower(u.email);
