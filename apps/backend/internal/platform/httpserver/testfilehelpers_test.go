@@ -412,6 +412,23 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "tickets.go"),
 		}
+	// Ticket credentials — QR and PDF bearer artifacts (feature #140)
+	case "0027_ticket_credentials.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0027_ticket_credentials.sql"),
+		}
+	case "ticket_credentials.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "ticket_credentials.sql"),
+		}
+	case "ticket_credentials.sql.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "ticket_credentials.sql.go"),
+		}
+	case "credentials.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "credentials.go"),
+		}
 	default:
 		// Generic fallback: try the file directly at the repo root.
 		candidates = []string{

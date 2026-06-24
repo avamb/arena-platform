@@ -214,6 +214,12 @@ type Server struct {
 	// read endpoint. Nil when no PgxPool was supplied. Feature #139.
 	ticketQueries *gen.Queries
 
+	// credentialQueries is the sqlc Queries instance used by the ticket
+	// credential generation and retrieval endpoint
+	// (GET /v1/tickets/{id}/credential). Nil when no PgxPool was supplied.
+	// Feature #140.
+	credentialQueries *gen.Queries
+
 	// stripeConnect is the helper used by the Stripe Connect OAuth onboarding
 	// endpoints (GET /v1/stripe/connect/authorize and …/callback). Nil when
 	// Stripe Connect is not configured. When nil these routes are not mounted.
@@ -459,6 +465,13 @@ type Options struct {
 	// that need ticket routes mounted without a real pool. Feature #139.
 	TicketQueries *gen.Queries
 
+	// CredentialQueries injects a pre-constructed *gen.Queries for the ticket
+	// credential generation and retrieval endpoint
+	// (GET /v1/tickets/{id}/credential). When nil and PgxPool is non-nil,
+	// gen.New(PgxPool) is used. Inject gen.New(nil) in tests that need
+	// credential routes mounted without a real pool. Feature #140.
+	CredentialQueries *gen.Queries
+
 	// StripeConnect injects the Stripe Connect OAuth helper used by
 	// GET /v1/stripe/connect/authorize and GET /v1/stripe/connect/callback.
 	// When nil the Stripe Connect routes are not mounted.
@@ -659,6 +672,12 @@ func New(opts Options) *Server {
 		ticketQueries = gen.New(opts.PgxPool)
 	}
 
+	// sqlc Queries for ticket credential generation and retrieval (feature #140).
+	credentialQueries := opts.CredentialQueries
+	if credentialQueries == nil && opts.PgxPool != nil {
+		credentialQueries = gen.New(opts.PgxPool)
+	}
+
 	// Extend the permission checker with membership-derived role resolution
 	// (feature #120 step 3). When a PgxPool is available, the DBChecker is
 	// augmented so that each Check() call unions the JWT roles with the user's
@@ -716,6 +735,7 @@ func New(opts Options) *Server {
 		checkoutQueries:             checkoutQueries,
 		paymentIntentQueries:        paymentIntentQueries,
 		ticketQueries:               ticketQueries,
+		credentialQueries:           credentialQueries,
 		stripeConnect:               opts.StripeConnect,
 		sessionStore:                opts.SessionStore,
 		maxConcurrentSessions:       opts.MaxConcurrentSessionsPerUser,
@@ -1524,6 +1544,22 @@ func (s *Server) mountV1Routes() {
 				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
 				pr.Use(permissions.RequirePermission(s.perms, "ticket.read", "tickets"))
 				pr.Get("/checkout/{id}/tickets", s.handleListTickets)
+			})
+		}
+
+		// ── Ticket credentials (feature #140) ───────────────────────────────
+		//
+		// Lazy-generate and return bearer credentials for an issued ticket.
+		// The credential is created on first access and stored in the DB.
+		// Subsequent requests return the cached credential.
+		//
+		//   GET /v1/tickets/{id}/credential?type=static_qr  (default)
+		//   GET /v1/tickets/{id}/credential?type=pdf
+		if s.stub != nil && s.stub.Enabled() && s.credentialQueries != nil {
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "credential.read", "credentials"))
+				pr.Get("/tickets/{id}/credential", s.handleGetCredential)
 			})
 		}
 

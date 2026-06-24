@@ -193,6 +193,21 @@ type Querier interface {
 	ListTicketsByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID) ([]TicketRow, error)
 	GetTicketByID(ctx context.Context, id uuid.UUID) (TicketRow, error)
 	CountTicketsByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID) (int64, error)
+
+	// Ticket credentials — QR and PDF bearer artifacts (feature #140)
+	InsertTicketCredential(ctx context.Context, ticketID uuid.UUID, credType string, payload string) (TicketCredentialRow, error)
+	GetCredentialByTicketID(ctx context.Context, ticketID uuid.UUID, credType string) (TicketCredentialRow, error)
+	RevokeCredential(ctx context.Context, ticketID uuid.UUID, credType string) (TicketCredentialRow, error)
+	ListCredentialsByTicketID(ctx context.Context, ticketID uuid.UUID) ([]TicketCredentialRow, error)
+
+	// Refunds — state machine for payment reversals (feature #138)
+	InsertRefund(ctx context.Context, paymentIntentID uuid.UUID, orgID uuid.UUID, amount int64, currency string, reason *string, requestedBy *string) (RefundRow, error)
+	GetRefundByID(ctx context.Context, id uuid.UUID) (RefundRow, error)
+	ListRefundsByPaymentIntent(ctx context.Context, paymentIntentID uuid.UUID) ([]RefundRow, error)
+	UpdateRefundState(ctx context.Context, id uuid.UUID, newState string, providerRefundID *string, failureReason *string) (RefundRow, error)
+	InsertRefundEvent(ctx context.Context, refundID uuid.UUID, providerRefundID string, eventType string, eventPayload []byte, resultingState *string) (RefundEventRow, error)
+	GetRefundEvent(ctx context.Context, providerRefundID string, eventType string) (RefundEventRow, error)
+	CancelTicketsByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID) (int64, error)
 }
 
 // Compile-time assertion: *Queries must implement Querier.
