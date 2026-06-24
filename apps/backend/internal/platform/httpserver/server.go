@@ -203,6 +203,11 @@ type Server struct {
 	// state machine endpoints. Nil when no PgxPool was supplied. Feature #132.
 	checkoutQueries *gen.Queries
 
+	// paymentIntentQueries is the sqlc Queries instance used by the payment intent
+	// state machine endpoints (SCA-aware, webhook idempotency). Nil when no
+	// PgxPool was supplied. Feature #137.
+	paymentIntentQueries *gen.Queries
+
 	// faultInjectOutboxAfterAudit is a dev/test-only fault injection flag.
 	// When true, handleEcho forces a transaction rollback immediately after
 	// the audit_events INSERT succeeds, before writing to outbox_events.
@@ -416,6 +421,12 @@ type Options struct {
 	// gen.New(PgxPool) is used. Inject gen.New(nil) in tests that need checkout
 	// routes mounted without a real pool. Feature #132.
 	CheckoutQueries *gen.Queries
+
+	// PaymentIntentQueries injects a pre-constructed *gen.Queries for the payment
+	// intent state machine endpoints (SCA, webhook idempotency). When nil and
+	// PgxPool is non-nil, gen.New(PgxPool) is used. Inject gen.New(nil) in tests
+	// that need payment intent routes mounted without a real pool. Feature #137.
+	PaymentIntentQueries *gen.Queries
 }
 
 // New constructs (but does not start) the HTTP server.
@@ -583,6 +594,12 @@ func New(opts Options) *Server {
 		checkoutQueries = gen.New(opts.PgxPool)
 	}
 
+	// sqlc Queries for payment intent state machine endpoints (feature #137).
+	paymentIntentQueries := opts.PaymentIntentQueries
+	if paymentIntentQueries == nil && opts.PgxPool != nil {
+		paymentIntentQueries = gen.New(opts.PgxPool)
+	}
+
 	// Extend the permission checker with membership-derived role resolution
 	// (feature #120 step 3). When a PgxPool is available, the DBChecker is
 	// augmented so that each Check() call unions the JWT roles with the user's
@@ -638,6 +655,7 @@ func New(opts Options) *Server {
 		promoQueries:                promoQueries,
 		pricingRules:                opts.PricingRules,
 		checkoutQueries:             checkoutQueries,
+		paymentIntentQueries:        paymentIntentQueries,
 	}
 
 	s.mountOperationalRoutes()
@@ -1361,6 +1379,42 @@ func (s *Server) mountV1Routes() {
 				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
 				pr.Use(permissions.RequirePermission(s.perms, "checkout.abandon", "checkout"))
 				pr.Post("/checkout/{id}/abandon", s.handleAbandonCheckout)
+			})
+		}
+
+		// ── Payment Intents (feature #137) ──────────────────────────────────
+		//
+		// SCA-aware payment intent state machine with webhook idempotency.
+		//
+		//   POST /v1/payment-intents                     — create (payment_intent.create)
+		//   GET  /v1/payment-intents/{id}                — read   (payment_intent.read)
+		//   POST /v1/payment-intents/{id}/transition     — advance state (payment_intent.update)
+		//   POST /v1/payment-intents/webhook             — provider webhook (no JWT)
+		if s.paymentIntentQueries != nil {
+			// Webhook — intentionally unauthenticated; providers deliver these
+			// from their own infrastructure. Idempotency handled internally.
+			r.Post("/payment-intents/webhook", s.handlePaymentIntentWebhook)
+		}
+		if s.stub != nil && s.stub.Enabled() && s.paymentIntentQueries != nil {
+			// GET /v1/payment-intents/{id} (payment_intent.read)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "payment_intent.read", "payment_intents"))
+				pr.Get("/payment-intents/{id}", s.handleGetPaymentIntent)
+			})
+		}
+		if s.stub != nil && s.stub.Enabled() && s.paymentIntentQueries != nil && s.pool != nil {
+			// POST /v1/payment-intents (payment_intent.create)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "payment_intent.create", "payment_intents"))
+				pr.Post("/payment-intents", s.handleCreatePaymentIntent)
+			})
+			// POST /v1/payment-intents/{id}/transition (payment_intent.update)
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "payment_intent.update", "payment_intents"))
+				pr.Post("/payment-intents/{id}/transition", s.handleTransitionPaymentIntent)
 			})
 		}
 

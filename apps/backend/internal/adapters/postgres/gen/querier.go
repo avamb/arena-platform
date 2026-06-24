@@ -141,6 +141,15 @@ type Querier interface {
 	ExpireCheckoutSession(ctx context.Context, id uuid.UUID) (CheckoutSessionRow, error)
 	ListCheckoutSessionsByReservation(ctx context.Context, reservationID uuid.UUID) ([]CheckoutSessionRow, error)
 
+	// Payment intents — SCA-aware payment state machine (feature #137)
+	InsertPaymentIntent(ctx context.Context, checkoutSessionID *uuid.UUID, orgID uuid.UUID, provider string, providerPaymentID *string, amount int64, currency string, initialState string, scaRedirectURL *string, clientSecret *string) (PaymentIntentRow, error)
+	GetPaymentIntentByID(ctx context.Context, id uuid.UUID) (PaymentIntentRow, error)
+	GetPaymentIntentByProviderID(ctx context.Context, providerPaymentID string) (PaymentIntentRow, error)
+	ListPaymentIntentsByCheckout(ctx context.Context, checkoutSessionID uuid.UUID) ([]PaymentIntentRow, error)
+	UpdatePaymentIntentState(ctx context.Context, id uuid.UUID, newState string, scaRedirectURL *string, clientSecret *string, failureCode *string, failureMessage *string, providerPaymentID *string) (PaymentIntentRow, error)
+	InsertPaymentIntentEvent(ctx context.Context, paymentIntentID uuid.UUID, providerPaymentID string, eventType string, eventPayload []byte, resultingState *string) (PaymentIntentEventRow, error)
+	GetPaymentIntentEvent(ctx context.Context, providerPaymentID string, eventType string) (PaymentIntentEventRow, error)
+
 	// GDPR data workflows — export / delete / consent (feature #164)
 	InsertDataSubjectRequest(ctx context.Context, userID uuid.UUID, requestType string) (DataSubjectRequestRow, error)
 	GetDataSubjectRequestByID(ctx context.Context, id, userID uuid.UUID) (DataSubjectRequestRow, error)
