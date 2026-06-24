@@ -3,12 +3,19 @@
  * class-settings.php — admin settings page for the Arena Events plugin.
  *
  * Provides an admin settings page where administrators configure:
- *   - feed_token:    The public API feed token issued by the Arena platform
- *   - api_base_url:  The Arena API base URL (default: https://api.arena.abhteam.com)
+ *   - feed_token:           The public API feed token issued by the Arena platform
+ *   - api_base_url:         The Arena API base URL (default: https://api.arena.abhteam.com)
+ *   - webhook_secret:       The HMAC-SHA256 signing secret returned by the platform's
+ *                           POST /v1/webhooks/subscribers registration endpoint.
+ *                           Used to verify the X-Arena-Signature header on incoming webhooks.
+ *   - email_notifications:  When enabled, the webhook receiver sends customer emails
+ *                           for order_paid, ticket_issued, and refund_succeeded events.
  *
  * Options are stored using the WordPress Options API:
- *   - arena_feed_token     → wp_options.option_value
- *   - arena_api_base_url   → wp_options.option_value
+ *   - arena_feed_token          → wp_options.option_value
+ *   - arena_api_base_url        → wp_options.option_value
+ *   - arena_webhook_secret      → wp_options.option_value
+ *   - arena_email_notifications → wp_options.option_value
  *
  * @package Arena_Events
  */
@@ -23,8 +30,10 @@ defined( 'ABSPATH' ) || exit;
 class Arena_Events_Settings {
 
 	/** Option names. */
-	const OPTION_FEED_TOKEN    = 'arena_feed_token';
-	const OPTION_API_BASE_URL  = 'arena_api_base_url';
+	const OPTION_FEED_TOKEN           = 'arena_feed_token';
+	const OPTION_API_BASE_URL         = 'arena_api_base_url';
+	const OPTION_WEBHOOK_SECRET       = 'arena_webhook_secret';
+	const OPTION_EMAIL_NOTIFICATIONS  = 'arena_email_notifications';
 
 	/** Default API base URL. */
 	const DEFAULT_API_BASE_URL = 'https://api.arena.abhteam.com';
@@ -106,6 +115,54 @@ class Arena_Events_Settings {
 			self::PAGE_SLUG,
 			'arena_events_api_section'
 		);
+
+		// Webhook secret option (set by platform registration, or manually).
+		register_setting(
+			self::SETTINGS_GROUP,
+			self::OPTION_WEBHOOK_SECRET,
+			[
+				'type'              => 'string',
+				'sanitize_callback' => 'sanitize_text_field',
+				'default'           => '',
+			]
+		);
+
+		// Email notifications toggle.
+		register_setting(
+			self::SETTINGS_GROUP,
+			self::OPTION_EMAIL_NOTIFICATIONS,
+			[
+				'type'              => 'boolean',
+				'sanitize_callback' => 'rest_sanitize_boolean',
+				'default'           => false,
+			]
+		);
+
+		// Webhook section.
+		add_settings_section(
+			'arena_events_webhook_section',
+			__( 'Webhook Settings', 'arena-events' ),
+			[ __CLASS__, 'render_webhook_section_description' ],
+			self::PAGE_SLUG
+		);
+
+		// Webhook secret field.
+		add_settings_field(
+			self::OPTION_WEBHOOK_SECRET,
+			__( 'Webhook Secret', 'arena-events' ),
+			[ __CLASS__, 'render_webhook_secret_field' ],
+			self::PAGE_SLUG,
+			'arena_events_webhook_section'
+		);
+
+		// Email notifications field.
+		add_settings_field(
+			self::OPTION_EMAIL_NOTIFICATIONS,
+			__( 'Email Notifications', 'arena-events' ),
+			[ __CLASS__, 'render_email_notifications_field' ],
+			self::PAGE_SLUG,
+			'arena_events_webhook_section'
+		);
 	}
 
 	/**
@@ -181,6 +238,57 @@ class Arena_Events_Settings {
 	}
 
 	/**
+	 * Render the webhook section description.
+	 */
+	public static function render_webhook_section_description(): void {
+		echo '<p>' . esc_html__(
+			'Configure the webhook secret to verify incoming events from the Arena platform. ' .
+			'Register this site as a subscriber via the platform admin or POST /v1/webhooks/subscribers ' .
+			'to receive a generated secret.',
+			'arena-events'
+		) . '</p>';
+	}
+
+	/**
+	 * Render the webhook_secret input field.
+	 */
+	public static function render_webhook_secret_field(): void {
+		$value = get_option( self::OPTION_WEBHOOK_SECRET, '' );
+		?>
+		<input
+			type="password"
+			id="<?php echo esc_attr( self::OPTION_WEBHOOK_SECRET ); ?>"
+			name="<?php echo esc_attr( self::OPTION_WEBHOOK_SECRET ); ?>"
+			value="<?php echo esc_attr( $value ); ?>"
+			class="regular-text"
+			autocomplete="new-password"
+		/>
+		<p class="description">
+			<?php esc_html_e( 'The HMAC-SHA256 secret returned by the Arena platform when this site registered as a webhook subscriber. Required to verify incoming webhook payloads.', 'arena-events' ); ?>
+		</p>
+		<?php
+	}
+
+	/**
+	 * Render the email_notifications checkbox field.
+	 */
+	public static function render_email_notifications_field(): void {
+		$value = (bool) get_option( self::OPTION_EMAIL_NOTIFICATIONS, false );
+		?>
+		<label>
+			<input
+				type="checkbox"
+				id="<?php echo esc_attr( self::OPTION_EMAIL_NOTIFICATIONS ); ?>"
+				name="<?php echo esc_attr( self::OPTION_EMAIL_NOTIFICATIONS ); ?>"
+				value="1"
+				<?php checked( $value ); ?>
+			/>
+			<?php esc_html_e( 'Send customer email notifications for order_paid, ticket_issued, and refund_succeeded events.', 'arena-events' ); ?>
+		</label>
+		<?php
+	}
+
+	/**
 	 * Helper: retrieve the configured feed token.
 	 *
 	 * @return string Feed token or empty string if not configured.
@@ -197,5 +305,23 @@ class Arena_Events_Settings {
 	public static function get_api_base_url(): string {
 		$url = (string) get_option( self::OPTION_API_BASE_URL, '' );
 		return $url !== '' ? rtrim( $url, '/' ) : rtrim( self::DEFAULT_API_BASE_URL, '/' );
+	}
+
+	/**
+	 * Helper: retrieve the configured webhook secret.
+	 *
+	 * @return string Webhook secret or empty string if not configured.
+	 */
+	public static function get_webhook_secret(): string {
+		return (string) get_option( self::OPTION_WEBHOOK_SECRET, '' );
+	}
+
+	/**
+	 * Helper: check whether customer email notifications are enabled.
+	 *
+	 * @return bool True when the arena_email_notifications option is set.
+	 */
+	public static function is_email_notifications_enabled(): bool {
+		return (bool) get_option( self::OPTION_EMAIL_NOTIFICATIONS, false );
 	}
 }

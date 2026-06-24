@@ -21,6 +21,7 @@ define( 'ARENA_EVENTS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 require_once ARENA_EVENTS_PLUGIN_DIR . 'includes/class-post-type.php';
 require_once ARENA_EVENTS_PLUGIN_DIR . 'includes/class-settings.php';
 require_once ARENA_EVENTS_PLUGIN_DIR . 'includes/class-sync.php';
+require_once ARENA_EVENTS_PLUGIN_DIR . 'includes/class-webhook.php';
 
 /**
  * Bootstrap the plugin.
@@ -29,6 +30,7 @@ function arena_events_init(): void {
 	Arena_Events_Post_Type::register();
 	Arena_Events_Settings::init();
 	Arena_Events_Sync::init();
+	Arena_Events_Webhook::init();
 }
 add_action( 'plugins_loaded', 'arena_events_init' );
 

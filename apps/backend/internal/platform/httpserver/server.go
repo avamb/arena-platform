@@ -346,6 +346,11 @@ type Server struct {
 	// import endpoints (upload CSV, approve/reject). Nil when no PgxPool was supplied.
 	// Feature #146.
 	barcodeBatchQueries *gen.Queries
+
+	// webhookSubQueries is the sqlc Queries instance used by the webhook subscriber
+	// management endpoints (POST/GET/DELETE /v1/webhooks/subscribers). Nil when no
+	// PgxPool was supplied. Feature #156.
+	webhookSubQueries *gen.Queries
 }
 
 // Options bundles the dependencies that New requires. Using a struct rather
@@ -449,6 +454,13 @@ type Options struct {
 	// Inject gen.New(nil) in tests that need barcode batch routes mounted without a real pool.
 	// Feature #146.
 	BarcodeBatchQueries *gen.Queries
+
+	// WebhookSubQueries injects a pre-constructed *gen.Queries for the webhook subscriber
+	// management endpoints (POST/GET/DELETE /v1/webhooks/subscribers). When nil and
+	// PgxPool is non-nil, gen.New(PgxPool) is used.
+	// Inject gen.New(nil) in tests that need webhook subscriber routes without a real pool.
+	// Feature #156.
+	WebhookSubQueries *gen.Queries
 
 	// Bundle is the go-i18n/v2 message catalog bundle used by LocaleMiddleware
 	// to localize error messages. When non-nil, LocaleMiddleware is added to
@@ -909,6 +921,12 @@ func New(opts Options) *Server {
 		barcodeBatchQueries = gen.New(opts.PgxPool)
 	}
 
+	// sqlc Queries for webhook subscriber management endpoints (feature #156).
+	webhookSubQueries := opts.WebhookSubQueries
+	if webhookSubQueries == nil && opts.PgxPool != nil {
+		webhookSubQueries = gen.New(opts.PgxPool)
+	}
+
 	// Extend the permission checker with membership-derived role resolution
 	// (feature #120 step 3). When a PgxPool is available, the DBChecker is
 	// augmented so that each Check() call unions the JWT roles with the user's
@@ -985,6 +1003,7 @@ func New(opts Options) *Server {
 		allocationQueries:           allocationQueries,
 		complimentaryQueries:        complimentaryQueries,
 		barcodeBatchQueries:         barcodeBatchQueries,
+		webhookSubQueries:           webhookSubQueries,
 	}
 
 	s.mountOperationalRoutes()
@@ -2177,6 +2196,35 @@ func (s *Server) mountV1Routes() {
 				pr.Post("/barcode-batches/{id}/approve", s.handleApproveBarcodeBatch)
 				pr.Post("/barcode-batches/{id}/reject", s.handleRejectBarcodeBatch)
 			})
+		}
+
+		// ── WordPress Webhook Subscriber Registry (feature #156) ─────────────
+		//
+		// Allows WordPress sites (or any other HTTP endpoint) to register as
+		// webhook subscribers. The registration response includes a generated
+		// HMAC-SHA256 signing secret that the WP plugin stores in settings.
+		//
+		//   POST   /v1/webhooks/subscribers        — register (webhook.subscriber.manage)
+		//   GET    /v1/webhooks/subscribers        — list     (webhook.subscriber.manage)
+		//   GET    /v1/webhooks/subscribers/{id}   — get      (webhook.subscriber.manage)
+		//   DELETE /v1/webhooks/subscribers/{id}   — deactivate (webhook.subscriber.manage)
+		if s.stub != nil && s.stub.Enabled() && s.webhookSubQueries != nil {
+			// Read routes (GET).
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "webhook.subscriber.manage", "webhooks"))
+				pr.Get("/webhooks/subscribers", s.handleListWebhookSubscribers)
+				pr.Get("/webhooks/subscribers/{id}", s.handleGetWebhookSubscriber)
+			})
+			// Write routes (POST, DELETE) — require pool for writes.
+			if s.pool != nil {
+				r.Group(func(pr chi.Router) {
+					pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+					pr.Use(permissions.RequirePermission(s.perms, "webhook.subscriber.manage", "webhooks"))
+					pr.Post("/webhooks/subscribers", s.handleRegisterWebhookSubscriber)
+					pr.Delete("/webhooks/subscribers/{id}", s.handleDeactivateWebhookSubscriber)
+				})
+			}
 		}
 	})
 }

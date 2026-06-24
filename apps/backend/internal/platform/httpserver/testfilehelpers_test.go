@@ -669,6 +669,27 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "wp-plugin", "arena-events", "includes", "class-sync.php"),
 		}
+	// WordPress webhook receiver (feature #156)
+	case "class-webhook.php":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "wp-plugin", "arena-events", "includes", "class-webhook.php"),
+		}
+	case "0040_webhook_subscribers.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0040_webhook_subscribers.sql"),
+		}
+	case "webhook_subscribers.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "webhook_subscribers.sql"),
+		}
+	case "webhook_subscribers.sql.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "webhook_subscribers.sql.go"),
+		}
+	case "wp_webhooks.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "wp_webhooks.go"),
+		}
 	// External barcode batch import (feature #146)
 	case "0039_barcode_batches.sql":
 		candidates = []string{

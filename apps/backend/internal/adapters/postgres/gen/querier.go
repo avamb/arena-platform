@@ -310,6 +310,13 @@ type Querier interface {
 	InsertBarcodeBatchEntry(ctx context.Context, batchID uuid.UUID, externalRef string, status string) (BarcodeBatchEntryRow, error)
 	ListBatchEntriesByBatchID(ctx context.Context, batchID uuid.UUID) ([]BarcodeBatchEntryRow, error)
 	UpdateBatchEntriesStatus(ctx context.Context, batchID uuid.UUID, newStatus string) (int64, error)
+
+	// WordPress webhook subscriber registry — fan-out endpoint management (feature #156)
+	CreateWebhookSubscriber(ctx context.Context, siteURL string, callbackURL string, signingSecret string, eventTypes []string) (WebhookSubscriberRow, error)
+	ListActiveWebhookSubscribers(ctx context.Context) ([]WebhookSubscriberRow, error)
+	GetWebhookSubscriberByID(ctx context.Context, id uuid.UUID) (WebhookSubscriberRow, error)
+	DeactivateWebhookSubscriber(ctx context.Context, id uuid.UUID) (WebhookSubscriberRow, error)
+	UpdateWebhookSubscriberEventTypes(ctx context.Context, id uuid.UUID, eventTypes []string) (WebhookSubscriberRow, error)
 }
 
 // Compile-time assertion: *Queries must implement Querier.
