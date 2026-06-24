@@ -674,6 +674,11 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "wp-plugin", "arena-events", "includes", "class-webhook.php"),
 		}
+	// WordPress checkout integration (feature #155)
+	case "class-checkout.php":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "wp-plugin", "arena-events", "includes", "class-checkout.php"),
+		}
 	case "0040_webhook_subscribers.sql":
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0040_webhook_subscribers.sql"),

@@ -22,6 +22,7 @@ require_once ARENA_EVENTS_PLUGIN_DIR . 'includes/class-post-type.php';
 require_once ARENA_EVENTS_PLUGIN_DIR . 'includes/class-settings.php';
 require_once ARENA_EVENTS_PLUGIN_DIR . 'includes/class-sync.php';
 require_once ARENA_EVENTS_PLUGIN_DIR . 'includes/class-webhook.php';
+require_once ARENA_EVENTS_PLUGIN_DIR . 'includes/class-checkout.php';
 
 /**
  * Bootstrap the plugin.
@@ -31,6 +32,7 @@ function arena_events_init(): void {
 	Arena_Events_Settings::init();
 	Arena_Events_Sync::init();
 	Arena_Events_Webhook::init();
+	Arena_Events_Checkout::init();
 }
 add_action( 'plugins_loaded', 'arena_events_init' );
 
