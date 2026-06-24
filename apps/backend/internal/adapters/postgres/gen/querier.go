@@ -264,6 +264,23 @@ type Querier interface {
 	UpdateInvoiceTotal(ctx context.Context, id uuid.UUID, totalAmountMinor int64) (InvoiceRow, error)
 	InsertInvoiceLine(ctx context.Context, invoiceID uuid.UUID, tariffID *uuid.UUID, description string, quantity int64, unitAmountMinor int64, totalAmountMinor int64, currency string) (InvoiceLineRow, error)
 	ListInvoiceLines(ctx context.Context, invoiceID uuid.UUID) ([]InvoiceLineRow, error)
+
+	// External allocation quota model — partner quota blocks against platform inventory (feature #145)
+	InsertExternalAllocation(ctx context.Context, sessionID uuid.UUID, partnerOrgID uuid.UUID, tierID *uuid.UUID, quotaQty int32, status string, notes *string) (ExternalAllocationRow, error)
+	GetExternalAllocationByID(ctx context.Context, id uuid.UUID) (ExternalAllocationRow, error)
+	ListExternalAllocationsBySession(ctx context.Context, sessionID uuid.UUID) ([]ExternalAllocationRow, error)
+	ListExternalAllocationsByOrg(ctx context.Context, partnerOrgID uuid.UUID, statusFilter *string) ([]ExternalAllocationRow, error)
+	UpdateExternalAllocationStatus(ctx context.Context, id uuid.UUID, newStatus string) (ExternalAllocationRow, error)
+	ReportAllocationConsumption(ctx context.Context, id uuid.UUID, quotaConsumed int32, newStatus string) (ExternalAllocationRow, error)
+
+	// Complimentary issuance flow — batch ticket issuance without payment (feature #148)
+	InsertComplimentaryIssuance(ctx context.Context, orgID uuid.UUID, sessionID uuid.UUID, tierID *uuid.UUID, qty int32, recipients []string, batchID string, issuedBy *string, notes *string) (ComplimentaryIssuanceRow, error)
+	GetComplimentaryIssuanceByBatchID(ctx context.Context, orgID uuid.UUID, batchID string) (ComplimentaryIssuanceRow, error)
+	GetComplimentaryIssuanceByID(ctx context.Context, id uuid.UUID) (ComplimentaryIssuanceRow, error)
+	ListComplimentaryIssuancesByOrg(ctx context.Context, orgID uuid.UUID) ([]ComplimentaryIssuanceRow, error)
+	UpdateComplimentaryIssuanceStatus(ctx context.Context, id uuid.UUID, newStatus string) (ComplimentaryIssuanceRow, error)
+	InsertComplimentaryTicket(ctx context.Context, complimentaryIssuanceID uuid.UUID, sessionID uuid.UUID, tierID *uuid.UUID, holderEmail *string) (ComplimentaryTicketRow, error)
+	ListTicketsByComplimentaryIssuance(ctx context.Context, complimentaryIssuanceID uuid.UUID) ([]ComplimentaryTicketRow, error)
 }
 
 // Compile-time assertion: *Queries must implement Querier.

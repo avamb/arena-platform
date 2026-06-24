@@ -325,6 +325,16 @@ type Server struct {
 	// superadmin console endpoints (GET /v1/admin/organizations, /orders,
 	// /tickets, /refunds). Nil when no PgxPool was supplied. Feature #166.
 	superadminQueries *gen.Queries
+
+	// allocationQueries is the sqlc Queries instance used by the external
+	// allocation quota endpoints (POST/GET/PATCH /v1/organizations/{org_id}/external-allocations).
+	// Nil when no PgxPool was supplied. Feature #145.
+	allocationQueries *gen.Queries
+
+	// complimentaryQueries is the sqlc Queries instance used by the complimentary
+	// ticket issuance endpoints (POST/GET /v1/organizations/{org_id}/complimentary).
+	// Nil when no PgxPool was supplied. Feature #148.
+	complimentaryQueries *gen.Queries
 }
 
 // Options bundles the dependencies that New requires. Using a struct rather
@@ -408,6 +418,20 @@ type Options struct {
 	// Inject gen.New(nil) in tests that need superadmin routes mounted without a real pool.
 	// Feature #166.
 	SuperadminQueries *gen.Queries
+
+	// AllocationQueries injects a pre-constructed *gen.Queries for the external
+	// allocation quota endpoints. When nil and PgxPool is non-nil, gen.New(PgxPool) is used.
+	// Inject gen.New(nil) in tests that need allocation routes mounted without a real pool.
+	// Feature #145.
+	AllocationQueries *gen.Queries
+
+	// ComplimentaryQueries injects a pre-constructed *gen.Queries for the
+	// complimentary ticket issuance endpoints
+	// (POST/GET /v1/organizations/{org_id}/complimentary).
+	// When nil and PgxPool is non-nil, gen.New(PgxPool) is used.
+	// Inject gen.New(nil) in tests that need complimentary routes mounted without a real pool.
+	// Feature #148.
+	ComplimentaryQueries *gen.Queries
 
 	// Bundle is the go-i18n/v2 message catalog bundle used by LocaleMiddleware
 	// to localize error messages. When non-nil, LocaleMiddleware is added to
@@ -842,6 +866,18 @@ func New(opts Options) *Server {
 		superadminQueries = gen.New(opts.PgxPool)
 	}
 
+	// sqlc Queries for external allocation quota endpoints (feature #145).
+	allocationQueries := opts.AllocationQueries
+	if allocationQueries == nil && opts.PgxPool != nil {
+		allocationQueries = gen.New(opts.PgxPool)
+	}
+
+	// sqlc Queries for complimentary ticket issuance endpoints (feature #148).
+	complimentaryQueries := opts.ComplimentaryQueries
+	if complimentaryQueries == nil && opts.PgxPool != nil {
+		complimentaryQueries = gen.New(opts.PgxPool)
+	}
+
 	// Extend the permission checker with membership-derived role resolution
 	// (feature #120 step 3). When a PgxPool is available, the DBChecker is
 	// augmented so that each Check() call unions the JWT roles with the user's
@@ -914,6 +950,8 @@ func New(opts Options) *Server {
 		sessionStore:                opts.SessionStore,
 		maxConcurrentSessions:       opts.MaxConcurrentSessionsPerUser,
 		superadminQueries:           superadminQueries,
+		allocationQueries:           allocationQueries,
+		complimentaryQueries:        complimentaryQueries,
 	}
 
 	s.mountOperationalRoutes()
@@ -1941,6 +1979,62 @@ func (s *Server) mountV1Routes() {
 				pr.Get("/admin/orders", s.handleSuperadminListOrders)
 				pr.Get("/admin/tickets", s.handleSuperadminListTickets)
 				pr.Get("/admin/refunds", s.handleSuperadminListRefunds)
+			})
+		}
+
+		// ── External allocation quota model (feature #145) ──────────────────────
+		//
+		// Partner organisations (resellers/box offices) reserve quota blocks.
+		// Allocating reduces platform inventory; reconciliation settles consumption.
+		//
+		//   POST  /v1/organizations/{org_id}/external-allocations        — create (allocation.create)
+		//   GET   /v1/organizations/{org_id}/external-allocations        — list   (allocation.read)
+		//   GET   /v1/organizations/{org_id}/external-allocations/{id}   — get    (allocation.read)
+		//   PATCH /v1/organizations/{org_id}/external-allocations/{id}   — update (allocation.update)
+		if s.stub != nil && s.stub.Enabled() && s.allocationQueries != nil {
+			// allocation.read endpoints
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "allocation.read", "allocations"))
+				pr.Get("/organizations/{org_id}/external-allocations", s.handleListExternalAllocations)
+				pr.Get("/organizations/{org_id}/external-allocations/{id}", s.handleGetExternalAllocation)
+			})
+			// allocation.create endpoint
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "allocation.create", "allocations"))
+				pr.Post("/organizations/{org_id}/external-allocations", s.handleCreateExternalAllocation)
+			})
+			// allocation.update endpoint
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "allocation.update", "allocations"))
+				pr.Patch("/organizations/{org_id}/external-allocations/{id}", s.handlePatchExternalAllocation)
+			})
+		}
+
+		// ── Complimentary ticket issuance flow (feature #148) ────────────────────
+		//
+		// Org admins issue complimentary tickets to named recipients without a
+		// checkout session or payment. batch_id provides idempotency.
+		// Inventory is decremented via ReserveCapacity + ConfirmCapacity.
+		//
+		//   POST /v1/organizations/{org_id}/complimentary        — issue batch (complimentary.issue)
+		//   GET  /v1/organizations/{org_id}/complimentary        — list issuances (complimentary.read)
+		//   GET  /v1/organizations/{org_id}/complimentary/{id}   — get detail (complimentary.read)
+		if s.stub != nil && s.stub.Enabled() && s.complimentaryQueries != nil {
+			// complimentary.read endpoints
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "complimentary.read", "complimentary"))
+				pr.Get("/organizations/{org_id}/complimentary", s.handleListComplimentaryIssuances)
+				pr.Get("/organizations/{org_id}/complimentary/{id}", s.handleGetComplimentaryIssuance)
+			})
+			// complimentary.issue endpoint
+			r.Group(func(pr chi.Router) {
+				pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+				pr.Use(permissions.RequirePermission(s.perms, "complimentary.issue", "complimentary"))
+				pr.Post("/organizations/{org_id}/complimentary", s.handleCreateComplimentaryIssuance)
 			})
 		}
 	})

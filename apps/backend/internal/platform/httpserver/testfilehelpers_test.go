@@ -568,6 +568,40 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "superadmin.go"),
 		}
+	// External allocation quota model (feature #145)
+	case "0035_external_allocations.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0035_external_allocations.sql"),
+		}
+	case "external_allocations.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "external_allocations.sql"),
+		}
+	case "external_allocations.sql.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "external_allocations.sql.go"),
+		}
+	case "external_allocations.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "external_allocations.go"),
+		}
+	// Complimentary ticket issuance flow (feature #148)
+	case "0036_complimentary_issuances.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0036_complimentary_issuances.sql"),
+		}
+	case "complimentary_issuances.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "complimentary_issuances.sql"),
+		}
+	case "complimentary_issuances.sql.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "complimentary_issuances.sql.go"),
+		}
+	case "complimentary.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "complimentary.go"),
+		}
 	default:
 		// Generic fallback: try the file directly at the repo root.
 		candidates = []string{
