@@ -12528,3 +12528,41 @@ Stats before session: 164/171 passing (95.9%).
 This session: feature #154 -> 165/171 passing (96.5%).
 
 ================================================================================
+
+================================================================================
+
+Session: 2026-06-24 -- Feature #144 (Offline validation snapshot endpoint)
+
+30/30 TestScannerSnapshot144_* tests PASS. go build clean. Feature #144 marked passing.
+
+NEW FILES:
+  - apps/backend/internal/platform/httpserver/scanner_snapshot.go
+    GET /v1/scanner/snapshot: paginated barcode snapshot with since-cursor delta.
+    Joins barcodes+tickets to filter by session_id; skips revoked status;
+    filters by updated_at > since (zero time = full snapshot, RFC3339 = delta).
+    Per-IP (600/min) + per-session (300/min) in-memory rate limiter.
+    POST /v1/scanner/validate: read-only validity check (no state change).
+    Returns valid:bool + invalid_reason for clear accept/deny UI on scanner.
+
+  - apps/backend/internal/platform/httpserver/scanner_snapshot_144_test.go
+    30 tests: SQL content, gen functions, querier interface, file existence,
+    rate limiter constructor/behavior, response struct JSON tags,
+    handler compile guards, server.go route registration, input validation
+    (400/503/429), Valid/InvalidReason logic, logging assertions.
+
+MODIFIED FILES:
+  - apps/backend/internal/adapters/postgres/queries/barcodes.sql
+    Added ListSnapshotBarcodesBySession and CountSnapshotBarcodesBySession queries
+  - apps/backend/internal/adapters/postgres/gen/barcodes.sql.go
+    Added ListSnapshotBarcodesBySession and CountSnapshotBarcodesBySession gen funcs
+  - apps/backend/internal/adapters/postgres/gen/querier.go
+    Added both new methods to Querier interface
+  - apps/backend/internal/platform/httpserver/server.go
+    Added GET /v1/scanner/snapshot and POST /v1/scanner/validate routes
+    under barcode.scan permission guard
+  - apps/backend/internal/platform/httpserver/testfilehelpers_test.go
+    Added scanner_snapshot.go case entry
+
+Stats: 165/171 -> 167/171 passing (97.7%). git commit: 7fd3423
+
+================================================================================
