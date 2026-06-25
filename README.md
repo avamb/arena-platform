@@ -7,7 +7,7 @@ to the legacy Bil24 / TixGear ecosystem.
 
 ## Current implementation status
 
-As of 2026-06-24, the checked-in implementation is no longer limited to the
+As of 2026-06-25, the checked-in implementation is no longer limited to the
 original **Backend Foundation Milestone**. The codebase and AutoForge backlog
 now cover a broad scaffold through Wave 20 / 171 features, including identity,
 organizations, catalog, inventory, reservations, checkout, payments, tickets,
@@ -18,21 +18,32 @@ The original foundation-only text is retained below where it explains the
 initial architecture, but it is historical context rather than the current
 implementation scope.
 
-Verified reconciliation status as of 2026-06-24:
+The four-gate production-readiness contract lives in
+[`00_project_control/RELEASE_CHECKLIST.md`](00_project_control/RELEASE_CHECKLIST.md);
+this README's table mirrors it for quick reference. The checklist is the
+single source of truth for reproduce commands and is itself reconciled against
+`Makefile` and `.github/workflows/ci.yml` (feature #190).
 
-| Gate | Status | Evidence |
-|------|--------|----------|
-| Architecture/spec status | Reconciled for current broad-scaffold stage | `CLAUDE.md` and `.autoforge/prompts/app_spec.txt` now explicitly mark the foundation-only text as historical seed context |
-| OpenAPI -> Go generation | Passing with warning | `oapi-codegen v2.4.1` regenerates `apps/backend/internal/adapters/http/openapi/types_gen.go`; warning remains that OpenAPI 3.1 is not fully supported by the generator |
-| OpenAPI -> TypeScript generation | Passing | `npm.cmd run gen-ts-client` and `npm.cmd run check-ts` |
-| Go tests | Passing | `go test ./... -count=1` in `golang:1.24` |
-| Race/coverage tests | Passing | `go test -race -coverprofile=/tmp/coverage.out -covermode=atomic ./...` in `golang:1.24` |
-| Runtime DB migrations | Passing locally | `docker compose` runtime healthy; DB applied through embedded migration `0041_reconciliation_reports.sql` |
-| Lint | Failing | `golangci-lint:latest` now loads the v2 config, but reports 563 existing issues |
+Verified reconciliation status as of 2026-06-25:
 
-Current readiness remains **not production-ready / not CI-green** because the
-lint gate is still red. The next engineering stage is lint cleanup, not new
-feature implementation.
+| Gate | Status | Reproduce |
+|------|--------|-----------|
+| 1. Architecture / spec reconciled | GREEN (#180) | `08_architecture/14_current_implementation_overview_ru.md` is the authoritative inventory |
+| 2. OpenAPI → Go generation | GREEN | `make gen-openapi` (CI Job 3 fails on drift); oapi-codegen v2.4.1 OpenAPI-3.1 warning is documented and non-blocking |
+| 2. OpenAPI → TypeScript generation | GREEN | `make gen-ts-client` then `npx tsc --noEmit apps/backend/openapi/clients/ts/index.d.ts` |
+| 3. Go tests | GREEN | `make test` (≡ `go test ./...`) in `golang:1.24` |
+| 3. Race + coverage tests | GREEN | `go test -race -coverprofile=coverage.out -covermode=atomic ./...` (matches CI Job 2) |
+| 3. Lint | GREEN (#182) | `make lint` or `golangci-lint run --timeout=5m ./...` (matches CI Job 1) |
+| 4. Runtime DB migrations | GREEN | `make migrate-up`; head migration is `0041_reconciliation_reports.sql` |
+| 5. Container image builds | GREEN | `docker build -t arena-api:local .` and `docker compose build && docker compose up -d --wait` |
+
+All five gates are green on `main` as of 2026-06-25. The
+`<implementation_status_override>` block that previously lived in `CLAUDE.md`
+has been retired (see #181) and replaced by the linked checklist.
+
+> Note: legacy notes in this section previously claimed the lint gate was red
+> with 563 issues. That state is historical — feature #182 drove the count to
+> zero, and `RELEASE_CHECKLIST.md` countersigns the green state.
 
 > Кратко по-русски: первый milestone строит чистый production-ready
 > backend-скелет на Go (modular monolith, `net/http` + chi, PostgreSQL 17,
