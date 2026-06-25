@@ -13787,3 +13787,13 @@ Verified local docker-compose stack boots cleanly.
 - Wrote 00_project_control/LOCAL_RUNTIME_VERIFICATION_FEATURE_199.md with
   the step-by-step acceptance evidence.
 Commit: e509de1. Marked #199 passing. Stats: 197/201.
+
+=== Session 2026-06-25 (feature #200) ===
+Validated localhost health and info endpoints against the local docker-compose stack.
+- GET http://localhost:8080/healthz  -> 200 {"status":"ok"}
+- GET http://localhost:8080/readyz   -> 200 {"checks":{"database":"ok"},"status":"ready"}
+- GET http://localhost:8080/v1/info  -> 200 with app/version/commit/env/locales/server_time/db_version/db_now/trace_id
+- Captured headers and bodies to 00_project_control/runtime_evidence/feature_200_{healthz,readyz,v1info}.txt
+- Wrote 00_project_control/LOCAL_RUNTIME_VERIFICATION_FEATURE_200.md mapping each step to its result.
+Commit: e8d1f4f. Marked #200 passing. Stats: 199/201 (99.0%).
+
