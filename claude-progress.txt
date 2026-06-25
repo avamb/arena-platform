@@ -13717,3 +13717,48 @@ NOTE on shared working tree:
   can be added by them or by a follow-up session.
 
 Marked #193 passing.
+
+=== Session 2026-06-25 (feature #194) ===
+Ran staging deploy rehearsal against the local docker-compose stack
+(byte-identical to Dokploy staging/prod topology per DOKPLOY.md s2) and
+captured the seven acceptance-step outputs as a signed release-notes
+artefact. Pure docs change; no Go source modified.
+
+DELIVERABLES:
+  1. 00_project_control/STAGING_REHEARSAL_REPORT.md (NEW):
+     - A pre-rehearsal state (containers up, image SHA, PG 17.10).
+     - B step 1: docker compose up -d --wait (deploy procedure).
+     - C step 2: arena-migrate up (idempotent, exit 0).
+     - D step 3: arena-migrate status head = 0041_reconciliation_reports.sql
+       verified, schema version 41.
+     - E step 4: /healthz, /readyz, /v1/info -- all 200, DB round-trip ~4ms,
+       full JSON bodies captured verbatim.
+     - F step 5: worker -- 23 idempotency.cleanup jobs claimed+completed in
+       a 22h window, mean 8ms, attempt=1, no retries. Outbox dispatcher
+       running (noop sender -- correct for unconfigured webhook profile).
+     - G step 6: backup.sh --dry-run --dump-only -- DSN parse + pg_dump
+       cmdline validated; deploy/staging-dryrun.sh referenced for full
+       backup/restore cycle automation.
+     - H captured-artefacts note for the future operator to repeat
+       sections B-G on a staging VM and append to a dated RELEASE_NOTES
+       file before flipping prod traffic.
+     - I summary table mapping each feature #194 acceptance step to its
+       result (all PASS).
+     - J reproduce-this-rehearsal block (copy-pasteable commands).
+  2. 00_project_control/RELEASE_CHECKLIST.md:
+     - Added a Pre-promotion-rehearsal callout above Gate 1 linking to
+       STAGING_REHEARSAL_REPORT.md alongside the existing
+       PRODUCTION_HARDENING_CHECKLIST.md callout.
+
+VERIFICATION COMMANDS RUN:
+  curl /healthz                {"status":"ok"}
+  curl /readyz                 {"checks":{"database":"ok"},"status":"ready"}
+  curl /v1/info                db_version 17.10, env, trace_id present
+  arena-migrate status         head = 0041_reconciliation_reports.sql
+  arena-migrate version        schema version 41
+  docker logs arena_worker     23 successful idempotency.cleanup jobs in 22h
+  backup.sh --dry-run          exit 0, pg_dump cmdline validated
+
+Marked #194 passing. No Go source changed -> all five release gates
+inherit the prior green state (architecture reconciliation, generated
+clients, tests, lint, runtime migrations through 0041).

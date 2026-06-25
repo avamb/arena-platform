@@ -33,6 +33,15 @@ included here for reproducibility against the CI `build-and-push` job.
 > Grafana off `admin / admin`, and Postgres / Redis / Prometheus /
 > worker-metrics ports not on the public network.
 
+> **Pre-promotion rehearsal:** before promoting a build to production,
+> run the staging deploy rehearsal documented in
+> [`STAGING_REHEARSAL_REPORT.md`](STAGING_REHEARSAL_REPORT.md) (feature
+> #194). The rehearsal walks the seven acceptance steps (deploy,
+> `arena-migrate up`, migration head matches `0041_reconciliation_reports.sql`,
+> `/healthz` + `/readyz` + `/v1/info`, worker job pickup, backup
+> dry-run, captured release notes) against the candidate image and
+> records the captured outputs as the promotion evidence.
+
 ---
 
 ## Gate 1 — Architecture & specification reconciled with implementation
