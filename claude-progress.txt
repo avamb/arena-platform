@@ -13624,3 +13624,40 @@ VERIFICATION (golang:1.24 / golangci-lint:latest, docker):
   git diff --check                                        clean (only CRLF/LF informational warnings)
 
 Marked #189 passing. Commit: 05fc620.
+Session 2026-06-25 Feature 192: aligned release branch on master. ci.yml/accessibility.yml triggers + build-and-push gate switched main -> master. DOKPLOY.md section 13 added documenting registry secrets and short-sha+latest tag strategy. Marked passing. Commit 2a177b2.
+
+=== Session 2026-06-25 (feature #195) ===
+Documented initial production server requirements as new Section 14 of
+deploy/DOKPLOY.md (also added to the TOC). Pure docs change; no Go,
+SQL, YAML, Dockerfile or Makefile source touched, so all four release
+gates inherit the prior green state.
+
+SECTIONS ADDED (14.1 - 14.8):
+  14.1 Staging minimum:       2 vCPU,  4 GB RAM, 40 GB SSD
+  14.2 Production pilot:      4 vCPU,  8 GB RAM, 80-100 GB NVMe
+  14.3 With Grafana/Prom/bkp: 4 vCPU, 12-16 GB RAM, 120-160 GB NVMe
+  14.4 PostgreSQL split: trigger thresholds (CPU >=70%, cache hit
+       <95%, p99 write latency >10ms, outbox backlog growth, conn
+       saturation >80%) and dedicated tier sizing (4 vCPU, 16 GB
+       RAM, 200 GB NVMe + PgBouncer guidance).
+  14.5 Firewall: default-deny inbound, port allow-list 22/80/443/
+       5432/9090/9091/3000 with source restrictions; explicit
+       denial of public exposure for arena-api:8080, arena-worker
+       :9091, and PostgreSQL 5432.
+  14.6 Backup: pg_dump every 6h (7d on-host / 30d off-host), WAL
+       archive once split, Dokploy export, secrets rotation;
+       quarterly restore drill against BACKUP_RESTORE_RUNBOOK.md.
+  14.7 Monitoring: pageable alerts for /readyz, 5xx rate, p99
+       latency, outbox backlog, host CPU/RAM/disk, DB connection
+       saturation, backup-last-success staleness.
+  14.8 Disk retention: container logs (Docker max-size=100m,
+       max-file=10), PostgreSQL logs 14d, Prometheus TSDB 15d,
+       pg_dump 7d on-host / 30d off-host; disk-free alert must
+       trip before any policy overflows.
+
+VERIFICATION:
+  - Only deploy/DOKPLOY.md and claude-progress.txt changed.
+  - No source code modified -> build/test/lint gates unchanged.
+  - TOC entry #14 added so document navigation stays in sync.
+
+Marked #195 passing.

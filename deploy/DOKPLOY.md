@@ -21,6 +21,7 @@
 11. [Secret Rotation](#11-secret-rotation)
 12. [Troubleshooting](#12-troubleshooting)
 13. [Release Branch & Image Tag Strategy](#13-release-branch--image-tag-strategy)
+14. [Initial Production Server Requirements](#14-initial-production-server-requirements)
 
 ---
 
@@ -388,6 +389,13 @@ Use this checklist before every first deploy and whenever environment variables
 change.  See [`.env.example`](../.env.example) for full documentation of every
 variable.
 
+> **Long-form authoritative version:** see
+> [`../00_project_control/PRODUCTION_HARDENING_CHECKLIST.md`](../00_project_control/PRODUCTION_HARDENING_CHECKLIST.md)
+> (feature #193). That document covers Grafana credentials, internal-port
+> exposure (`55432`, `56379`, `9090`, `9091`, `3000`), post-deploy
+> in-container `env` verification, and `DB_LOG_QUERIES`. The short list
+> below is the quick operator reference; the long-form is the gate.
+
 ### ✅ Security-Critical (must not use dev defaults)
 
 - [ ] `APP_ENV=production`
@@ -560,4 +568,147 @@ image in the registry.
    `arena-api`, then `arena-worker` per §2.
 4. To roll back, edit each Dokploy application's image tag to the previous
    `<short-sha>` and redeploy — do **not** rely on `latest`.
+
+---
+
+## 14. Initial Production Server Requirements
+
+This section captures the recommended host sizing and operational guardrails
+for the **first** production / pilot deploy of arena_new. It exists so that
+infrastructure procurement does not block the milestone-1 launch, and so that
+the same host can be re-used (or replaced with a documented upgrade path) as
+load grows.
+
+All three services from §2 (`arena-api`, `arena-worker`, `arena-migrate`)
+co-locate on a single Docker host unless explicitly stated. PostgreSQL 17 is
+assumed to run on the same host for staging and pilot, and to be split out
+to a managed / dedicated tier as soon as workload pressure justifies it
+(see §14.4).
+
+### 14.1 Staging — minimum sizing
+
+| Resource | Minimum | Notes |
+|---|---|---|
+| vCPU | **2** | Sufficient for `arena-api` + `arena-worker` + PostgreSQL 17 under synthetic load. |
+| RAM | **4 GB** | ~1 GB for the Go services, ~1.5 GB for PostgreSQL `shared_buffers` / cache, ~1.5 GB headroom for OS + Dokploy. |
+| Disk | **40 GB SSD** | Holds OS, Docker images, PostgreSQL data, and a few days of logs. SATA SSD is acceptable for staging. |
+| Network | 1 Gbps shared | No public traffic guarantees required. |
+
+Intended use: ephemeral pre-release validation, demo environments, CI smoke
+targets. **Not** intended to absorb production traffic.
+
+### 14.2 Production pilot — initial single-host sizing
+
+| Resource | Pilot target | Notes |
+|---|---|---|
+| vCPU | **4** | Headroom for `arena-api` request bursts + `arena-worker` outbox drain + PostgreSQL background workers (autovacuum, checkpointer). |
+| RAM | **8 GB** | `shared_buffers` ~2 GB, `effective_cache_size` ~4 GB, Go services + OS ~2 GB. |
+| Disk | **80–100 GB NVMe** | NVMe (not SATA SSD) is required so PostgreSQL fsync latency stays in a healthy band under the pilot load profile. |
+| Network | 1 Gbps with public IP | TLS termination handled by Dokploy/Traefik. |
+
+Intended use: first paying customers / pilot tenants on a single colocated
+host. Grafana/Prometheus and backups are external (e.g., scraped from a
+separate observability host) at this tier.
+
+### 14.3 Production with Grafana / Prometheus / backups on the same host
+
+If observability and on-host backup retention must run on the same VM as
+the application (typical for the first self-hosted production deploy), bump
+the host to:
+
+| Resource | Co-located target | Notes |
+|---|---|---|
+| vCPU | **4** | Same as pilot; observability stack is mostly RAM/disk bound, not CPU bound. |
+| RAM | **12–16 GB** | Adds ~3 GB for Prometheus TSDB + ~1 GB for Grafana + ~1 GB headroom for backup tooling on top of §14.2. |
+| Disk | **120–160 GB NVMe** | Adds ~30 GB Prometheus retention (15 days @ 1s scrape) + ~30 GB for 7-day rolling pg_dump archives on top of §14.2. |
+| Network | 1 Gbps with public IP | Unchanged from §14.2. |
+
+This is the recommended **default** for milestone-1 production unless a
+separate observability host is already available.
+
+### 14.4 When to split PostgreSQL onto a dedicated tier
+
+The single-host topology in §14.2 / §14.3 is acceptable for the pilot, but
+PostgreSQL must be moved to a dedicated tier (managed service or separate
+VM) once **any** of the following thresholds is breached for more than
+**15 minutes** in a rolling 24-hour window:
+
+| Signal | Threshold | Source |
+|---|---|---|
+| Sustained CPU on the host | ≥ 70 % | host metrics |
+| PostgreSQL `shared_buffers` cache hit ratio | < 95 % | `pg_stat_database` |
+| Disk write latency (p99) | > 10 ms | node-exporter `node_disk_write_time_seconds` |
+| `arena_outbox_backlog` (from `arena-worker`) | growing trend > 1 h | Prometheus |
+| Active DB connections | > 80 % of `DB_POOL_MAX_CONNS` | `pg_stat_activity` |
+
+Target dedicated-tier sizing for the first split (sized to ~3× pilot
+workload): **4 vCPU, 16 GB RAM, 200 GB NVMe** managed PostgreSQL 17,
+reachable only from the application host's private network (see §14.5).
+PgBouncer in transaction-pooling mode is recommended once the active
+connection count approaches `DB_POOL_MAX_CONNS`.
+
+### 14.5 Firewall
+
+Inbound rules (default-deny, allow-list only):
+
+| Port | Protocol | Source | Purpose |
+|---|---|---|---|
+| 22 | TCP | Operator bastion IPs only | SSH administration |
+| 80 | TCP | `0.0.0.0/0` | HTTP → HTTPS redirect (Traefik / Dokploy) |
+| 443 | TCP | `0.0.0.0/0` | Public API traffic (TLS) |
+| 5432 | TCP | App host private IP only | PostgreSQL (when split per §14.4) |
+| 9090, 9091, 3000 | TCP | Observability host private IP only | Prometheus scrape + Grafana UI |
+
+Outbound: allow `443/TCP` to the container registry and to OpenTelemetry /
+log-sink endpoints; deny everything else by default. The Docker host must
+**not** expose `arena-api:8080`, `arena-worker:9091`, or PostgreSQL `5432`
+on the public interface — only Traefik listens publicly.
+
+### 14.6 Backup
+
+| Target | Frequency | Retention | Tooling |
+|---|---|---|---|
+| PostgreSQL logical dump (`pg_dump --format=custom`) | every 6 h | 7 days on-host + 30 days off-host | `deploy/backup.sh` |
+| PostgreSQL WAL archive (when on a dedicated tier per §14.4) | continuous | 7 days | `archive_command` to off-host object storage |
+| Dokploy configuration export | daily | 30 days off-host | Dokploy native export |
+| Application secrets (`.env`) | on every rotation (§11) | indefinite, encrypted | password manager / sealed-secrets store |
+
+Off-host destinations (S3-compatible bucket or equivalent) must be in a
+**different failure domain** from the application host. A restore drill
+following `deploy/BACKUP_RESTORE_RUNBOOK.md` must be exercised **at least
+quarterly** and on every PostgreSQL major-version upgrade.
+
+### 14.7 Monitoring
+
+Minimum monitored signals (alerting required, not just dashboards):
+
+| Signal | Alert threshold | Source |
+|---|---|---|
+| `arena-api` `/readyz` failing | > 1 min | blackbox-exporter |
+| `arena-api` HTTP 5xx rate | > 1 % over 5 min | Prometheus (`arena_http_requests_total`) |
+| `arena-api` request latency p99 | > 1 s over 10 min | Prometheus histogram |
+| `arena_outbox_backlog` | > 1000 or growing > 15 min | `arena-worker` `/metrics` |
+| Host CPU | > 85 % for 10 min | node-exporter |
+| Host RAM available | < 10 % for 5 min | node-exporter |
+| Host disk free | < 20 % | node-exporter |
+| PostgreSQL connection saturation | > 90 % of `max_connections` | postgres-exporter |
+| Backup job last success | > 12 h ago | backup script heartbeat |
+
+Alerts must page (not just email) for `/readyz` failure, host disk free,
+and backup-last-success staleness.
+
+### 14.8 Disk retention
+
+| Stream | On-host retention | Off-host retention | Action when exceeded |
+|---|---|---|---|
+| Container `stdout` / `stderr` JSON logs | 7 days (Docker `max-size=100m`, `max-file=10` per container) | 30 days in log sink | Rotate / drop oldest |
+| PostgreSQL log files | 14 days | 30 days off-host | `log_rotation_age=1d`, `log_rotation_size=100MB` |
+| PostgreSQL data directory | n/a (live) | n/a | Disk-free alert per §14.7 |
+| Prometheus TSDB | 15 days | n/a (downsampled archive optional) | `--storage.tsdb.retention.time=15d` |
+| `pg_dump` archive snapshots | 7 days on-host | 30 days off-host | `deploy/backup.sh` prunes oldest |
+
+Disk-free monitoring (§14.7) must alert **before** any of these retention
+policies is exceeded so that no stream is forced to drop unrotated data.
+
+
 
