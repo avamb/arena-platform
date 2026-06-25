@@ -13048,3 +13048,53 @@ established the canonical layout, moved the pure-domain layer, and locked the
 contract with a static-analysis gate so subsequent moves are mechanical.
 
 Commit: 2ca47a2. Marked #185 passing. Stats: 178/188 passing (94.7%).
+
+=== Session 2026-06-25 (feature #186) ===
+DDD split for tickets / complimentary / barcode_batches / promo_codes -- step 1
+(incremental establishment of the layout target, mirroring #185).
+
+Created internal/domain/tickets/:
+  doc.go             - layer contract (aggregates: Ticket, ComplimentaryGrant,
+                       BarcodeBatch, PromoCode).
+  promo_discount.go  - DiscountType named type + ComputeDiscount pure
+                       function, extracted from httpserver/promo_codes.go.
+                       Same algorithm, same wire-format strings; zero I/O.
+
+Created internal/app/tickets/:
+  doc.go             - application-layer orchestrator skeleton; locks layout
+                       under the CI gate without speculatively moving
+                       handler code.
+
+Modified internal/platform/httpserver/promo_codes.go:
+  - imports the domain package as ticketsdomain.
+  - computeDiscount() is now a 1-line forwarder to
+    ticketsdomain.ComputeDiscount, preserving every in-package and test
+    call site (promo_128_test.go, pricing_129_test.go, checkout_133_test.go)
+    without churning their identifiers.
+
+New static-analysis test tests/staticanalysis/tickets_layout_186_test.go:
+  - TestTicketsLayout186_NoLegacyTopLevelDir - fails if any .go appears
+    under apps/backend/internal/tickets/.
+  - TestTicketsLayout186_DomainDirExists     - guards domain/tickets dir +
+    its .go skeleton.
+  - TestTicketsLayout186_AppDirExists        - guards app/tickets dir + its
+    .go skeleton.
+  - TestTicketsLayout186_NoLegacyImports     - repo-wide grep for the
+    legacy import path; fails on any hit.
+
+Verification (golang:1.24 docker):
+  - go build ./...                                     PASS
+  - go vet   ./...                                     PASS
+  - go test -short ./...                               all pkgs PASS
+  - go test -run TestTicketsLayout186 ./tests/...      PASS (4 cases)
+  - go test -run TestPromo|TestCheckout|TestPricing
+    ./internal/platform/httpserver/...                 PASS
+
+Scope note: migration of orchestration logic out of complimentary.go (675),
+barcode_batches.go (656), and promo_codes.go (657) into named services under
+internal/app/tickets is explicitly an incremental follow-up. This step
+established the canonical layout, moved a pure-domain helper to lock the
+contract, and added the static-analysis gate so subsequent moves are
+mechanical.
+
+Marked #186 passing.

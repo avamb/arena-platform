@@ -32,6 +32,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	ticketsdomain "github.com/abhteam/arena_new/apps/backend/internal/domain/tickets"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -92,25 +93,13 @@ func promoCodeFromRow(pc gen.PromoCodeRow) promoCodeResponse {
 // Discount math (pure functions — directly testable from package tests)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// computeDiscount calculates the discount amount for an order.
-// For 'percent': discount = orderAmount * discountValue / 100 (floor division).
-// For 'fixed_amount': discount = min(discountValue, orderAmount).
-// Returns the discount amount in cents — never negative, never exceeds orderAmount.
+// computeDiscount is a thin forwarder to the pure-domain
+// ticketsdomain.ComputeDiscount, kept here so existing in-package call sites
+// and tests (promo_128_test.go, pricing_129_test.go, checkout_133_test.go)
+// continue to compile unchanged after the feature #186 DDD split. New code
+// should call ticketsdomain.ComputeDiscount directly.
 func computeDiscount(discountType string, discountValue, orderAmount int64) int64 {
-	switch discountType {
-	case "percent":
-		d := orderAmount * discountValue / 100
-		if d > orderAmount {
-			d = orderAmount
-		}
-		return d
-	case "fixed_amount":
-		if discountValue > orderAmount {
-			return orderAmount
-		}
-		return discountValue
-	}
-	return 0
+	return ticketsdomain.ComputeDiscount(discountType, discountValue, orderAmount)
 }
 
 // validatePromoCode checks whether a promo code is applicable for a given order.
