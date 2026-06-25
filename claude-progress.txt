@@ -12865,3 +12865,42 @@ golangci-lint run --timeout=10m ./... -> EXIT 0, 0 issues.
 
 Commit: 10229c5. Marked #182 passing.
 
+================================================================================
+
+=== Session 2026-06-25 (feature #177) ===
+Closed 4 reservations.go TO\DOs (lines 14/50/157/272) that hard-coded a 1200s
+reservation expiry window.
+
+Added resolveReservationTtl helper with the documented precedence:
+  channel.reservation_ttl_override > org.reservation_ttl_seconds > defaultReservationTTL (1200s)
+
+The helper takes two narrow lookup interfaces (channelTtlLookup, orgTtlLookup)
+that *gen.Queries already satisfies. A missing dep or any lookup error
+transparently falls through to the next tier so expiry computation never
+blocks reservation creation.
+
+Wired into handleCreateReservation, replacing the prior
+  expiresAt := time.Now().UTC().Add(defaultReservationTTL)
+line with a resolved value derived from the channel + org rows.
+
+New test file: reservation_ttl_177_test.go (8 cases, all PASS):
+  - channel override wins
+  - zero override falls through to org
+  - org default used when channel has no override
+  - channel lookup error falls through to org
+  - both deps absent => system fallback
+  - org lookup error => system fallback
+  - org value zero => system fallback
+  - compile-time guard: *gen.Queries satisfies both interfaces
+
+Verification (golang:1.24 docker):
+  - go build ./...  EXIT 0
+  - go vet ./...    EXIT 0
+  - go test -run TestReservationTTL177 ./internal/platform/httpserver/  PASS (8/8)
+
+Two pre-existing TestReservation131_Step4_ServerWiring failures are unchanged
+- they grep for fields inside server.go that an earlier refactor moved to
+  server_struct.go / wire.go (untracked). Unrelated to this feature.
+
+Commit: f19e844. Marked #177 passing.
+
