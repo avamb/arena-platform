@@ -13773,3 +13773,17 @@ Fixed whitespace gate failure for deploy/DOKPLOY.md.
 - Verification: `git diff --check 7cd53fb..HEAD` -> exit 0 (gate green).
 - No Go source touched; only docs whitespace.
 Feature #197 marked passing. Stats: 196/201 (97.5%).
+
+=== Session 2026-06-25 (feature #199) ===
+Verified local docker-compose stack boots cleanly.
+- docker compose config: validates (CONFIG_OK).
+- docker compose ps: arena_api, arena_worker, arena_postgres, arena_redis
+  all Up + healthy.
+- API exposed on host 0.0.0.0:8080 (container 8080).
+- Postgres on 55432, Redis on 56379, worker port internal only.
+- /healthz and /readyz return ok.
+- Captured ps + last-50 service logs under
+  00_project_control/runtime_evidence/feature_199_*.txt.
+- Wrote 00_project_control/LOCAL_RUNTIME_VERIFICATION_FEATURE_199.md with
+  the step-by-step acceptance evidence.
+Commit: e509de1. Marked #199 passing. Stats: 197/201.
