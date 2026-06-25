@@ -8,9 +8,9 @@
 //
 //   - reconciliation_submit.go  – POST  /v1/reconciliation/reports
 //   - reconciliation_query.go   – GET   /v1/reconciliation/reports/{id}
-//                               – GET   /v1/reconciliation/exceptions
+//     – GET   /v1/reconciliation/exceptions
 //   - reconciliation_review.go  – PATCH /v1/reconciliation/reports/{id}/review
-//                               – PATCH /v1/reconciliation/reports/{id}/lines/{line_id}
+//     – PATCH /v1/reconciliation/reports/{id}/lines/{line_id}
 //
 // External reconciliation allows partner organisations to submit sales/returns
 // reports against their active external allocation quota. The platform runs an

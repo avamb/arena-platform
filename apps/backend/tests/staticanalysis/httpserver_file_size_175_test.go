@@ -80,16 +80,16 @@ var httpserverOversizedAllowlist = map[string]int{
 	// per-file budget is hard so they are listed here as a documented
 	// backlog. Each may only shrink; once a file drops to ≤ 400 LOC its
 	// entry must be removed.
-	"auth_login.go":          439,
-	"barcodes.go":            551,
-	"channels.go":            525,
-	"feed_tokens.go":         414,
-	"orgs.go":                430,
-	"public_feed.go":         509,
+	"auth_login.go":           439,
+	"barcodes.go":             551,
+	"channels.go":             525,
+	"feed_tokens.go":          414,
+	"orgs.go":                 430,
+	"public_feed.go":          509,
 	"public_feed_checkout.go": 410,
-	"scanner_snapshot.go":    426,
-	"superadmin.go":          487,
-	"venues.go":              475,
+	"scanner_snapshot.go":     426,
+	"superadmin.go":           487,
+	"venues.go":               475,
 }
 
 // TestHttpserverFileSize175 enforces the three-part contract documented at

@@ -5,7 +5,7 @@
 // Use-cases that will progressively migrate into this package include:
 //
 //   - generate-event-report     (orchestrate aggregation queries + line writes,
-//                                transition state pending -> generating -> ready)
+//     transition state pending -> generating -> ready)
 //   - deliver-event-report      (resolve recipients, render email, send via port)
 //
 // Ports defined here describe the adapter contracts (aggregation query

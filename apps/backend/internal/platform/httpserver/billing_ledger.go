@@ -74,11 +74,11 @@ func isTerminalInvoiceState(state string) bool {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// billingPeriodForTime forwards to billingdomain.BillingPeriodForTime.
+// billingPeriodForTime forwards to billingdomain.PeriodForTime.
 // ─────────────────────────────────────────────────────────────────────────────
 
 func billingPeriodForTime(t time.Time) string {
-	return billingdomain.BillingPeriodForTime(t)
+	return billingdomain.PeriodForTime(t)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

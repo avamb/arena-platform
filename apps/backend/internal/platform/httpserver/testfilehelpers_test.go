@@ -810,7 +810,7 @@ func readServerGoLike(repoRoot, name string) string {
 			}
 			n := e.Name()
 			// Skip tests; include the canonical server files and every mount_*.go.
-			if !(wantedExact[n] || (len(n) > len("mount_") && n[:len("mount_")] == "mount_" && filepath.Ext(n) == ".go" && !endsWith(n, "_test.go"))) {
+			if !wantedExact[n] && (len(n) <= len("mount_") || n[:len("mount_")] != "mount_" || filepath.Ext(n) != ".go" || endsWith(n, "_test.go")) {
 				continue
 			}
 			data, err := os.ReadFile(filepath.Join(httpserverDir, n))

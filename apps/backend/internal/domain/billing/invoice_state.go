@@ -73,8 +73,8 @@ func CanTransitionInvoice(from, to string) bool {
 	return targets[to]
 }
 
-// BillingPeriodForTime returns the 'YYYY-MM' billing period (UTC) for the
+// PeriodForTime returns the 'YYYY-MM' billing period (UTC) for the
 // given instant.
-func BillingPeriodForTime(t time.Time) string {
+func PeriodForTime(t time.Time) string {
 	return t.UTC().Format(BillingPeriodLayout)
 }

@@ -205,4 +205,3 @@ func stripLineComment(line string) string {
 	}
 	return line
 }
-

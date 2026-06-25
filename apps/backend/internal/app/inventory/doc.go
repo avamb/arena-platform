@@ -12,23 +12,28 @@
 //     workflows that combine the domain rules with persistence and
 //     adapters. Examples:
 //
-//       * "create reservation"   — resolve TTL (channel override → org
-//         default → system fallback), open a transaction, reserve capacity
-//         (returns 409 on over-capacity), insert the reservation row, and
-//         commit.
-//       * "activate reservation" — guard the draft→active transition,
-//         enforce the not-expired invariant, update the state.
-//       * "cancel reservation"   — guard the transition, update the state,
-//         release the held capacity (non-fatal release: the cancel
-//         succeeds even if the ledger update fails — to be revisited
-//         alongside the outbox-based event flow).
-//       * "expire reservations"  — the background-worker workflow: poll
-//         expired rows with FOR UPDATE SKIP LOCKED, release capacity,
-//         transition to "expired", cascade to linked checkout sessions.
-//       * "create / activate allocation" — same pattern, reserving platform
-//         inventory for partner-org quota blocks.
-//       * "reconcile allocation" — confirm consumed (held → sold), release
-//         the remainder, and transition to "reconciled".
+//   - "create reservation"   — resolve TTL (channel override → org
+//     default → system fallback), open a transaction, reserve capacity
+//     (returns 409 on over-capacity), insert the reservation row, and
+//     commit.
+//
+//   - "activate reservation" — guard the draft→active transition,
+//     enforce the not-expired invariant, update the state.
+//
+//   - "cancel reservation"   — guard the transition, update the state,
+//     release the held capacity (non-fatal release: the cancel
+//     succeeds even if the ledger update fails — to be revisited
+//     alongside the outbox-based event flow).
+//
+//   - "expire reservations"  — the background-worker workflow: poll
+//     expired rows with FOR UPDATE SKIP LOCKED, release capacity,
+//     transition to "expired", cascade to linked checkout sessions.
+//
+//   - "create / activate allocation" — same pattern, reserving platform
+//     inventory for partner-org quota blocks.
+//
+//   - "reconcile allocation" — confirm consumed (held → sold), release
+//     the remainder, and transition to "reconciled".
 //
 //     This package imports internal/domain/inventory and persistence
 //     interfaces; it does NOT import the HTTP layer.

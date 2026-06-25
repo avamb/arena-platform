@@ -12,13 +12,13 @@
 // concerns live in:
 //
 //   - internal/app/reporting              — orchestration (generate report,
-//                                           deliver report).
+//     deliver report).
 //   - internal/platform/reporting         — worker handler currently hosting
-//                                           the event.generate_report job
-//                                           (to be migrated incrementally).
+//     the event.generate_report job
+//     (to be migrated incrementally).
 //   - internal/platform/reportdelivery    — worker handler currently hosting
-//                                           the report.deliver job
-//                                           (to be migrated incrementally).
+//     the report.deliver job
+//     (to be migrated incrementally).
 //
 // This file is the package skeleton established in feature #187. It locks
 // the canonical layout under a static-analysis gate so subsequent moves

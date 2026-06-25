@@ -126,4 +126,3 @@ func (s *Server) mountEchoRoute(r chi.Router) {
 		pr.Post("/echo", s.handleEcho)
 	})
 }
-

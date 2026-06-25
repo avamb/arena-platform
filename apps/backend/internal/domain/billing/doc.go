@@ -7,12 +7,12 @@
 // third-party adapter packages (such as Stripe). All such concerns live in:
 //
 //   - internal/app/billing      — orchestration / use-cases (post-invoice,
-//                                 push-invoice-to-stripe, handle-webhook).
+//     push-invoice-to-stripe, handle-webhook).
 //   - internal/adapters/...     — concrete adapters (postgres, stripebilling,
-//                                 etc.); use-cases depend on ports, not on
-//                                 adapter packages directly.
+//     etc.); use-cases depend on ports, not on
+//     adapter packages directly.
 //   - internal/platform/httpserver — thin HTTP transport that calls into the
-//                                    application layer.
+//     application layer.
 //
 // The split is incremental. This first step extracts the invoice
 // state-transition table and the billing-period helper, which are pure

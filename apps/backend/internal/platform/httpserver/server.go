@@ -17,8 +17,8 @@
 // Source organisation:
 //
 //   - server.go        — package doc, Pinger/ReadinessProbe interfaces, PoolDB,
-//                        lifecycle (Router/ListenAndServe/Shutdown), operational
-//                        routes, 404/405 handlers, writeJSON helper.
+//     lifecycle (Router/ListenAndServe/Shutdown), operational
+//     routes, 404/405 handlers, writeJSON helper.
 //   - server_struct.go — Server struct definition.
 //   - wire.go          — Options + New constructor (DI assembly).
 //   - mount_v1.go      — /v1 orchestrator + info/debug/dev/echo routes.
@@ -249,4 +249,3 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
 }
-
