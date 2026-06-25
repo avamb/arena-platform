@@ -13508,3 +13508,33 @@ VERIFICATION:
     docs-only diff cannot break the build.
 
 Marked #181 passing.
+
+================================================================================
+Session 2026-06-25 (feature #179) - Repo Hygiene - remove 99_archive_duplicates/
+================================================================================
+Context: feature #179 carried a recorded human_input_response with
+  policy=delete_from_git. Acted on that decision in YOLO mode.
+
+Changes:
+  - git rm -r 99_archive_duplicates/  (172 binary asset duplicates removed,
+    21,600 line deletions in the diff; all files were byte-identical to a
+    KeptPath entry still present in the repo per DEDUPLICATION_REPORT.csv).
+  - .gitignore: added `99_archive_duplicates/` so an accidental re-creation
+    of the quarantine folder cannot be re-committed; cross-referenced
+    feature #179 and DEDUPLICATION_REPORT.csv in the comment.
+  - 00_project_control/MATERIALS_INDEX.md: rewrote the
+    `### 99_archive_duplicates/` entry to document the removal, note that
+    every removed file is recoverable byte-for-byte from its KeptPath, and
+    that older history still contains the blobs. Also tightened the
+    DEDUPLICATION_REPORT.csv bullet to describe kept-vs-archived columns.
+
+Verification:
+  - git check-ignore confirms `.gitignore:55:99_archive_duplicates/` matches
+    `99_archive_duplicates/foo.png` - the path is properly suppressed going
+    forward.
+  - No source code touched; all four release-readiness gates are unaffected
+    (architecture reconciliation, generated clients, tests+lint, runtime
+    migrations). The diff is repo-hygiene only.
+
+Marked #179 passing. Commit: 471c9b4.
+
