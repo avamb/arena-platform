@@ -13835,3 +13835,22 @@ Verification (docker golang:1.24):
 
 Marked #198 passing.
 
+=== Session 2026-06-25 (feature #201) ===
+Final release gate suite run; all eight gates green.
+- gofmt -w on apps/backend/internal/platform/worker/worker_skip_locked_test.go
+  (comment-block reformatted to gofmt-style indented code block; the
+  in-flight skip-locked stability fix from a prior session was failing
+  the lint gate).
+- npx tsc --noEmit apps/backend/openapi/clients/ts/index.d.ts          exit=0
+- golangci-lint run --timeout=10m ./... (docker latest)                0 issues
+- go test ./... -count=1 (docker golang:1.24-alpine) pass 1            PASS
+- go test ./... -count=1 (docker golang:1.24-alpine) pass 2            PASS
+- docker compose up -d -> all 4 services healthy on arena_new/arena-api:dev
+- curl http://localhost:8080/healthz   -> {"status":"ok"}
+- curl http://localhost:8080/readyz    -> {"checks":{"database":"ok"},"status":"ready"}
+- curl http://localhost:8080/v1/info   -> 200 (app/version/commit/env/locales/
+                                              server_time/db_version/db_now/trace_id)
+Evidence: 00_project_control/RELEASE_GATE_RUN_FEATURE_201.md and
+          00_project_control/runtime_evidence/feature_201_*.txt.
+Marked #201 passing.
+

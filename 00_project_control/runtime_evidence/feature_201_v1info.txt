@@ -1,0 +1,1 @@
+{"app":"arena-api","version":"0.1.0-dev","commit":"local","env":"development","supported_locales":["ru","en"],"default_locale":"en","active_locale":"en","server_time":"2026-06-25T17:41:19.960154838Z","db_version":"17.10","db_now":"2026-06-25T17:41:19.962084Z","request_id":"","trace_id":"06e49ef3d72e6b229f95af851fc5078b"}
