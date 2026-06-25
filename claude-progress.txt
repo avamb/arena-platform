@@ -13272,3 +13272,69 @@ required by the feature spec) so subsequent moves are mechanical.
 API contracts and OpenAPI responses are unchanged (no DTO surface touched).
 
 Marked #183 passing.
+
+=== Session 2026-06-25 (feature #184) ===
+DDD split: inventory (reservations / external_allocations) -- step 1
+(incremental, mirrors #183 / #185 / #186 / #187).
+
+Created internal/domain/inventory/:
+  doc.go                   - layer contract (Reservation, ExternalAllocation).
+  reservations.go          - ReservationState consts (draft/active/converted/
+                             expired/cancelled), ValidReservationTransitions,
+                             IsValidReservationTransition,
+                             IsTerminalReservationState. Pure, no I/O.
+  external_allocations.go  - AllocationStatus consts (pending/active/
+                             reconciled/disputed), ValidAllocationTransitions,
+                             AllAllocationStatuses, IsValidAllocationStatus,
+                             IsTerminalAllocationStatus,
+                             IsValidAllocationTransition. Pure.
+
+Created internal/app/inventory/doc.go -- application-layer skeleton.
+
+Modified internal/platform/httpserver/reservations.go:
+  - imports inventorydomain.
+  - validReservationTransitions is now a projected view (string-keyed) built
+    from inventorydomain.ValidReservationTransitions; #131 in-package tests
+    that index the map by string compile unchanged.
+  - isValidReservationTransition() is a 1-line forwarder.
+
+Modified internal/platform/httpserver/external_allocations.go:
+  - imports inventorydomain.
+  - validAllocationTransitions and allAllocationStatuses are now projected
+    views built from the domain package; #145 in-package tests compile
+    unchanged.
+  - isTerminalAllocationStatus() is a 1-line forwarder.
+
+New static-analysis test tests/staticanalysis/inventory_layout_184_test.go:
+  - NoLegacyTopLevelDir              - apps/backend/internal/inventory must
+                                       contain no .go files.
+  - DomainDirExists                  - guards internal/domain/inventory.
+  - AppDirExists                     - guards internal/app/inventory.
+  - NoLegacyImports                  - repo-wide grep for the legacy import.
+  - DomainHasNoAdapterOrHTTPImports  - enforces domain purity contract
+                                       (no imports from internal/adapters/*
+                                       or internal/platform/httpserver).
+
+Verification (golang:1.24 docker):
+  go build ./apps/backend/...                                  PASS
+  go vet   ./apps/backend/...                                  PASS
+  go test -short -count=1 ./apps/backend/...                   PASS (all pkgs)
+
+Scope note: the TTL helper described in feature #184 -- "the natural place
+to land the TTL helper from #177 if #177 has not been done yet" -- is left
+in the HTTP layer because #177 is already done. Moving resolveReservationTTL
+and its two lookup ports into internal/app/inventory is an incremental
+follow-up (it requires migrating reservation_ttl_177_test.go too).
+
+Other incremental follow-ups under #184 left for subsequent sessions:
+  - extract reservation lifecycle service (create / activate / cancel) into
+    internal/app/inventory.
+  - extract reservation-expiry worker (httpserver/reservation_processor.go)
+    into internal/app/inventory and host it in the arena-worker binary.
+  - extract ExternalAllocation lifecycle service (create / patch / reconcile)
+    into internal/app/inventory.
+
+API contracts and OpenAPI responses are unchanged (no DTO surface touched).
+
+Marked #184 passing.
+Progress: 183/188 passing.
