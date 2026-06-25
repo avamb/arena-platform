@@ -13160,3 +13160,38 @@ lock the contract, and added the static-analysis gate so subsequent moves are
 mechanical.
 
 Marked #187 passing.
+
+=== Session 2026-06-25 (feature #178) ===
+Forbid context.Background() outside cmd/ and tests.
+
+FIXES (replaced context.Background() with context.WithoutCancel(<parent>)):
+  internal/platform/outbox/outbox_events_dispatcher.go  - tx.Rollback defer
+  internal/platform/reporting/handler.go                - tx.Rollback defer
+  internal/platform/worker/worker.go (5 sites):
+    - ClaimNext         tx.Rollback defer -> WithoutCancel(ctx)
+    - MarkFailed        tx.Rollback defer -> WithoutCancel(ctx)
+    - runJob            MarkDone          -> WithoutCancel(ctx)
+    - markFailureOrRetry MarkRetry        -> WithoutCancel(ctx)
+    - markFailureOrRetry MarkFailed       -> WithoutCancel(ctx)
+      (also un-shadowed the previously-discarded ctx parameter)
+
+  internal/platform/database/database.go - long-lived health-checker.
+    Added Pool.bgCtx field, populated in Open() as context.WithoutCancel(ctx)
+    so it outlives the bootstrap ctx while keeping trace/log values.
+    checkOnce derives its 3s ping deadline from bgCtx instead of
+    context.Background.
+
+STATIC-ANALYSIS GATE:
+  apps/backend/tests/staticanalysis/context_background_178_test.go
+  Walks apps/backend/internal/, skips *_test.go and internal/tests/ (pgtest
+  test infrastructure), strips line comments, and fails on any
+  context.Background() call. Failure message references the WithoutCancel /
+  WithTimeout / Pool.bgCtx idioms.
+
+VERIFICATION (golang:1.24 docker):
+  go build ./apps/backend/...                                    PASS
+  go vet   ./apps/backend/...                                    PASS
+  go test  -short -count=1 ./apps/backend/...                    PASS (all pkgs)
+  go test  -run TestNoContextBackgroundOutsideWhitelist_178 ...  PASS
+
+Marked #178 passing.

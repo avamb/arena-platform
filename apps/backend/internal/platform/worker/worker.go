@@ -156,8 +156,9 @@ func (q *PGQueue) ClaimNext(ctx context.Context, instanceID string) (*Job, error
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 	// Rollback is a no-op after a successful Commit; pgx documents this
-	// explicitly. We keep the defer to recover from any error path.
-	defer func() { _ = tx.Rollback(context.Background()) }()
+	// explicitly. We keep the defer to recover from any error path. Use
+	// WithoutCancel so a parent-cancelled ctx still releases the row lock.
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
 
 	const claimSQL = `
 		WITH next AS (
@@ -256,7 +257,7 @@ func (q *PGQueue) MarkFailed(ctx context.Context, job *Job, lastErr string) erro
 	if err != nil {
 		return fmt.Errorf("begin dead-letter tx: %w", err)
 	}
-	defer func() { _ = tx.Rollback(context.Background()) }()
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
 
 	const deadLetterSQL = `
 		INSERT INTO worker_dead_letter (
@@ -579,10 +580,10 @@ func (w *Worker) execute(ctx context.Context, job *Job) bool {
 		return false
 	}
 
-	// Use context.Background() so a SIGTERM-cancelled parent ctx does not
-	// prevent persisting the completed status. The queue methods impose their
-	// own 5–10 s timeouts internally.
-	if err := w.queue.MarkDone(context.Background(), job.ID); err != nil {
+	// Use WithoutCancel so a SIGTERM-cancelled parent ctx does not prevent
+	// persisting the completed status, while keeping trace/logger values from
+	// the job ctx. The queue methods impose their own 5–10 s timeouts.
+	if err := w.queue.MarkDone(context.WithoutCancel(ctx), job.ID); err != nil {
 		w.logger.Error("mark done failed",
 			"job_id", job.ID,
 			"error", err.Error(),
@@ -613,13 +614,14 @@ func safeHandler(ctx context.Context, h HandlerFunc, payload []byte) (err error)
 // markFailureOrRetry either schedules a retry (status='pending') or
 // finalises the row as failed (status='failed') and copies it into
 // worker_dead_letter. The decision is based on attempts vs max_attempts.
-func (w *Worker) markFailureOrRetry(_ context.Context, job *Job, handlerErr error) {
+func (w *Worker) markFailureOrRetry(ctx context.Context, job *Job, handlerErr error) {
 	errText := truncate(handlerErr.Error(), 4000)
 
-	// Use context.Background() for the same reason as MarkDone: a
-	// SIGTERM-cancelled ctx must not prevent the outcome from being written.
+	// Use WithoutCancel for the same reason as MarkDone: a SIGTERM-cancelled
+	// ctx must not prevent the outcome from being written, but trace/log
+	// values from the job ctx must still propagate.
 	if job.Attempts < job.MaxAttempts {
-		if err := w.queue.MarkRetry(context.Background(), job.ID, errText); err != nil {
+		if err := w.queue.MarkRetry(context.WithoutCancel(ctx), job.ID, errText); err != nil {
 			w.logger.Error("schedule retry failed",
 				"job_id", job.ID,
 				"error", err.Error(),
@@ -629,7 +631,7 @@ func (w *Worker) markFailureOrRetry(_ context.Context, job *Job, handlerErr erro
 	}
 
 	// Final failure: move to dead letter.
-	if err := w.queue.MarkFailed(context.Background(), job, errText); err != nil {
+	if err := w.queue.MarkFailed(context.WithoutCancel(ctx), job, errText); err != nil {
 		w.logger.Error("mark failed failed",
 			"job_id", job.ID,
 			"error", err.Error(),

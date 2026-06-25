@@ -32,6 +32,11 @@ type Pool struct {
 	lastErr atomic.Value // string
 	closed  atomic.Bool
 	stopCh  chan struct{}
+	// bgCtx is a long-lived context derived from the Open() ctx via
+	// context.WithoutCancel. It outlives the bootstrap ctx and is used by
+	// the background health-checker for ping timeouts, so we don't have to
+	// call context.Background() in non-cmd code paths.
+	bgCtx context.Context //nolint:containedctx
 }
 
 // Open establishes a pgxpool.Pool to the database described by cfg.DatabaseURL,
@@ -80,6 +85,9 @@ func Open(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Pool, 
 		cfg:    cfg,
 		logger: logger,
 		stopCh: make(chan struct{}),
+		// Detach from the Open ctx (which may be cancelled once bootstrap
+		// completes) while preserving any trace/logger values it carries.
+		bgCtx: context.WithoutCancel(ctx),
 	}
 	p.healthy.Store(true)
 	p.lastErr.Store("")
@@ -156,7 +164,13 @@ func (p *Pool) checkOnce() {
 	if p.closed.Load() {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	parent := p.bgCtx
+	if parent == nil {
+		// Safety fallback for any future caller that constructs Pool
+		// directly without going through Open(). Tests rely on this.
+		parent = context.WithoutCancel(context.TODO())
+	}
+	ctx, cancel := context.WithTimeout(parent, 3*time.Second)
 	defer cancel()
 
 	wasHealthy := p.healthy.Load()

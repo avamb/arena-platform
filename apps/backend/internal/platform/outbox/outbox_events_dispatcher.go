@@ -126,7 +126,8 @@ func (s *PGOutboxEventStore) ClaimNext(ctx context.Context) (*OutboxEventRow, er
 		return nil, fmt.Errorf("outbox events dispatcher: begin tx: %w", err)
 	}
 	// Rollback is a no-op after Commit; keep the defer to handle error paths.
-	defer func() { _ = tx.Rollback(context.Background()) }()
+	// Use WithoutCancel so a parent-cancelled ctx still releases the row lock.
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
 
 	var (
 		id            string

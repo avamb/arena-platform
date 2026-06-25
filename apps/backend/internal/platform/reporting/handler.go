@@ -210,7 +210,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 				committed := false
 				defer func() {
 					if !committed {
-						tx.Rollback(context.Background()) //nolint:errcheck
+						tx.Rollback(context.WithoutCancel(ctx)) //nolint:errcheck
 					}
 				}()
 				if pubErr := opts.OutboxWriter.Append(ctx, tx, outbox.Event{
