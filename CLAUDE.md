@@ -28,40 +28,23 @@ If the user asks you to modify code, explain that you're a project assistant and
 ## Project Specification
 
 <project_specification>
-  <implementation_status_override date="2026-06-24">
-    The checked-in implementation is no longer limited to this original
-    foundation-only seed specification. AutoForge currently tracks 171/171
-    passed features through Wave 20, and the codebase contains broad domain
-    scaffolding for identity, organizations, catalog, inventory, checkout,
-    payments, tickets, scanner integration boundaries, WordPress/Bil24
-    compatibility, reporting, billing, superadmin, webhook delivery, and
-    reconciliation.
+  <implementation_status note="override-block retired 2026-06-25 by feature #181">
+    The original foundation-only seed specification has been superseded by
+    the checked-in implementation. The signed release-readiness checklist
+    is the single source of truth for the four production-readiness gates
+    (architecture reconciliation, generated clients current, tests + lint
+    green, runtime migrations through 0041_reconciliation_reports.sql).
+    See 00_project_control/RELEASE_CHECKLIST.md. All four gates are GREEN
+    on main as of 2026-06-25 (lint gate closed by feature #182, baseline
+    563 -> 0).
 
-    Treat the foundation-only scope below as historical seed context. The
-    current implementation snapshot now lives in
-    08_architecture/14_current_implementation_overview_ru.md (added by
-    feature #180, 2026-06-25). Use that document as the primary inventory of
-    bounded contexts; docs 12 (master draft) and 13 (initial Go spec) have
-    been status-reconciled to `initial draft` / `historical / superseded`
-    respectively. Any scope expansion beyond doc 14 requires a new ADR in
-    08_architecture/11_architecture_decision_log_ru.md (see new "ADR-protocol
-    on scope expansion" section).
-
-    Verified reconciliation status on 2026-06-24:
-    - architecture/spec status reconciled for the current broad-scaffold stage;
-    - OpenAPI -> Go generation passes with the known oapi-codegen warning that
-      OpenAPI 3.1 is not fully supported by oapi-codegen v2.4.1;
-    - OpenAPI -> TypeScript generation and TypeScript declaration check pass;
-    - go test ./... and go test -race -coverprofile=/tmp/coverage.out
-      -covermode=atomic ./... pass in golang:1.24;
-    - local docker-compose runtime is healthy and PostgreSQL is migrated through
-      embedded migration 0041_reconciliation_reports.sql;
-    - golangci-lint:latest loads the v2 config but still fails with 563
-      existing lint issues.
-
-    Current readiness is not production-ready / not CI-green until the lint
-    gate is cleaned up.
-  </implementation_status_override>
+    Primary architecture inventory:
+    08_architecture/14_current_implementation_overview_ru.md.
+    Docs 12 and 13 are marked initial-draft / historical-superseded
+    respectively. Any scope expansion beyond doc 14 requires a new ADR
+    in 08_architecture/11_architecture_decision_log_ru.md (see the
+    "ADR-protocol on scope expansion" section).
+  </implementation_status>
 
   <project_name>arena_new — Broad Scaffold Status; original Backend Foundation Milestone superseded by implementation</project_name>
 
@@ -121,10 +104,12 @@ If the user asks you to modify code, explain that you're a project assistant and
   </source_of_truth>
 
   <current_stage>
-    Wave 20 broad scaffold is complete in AutoForge feature tracking.
-    Reconciliation gate evidence is now partially green: generated clients,
-    tests, race/coverage tests, and local runtime migrations are verified.
-    The active stage is lint cleanup to make CI fully green.
+    Wave 20 broad scaffold is complete in AutoForge feature tracking and
+    the four-gate release-readiness checklist is fully GREEN as of
+    2026-06-25 (see 00_project_control/RELEASE_CHECKLIST.md). The active
+    stage is incremental DDD boundary tightening (umbrella #173 closed,
+    incremental follow-ups under #175/#183-#188) on top of a release-ready
+    foundation.
   </current_stage>
 
   <domain_coverage>
@@ -134,10 +119,12 @@ If the user asks you to modify code, explain that you're a project assistant and
   </domain_coverage>
 
   <readiness_gate>
-    Passing feature backlog is not equivalent to production readiness. Treat
-    generated-code drift checks, CI-equivalent test results, applied runtime
-    migrations, and golangci-lint as required evidence before reporting
-    readiness. As of 2026-06-24, lint remains the blocking red gate.
+    Production readiness is governed by the signed release checklist at
+    00_project_control/RELEASE_CHECKLIST.md. The four gates (architecture
+    reconciliation, generated clients current, tests + lint green, runtime
+    migrations through 0041_reconciliation_reports.sql) are all GREEN on
+    main as of 2026-06-25. Any future regression on any gate flips the
+    overall status to red and blocks release.
   </readiness_gate>
 </project_specification>
 

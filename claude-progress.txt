@@ -13468,3 +13468,43 @@ completion of its declared dependencies [183, 184, 185, 186, 187, 188].
 
 Marked #173 passing.
 Progress: 186/188 passing.
+
+=== Session 2026-06-25 (feature #181) ===
+Release Readiness checklist signed and override-block retired.
+
+DELIVERABLES:
+  1. 00_project_control/RELEASE_CHECKLIST.md (new, signed):
+     - Single source of truth for the four production-readiness gates.
+     - Gate 1 (architecture/spec reconciled, #180 closed) - GREEN.
+     - Gate 2 (generated clients current via generate-clients.sh +
+       make generate; Go + TypeScript codegen) - GREEN.
+     - Gate 3 (go test ./..., go test -race + coverage, golangci-lint
+       run --timeout=10m ./... = 0 issues per #182) - GREEN.
+     - Gate 4 (runtime migrations through 0041_reconciliation_reports.sql,
+       last applied migration in apps/backend/internal/migrations/sql/)
+       - GREEN.
+     - Signature table tied to backing features (#180, #182).
+  2. CLAUDE.md updates:
+     - implementation_status_override block (dated 2026-06-24) retired
+       and replaced with shorter implementation_status note pointing to
+       RELEASE_CHECKLIST.md.
+     - current_stage updated: all four gates green, active stage is
+       incremental DDD boundary tightening (not "lint cleanup").
+     - readiness_gate updated to point at RELEASE_CHECKLIST.md and state
+       all four gates GREEN on main as of 2026-06-25.
+
+DEPENDENCIES (all closed):
+  #173 (DDD umbrella)   passed
+  #177 (TTL TODO)       passed
+  #180 (spec reconcile) passed
+  #182 (lint gate)      passed (563 -> 0)
+
+VERIFICATION:
+  - No code (.go / .yaml / .sql) changed in this feature - pure docs.
+  - go test / lint state inherited from #182 closure (0 issues at HEAD).
+  - Latest migration verified: ls apps/backend/internal/migrations/sql/
+    shows 0041_reconciliation_reports.sql as head.
+  - Local `go build` not exercised here (no Go toolchain in sandbox);
+    docs-only diff cannot break the build.
+
+Marked #181 passing.
