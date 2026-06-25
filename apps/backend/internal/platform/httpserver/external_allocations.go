@@ -32,36 +32,48 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	inventorydomain "github.com/abhteam/arena_new/apps/backend/internal/domain/inventory"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
 // State transition table
 // ─────────────────────────────────────────────────────────────────────────────
 
-// validAllocationTransitions defines allowed status transitions.
-// Terminal states (reconciled) map to empty sets.
-var validAllocationTransitions = map[string]map[string]bool{
-	"pending": {
-		"active":     true,
-		"reconciled": true, // direct reconcile without activation (edge case)
-	},
-	"active": {
-		"reconciled": true,
-		"disputed":   true,
-	},
-	"disputed": {
-		"reconciled": true,
-	},
-	"reconciled": {}, // terminal
-}
+// validAllocationTransitions mirrors the pure-domain transition table from
+// internal/domain/inventory.ValidAllocationTransitions (feature #184),
+// projected back to a string-keyed map so the in-package state-machine
+// tests (external_allocations_145_test.go) can inspect terminal-state
+// emptiness without importing the domain package. Allowed transitions:
+// pending → active|reconciled, active → reconciled|disputed, disputed →
+// reconciled; reconciled is terminal.
+var validAllocationTransitions = func() map[string]map[string]bool {
+	out := make(map[string]map[string]bool, len(inventorydomain.ValidAllocationTransitions))
+	for from, allowed := range inventorydomain.ValidAllocationTransitions {
+		row := make(map[string]bool, len(allowed))
+		for to := range allowed {
+			row[string(to)] = true
+		}
+		out[string(from)] = row
+	}
+	return out
+}()
 
-// allAllocationStatuses is the complete set of valid external allocation statuses.
-var allAllocationStatuses = []string{"pending", "active", "reconciled", "disputed"}
+// allAllocationStatuses is the complete set of valid external allocation
+// statuses, projected from the canonical pure-domain slice
+// inventorydomain.AllAllocationStatuses (feature #184).
+var allAllocationStatuses = func() []string {
+	out := make([]string, 0, len(inventorydomain.AllAllocationStatuses))
+	for _, s := range inventorydomain.AllAllocationStatuses {
+		out = append(out, string(s))
+	}
+	return out
+}()
 
-// isTerminalAllocationStatus returns true for statuses that admit no further transitions.
+// isTerminalAllocationStatus returns true for statuses that admit no
+// further transitions. 1-line forwarder to the pure-domain predicate in
+// internal/domain/inventory (feature #184).
 func isTerminalAllocationStatus(status string) bool {
-	targets, exists := validAllocationTransitions[status]
-	return exists && len(targets) == 0
+	return inventorydomain.IsTerminalAllocationStatus(status)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

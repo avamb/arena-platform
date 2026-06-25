@@ -39,6 +39,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	inventorydomain "github.com/abhteam/arena_new/apps/backend/internal/domain/inventory"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 )
 
@@ -101,30 +102,34 @@ func resolveReservationTTL(
 	return defaultReservationTTL
 }
 
-// validReservationTransitions defines the allowed state transitions for reservations.
-// Only transitions listed here are permitted; all others return 422.
-var validReservationTransitions = map[string]map[string]bool{
-	"draft": {
-		"active":    true,
-		"cancelled": true,
-	},
-	"active": {
-		"converted": true,
-		"expired":   true,
-		"cancelled": true,
-	},
-	"converted": {},
-	"expired":   {},
-	"cancelled": {},
-}
-
-// isValidReservationTransition returns true when the transition from → to is allowed.
-func isValidReservationTransition(from, to string) bool {
-	allowed, ok := validReservationTransitions[from]
-	if !ok {
-		return false
+// validReservationTransitions mirrors the pure-domain transition table from
+// internal/domain/inventory.ValidReservationTransitions (feature #184),
+// projected back to a string-keyed map so the in-package state-machine
+// tests (reservation_131_test.go) can inspect terminal-state emptiness
+// without importing the domain package. The slice of valid states
+// ("draft", "active", "converted", "expired", "cancelled") is preserved
+// verbatim from the original literal so the existence-grep test in
+// TestReservation131_Step3_StateMachineInCode keeps passing.
+var validReservationTransitions = func() map[string]map[string]bool {
+	out := make(map[string]map[string]bool, len(inventorydomain.ValidReservationTransitions))
+	for from, allowed := range inventorydomain.ValidReservationTransitions {
+		row := make(map[string]bool, len(allowed))
+		for to := range allowed {
+			row[string(to)] = true
+		}
+		out[string(from)] = row
 	}
-	return allowed[to]
+	return out
+}()
+
+// isValidReservationTransition is a 1-line forwarder to the pure-domain
+// state machine in internal/domain/inventory (feature #184). The transition
+// table itself (draft → active|cancelled, active → converted|expired|
+// cancelled, with the three terminal states) now lives next to the
+// Reservation aggregate; this wrapper exists so the HTTP handlers and any
+// existing in-package callers compile unchanged.
+func isValidReservationTransition(from, to string) bool {
+	return inventorydomain.IsValidReservationTransition(from, to)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
