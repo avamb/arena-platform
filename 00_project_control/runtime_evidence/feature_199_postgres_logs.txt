@@ -1,0 +1,20 @@
+arena_postgres  | 2026-06-25 08:10:33.869 UTC [26] LOG:  checkpoint starting: time
+arena_postgres  | 2026-06-25 08:10:34.191 UTC [26] LOG:  checkpoint complete: wrote 4 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.305 s, sync=0.004 s, total=0.323 s; sync files=4, longest=0.003 s, average=0.001 s; distance=9 kB, estimate=440 kB; lsn=0/1CE3418, redo lsn=0/1CE33C0
+arena_postgres  | 2026-06-25 09:10:33.690 UTC [26] LOG:  checkpoint starting: time
+arena_postgres  | 2026-06-25 09:10:34.023 UTC [26] LOG:  checkpoint complete: wrote 4 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.304 s, sync=0.016 s, total=0.333 s; sync files=4, longest=0.011 s, average=0.004 s; distance=9 kB, estimate=397 kB; lsn=0/1CE5B08, redo lsn=0/1CE5AB0
+arena_postgres  | 2026-06-25 10:10:33.730 UTC [26] LOG:  checkpoint starting: time
+arena_postgres  | 2026-06-25 10:10:34.066 UTC [26] LOG:  checkpoint complete: wrote 4 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.309 s, sync=0.011 s, total=0.337 s; sync files=4, longest=0.008 s, average=0.003 s; distance=10 kB, estimate=358 kB; lsn=0/1CE8470, redo lsn=0/1CE8418
+arena_postgres  | 2026-06-25 11:10:33.553 UTC [26] LOG:  checkpoint starting: time
+arena_postgres  | 2026-06-25 11:10:34.301 UTC [26] LOG:  checkpoint complete: wrote 8 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.715 s, sync=0.011 s, total=0.749 s; sync files=8, longest=0.007 s, average=0.002 s; distance=23 kB, estimate=325 kB; lsn=0/1CEE330, redo lsn=0/1CEE2D8
+arena_postgres  | 2026-06-25 12:10:33.878 UTC [26] LOG:  checkpoint starting: time
+arena_postgres  | 2026-06-25 12:10:34.205 UTC [26] LOG:  checkpoint complete: wrote 4 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.304 s, sync=0.009 s, total=0.327 s; sync files=4, longest=0.007 s, average=0.003 s; distance=7 kB, estimate=293 kB; lsn=0/1CEFF88, redo lsn=0/1CEFF30
+arena_postgres  | 2026-06-25 13:10:33.569 UTC [26] LOG:  checkpoint starting: time
+arena_postgres  | 2026-06-25 13:10:33.897 UTC [26] LOG:  checkpoint complete: wrote 4 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.304 s, sync=0.009 s, total=0.328 s; sync files=4, longest=0.006 s, average=0.003 s; distance=7 kB, estimate=264 kB; lsn=0/1CF1E40, redo lsn=0/1CF1DE8
+arena_postgres  | 2026-06-25 14:10:34.427 UTC [26] LOG:  checkpoint starting: time
+arena_postgres  | 2026-06-25 14:10:34.766 UTC [26] LOG:  checkpoint complete: wrote 4 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.312 s, sync=0.009 s, total=0.340 s; sync files=4, longest=0.005 s, average=0.003 s; distance=8 kB, estimate=239 kB; lsn=0/1CF3F90, redo lsn=0/1CF3F00
+arena_postgres  | 2026-06-25 15:10:35.317 UTC [26] LOG:  checkpoint starting: time
+arena_postgres  | 2026-06-25 15:10:35.640 UTC [26] LOG:  checkpoint complete: wrote 4 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.307 s, sync=0.005 s, total=0.324 s; sync files=4, longest=0.004 s, average=0.002 s; distance=8 kB, estimate=216 kB; lsn=0/1CF6308, redo lsn=0/1CF62B0
+arena_postgres  | 2026-06-25 16:10:36.019 UTC [26] LOG:  checkpoint starting: time
+arena_postgres  | 2026-06-25 16:10:36.346 UTC [26] LOG:  checkpoint complete: wrote 4 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.309 s, sync=0.006 s, total=0.327 s; sync files=4, longest=0.003 s, average=0.002 s; distance=9 kB, estimate=195 kB; lsn=0/1CF88C8, redo lsn=0/1CF8870
+arena_postgres  | 2026-06-25 17:10:36.964 UTC [26] LOG:  checkpoint starting: time
+arena_postgres  | 2026-06-25 17:10:37.295 UTC [26] LOG:  checkpoint complete: wrote 4 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.309 s, sync=0.009 s, total=0.332 s; sync files=4, longest=0.007 s, average=0.003 s; distance=10 kB, estimate=176 kB; lsn=0/1CFB0D0, redo lsn=0/1CFB078

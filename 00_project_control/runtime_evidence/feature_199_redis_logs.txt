@@ -1,0 +1,7 @@
+arena_redis  | 1:C 21 Jun 2026 21:06:53.920 * oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+arena_redis  | 1:C 21 Jun 2026 21:06:53.920 * Redis version=7.4.7, bits=64, commit=00000000, modified=0, pid=1, just started
+arena_redis  | 1:C 21 Jun 2026 21:06:53.920 # Warning: no config file specified, using the default config. In order to specify a config file use redis-server /path/to/redis.conf
+arena_redis  | 1:M 21 Jun 2026 21:06:53.920 * monotonic clock: POSIX clock_gettime
+arena_redis  | 1:M 21 Jun 2026 21:06:53.923 * Running mode=standalone, port=6379.
+arena_redis  | 1:M 21 Jun 2026 21:06:53.923 * Server initialized
+arena_redis  | 1:M 21 Jun 2026 21:06:53.925 * Ready to accept connections tcp

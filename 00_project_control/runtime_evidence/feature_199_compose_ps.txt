@@ -1,0 +1,5 @@
+NAME             IMAGE                                                                     COMMAND                  SERVICE    CREATED        STATUS                  PORTS
+arena_api        sha256:83e85b7a1bd4932b24495bd55647e1b149a67e5edaf0d131930cc299b53ea2e7   "/app/arena-api"         api        22 hours ago   Up 22 hours (healthy)   0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
+arena_postgres   postgres:17-alpine                                                        "docker-entrypoint.s…"   postgres   3 days ago     Up 3 days (healthy)     0.0.0.0:55432->5432/tcp, [::]:55432->5432/tcp
+arena_redis      redis:7-alpine                                                            "docker-entrypoint.s…"   redis      3 days ago     Up 3 days (healthy)     0.0.0.0:56379->6379/tcp, [::]:56379->6379/tcp
+arena_worker     sha256:83e85b7a1bd4932b24495bd55647e1b149a67e5edaf0d131930cc299b53ea2e7   "/app/arena-worker"      worker     22 hours ago   Up 22 hours (healthy)   8080/tcp
