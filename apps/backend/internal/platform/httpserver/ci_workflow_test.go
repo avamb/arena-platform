@@ -29,12 +29,12 @@ func TestCIWorkflow108_FileExists(t *testing.T) {
 	}
 }
 
-func TestCIWorkflow108_TriggerOnPushMain(t *testing.T) {
+func TestCIWorkflow108_TriggerOnPushMaster(t *testing.T) {
 	content := ciWorkflowContent(t)
 	checks := []string{
 		"push:",
 		"branches:",
-		"- main",
+		"- master",
 	}
 	for _, want := range checks {
 		if !strings.Contains(content, want) {
@@ -118,10 +118,10 @@ func TestCIWorkflow108_BuildAndPushJobExists(t *testing.T) {
 	}
 }
 
-func TestCIWorkflow108_BuildAndPushOnlyOnMain(t *testing.T) {
+func TestCIWorkflow108_BuildAndPushOnlyOnMaster(t *testing.T) {
 	content := ciWorkflowContent(t)
-	if !strings.Contains(content, "refs/heads/main") {
-		t.Error("ci.yml build-and-push job missing main branch condition")
+	if !strings.Contains(content, "refs/heads/master") {
+		t.Error("ci.yml build-and-push job missing master branch condition")
 	}
 }
 

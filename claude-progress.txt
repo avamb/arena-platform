@@ -13762,3 +13762,14 @@ VERIFICATION COMMANDS RUN:
 Marked #194 passing. No Go source changed -> all five release gates
 inherit the prior green state (architecture reconciliation, generated
 clients, tests, lint, runtime migrations through 0041).
+
+=== Session 2026-06-25 (feature #197) ===
+Fixed whitespace gate failure for deploy/DOKPLOY.md.
+- Before: 714 lines, two trailing blank lines triggering
+  "new blank line at EOF" warning from `git diff --check 7cd53fb..HEAD`.
+- After:  711 lines, file ends with single newline following
+  "...so that no stream is forced to drop unrotated data.".
+- Commits: c64c17f, 933fd63.
+- Verification: `git diff --check 7cd53fb..HEAD` -> exit 0 (gate green).
+- No Go source touched; only docs whitespace.
+Feature #197 marked passing. Stats: 196/201 (97.5%).

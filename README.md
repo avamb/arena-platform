@@ -37,7 +37,7 @@ Verified reconciliation status as of 2026-06-25:
 | 4. Runtime DB migrations | GREEN | `make migrate-up`; head migration is `0041_reconciliation_reports.sql` |
 | 5. Container image builds | GREEN | `docker build -t arena-api:local .` and `docker compose build && docker compose up -d --wait` |
 
-All five gates are green on `main` as of 2026-06-25. The
+All five gates are green on `master` as of 2026-06-25. The
 `<implementation_status_override>` block that previously lived in `CLAUDE.md`
 has been retired (see #181) and replaced by the linked checklist.
 

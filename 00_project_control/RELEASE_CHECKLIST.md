@@ -19,7 +19,7 @@ tickets, scanner integration boundaries, WordPress/Bil24 compatibility,
 reporting, billing, superadmin, webhook delivery, and reconciliation.
 
 Production readiness for that milestone is gated on the items below. All
-gates are green on the `main` branch as of 2026-06-25. Gates 1-4 form the
+gates are green on the `master` branch as of 2026-06-25. Gates 1-4 form the
 original four-gate signed contract; Gate 5 (container image builds) is
 included here for reproducibility against the CI `build-and-push` job.
 
