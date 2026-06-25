@@ -13399,3 +13399,38 @@ SCOPE NOTE:
 
 Marked #175 passing.
 Progress: 184/188 passing.
+=== Session 2026-06-25 (feature #188) ===
+DDD split: Bil24 compatibility adapter boundary -- step 1 (mirrors #183 / #184 / #185 / #186 / #187 incremental pattern).
+
+Created internal/adapters/bil24compat/:
+  doc.go            - layer contract; adapter (not domain); dependency direction is one-way (caller side -> adapter, never the reverse).
+  result_codes.go   - ResultCodeOK / Unknown / InvalidRequest / NotFound / InternalError.
+  wire.go           - Request, Response (with exported Data field), MarshalJSON, OK, Error, WriteJSON helpers.
+  translate.go      - TranslateLegacyID, TranslatePlatformID, ErrLegacyIDNotFound.
+
+Modified internal/platform/httpserver/bil24_compat.go:
+  - Imports internal/adapters/bil24compat.
+  - Removed local definitions of result codes, envelope types, helpers, and translation funcs.
+  - Re-exports for backward compatibility with #157 test suite: const ResultCode* equal bil24compat consts; envelope type aliases; thin forwarders for OK / Error / WriteJSON / TranslateLegacyID / TranslatePlatformID / ErrLegacyIDNotFound.
+  - Per-command handlers (handleBil24GetAllActions / SeatList / OrderInfo / CreateOrderExt / ScanTicket / CancelOrder) and mountCompatRoutes kept intact; migration into use-cases under internal/app/* is the explicit incremental follow-up.
+
+Modified internal/platform/httpserver/bil24_compat_157_test.go:
+  - One-line update: lowercase 'data:' field renamed to exported 'Data:' field for direct Response{} construction at line 778. Every other test reference continues to resolve via the in-package aliases.
+
+New static-analysis test tests/staticanalysis/bil24compat_layout_188_test.go:
+  - AdapterDirExists: package must exist with at least one .go file.
+  - AdapterOwnsWireSymbols: textual scan asserts each wire-format sentinel (ResultCode*, Translate*, ErrLegacyIDNotFound) is defined in the adapter package, guarding against re-introduction of the authoritative copy elsewhere.
+  - AdapterHasNoHTTPImports: forbids internal/platform/httpserver imports under internal/adapters/bil24compat (direction guard).
+
+Verification (golang:1.24 docker):
+  go build ./...                                                              PASS
+  go vet   ./...                                                              PASS
+  go test  -short -count=1 ./apps/backend/internal/platform/httpserver/...    PASS (7.4s)
+  go test  -short -count=1 ./apps/backend/tests/staticanalysis/...            PASS (14.4s)
+  go test  -short -count=1 ./apps/backend/tests/compat/bil24/...              PASS (0.04s) -- byte-for-byte Bil24 wire contract unchanged.
+  go test  -short -count=1 ./...                                              PASS apart from an intermittent worker-skew test (TestSkipLocked_TwoWorkers_RoughlyEvenSplit) that passes on retry and is unrelated to this refactor.
+
+Scope note: this step extracted the pure wire-format pieces (envelope, result codes, translation helpers) into the adapter package and added the layout / direction static-analysis gate so the boundary cannot silently regress. Migration of the six per-command handlers themselves out of the calling layer into use-cases under internal/app/* (consuming the existing query adapters via ports) is the explicit incremental follow-up; bundling it with the boundary move would conflate two risks and threaten the frozen wire contract.
+
+Marked #188 passing.
+Progress: 184/188 passing.
