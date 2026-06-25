@@ -9,7 +9,7 @@ This folder is now organized as a reference library for the new production backe
 - `ARTIFACTS_MANIFEST.csv` - full file inventory with category, relative path, extension, size, timestamp, and SHA256 hash.
 - `CATEGORY_SUMMARY.csv` - file counts and byte totals by top-level category.
 - `EXTENSION_SUMMARY.csv` - file counts and byte totals by extension.
-- `DEDUPLICATION_REPORT.csv` - exact SHA256 duplicate groups; repeated files moved to `99_archive_duplicates/exact_hash_duplicates/`.
+- `DEDUPLICATION_REPORT.csv` - exact SHA256 duplicate groups. The `KeptPath` column is the canonical copy retained in the repo; the `ArchivedOriginalPath` / `ArchivedPath` columns describe the duplicate copies that were quarantined under `99_archive_duplicates/exact_hash_duplicates/` and then permanently removed from git history-on-main by feature #179 (2026-06-25). Use this report to recover a specific duplicate path if ever needed - the file content is byte-identical to `KeptPath`.
 
 ## Folder Map
 
@@ -101,9 +101,26 @@ Important files:
 - `02_CRITICAL_ARCHITECTURE_AUDIT.md`
 - `03_SPECIFICATION_STARTER.md`
 
-### `99_archive_duplicates/`
+### `99_archive_duplicates/` (deleted from git, 2026-06-25, feature #179)
 
-Quarantine for exact duplicate files. Nothing here was permanently deleted.
+Previously a quarantine directory for 172 exact SHA256 duplicate binary
+assets (PNG / SVG / PDF screenshots and venue maps). Per the product
+owner decision recorded against feature #179, this directory was removed
+from the tracked tree on 2026-06-25 (`git rm -r 99_archive_duplicates/`)
+and the path was added to `.gitignore` to keep it out of the working tree
+on accidental re-creation.
+
+The deletion is **safe and reversible at the content level**: every file
+under the former `99_archive_duplicates/exact_hash_duplicates/` tree was
+byte-identical (verified via SHA256) to a `KeptPath` entry that still
+lives elsewhere in the repo. The mapping is preserved in
+`DEDUPLICATION_REPORT.csv` (columns `KeptPath`,
+`ArchivedOriginalPath`, `ArchivedPath`). The deletion is also reversible
+at the git-history level - the blobs remain in repository history prior
+to the deletion commit if a full content restore is ever required.
+
+No content was lost; this change only reduces repository size and
+`git clone` time by ~172 redundant binary blobs going forward.
 
 ## Current Rule
 

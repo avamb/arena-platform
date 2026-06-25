@@ -48,6 +48,12 @@ data/redis/
 # Node.js (TypeScript client generation tooling)
 node_modules/
 
+# Exact-hash duplicate quarantine (deleted from git per feature #179;
+# duplicates are recoverable from their KeptPath listed in
+# 00_project_control/DEDUPLICATION_REPORT.csv). Path is ignored so
+# accidental re-creation of the quarantine folder does not get committed.
+99_archive_duplicates/
+
 # Logs
 *.log
 logs/
