@@ -71,12 +71,43 @@ func countByWorker(q *inMemoryQueue, ids []string) map[string]int {
 	return tally
 }
 
+// handlerWorkDuration is the artificial per-job processing time injected by the
+// concurrent-claim tests' handler. It serves a single purpose: defeat the
+// degenerate "one worker drains everything in a tight loop" race that produces
+// statistical flakiness in TestSkipLocked_TwoWorkers_RoughlyEvenSplit and
+// TestSkipLocked_StressFourWorkers_NoDuplicateClaims.
+//
+// Without the delay the noop handler returns instantly, so once worker A wins
+// the first mutex it can keep claim+execute+claim-looping with no scheduling
+// yield, completing all 50/200 jobs before worker B's 5 ms poll timer ever
+// fires. With a 2 ms sleep, each iteration of A's claim loop releases the
+// goroutine for at least one Go scheduler tick — long enough for B (and C,D)
+// to grab the claim mutex on the next ClaimNext call. 2 ms is also short
+// enough that the suite still finishes well inside the 10 s / 30 s timeouts:
+//
+//	50 jobs * 2 ms / 2 workers ≈ 50 ms wall
+//	200 jobs * 2 ms / 4 workers ≈ 100 ms wall
+const handlerWorkDuration = 2 * time.Millisecond
+
 // startWorker creates and runs a worker with the given instanceID against q.
 // Returns a stop function. The registry always registers 'test.noop'.
+//
+// The handler sleeps handlerWorkDuration before returning so that concurrent
+// workers actually overlap and the FOR-UPDATE-SKIP-LOCKED semantics are
+// exercised; see handlerWorkDuration for the full rationale.
 func startWorker(t *testing.T, q *inMemoryQueue, instanceID string) func() {
 	t.Helper()
 	reg := NewRegistry()
-	reg.Register("test.noop", func(_ context.Context, _ []byte) error { return nil })
+	reg.Register("test.noop", func(ctx context.Context, _ []byte) error {
+		// Yield to the scheduler so a second worker can grab the claim mutex
+		// before this one loops back to ClaimNext. Honour ctx so a hard
+		// shutdown does not have to wait the full sleep.
+		select {
+		case <-time.After(handlerWorkDuration):
+		case <-ctx.Done():
+		}
+		return nil
+	})
 
 	w, err := New(Options{
 		Queue:           q,

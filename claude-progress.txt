@@ -13797,3 +13797,41 @@ Validated localhost health and info endpoints against the local docker-compose s
 - Wrote 00_project_control/LOCAL_RUNTIME_VERIFICATION_FEATURE_200.md mapping each step to its result.
 Commit: e8d1f4f. Marked #200 passing. Stats: 199/201 (99.0%).
 
+=== Session 2026-06-25 (feature #198) ===
+Stabilize flaky SKIP LOCKED worker tests.
+
+Root cause: TestSkipLocked_TwoWorkers_RoughlyEvenSplit and
+TestSkipLocked_StressFourWorkers_NoDuplicateClaims used an instantaneous
+no-op handler. With the handler returning in microseconds, the first
+worker to grab the inMemoryQueue mutex could claim+execute jobs in a
+tight loop, draining all 50/200 jobs before the second/third/fourth
+worker fired its 5ms poll timer. The result was statistical flakiness
+where one worker received 0 jobs (RoughlyEvenSplit's minEach=5 failed,
+and the stress test's "each worker > 0 jobs" assertion also failed).
+
+Fix (apps/backend/internal/platform/worker/worker_skip_locked_test.go):
+  - Introduced handlerWorkDuration (2ms) constant with full rationale
+    documented in the comment above it.
+  - startWorker now registers a handler that sleeps handlerWorkDuration
+    (ctx-cancellable via select on time.After / ctx.Done) so every
+    claim+execute cycle yields the goroutine for at least one scheduler
+    tick. This forces concurrent workers to overlap on ClaimNext and
+    exercises the FOR-UPDATE-SKIP-LOCKED semantics deterministically.
+  - Production code path (worker.go, PGQueue, no-op handlers in prod)
+    is unchanged. The delay lives only in this test file's helper.
+  - Wall-time math: 50 jobs * 2ms / 2 workers ~= 50ms; 200 * 2ms / 4
+    workers ~= 100ms. Both comfortably inside the existing 10s / 30s
+    waitAllDone timeouts.
+  - The existing minEach = 5 (10%) threshold is preserved to keep the
+    meaning of "roughly even split"; no t.Skip was introduced.
+
+Verification (docker golang:1.24):
+  - go test ./internal/platform/worker/... -count=3 -run TestSkipLocked
+      -> ok (0.716s, all 3 reruns)
+  - go test ./internal/platform/worker/... -count=2 (full worker suite)
+      -> ok (1.355s)
+  - go test ./... -count=1 -short (full backend, two consecutive runs)
+      -> all packages ok, no FAIL output.
+
+Marked #198 passing.
+
