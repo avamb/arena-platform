@@ -1,9 +1,20 @@
-// bil24_compat.go — Bil24-compatible API gateway (feature #157).
+// bil24_compat.go — Bil24-compatible API gateway HTTP entry point
+// (feature #157, refined for feature #188).
 //
-// This adapter layer translates the legacy Bil24 command-based JSON API
-// to arena platform domain calls. It lives under the /compat/bil24/*
-// prefix and is disabled by default; set BIL24_COMPAT_ENABLED=true to
-// enable it.
+// This file used to own both the Bil24 wire format AND the per-command
+// orchestration. Feature #188 moves the wire format (request/response
+// envelope, result codes, ID translation helpers) into the dedicated
+// adapter package internal/adapters/bil24compat. This file is now the
+// HTTP-layer entry point: it mounts the /compat/bil24/* subtree, decodes
+// the wire envelope via the adapter package, and dispatches to per-command
+// handlers that orchestrate platform queries.
+//
+// For backward compatibility with the existing httpserver-package test
+// (#157), short aliases / forwarders for the moved symbols
+// (bil24Request, bil24Response, bil24OK, bil24Error, writeBil24JSON,
+// ResultCode*, TranslateLegacyID, TranslatePlatformID, ErrLegacyIDNotFound)
+// are exposed here. Migration of the per-command handlers themselves into
+// use-cases under internal/app/* is an incremental follow-up.
 //
 // Wire compatibility:
 //
@@ -26,8 +37,8 @@
 //	Legacy Bil24 uses actionId, actionEventId, orderId, ticketId etc.
 //	The platform uses UUIDv7. TranslateLegacyID accepts either a raw UUID
 //	string or a legacy numeric/opaque ID and maps it to a platform UUID.
-//	For this scaffold, non-UUID IDs are mapped via the compatibility table
-//	(a future DB lookup); currently opaque IDs return ErrLegacyIDNotFound.
+//	See the adapter package internal/adapters/bil24compat for the
+//	authoritative implementation.
 //
 // Feature flag: BIL24_COMPAT_ENABLED (env var, default false).
 // The /compat/bil24/* subtree is only mounted when the flag is true.
@@ -46,163 +57,97 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Result codes (Bil24 wire format)
+// Result codes (re-exported from the adapter package)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Bil24 wire result codes. ResultCodeOK (0) indicates success. All other
-// values indicate failure with the specific description in the response body.
+// Bil24 wire result codes — re-exported from internal/adapters/bil24compat so
+// existing in-package references and the #157 test suite continue to compile
+// without churn. The adapter package is the source of truth.
 const (
 	// ResultCodeOK signals a successful command execution (Bil24 wire: 0).
-	ResultCodeOK = 0
+	ResultCodeOK = bil24compat.ResultCodeOK
 	// ResultCodeUnknownCommand is returned when the gateway receives a command
 	// name it does not recognise (Bil24 wire: -1).
-	ResultCodeUnknownCommand = -1
+	ResultCodeUnknownCommand = bil24compat.ResultCodeUnknownCommand
 	// ResultCodeInvalidRequest is returned when a required request field is
 	// missing or malformed (Bil24 wire: -2).
-	ResultCodeInvalidRequest = -2
+	ResultCodeInvalidRequest = bil24compat.ResultCodeInvalidRequest
 	// ResultCodeNotFound is returned when the requested resource does not
 	// exist in the platform (Bil24 wire: -3).
-	ResultCodeNotFound = -3
+	ResultCodeNotFound = bil24compat.ResultCodeNotFound
 	// ResultCodeInternalError is returned when an unexpected error prevents
 	// command execution (Bil24 wire: -99).
-	ResultCodeInternalError = -99
+	ResultCodeInternalError = bil24compat.ResultCodeInternalError
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Request / response envelope
+// Request / response envelope (aliased from the adapter package)
 // ─────────────────────────────────────────────────────────────────────────────
 
 // bil24Request is the top-level request envelope for POST /compat/bil24/json.
-// Only the Command field is required; all other fields are command-specific
-// and are decoded from the same flat JSON object.
-type bil24Request struct {
-	// Command selects the operation to execute (e.g. "GET_ALL_ACTIONS").
-	Command string `json:"command"`
-	// FID is the frontend/interface identifier used for channel resolution.
-	// Corresponds to sales_channel in the platform model.
-	FID string `json:"fid"`
-	// Token is the authentication credential for the FID.
-	// Mapped to channel API credentials in the platform model.
-	Token string `json:"token"`
-	// Locale controls the language of localised content in the response.
-	Locale string `json:"locale"`
+// Aliased to the adapter package so the wire format has exactly one
+// definition.
+type bil24Request = bil24compat.Request
 
-	// Command-specific fields (present in the same flat JSON object).
-
-	// ActionID is the Bil24 event identifier (GET_ALL_ACTIONS detail / GET_SEAT_LIST).
-	ActionID string
-	// ActionEventID is the Bil24 session identifier (GET_SEAT_LIST / CREATE_ORDER_EXT).
-	ActionEventID string
-	// CategoryPriceID is the Bil24 ticket tier identifier (CREATE_ORDER_EXT).
-	CategoryPriceID string
-	// Quantity is the number of tickets requested (CREATE_ORDER_EXT).
-	Quantity int `json:"quantity"`
-	// Email is the buyer email for the order (CREATE_ORDER_EXT).
-	Email string `json:"email"`
-	// OrderID is the Bil24 order identifier (GET_ORDER_INFO / CANCEL_ORDER).
-	OrderID string
-	// TicketID is the Bil24 barcode / ticket identifier (SCAN_TICKET).
-	TicketID string
-}
-
-// bil24Response is the Bil24-compatible response envelope.
-// ResultCode=0 indicates success; any other value indicates failure.
-// Extra command-specific fields are added to the same flat JSON object
-// via the Data map.
-type bil24Response struct {
-	ResultCode  int
-	Description string `json:"description"`
-	Command     string `json:"command"`
-	// extra payload fields are merged in via a wrapper; kept separate
-	// for testability.
-	data map[string]any
-}
-
-// MarshalJSON produces the flat Bil24 JSON envelope with extra data fields
-// merged at the top level alongside resultCode/description/command.
-func (r bil24Response) MarshalJSON() ([]byte, error) {
-	out := map[string]any{
-		"resultCode":  r.ResultCode,
-		"description": r.Description,
-		"command":     r.Command,
-	}
-	for k, v := range r.data {
-		out[k] = v
-	}
-	return json.Marshal(out)
-}
+// bil24Response is the Bil24-compatible response envelope, aliased to the
+// adapter package.
+type bil24Response = bil24compat.Response
 
 // bil24OK constructs a success response for the given command with optional
-// extra payload fields.
+// extra payload fields. Forwarder to bil24compat.OK.
 func bil24OK(command string, extra map[string]any) bil24Response {
-	return bil24Response{
-		ResultCode:  ResultCodeOK,
-		Description: "OK",
-		Command:     command,
-		data:        extra,
-	}
+	return bil24compat.OK(command, extra)
 }
 
-// bil24Error constructs an error response for the given command.
+// bil24Error constructs an error response for the given command. Forwarder
+// to bil24compat.Error.
 func bil24Error(command string, code int, description string) bil24Response {
-	return bil24Response{
-		ResultCode:  code,
-		Description: description,
-		Command:     command,
-	}
+	return bil24compat.Error(command, code, description)
+}
+
+// writeBil24JSON writes a Bil24-envelope response with Content-Type
+// application/json. Forwarder to bil24compat.WriteJSON.
+func writeBil24JSON(w http.ResponseWriter, status int, resp bil24Response) {
+	bil24compat.WriteJSON(w, status, resp)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ID translation layer
+// ID translation layer (re-exported from the adapter package)
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ErrLegacyIDNotFound is returned by TranslateLegacyID when the provided
-// legacy identifier cannot be resolved to a platform UUID. This happens when
-// the ID is non-UUID format and no entry exists in the compatibility table.
-var ErrLegacyIDNotFound = errors.New("bil24_compat: legacy ID not found in translation table")
+// legacy identifier cannot be resolved to a platform UUID. Re-exported from
+// the adapter package so existing references resolve to the same sentinel
+// value (errors.Is still works because it is the very same variable).
+var ErrLegacyIDNotFound = bil24compat.ErrLegacyIDNotFound
 
-// TranslateLegacyID converts a legacy Bil24 identifier (actionId, actionEventId,
-// orderId, ticketId, …) to the platform's UUIDv7.
-//
-// Translation strategy:
-//  1. If the raw string is already a valid UUID, return it unchanged.
-//     This handles clients that have already been migrated to platform IDs.
-//  2. Otherwise, attempt a future DB lookup (compatibility_id_map table).
-//     For this scaffold, non-UUID IDs return ErrLegacyIDNotFound.
-//
-// This function is intentionally pure (no DB access in the scaffold) so it
-// can be unit-tested without a database.
+// TranslateLegacyID converts a legacy Bil24 identifier (actionId,
+// actionEventId, orderId, ticketId, …) to the platform's UUIDv7.
+// Forwarder to bil24compat.TranslateLegacyID.
 func TranslateLegacyID(raw string) (uuid.UUID, error) {
-	if raw == "" {
-		return uuid.Nil, fmt.Errorf("bil24_compat: empty legacy ID")
-	}
-	// Attempt direct UUID parse — handles clients already sending UUIDs.
-	if id, err := uuid.Parse(raw); err == nil {
-		return id, nil
-	}
-	// Non-UUID format: would require a DB lookup in the compatibility_id_map
-	// table (a future feature). Return ErrLegacyIDNotFound for now.
-	return uuid.Nil, fmt.Errorf("%w: %q", ErrLegacyIDNotFound, raw)
+	return bil24compat.TranslateLegacyID(raw)
 }
 
-// TranslatePlatformID converts a platform UUID to the Bil24 legacy ID format.
-// For this scaffold, the UUID string is returned as-is since the platform
-// uses UUID strings as the primary ID format.
+// TranslatePlatformID converts a platform UUID to the Bil24 legacy ID
+// format. Forwarder to bil24compat.TranslatePlatformID.
 func TranslatePlatformID(id uuid.UUID) string {
-	return id.String()
+	return bil24compat.TranslatePlatformID(id)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Gateway feature-flag guard
 // ─────────────────────────────────────────────────────────────────────────────
 
-// bil24CompatQueriesAvailable returns true when all necessary query objects
-// are present to serve the compat gateway. When nil, the feature was not
-// enabled at server construction time. Note: individual commands may still
-// return 503 if a specific query subset is missing.
+// bil24CompatEnabled returns true when the Bil24 compatibility gateway has
+// been enabled at server construction time. When false, the
+// /compat/bil24/* subtree is not mounted and requests to those paths get a
+// chi 404 via handleNotFound. Individual commands may still return 503 if a
+// specific query subset is missing.
 //
 //nolint:unused // referenced by test #157 as identifier surface check
 func (s *Server) bil24CompatEnabled() bool {
@@ -779,20 +724,6 @@ func (s *Server) handleBil24CancelOrder(w http.ResponseWriter, _ *http.Request, 
 		"status":  "scaffold_stub",
 		"message": "cancellation requires checkout state machine; use POST /v1/checkout/{id}/cancel",
 	}))
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Response helper
-// ─────────────────────────────────────────────────────────────────────────────
-
-// writeBil24JSON writes a Bil24-envelope response with Content-Type
-// application/json. The HTTP status code is typically 200 for all Bil24
-// protocol responses (including application-level errors), following the
-// Bil24 wire contract where legacy clients check resultCode, not HTTP status.
-func writeBil24JSON(w http.ResponseWriter, status int, resp bil24Response) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

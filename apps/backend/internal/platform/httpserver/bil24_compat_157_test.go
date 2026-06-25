@@ -775,7 +775,7 @@ func TestBil24_157_Bil24Response_JSONRoundTrip(t *testing.T) {
 		ResultCode:  ResultCodeOK,
 		Description: "OK",
 		Command:     "GET_ALL_ACTIONS",
-		data: map[string]any{
+		Data: map[string]any{
 			"actionList": []map[string]any{
 				{"actionId": "abc", "actionName": "Concert"},
 			},
