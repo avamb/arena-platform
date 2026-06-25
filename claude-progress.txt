@@ -13195,3 +13195,80 @@ VERIFICATION (golang:1.24 docker):
   go test  -run TestNoContextBackgroundOutsideWhitelist_178 ...  PASS
 
 Marked #178 passing.
+
+=== Session 2026-06-25 (feature #183) ===
+DDD split: catalog (events / sessions / ticket_tiers) -- step 1 (incremental,
+mirrors #185 / #186 / #187).
+
+Created internal/domain/catalog/:
+  doc.go            - layer contract (aggregates: Event, Session, TicketTier).
+  event_state.go    - EventStatus consts, ValidEventTransitions map,
+                      IsValidEventTransition. Pure, no I/O.
+  session_state.go  - SessionStatus consts, ValidSessionStatuses,
+                      ValidSessionTransitions, IsValidSessionStatus,
+                      IsValidSessionTransition, plus adapter-free
+                      SessionInterval value type and DetectOverlaps predicate
+                      extracted from the HTTP layer.
+  pricing_mode.go   - PricingMode consts, ValidPricingModes,
+                      IsValidPricingMode, ValidatePricingMode (wire-stable
+                      error codes preserved). Pure.
+
+Created internal/app/catalog/doc.go - application-layer orchestrator skeleton.
+
+Modified internal/platform/httpserver/events.go:
+  - imports catalogdomain.
+  - removed local validEventTransitions map.
+  - isValidEventTransition() is now a 1-line forwarder; every call site
+    (events.go and events_test.go cases) compiles unchanged.
+
+Modified internal/platform/httpserver/sessions.go:
+  - imports catalogdomain.
+  - validSessionStatuses map now keyed on catalogdomain.SessionStatus*.
+  - removed local validSessionTransitions map.
+  - isValidSessionTransition() is now a 1-line forwarder.
+  - detectSessionOverlaps() projects gen.SessionRow -> SessionInterval and
+    delegates to catalogdomain.DetectOverlaps, so the domain layer never
+    imports adapters/postgres/gen.
+
+Modified internal/platform/httpserver/ticket_tiers.go:
+  - imports catalogdomain.
+  - validPricingModes map now keyed on catalogdomain.PricingMode*.
+  - validatePricingMode() is now a 1-line forwarder; every call site compiles
+    unchanged.
+
+New static-analysis test tests/staticanalysis/catalog_layout_183_test.go:
+  - NoLegacyTopLevelDir                  - apps/backend/internal/catalog must
+                                           contain no .go files.
+  - DomainDirExists                      - guards internal/domain/catalog +
+                                           at least one .go file.
+  - AppDirExists                         - guards internal/app/catalog + at
+                                           least one .go file.
+  - NoLegacyImports                      - repo-wide grep for the legacy
+                                           import path; fails on any hit.
+  - DomainHasNoAdapterOrHTTPImports      - explicitly enforces the domain
+                                           purity contract from feature #183
+                                           step 4: no file under
+                                           internal/domain/catalog/ may
+                                           import internal/adapters/* or
+                                           internal/platform/httpserver.
+
+Verification (golang:1.24 docker):
+  go build ./...                                            PASS
+  go vet   ./...                                            PASS
+  go test  -short -count=1 ./internal/domain/catalog/...    [no test files]
+  go test  -short -count=1 ./internal/app/catalog/...       [no test files]
+  go test  -short -count=1 ./tests/staticanalysis/...       PASS (19.3s)
+  go test  -short -count=1 ./internal/platform/httpserver/. PASS (6.9s)
+
+Scope note: migration of orchestration logic out of httpserver/events.go
+(868 LOC), sessions.go (668 LOC), and ticket_tiers.go (715 LOC) into named
+services under internal/app/catalog -- consuming queries via ports -- is
+explicitly an incremental follow-up. This step established the canonical
+layout, moved every pure-domain piece (state machines, overlap predicate,
+pricing-mode rules) so all rules live in exactly one place, and added the
+static-analysis gate (including the explicit domain-purity import gate
+required by the feature spec) so subsequent moves are mechanical.
+
+API contracts and OpenAPI responses are unchanged (no DTO surface touched).
+
+Marked #183 passing.

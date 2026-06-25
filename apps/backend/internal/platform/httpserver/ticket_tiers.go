@@ -32,20 +32,27 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	catalogdomain "github.com/abhteam/arena_new/apps/backend/internal/domain/catalog"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Valid pricing modes
+// Valid pricing modes (forwarders to internal/domain/catalog).
+//
+// The pricing-mode enum and validator have moved to the pure-domain layer
+// (feature #183). The local names are preserved as thin forwarders so the
+// handlers below and the in-package tests (ticket_tiers_test.go) compile
+// unchanged.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// validPricingModes lists the allowed pricing_mode values.
+// validPricingModes lists the allowed pricing_mode values. Backed by the
+// catalog domain layer.
 var validPricingModes = map[string]bool{
-	"fixed": true,
-	"free":  true,
-	"pwyw":  true,
+	string(catalogdomain.PricingModeFixed): true,
+	string(catalogdomain.PricingModeFree):  true,
+	string(catalogdomain.PricingModePWYW):  true,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -103,37 +110,11 @@ func tierFromRow(t gen.TicketTierRow) tierResponse {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // validatePricingMode enforces the invariants for each pricing mode.
-// Returns (errorCode, errorMessage) when validation fails; returns ("", "") on success.
+// Returns (errorCode, errorMessage) when validation fails; returns ("", "") on
+// success. Forwards to internal/domain/catalog so the rule lives in exactly
+// one place (feature #183).
 func validatePricingMode(mode string, priceAmount int64, pwywMin, pwywMax *int64) (string, string) {
-	switch mode {
-	case "free":
-		// free: price_amount must be 0.
-		if priceAmount != 0 {
-			return "tier.invalid_free_price", "price_amount must be 0 for free tiers"
-		}
-	case "fixed":
-		// fixed: price_amount must be positive.
-		if priceAmount <= 0 {
-			return "tier.invalid_fixed_price", "price_amount must be greater than 0 for fixed tiers"
-		}
-	case "pwyw":
-		// pwyw: price_amount >= 0 (suggested amount, may be 0).
-		if priceAmount < 0 {
-			return "tier.invalid_pwyw_price", "price_amount must be >= 0 for pwyw tiers"
-		}
-		// pwyw_min and pwyw_max are both optional; when both are provided, min <= max.
-		if pwywMin != nil && pwywMax != nil && *pwywMin > *pwywMax {
-			return "tier.invalid_pwyw_range", "pwyw_min must be less than or equal to pwyw_max"
-		}
-		// Individual bound sanity checks.
-		if pwywMin != nil && *pwywMin < 0 {
-			return "tier.invalid_pwyw_min", "pwyw_min must be >= 0"
-		}
-		if pwywMax != nil && *pwywMax < 0 {
-			return "tier.invalid_pwyw_max", "pwyw_max must be >= 0"
-		}
-	}
-	return "", ""
+	return catalogdomain.ValidatePricingMode(mode, priceAmount, pwywMin, pwywMax)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

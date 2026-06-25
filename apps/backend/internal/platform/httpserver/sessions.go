@@ -35,45 +35,34 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	catalogdomain "github.com/abhteam/arena_new/apps/backend/internal/domain/catalog"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Valid session statuses and transitions
+// Valid session statuses and transitions (forwarders to internal/domain/catalog).
+//
+// The state-machine has moved to the pure-domain layer (feature #183). The
+// local names are preserved as thin forwarders so the handlers below and the
+// in-package tests (sessions_test.go) compile unchanged.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// validSessionStatuses lists the allowed status values for sessions.
+// validSessionStatuses lists the allowed status values for sessions. Backed
+// by the catalog domain layer.
 var validSessionStatuses = map[string]bool{
-	"draft":     true,
-	"scheduled": true,
-	"cancelled": true,
-	"completed": true,
+	string(catalogdomain.SessionStatusDraft):     true,
+	string(catalogdomain.SessionStatusScheduled): true,
+	string(catalogdomain.SessionStatusCancelled): true,
+	string(catalogdomain.SessionStatusCompleted): true,
 }
 
-// validSessionTransitions defines the allowed status transitions for sessions.
-// Only the entries listed here are permitted; all others return 422.
-var validSessionTransitions = map[string]map[string]bool{
-	"draft": {
-		"scheduled": true,
-		"cancelled": true,
-	},
-	"scheduled": {
-		"cancelled": true,
-		"completed": true,
-	},
-	"cancelled": {},
-	"completed": {},
-}
-
-// isValidSessionTransition returns true when the transition from → to is allowed.
+// isValidSessionTransition returns true when the transition from → to is
+// allowed by the Session state machine. Forwards to internal/domain/catalog
+// so the rule lives in exactly one place.
 func isValidSessionTransition(from, to string) bool {
-	allowed, ok := validSessionTransitions[from]
-	if !ok {
-		return false
-	}
-	return allowed[to]
+	return catalogdomain.IsValidSessionTransition(from, to)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -116,16 +105,17 @@ func sessionFromRow(s gen.SessionRow, hasOverlap bool) sessionResponse {
 // detectSessionOverlaps returns true when any two sessions in the list overlap.
 // Two sessions overlap when a.start_at < b.end_at AND a.end_at > b.start_at.
 // This is an O(n²) check applied at the application layer per the feature spec.
+//
+// The pure-domain implementation lives in internal/domain/catalog as
+// DetectOverlaps over the adapter-free SessionInterval value type; this
+// forwarder projects the gen.SessionRow slice into that value type so the
+// domain layer never imports the adapters/postgres/gen package (feature #183).
 func detectSessionOverlaps(sessions []gen.SessionRow) bool {
-	for i := 0; i < len(sessions); i++ {
-		for j := i + 1; j < len(sessions); j++ {
-			a, b := sessions[i], sessions[j] //nolint:gosec // indices bounded by loop conditions above
-			if a.StartAt.Before(b.EndAt) && a.EndAt.After(b.StartAt) {
-				return true
-			}
-		}
+	intervals := make([]catalogdomain.SessionInterval, len(sessions))
+	for i, s := range sessions {
+		intervals[i] = catalogdomain.SessionInterval{StartAt: s.StartAt, EndAt: s.EndAt}
 	}
-	return false
+	return catalogdomain.DetectOverlaps(intervals)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

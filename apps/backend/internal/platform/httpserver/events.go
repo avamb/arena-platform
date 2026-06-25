@@ -39,6 +39,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	catalogdomain "github.com/abhteam/arena_new/apps/backend/internal/domain/catalog"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
@@ -46,33 +47,18 @@ import (
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Status transition table
+// Status transition table (forwarders to internal/domain/catalog).
+//
+// The state-machine has moved to the pure-domain layer (feature #183).
+// The local names are preserved as thin forwarders so the handlers below and
+// the in-package tests (events_test.go) compile unchanged.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// validEventTransitions defines the allowed status transitions for events.
-// Only the entries listed here are permitted; all others return 422.
-var validEventTransitions = map[string]map[string]bool{
-	"draft": {
-		"published": true,
-		"cancelled": true,
-	},
-	"published": {
-		"cancelled": true,
-		"archived":  true,
-	},
-	"cancelled": {
-		"archived": true,
-	},
-	"archived": {},
-}
-
-// isValidEventTransition returns true when the transition from → to is allowed.
+// isValidEventTransition returns true when the transition from → to is allowed
+// by the Event state machine. Forwards to internal/domain/catalog so the rule
+// lives in exactly one place.
 func isValidEventTransition(from, to string) bool {
-	allowed, ok := validEventTransitions[from]
-	if !ok {
-		return false
-	}
-	return allowed[to]
+	return catalogdomain.IsValidEventTransition(from, to)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
