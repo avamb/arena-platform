@@ -10,7 +10,7 @@ name: Accessibility (WCAG 2.2 AA)
 on:
   push:
     branches:
-      - main
+      - master
     paths:
       - "apps/wp-plugin/**"
       - "ops/accessibility/**"

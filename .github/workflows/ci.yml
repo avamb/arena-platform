@@ -3,7 +3,7 @@ name: CI
 on:
   push:
     branches:
-      - main
+      - master
   pull_request:
 
 concurrency:
@@ -115,13 +115,20 @@ jobs:
           fi
 
   # ─────────────────────────────────────────────────────────────────
-  # Job 4: Build & Push — Docker image (only on push to main)
+  # Job 4: Build & Push — Docker image (only on push to master)
+  #
+  # Release branch: master (single production release branch). See
+  # deploy/DOKPLOY.md §13 "Release branch & image tag strategy" for the
+  # documented tag plan: every push to master publishes
+  #   - <short-sha>   (immutable, used by Dokploy for pinned deploys)
+  #   - latest        (mutable, tracks the tip of master)
+  # Required GitHub secrets: REGISTRY_URL, REGISTRY_USERNAME, REGISTRY_PASSWORD.
   # ─────────────────────────────────────────────────────────────────
   build-and-push:
     name: Build and Push Docker Image
     runs-on: ubuntu-latest
     needs: [lint, test]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
 
     steps:
       - name: Checkout
