@@ -710,5 +710,3 @@ and backup-last-success staleness.
 Disk-free monitoring (§14.7) must alert **before** any of these retention
 policies is exceeded so that no stream is forced to drop unrotated data.
 
-
-
