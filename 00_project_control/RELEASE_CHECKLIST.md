@@ -23,6 +23,16 @@ gates are green on the `main` branch as of 2026-06-25. Gates 1-4 form the
 original four-gate signed contract; Gate 5 (container image builds) is
 included here for reproducibility against the CI `build-and-push` job.
 
+> **Environment-side gate:** the four (now five) gates here assert that a
+> build is *capable* of being promoted. Promoting that build to a public
+> environment additionally requires walking
+> [`PRODUCTION_HARDENING_CHECKLIST.md`](PRODUCTION_HARDENING_CHECKLIST.md)
+> (feature #193) on the target environment — `APP_ENV=production`,
+> `ENABLE_DEV_AUTH=false`, rotated `JWT_SIGNING_SECRET`, SSL on the
+> database, locked-down CORS, JSON logs with `DB_LOG_QUERIES=false`,
+> Grafana off `admin / admin`, and Postgres / Redis / Prometheus /
+> worker-metrics ports not on the public network.
+
 ---
 
 ## Gate 1 — Architecture & specification reconciled with implementation

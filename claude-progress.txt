@@ -13661,3 +13661,59 @@ VERIFICATION:
   - TOC entry #14 added so document navigation stays in sync.
 
 Marked #195 passing.
+
+=== Session 2026-06-25 (feature #193) ===
+Added production environment hardening checklist as a dedicated, signed
+document under 00_project_control/. Docs-only change; no Go source touched.
+
+DELIVERABLES:
+  1. 00_project_control/PRODUCTION_HARDENING_CHECKLIST.md (new, signed):
+     Gates A-G covering every step in feature #193 acceptance criteria:
+       Gate A (identity/auth)   : APP_ENV=production, ENABLE_DEV_AUTH=false,
+                                  JWT_SIGNING_SECRET rotated off the dev
+                                  placeholder, with `docker exec ... env`
+                                  verify commands.
+       Gate B (database)        : DATABASE_URL with sslmode=require or
+                                  verify-full; pg_stat_ssl probe.
+       Gate C (HTTP)            : CORS_ALLOWED_ORIGINS explicit allowlist,
+                                  reverse-proxy posture, body/timeout limits.
+       Gate D (logging)         : LOG_FORMAT=json, LOG_LEVEL info/warn,
+                                  DB_LOG_QUERIES=false (api AND worker),
+                                  non-default APP_VERSION/APP_COMMIT.
+       Gate E (observability)   : Grafana off admin/admin, Postgres 55432
+                                  / Redis 56379 / Prometheus 9090 / worker
+                                  9091 / Grafana 3000 not on public net,
+                                  /metrics scraped privately.
+       Gate F (worker)          : reuses hardened DSN, concurrency tuned,
+                                  outbox dispatcher live.
+       Gate G (post-deploy)     : `docker exec arena_api env | sort`,
+                                  `docker exec arena_worker env | sort`,
+                                  healthz/readyz curls, JSON-log assertion,
+                                  external network exposure audit, grep
+                                  for the dev placeholder string inside
+                                  the live container env.
+     Includes a cross-reference table mapping every feature-#193 step to
+     its gate, and a sign-off table that must be filled in before a build
+     is promoted to production.
+  2. 00_project_control/RELEASE_CHECKLIST.md:
+     Added a one-paragraph environment-side-gate callout linking to the
+     new hardening checklist. The four-gate (now five-gate) release
+     contract still asserts a build is *capable* of being promoted;
+     PRODUCTION_HARDENING_CHECKLIST.md is the additional gate that has
+     to be walked on the *target environment* before the promotion.
+
+VERIFICATION:
+  - Pure docs change; no Go / SQL / YAML touched.
+  - go test / lint state inherited from prior sessions (all gates GREEN
+    on main as of 2026-06-25 per #181 / #190 / #189).
+  - Every step in the feature #193 acceptance steps maps to a gate
+    (see the cross-reference table in the new document).
+
+NOTE on shared working tree:
+  A parallel agent has independently added section 14 "Initial Production
+  Server Requirements" to deploy/DOKPLOY.md (a different feature). I
+  deliberately left deploy/DOKPLOY.md unstaged so as not to absorb
+  their work into this commit; the section 10 long-form cross-reference
+  can be added by them or by a follow-up session.
+
+Marked #193 passing.
