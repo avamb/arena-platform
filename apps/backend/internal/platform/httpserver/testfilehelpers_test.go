@@ -770,48 +770,78 @@ func resolveFileInRepo(repoRoot, name string) string {
 	return ""
 }
 
-// readServerGoLike returns the concatenated source of server.go and its sibling
-// files (server_struct.go, wire.go, mount_*.go) when `name == "server.go"`.
-// After feature #174 split the original 2,396-line server.go into focused
-// per-domain files, existing structural tests that grep server.go for symbols
-// (struct fields, Options entries, route mounts) keep passing by reading the
-// union of those files instead of the trimmed server.go alone.
+// readServerGoLike returns the concatenated source of a logical handler
+// "module" when its primary file has been split into siblings by an
+// httpserver refactor. Today this covers two cases:
 //
-// Returns "" for any other name so the caller falls through to the original
-// resolveFileInRepo path.
+//   - name == "server.go": returns server.go + server_struct.go + wire.go +
+//     every mount_*.go. Established by feature #174 when the original
+//     2,396-line server.go was split into focused per-domain files; the
+//     union lets existing structural tests that grep server.go for symbols
+//     (struct fields, Options entries, route mounts) keep passing.
+//
+//   - name == "reconciliation.go": returns reconciliation.go +
+//     reconciliation_submit.go + reconciliation_query.go +
+//     reconciliation_review.go. Established by feature #175 when the
+//     original 624-line reconciliation.go was split into one shared-types
+//     file plus three handler files; the union lets the reconciliation_147
+//     structural tests (handler-symbol greps) keep passing.
+//
+// Returns "" for any other name so the caller falls through to the
+// original resolveFileInRepo path.
 func readServerGoLike(repoRoot, name string) string {
-	if name != "server.go" {
-		return ""
-	}
 	httpserverDir := filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver")
-	entries, err := os.ReadDir(httpserverDir)
-	if err != nil {
-		return ""
-	}
-	var buf []byte
-	wantedExact := map[string]bool{
-		"server.go":        true,
-		"server_struct.go": true,
-		"wire.go":          true,
-	}
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		n := e.Name()
-		// Skip tests; include the canonical server files and every mount_*.go.
-		if !(wantedExact[n] || (len(n) > len("mount_") && n[:len("mount_")] == "mount_" && filepath.Ext(n) == ".go" && !endsWith(n, "_test.go"))) {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(httpserverDir, n))
+
+	switch name {
+	case "server.go":
+		entries, err := os.ReadDir(httpserverDir)
 		if err != nil {
-			continue
+			return ""
 		}
-		buf = append(buf, []byte("// === "+n+" ===\n")...)
-		buf = append(buf, data...)
-		buf = append(buf, '\n')
+		var buf []byte
+		wantedExact := map[string]bool{
+			"server.go":        true,
+			"server_struct.go": true,
+			"wire.go":          true,
+		}
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			n := e.Name()
+			// Skip tests; include the canonical server files and every mount_*.go.
+			if !(wantedExact[n] || (len(n) > len("mount_") && n[:len("mount_")] == "mount_" && filepath.Ext(n) == ".go" && !endsWith(n, "_test.go"))) {
+				continue
+			}
+			data, err := os.ReadFile(filepath.Join(httpserverDir, n))
+			if err != nil {
+				continue
+			}
+			buf = append(buf, []byte("// === "+n+" ===\n")...)
+			buf = append(buf, data...)
+			buf = append(buf, '\n')
+		}
+		return string(buf)
+
+	case "reconciliation.go":
+		var buf []byte
+		for _, n := range []string{
+			"reconciliation.go",
+			"reconciliation_submit.go",
+			"reconciliation_query.go",
+			"reconciliation_review.go",
+		} {
+			data, err := os.ReadFile(filepath.Join(httpserverDir, n))
+			if err != nil {
+				continue
+			}
+			buf = append(buf, []byte("// === "+n+" ===\n")...)
+			buf = append(buf, data...)
+			buf = append(buf, '\n')
+		}
+		return string(buf)
 	}
-	return string(buf)
+	return ""
 }
 
 // endsWith is a tiny strings.HasSuffix-equivalent kept here so the helper
