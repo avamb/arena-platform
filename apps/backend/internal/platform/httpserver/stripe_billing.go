@@ -22,7 +22,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/stripebilling"
-	"github.com/abhteam/arena_new/apps/backend/internal/payments"
+	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────

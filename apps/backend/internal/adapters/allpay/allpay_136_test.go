@@ -29,7 +29,7 @@ import (
 	"testing"
 
 	allpayadapter "github.com/abhteam/arena_new/apps/backend/internal/adapters/allpay"
-	"github.com/abhteam/arena_new/apps/backend/internal/payments"
+	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 )
 
 // compile-time interface guard — verifies from an external test package.

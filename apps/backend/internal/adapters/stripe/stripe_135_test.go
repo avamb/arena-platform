@@ -18,7 +18,7 @@ import (
 	"time"
 
 	stripeadapter "github.com/abhteam/arena_new/apps/backend/internal/adapters/stripe"
-	"github.com/abhteam/arena_new/apps/backend/internal/payments"
+	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 )
 
 // compile-time interface guard (mirrors adapter.go; verifies from external package too)

@@ -27,7 +27,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/payments"
+	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────

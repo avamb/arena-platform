@@ -34,7 +34,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/payments"
+	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 )
 
 // compile-time interface guard
