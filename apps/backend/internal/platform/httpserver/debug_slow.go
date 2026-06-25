@@ -13,11 +13,11 @@
 //
 // Relationship to /v1/info-slow:
 //
-//   /v1/info-slow  — exists for graceful-shutdown tests; writes {"status":"cancelled"}
-//                    when context is cancelled; always mounted.
-//   /v1/debug/slow — exists for request-timeout tests; writes the standardised
-//                    JSON error envelope with code='http.request_timeout'; only
-//                    mounted when DebugRoutesEnabled=true.
+//	/v1/info-slow  — exists for graceful-shutdown tests; writes {"status":"cancelled"}
+//	                 when context is cancelled; always mounted.
+//	/v1/debug/slow — exists for request-timeout tests; writes the standardised
+//	                 JSON error envelope with code='http.request_timeout'; only
+//	                 mounted when DebugRoutesEnabled=true.
 package httpserver
 
 import (

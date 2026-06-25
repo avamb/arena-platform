@@ -27,6 +27,8 @@ import (
 )
 
 // OutboxEventRow is a snapshot of one outbox_events row at claim time.
+//
+//nolint:revive // intentional: "Outbox" prefix mirrors the table name outbox_events
 type OutboxEventRow struct {
 	// ID is the outbox_events primary key (uuid as text).
 	ID string
@@ -54,6 +56,8 @@ type OutboxEventRow struct {
 // OutboxEventStore is the persistence interface used by OutboxEventsDispatcher.
 // PGOutboxEventStore provides the production implementation; the interface
 // exists to allow in-memory test doubles without a live database.
+//
+//nolint:revive // intentional: "Outbox" prefix mirrors the table name outbox_events
 type OutboxEventStore interface {
 	// ClaimNext returns the next unprocessed row (processed_at IS NULL) in
 	// occurred_at order, claiming it with FOR UPDATE SKIP LOCKED so concurrent
@@ -212,6 +216,8 @@ var _ OutboxEventStore = (*PGOutboxEventStore)(nil)
 // =============================================================================
 
 // OutboxEventsDispatcherOptions configures an OutboxEventsDispatcher.
+//
+//nolint:revive // intentional: "Outbox" prefix mirrors the table name outbox_events
 type OutboxEventsDispatcherOptions struct {
 	// Store is the outbox_events persistence backend. Required.
 	Store OutboxEventStore
@@ -248,6 +254,8 @@ func NewOutboxEventsDispatchedCounter() *prometheus.CounterVec {
 // unprocessed row via the configured Dispatcher. It survives process restarts:
 // any row with processed_at IS NULL when the worker was stopped will be
 // claimed and delivered in the next poll cycle after the worker starts again.
+//
+//nolint:revive // intentional: "Outbox" prefix mirrors the table name outbox_events
 type OutboxEventsDispatcher struct {
 	store           OutboxEventStore
 	dispatcher      Dispatcher

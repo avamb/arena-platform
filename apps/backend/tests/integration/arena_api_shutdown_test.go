@@ -441,7 +441,7 @@ func TestArenaAPI_ListenAndServeReportsBindFailure(t *testing.T) {
 // Catch the case where a future refactor removes the public *config.Config or
 // httpserver.Options surface this file depends on.
 var (
-	_ *config.Config       = (*config.Config)(nil)
-	_ httpserver.Options   = httpserver.Options{}
-	_ http.Handler         = (*http.ServeMux)(nil)
+	_ *config.Config     = (*config.Config)(nil)
+	_ httpserver.Options = httpserver.Options{}
+	_ http.Handler       = (*http.ServeMux)(nil)
 )

@@ -28,10 +28,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -336,8 +337,8 @@ func (s *Server) handlePublicFeedEvents(w http.ResponseWriter, r *http.Request) 
 	}
 
 	ctx := r.Context()
-	offset := int32((page - 1) * perPage)
-	limit := int32(perPage)
+	offset := int32((page - 1) * perPage) //nolint:gosec // page,perPage bounded above by validation
+	limit := int32(perPage)               //nolint:gosec // perPage bounded above by validation
 
 	// Count total matching events for pagination metadata.
 	total, err := s.publicFeedQueries.CountPublishedEventsByFeedToken(ctx, feedToken, cityID, dateFrom, dateTo)

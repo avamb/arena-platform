@@ -11,6 +11,7 @@
 //  7. Generate a 64-char hex verification token (32 random bytes).
 //  8. INSERT INTO email_verification_tokens with expires_at = now()+24h.
 //  9. COMMIT.
+//
 // 10. Log the verification email to stdout (dev-mode email delivery).
 // 11. Return 201 Created with the user_id and a human-readable message.
 package httpserver
@@ -24,11 +25,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/users"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // pgUniqueViolation is the PostgreSQL error code for unique-constraint violations.

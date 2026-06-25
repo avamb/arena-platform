@@ -29,7 +29,7 @@ func ShouldRunPlaceholderJob() bool {
 // "placeholder.log" job type so the queue machinery can be exercised
 // end-to-end without any business logic in place.
 func PlaceholderJobHandler(logger *slog.Logger) HandlerFunc {
-	return func(ctx context.Context, payload []byte) error {
+	return func(_ context.Context, payload []byte) error {
 		logger.Info("placeholder job handler invoked",
 			"payload_bytes", len(payload),
 		)

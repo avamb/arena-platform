@@ -12,14 +12,15 @@
 //   - PATCH /v1/admin/geo/cities/{id}        — update a city's slug
 //
 // i18n linkage:
-//   Localized country/city names are stored in the i18n_text table under the
-//   namespaces "geo.countries" (key = ISO 3166-1 alpha-2 code) and "geo.cities"
-//   (key = city slug). The SQL queries perform LEFT JOINs against i18n_text with
-//   locale fallback: requested locale → English → iso2/slug.
 //
-//   Admin POST/PATCH endpoints accept optional "name_en" and "name_ru" fields in
-//   the request body and upsert the corresponding i18n_text rows in the same
-//   transaction.
+//	Localized country/city names are stored in the i18n_text table under the
+//	namespaces "geo.countries" (key = ISO 3166-1 alpha-2 code) and "geo.cities"
+//	(key = city slug). The SQL queries perform LEFT JOINs against i18n_text with
+//	locale fallback: requested locale → English → iso2/slug.
+//
+//	Admin POST/PATCH endpoints accept optional "name_en" and "name_ru" fields in
+//	the request body and upsert the corresponding i18n_text rows in the same
+//	transaction.
 package httpserver
 
 import (
@@ -30,11 +31,12 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────

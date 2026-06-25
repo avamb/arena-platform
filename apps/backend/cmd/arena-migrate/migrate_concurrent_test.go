@@ -249,9 +249,9 @@ func TestGooseLock_SimulatedConcurrency(t *testing.T) {
 
 	// Shared state that mirrors what goose manages in the DB.
 	type dbState struct {
-		mu            sync.Mutex
-		applied       map[int64]bool // version → applied?
-		schemaRows    []int64        // versions recorded in schema_migrations
+		mu         sync.Mutex
+		applied    map[int64]bool // version → applied?
+		schemaRows []int64        // versions recorded in schema_migrations
 	}
 	db := &dbState{applied: make(map[int64]bool)}
 

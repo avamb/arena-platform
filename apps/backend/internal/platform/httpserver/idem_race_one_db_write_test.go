@@ -38,11 +38,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/idempotency"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // =============================================================================
@@ -108,7 +109,7 @@ func (f *race75Tx) Exec(ctx context.Context, sql string, args ...any) (pgconn.Co
 	return pgconn.CommandTag{}, nil
 }
 
-func (f *race75Tx) QueryRow(_ context.Context, sql string, args ...any) pgx.Row {
+func (f *race75Tx) QueryRow(_ context.Context, sql string, _ ...any) pgx.Row {
 	// Count outbox_events INSERT … RETURNING calls.
 	if strings.Contains(strings.ToLower(sql), "outbox_events") {
 		atomic.AddInt64(&f.outboxCalls, 1)
@@ -436,9 +437,10 @@ func TestIdemRaceOneDBWrite_TenPairAllReturn200(t *testing.T) {
 	// Note: t.Run with t.Parallel() runs subtests concurrently; the parent test
 	// does NOT wait for them here — totals are validated inside each subtest.
 	// The atomic accumulators are here for informational purposes / future use.
-	_ = totalAuditEvents
-	_ = totalOutboxCalls
-	_ = totalIDemRows
+	// Touch the counters so atomic.Int64's no-copy guarantee is honoured.
+	_ = totalAuditEvents.Load()
+	_ = totalOutboxCalls.Load()
+	_ = totalIDemRows.Load()
 }
 
 // TestIdemRaceOneDBWrite_ExactlyOneAuditAndOutboxPerKey verifies step 3 in a

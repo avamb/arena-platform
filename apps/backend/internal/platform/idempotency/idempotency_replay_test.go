@@ -9,11 +9,11 @@
 //   - Step 5:     Stored scope equals the options.Scope value ("POST /v1/echo").
 //   - Step 6:     Stored expires_at is ≥ now()+23h (default TTL 24h).
 //   - Step 7-8:   Second POST with same key → HTTP 200, body byte-identical to
-//                 the first response.
+//     the first response.
 //   - Step 9:     Second response carries the Idempotent-Replay: true header.
 //   - Step 10-11: Downstream handler invoked exactly ONCE — replay
-//                 short-circuits before the handler runs (so audit_events and
-//                 outbox_events would each receive only one row on a real DB).
+//     short-circuits before the handler runs (so audit_events and
+//     outbox_events would each receive only one row on a real DB).
 //   - Step 12:    Stored rows can be deleted (verified by resetting the store).
 //
 // DB-dependent verification (psql SELECT from idempotency_keys, counting

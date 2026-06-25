@@ -18,8 +18,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/google/uuid"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────

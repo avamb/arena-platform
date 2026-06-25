@@ -1,11 +1,12 @@
 // refunds_138_test.go — unit tests for feature #138 (Refund state machine).
 //
 // Test coverage:
-//   Step 1: Migration file 0028_refunds.sql — table, state enum, idempotency table, RBAC
-//   Step 2: State transition guards — all valid and invalid transitions
-//   Step 3: SQL query file and gen file structure
-//   Step 4: Querier interface — all 7 refund methods present
-//   Step 5: HTTP routes — auth-gating, server wiring, validation
+//
+//	Step 1: Migration file 0028_refunds.sql — table, state enum, idempotency table, RBAC
+//	Step 2: State transition guards — all valid and invalid transitions
+//	Step 3: SQL query file and gen file structure
+//	Step 4: Querier interface — all 7 refund methods present
+//	Step 5: HTTP routes — auth-gating, server wiring, validation
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver
@@ -246,13 +247,13 @@ func TestRefund138_StateTransitionMatrix_ValidTransitions(t *testing.T) {
 
 func TestRefund138_StateTransitionMatrix_InvalidTransitions(t *testing.T) {
 	invalid := []struct{ from, to string }{
-		{"requested", "succeeded"},      // must go via approved/provider_pending
+		{"requested", "succeeded"},        // must go via approved/provider_pending
 		{"requested", "provider_pending"}, // must go via approved
-		{"approved", "succeeded"},       // must go via provider_pending
-		{"rejected", "approved"},        // terminal
-		{"succeeded", "failed"},         // terminal
-		{"failed", "succeeded"},         // terminal
-		{"manual_review", "requested"},  // not valid
+		{"approved", "succeeded"},         // must go via provider_pending
+		{"rejected", "approved"},          // terminal
+		{"succeeded", "failed"},           // terminal
+		{"failed", "succeeded"},           // terminal
+		{"manual_review", "requested"},    // not valid
 	}
 	for _, tc := range invalid {
 		targets, ok := validRefundTransitions[tc.from]

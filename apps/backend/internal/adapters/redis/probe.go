@@ -7,13 +7,13 @@
 // Key types:
 //
 //   - RedisPinger      — minimal interface: Ping(ctx) error. Any Redis client
-//                        that exposes a Ping method satisfies it automatically.
+//     that exposes a Ping method satisfies it automatically.
 //   - RedisPingProbe   — wraps a RedisPinger and adapts it to the
-//                        httpserver.ReadinessProbe contract (structurally,
-//                        without importing the httpserver package).
+//     httpserver.ReadinessProbe contract (structurally,
+//     without importing the httpserver package).
 //   - DialRedisPinger  — implements RedisPinger using a raw TCP connection and
-//                        the Redis inline PING command. No third-party Redis
-//                        client library is required.
+//     the Redis inline PING command. No third-party Redis
+//     client library is required.
 package redis
 
 import (
@@ -31,6 +31,8 @@ import (
 // *Cmd whose Err() matches this shape when wrapped in a helper function).
 // The DialRedisPinger in this package also satisfies it without any external
 // Redis client dependency.
+//
+//nolint:revive // intentional: keeps "Redis" prefix for callers grepping by service
 type RedisPinger interface {
 	// Ping returns nil when the Redis server is reachable, or an error
 	// describing the failure (connection refused, authentication error, etc.).
@@ -41,6 +43,8 @@ type RedisPinger interface {
 // It satisfies the httpserver.ReadinessProbe interface structurally (both
 // ProbeName() string and Ping(context.Context) error are defined) without
 // importing the httpserver package — Go's structural typing handles the rest.
+//
+//nolint:revive // intentional: keeps "Redis" prefix for callers grepping by service
 type RedisPingProbe struct {
 	pinger    RedisPinger
 	probeName string

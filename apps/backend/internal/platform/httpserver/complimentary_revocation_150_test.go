@@ -2,21 +2,22 @@
 // (Complimentary revocation flow).
 //
 // Test coverage:
-//   Step 1: Migration file 0038_complimentary_revocation.sql — extended status CHECKs, RBAC seeds
-//   Step 2: SQL queries in complimentary_issuances.sql — HasScannedTicketsForIssuance, RevokeComplimentaryTickets
-//   Step 3: SQL query in inventory_ledger.sql — RestoreSoldCapacity
-//   Step 4: Gen file complimentary_issuances.sql.go — HasScannedTicketsForIssuance, RevokeComplimentaryTickets
-//   Step 5: Gen file inventory_ledger.sql.go — RestoreSoldCapacity
-//   Step 6: Querier interface — three new methods
-//   Step 7: HTTP route — POST /v1/complimentary/{id}/revoke registered
-//   Step 8: Handler guards — 503 when deps missing, 401 when unauthenticated
-//   Step 9: Handler validates UUID format
-//   Step 10: Handler source file — handleRevokeComplimentaryIssuance present
-//   Step 11: Nil guard behaviour — all dependency guards present
-//   Step 12: manual_review response shape described in handler source
-//   Step 13: Inventory restore — RestoreSoldCapacity used in handler
-//   Step 14: Audit log — structured log event present
-//   Step 15: Revoke ticket bulk — RevokeComplimentaryTickets used in handler
+//
+//	Step 1: Migration file 0038_complimentary_revocation.sql — extended status CHECKs, RBAC seeds
+//	Step 2: SQL queries in complimentary_issuances.sql — HasScannedTicketsForIssuance, RevokeComplimentaryTickets
+//	Step 3: SQL query in inventory_ledger.sql — RestoreSoldCapacity
+//	Step 4: Gen file complimentary_issuances.sql.go — HasScannedTicketsForIssuance, RevokeComplimentaryTickets
+//	Step 5: Gen file inventory_ledger.sql.go — RestoreSoldCapacity
+//	Step 6: Querier interface — three new methods
+//	Step 7: HTTP route — POST /v1/complimentary/{id}/revoke registered
+//	Step 8: Handler guards — 503 when deps missing, 401 when unauthenticated
+//	Step 9: Handler validates UUID format
+//	Step 10: Handler source file — handleRevokeComplimentaryIssuance present
+//	Step 11: Nil guard behaviour — all dependency guards present
+//	Step 12: manual_review response shape described in handler source
+//	Step 13: Inventory restore — RestoreSoldCapacity used in handler
+//	Step 14: Audit log — structured log event present
+//	Step 15: Revoke ticket bulk — RevokeComplimentaryTickets used in handler
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver
@@ -498,7 +499,7 @@ func TestComplimentaryRevocation150_HandlerRevokesCredentialsIfAvailable(t *test
 // Compile-time interface check
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestComplimentaryRevocation150_QueriesImplementsQuerier(t *testing.T) {
+func TestComplimentaryRevocation150_QueriesImplementsQuerier(_ *testing.T) {
 	// This is a compile-time check: if *gen.Queries doesn't satisfy gen.Querier,
 	// the test file will fail to compile.
 	var _ gen.Querier = (*gen.Queries)(nil)

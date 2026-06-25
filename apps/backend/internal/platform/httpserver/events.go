@@ -35,13 +35,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -122,7 +123,7 @@ func negotiateLocale(r *http.Request) string {
 	return i18n.NegotiateLocale(
 		r.Header.Get("Accept-Language"),
 		r.URL.Query().Get("lang"),
-		"",  // preferred user locale (stub for this milestone)
+		"",   // preferred user locale (stub for this milestone)
 		"en", // default locale
 		[]string{"en", "ru"},
 	)
@@ -134,14 +135,14 @@ func negotiateLocale(r *http.Request) string {
 
 // createEventRequest is the request body for POST /v1/organizations/{org_id}/events.
 type createEventRequest struct {
-	Name        string  `json:"name"`
-	Description string  `json:"description"`
-	VenueID     string  `json:"venue_id"`
-	Status      string  `json:"status"`
-	StartAt     string  `json:"start_at"`
-	EndAt       string  `json:"end_at"`
-	Visibility  string  `json:"visibility"`
-	ImageURL    string  `json:"image_url"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	VenueID     string `json:"venue_id"`
+	Status      string `json:"status"`
+	StartAt     string `json:"start_at"`
+	EndAt       string `json:"end_at"`
+	Visibility  string `json:"visibility"`
+	ImageURL    string `json:"image_url"`
 	// i18n translations for name and description (optional).
 	// Key: locale code (e.g. "ru"), Value: translated string.
 	Translations map[string]struct {

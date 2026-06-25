@@ -181,13 +181,14 @@ func TestTimestamptz_AuditEventsColumnType(t *testing.T) {
 // migrations uses 'timestamptz' for timestamp columns, not bare 'timestamp'.
 //
 // Covers all 6 platform tables:
-//   idempotency_keys (created_at, expires_at)
-//   audit_events     (occurred_at)
-//   outbox_events    (occurred_at, processed_at)
-//   worker_jobs      (scheduled_at, claimed_at, created_at)
-//   worker_dead_letter (failed_at, original_created_at)
-//   i18n_text        (updated_at)
-//   outbox           (occurred_at, dispatched_at)  — from 0002_outbox.sql
+//
+//	idempotency_keys (created_at, expires_at)
+//	audit_events     (occurred_at)
+//	outbox_events    (occurred_at, processed_at)
+//	worker_jobs      (scheduled_at, claimed_at, created_at)
+//	worker_dead_letter (failed_at, original_created_at)
+//	i18n_text        (updated_at)
+//	outbox           (occurred_at, dispatched_at)  — from 0002_outbox.sql
 func TestTimestamptz_AllTablesUseTimestamptz(t *testing.T) {
 	t.Parallel()
 

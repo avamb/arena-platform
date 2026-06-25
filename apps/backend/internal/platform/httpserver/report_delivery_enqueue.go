@@ -17,8 +17,9 @@ import (
 	"encoding/json"
 	"log/slog"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/reportdelivery"
 	"github.com/google/uuid"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/reportdelivery"
 )
 
 // enqueueReportDeliveryJob creates a worker_jobs row of type "report.deliver"

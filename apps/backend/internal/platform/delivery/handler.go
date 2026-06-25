@@ -37,11 +37,12 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 // JobType is the worker job type string for ticket email delivery.

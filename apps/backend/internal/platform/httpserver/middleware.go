@@ -26,8 +26,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	chimw "github.com/go-chi/chi/v5/middleware"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
 // HeaderTraceID is the response header carrying the resolved trace identifier.
@@ -41,6 +42,8 @@ const HeaderTraceID = "X-Trace-Id"
 //
 // chi's own RequestID middleware only stores the identifier on context;
 // surfacing it to the client is this middleware's responsibility.
+//
+//nolint:unused // retained as drop-in replacement when adapters/http router is bypassed
 func requestContext(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		reqID := chimw.GetReqID(r.Context())
@@ -60,6 +63,8 @@ func requestContext(next http.Handler) http.Handler {
 // start / end with elapsed_ms. The trace_id is a 32-hex-character random
 // string until the OpenTelemetry SDK is wired and can supply real
 // SpanContext trace ids over the same key.
+//
+//nolint:unused // retained as drop-in replacement when adapters/http router is bypassed
 func traceContext(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		traceID := r.Header.Get(HeaderTraceID)
@@ -94,6 +99,8 @@ func traceContext(next http.Handler) http.Handler {
 // jsonBodyLimit wraps r.Body with http.MaxBytesReader so a single oversized
 // payload cannot exhaust process memory. The limit is enforced for
 // POST/PUT/PATCH; safe methods are passed through unchanged.
+//
+//nolint:unused // retained as drop-in replacement when adapters/http router is bypassed
 func jsonBodyLimit(maxBytes int64) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -112,13 +119,15 @@ func jsonBodyLimit(maxBytes int64) func(http.Handler) http.Handler {
 // randomness is overkill for an observability identifier, but the W3C trace
 // context spec mandates 16 random bytes — matching that shape now means a
 // future OTEL wiring can drop in seamlessly.
+//
+//nolint:unused // helper for the unused-marked middlewares above
 func newTraceID() string {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		// Fall back to a timestamp-derived id; never panic on a hot path.
 		t := uint64(time.Now().UnixNano())
 		for i := 0; i < 8; i++ {
-			b[i] = byte(t >> (i * 8))
+			b[i] = byte(t >> (i * 8)) //nolint:gosec // intentional low-byte truncation
 		}
 	}
 	return hex.EncodeToString(b[:])

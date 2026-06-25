@@ -26,9 +26,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	httpadapter "github.com/abhteam/arena_new/apps/backend/internal/adapters/http"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
-	"github.com/google/uuid"
 )
 
 // =============================================================================

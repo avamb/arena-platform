@@ -44,6 +44,10 @@ import (
 // All fields are immutable after construction. The struct is intentionally
 // kept small: extended claims (permissions, tenant context, etc.) belong in
 // the domain layer and should be derived from AuthContext, not stored in it.
+// Renaming to auth.Context would shadow the std-lib `context.Context` import in
+// every caller; keeping AuthContext is a deliberate readability trade-off.
+//
+//nolint:revive // intentional: avoids clashing with stdlib context.Context name
 type AuthContext struct {
 	// ActorID is the UUID identifying the authenticated principal ("sub" claim).
 	// For stub / dev tokens issued by StubProvider, this is the actor_id

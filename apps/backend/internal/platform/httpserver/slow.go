@@ -62,11 +62,11 @@ func (s *Server) handleInfoSlow(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status":     "ok",
-		"app":        s.cfg.AppName,
-		"version":    s.cfg.AppVersion,
+		"status":      "ok",
+		"app":         s.cfg.AppName,
+		"version":     s.cfg.AppVersion,
 		"server_time": time.Now().UTC().Format(time.RFC3339Nano),
-		"db_version": dbVersion,
-		"db_now":     dbNow,
+		"db_version":  dbVersion,
+		"db_now":      dbNow,
 	})
 }

@@ -1,12 +1,13 @@
 // venues_test.go — unit tests for feature #124 (Venue model + CRUD).
 //
 // Test coverage:
-//   Step 1: Migration file 0012_venues.sql exists with correct schema + seeds
-//   Step 2: Route mounting, auth-gating, and request validation (no DB required)
-//           Owner-gated mutations: POST/PATCH/DELETE require org_id to match
-//           Shared read: GET /v1/venues and GET /v1/venues/{id} are cross-org
-//   Step 3: GET shared across orgs read-only
-//   Step 4: sqlc gen file (venues.sql.go) and query file (venues.sql) structure
+//
+//	Step 1: Migration file 0012_venues.sql exists with correct schema + seeds
+//	Step 2: Route mounting, auth-gating, and request validation (no DB required)
+//	        Owner-gated mutations: POST/PATCH/DELETE require org_id to match
+//	        Shared read: GET /v1/venues and GET /v1/venues/{id} are cross-org
+//	Step 3: GET shared across orgs read-only
+//	Step 4: sqlc gen file (venues.sql.go) and query file (venues.sql) structure
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver
@@ -19,10 +20,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
-	"github.com/google/uuid"
 )
 
 const venueTestActorID = "00000000-0000-0000-0000-000000000001"

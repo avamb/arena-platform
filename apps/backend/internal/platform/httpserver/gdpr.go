@@ -31,11 +31,12 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────

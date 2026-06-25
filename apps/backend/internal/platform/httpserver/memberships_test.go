@@ -1,12 +1,13 @@
 // memberships_test.go — unit tests for feature #120 (Membership + role assignment).
 //
 // Test coverage:
-//   Step 1: Migration file 0011_memberships.sql exists with correct schema + seeds
-//   Step 2: POST/GET/DELETE /v1/organizations/{org_id}/members routes mounted,
-//           auth-gated, with correct request validation (no DB required)
-//   Step 3: Permission resolver picks up membership-derived permissions
-//           (MembershipQuerier interface and DBChecker.WithMembershipQuerier)
-//   Step 4: Integration test shapes — multi-org user, grant/revoke flows
+//
+//	Step 1: Migration file 0011_memberships.sql exists with correct schema + seeds
+//	Step 2: POST/GET/DELETE /v1/organizations/{org_id}/members routes mounted,
+//	        auth-gated, with correct request validation (no DB required)
+//	Step 3: Permission resolver picks up membership-derived permissions
+//	        (MembershipQuerier interface and DBChecker.WithMembershipQuerier)
+//	Step 4: Integration test shapes — multi-org user, grant/revoke flows
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver
@@ -21,11 +22,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
-	"github.com/google/uuid"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -199,7 +201,7 @@ func TestMembership120_PostMembersRequiresAuth(t *testing.T) {
 	// Must send Content-Type: application/json so the body-limit middleware
 	// does not reject with 415 before auth fires.
 	r := httptest.NewRequest(http.MethodPost, "/v1/organizations/"+orgID+"/members",
-		strings.NewReader(`{"user_id":"` + uuid.New().String() + `","role":"organizer"}`))
+		strings.NewReader(`{"user_id":"`+uuid.New().String()+`","role":"organizer"}`))
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	s.router.ServeHTTP(w, r)
@@ -501,7 +503,7 @@ type fakeMembershipQuerier struct {
 	rolesByUser map[string][]string // user_id → []role
 }
 
-func (f *fakeMembershipQuerier) GetActiveRolesForUser(ctx context.Context, userID uuid.UUID) ([]string, error) {
+func (f *fakeMembershipQuerier) GetActiveRolesForUser(_ context.Context, userID uuid.UUID) ([]string, error) {
 	return f.rolesByUser[userID.String()], nil
 }
 
@@ -510,7 +512,7 @@ type fakeRBACQuerier120 struct {
 	permsByRole map[string][]string // role → []permission
 }
 
-func (f *fakeRBACQuerier120) GetPermissionsForRoles(ctx context.Context, roleNames []string) ([]string, error) {
+func (f *fakeRBACQuerier120) GetPermissionsForRoles(_ context.Context, roleNames []string) ([]string, error) {
 	seen := make(map[string]bool)
 	var out []string
 	for _, r := range roleNames {

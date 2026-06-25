@@ -2,17 +2,18 @@
 // "DB pool gauges (open, idle, in-use) exposed in /metrics"
 //
 // Feature spec: Custom gauges for pgx pool stats:
-//   db_pool_open_connections, db_pool_idle, db_pool_in_use,
-//   db_pool_wait_count, db_pool_wait_duration_seconds.
+//
+//	db_pool_open_connections, db_pool_idle, db_pool_in_use,
+//	db_pool_wait_count, db_pool_wait_duration_seconds.
 //
 // Test steps covered:
 //
-//   Step 1: /metrics contains lines matching 'db_pool_' prefix
-//   Step 2: Each gauge has a proper '# TYPE ... gauge' line in the output
-//   Step 3: db_pool_in_use spikes then returns to ~0 after burst
-//   Step 4: db_pool_open_connections is between min and max pool size
-//   Step 5: burst test (200 parallel requests) — wait_count increments
-//           when max pool is small
+//	Step 1: /metrics contains lines matching 'db_pool_' prefix
+//	Step 2: Each gauge has a proper '# TYPE ... gauge' line in the output
+//	Step 3: db_pool_in_use spikes then returns to ~0 after burst
+//	Step 4: db_pool_open_connections is between min and max pool size
+//	Step 5: burst test (200 parallel requests) — wait_count increments
+//	        when max pool is small
 //
 // All tests use fakePoolStat (defined in pool_burst_test.go) instead of a
 // live PostgreSQL instance — no DB connection required.

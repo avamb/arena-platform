@@ -15,18 +15,19 @@
 //     failing and succeeding (controlled by an atomic flag).
 //
 // Feature steps covered:
-//   Step 1 (stop postgres / setup):    dbDownPool + failingReadinessProbe.
-//   Step 3 (POST /v1/echo → 503):      TestDBUnavailable_EchoReturns503.
-//   Step 3 (code field):               TestDBUnavailable_EchoCodeIsDatabaseUnavailable.
-//   Step 4 (Retry-After header):       TestDBUnavailable_EchoHasRetryAfterHeader.
-//   Step 4 (Retry-After is numeric):   TestDBUnavailable_RetryAfterIsNumeric.
-//   Step 4 (Retry-After > 0):          TestDBUnavailable_RetryAfterIsPositive.
-//   Step 5 (GET /readyz → 503):        TestDBUnavailable_ReadyzReturns503WhenDBDown.
-//   Step 5 (readyz body code):         TestDBUnavailable_ReadyzBodyShowsDBCheck.
-//   Step 6 (GET /healthz → 200):       TestDBUnavailable_HealthzStillReturns200.
-//   Step 7 (recovery: readyz → 200):   TestDBUnavailable_ReadyzReturns200AfterRecovery.
-//   Extra  (envelope structure):       TestDBUnavailable_EchoEnvelopeHasRequiredFields.
-//   Extra  (no stack in body):         TestDBUnavailable_EchoBodyHasNoStackTrace.
+//
+//	Step 1 (stop postgres / setup):    dbDownPool + failingReadinessProbe.
+//	Step 3 (POST /v1/echo → 503):      TestDBUnavailable_EchoReturns503.
+//	Step 3 (code field):               TestDBUnavailable_EchoCodeIsDatabaseUnavailable.
+//	Step 4 (Retry-After header):       TestDBUnavailable_EchoHasRetryAfterHeader.
+//	Step 4 (Retry-After is numeric):   TestDBUnavailable_RetryAfterIsNumeric.
+//	Step 4 (Retry-After > 0):          TestDBUnavailable_RetryAfterIsPositive.
+//	Step 5 (GET /readyz → 503):        TestDBUnavailable_ReadyzReturns503WhenDBDown.
+//	Step 5 (readyz body code):         TestDBUnavailable_ReadyzBodyShowsDBCheck.
+//	Step 6 (GET /healthz → 200):       TestDBUnavailable_HealthzStillReturns200.
+//	Step 7 (recovery: readyz → 200):   TestDBUnavailable_ReadyzReturns200AfterRecovery.
+//	Extra  (envelope structure):       TestDBUnavailable_EchoEnvelopeHasRequiredFields.
+//	Extra  (no stack in body):         TestDBUnavailable_EchoBodyHasNoStackTrace.
 package httpserver
 
 import (
@@ -42,10 +43,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 )
 
 // =============================================================================
@@ -107,7 +109,7 @@ type succeedingReadinessProbe struct {
 	name string
 }
 
-func (p *succeedingReadinessProbe) ProbeName() string       { return p.name }
+func (p *succeedingReadinessProbe) ProbeName() string            { return p.name }
 func (p *succeedingReadinessProbe) Ping(_ context.Context) error { return nil }
 
 var _ ReadinessProbe = (*succeedingReadinessProbe)(nil)

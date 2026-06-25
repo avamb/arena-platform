@@ -6,7 +6,7 @@
 //   - Idempotency   (Idempotency-Key header, verified+stored via idempotency.Store)
 //   - Audit         (audit_events row written in the same TX as the response cache)
 //   - Outbox        (outbox_events row written in the same TX — placeholder event
-//                    that the OutboxDispatcher worker will publish in a later wave)
+//     that the OutboxDispatcher worker will publish in a later wave)
 //
 // Persisting all four rows in one pgx.Tx is the foundation guarantee that
 // makes feature #5 ("Backend API queries real database") observable: a
@@ -25,13 +25,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
 	oapi "github.com/abhteam/arena_new/apps/backend/internal/adapters/http/openapi"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/idempotency"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 // MaxEchoMessageBytes caps the size of the echoed message so a malicious
@@ -77,7 +78,7 @@ type echoResponse = oapi.EchoResponse
 //
 //   - auth.Middleware       → actor present in ctx; otherwise we never run.
 //   - idempotency.Middleware → either replayed a stored response (we never
-//                              run) OR placed key/scope/hash on the context.
+//     run) OR placed key/scope/hash on the context.
 func (s *Server) handleEcho(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logger := logging.FromContext(ctx)
@@ -126,7 +127,7 @@ func (s *Server) handleEcho(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Syntax error: include byte offset for diagnostics but never echo the body.
-		msg := "request body is not valid JSON"
+		var msg string
 		var syntaxErr *json.SyntaxError
 		if errors.As(err, &syntaxErr) {
 			msg = fmt.Sprintf("request body is not valid JSON: parse error near byte offset %d", syntaxErr.Offset)

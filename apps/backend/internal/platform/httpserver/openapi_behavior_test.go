@@ -39,10 +39,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 )
 
 // =============================================================================
@@ -391,8 +392,8 @@ func TestOpenAPIBehavior_SchemaParserExtractsRequiredFields(t *testing.T) {
 	}
 
 	cases := []struct {
-		schema   string
-		wantAny  []string // subset that must appear
+		schema  string
+		wantAny []string // subset that must appear
 	}{
 		{
 			schema:  "ErrorEnvelope",
@@ -1036,11 +1037,11 @@ func parseDocumentedStatusCodes(data []byte) map[string][]int {
 
 	// Target endpoints from feature #33 step 3.
 	targets := map[string]string{
-		"/healthz":  "GET",
-		"/readyz":   "GET",
-		"/metrics":  "GET",
-		"/v1/info":  "GET",
-		"/v1/echo":  "POST",
+		"/healthz": "GET",
+		"/readyz":  "GET",
+		"/metrics": "GET",
+		"/v1/info": "GET",
+		"/v1/echo": "POST",
 	}
 
 	scanner := bufio.NewScanner(bytes.NewReader(data))

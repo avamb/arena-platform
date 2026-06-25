@@ -7,12 +7,13 @@
 // (UTC-stored), DST is irrelevant — but we verify this explicitly.
 //
 // Step-by-step coverage:
-//   Step 1: Set created_at = 2026-03-08 01:30 UTC (just before US spring-forward)
-//   Step 2: POST /v1/echo with Idempotency-Key: DST_KEY_1, TTL = 24h
-//   Step 3: expires_at == created_at + 24h exactly (no ±1h DST offset)
-//   Step 4: Repeat with fall-back: created_at = 2026-11-01 06:30 UTC
-//   Step 5: Verify same result (expires_at == created_at + 24h exactly)
-//   Step 6: Static scan confirms TTL added as time.Duration, not AddDate(0,0,1)
+//
+//	Step 1: Set created_at = 2026-03-08 01:30 UTC (just before US spring-forward)
+//	Step 2: POST /v1/echo with Idempotency-Key: DST_KEY_1, TTL = 24h
+//	Step 3: expires_at == created_at + 24h exactly (no ±1h DST offset)
+//	Step 4: Repeat with fall-back: created_at = 2026-11-01 06:30 UTC
+//	Step 5: Verify same result (expires_at == created_at + 24h exactly)
+//	Step 6: Static scan confirms TTL added as time.Duration, not AddDate(0,0,1)
 package idempotency
 
 import (

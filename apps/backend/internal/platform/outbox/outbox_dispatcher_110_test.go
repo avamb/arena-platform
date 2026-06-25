@@ -1,12 +1,13 @@
 // Package outbox — unit tests for feature #110 "Outbox dispatcher".
 //
 // Feature #110 is the worker-based publisher that:
-//   Step 1: registers OutboxEventsDispatcher in the arena-worker process
-//   Step 2: serialises events with stable JSON key ordering
-//   Step 3: adds X-Arena-Signature: sha256=<hex> HMAC header
-//   Step 4: wires to an HTTP webhook delivery client (WebhookDispatcher)
-//   Step 5: integration contract — tx commit → event published;
-//            tx rollback → event absent; replay safety guaranteed
+//
+//	Step 1: registers OutboxEventsDispatcher in the arena-worker process
+//	Step 2: serialises events with stable JSON key ordering
+//	Step 3: adds X-Arena-Signature: sha256=<hex> HMAC header
+//	Step 4: wires to an HTTP webhook delivery client (WebhookDispatcher)
+//	Step 5: integration contract — tx commit → event published;
+//	         tx rollback → event absent; replay safety guaranteed
 //
 // These tests do NOT require a live database.  They exercise:
 //   - WebhookDispatcher (steps 2–4)
@@ -58,7 +59,7 @@ func TestOutboxDispatcher110_StableJSONMapIsAlphabetical(t *testing.T) {
 	if alphaPos < 0 || middlePos < 0 || zebraPos < 0 {
 		t.Fatalf("expected all keys in output; got: %s", s)
 	}
-	if !(alphaPos < middlePos && middlePos < zebraPos) {
+	if alphaPos >= middlePos || middlePos >= zebraPos {
 		t.Errorf("keys not in alphabetical order; positions: alpha=%d middle=%d zebra=%d; json=%s",
 			alphaPos, middlePos, zebraPos, s)
 	}
@@ -134,7 +135,7 @@ func TestOutboxDispatcher110_ComputeHMACIsHex(t *testing.T) {
 		t.Errorf("HMAC hex length = %d, want 64; got %q", len(sig), sig)
 	}
 	for _, c := range sig {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			t.Errorf("HMAC contains non-hex character %q; full value: %s", c, sig)
 			break
 		}
@@ -238,9 +239,9 @@ func newSigCapture(statusCode int) *sigCapture {
 	return s
 }
 
-func (s *sigCapture) URL() string     { return s.server.URL }
-func (s *sigCapture) Close()          { s.server.Close() }
-func (s *sigCapture) CallCount() int  { return int(s.calls.Load()) }
+func (s *sigCapture) URL() string    { return s.server.URL }
+func (s *sigCapture) Close()         { s.server.Close() }
+func (s *sigCapture) CallCount() int { return int(s.calls.Load()) }
 func (s *sigCapture) LastBody() []byte {
 	if len(s.bodies) == 0 {
 		return nil
@@ -473,7 +474,7 @@ func TestOutboxDispatcher110_WebhookDispatcherTargetURLGetter(t *testing.T) {
 // TestOutboxDispatcher110_WebhookDispatcherCompileTimeGuard is the runtime
 // expression of the compile-time interface guard at the bottom of
 // webhook_dispatcher.go.
-func TestOutboxDispatcher110_WebhookDispatcherCompileTimeGuard(t *testing.T) {
+func TestOutboxDispatcher110_WebhookDispatcherCompileTimeGuard(_ *testing.T) {
 	var _ Dispatcher = (*WebhookDispatcher)(nil)
 }
 
@@ -811,7 +812,7 @@ func TestOutboxDispatcher110_FullVerification(t *testing.T) {
 
 	t.Run("step4_http_post_delivery", func(t *testing.T) {
 		var hitCount atomic.Int64
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			hitCount.Add(1)
 			w.WriteHeader(200)
 		}))
@@ -835,7 +836,7 @@ func TestOutboxDispatcher110_FullVerification(t *testing.T) {
 
 	t.Run("step5_commit_published_rollback_absent", func(t *testing.T) {
 		var deliveries atomic.Int64
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			deliveries.Add(1)
 			w.WriteHeader(200)
 		}))

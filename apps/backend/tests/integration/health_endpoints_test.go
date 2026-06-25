@@ -113,8 +113,8 @@ func getRaw(t *testing.T, url string) (int, string) {
 // okProbe is a ReadinessProbe whose Ping always returns nil ("ok").
 type okProbe struct{ name string }
 
-func (p *okProbe) ProbeName() string              { return p.name }
-func (p *okProbe) Ping(_ context.Context) error   { return nil }
+func (p *okProbe) ProbeName() string            { return p.name }
+func (p *okProbe) Ping(_ context.Context) error { return nil }
 
 var _ httpserver.ReadinessProbe = (*okProbe)(nil)
 
@@ -124,8 +124,8 @@ type failProbe struct {
 	msg  string
 }
 
-func (p *failProbe) ProbeName() string              { return p.name }
-func (p *failProbe) Ping(_ context.Context) error   { return errors.New(p.msg) }
+func (p *failProbe) ProbeName() string            { return p.name }
+func (p *failProbe) Ping(_ context.Context) error { return errors.New(p.msg) }
 
 var _ httpserver.ReadinessProbe = (*failProbe)(nil)
 
@@ -284,7 +284,7 @@ func TestReadyz_LegacyDBPingerProbeAppears(t *testing.T) {
 // healthyPinger satisfies httpserver.Pinger and always reports IsHealthy=true.
 type healthyPinger struct{}
 
-func (p *healthyPinger) IsHealthy() bool { return true }
+func (p *healthyPinger) IsHealthy() bool   { return true }
 func (p *healthyPinger) LastError() string { return "" }
 
 var _ httpserver.Pinger = (*healthyPinger)(nil)
@@ -315,7 +315,7 @@ func TestReadyz_LegacyDBPingerDown(t *testing.T) {
 // unhealthyPinger satisfies httpserver.Pinger and always reports IsHealthy=false.
 type unhealthyPinger struct{ msg string }
 
-func (p *unhealthyPinger) IsHealthy() bool { return false }
+func (p *unhealthyPinger) IsHealthy() bool   { return false }
 func (p *unhealthyPinger) LastError() string { return p.msg }
 
 var _ httpserver.Pinger = (*unhealthyPinger)(nil)

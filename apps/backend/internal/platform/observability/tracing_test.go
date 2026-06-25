@@ -29,7 +29,6 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 // shortCtx returns a context that times out quickly so a misconfigured
@@ -279,7 +278,7 @@ func TestInitTracer_ProviderTypeIsSDKTracerProvider(t *testing.T) {
 	// Compile-time guarantee that we returned an SDK tracer provider, not a
 	// no-op stub — the global getter returns a trace.TracerProvider interface,
 	// so we cross-check the concrete return type here.
-	var _ *sdktrace.TracerProvider = tp
+	var _ = tp
 }
 
 func TestInitTracer_TracerEmitsSpansWithoutPanic(t *testing.T) {

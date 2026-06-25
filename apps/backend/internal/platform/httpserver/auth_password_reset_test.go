@@ -6,11 +6,12 @@
 // auth_password_reset_integration_test.go.
 //
 // Coverage:
-//   Step 1: Migration file 0015_password_reset_tokens.sql schema
-//   Step 2: Request + confirm endpoint validation (no DB)
-//   Step 3: Email delivery logging (dev-mode slog output)
-//   Step 4: Audit event structure (compile-time + token-TTL constants)
-//   Step 5: Integration scenarios — see auth_password_reset_integration_test.go
+//
+//	Step 1: Migration file 0015_password_reset_tokens.sql schema
+//	Step 2: Request + confirm endpoint validation (no DB)
+//	Step 3: Email delivery logging (dev-mode slog output)
+//	Step 4: Audit event structure (compile-time + token-TTL constants)
+//	Step 5: Integration scenarios — see auth_password_reset_integration_test.go
 package httpserver
 
 import (

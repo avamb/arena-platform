@@ -21,8 +21,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	chimw "github.com/go-chi/chi/v5/middleware"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
 // ---------------------------------------------------------------------------
@@ -199,7 +200,7 @@ func TestMiddleware_MissingHeader_Returns401WithEnvelope(t *testing.T) {
 func TestMiddleware_BasicSchemeReturnsMissingToken(t *testing.T) {
 	provider := newStubProviderForTest(t)
 	h := wrapWithRequestID(Middleware(provider, MiddlewareOptions{})(
-		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 			t.Fatal("downstream handler must not run")
 		})))
 
@@ -224,7 +225,7 @@ func TestMiddleware_BasicSchemeReturnsMissingToken(t *testing.T) {
 func TestMiddleware_BearerWithEmptyValueReturnsMissingToken(t *testing.T) {
 	provider := newStubProviderForTest(t)
 	h := wrapWithRequestID(Middleware(provider, MiddlewareOptions{})(
-		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 			t.Fatal("downstream handler must not run")
 		})))
 
@@ -253,7 +254,7 @@ func TestMiddleware_BearerWithEmptyValueReturnsMissingToken(t *testing.T) {
 func TestMiddleware_LocalisesMessageByAcceptLanguage(t *testing.T) {
 	provider := newStubProviderForTest(t)
 	h := wrapWithRequestID(Middleware(provider, MiddlewareOptions{})(
-		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 			t.Fatal("downstream handler must not run")
 		})))
 

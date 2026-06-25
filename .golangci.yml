@@ -20,7 +20,13 @@ linters:
           audit: false
     govet:
       disable:
+        # fieldalignment: cosmetic struct padding noise; we never reorder fields purely for byte alignment.
         - fieldalignment
+        # shadow: flags the idiomatic Go pattern `if err := f(); err != nil { ... }` whenever an
+        # outer `err` is in scope. The shadow analyzer is not enabled in stock `go vet` for this
+        # reason. We intentionally use scoped `err` in if/for statements; broader misuse would be
+        # caught by errcheck and code review.
+        - shadow
       enable-all: true
     revive:
       rules:

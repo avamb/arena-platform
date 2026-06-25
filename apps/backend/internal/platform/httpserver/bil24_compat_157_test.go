@@ -39,9 +39,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
-	"github.com/google/uuid"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -54,21 +55,21 @@ import (
 func buildBil24Server(t *testing.T) *Server {
 	t.Helper()
 	cfg := &config.Config{
-		AppEnv:            config.EnvDevelopment,
-		RequestTimeout:    5 * time.Second,
-		BodyLimitBytes:    1 << 20,
+		AppEnv:             config.EnvDevelopment,
+		RequestTimeout:     5 * time.Second,
+		BodyLimitBytes:     1 << 20,
 		Bil24CompatEnabled: true,
-		DefaultLocale:     "en",
-		ActiveLocales:     []string{"en", "ru"},
+		DefaultLocale:      "en",
+		ActiveLocales:      []string{"en", "ru"},
 	}
 	return New(Options{
-		Config:           cfg,
+		Config:             cfg,
 		Bil24CompatEnabled: true,
-		EventQueries:     gen.New(nil),
-		TierQueries:      gen.New(nil),
-		CheckoutQueries:  gen.New(nil),
-		TicketQueries:    gen.New(nil),
-		BarcodeQueries:   gen.New(nil),
+		EventQueries:       gen.New(nil),
+		TierQueries:        gen.New(nil),
+		CheckoutQueries:    gen.New(nil),
+		TicketQueries:      gen.New(nil),
+		BarcodeQueries:     gen.New(nil),
 	})
 }
 
@@ -307,15 +308,15 @@ func TestBil24_157_ErrorResponse_HasNonZeroResultCode(t *testing.T) {
 
 func TestBil24_157_GetAllActions_NilQueries_Returns_InternalError(t *testing.T) {
 	cfg := &config.Config{
-		AppEnv:            config.EnvDevelopment,
-		RequestTimeout:    5 * time.Second,
-		BodyLimitBytes:    1 << 20,
+		AppEnv:             config.EnvDevelopment,
+		RequestTimeout:     5 * time.Second,
+		BodyLimitBytes:     1 << 20,
 		Bil24CompatEnabled: true,
-		DefaultLocale:     "en",
-		ActiveLocales:     []string{"en"},
+		DefaultLocale:      "en",
+		ActiveLocales:      []string{"en"},
 	}
 	s := New(Options{
-		Config:           cfg,
+		Config:             cfg,
 		Bil24CompatEnabled: true,
 		// EventQueries intentionally nil
 	})
@@ -393,15 +394,15 @@ func TestBil24_157_GetOrderInfo_MissingOrderID_Returns_InvalidRequest(t *testing
 
 func TestBil24_157_GetOrderInfo_NilQueries_Returns_InternalError(t *testing.T) {
 	cfg := &config.Config{
-		AppEnv:            config.EnvDevelopment,
-		RequestTimeout:    5 * time.Second,
-		BodyLimitBytes:    1 << 20,
+		AppEnv:             config.EnvDevelopment,
+		RequestTimeout:     5 * time.Second,
+		BodyLimitBytes:     1 << 20,
 		Bil24CompatEnabled: true,
-		DefaultLocale:     "en",
-		ActiveLocales:     []string{"en"},
+		DefaultLocale:      "en",
+		ActiveLocales:      []string{"en"},
 	}
 	s := New(Options{
-		Config:           cfg,
+		Config:             cfg,
 		Bil24CompatEnabled: true,
 		// CheckoutQueries intentionally nil
 	})
@@ -499,15 +500,15 @@ func TestBil24_157_ScanTicket_MissingTicketID_Returns_InvalidRequest(t *testing.
 
 func TestBil24_157_ScanTicket_NilBarcodeQueries_Returns_InternalError(t *testing.T) {
 	cfg := &config.Config{
-		AppEnv:            config.EnvDevelopment,
-		RequestTimeout:    5 * time.Second,
-		BodyLimitBytes:    1 << 20,
+		AppEnv:             config.EnvDevelopment,
+		RequestTimeout:     5 * time.Second,
+		BodyLimitBytes:     1 << 20,
 		Bil24CompatEnabled: true,
-		DefaultLocale:     "en",
-		ActiveLocales:     []string{"en"},
+		DefaultLocale:      "en",
+		ActiveLocales:      []string{"en"},
 	}
 	s := New(Options{
-		Config:           cfg,
+		Config:             cfg,
 		Bil24CompatEnabled: true,
 		// BarcodeQueries intentionally nil
 	})

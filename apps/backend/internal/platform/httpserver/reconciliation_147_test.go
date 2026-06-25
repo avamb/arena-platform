@@ -2,13 +2,14 @@
 // (External reconciliation — partner report submission, auto-match, exception queue).
 //
 // Test coverage:
-//   Step 1: Migration file 0041_reconciliation_reports.sql — tables, CHECK constraints, RBAC seeds
-//   Step 2: SQL query file reconciliation.sql — all named queries present
-//   Step 3: Gen file reconciliation.sql.go — ReconciliationReportRow, ReconciliationLineRow,
-//           BarcodeRefLookupRow, all 11 methods
-//   Step 4: Querier interface — all 11 reconciliation methods present
-//   Step 5: HTTP routes — auth-gating, endpoint wiring, validation
-//   Step 6: Auto-match algorithm — confidence scoring, exception/match classification
+//
+//	Step 1: Migration file 0041_reconciliation_reports.sql — tables, CHECK constraints, RBAC seeds
+//	Step 2: SQL query file reconciliation.sql — all named queries present
+//	Step 3: Gen file reconciliation.sql.go — ReconciliationReportRow, ReconciliationLineRow,
+//	        BarcodeRefLookupRow, all 11 methods
+//	Step 4: Querier interface — all 11 reconciliation methods present
+//	Step 5: HTTP routes — auth-gating, endpoint wiring, validation
+//	Step 6: Auto-match algorithm — confidence scoring, exception/match classification
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver
@@ -325,21 +326,26 @@ func TestReconciliation147_Step3_GenFunctions(t *testing.T) {
 // Step 4: Querier interface — 11 reconciliation methods
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestReconciliation147_Step4_QuerierInterface(t *testing.T) {
+func TestReconciliation147_Step4_QuerierInterface(_ *testing.T) {
 	// Compile-time check: gen.Queries implements gen.Querier.
 	// The reconciliation methods are part of the Querier interface.
 	// If they are absent, this package will fail to compile.
 	var _ gen.Querier = (*gen.Queries)(nil)
 }
 
-func TestReconciliation147_Step4_QuerierInterfaceMethods(t *testing.T) {
+func TestReconciliation147_Step4_QuerierInterfaceMethods(_ *testing.T) {
 	// We verify method existence on *gen.Queries via reflection on a nil pointer.
 	// This confirms the method set at compile time.
 	q := gen.New(nil)
 
 	type reconciliationQuerier interface {
 		InsertReconciliationReport(
-			ctx interface{ Deadline() (interface{}, bool); Done() <-chan struct{}; Err() error; Value(any) any },
+			ctx interface {
+				Deadline() (interface{}, bool)
+				Done() <-chan struct{}
+				Err() error
+				Value(any) any
+			},
 			allocationID interface{},
 			partnerOrgID interface{},
 			totalLines int32,

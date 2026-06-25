@@ -53,11 +53,11 @@ func TestOccurredAt_WithinTwoSecondsOfServerClock(t *testing.T) {
 		t.Fatal("step 3: occurred_at must not be the zero value")
 	}
 
-	twoSec := 2 * time.Second
-	if ev.OccurredAt.Before(t0.Add(-twoSec)) {
+	tolerance := 2 * time.Second
+	if ev.OccurredAt.Before(t0.Add(-tolerance)) {
 		t.Errorf("step 3: occurred_at %v is more than 2s before T0 (%v)", ev.OccurredAt, t0)
 	}
-	if ev.OccurredAt.After(t1.Add(twoSec)) {
+	if ev.OccurredAt.After(t1.Add(tolerance)) {
 		t.Errorf("step 3: occurred_at %v is more than 2s after T1 (%v)", ev.OccurredAt, t1)
 	}
 }
@@ -149,8 +149,8 @@ func TestOccurredAt_IgnoresXRequestTimeHeader(t *testing.T) {
 	}
 
 	// occurred_at must be within 2s of the actual server clock at send time.
-	twoSec := 2 * time.Second
-	if ev.OccurredAt.Before(t0.Add(-twoSec)) || ev.OccurredAt.After(t1.Add(twoSec)) {
+	tolerance := 2 * time.Second
+	if ev.OccurredAt.Before(t0.Add(-tolerance)) || ev.OccurredAt.After(t1.Add(tolerance)) {
 		t.Errorf("step 4: occurred_at=%v is not within 2s of server clock window [%v, %v]",
 			ev.OccurredAt, t0, t1)
 	}
@@ -308,8 +308,8 @@ func TestOccurredAt_FullVerification(t *testing.T) {
 			t.Fatal("no audit events captured")
 		}
 		ev := events[0]
-		twoSec := 2 * time.Second
-		if ev.OccurredAt.Before(t0.Add(-twoSec)) || ev.OccurredAt.After(t1.Add(twoSec)) {
+		tolerance := 2 * time.Second
+		if ev.OccurredAt.Before(t0.Add(-tolerance)) || ev.OccurredAt.After(t1.Add(tolerance)) {
 			t.Errorf("occurred_at=%v not within 2s window [%v, %v]", ev.OccurredAt, t0, t1)
 		}
 	})

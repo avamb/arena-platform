@@ -1,14 +1,15 @@
 // report_159_test.go — unit tests for feature #159 (Post-event report generation).
 //
 // Test coverage:
-//   Step 1: Migration file 0032_event_reports.sql — tables, columns, state enum,
-//           RBAC seeds, Down section.
-//   Step 2: Worker handler — JobType constant, Payload struct, NewHandler.
-//   Step 3: SQL query file — all named queries present.
-//   Step 4: Gen file — EventReportRow, EventReportLineRow, EventReportAggRow,
-//           all 10 query functions.
-//   Step 5: Querier interface — all 10 event report methods present.
-//   Step 6: HTTP routes — auth-gating, server wiring, response structure.
+//
+//	Step 1: Migration file 0032_event_reports.sql — tables, columns, state enum,
+//	        RBAC seeds, Down section.
+//	Step 2: Worker handler — JobType constant, Payload struct, NewHandler.
+//	Step 3: SQL query file — all named queries present.
+//	Step 4: Gen file — EventReportRow, EventReportLineRow, EventReportAggRow,
+//	        all 10 query functions.
+//	Step 5: Querier interface — all 10 event report methods present.
+//	Step 6: HTTP routes — auth-gating, server wiring, response structure.
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver
@@ -477,7 +478,7 @@ func TestReport159_EventReportResponseTypes(t *testing.T) {
 
 // TestReport159_GenTypesCompileTime verifies that the gen types referenced by
 // the reporting package are accessible and have the expected shape.
-func TestReport159_GenTypesCompileTime(t *testing.T) {
+func TestReport159_GenTypesCompileTime(_ *testing.T) {
 	// EventReportRow field existence — compile error if fields are missing.
 	var r gen.EventReportRow
 	_ = r.ID

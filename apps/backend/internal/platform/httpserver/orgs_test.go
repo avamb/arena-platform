@@ -1,11 +1,12 @@
 // orgs_test.go — unit tests for feature #119 (Organization model + CRUD).
 //
 // Test coverage:
-//   Step 1: Migration file 0009_organizations.sql exists with correct schema + seeds
-//   Step 2: POST/GET/PATCH/DELETE /v1/organizations routes mounted, auth-gated,
-//           with correct request validation behaviour (no DB required)
-//   Step 3: Soft-delete policy: DELETE handler writes audit event transactionally
-//   Step 4: sqlc gen file (orgs.sql.go) and query file (orgs.sql) structure
+//
+//	Step 1: Migration file 0009_organizations.sql exists with correct schema + seeds
+//	Step 2: POST/GET/PATCH/DELETE /v1/organizations routes mounted, auth-gated,
+//	        with correct request validation behaviour (no DB required)
+//	Step 3: Soft-delete policy: DELETE handler writes audit event transactionally
+//	Step 4: sqlc gen file (orgs.sql.go) and query file (orgs.sql) structure
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver
@@ -18,10 +19,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
-	"github.com/google/uuid"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -449,6 +451,9 @@ func TestOrg119_OrgResponseTimestampsAreRFC3339(t *testing.T) {
 		Slug:      "test",
 		CreatedAt: now.Format(time.RFC3339),
 		UpdatedAt: now.Format(time.RFC3339),
+	}
+	if resp.ID == "" || resp.Name != "Test" || resp.Slug != "test" {
+		t.Errorf("orgResponse field round-trip mismatch: %+v", resp)
 	}
 	// Verify timestamps are parseable as RFC3339.
 	for _, ts := range []string{resp.CreatedAt, resp.UpdatedAt} {

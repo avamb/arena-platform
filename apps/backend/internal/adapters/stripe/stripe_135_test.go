@@ -273,7 +273,7 @@ func TestStripe135_CreateIntent_ApplicationFee(t *testing.T) {
 // TestStripe135_CreateIntent_SCA_RequiresAction verifies that when Stripe returns
 // requires_action status, the adapter surfaces it correctly.
 func TestStripe135_CreateIntent_SCA_RequiresAction(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, mockPaymentIntentJSONWithNextAction(
 			"pi_sca001", "pi_sca_secret", "requires_action", "https://stripe.com/3ds"))
@@ -487,7 +487,7 @@ func TestStripe135_ConnectExchangeCode_Success(t *testing.T) {
 // TestStripe135_ConnectExchangeCode_Error verifies that an error response from
 // the token endpoint returns a non-nil error.
 func TestStripe135_ConnectExchangeCode_Error(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"error":"invalid_grant","error_description":"Authorization code does not exist"}`)
 	}))
@@ -503,7 +503,7 @@ func TestStripe135_ConnectExchangeCode_Error(t *testing.T) {
 // TestStripe135_APIError_Returns500 verifies that a non-2xx Stripe response
 // (e.g. 429 Too Many Requests) returns a descriptive error from CreateIntent.
 func TestStripe135_APIError_Returns500(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusTooManyRequests)
 		fmt.Fprint(w, `{"error":{"message":"Too many requests","type":"rate_limit_error","code":"rate_limit"}}`)

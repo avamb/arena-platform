@@ -35,10 +35,11 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -149,8 +150,8 @@ func (s *Server) handleCreateComplimentaryIssuance(w http.ResponseWriter, r *htt
 		// Row found — return the existing issuance.
 		existingTickets, _ := s.complimentaryQueries.ListTicketsByComplimentaryIssuance(ctx, existing.ID)
 		writeJSON(w, http.StatusOK, map[string]any{
-			"issuance": complimentaryIssuanceFromRow(existing),
-			"tickets":  complimentaryTicketsFromRows(existingTickets),
+			"issuance":          complimentaryIssuanceFromRow(existing),
+			"tickets":           complimentaryTicketsFromRows(existingTickets),
 			"idempotent_replay": true,
 		})
 		return
@@ -243,7 +244,7 @@ func (s *Server) handleCreateComplimentaryIssuance(w http.ResponseWriter, r *htt
 	effectiveQty := req.Qty
 	for i := int32(0); i < effectiveQty; i++ {
 		var holderEmail *string
-		if i < int32(len(recipients)) && recipients[i] != "" {
+		if i < int32(len(recipients)) && recipients[i] != "" { //nolint:gosec // recipients length bounded by request Qty (int32) above
 			e := recipients[i]
 			holderEmail = &e
 		}
@@ -298,8 +299,8 @@ func (s *Server) handleCreateComplimentaryIssuance(w http.ResponseWriter, r *htt
 	s.enqueueComplimentaryDeliveryJobs(ctx, tickets)
 
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"issuance": complimentaryIssuanceFromRow(issuance),
-		"tickets":  complimentaryTicketsFromRows(tickets),
+		"issuance":          complimentaryIssuanceFromRow(issuance),
+		"tickets":           complimentaryTicketsFromRows(tickets),
 		"idempotent_replay": false,
 	})
 }
@@ -466,6 +467,7 @@ func complimentaryTicketsFromRows(rows []gen.ComplimentaryTicketRow) []map[strin
 //  7. For each revoked ticket: revoke all associated barcodes (if barcodeQueries available).
 //  8. For each revoked ticket: revoke 'qr' and 'pdf' credentials (if credentialQueries available).
 //  9. RestoreSoldCapacity(session_id, tier_id, qty) — restore inventory.
+//
 // 10. UpdateComplimentaryIssuanceStatus → 'revoked'.
 // 11. Commit. Emit structured audit log. Return 200 with the updated issuance.
 func (s *Server) handleRevokeComplimentaryIssuance(w http.ResponseWriter, r *http.Request) {

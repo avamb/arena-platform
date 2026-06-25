@@ -2,51 +2,52 @@
 // (WordPress webhook receiver: WP REST endpoint + platform subscriber registration).
 //
 // Test coverage:
-//   Step 1:  WP webhook class file exists
-//   Step 2:  WP webhook class registers REST API namespace arena-events/v1
-//   Step 3:  WP webhook class registers route /webhook via register_rest_route
-//   Step 4:  WP webhook class verifies X-Arena-Signature header
-//   Step 5:  Signature verification uses hash_hmac with sha256
-//   Step 6:  Signature verification uses hash_equals (constant-time comparison)
-//   Step 7:  Webhook handler reads raw body for signature verification
-//   Step 8:  Webhook handler dispatches order_paid event type
-//   Step 9:  Webhook handler dispatches ticket_issued event type
-//   Step 10: Webhook handler dispatches refund_succeeded event type
-//   Step 11: order_paid handler updates _arena_order_paid post meta
-//   Step 12: ticket_issued handler updates _arena_ticket_id post meta
-//   Step 13: refund_succeeded handler updates _arena_refund_id post meta
-//   Step 14: Settings class has arena_webhook_secret option
-//   Step 15: Settings class has get_webhook_secret() helper
-//   Step 16: Settings class has arena_email_notifications option
-//   Step 17: Settings class has is_email_notifications_enabled() helper
-//   Step 18: Webhook handler sends customer email when notifications enabled
-//   Step 19: Main plugin file loads class-webhook.php
-//   Step 20: Main plugin file calls Arena_Events_Webhook::init()
-//   Step 21: Webhook handler returns 401 on invalid/missing signature
-//   Step 22: Webhook handler returns 422 on missing arena_event_id
-//   Step 23: WP plugin directory now contains class-webhook.php
-//   Step 24: Migration file for webhook_subscribers table exists
-//   Step 25: Migration creates webhook_subscribers table
-//   Step 26: Migration creates signing_secret column
-//   Step 27: Migration creates event_types column (TEXT[])
-//   Step 28: Migration creates active column with default TRUE
-//   Step 29: SQL query file for webhook_subscribers exists
-//   Step 30: SQL query CreateWebhookSubscriber exists
-//   Step 31: SQL query ListActiveWebhookSubscribers exists
-//   Step 32: SQL query DeactivateWebhookSubscriber exists
-//   Step 33: Generated Go file webhook_subscribers.sql.go exists
-//   Step 34: WebhookSubscriberRow struct in generated Go code
-//   Step 35: Querier interface includes CreateWebhookSubscriber
-//   Step 36: Querier interface includes ListActiveWebhookSubscribers
-//   Step 37: Platform handler file wp_webhooks.go exists
-//   Step 38: Platform handler has handleRegisterWebhookSubscriber
-//   Step 39: Platform handler has handleListWebhookSubscribers
-//   Step 40: Platform handler generates crypto/rand secret (32 bytes)
-//   Step 41: Platform handler response includes signing_secret field
-//   Step 42: Platform handler GET response does not expose signing_secret
-//   Step 43: server.go routes /v1/webhooks/subscribers
-//   Step 44: server.go declares webhookSubQueries field
-//   Step 45: Settings class registers webhook_secret settings field
+//
+//	Step 1:  WP webhook class file exists
+//	Step 2:  WP webhook class registers REST API namespace arena-events/v1
+//	Step 3:  WP webhook class registers route /webhook via register_rest_route
+//	Step 4:  WP webhook class verifies X-Arena-Signature header
+//	Step 5:  Signature verification uses hash_hmac with sha256
+//	Step 6:  Signature verification uses hash_equals (constant-time comparison)
+//	Step 7:  Webhook handler reads raw body for signature verification
+//	Step 8:  Webhook handler dispatches order_paid event type
+//	Step 9:  Webhook handler dispatches ticket_issued event type
+//	Step 10: Webhook handler dispatches refund_succeeded event type
+//	Step 11: order_paid handler updates _arena_order_paid post meta
+//	Step 12: ticket_issued handler updates _arena_ticket_id post meta
+//	Step 13: refund_succeeded handler updates _arena_refund_id post meta
+//	Step 14: Settings class has arena_webhook_secret option
+//	Step 15: Settings class has get_webhook_secret() helper
+//	Step 16: Settings class has arena_email_notifications option
+//	Step 17: Settings class has is_email_notifications_enabled() helper
+//	Step 18: Webhook handler sends customer email when notifications enabled
+//	Step 19: Main plugin file loads class-webhook.php
+//	Step 20: Main plugin file calls Arena_Events_Webhook::init()
+//	Step 21: Webhook handler returns 401 on invalid/missing signature
+//	Step 22: Webhook handler returns 422 on missing arena_event_id
+//	Step 23: WP plugin directory now contains class-webhook.php
+//	Step 24: Migration file for webhook_subscribers table exists
+//	Step 25: Migration creates webhook_subscribers table
+//	Step 26: Migration creates signing_secret column
+//	Step 27: Migration creates event_types column (TEXT[])
+//	Step 28: Migration creates active column with default TRUE
+//	Step 29: SQL query file for webhook_subscribers exists
+//	Step 30: SQL query CreateWebhookSubscriber exists
+//	Step 31: SQL query ListActiveWebhookSubscribers exists
+//	Step 32: SQL query DeactivateWebhookSubscriber exists
+//	Step 33: Generated Go file webhook_subscribers.sql.go exists
+//	Step 34: WebhookSubscriberRow struct in generated Go code
+//	Step 35: Querier interface includes CreateWebhookSubscriber
+//	Step 36: Querier interface includes ListActiveWebhookSubscribers
+//	Step 37: Platform handler file wp_webhooks.go exists
+//	Step 38: Platform handler has handleRegisterWebhookSubscriber
+//	Step 39: Platform handler has handleListWebhookSubscribers
+//	Step 40: Platform handler generates crypto/rand secret (32 bytes)
+//	Step 41: Platform handler response includes signing_secret field
+//	Step 42: Platform handler GET response does not expose signing_secret
+//	Step 43: server.go routes /v1/webhooks/subscribers
+//	Step 44: server.go declares webhookSubQueries field
+//	Step 45: Settings class registers webhook_secret settings field
 //
 // All tests are pure file/content checks — no live server or WordPress required.
 package httpserver

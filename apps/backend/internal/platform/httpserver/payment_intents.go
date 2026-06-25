@@ -32,10 +32,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -413,7 +414,7 @@ func (s *Server) handleTransitionPaymentIntent(w http.ResponseWriter, r *http.Re
 			"payment intent is in a terminal state and cannot be transitioned",
 			r,
 			map[string]any{
-				"current_state":  current.State,
+				"current_state":   current.State,
 				"requested_state": req.State,
 			},
 		))
@@ -428,7 +429,7 @@ func (s *Server) handleTransitionPaymentIntent(w http.ResponseWriter, r *http.Re
 			"requested state transition is not valid from the current state",
 			r,
 			map[string]any{
-				"current_state":  current.State,
+				"current_state":   current.State,
 				"requested_state": req.State,
 			},
 		))
@@ -507,12 +508,12 @@ type webhookPaymentIntentRequest struct {
 // This covers the common Stripe-compatible event type strings; real deployments
 // should extend or override this map per-provider.
 var webhookEventTypeToState = map[string]string{
-	"payment_intent.requires_action":  "requires_action",
-	"payment_intent.processing":       "processing",
+	"payment_intent.requires_action":   "requires_action",
+	"payment_intent.processing":        "processing",
 	"payment_intent.amount_capturable": "authorized",
-	"payment_intent.succeeded":        "succeeded",
-	"payment_intent.payment_failed":   "failed",
-	"payment_intent.manual_review":    "manual_review",
+	"payment_intent.succeeded":         "succeeded",
+	"payment_intent.payment_failed":    "failed",
+	"payment_intent.manual_review":     "manual_review",
 	// Shorthand aliases used by mock provider tests.
 	"mock.requires_action": "requires_action",
 	"mock.processing":      "processing",

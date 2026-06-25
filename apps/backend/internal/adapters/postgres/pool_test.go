@@ -16,11 +16,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // =============================================================================
@@ -230,7 +231,7 @@ func TestTx_FnReceivesCorrectTx(t *testing.T) {
 
 // TestRegisterPoolMetrics_NilMetricsIsNoop verifies the function does not panic
 // when m is nil.
-func TestRegisterPoolMetrics_NilMetricsIsNoop(t *testing.T) {
+func TestRegisterPoolMetrics_NilMetricsIsNoop(_ *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	RegisterPoolMetrics(ctx, nil, nil)

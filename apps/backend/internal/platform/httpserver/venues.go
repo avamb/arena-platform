@@ -6,12 +6,12 @@
 //
 // Endpoints:
 //
-//   POST   /v1/organizations/{org_id}/venues        — create a venue (venue.create, owner only)
-//   GET    /v1/venues                               — list all venues (venue.read, shared)
-//   GET    /v1/venues/{id}                          — get a venue by ID (venue.read, shared)
-//   GET    /v1/organizations/{org_id}/venues        — list venues for org (venue.read)
-//   PATCH  /v1/organizations/{org_id}/venues/{id}   — update a venue (venue.update, owner only)
-//   DELETE /v1/organizations/{org_id}/venues/{id}   — soft-delete a venue (venue.delete, owner only)
+//	POST   /v1/organizations/{org_id}/venues        — create a venue (venue.create, owner only)
+//	GET    /v1/venues                               — list all venues (venue.read, shared)
+//	GET    /v1/venues/{id}                          — get a venue by ID (venue.read, shared)
+//	GET    /v1/organizations/{org_id}/venues        — list venues for org (venue.read)
+//	PATCH  /v1/organizations/{org_id}/venues/{id}   — update a venue (venue.update, owner only)
+//	DELETE /v1/organizations/{org_id}/venues/{id}   — soft-delete a venue (venue.delete, owner only)
 //
 // Owner-gating is enforced by including org_id in the WHERE clause of every
 // write query (UpdateVenue, SoftDeleteVenue, InsertVenue). A non-owning org
@@ -27,13 +27,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────

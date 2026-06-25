@@ -10,11 +10,11 @@
 //  3. SELECT response_status, response_body, request_hash FROM idempotency_keys
 //     WHERE key=$1 AND scope=$2 AND expires_at > now().
 //     - HIT with matching hash      → replay the stored response (status+body)
-//                                     and short-circuit downstream handlers.
+//     and short-circuit downstream handlers.
 //     - HIT with mismatching hash   → 409 (key reused with different payload).
 //     - MISS                        → invoke downstream handler with a
-//                                     captured ResponseWriter, then INSERT
-//                                     the captured (status, body) row.
+//     captured ResponseWriter, then INSERT
+//     the captured (status, body) row.
 //
 // The middleware is intentionally agnostic about how the row is INSERTED in
 // the success path: callers either let the middleware persist a "best-effort"
@@ -36,10 +36,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/sync/singleflight"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
 // HeaderName is the canonical HTTP header used to carry the idempotency key.

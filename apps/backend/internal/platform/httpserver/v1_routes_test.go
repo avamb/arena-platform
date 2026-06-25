@@ -23,10 +23,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	httpadapter "github.com/abhteam/arena_new/apps/backend/internal/adapters/http"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
-	"github.com/go-chi/chi/v5"
 )
 
 // buildV1TestServer creates a fully-wired Server with stub auth enabled so that

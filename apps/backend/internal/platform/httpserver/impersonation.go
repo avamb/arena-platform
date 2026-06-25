@@ -49,10 +49,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
-	"github.com/google/uuid"
 )
 
 // maxImpersonationDuration is the upper bound on impersonation token lifetime.
@@ -76,11 +77,11 @@ type impersonateRequest struct {
 
 // impersonateResponse is the JSON body returned on success.
 type impersonateResponse struct {
-	Token               string `json:"token"`
-	ExpiresAt           string `json:"expires_at"`
-	ImpersonatedUserID  string `json:"impersonated_user_id"`
-	ImpersonatedBy      string `json:"impersonated_by"`
-	Reason              string `json:"reason"`
+	Token              string `json:"token"`
+	ExpiresAt          string `json:"expires_at"`
+	ImpersonatedUserID string `json:"impersonated_user_id"`
+	ImpersonatedBy     string `json:"impersonated_by"`
+	Reason             string `json:"reason"`
 }
 
 // handleImpersonate serves POST /v1/admin/impersonate.

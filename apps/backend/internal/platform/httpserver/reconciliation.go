@@ -42,10 +42,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -253,7 +254,7 @@ func (s *Server) handleSubmitReconciliationReport(w http.ResponseWriter, r *http
 		reportStatus = "exception"
 	}
 
-	totalLines := int32(len(req.Lines))
+	totalLines := int32(len(req.Lines)) //nolint:gosec // req.Lines length capped upstream by body-size limit
 
 	// ── Persist report + lines in a transaction ───────────────────────────────
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})

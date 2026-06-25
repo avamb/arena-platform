@@ -49,7 +49,7 @@ func (h *captureSlogHandler) Handle(_ context.Context, r slog.Record) error {
 }
 
 func (h *captureSlogHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
-func (h *captureSlogHandler) WithGroup(_ string) slog.Handler       { return h }
+func (h *captureSlogHandler) WithGroup(_ string) slog.Handler      { return h }
 
 // warnMessages returns the messages from all WARN-level records captured so far.
 func (h *captureSlogHandler) warnMessages() []string {
@@ -578,9 +578,9 @@ func TestJWTBothCases_WarnLogHasAuthCode(t *testing.T) {
 	nbfTok := issueNbfFutureToken(t)
 
 	for _, tc := range []struct {
-		name      string
-		token     string
-		wantCode  string
+		name     string
+		token    string
+		wantCode string
 	}{
 		{"expired", expiredTok, "auth.token_expired"},
 		{"nbf_future", nbfTok, "auth.token_not_yet_valid"},

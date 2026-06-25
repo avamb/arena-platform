@@ -41,8 +41,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
 // GDPRProcessor handles background processing of pending data_subject_requests.
@@ -171,10 +172,10 @@ func (p *GDPRProcessor) processExport(ctx context.Context, req gen.DataSubjectRe
 	}
 
 	type exportRequest struct {
-		ID          string  `json:"id"`
-		RequestType string  `json:"request_type"`
-		Status      string  `json:"status"`
-		CreatedAt   string  `json:"created_at"`
+		ID          string `json:"id"`
+		RequestType string `json:"request_type"`
+		Status      string `json:"status"`
+		CreatedAt   string `json:"created_at"`
 	}
 	var exportReqs []exportRequest
 	for _, r := range previousRequests {
@@ -199,8 +200,8 @@ func (p *GDPRProcessor) processExport(ctx context.Context, req gen.DataSubjectRe
 			"consent_given_at":  formatTimePtr(userData.ConsentGivenAt),
 			"marketing_consent": userData.MarketingConsent,
 		},
-		"roles":                    memberships,
-		"data_subject_requests":    exportReqs,
+		"roles":                 memberships,
+		"data_subject_requests": exportReqs,
 	}
 
 	exportJSON, err := json.Marshal(exportDoc)

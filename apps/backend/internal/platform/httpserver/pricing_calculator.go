@@ -26,9 +26,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -72,15 +73,15 @@ type PricingRules struct {
 //
 // In other words: Subtotal - Discount + PlatformFee + ProviderFee + Tax == Total.
 type PricingBreakdown struct {
-	UnitPrice   int64  `json:"unit_price"`    // price per single ticket
-	Quantity    int32  `json:"quantity"`      // number of tickets
-	Subtotal    int64  `json:"subtotal"`      // UnitPrice × Quantity
-	Discount    int64  `json:"discount"`      // promo discount (≥ 0, ≤ Subtotal)
-	PlatformFee int64  `json:"platform_fee"`  // platform service charge
-	ProviderFee int64  `json:"provider_fee"`  // payment-provider processing fee
-	Tax         int64  `json:"tax"`           // sales / VAT tax
-	Total       int64  `json:"total"`         // all-in amount the customer pays
-	Currency    string `json:"currency"`      // ISO 4217 currency code
+	UnitPrice   int64  `json:"unit_price"`   // price per single ticket
+	Quantity    int32  `json:"quantity"`     // number of tickets
+	Subtotal    int64  `json:"subtotal"`     // UnitPrice × Quantity
+	Discount    int64  `json:"discount"`     // promo discount (≥ 0, ≤ Subtotal)
+	PlatformFee int64  `json:"platform_fee"` // platform service charge
+	ProviderFee int64  `json:"provider_fee"` // payment-provider processing fee
+	Tax         int64  `json:"tax"`          // sales / VAT tax
+	Total       int64  `json:"total"`        // all-in amount the customer pays
+	Currency    string `json:"currency"`     // ISO 4217 currency code
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

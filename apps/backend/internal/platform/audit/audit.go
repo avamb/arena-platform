@@ -9,11 +9,11 @@
 // Two persistence entry points are exposed:
 //
 //   - Writer.Write    — fire-and-forget INSERT against the pgx pool. Suitable
-//                       for read paths or rare side effects.
+//     for read paths or rare side effects.
 //   - Writer.WriteTx  — INSERT inside a caller-supplied pgx.Tx. This is the
-//                       recommended path for /v1/echo and any other endpoint
-//                       that must keep the audit row atomic with its
-//                       business writes and outbox emission.
+//     recommended path for /v1/echo and any other endpoint
+//     that must keep the audit row atomic with its
+//     business writes and outbox emission.
 package audit
 
 import (
@@ -141,7 +141,7 @@ func prepareArgs(ev Event) ([]any, error) {
 // canonicaliseIP normalises whatever IP string we received (X-Forwarded-For,
 // RemoteAddr like "1.2.3.4:5678") into the canonical textual form Postgres
 // stores in the inet column. Returns "" when the input is not a valid IP so
-// the NULLIF($9,'') guard in insertSQL keeps the column NULL rather than
+// the NULLIF($9,”) guard in insertSQL keeps the column NULL rather than
 // failing the INSERT on a parse error.
 func canonicaliseIP(s string) string {
 	s = strings.TrimSpace(s)

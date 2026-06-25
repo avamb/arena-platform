@@ -9,8 +9,8 @@
 //  5. If the token is already revoked → return 204 (idempotent logout).
 //  6. Revoke the token in the database (sets revoked_at = now()).
 //  7. If a session store is wired, call RevokeSession to:
-//       a. Write "arena:revoked:{token}" in Redis with TTL = remaining lifetime.
-//       b. Remove the token from "arena:sessions:{userID}" sorted set.
+//     a. Write "arena:revoked:{token}" in Redis with TTL = remaining lifetime.
+//     b. Remove the token from "arena:sessions:{userID}" sorted set.
 //  8. Return 204 No Content.
 //
 // The endpoint is protected by auth.Middleware so unauthenticated requests
@@ -24,10 +24,11 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
-	"github.com/jackc/pgx/v5"
 )
 
 // handleAuthLogout serves POST /v1/auth/logout.

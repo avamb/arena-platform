@@ -52,8 +52,8 @@ type scannerRateLimiter struct {
 	mu           sync.Mutex
 	ipLimit      int
 	sessionLimit int
-	ips      map[string]*rateLimiterWindow
-	sessions map[string]*rateLimiterWindow
+	ips          map[string]*rateLimiterWindow
+	sessions     map[string]*rateLimiterWindow
 }
 
 // newScannerRateLimiter creates a rate limiter for scanner endpoints.
@@ -235,7 +235,7 @@ func (s *Server) handleScannerSnapshot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	barcodes, err := s.barcodeQueries.ListSnapshotBarcodesBySession(
-		ctx, sessionID, since, int32(perPage), int32(offset),
+		ctx, sessionID, since, int32(perPage), int32(offset), //nolint:gosec // perPage,offset bounded above by validation
 	)
 	if err != nil {
 		s.logger.Error("scanner: list snapshot failed",
@@ -424,4 +424,3 @@ func (s *Server) handleScannerValidate(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, resp)
 }
-

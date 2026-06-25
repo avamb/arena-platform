@@ -2,16 +2,17 @@
 // (feature #143).
 //
 // Tests cover:
-//   Step 1:  Event type constants have correct Bil24-compatible string values
-//   Step 2:  buildTicketIssuedPayload — required fields and Bil24 status
-//   Step 3:  buildTicketIssuedPayload — optional field handling (tier_id, holder_email)
-//   Step 4:  buildTicketRefundedPayload — financial context (amount, currency)
-//   Step 5:  buildTicketRevokedPayload — required fields
-//   Step 6:  publishScannerEvent no-ops gracefully when pool or outboxWriter is nil
-//   Step 7:  Server has outboxWriter field (compile-time wiring check)
-//   Step 8:  Source-code wiring — tickets.go calls publishTicketIssuedEvents
-//   Step 9:  Source-code wiring — refunds.go calls publishTicketRefundedEvents
-//   Step 10: Bil24 order status vocabulary (PAID|CANCELLED only)
+//
+//	Step 1:  Event type constants have correct Bil24-compatible string values
+//	Step 2:  buildTicketIssuedPayload — required fields and Bil24 status
+//	Step 3:  buildTicketIssuedPayload — optional field handling (tier_id, holder_email)
+//	Step 4:  buildTicketRefundedPayload — financial context (amount, currency)
+//	Step 5:  buildTicketRevokedPayload — required fields
+//	Step 6:  publishScannerEvent no-ops gracefully when pool or outboxWriter is nil
+//	Step 7:  Server has outboxWriter field (compile-time wiring check)
+//	Step 8:  Source-code wiring — tickets.go calls publishTicketIssuedEvents
+//	Step 9:  Source-code wiring — refunds.go calls publishTicketRefundedEvents
+//	Step 10: Bil24 order status vocabulary (PAID|CANCELLED only)
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver
@@ -23,10 +24,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -302,7 +304,7 @@ func TestScanner143_PublishNoOpWhenPoolNil(t *testing.T) {
 	}
 }
 
-func TestScanner143_PublishNoOpWhenOutboxNil(t *testing.T) {
+func TestScanner143_PublishNoOpWhenOutboxNil(_ *testing.T) {
 	// Should not panic; dbDownPool.BeginTx returns error → early return.
 	s := &Server{
 		pool:         &dbDownPool{},
@@ -317,7 +319,7 @@ func TestScanner143_PublishNoOpWhenOutboxNil(t *testing.T) {
 	})
 }
 
-func TestScanner143_PublishNoOpWhenBothNil(t *testing.T) {
+func TestScanner143_PublishNoOpWhenBothNil(_ *testing.T) {
 	s := &Server{
 		pool:         nil,
 		outboxWriter: nil,
@@ -331,7 +333,7 @@ func TestScanner143_PublishNoOpWhenBothNil(t *testing.T) {
 	})
 }
 
-func TestScanner143_PublishTicketIssuedNoOpWithDownPool(t *testing.T) {
+func TestScanner143_PublishTicketIssuedNoOpWithDownPool(_ *testing.T) {
 	// publishTicketIssuedEvents silently skips all events when BeginTx fails.
 	now := time.Now().UTC()
 	s := &Server{
@@ -353,10 +355,10 @@ func TestScanner143_PublishTicketIssuedNoOpWithDownPool(t *testing.T) {
 // Step 7: Server wiring (compile-time check)
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestScanner143_ServerHasOutboxWriterField(t *testing.T) {
+func TestScanner143_ServerHasOutboxWriterField(_ *testing.T) {
 	// Compile-time guard: if outboxWriter is removed from Server, this won't compile.
 	s := &Server{}
-	var w outbox.Writer = s.outboxWriter // nil satisfies the interface
+	var w = s.outboxWriter // nil satisfies the interface
 	_ = w
 }
 

@@ -53,7 +53,7 @@ func ctxWithActor(roles ...string) context.Context {
 
 // TestRBAC117_DBCheckerInterfaceSatisfied verifies that *DBChecker implements
 // the Checker interface at compile time.
-func TestRBAC117_DBCheckerInterfaceSatisfied(t *testing.T) {
+func TestRBAC117_DBCheckerInterfaceSatisfied(_ *testing.T) {
 	var _ permissions.Checker = permissions.NewDBChecker(&fakeRBACQuerier{})
 }
 
@@ -355,7 +355,7 @@ func TestRBAC117_FullVerification(t *testing.T) {
 		}
 	})
 
-	t.Run("step3_middleware_uses_real_checker", func(t *testing.T) {
+	t.Run("step3_middleware_uses_real_checker", func(_ *testing.T) {
 		// The RequirePermission middleware accepts any Checker; wiring DBChecker
 		// is the "real checker" step. Verify the middleware forwards allowed requests.
 		q := &fakeRBACQuerier{

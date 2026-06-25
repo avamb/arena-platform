@@ -2,10 +2,10 @@
 // "?lang=invalid returns default locale, not error"
 //
 // Covers the NegotiateLocale priority chain at the unit level:
-//   1. Invalid/unknown ?lang= falls back to Accept-Language then default
-//   2. Valid ?lang=ru selects ru
-//   3. Empty ?lang= falls through to Accept-Language
-//   4. Valid ?lang= takes priority over Accept-Language (highest priority source)
+//  1. Invalid/unknown ?lang= falls back to Accept-Language then default
+//  2. Valid ?lang=ru selects ru
+//  3. Empty ?lang= falls through to Accept-Language
+//  4. Valid ?lang= takes priority over Accept-Language (highest priority source)
 package i18n
 
 import "testing"

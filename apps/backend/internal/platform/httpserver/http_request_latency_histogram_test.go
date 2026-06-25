@@ -2,8 +2,9 @@
 // "HTTP request latency histogram exposed in /metrics"
 //
 // Feature description:
-//   Custom histogram http_request_duration_seconds with labels (route, method,
-//   status) and well-chosen buckets is exposed.
+//
+//	Custom histogram http_request_duration_seconds with labels (route, method,
+//	status) and well-chosen buckets is exposed.
 //
 // Six feature steps verified here:
 //
@@ -31,8 +32,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 )
 
 // =============================================================================
@@ -167,20 +169,20 @@ func TestHTTPLatencyHistogram_BucketsFromFiveMsTo30s(t *testing.T) {
 	// for sub-millisecond health-check responses) and le="+Inf" (always present
 	// as the catch-all bucket for Prometheus histograms).
 	wantLE := []string{
-		`le="0.001"`,  // 1 ms
-		`le="0.005"`,  // 5 ms   ← low end of feature spec
-		`le="0.01"`,   // 10 ms
-		`le="0.025"`,  // 25 ms
-		`le="0.05"`,   // 50 ms
-		`le="0.1"`,    // 100 ms
-		`le="0.25"`,   // 250 ms
-		`le="0.5"`,    // 500 ms
-		`le="1"`,      // 1 s
-		`le="2.5"`,    // 2.5 s
-		`le="5"`,      // 5 s
-		`le="10"`,     // 10 s
-		`le="30"`,     // 30 s  ← high end of feature spec
-		`le="+Inf"`,   // catch-all (always emitted)
+		`le="0.001"`, // 1 ms
+		`le="0.005"`, // 5 ms   ← low end of feature spec
+		`le="0.01"`,  // 10 ms
+		`le="0.025"`, // 25 ms
+		`le="0.05"`,  // 50 ms
+		`le="0.1"`,   // 100 ms
+		`le="0.25"`,  // 250 ms
+		`le="0.5"`,   // 500 ms
+		`le="1"`,     // 1 s
+		`le="2.5"`,   // 2.5 s
+		`le="5"`,     // 5 s
+		`le="10"`,    // 10 s
+		`le="30"`,    // 30 s  ← high end of feature spec
+		`le="+Inf"`,  // catch-all (always emitted)
 	}
 	for _, want := range wantLE {
 		if !strings.Contains(bodyStr, want) {

@@ -1,16 +1,17 @@
 // delivery_141_test.go — unit tests for feature #141 (Ticket delivery via email).
 //
 // Test coverage:
-//   Step 1: Migration file 0030_delivery_jobs.sql — table, status check, RBAC
-//   Step 2: SQL query file delivery_jobs.sql — all 4 named queries present
-//   Step 3: Gen file delivery_jobs.sql.go — DeliveryJobRow type, all 4 functions
-//   Step 4: Querier interface — delivery_job methods present (compile-time)
-//   Step 5: Email sender — LogSender.Send returns nil; SMTPSender compile-time check
-//   Step 6: Delivery handler — JobType constant, Payload struct, nil-sender path
-//   Step 7: Server fields — deliveryJobQueries, workerPool, emailSender wired in server.go
-//   Step 8: enqueueDeliveryJobs nil guard — no-op when deps absent
-//   Step 9: Audit log strings in handler and enqueue files
-//   Step 10: Checkout and payment_intents wire enqueueDeliveryJobs call
+//
+//	Step 1: Migration file 0030_delivery_jobs.sql — table, status check, RBAC
+//	Step 2: SQL query file delivery_jobs.sql — all 4 named queries present
+//	Step 3: Gen file delivery_jobs.sql.go — DeliveryJobRow type, all 4 functions
+//	Step 4: Querier interface — delivery_job methods present (compile-time)
+//	Step 5: Email sender — LogSender.Send returns nil; SMTPSender compile-time check
+//	Step 6: Delivery handler — JobType constant, Payload struct, nil-sender path
+//	Step 7: Server fields — deliveryJobQueries, workerPool, emailSender wired in server.go
+//	Step 8: enqueueDeliveryJobs nil guard — no-op when deps absent
+//	Step 9: Audit log strings in handler and enqueue files
+//	Step 10: Checkout and payment_intents wire enqueueDeliveryJobs call
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver
@@ -266,6 +267,9 @@ func TestDelivery141_Step3_DeliveryJobRowCompileTime(t *testing.T) {
 	if row.Status != "pending" {
 		t.Errorf("DeliveryJobRow.Status = %q, want %q", row.Status, "pending")
 	}
+	if row.Attempts != 0 {
+		t.Errorf("DeliveryJobRow.Attempts = %d, want 0", row.Attempts)
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -276,7 +280,7 @@ func TestDelivery141_Step3_DeliveryJobRowCompileTime(t *testing.T) {
 // compile time that gen.New(nil) satisfies gen.Querier, which now includes all
 // 4 delivery job methods. If the interface is missing any method, the build
 // fails before this test runs.
-func TestDelivery141_Step4_QuerierImplementsDeliveryJobMethods(t *testing.T) {
+func TestDelivery141_Step4_QuerierImplementsDeliveryJobMethods(_ *testing.T) {
 	var _ gen.Querier = gen.New(nil)
 }
 
@@ -300,13 +304,13 @@ func TestDelivery141_Step4_QuerierFileHasDeliveryJobMethods(t *testing.T) {
 
 // TestDelivery141_Step5_LogSenderImplementsSenderInterface verifies at
 // compile time that *email.LogSender satisfies email.Sender.
-func TestDelivery141_Step5_LogSenderImplementsSenderInterface(t *testing.T) {
+func TestDelivery141_Step5_LogSenderImplementsSenderInterface(_ *testing.T) {
 	var _ email.Sender = (*email.LogSender)(nil)
 }
 
 // TestDelivery141_Step5_SMTPSenderImplementsSenderInterface verifies at
 // compile time that *email.SMTPSender satisfies email.Sender.
-func TestDelivery141_Step5_SMTPSenderImplementsSenderInterface(t *testing.T) {
+func TestDelivery141_Step5_SMTPSenderImplementsSenderInterface(_ *testing.T) {
 	var _ email.Sender = (*email.SMTPSender)(nil)
 }
 

@@ -37,8 +37,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
 // QueryTracer is a pgx.QueryTracer that mirrors every SQL statement into the

@@ -155,7 +155,7 @@ func TestSession118_LogoutNilPool(t *testing.T) {
 
 // TestSession118_LogoutRouteExists confirms the handler is wired as a method
 // on *Server (compile-time check only in this test).
-func TestSession118_LogoutRouteExists(t *testing.T) {
+func TestSession118_LogoutRouteExists(_ *testing.T) {
 	s := &Server{cfg: &config.Config{AppEnv: config.EnvDevelopment}}
 	_ = s.handleAuthLogout // compile-time: method must exist on *Server
 }
@@ -475,7 +475,7 @@ func TestSession118_FullVerification(t *testing.T) {
 		}
 	})
 
-	t.Run("step2_post_auth_logout_exists", func(t *testing.T) {
+	t.Run("step2_post_auth_logout_exists", func(_ *testing.T) {
 		s := &Server{cfg: &config.Config{AppEnv: config.EnvDevelopment}}
 		_ = s.handleAuthLogout // compile-time check
 	})

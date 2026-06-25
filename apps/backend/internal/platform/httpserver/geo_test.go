@@ -1,11 +1,12 @@
 // geo_test.go — unit tests for feature #123 (Country & city reference data).
 //
 // Test coverage:
-//   Step 1: Migration file 0006_geo.sql exists with countries/cities schema + IL/EE seeds
-//   Step 2: GET /v1/geo/countries, GET /v1/geo/cities routes mounted and responding
-//   Step 3: Admin POST/PATCH routes require JWT auth (401 when unauthenticated)
-//   Step 4: i18n_text linkage — migration seeds geo.countries / geo.cities namespaces;
-//           geo.sql queries use i18n_text LEFT JOINs with COALESCE locale fallback
+//
+//	Step 1: Migration file 0006_geo.sql exists with countries/cities schema + IL/EE seeds
+//	Step 2: GET /v1/geo/countries, GET /v1/geo/cities routes mounted and responding
+//	Step 3: Admin POST/PATCH routes require JWT auth (401 when unauthenticated)
+//	Step 4: i18n_text linkage — migration seeds geo.countries / geo.cities namespaces;
+//	        geo.sql queries use i18n_text LEFT JOINs with COALESCE locale fallback
 //
 // All tests are unit tests — no live PostgreSQL required.
 package httpserver
@@ -18,11 +19,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
-	"github.com/google/uuid"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────

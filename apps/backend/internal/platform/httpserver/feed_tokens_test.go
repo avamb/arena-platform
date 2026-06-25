@@ -1,11 +1,12 @@
 // feed_tokens_test.go — unit tests for feature #122 (Agent feed token management).
 //
 // Test coverage:
-//   Step 1: Migration file 0013_agent_feed_tokens.sql exists with correct schema + seeds
-//   Step 2: POST/GET/DELETE endpoints scoped to org+channel - auth-gated,
-//           with correct request validation behaviour (no DB required)
-//   Step 3: Last-used-at update — TouchFeedTokenLastUsed wired in public feed handler
-//   Step 4: sqlc query file (feed_tokens.sql) and gen file (feed_tokens.sql.go) structure
+//
+//	Step 1: Migration file 0013_agent_feed_tokens.sql exists with correct schema + seeds
+//	Step 2: POST/GET/DELETE endpoints scoped to org+channel - auth-gated,
+//	        with correct request validation behaviour (no DB required)
+//	Step 3: Last-used-at update — TouchFeedTokenLastUsed wired in public feed handler
+//	Step 4: sqlc query file (feed_tokens.sql) and gen file (feed_tokens.sql.go) structure
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver
@@ -18,10 +19,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
-	"github.com/google/uuid"
 )
 
 const feedTokenTestActorID = "00000000-0000-0000-0000-000000000002"
@@ -691,7 +693,7 @@ func TestFeedToken122_GenerateFeedToken_IsHex64Chars(t *testing.T) {
 	}
 	// All chars should be hex.
 	for i, c := range token {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			t.Errorf("generateFeedToken: char %d is not lowercase hex: %c", i, c)
 		}
 	}

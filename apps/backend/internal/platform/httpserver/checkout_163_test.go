@@ -24,8 +24,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/google/uuid"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -62,13 +63,13 @@ func TestCheckout163_Step2_SumInvariant_FullSnapshot(t *testing.T) {
 	// providerFee = 4500*200/10000 = 90
 	// tax         = 4500*1700/10000 = 765
 	// total       = 4500 + 225 + 90 + 765 = 5580
-	subtotal    := int64(5000)
-	discount    := int64(500)
+	subtotal := int64(5000)
+	discount := int64(500)
 	platformFee := int64(225)
 	providerFee := int64(90)
-	tax         := int64(765)
-	total       := int64(5580)
-	currency    := "ILS"
+	tax := int64(765)
+	total := int64(5580)
+	currency := "ILS"
 
 	cs := gen.CheckoutSessionRow{
 		ID:          uuid.New(),
@@ -91,7 +92,7 @@ func TestCheckout163_Step2_SumInvariant_FullSnapshot(t *testing.T) {
 
 	// Verify sum invariant:
 	// Subtotal + sum(Discounts) + sum(Fees) + sum(Taxes) == Total
-	var componentSum int64 = bd.Subtotal
+	var componentSum = bd.Subtotal
 	for _, d := range bd.Discounts {
 		componentSum += d.Amount
 	}
@@ -115,13 +116,13 @@ func TestCheckout163_Step3_ZeroComponentsProduceEmptySlices(t *testing.T) {
 	t.Parallel()
 
 	// Free tier: all components zero.
-	subtotal    := int64(0)
-	discount    := int64(0)
+	subtotal := int64(0)
+	discount := int64(0)
 	platformFee := int64(0)
 	providerFee := int64(0)
-	tax         := int64(0)
-	total       := int64(0)
-	currency    := "ILS"
+	tax := int64(0)
+	total := int64(0)
+	currency := "ILS"
 
 	cs := gen.CheckoutSessionRow{
 		ID:          uuid.New(),
@@ -166,13 +167,13 @@ func TestCheckout163_Step3_ZeroComponentsProduceEmptySlices(t *testing.T) {
 func TestCheckout163_Step4_DiscountAmountIsNegative(t *testing.T) {
 	t.Parallel()
 
-	subtotal    := int64(2000)
-	discount    := int64(200) // 10 % off
+	subtotal := int64(2000)
+	discount := int64(200) // 10 % off
 	platformFee := int64(0)
 	providerFee := int64(0)
-	tax         := int64(0)
-	total       := int64(1800)
-	currency    := "USD"
+	tax := int64(0)
+	total := int64(1800)
+	currency := "USD"
 
 	cs := gen.CheckoutSessionRow{
 		ID:          uuid.New(),
@@ -244,9 +245,9 @@ func TestCheckout163_Step5_PropertySweep_SumInvariant(t *testing.T) {
 			t.Parallel()
 			sub := c.subtotal
 			dis := c.discount
-			pf  := c.platformFee
+			pf := c.platformFee
 			pvf := c.providerFee
-			tx  := c.tax
+			tx := c.tax
 			tot := c.total
 			cur := c.currency
 
@@ -269,7 +270,7 @@ func TestCheckout163_Step5_PropertySweep_SumInvariant(t *testing.T) {
 				t.Fatalf("case %d: buildPriceBreakdown returned false", i)
 			}
 
-			var sum int64 = bd.Subtotal
+			var sum = bd.Subtotal
 			for _, d := range bd.Discounts {
 				sum += d.Amount
 			}
@@ -363,13 +364,13 @@ func TestCheckout163_Step8_ValidUUIDDBUnavailable(t *testing.T) {
 func TestCheckout163_Step9_BreakdownLabelsAreNonEmpty(t *testing.T) {
 	t.Parallel()
 
-	subtotal    := int64(5000)
-	discount    := int64(500)
+	subtotal := int64(5000)
+	discount := int64(500)
 	platformFee := int64(225)
 	providerFee := int64(90)
-	tax         := int64(765)
-	total       := int64(5580)
-	currency    := "ILS"
+	tax := int64(765)
+	total := int64(5580)
+	currency := "ILS"
 
 	cs := gen.CheckoutSessionRow{
 		ID:          uuid.New(),

@@ -1,11 +1,12 @@
 // publications_test.go — unit tests for feature #151 (Event publications model).
 //
 // Test coverage:
-//   Step 1: Migration file 0017_event_publications.sql — table, constraints, RBAC seeds
-//   Step 2: Route mounting and auth-gating (POST/DELETE/GET /v1/events/{id}/publications)
-//   Step 3: Legacy Bil24 subscriptions migration outline present in the migration file
-//   Step 4: Request validation — missing fields, invalid UUIDs, content-type
-//           sqlc query file and gen file structure
+//
+//	Step 1: Migration file 0017_event_publications.sql — table, constraints, RBAC seeds
+//	Step 2: Route mounting and auth-gating (POST/DELETE/GET /v1/events/{id}/publications)
+//	Step 3: Legacy Bil24 subscriptions migration outline present in the migration file
+//	Step 4: Request validation — missing fields, invalid UUIDs, content-type
+//	        sqlc query file and gen file structure
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver
@@ -18,10 +19,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
-	"github.com/google/uuid"
 )
 
 const publicationTestActorID = "00000000-0000-0000-0000-000000000003"
@@ -537,7 +539,7 @@ func TestPublication151_GenFileHasAllQueryMethods(t *testing.T) {
 // Step 4g: Querier interface contains all publication methods (compile-time)
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestPublication151_QuerierInterfaceHasPublicationMethods(t *testing.T) {
+func TestPublication151_QuerierInterfaceHasPublicationMethods(_ *testing.T) {
 	// Compile-time assertion: *gen.Queries must implement gen.Querier.
 	// The querier.go file already has: var _ Querier = (*Queries)(nil)
 	// If any publication method is missing on *Queries, this package won't compile.

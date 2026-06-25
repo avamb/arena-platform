@@ -1,16 +1,17 @@
 // tickets_139_test.go — unit tests for feature #139 (Ticket issuance on payment success / free checkout).
 //
 // Test coverage:
-//   Step 1: Migration file 0026_tickets.sql — table, status enum, indexes, RBAC
-//   Step 2: SQL query file tickets.sql — all 4 named queries present
-//   Step 3: Gen file tickets.sql.go — TicketRow type, all 4 query functions
-//   Step 4: Querier interface — ticket methods present (compile-time)
-//   Step 5: issueTicketsForCheckout — nil-queries guard, idempotency documented
-//   Step 6: HTTP route — GET /v1/checkout/{id}/tickets requires auth (401)
-//   Step 7: HTTP route — GET /v1/checkout/{id}/tickets mounted and reachable
-//   Step 8: Webhook handler — payment.succeeded route reachable
-//   Step 9: Free checkout handler — POST /v1/checkout/{id}/complete triggers issuance path
-//   Step 10: ticketFromRow — RFC3339 timestamps, nil-safe TierID/HolderEmail
+//
+//	Step 1: Migration file 0026_tickets.sql — table, status enum, indexes, RBAC
+//	Step 2: SQL query file tickets.sql — all 4 named queries present
+//	Step 3: Gen file tickets.sql.go — TicketRow type, all 4 query functions
+//	Step 4: Querier interface — ticket methods present (compile-time)
+//	Step 5: issueTicketsForCheckout — nil-queries guard, idempotency documented
+//	Step 6: HTTP route — GET /v1/checkout/{id}/tickets requires auth (401)
+//	Step 7: HTTP route — GET /v1/checkout/{id}/tickets mounted and reachable
+//	Step 8: Webhook handler — payment.succeeded route reachable
+//	Step 9: Free checkout handler — POST /v1/checkout/{id}/complete triggers issuance path
+//	Step 10: ticketFromRow — RFC3339 timestamps, nil-safe TierID/HolderEmail
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver
@@ -23,10 +24,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
-	"github.com/google/uuid"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -271,7 +273,7 @@ func TestTicket139_Step3_TicketRowHasRequiredFields(t *testing.T) {
 // that gen.New(nil) satisfies gen.Querier, which now includes all 4 ticket
 // methods. If the interface is missing any method, the build fails before
 // this test runs.
-func TestTicket139_Step4_QuerierImplementsTicketMethods(t *testing.T) {
+func TestTicket139_Step4_QuerierImplementsTicketMethods(_ *testing.T) {
 	var _ gen.Querier = gen.New(nil)
 }
 

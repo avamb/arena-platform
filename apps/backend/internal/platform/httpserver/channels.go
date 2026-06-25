@@ -6,24 +6,24 @@
 //
 // Endpoints:
 //
-//   POST   /v1/organizations/{org_id}/channels        — create a sales channel (channel.create)
-//   GET    /v1/organizations/{org_id}/channels        — list channels for an org (channel.read)
-//   GET    /v1/organizations/{org_id}/channels/{id}   — get a single channel (channel.read)
-//   PATCH  /v1/organizations/{org_id}/channels/{id}   — update a channel (channel.update)
-//   DELETE /v1/organizations/{org_id}/channels/{id}   — soft-delete a channel (channel.delete)
+//	POST   /v1/organizations/{org_id}/channels        — create a sales channel (channel.create)
+//	GET    /v1/organizations/{org_id}/channels        — list channels for an org (channel.read)
+//	GET    /v1/organizations/{org_id}/channels/{id}   — get a single channel (channel.read)
+//	PATCH  /v1/organizations/{org_id}/channels/{id}   — update a channel (channel.update)
+//	DELETE /v1/organizations/{org_id}/channels/{id}   — soft-delete a channel (channel.delete)
 //
 // All endpoints are gated by JWT auth + a named permission.
 //
 // Config validation (Step 3):
 //
-//   When payment_mode = "direct_merchant", provider_account_id is required.
-//   This is enforced in validateChannelConfig() before any DB write.
+//	When payment_mode = "direct_merchant", provider_account_id is required.
+//	This is enforced in validateChannelConfig() before any DB write.
 //
 // TTL override resolution (Step 4):
 //
-//   reservation_ttl_override overrides the parent organization's
-//   reservation_ttl_seconds when non-nil. The effective TTL is included in the
-//   response as effective_reservation_ttl_seconds.
+//	reservation_ttl_override overrides the parent organization's
+//	reservation_ttl_seconds when non-nil. The effective TTL is included in the
+//	response as effective_reservation_ttl_seconds.
 package httpserver
 
 import (
@@ -36,12 +36,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -50,31 +51,31 @@ import (
 
 // channelResponse is the JSON representation of a single sales channel.
 type channelResponse struct {
-	ID                    string  `json:"id"`
-	OrgID                 string  `json:"org_id"`
-	Name                  string  `json:"name"`
-	PaymentMode           string  `json:"payment_mode"`
-	Provider              string  `json:"provider"`
-	ProviderAccountID     *string `json:"provider_account_id"`
-	FeePercent            string  `json:"fee_percent"`
-	ReservationTTLOverride *int32 `json:"reservation_ttl_override"`
-	CreatedAt             string  `json:"created_at"`
-	UpdatedAt             string  `json:"updated_at"`
+	ID                     string  `json:"id"`
+	OrgID                  string  `json:"org_id"`
+	Name                   string  `json:"name"`
+	PaymentMode            string  `json:"payment_mode"`
+	Provider               string  `json:"provider"`
+	ProviderAccountID      *string `json:"provider_account_id"`
+	FeePercent             string  `json:"fee_percent"`
+	ReservationTTLOverride *int32  `json:"reservation_ttl_override"`
+	CreatedAt              string  `json:"created_at"`
+	UpdatedAt              string  `json:"updated_at"`
 }
 
 // channelFromRow converts a SalesChannelRow to a channelResponse.
 func channelFromRow(ch gen.SalesChannelRow) channelResponse {
 	return channelResponse{
-		ID:                    ch.ID.String(),
-		OrgID:                 ch.OrgID.String(),
-		Name:                  ch.Name,
-		PaymentMode:           ch.PaymentMode,
-		Provider:              ch.Provider,
-		ProviderAccountID:     ch.ProviderAccountID,
-		FeePercent:            ch.FeePercent,
+		ID:                     ch.ID.String(),
+		OrgID:                  ch.OrgID.String(),
+		Name:                   ch.Name,
+		PaymentMode:            ch.PaymentMode,
+		Provider:               ch.Provider,
+		ProviderAccountID:      ch.ProviderAccountID,
+		FeePercent:             ch.FeePercent,
 		ReservationTTLOverride: ch.ReservationTTLOverride,
-		CreatedAt:             ch.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt:             ch.UpdatedAt.UTC().Format(time.RFC3339),
+		CreatedAt:              ch.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:              ch.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 }
 
@@ -125,11 +126,11 @@ func validateChannelConfig(paymentMode, provider, providerAccountID string) stri
 
 // createChannelRequest is the request body for POST /v1/organizations/{org_id}/channels.
 type createChannelRequest struct {
-	Name                  string  `json:"name"`
-	PaymentMode           string  `json:"payment_mode"`
-	Provider              string  `json:"provider"`
-	ProviderAccountID     string  `json:"provider_account_id"`
-	FeePercent            string  `json:"fee_percent"`
+	Name                   string `json:"name"`
+	PaymentMode            string `json:"payment_mode"`
+	Provider               string `json:"provider"`
+	ProviderAccountID      string `json:"provider_account_id"`
+	FeePercent             string `json:"fee_percent"`
 	ReservationTTLOverride *int32 `json:"reservation_ttl_override"`
 }
 
@@ -316,12 +317,12 @@ func (s *Server) handleGetChannel(w http.ResponseWriter, r *http.Request) {
 // updateChannelRequest is the request body for PATCH /v1/organizations/{org_id}/channels/{id}.
 // All fields are optional; empty/nil values leave the existing value unchanged.
 type updateChannelRequest struct {
-	Name                  string  `json:"name"`
-	PaymentMode           string  `json:"payment_mode"`
-	Provider              string  `json:"provider"`
-	ProviderAccountID     *string `json:"provider_account_id"`
-	FeePercent            *string `json:"fee_percent"`
-	ReservationTTLOverride *int32 `json:"reservation_ttl_override"`
+	Name                   string  `json:"name"`
+	PaymentMode            string  `json:"payment_mode"`
+	Provider               string  `json:"provider"`
+	ProviderAccountID      *string `json:"provider_account_id"`
+	FeePercent             *string `json:"fee_percent"`
+	ReservationTTLOverride *int32  `json:"reservation_ttl_override"`
 }
 
 // handleUpdateChannel serves PATCH /v1/organizations/{org_id}/channels/{id}.

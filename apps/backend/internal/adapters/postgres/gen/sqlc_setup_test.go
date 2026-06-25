@@ -6,10 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
 // ─── fake DBTX ───────────────────────────────────────────────────────────────
@@ -65,8 +66,8 @@ func TestSQLCSetup_ConfigFileExists(t *testing.T) {
 	// generated package compiles with the expected engine settings (pgx/v5,
 	// emit_interface, emit_json_tags).  Importing this package from test code
 	// already proves the package compiles under those settings.
-	if _, err := gen.New(nil), error(nil); err != nil {
-		t.Fatal("unexpected error creating Queries with nil DBTX")
+	if q := gen.New(nil); q == nil {
+		t.Fatal("expected non-nil Queries struct from gen.New(nil)")
 	}
 }
 
@@ -80,13 +81,13 @@ func TestSQLCSetup_NewReturnsQueriesStruct(t *testing.T) {
 	}
 }
 
-func TestSQLCSetup_QueriesImplementsQuerier(t *testing.T) {
+func TestSQLCSetup_QueriesImplementsQuerier(_ *testing.T) {
 	// The compile-time assertion in querier.go already guarantees this;
 	// this test documents the expectation in human-readable form.
 	var _ gen.Querier = gen.New(&fakeDBTX{row: &fakeRow{}})
 }
 
-func TestSQLCSetup_WithTxReturnsNewQueriesInstance(t *testing.T) {
+func TestSQLCSetup_WithTxReturnsNewQueriesInstance(_ *testing.T) {
 	db := &fakeDBTX{row: &fakeRow{val: uuid.New()}}
 	q1 := gen.New(db)
 
@@ -173,7 +174,7 @@ func TestSQLCSetup_SelectUUIDv7CallsQueryRow(t *testing.T) {
 // ─── Full verification: all steps in one test ────────────────────────────────
 
 func TestSQLCSetup_FullVerification(t *testing.T) {
-	t.Run("step1_sqlc_yaml_engine_postgresql_compile_check", func(t *testing.T) {
+	t.Run("step1_sqlc_yaml_engine_postgresql_compile_check", func(_ *testing.T) {
 		// Compiling this file with pgx/v5 DBTX interface proves sqlc.yaml's
 		// sql_package = "pgx/v5" setting is honoured.
 		var _ gen.DBTX = (*fakeDBTX)(nil)
@@ -189,7 +190,7 @@ func TestSQLCSetup_FullVerification(t *testing.T) {
 		}
 	})
 
-	t.Run("step3_gen_directory", func(t *testing.T) {
+	t.Run("step3_gen_directory", func(_ *testing.T) {
 		// Importing this package from the test proves gen/ exists and compiles.
 		var _ gen.Querier = gen.New(&fakeDBTX{row: &fakeRow{}})
 	})
@@ -234,12 +235,12 @@ func TestSQLCSetup_FullVerification(t *testing.T) {
 
 // ─── Makefile / README documentation test ────────────────────────────────────
 
-func TestSQLCSetup_MakefileSQLCGenerateTargetDocumented(t *testing.T) {
+func TestSQLCSetup_MakefileSQLCGenerateTargetDocumented(_ *testing.T) {
 	// This test verifies step 5 at the package level: the make sqlc-generate
 	// target is documented (enforced by a separate static check in the root).
 	// Here we confirm the generated method signature matches what callers expect.
 	var q gen.Querier = gen.New(&fakeDBTX{row: &fakeRow{val: uuid.New()}})
-	if q == nil {
-		t.Fatal("nil Querier")
-	}
+	// gen.New always returns a concrete *Queries (never nil), so just exercise
+	// the assigned variable so static analysis does not flag an unused write.
+	_ = q
 }

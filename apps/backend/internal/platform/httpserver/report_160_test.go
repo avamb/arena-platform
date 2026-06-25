@@ -1,21 +1,22 @@
 // report_160_test.go — unit tests for feature #160 (Report delivery + recipient deduplication).
 //
 // Test coverage:
-//   Step 1: reportdelivery/handler.go — JobType constant, Payload struct, NewHandler compile-time check.
-//   Step 2: ReportRecipientRow struct — UserID, Email, Roles fields present in event_reports.sql.go.
-//   Step 3: GetReportRecipientsForOrg query — present in event_reports.sql and event_reports.sql.go.
-//   Step 4: Querier interface — GetReportRecipientsForOrg method present.
-//   Step 5: report_delivery_enqueue.go — enqueueReportDeliveryJob method present on Server.
-//   Step 6: event_reports.go — enqueueReportDeliveryJob called from handleTriggerEventReport.
-//   Step 7: Deduplication logic — formatRolesDisplay and dedup helper functions.
-//   Step 8: Worker handler nil-guard — NewHandler with nil Sender is safe (dev mode).
-//   Step 9: Worker handler: report not ready → retryable error returned.
-//   Step 10: Worker handler: report failed → nil returned (no email delivery).
-//   Step 11: Email renderers — renderReportEmailHTML and renderReportEmailText produce non-empty output.
-//   Step 12: formatMinorAmount helper — correct conversion of minor units.
-//   Step 13: Integration — organizer == agent (same user) → one RecipientRow with combined roles.
-//   Step 14: Integration — different emails → separate RecipientRows.
-//   Step 15: Audit log strings in reportdelivery handler.
+//
+//	Step 1: reportdelivery/handler.go — JobType constant, Payload struct, NewHandler compile-time check.
+//	Step 2: ReportRecipientRow struct — UserID, Email, Roles fields present in event_reports.sql.go.
+//	Step 3: GetReportRecipientsForOrg query — present in event_reports.sql and event_reports.sql.go.
+//	Step 4: Querier interface — GetReportRecipientsForOrg method present.
+//	Step 5: report_delivery_enqueue.go — enqueueReportDeliveryJob method present on Server.
+//	Step 6: event_reports.go — enqueueReportDeliveryJob called from handleTriggerEventReport.
+//	Step 7: Deduplication logic — formatRolesDisplay and dedup helper functions.
+//	Step 8: Worker handler nil-guard — NewHandler with nil Sender is safe (dev mode).
+//	Step 9: Worker handler: report not ready → retryable error returned.
+//	Step 10: Worker handler: report failed → nil returned (no email delivery).
+//	Step 11: Email renderers — renderReportEmailHTML and renderReportEmailText produce non-empty output.
+//	Step 12: formatMinorAmount helper — correct conversion of minor units.
+//	Step 13: Integration — organizer == agent (same user) → one RecipientRow with combined roles.
+//	Step 14: Integration — different emails → separate RecipientRows.
+//	Step 15: Audit log strings in reportdelivery handler.
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver
@@ -27,9 +28,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/reportdelivery"
-	"github.com/google/uuid"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -251,7 +253,7 @@ type stubReportQueriesNotReady struct {
 	report       gen.EventReportRow
 }
 
-func (s *stubReportQueriesNotReady) GetEventReportByID(_ context.Context, id uuid.UUID) (gen.EventReportRow, error) {
+func (s *stubReportQueriesNotReady) GetEventReportByID(_ context.Context, _ uuid.UUID) (gen.EventReportRow, error) {
 	return s.report, nil
 }
 
@@ -457,7 +459,7 @@ func TestReportDelivery160_Bonus_RecipientRowJSONRoundTrip(t *testing.T) {
 // Bonus: HandlerOptions struct has Sender and ReportQueries fields
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestReportDelivery160_Bonus_HandlerOptionsHasRequiredFields(t *testing.T) {
+func TestReportDelivery160_Bonus_HandlerOptionsHasRequiredFields(_ *testing.T) {
 	// Compile-time: ensure we can initialise all expected fields.
 	_ = reportdelivery.HandlerOptions{
 		ReportQueries: nil,
@@ -561,6 +563,12 @@ func TestReportDelivery160_Bonus_RolesFieldSupportsMultipleRoles(t *testing.T) {
 		UserID: uuid.New(),
 		Email:  "multi@example.com",
 		Roles:  "agent,organizer,platform_operator",
+	}
+	if row.UserID == uuid.Nil {
+		t.Fatal("UserID round-trip failed")
+	}
+	if row.Email != "multi@example.com" {
+		t.Fatalf("Email round-trip failed: got %q", row.Email)
 	}
 	roles := strings.Split(row.Roles, ",")
 	if len(roles) != 3 {

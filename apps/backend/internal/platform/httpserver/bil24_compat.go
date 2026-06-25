@@ -203,6 +203,8 @@ func TranslatePlatformID(id uuid.UUID) string {
 // are present to serve the compat gateway. When nil, the feature was not
 // enabled at server construction time. Note: individual commands may still
 // return 503 if a specific query subset is missing.
+//
+//nolint:unused // referenced by test #157 as identifier surface check
 func (s *Server) bil24CompatEnabled() bool {
 	return s.bil24Enabled
 }
@@ -558,7 +560,7 @@ func (s *Server) handleBil24GetOrderInfo(w http.ResponseWriter, r *http.Request,
 // response signalling that the command structure is understood.
 //
 // Response: { "resultCode": 0, "command": "CREATE_ORDER_EXT", "orderId": "<placeholder>" }
-func (s *Server) handleBil24CreateOrderExt(w http.ResponseWriter, r *http.Request, req bil24Request) {
+func (s *Server) handleBil24CreateOrderExt(w http.ResponseWriter, _ *http.Request, req bil24Request) {
 	if req.ActionEventID == "" {
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeInvalidRequest,
@@ -750,7 +752,7 @@ func (s *Server) handleBil24ScanTicket(w http.ResponseWriter, r *http.Request, r
 // a placeholder response.
 //
 // Response: { "resultCode": 0, "command": "CANCEL_ORDER", "status": "cancelled" }
-func (s *Server) handleBil24CancelOrder(w http.ResponseWriter, r *http.Request, req bil24Request) {
+func (s *Server) handleBil24CancelOrder(w http.ResponseWriter, _ *http.Request, req bil24Request) {
 	if req.OrderID == "" {
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeInvalidRequest, "orderId is required",

@@ -56,16 +56,16 @@ type httpCounterServer struct {
 
 func newHTTPCounterServer() *httpCounterServer {
 	c := &httpCounterServer{}
-	c.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		c.hits.Add(1)
 		w.WriteHeader(http.StatusOK)
 	}))
 	return c
 }
 
-func (c *httpCounterServer) URL() string       { return c.server.URL }
-func (c *httpCounterServer) HitCount() int64   { return c.hits.Load() }
-func (c *httpCounterServer) Close()            { c.server.Close() }
+func (c *httpCounterServer) URL() string     { return c.server.URL }
+func (c *httpCounterServer) HitCount() int64 { return c.hits.Load() }
+func (c *httpCounterServer) Close()          { c.server.Close() }
 
 // =============================================================================
 // httpEventDispatcher — real Dispatcher that POSTs event payload to a URL

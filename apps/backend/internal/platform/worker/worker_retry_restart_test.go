@@ -603,7 +603,7 @@ func TestWorkerRetryPersist_MultipleRestartsCumulativeAttempts(t *testing.T) {
 	// max_attempts=5: we restart after each of attempts 1, 2, 3, then let it run to failure.
 	jobID := q.insert("test.always_fail", []byte(`{}`), time.Time{}, 5)
 
-	startWorker := func(id, instanceID string) (context.CancelFunc, error) {
+	startWorker := func(_, instanceID string) (context.CancelFunc, error) {
 		w, err := New(Options{
 			Queue:           q,
 			Registry:        reg,

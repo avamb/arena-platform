@@ -104,6 +104,18 @@ func TestAuditEvent_RequiredFields(t *testing.T) {
 	if ev.OccurredAt.IsZero() {
 		t.Error("OccurredAt must not be zero")
 	}
+	if ev.ActorType != "user" {
+		t.Errorf("ActorType: want user, got %q", ev.ActorType)
+	}
+	if ev.RequestID != "req-1" {
+		t.Errorf("RequestID: want req-1, got %q", ev.RequestID)
+	}
+	if ev.TraceID != "trace-1" {
+		t.Errorf("TraceID: want trace-1, got %q", ev.TraceID)
+	}
+	if ev.IP != "127.0.0.1" {
+		t.Errorf("IP: want 127.0.0.1, got %q", ev.IP)
+	}
 }
 
 // =============================================================================

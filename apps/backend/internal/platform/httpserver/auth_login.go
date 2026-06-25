@@ -34,12 +34,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/ratelimit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/users"
-	"github.com/jackc/pgx/v5"
 )
 
 const (
@@ -208,8 +209,8 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	accessToken, exp, err := auth.IssueJWT(
 		s.cfg.JWTSecretStub,
 		actorID,
-		nil,   // no org_id in foundation milestone
-		nil,   // roles come from DB in a later milestone
+		nil, // no org_id in foundation milestone
+		nil, // roles come from DB in a later milestone
 		jwtIssuer,
 		jwtAudience,
 		accessTokenTTL,
@@ -436,5 +437,3 @@ func (s *Server) handleAuthRefresh(w http.ResponseWriter, r *http.Request) {
 		"user_id":      actorID.String(),
 	})
 }
-
-

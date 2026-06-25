@@ -16,8 +16,8 @@
 //  1. With fault injection ON:
 //     - POST /v1/echo returns HTTP 500
 //     - Response code is 'internal.transaction_failed' (not 'audit_failed',
-//       not 'outbox_failed' — the fault fires AFTER audit succeeds, BEFORE
-//       outbox, and reports as a transaction-level failure)
+//     not 'outbox_failed' — the fault fires AFTER audit succeeds, BEFORE
+//     outbox, and reports as a transaction-level failure)
 //     - tx.Commit() is never called (the transaction is rolled back)
 //     - The outbox INSERT is never attempted (proves the two writes are atomic)
 //
@@ -28,7 +28,7 @@
 //
 //  3. Nested Begin() is rejected:
 //     - Calling tx.Begin() on the transaction used by handleEcho panics,
-//       guarding against accidental nested-transaction bugs.
+//     guarding against accidental nested-transaction bugs.
 package httpserver
 
 import (
@@ -42,10 +42,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 )
 
 // =============================================================================
@@ -109,7 +110,9 @@ func (t *atomicityTx) CopyFrom(_ context.Context, _ pgx.Identifier, _ []string, 
 func (t *atomicityTx) SendBatch(_ context.Context, _ *pgx.Batch) pgx.BatchResults {
 	panic("atomicityTx: SendBatch not expected")
 }
-func (t *atomicityTx) LargeObjects() pgx.LargeObjects { panic("atomicityTx: LargeObjects not expected") }
+func (t *atomicityTx) LargeObjects() pgx.LargeObjects {
+	panic("atomicityTx: LargeObjects not expected")
+}
 func (t *atomicityTx) Prepare(_ context.Context, _, _ string) (*pgconn.StatementDescription, error) {
 	panic("atomicityTx: Prepare not expected")
 }
@@ -159,8 +162,8 @@ func buildAtomicityServer(t *testing.T, faultInject bool) (*httptest.Server, *au
 
 	tx := &atomicityTx{}
 	pool := &atomicityPool{tx: tx}
-	aw := &captureAuditWriter{}   // reuse from echo_audit_test.go (same package)
-	idem := &noopIdemStore{}      // reuse from echo_audit_test.go (same package)
+	aw := &captureAuditWriter{} // reuse from echo_audit_test.go (same package)
+	idem := &noopIdemStore{}    // reuse from echo_audit_test.go (same package)
 
 	cfg := &config.Config{
 		HTTPListenAddr: "127.0.0.1:0",

@@ -16,10 +16,10 @@ import (
 // Step 1: Checker interface exists with Check(ctx, action, resource) error
 // =============================================================================
 
-func TestChecker_InterfaceSignature(t *testing.T) {
+func TestChecker_InterfaceSignature(_ *testing.T) {
 	// Compile-time checks: both AllowAll and DenyAll satisfy the interface.
-	var _ permissions.Checker = permissions.AllowAll()
-	var _ permissions.Checker = permissions.DenyAll()
+	var _ = permissions.AllowAll()
+	var _ = permissions.DenyAll()
 }
 
 // =============================================================================
@@ -123,7 +123,7 @@ func TestDenyAllChecker_HTTPStatus403(t *testing.T) {
 
 func TestRequirePermission_AllowAll_ForwardsRequest(t *testing.T) {
 	called := false
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusOK)
 	})
@@ -144,7 +144,7 @@ func TestRequirePermission_AllowAll_ForwardsRequest(t *testing.T) {
 
 func TestRequirePermission_DenyAll_Returns403(t *testing.T) {
 	called := false
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	next := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		called = true
 	})
 
@@ -163,7 +163,7 @@ func TestRequirePermission_DenyAll_Returns403(t *testing.T) {
 }
 
 func TestRequirePermission_DenyAll_JSONResponseBody(t *testing.T) {
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
@@ -198,7 +198,7 @@ func TestRequirePermission_DenyAll_JSONResponseBody(t *testing.T) {
 
 func TestRequirePermission_ContentType(t *testing.T) {
 	handler := permissions.RequirePermission(permissions.DenyAll(), "read", "org")(
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}),
+		http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}),
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/org", nil)
@@ -214,7 +214,7 @@ func TestRequirePermission_ContentType(t *testing.T) {
 func TestRequirePermission_MultipleActions(t *testing.T) {
 	t.Run("read_allowed", func(t *testing.T) {
 		h := permissions.RequirePermission(permissions.AllowAll(), "read", "event")(
-			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }),
+			http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) }),
 		)
 		req := httptest.NewRequest("GET", "/", nil)
 		rec := httptest.NewRecorder()
@@ -226,7 +226,7 @@ func TestRequirePermission_MultipleActions(t *testing.T) {
 
 	t.Run("write_denied", func(t *testing.T) {
 		h := permissions.RequirePermission(permissions.DenyAll(), "write", "event")(
-			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }),
+			http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) }),
 		)
 		req := httptest.NewRequest("POST", "/", nil)
 		rec := httptest.NewRecorder()
@@ -278,9 +278,9 @@ func TestPermissions_IsPlaceholder(t *testing.T) {
 // =============================================================================
 
 func TestPermissions_FullVerification(t *testing.T) {
-	t.Run("step1_checker_interface", func(t *testing.T) {
-		var _ permissions.Checker = permissions.AllowAll()
-		var _ permissions.Checker = permissions.DenyAll()
+	t.Run("step1_checker_interface", func(_ *testing.T) {
+		var _ = permissions.AllowAll()
+		var _ = permissions.DenyAll()
 	})
 
 	t.Run("step2_allowall_passes", func(t *testing.T) {
@@ -304,7 +304,7 @@ func TestPermissions_FullVerification(t *testing.T) {
 	t.Run("step4_require_permission_middleware_allow", func(t *testing.T) {
 		called := false
 		h := permissions.RequirePermission(permissions.AllowAll(), "read", "event")(
-			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true; w.WriteHeader(200) }),
+			http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { called = true; w.WriteHeader(200) }),
 		)
 		req := httptest.NewRequest("GET", "/", nil)
 		rec := httptest.NewRecorder()
@@ -317,7 +317,7 @@ func TestPermissions_FullVerification(t *testing.T) {
 	t.Run("step4_require_permission_middleware_deny", func(t *testing.T) {
 		called := false
 		h := permissions.RequirePermission(permissions.DenyAll(), "write", "event")(
-			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true }),
+			http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) { called = true }),
 		)
 		req := httptest.NewRequest("POST", "/", nil)
 		rec := httptest.NewRecorder()

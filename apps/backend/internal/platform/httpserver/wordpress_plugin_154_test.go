@@ -2,31 +2,32 @@
 // (WordPress plugin core: custom post type + feed config).
 //
 // Test coverage:
-//   Step 1: Plugin main file exists with correct WordPress plugin header
-//   Step 2: Plugin declares arena_event custom post type
-//   Step 3: Plugin includes class-post-type.php with register_post_type call
-//   Step 4: Settings page class exists with arena_feed_token option
-//   Step 5: Settings page class has arena_api_base_url option
-//   Step 6: Settings page uses WordPress Settings API (register_setting, add_settings_section)
-//   Step 7: Settings page renders a feed_token input field
-//   Step 8: Settings page renders an api_base_url input field
-//   Step 9: Sync class exists with WP-Cron hook registration
-//   Step 10: Sync class implements fetch_events_page with correct API path
-//   Step 11: Sync class calls /v1/public/feeds/{feed_token}/events endpoint
-//   Step 12: Sync class implements upsert_event (insert + update logic)
-//   Step 13: Sync class stores _arena_event_id meta key
-//   Step 14: Sync class stores _arena_event_sessions meta key
-//   Step 15: Plugin activation registers the arena_events_sync cron hook
-//   Step 16: Plugin deactivation unschedules the cron hook
-//   Step 17: Main plugin file loads all three include classes
-//   Step 18: Plugin uses plugins_loaded hook to initialise components
-//   Step 19: Settings class provides get_feed_token() helper
-//   Step 20: Settings class provides get_api_base_url() helper with fallback
-//   Step 21: Sync class run() returns synced+errors summary
-//   Step 22: Post type registered with supports title, editor, thumbnail, custom-fields
-//   Step 23: Post type uses dashicons-tickets-alt icon
-//   Step 24: Post type is public and show_in_rest = true
-//   Step 25: Plugin directory exists at apps/wp-plugin/arena-events/
+//
+//	Step 1: Plugin main file exists with correct WordPress plugin header
+//	Step 2: Plugin declares arena_event custom post type
+//	Step 3: Plugin includes class-post-type.php with register_post_type call
+//	Step 4: Settings page class exists with arena_feed_token option
+//	Step 5: Settings page class has arena_api_base_url option
+//	Step 6: Settings page uses WordPress Settings API (register_setting, add_settings_section)
+//	Step 7: Settings page renders a feed_token input field
+//	Step 8: Settings page renders an api_base_url input field
+//	Step 9: Sync class exists with WP-Cron hook registration
+//	Step 10: Sync class implements fetch_events_page with correct API path
+//	Step 11: Sync class calls /v1/public/feeds/{feed_token}/events endpoint
+//	Step 12: Sync class implements upsert_event (insert + update logic)
+//	Step 13: Sync class stores _arena_event_id meta key
+//	Step 14: Sync class stores _arena_event_sessions meta key
+//	Step 15: Plugin activation registers the arena_events_sync cron hook
+//	Step 16: Plugin deactivation unschedules the cron hook
+//	Step 17: Main plugin file loads all three include classes
+//	Step 18: Plugin uses plugins_loaded hook to initialise components
+//	Step 19: Settings class provides get_feed_token() helper
+//	Step 20: Settings class provides get_api_base_url() helper with fallback
+//	Step 21: Sync class run() returns synced+errors summary
+//	Step 22: Post type registered with supports title, editor, thumbnail, custom-fields
+//	Step 23: Post type uses dashicons-tickets-alt icon
+//	Step 24: Post type is public and show_in_rest = true
+//	Step 25: Plugin directory exists at apps/wp-plugin/arena-events/
 //
 // All tests are pure file/content checks — no live WordPress required.
 package httpserver

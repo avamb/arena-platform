@@ -203,6 +203,6 @@ func TestMigrationsFS_FilesAreSequentiallyNumbered(t *testing.T) {
 
 // Compile-time guards: ensure the exported symbols remain stable.
 var (
-	_ fs.FS = migrations.FS
+	_ fs.FS  = migrations.FS
 	_ string = migrations.Dir
 )

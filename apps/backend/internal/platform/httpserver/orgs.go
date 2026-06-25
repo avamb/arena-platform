@@ -6,20 +6,21 @@
 //
 // Endpoints:
 //
-//   POST   /v1/organizations            — create a new organization (org.create)
-//   GET    /v1/organizations            — list all active organizations (org.read)
-//   GET    /v1/organizations/{id}       — get a single organization (org.read)
-//   PATCH  /v1/organizations/{id}       — update an organization (org.update)
-//   DELETE /v1/organizations/{id}       — soft-delete an organization (org.delete)
+//	POST   /v1/organizations            — create a new organization (org.create)
+//	GET    /v1/organizations            — list all active organizations (org.read)
+//	GET    /v1/organizations/{id}       — get a single organization (org.read)
+//	PATCH  /v1/organizations/{id}       — update an organization (org.update)
+//	DELETE /v1/organizations/{id}       — soft-delete an organization (org.delete)
 //
 // All write endpoints are gated by JWT auth + a named permission.
 // The list / get endpoints are also gated by org.read so the org registry
 // is not publicly enumerable.
 //
 // Soft-delete policy:
-//   DELETE does not remove the row; it sets deleted_at = now(). All
-//   subsequent reads filter WHERE deleted_at IS NULL. An audit event is
-//   written inside the same transaction as the soft-delete UPDATE.
+//
+//	DELETE does not remove the row; it sets deleted_at = now(). All
+//	subsequent reads filter WHERE deleted_at IS NULL. An audit event is
+//	written inside the same transaction as the soft-delete UPDATE.
 package httpserver
 
 import (
@@ -31,11 +32,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────

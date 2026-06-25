@@ -3,7 +3,9 @@
 //
 // Path: POST /v1/dev/token
 // Body: {"actor_id": "<uuid>", "actor_type": "stub_user", "roles": ["admin"],
-//        "ttl_seconds": 3600, "audience": "arena-api"}
+//
+//	"ttl_seconds": 3600, "audience": "arena-api"}
+//
 // Returns: 200 {"token": "<jwt>", "expires_at": "<rfc3339>", ...}
 //
 // The route is ONLY mounted when ENABLE_DEV_AUTH=true (i.e. cfg.EnableStubAuth

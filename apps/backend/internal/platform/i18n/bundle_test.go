@@ -3,14 +3,14 @@
 //
 // Steps covered by this file:
 //
-//  Step 1: go-i18n/v2 dependency exists (compilation proves it)
-//  Step 2: Bundle loads TOML catalogs via //go:embed locales/*.toml
-//  Step 3: ru.toml and en.toml exist and contain the five base keys
-//  Step 4: NegotiateLocale priority chain (tested in locale_test.go)
-//  Step 5: Localize(ctx, messageID, fallback, data) helper
-//  Step 6: i18n integrated in error envelope (via httpserver updates)
-//  Step 7: Catalog structure ready for uk/es (WalkDir covers any .toml)
-//  Step 8: Accept-Language: ru → Russian texts; unknown → en fallback
+//	Step 1: go-i18n/v2 dependency exists (compilation proves it)
+//	Step 2: Bundle loads TOML catalogs via //go:embed locales/*.toml
+//	Step 3: ru.toml and en.toml exist and contain the five base keys
+//	Step 4: NegotiateLocale priority chain (tested in locale_test.go)
+//	Step 5: Localize(ctx, messageID, fallback, data) helper
+//	Step 6: i18n integrated in error envelope (via httpserver updates)
+//	Step 7: Catalog structure ready for uk/es (WalkDir covers any .toml)
+//	Step 8: Accept-Language: ru → Russian texts; unknown → en fallback
 package i18n
 
 import (

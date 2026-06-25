@@ -2,46 +2,47 @@
 // (WCAG 2.2 AA accessibility audit — checkout + public storefronts).
 //
 // Test coverage:
-//   Step 1:  class-checkout.php has aria-label on checkout forms
-//   Step 2:  class-checkout.php has <label for="..."> elements for inputs
-//   Step 3:  class-checkout.php has aria-required="true" on email input
-//   Step 4:  class-checkout.php has aria-live="assertive" on error region
-//   Step 5:  class-checkout.php has role="alert" on error region
-//   Step 6:  class-checkout.php has aria-atomic="true" on error region
-//   Step 7:  class-checkout.php has autocomplete="email" on email input
-//   Step 8:  class-checkout.php has aria-describedby linking inputs to error div
-//   Step 9:  class-checkout.php has visible focus indicator (outline) in CSS
-//   Step 10: class-checkout.php has novalidate on form (defers to JS/screen reader)
-//   Step 11: class-checkout.php error div has unique id per tier (data-error-id)
-//   Step 12: class-checkout.php JS clears error region on new submission
-//   Step 13: class-checkout.php JS sets aria-busy="true" on loading button
-//   Step 14: class-checkout.php JS removes aria-busy on completion
-//   Step 15: class-checkout.php sold-out state renders accessible text label
-//   Step 16: class-checkout.php uses #595959 (≥4.5:1) for availability text
-//   Step 17: class-checkout.php uses #c00 on white (≥4.5:1) for error/sold-out
-//   Step 18: class-checkout.php uses #005fcc for focus outline (≥3.0:1)
-//   Step 19: wcag-checklist.md exists and covers WCAG 2.2 AA
-//   Step 20: wcag-checklist.md references 1.4.3 colour contrast criterion
-//   Step 21: wcag-checklist.md references 2.4.7 focus visible criterion
-//   Step 22: wcag-checklist.md references 4.1.3 status messages criterion
-//   Step 23: wp-demo-test-plan.md exists and is signed off
-//   Step 24: wp-demo-test-plan.md covers keyboard navigation test
-//   Step 25: wp-demo-test-plan.md covers screen reader (NVDA) test
-//   Step 26: wp-demo-test-plan.md covers colour contrast table
-//   Step 27: remediation-backlog.md exists with open items
-//   Step 28: remediation-backlog.md documents RB-001 border contrast issue
-//   Step 29: remediation-backlog.md documents RB-002 session timer
-//   Step 30: remediation-backlog.md documents RB-004 button target size
-//   Step 31: accessibility.yml CI workflow exists with axe-core reference
-//   Step 32: accessibility.yml includes WCAG 2.2 AA tags
-//   Step 33: accessibility.yml checks for critical violations
-//   Step 34: accessibility.yml includes aria-lint job
-//   Step 35: generate-snapshots.js exists with HTML snapshots output
-//   Step 36: generate-snapshots.js generates checkout-tiers.html
-//   Step 37: generate-snapshots.js generates checkout-sold-out.html
-//   Step 38: generate-snapshots.js generates checkout-error-state.html
-//   Step 39: checkout form has .arena-field wrapper with label+input
-//   Step 40: class-checkout.php form has unique id per tier
+//
+//	Step 1:  class-checkout.php has aria-label on checkout forms
+//	Step 2:  class-checkout.php has <label for="..."> elements for inputs
+//	Step 3:  class-checkout.php has aria-required="true" on email input
+//	Step 4:  class-checkout.php has aria-live="assertive" on error region
+//	Step 5:  class-checkout.php has role="alert" on error region
+//	Step 6:  class-checkout.php has aria-atomic="true" on error region
+//	Step 7:  class-checkout.php has autocomplete="email" on email input
+//	Step 8:  class-checkout.php has aria-describedby linking inputs to error div
+//	Step 9:  class-checkout.php has visible focus indicator (outline) in CSS
+//	Step 10: class-checkout.php has novalidate on form (defers to JS/screen reader)
+//	Step 11: class-checkout.php error div has unique id per tier (data-error-id)
+//	Step 12: class-checkout.php JS clears error region on new submission
+//	Step 13: class-checkout.php JS sets aria-busy="true" on loading button
+//	Step 14: class-checkout.php JS removes aria-busy on completion
+//	Step 15: class-checkout.php sold-out state renders accessible text label
+//	Step 16: class-checkout.php uses #595959 (≥4.5:1) for availability text
+//	Step 17: class-checkout.php uses #c00 on white (≥4.5:1) for error/sold-out
+//	Step 18: class-checkout.php uses #005fcc for focus outline (≥3.0:1)
+//	Step 19: wcag-checklist.md exists and covers WCAG 2.2 AA
+//	Step 20: wcag-checklist.md references 1.4.3 colour contrast criterion
+//	Step 21: wcag-checklist.md references 2.4.7 focus visible criterion
+//	Step 22: wcag-checklist.md references 4.1.3 status messages criterion
+//	Step 23: wp-demo-test-plan.md exists and is signed off
+//	Step 24: wp-demo-test-plan.md covers keyboard navigation test
+//	Step 25: wp-demo-test-plan.md covers screen reader (NVDA) test
+//	Step 26: wp-demo-test-plan.md covers colour contrast table
+//	Step 27: remediation-backlog.md exists with open items
+//	Step 28: remediation-backlog.md documents RB-001 border contrast issue
+//	Step 29: remediation-backlog.md documents RB-002 session timer
+//	Step 30: remediation-backlog.md documents RB-004 button target size
+//	Step 31: accessibility.yml CI workflow exists with axe-core reference
+//	Step 32: accessibility.yml includes WCAG 2.2 AA tags
+//	Step 33: accessibility.yml checks for critical violations
+//	Step 34: accessibility.yml includes aria-lint job
+//	Step 35: generate-snapshots.js exists with HTML snapshots output
+//	Step 36: generate-snapshots.js generates checkout-tiers.html
+//	Step 37: generate-snapshots.js generates checkout-sold-out.html
+//	Step 38: generate-snapshots.js generates checkout-error-state.html
+//	Step 39: checkout form has .arena-field wrapper with label+input
+//	Step 40: class-checkout.php form has unique id per tier
 //
 // All tests are pure file/content checks — no live WordPress or browser required.
 package httpserver

@@ -13,59 +13,60 @@
 //
 //   - Owning the cross-cutting middlewares the chain depends on:
 //
-//       1. Recoverer          — chi.Recoverer wraps every downstream
-//                                handler so a panic anywhere in the chain
-//                                returns 500 (with a structured log record)
-//                                instead of crashing the process.
-//       2. RealIP             — chi.RealIP rewrites r.RemoteAddr from the
-//                                forwarded-for / forwarded-host headers so
-//                                downstream code sees the actual client IP
-//                                when arena-api is behind Dokploy's
-//                                reverse proxy.
-//       3. RequestID          — chi.RequestID generates a per-request
-//                                identifier and stores it on r.Context().
-//       4. requestContext     — surfaces the chi RequestID via the
-//                                X-Request-Id response header and copies
-//                                it into the slog context via
-//                                logging.WithRequestID, so every
-//                                logging.FromContext(ctx) call automatically
-//                                emits a "request_id" attribute.
-//       5. loggerMiddleware   — attaches the base *slog.Logger to ctx via
-//                                logging.WithLogger so any downstream
-//                                logging.FromContext(ctx) returns a logger
-//                                derived from the configured handler (JSON
-//                                or text, info or debug level, …).
-//       6. prometheusMiddleware (optional, only when Deps.Metrics != nil) —
-//                                records arena_http_request_duration_seconds
-//                                + arena_http_requests_total with low
-//                                cardinality (method, normalised
-//                                chi RoutePattern, status string) labels.
-//       7. tracerMiddleware   — extracts the incoming W3C TraceContext via
-//                                the global OTel propagator, opens a
-//                                SpanKindServer span via the supplied
-//                                tracer, surfaces the W3C trace_id via the
-//                                X-Trace-Id response header, and copies it
-//                                into the slog context via
-//                                logging.WithTraceID. When the OTel SDK is
-//                                in disabled mode (no exporter; see
-//                                observability.InitTracer with an empty
-//                                Endpoint) the span is a no-op but the
-//                                middleware still produces a random trace
-//                                id so the X-Trace-Id contract holds.
-//       8. Timeout            — chi.Timeout caps r.Context() with a
-//                                deadline derived from Deps.RequestTimeout
-//                                so a slow handler cannot stall the listener.
-//       9. jsonBodyLimit      — http.MaxBytesReader cap on POST/PUT/PATCH
-//                                bodies so an oversized payload cannot
-//                                exhaust process memory before Timeout
-//                                fires.
-//      10. RequireJSONContentType — enforces Content-Type: application/json
-//                                on POST/PUT/PATCH requests. Returns 415
-//                                Unsupported Media Type with the project-
-//                                standard JSON error envelope when the
-//                                header is absent or uses an unsupported
-//                                media type. Adds Accept-Post: application/json
-//                                to every 415 response.
+//     1. Recoverer          — chi.Recoverer wraps every downstream
+//     handler so a panic anywhere in the chain
+//     returns 500 (with a structured log record)
+//     instead of crashing the process.
+//     2. RealIP             — chi.RealIP rewrites r.RemoteAddr from the
+//     forwarded-for / forwarded-host headers so
+//     downstream code sees the actual client IP
+//     when arena-api is behind Dokploy's
+//     reverse proxy.
+//     3. RequestID          — chi.RequestID generates a per-request
+//     identifier and stores it on r.Context().
+//     4. requestContext     — surfaces the chi RequestID via the
+//     X-Request-Id response header and copies
+//     it into the slog context via
+//     logging.WithRequestID, so every
+//     logging.FromContext(ctx) call automatically
+//     emits a "request_id" attribute.
+//     5. loggerMiddleware   — attaches the base *slog.Logger to ctx via
+//     logging.WithLogger so any downstream
+//     logging.FromContext(ctx) returns a logger
+//     derived from the configured handler (JSON
+//     or text, info or debug level, …).
+//     6. prometheusMiddleware (optional, only when Deps.Metrics != nil) —
+//     records arena_http_request_duration_seconds
+//
+//   - arena_http_requests_total with low
+//     cardinality (method, normalised
+//     chi RoutePattern, status string) labels.
+//     7. tracerMiddleware   — extracts the incoming W3C TraceContext via
+//     the global OTel propagator, opens a
+//     SpanKindServer span via the supplied
+//     tracer, surfaces the W3C trace_id via the
+//     X-Trace-Id response header, and copies it
+//     into the slog context via
+//     logging.WithTraceID. When the OTel SDK is
+//     in disabled mode (no exporter; see
+//     observability.InitTracer with an empty
+//     Endpoint) the span is a no-op but the
+//     middleware still produces a random trace
+//     id so the X-Trace-Id contract holds.
+//     8. Timeout            — chi.Timeout caps r.Context() with a
+//     deadline derived from Deps.RequestTimeout
+//     so a slow handler cannot stall the listener.
+//     9. jsonBodyLimit      — http.MaxBytesReader cap on POST/PUT/PATCH
+//     bodies so an oversized payload cannot
+//     exhaust process memory before Timeout
+//     fires.
+//     10. RequireJSONContentType — enforces Content-Type: application/json
+//     on POST/PUT/PATCH requests. Returns 415
+//     Unsupported Media Type with the project-
+//     standard JSON error envelope when the
+//     header is absent or uses an unsupported
+//     media type. Adds Accept-Post: application/json
+//     to every 415 response.
 //
 // The chain is ordered so the outermost middleware (Recoverer) covers a
 // panic anywhere downstream — including the OTel span finaliser — and the
@@ -94,8 +95,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
@@ -103,6 +102,9 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 )
 
 // HTTP response headers surfaced by the standard middleware chain. Exported
@@ -341,14 +343,14 @@ func loggerMiddleware(base *slog.Logger) func(http.Handler) http.Handler {
 //
 //   - method : HTTP method as-is (GET, POST, …).
 //   - route  : the chi route pattern resolved AFTER the handler ran (e.g.
-//              "/v1/orders/{id}" rather than "/v1/orders/abc-123") so
-//              cardinality is bounded by the route table, not by URL
-//              parameter values. A request that produced a 404 (no match)
-//              is labelled "unmatched" to preserve the same bound.
+//     "/v1/orders/{id}" rather than "/v1/orders/abc-123") so
+//     cardinality is bounded by the route table, not by URL
+//     parameter values. A request that produced a 404 (no match)
+//     is labelled "unmatched" to preserve the same bound.
 //   - status : decimal HTTP status string. If the handler returned without
-//              calling WriteHeader, chi's WrapResponseWriter reports 0 —
-//              we coerce that to "200" because Go's net/http documents an
-//              implicit 200 in that case.
+//     calling WriteHeader, chi's WrapResponseWriter reports 0 —
+//     we coerce that to "200" because Go's net/http documents an
+//     implicit 200 in that case.
 //
 // The middleware uses chi.middleware.WrapResponseWriter so it can read the
 // final status code AFTER the handler ran without depending on the
@@ -392,14 +394,14 @@ func prometheusMiddleware(m *observability.Metrics) func(http.Handler) http.Hand
 //  3. Surfaces the resolved trace_id via the X-Trace-Id response header
 //     and via logging.WithTraceID(ctx, ...). The trace_id is resolved
 //     with the following priority:
-//       a) Live OTel SpanContext trace_id (when the sampler decides to sample).
-//       b) trace-id field from the incoming W3C Traceparent header (honours
-//          distributed traces even when the local SDK runs in disabled /
-//          NeverSample mode — the span is a no-op but the parent's trace_id
-//          still propagates through so end-to-end log correlation works).
-//       c) Inbound X-Trace-Id header (lets callers pin a custom value).
-//       d) Cryptographic random 128-bit hex string (guarantees non-empty
-//          contract on every response regardless of SDK mode).
+//     a) Live OTel SpanContext trace_id (when the sampler decides to sample).
+//     b) trace-id field from the incoming W3C Traceparent header (honours
+//     distributed traces even when the local SDK runs in disabled /
+//     NeverSample mode — the span is a no-op but the parent's trace_id
+//     still propagates through so end-to-end log correlation works).
+//     c) Inbound X-Trace-Id header (lets callers pin a custom value).
+//     d) Cryptographic random 128-bit hex string (guarantees non-empty
+//     contract on every response regardless of SDK mode).
 //
 // Calling tracer.Start always succeeds; in disabled mode it returns a
 // no-op span whose End() is a cheap function call, so the per-request
@@ -935,7 +937,7 @@ func newRandomHex(byteLen int) string {
 	if _, err := rand.Read(b); err != nil {
 		t := uint64(time.Now().UnixNano())
 		for i := 0; i < len(b) && i < 8; i++ {
-			b[i] = byte(t >> (i * 8))
+			b[i] = byte(t >> (i * 8)) //nolint:gosec // intentional low-byte truncation
 		}
 	}
 	return hex.EncodeToString(b)

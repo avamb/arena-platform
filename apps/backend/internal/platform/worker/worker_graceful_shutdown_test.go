@@ -78,14 +78,14 @@ func (lc *logCapture) waitForMessage(t *testing.T, msg string, timeout time.Dura
 
 // TestGracefulShutdown_SlowJobCompletes covers steps 1-7 and 9 of feature #27.
 //
-//   Step 1: Enqueue a slow job (test.slow) and a second pending job (noop.test).
-//   Step 2: Start worker; poll until slow job is claimed.
-//   Step 3: Call Stop() to simulate SIGTERM.
-//   Step 4: Verify log "shutdown initiated, finishing 1 claimed job".
-//   Step 5: Signal slow handler to complete; verify status='done'.
-//   Step 6: Verify second pending job was NOT claimed after Stop().
-//   Step 7: Verify Stop() returns nil (exit code 0 equivalent).
-//   Step 9: Verify log "shutdown complete" appears within shutdown_timeout.
+//	Step 1: Enqueue a slow job (test.slow) and a second pending job (noop.test).
+//	Step 2: Start worker; poll until slow job is claimed.
+//	Step 3: Call Stop() to simulate SIGTERM.
+//	Step 4: Verify log "shutdown initiated, finishing 1 claimed job".
+//	Step 5: Signal slow handler to complete; verify status='done'.
+//	Step 6: Verify second pending job was NOT claimed after Stop().
+//	Step 7: Verify Stop() returns nil (exit code 0 equivalent).
+//	Step 9: Verify log "shutdown complete" appears within shutdown_timeout.
 func TestGracefulShutdown_SlowJobCompletes(t *testing.T) {
 	t.Parallel()
 
@@ -96,12 +96,12 @@ func TestGracefulShutdown_SlowJobCompletes(t *testing.T) {
 	reg := NewRegistry()
 
 	// STEP 1: Register test.slow handler that blocks until signalled.
-	handlerReady      := make(chan struct{})
-	handlerFinish     := make(chan struct{})
-	handlerReadyOnce  := sync.Once{}
+	handlerReady := make(chan struct{})
+	handlerFinish := make(chan struct{})
+	handlerReadyOnce := sync.Once{}
 	reg.Register("test.slow", func(_ context.Context, _ []byte) error {
 		handlerReadyOnce.Do(func() { close(handlerReady) }) // signal entry
-		<-handlerFinish                                      // block until told to finish
+		<-handlerFinish                                     // block until told to finish
 		return nil
 	})
 
@@ -203,8 +203,8 @@ func TestGracefulShutdown_CtxCancelWhileJobRunning(t *testing.T) {
 	q := newInMemoryQueue()
 	reg := NewRegistry()
 
-	handlerReady     := make(chan struct{})
-	handlerFinish    := make(chan struct{})
+	handlerReady := make(chan struct{})
+	handlerFinish := make(chan struct{})
 	handlerReadyOnce := sync.Once{}
 	reg.Register("test.slow", func(_ context.Context, _ []byte) error {
 		handlerReadyOnce.Do(func() { close(handlerReady) })
@@ -354,7 +354,7 @@ func TestGracefulShutdown_UnfinishedJobStaysClaimedOnTimeout(t *testing.T) {
 	handlerCtx, handlerCancel := context.WithCancel(context.Background())
 	t.Cleanup(handlerCancel)
 
-	handlerReady     := make(chan struct{})
+	handlerReady := make(chan struct{})
 	handlerReadyOnce := sync.Once{}
 	reg.Register("test.slow", func(_ context.Context, _ []byte) error {
 		handlerReadyOnce.Do(func() { close(handlerReady) })

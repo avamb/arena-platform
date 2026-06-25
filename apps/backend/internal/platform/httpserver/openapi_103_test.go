@@ -2,13 +2,14 @@
 // "OpenAPI 3.1 skeleton + oapi-codegen + openapi-typescript"
 //
 // Steps verified:
-//  Step 1: openapi.yaml exists with openapi:3.1.0 header, info, servers, and common components
-//          (ErrorEnvelope schema, X-Request-Id/X-Idempotency-Key headers, PaginationMeta schema)
-//  Step 2: internal/openapi/gen.go exists with //go:generate directives for oapi-codegen
-//  Step 3: generate-clients.sh exists at the repo root
-//  Step 4: README.md documents make gen-openapi and make gen-ts-client commands
-//  Step 5: ErrorEnvelope schema has code, message, request_id, trace_id — aligned with feature #10
-//  Step 6: Generated Go types (types_gen.go) compile; TypeScript index.d.ts exists
+//
+//	Step 1: openapi.yaml exists with openapi:3.1.0 header, info, servers, and common components
+//	        (ErrorEnvelope schema, X-Request-Id/X-Idempotency-Key headers, PaginationMeta schema)
+//	Step 2: internal/openapi/gen.go exists with //go:generate directives for oapi-codegen
+//	Step 3: generate-clients.sh exists at the repo root
+//	Step 4: README.md documents make gen-openapi and make gen-ts-client commands
+//	Step 5: ErrorEnvelope schema has code, message, request_id, trace_id — aligned with feature #10
+//	Step 6: Generated Go types (types_gen.go) compile; TypeScript index.d.ts exists
 package httpserver
 
 import (

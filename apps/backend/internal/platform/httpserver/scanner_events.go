@@ -28,9 +28,10 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
-	"github.com/jackc/pgx/v5"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -78,8 +79,8 @@ func buildTicketIssuedPayload(t gen.TicketRow) map[string]any {
 		"ticket_id":           t.ID.String(),
 		"checkout_session_id": t.CheckoutSessionID.String(),
 		"session_id":          t.SessionID.String(),
-		"status":              t.Status,                         // platform status: "active"
-		"bil24_order_status":  "PAID",                          // Bil24-compatible status for issued tickets
+		"status":              t.Status, // platform status: "active"
+		"bil24_order_status":  "PAID",   // Bil24-compatible status for issued tickets
 		"issued_at":           t.IssuedAt.UTC().Format(time.RFC3339),
 	}
 	if t.TierID != nil {

@@ -2,7 +2,8 @@
 // "Accept-Language with multiple weighted locales selects highest-weight supported"
 //
 // The parser must honor q-values (RFC 4647 lookup). For example:
-//   Accept-Language: fr;q=0.9,ru;q=0.8 (no fr support) selects ru.
+//
+//	Accept-Language: fr;q=0.9,ru;q=0.8 (no fr support) selects ru.
 //
 // All six feature steps are covered:
 //

@@ -31,12 +31,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -118,7 +119,7 @@ func sessionFromRow(s gen.SessionRow, hasOverlap bool) sessionResponse {
 func detectSessionOverlaps(sessions []gen.SessionRow) bool {
 	for i := 0; i < len(sessions); i++ {
 		for j := i + 1; j < len(sessions); j++ {
-			a, b := sessions[i], sessions[j]
+			a, b := sessions[i], sessions[j] //nolint:gosec // indices bounded by loop conditions above
 			if a.StartAt.Before(b.EndAt) && a.EndAt.After(b.StartAt) {
 				return true
 			}
@@ -342,7 +343,7 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"sessions":               result,
+		"sessions":                 result,
 		"has_overlapping_sessions": hasOverlap,
 	})
 }

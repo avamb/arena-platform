@@ -24,7 +24,7 @@ type memSession struct {
 // management contract in unit and integration tests.
 type MemStore struct {
 	mu       sync.RWMutex
-	revoked  map[string]time.Time   // token → revoked expiry deadline
+	revoked  map[string]time.Time    // token → revoked expiry deadline
 	sessions map[string][]memSession // userID → active sessions (sorted by expiresAt asc)
 }
 

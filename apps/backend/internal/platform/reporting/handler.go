@@ -30,12 +30,13 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
 
 // JobType is the worker job type string for post-event report generation.
@@ -306,7 +307,7 @@ func ScheduleReportJob(
 	}
 
 	scheduledAt := windowEnd // Run the job only after the cutoff window closes.
-	_ = scheduledAt         // Used by the worker INSERT below.
+	_ = scheduledAt          // Used by the worker INSERT below.
 
 	if pool != nil {
 		const insertJobSQL = `

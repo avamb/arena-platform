@@ -38,6 +38,8 @@ type LagCounter interface {
 // If the count of undelivered events is >= Threshold, the probe returns a
 // descriptive error so /readyz returns 503. This makes the probe suitable as
 // an early-warning mechanism for stuck outbox dispatchers.
+//
+//nolint:revive // intentional: keeps "Outbox" prefix for service-prefix grep discoverability
 type OutboxLagProbe struct {
 	counter   LagCounter
 	threshold int64

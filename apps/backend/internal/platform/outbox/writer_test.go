@@ -52,8 +52,8 @@ func (t *captureTx) QueryRow(_ context.Context, _ string, _ ...any) pgx.Row {
 func (t *captureTx) Begin(_ context.Context) (pgx.Tx, error) {
 	panic("captureTx: Begin not expected")
 }
-func (t *captureTx) Commit(_ context.Context) error    { return nil }
-func (t *captureTx) Rollback(_ context.Context) error  { return nil }
+func (t *captureTx) Commit(_ context.Context) error   { return nil }
+func (t *captureTx) Rollback(_ context.Context) error { return nil }
 func (t *captureTx) CopyFrom(_ context.Context, _ pgx.Identifier, _ []string, _ pgx.CopyFromSource) (int64, error) {
 	panic("captureTx: CopyFrom not expected")
 }
@@ -347,7 +347,7 @@ func TestNoopDispatcher_AlwaysSucceeds(t *testing.T) {
 
 // TestNoopDispatcher_SatisfiesInterface is the compile-time guard expressed as
 // a runtime assertion for clarity.
-func TestNoopDispatcher_SatisfiesInterface(t *testing.T) {
+func TestNoopDispatcher_SatisfiesInterface(_ *testing.T) {
 	var _ Dispatcher = NoopDispatcher{}
 }
 
@@ -381,7 +381,7 @@ func TestMonitorBacklog_UpdatesGauge(t *testing.T) {
 
 // TestMonitorBacklog_ErrorDoesNotPanic verifies that a query error is handled
 // gracefully without panicking or stopping the monitor loop.
-func TestMonitorBacklog_ErrorDoesNotPanic(t *testing.T) {
+func TestMonitorBacklog_ErrorDoesNotPanic(_ *testing.T) {
 	gauge := prometheus.NewGauge(prometheus.GaugeOpts{Name: "test_outbox_backlog_err"})
 	q := &fakeQuerier{row: &fakeBacklogRow{err: errors.New("timeout")}}
 
@@ -391,7 +391,7 @@ func TestMonitorBacklog_ErrorDoesNotPanic(t *testing.T) {
 
 // TestMonitorBacklog_StopsOnContextCancel verifies that MonitorBacklog exits
 // when the context is cancelled.
-func TestMonitorBacklog_StopsOnContextCancel(t *testing.T) {
+func TestMonitorBacklog_StopsOnContextCancel(_ *testing.T) {
 	gauge := prometheus.NewGauge(prometheus.GaugeOpts{Name: "test_outbox_cancel"})
 	q := &fakeQuerier{row: &fakeBacklogRow{count: 0}}
 

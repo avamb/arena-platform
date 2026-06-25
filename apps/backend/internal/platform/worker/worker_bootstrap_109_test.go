@@ -199,7 +199,7 @@ func TestWorkerBoot109_RegistryRegisterAndLookup(t *testing.T) {
 	reg := NewRegistry()
 
 	var called atomic.Bool
-	reg.Register("my.job", func(ctx context.Context, payload []byte) error {
+	reg.Register("my.job", func(_ context.Context, _ []byte) error {
 		called.Store(true)
 		return nil
 	})
@@ -236,11 +236,11 @@ func TestWorkerBoot109_RegistryOverwrite(t *testing.T) {
 	reg := NewRegistry()
 
 	var firstCalled, secondCalled atomic.Bool
-	reg.Register("x", func(ctx context.Context, payload []byte) error {
+	reg.Register("x", func(_ context.Context, _ []byte) error {
 		firstCalled.Store(true)
 		return nil
 	})
-	reg.Register("x", func(ctx context.Context, payload []byte) error {
+	reg.Register("x", func(_ context.Context, _ []byte) error {
 		secondCalled.Store(true)
 		return nil
 	})
@@ -302,7 +302,7 @@ func TestWorkerBoot109_PollIntervalConfigurable(t *testing.T) {
 
 	q := newInMemoryQueue()
 	reg := NewRegistry()
-	reg.Register("noop", func(ctx context.Context, payload []byte) error { return nil })
+	reg.Register("noop", func(_ context.Context, _ []byte) error { return nil })
 
 	w, err := New(Options{
 		Queue:        q,
@@ -328,7 +328,7 @@ func TestWorkerBoot109_WorkerClaimsAndCompletesJob(t *testing.T) {
 
 	reg := NewRegistry()
 	done := make(chan struct{}, 1)
-	reg.Register("noop.test", func(ctx context.Context, payload []byte) error {
+	reg.Register("noop.test", func(_ context.Context, _ []byte) error {
 		select {
 		case done <- struct{}{}:
 		default:
@@ -383,7 +383,7 @@ func TestWorkerBoot109_RetryOnError(t *testing.T) {
 
 	reg := NewRegistry()
 	var attempts atomic.Int32
-	reg.Register("fail.job", func(ctx context.Context, payload []byte) error {
+	reg.Register("fail.job", func(_ context.Context, _ []byte) error {
 		attempts.Add(1)
 		return errors.New("intentional failure")
 	})
@@ -439,7 +439,7 @@ func TestWorkerBoot109_DeadLetterOnMaxAttempts(t *testing.T) {
 	_ = q.insert("always.fail", []byte(`{}`), time.Time{}, 2) // max_attempts=2
 
 	reg := NewRegistry()
-	reg.Register("always.fail", func(ctx context.Context, payload []byte) error {
+	reg.Register("always.fail", func(_ context.Context, _ []byte) error {
 		return errors.New("always fails")
 	})
 
@@ -500,7 +500,7 @@ func TestWorkerBoot109_BackoffDelayBetweenRetries(t *testing.T) {
 	reg := NewRegistry()
 	var timestamps []time.Time
 	var tsMu sync.Mutex
-	reg.Register("slow.retry", func(ctx context.Context, payload []byte) error {
+	reg.Register("slow.retry", func(_ context.Context, _ []byte) error {
 		tsMu.Lock()
 		timestamps = append(timestamps, time.Now())
 		tsMu.Unlock()
@@ -563,7 +563,7 @@ func TestWorkerBoot109_HealthzEndpointReturns200(t *testing.T) {
 
 	// Replicate the same handler pattern used in the worker main.go.
 	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
@@ -632,7 +632,7 @@ func TestWorkerBoot109_MetricsServerListens(t *testing.T) {
 	ln.Close()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
@@ -692,4 +692,3 @@ func TestWorkerBoot109_FullVerification(t *testing.T) {
 		TestWorkerBoot109_MetricsEndpointExposed(t)
 	})
 }
-

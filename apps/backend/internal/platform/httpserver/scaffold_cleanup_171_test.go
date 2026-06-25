@@ -6,9 +6,9 @@
 //   - Step 1: Migration 0031_remove_scaffold_echo.sql exists and drops scaffold_echo table
 //   - Step 2: POST /v1/scaffold/echo returns 404 (route removed from server)
 //   - Step 3: /v1/dev/token and /v1/dev/auth/token return 404 when stub is nil
-//             (production-mode: ENABLE_DEV_AUTH=false → stub=nil → routes not registered)
+//     (production-mode: ENABLE_DEV_AUTH=false → stub=nil → routes not registered)
 //   - Step 4: /v1/debug/panic and /v1/debug/slow return 404 when DebugRoutesEnabled=false
-//             (production default: DEBUG_ROUTES_ENABLED=false)
+//     (production default: DEBUG_ROUTES_ENABLED=false)
 //   - Step 5: chi.Walk on a production-like server finds no dev/debug/scaffold routes
 package httpserver
 
@@ -19,8 +19,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/go-chi/chi/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 )
 
 // buildProdLikeServer creates a Server that mimics production configuration:

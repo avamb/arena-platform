@@ -42,6 +42,7 @@ func NewMockProvider(name string) *MockProvider {
 	m := &MockProvider{name: name}
 
 	m.CreateIntentFn = func(_ context.Context, req CreateIntentRequest) (*CreateIntentResponse, error) {
+		//nolint:gosec // literal mock fixture, not a real credential
 		return &CreateIntentResponse{
 			ProviderIntentID: "mock_intent_" + req.IdempotencyKey,
 			ClientSecret:     "mock_client_secret",

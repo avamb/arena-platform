@@ -285,6 +285,6 @@ func TestCreateMigration_ReturnsErrorWhenMigrationsDirAbsent(t *testing.T) {
 // Compile-time guards: pin the symbols this test depends on.
 // ---------------------------------------------------------------------------
 var (
-	_ func(int64, int64) int64  = countApplied
+	_ func(int64, int64) int64    = countApplied
 	_ func(string) (int64, error) = parseInt64
 )

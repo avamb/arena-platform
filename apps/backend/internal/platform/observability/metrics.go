@@ -18,6 +18,7 @@
 package observability
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -33,10 +34,10 @@ const (
 	// project name to avoid clashing with platform metrics (go_*, process_*).
 	MetricsNamespace = "arena"
 
-	subsystemHTTP    = "http"
-	subsystemDB      = "db"
-	subsystemWorker  = "worker"
-	subsystemOutbox  = "outbox"
+	subsystemHTTP   = "http"
+	subsystemDB     = "db"
+	subsystemWorker = "worker"
+	subsystemOutbox = "outbox"
 )
 
 // LabelNames groups the canonical label keys used by the baseline metrics so
@@ -345,7 +346,8 @@ func HandlerFor(reg *prometheus.Registry) http.Handler {
 // (the typed *Vec / Gauge fields above) are present.
 func registerSafe(reg *prometheus.Registry, c prometheus.Collector) {
 	if err := reg.Register(c); err != nil {
-		if _, ok := err.(prometheus.AlreadyRegisteredError); ok {
+		var alreadyRegistered prometheus.AlreadyRegisteredError
+		if errors.As(err, &alreadyRegistered) {
 			return
 		}
 	}

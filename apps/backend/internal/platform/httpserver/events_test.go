@@ -1,11 +1,12 @@
 // events_test.go — unit tests for feature #125 (Event model + CRUD).
 //
 // Test coverage:
-//   Step 1: Migration file 0014_events.sql — schema, status enum, date CHECK, RBAC seeds
-//   Step 2: CRUD endpoints — route mounting, auth-gating, request validation
-//   Step 3: Status transition guards — allowed and forbidden transitions
-//   Step 4: i18n name/description — query file + gen file structure
-//   Step 5: Integration: date invariant validation (end_at <= start_at → 400)
+//
+//	Step 1: Migration file 0014_events.sql — schema, status enum, date CHECK, RBAC seeds
+//	Step 2: CRUD endpoints — route mounting, auth-gating, request validation
+//	Step 3: Status transition guards — allowed and forbidden transitions
+//	Step 4: i18n name/description — query file + gen file structure
+//	Step 5: Integration: date invariant validation (end_at <= start_at → 400)
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver
@@ -18,10 +19,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
-	"github.com/google/uuid"
 )
 
 const eventTestActorID = "00000000-0000-0000-0000-000000000002"
@@ -761,7 +763,7 @@ func TestEvent125_GenFileHasAllMethods(t *testing.T) {
 // Compile-time guard: *gen.Queries must satisfy Querier
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestEvent125_QuerierInterfaceSatisfied(t *testing.T) {
+func TestEvent125_QuerierInterfaceSatisfied(_ *testing.T) {
 	// This is a compile-time check embedded in a test function.
 	// If gen.Queries does not satisfy gen.Querier, the file won't compile.
 	var _ gen.Querier = (*gen.Queries)(nil)
@@ -831,16 +833,16 @@ func TestEvent125_EventFromRowWithVenueID(t *testing.T) {
 	venueID := mustParseUUID(t, "00000000-0000-0000-0000-000000000030")
 
 	row := gen.EventRow{
-		ID:        mustParseUUID(t, "00000000-0000-0000-0000-000000000010"),
-		OrgID:     mustParseUUID(t, "00000000-0000-0000-0000-000000000020"),
-		VenueID:   &venueID,
-		Name:      "Venue Event",
-		Status:    "published",
-		StartAt:   now.Add(time.Hour),
-		EndAt:     now.Add(2 * time.Hour),
+		ID:         mustParseUUID(t, "00000000-0000-0000-0000-000000000010"),
+		OrgID:      mustParseUUID(t, "00000000-0000-0000-0000-000000000020"),
+		VenueID:    &venueID,
+		Name:       "Venue Event",
+		Status:     "published",
+		StartAt:    now.Add(time.Hour),
+		EndAt:      now.Add(2 * time.Hour),
 		Visibility: "public",
-		CreatedAt: now,
-		UpdatedAt: now,
+		CreatedAt:  now,
+		UpdatedAt:  now,
 	}
 
 	resp := eventFromRow(row)

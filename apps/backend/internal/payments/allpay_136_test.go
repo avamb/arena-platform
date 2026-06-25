@@ -11,6 +11,7 @@
 //  7. RefundPayment — success + error paths
 //  8. HandleWebhook — contract fixtures (payment.completed / payment.failed)
 //  9. HandleWebhook — error paths
+//
 // 10. HTTP transport details (Authorization header, Content-Type)
 // 11. Integration: end-to-end create → capture cycle (mock httptest server)
 // 12. Integration: AllPay registered in PaymentRoutingPolicy
@@ -75,7 +76,7 @@ func TestAllPay136_NewAdapter_EmptyBaseURLUsesDefault(t *testing.T) {
 func TestAllPay136_NewAdapter_CustomHTTPClientIsUsed(t *testing.T) {
 	called := false
 	customClient := &http.Client{
-		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		Transport: roundTripFunc(func(_ *http.Request) (*http.Response, error) {
 			called = true
 			// Return a minimal 200 response so CreateIntent can parse it.
 			body := `{"id":"ap_1","status":"pending_redirect","checkout_url":"https://pay.allpay.co.il/checkout/ap_1"}`
@@ -116,7 +117,7 @@ func TestAllPay136_ProviderName_ReturnsAllpay(t *testing.T) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 func TestAllPay136_CreateIntent_SuccessReturnsCheckoutURL(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"id":           "ap_pi_001",
@@ -225,7 +226,7 @@ func TestAllPay136_CreateIntent_CustomPaymentMethodsFromMetadata(t *testing.T) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 func TestAllPay136_CreateIntent_NonTwoXX_ReturnsError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnprocessableEntity)
 		w.Write([]byte(`{"code":"INVALID_CURRENCY","message":"unsupported currency"}`))
 	}))
@@ -242,7 +243,7 @@ func TestAllPay136_CreateIntent_NonTwoXX_ReturnsError(t *testing.T) {
 }
 
 func TestAllPay136_CreateIntent_APIErrorBodyParsed(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(`{"code":"AMOUNT_TOO_LOW","message":"amount must be at least 100"}`))
 	}))
@@ -271,7 +272,7 @@ func TestAllPay136_CreateIntent_APIErrorBodyParsed(t *testing.T) {
 
 func TestAllPay136_CreateIntent_NetworkError_ReturnsError(t *testing.T) {
 	// Start and immediately close the server to force a connection-refused error.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
 	srv.Close()
 
 	a := newTestAllPayAdapter(t, srv.URL)
@@ -335,7 +336,7 @@ func TestAllPay136_CapturePayment_UsesCorrectPath(t *testing.T) {
 }
 
 func TestAllPay136_CapturePayment_NonTwoXX_ReturnsError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"code":"INTERNAL","message":"internal error"}`))
 	}))
@@ -410,7 +411,7 @@ func TestAllPay136_RefundPayment_PartialRefund_ForwardsAmount(t *testing.T) {
 }
 
 func TestAllPay136_RefundPayment_NonTwoXX_ReturnsError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusConflict)
 		w.Write([]byte(`{"code":"ALREADY_REFUNDED","message":"payment already fully refunded"}`))
 	}))

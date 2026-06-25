@@ -2,36 +2,37 @@
 // (WordPress checkout integration: tier display shortcode + checkout proxy).
 //
 // Test coverage:
-//   Step 1:  class-checkout.php file exists
-//   Step 2:  Arena_Events_Checkout class is declared
-//   Step 3:  [arena_event_tiers] shortcode registered via add_shortcode
-//   Step 4:  REST namespace 'arena-events/v1' used
-//   Step 5:  /checkout/start REST route registered
-//   Step 6:  /checkout/redirect/ REST route registered
-//   Step 7:  handle_checkout_start method exists
-//   Step 8:  handle_checkout_redirect method exists
-//   Step 9:  Checkout start proxies to /v1/public/feeds/ platform endpoint
-//   Step 10: Uses wp_remote_post for checkout API call
-//   Step 11: Uses wp_remote_get for tier availability fetch
-//   Step 12: Uses Arena_Events_Settings::get_feed_token()
-//   Step 13: Uses Arena_Events_Settings::get_api_base_url()
-//   Step 14: render_tiers_shortcode method exists
-//   Step 15: render_tiers_html method exists
-//   Step 16: fetch_tier_availability method exists
-//   Step 17: Checkout form renders tier_id + session_id hidden fields
-//   Step 18: Checkout form renders qty + holder_email inputs
-//   Step 19: Checkout form has checkout button (.arena-checkout-btn)
-//   Step 20: Success response includes redirect_url
-//   Step 21: Success response includes local_redirect_url
-//   Step 22: enqueue_scripts method scoped to arena_event post type
-//   Step 23: JS fetch call handles redirect_url on success
-//   Step 24: Error handling when feed token not configured → 503 WP_Error
-//   Step 25: permission_callback '__return_true' (public endpoint)
-//   Step 26: Main plugin file includes class-checkout.php
-//   Step 27: Main plugin calls Arena_Events_Checkout::init()
-//   Step 28: wp_redirect called in redirect handler
-//   Step 29: /v1/public/feeds/.../checkout/start is the proxied endpoint
-//   Step 30: Sold-out tiers render sold-out label (no checkout form)
+//
+//	Step 1:  class-checkout.php file exists
+//	Step 2:  Arena_Events_Checkout class is declared
+//	Step 3:  [arena_event_tiers] shortcode registered via add_shortcode
+//	Step 4:  REST namespace 'arena-events/v1' used
+//	Step 5:  /checkout/start REST route registered
+//	Step 6:  /checkout/redirect/ REST route registered
+//	Step 7:  handle_checkout_start method exists
+//	Step 8:  handle_checkout_redirect method exists
+//	Step 9:  Checkout start proxies to /v1/public/feeds/ platform endpoint
+//	Step 10: Uses wp_remote_post for checkout API call
+//	Step 11: Uses wp_remote_get for tier availability fetch
+//	Step 12: Uses Arena_Events_Settings::get_feed_token()
+//	Step 13: Uses Arena_Events_Settings::get_api_base_url()
+//	Step 14: render_tiers_shortcode method exists
+//	Step 15: render_tiers_html method exists
+//	Step 16: fetch_tier_availability method exists
+//	Step 17: Checkout form renders tier_id + session_id hidden fields
+//	Step 18: Checkout form renders qty + holder_email inputs
+//	Step 19: Checkout form has checkout button (.arena-checkout-btn)
+//	Step 20: Success response includes redirect_url
+//	Step 21: Success response includes local_redirect_url
+//	Step 22: enqueue_scripts method scoped to arena_event post type
+//	Step 23: JS fetch call handles redirect_url on success
+//	Step 24: Error handling when feed token not configured → 503 WP_Error
+//	Step 25: permission_callback '__return_true' (public endpoint)
+//	Step 26: Main plugin file includes class-checkout.php
+//	Step 27: Main plugin calls Arena_Events_Checkout::init()
+//	Step 28: wp_redirect called in redirect handler
+//	Step 29: /v1/public/feeds/.../checkout/start is the proxied endpoint
+//	Step 30: Sold-out tiers render sold-out label (no checkout form)
 //
 // All tests are pure file/content checks — no live WordPress required.
 package httpserver

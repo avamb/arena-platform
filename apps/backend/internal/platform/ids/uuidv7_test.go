@@ -4,8 +4,9 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/ids"
 	"github.com/google/uuid"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/ids"
 )
 
 // -----------------------------------------------------------------------------

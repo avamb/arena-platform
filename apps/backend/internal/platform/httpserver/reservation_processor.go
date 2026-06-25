@@ -27,8 +27,9 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
 // ReservationProcessor handles background TTL expiration of reservations.

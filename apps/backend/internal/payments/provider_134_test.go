@@ -12,6 +12,7 @@
 //  7. Webhook helpers — VerifyStripeSignature
 //  8. Webhook helpers — VerifyAllPaySignature
 //  9. Webhook helpers — ComputeHMACSHA256
+//
 // 10. ErrorProvider always returns the configured error
 package payments_test
 
@@ -515,7 +516,7 @@ func TestPayment134_ComputeHMACSHA256_IsLowercaseHex(t *testing.T) {
 		t.Fatal("expected non-empty HMAC")
 	}
 	for _, c := range result {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			t.Fatalf("expected lowercase hex, got char %q in %q", c, result)
 		}
 	}

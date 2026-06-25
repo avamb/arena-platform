@@ -1,16 +1,17 @@
 // credentials_140_test.go — unit tests for feature #140 (Ticket credentials: static QR + PDF).
 //
 // Test coverage:
-//   Step 1: Migration file 0027_ticket_credentials.sql — table, type check, RBAC
-//   Step 2: SQL query file ticket_credentials.sql — all 4 named queries present
-//   Step 3: Gen file ticket_credentials.sql.go — TicketCredentialRow type, all 4 functions
-//   Step 4: Querier interface — credential methods present (compile-time)
-//   Step 5: QR token generator — generateQRToken produces valid 64-char hex token
-//   Step 6: PDF renderer — renderTicketPDF produces valid PDF bytes
-//   Step 7: HTTP route — GET /v1/tickets/{id}/credential requires auth (401)
-//   Step 8: HTTP route — GET /v1/tickets/{id}/credential mounted and reachable with auth
-//   Step 9: credentialFromRow — correct JSON shape, RFC3339 timestamps, nil-safe RevokedAt
-//   Step 10: Route validation — invalid UUID returns 400; invalid type returns 400
+//
+//	Step 1: Migration file 0027_ticket_credentials.sql — table, type check, RBAC
+//	Step 2: SQL query file ticket_credentials.sql — all 4 named queries present
+//	Step 3: Gen file ticket_credentials.sql.go — TicketCredentialRow type, all 4 functions
+//	Step 4: Querier interface — credential methods present (compile-time)
+//	Step 5: QR token generator — generateQRToken produces valid 64-char hex token
+//	Step 6: PDF renderer — renderTicketPDF produces valid PDF bytes
+//	Step 7: HTTP route — GET /v1/tickets/{id}/credential requires auth (401)
+//	Step 8: HTTP route — GET /v1/tickets/{id}/credential mounted and reachable with auth
+//	Step 9: credentialFromRow — correct JSON shape, RFC3339 timestamps, nil-safe RevokedAt
+//	Step 10: Route validation — invalid UUID returns 400; invalid type returns 400
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver
@@ -23,10 +24,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
-	"github.com/google/uuid"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -290,7 +292,7 @@ func TestCredential140_Step3_RevokedAtIsNullable(t *testing.T) {
 // compile time that gen.New(nil) satisfies gen.Querier, which now includes all
 // 4 credential methods. If the interface is missing any method, the build fails
 // before this test runs.
-func TestCredential140_Step4_QuerierImplementsCredentialMethods(t *testing.T) {
+func TestCredential140_Step4_QuerierImplementsCredentialMethods(_ *testing.T) {
 	var _ gen.Querier = gen.New(nil)
 }
 
@@ -328,7 +330,7 @@ func TestCredential140_Step5_GenerateQRTokenIsHexLowercase(t *testing.T) {
 		t.Fatalf("generateQRToken: unexpected error: %v", err)
 	}
 	for i, c := range token {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			t.Errorf("QR token contains non-lowercase-hex character %q at index %d", c, i)
 			break
 		}

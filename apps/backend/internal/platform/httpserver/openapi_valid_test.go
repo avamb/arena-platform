@@ -3,11 +3,12 @@
 // (nullable), and no draft-07 constructs that conflict with JSON Schema 2020-12.
 //
 // Feature #66: "OpenAPI 3.1 document is valid against schema"
-//   Step 1: Install openapi-spec-validator or use Spectral
-//   Step 2: Run validator and expect exit 0
-//   Step 3: Verify version field 'openapi: 3.1.0'
-//   Step 4: Verify no JSON Schema draft 7 features conflicting with 2020-12
-//   Step 5: Run Spectral lint -- 0 errors
+//
+//	Step 1: Install openapi-spec-validator or use Spectral
+//	Step 2: Run validator and expect exit 0
+//	Step 3: Verify version field 'openapi: 3.1.0'
+//	Step 4: Verify no JSON Schema draft 7 features conflicting with 2020-12
+//	Step 5: Run Spectral lint -- 0 errors
 package httpserver
 
 import (

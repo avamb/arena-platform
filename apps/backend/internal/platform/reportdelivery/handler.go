@@ -36,11 +36,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 // JobType is the worker job type string for post-event report delivery.
@@ -164,7 +165,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 
 			msg := email.Message{
 				To:       recipient.Email,
-				Subject:  fmt.Sprintf("Post-event report — Arena Platform"),
+				Subject:  "Post-event report — Arena Platform",
 				HTMLBody: htmlBody,
 				TextBody: textBody,
 			}

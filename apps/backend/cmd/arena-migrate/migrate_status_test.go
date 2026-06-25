@@ -377,5 +377,5 @@ func TestMigrationStatusEntry_MarshalJSON_Pending(t *testing.T) {
 
 var (
 	_ func(string) (int64, error) = parseVersionFromFilename
-	_ = migrationStatusEntry{}
+	_                             = migrationStatusEntry{}
 )

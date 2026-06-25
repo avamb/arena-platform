@@ -2,12 +2,13 @@
 // (Complimentary ticket issuance flow).
 //
 // Test coverage:
-//   Step 1: Migration file 0036_complimentary_issuances.sql — table, status CHECK, ticket ALTER, RBAC seeds
-//   Step 2: SQL query file complimentary_issuances.sql — all queries present
-//   Step 3: Gen file complimentary_issuances.sql.go — all types and methods
-//   Step 4: Querier interface — all 7 complimentary methods present
-//   Step 5: HTTP routes — auth-gating, server wiring, request validation
-//   Step 6: Idempotency — batch_id replay, server wiring
+//
+//	Step 1: Migration file 0036_complimentary_issuances.sql — table, status CHECK, ticket ALTER, RBAC seeds
+//	Step 2: SQL query file complimentary_issuances.sql — all queries present
+//	Step 3: Gen file complimentary_issuances.sql.go — all types and methods
+//	Step 4: Querier interface — all 7 complimentary methods present
+//	Step 5: HTTP routes — auth-gating, server wiring, request validation
+//	Step 6: Idempotency — batch_id replay, server wiring
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver
@@ -712,7 +713,7 @@ func TestComplimentary148_ComplimentaryIssuanceRowCompiles(t *testing.T) {
 	row.BatchID = "test-batch"
 	row.Status = "issued"
 	row.Qty = 10
-	if row.BatchID == "" || row.Status == "" {
+	if row.BatchID == "" || row.Status == "" || row.Qty != 10 {
 		t.Error("ComplimentaryIssuanceRow fields not properly typed")
 	}
 }

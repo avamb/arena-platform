@@ -262,7 +262,7 @@ func TestRequestLog_RequiredFieldsPresent(t *testing.T) {
 
 	// Check each required field is present (non-nil).
 	requiredFields := []string{
-		logging.FieldRequestID,   // "request_id"
+		logging.FieldRequestID, // "request_id"
 		"route",
 		"method",
 		"status",

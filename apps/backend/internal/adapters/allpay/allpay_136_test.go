@@ -41,12 +41,12 @@ var _ payments.PaymentProvider = (*allpayadapter.Adapter)(nil)
 
 func newTestAdapter(serverURL string) *allpayadapter.Adapter {
 	return allpayadapter.New(allpayadapter.Config{
-		APIKey:        "test_api_key_abc123",
-		WebhookSecret: "test_webhook_secret_xyz",
-		MerchantID:    "merchant_001",
-		BaseURL:       serverURL,
-		ReturnURL:     "https://example.com/payment/return",
-		NotifyURL:     "https://example.com/v1/allpay/webhook",
+		APIKey:                "test_api_key_abc123",
+		WebhookSecret:         "test_webhook_secret_xyz",
+		MerchantID:            "merchant_001",
+		BaseURL:               serverURL,
+		ReturnURL:             "https://example.com/payment/return",
+		NotifyURL:             "https://example.com/v1/allpay/webhook",
 		AllowedPaymentMethods: []string{"isracard", "leumi", "bit", "tashlumim"},
 	})
 }
@@ -187,7 +187,7 @@ func TestAllPay136_CreateIntent_AuthorizationHeaderSet(t *testing.T) {
 }
 
 func TestAllPay136_CreateIntent_APIError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnprocessableEntity)
 		fmt.Fprint(w, `{"code":"invalid_amount","message":"Amount must be positive"}`)
@@ -296,7 +296,7 @@ func TestAllPay136_CapturePayment_PartialAmount(t *testing.T) {
 }
 
 func TestAllPay136_CapturePayment_APIError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusConflict)
 		fmt.Fprint(w, `{"code":"already_captured","message":"Payment already captured"}`)
@@ -371,7 +371,7 @@ func TestAllPay136_RefundPayment_Partial(t *testing.T) {
 }
 
 func TestAllPay136_RefundPayment_APIError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnprocessableEntity)
 		fmt.Fprint(w, `{"code":"refund_exceeds_amount","message":"Refund amount exceeds captured amount"}`)

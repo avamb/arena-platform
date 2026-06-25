@@ -27,10 +27,11 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -68,11 +69,11 @@ func isTerminalAllocationStatus(status string) bool {
 // ─────────────────────────────────────────────────────────────────────────────
 
 type createExternalAllocationRequest struct {
-	SessionID    string  `json:"session_id"`
-	TierID       *string `json:"tier_id"`
-	QuotaQty     int32   `json:"quota_qty"`
-	Status       string  `json:"status"` // "pending" or "active"
-	Notes        *string `json:"notes"`
+	SessionID string  `json:"session_id"`
+	TierID    *string `json:"tier_id"`
+	QuotaQty  int32   `json:"quota_qty"`
+	Status    string  `json:"status"` // "pending" or "active"
+	Notes     *string `json:"notes"`
 }
 
 func (s *Server) handleCreateExternalAllocation(w http.ResponseWriter, r *http.Request) {

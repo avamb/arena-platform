@@ -3,10 +3,10 @@
 // These tests verify that all required operational artifacts exist and
 // contain the key content mandated by the feature specification:
 //
-//   Step 1: Backup script (pg_dump + WAL archive)
-//   Step 2: Restore runbook (markdown)
-//   Step 3: Staging dry-run
-//   Step 4: RPO/RTO assumptions documented
+//	Step 1: Backup script (pg_dump + WAL archive)
+//	Step 2: Restore runbook (markdown)
+//	Step 3: Staging dry-run
+//	Step 4: RPO/RTO assumptions documented
 //
 // The tests are static: they read the deploy/ directory relative to the repo
 // root and assert presence + content.  No database or network is required.

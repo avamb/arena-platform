@@ -3,11 +3,12 @@
 // and that each error response references the shared ErrorEnvelope component.
 //
 // Feature #68: "All error responses documented in OpenAPI"
-//   Step 1: Parse openapi.yaml
-//   Step 2: For POST /v1/echo: verify documented responses include 200, 400, 401, 409, 413, 415, 500, 503
-//   Step 3: For GET /v1/info: verify 200, 500
-//   Step 4: Verify each error response uses $ref to components.schemas.ErrorEnvelope
-//   Step 5: Validate every documented status code corresponds to an actual code the handler can return
+//
+//	Step 1: Parse openapi.yaml
+//	Step 2: For POST /v1/echo: verify documented responses include 200, 400, 401, 409, 413, 415, 500, 503
+//	Step 3: For GET /v1/info: verify 200, 500
+//	Step 4: Verify each error response uses $ref to components.schemas.ErrorEnvelope
+//	Step 5: Validate every documented status code corresponds to an actual code the handler can return
 package httpserver
 
 import (
@@ -139,7 +140,7 @@ func getOperationResponses(root *errRespYAMLNode, path, method string) map[strin
 			continue
 		}
 		for _, opNode := range pathNode.children {
-			if strings.ToLower(opNode.key) != strings.ToLower(method) {
+			if !strings.EqualFold(opNode.key, method) {
 				continue
 			}
 			responsesNode := findChild(opNode, "responses")
@@ -547,12 +548,12 @@ func TestErrorResponses_EchoCodesMatchHandler(t *testing.T) {
 	// Also verify no documented error code is completely undocumented in source.
 	// Scan echo.go for StatusXxx references as a sanity check.
 	echoHandlerCodes := map[string]string{
-		"StatusUnauthorized":            "401",
-		"StatusBadRequest":              "400",
-		"StatusRequestEntityTooLarge":   "413",
-		"StatusServiceUnavailable":      "503",
-		"StatusInternalServerError":     "500",
-		"StatusOK":                      "200",
+		"StatusUnauthorized":          "401",
+		"StatusBadRequest":            "400",
+		"StatusRequestEntityTooLarge": "413",
+		"StatusServiceUnavailable":    "503",
+		"StatusInternalServerError":   "500",
+		"StatusOK":                    "200",
 	}
 
 	// Read echo.go from the current package directory.

@@ -84,6 +84,7 @@ type publicFeedCheckoutStartRequest struct {
 //  7. Apply pricing pipeline (ComputePricing).
 //  8. ConfirmCheckoutSession — transitions to pricing_confirmed.
 //  9. Construct redirect URL.
+//
 // 10. Return 201 with checkout_session + redirect_url.
 func (s *Server) handlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.Request) {
 	if s.publicFeedQueries == nil || s.checkoutQueries == nil || s.reservationQueries == nil {

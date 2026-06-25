@@ -12,8 +12,8 @@
 //   - aggregate_id : $1 argument (actor_id — non-empty)
 //   - payload (jsonb): $2 argument — JSON containing message, request_id, trace_id
 //   - processed_at : column has no default override in the INSERT, so PostgreSQL
-//                    leaves it NULL (verified by confirming the column list has
-//                    no processed_at entry)
+//     leaves it NULL (verified by confirming the column list has
+//     no processed_at entry)
 //   - attempts     : column has DEFAULT 0, not set in INSERT → DB writes 0
 //   - last_error   : column is nullable, not set in INSERT → DB writes NULL
 //
@@ -32,10 +32,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 )
 
 // =============================================================================

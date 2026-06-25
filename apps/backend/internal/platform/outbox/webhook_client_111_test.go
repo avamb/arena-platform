@@ -2,11 +2,12 @@
 // "Webhook delivery client".
 //
 // Feature #111 spec:
-//   Step 1: Define Subscriber model (event_types[], url, secret, active)
-//   Step 2: Implement HTTP client with timeout and retry/exponential-backoff
-//   Step 3: Implement subscriber routing/filtering by event type
-//   Step 4: Add metrics (delivery latency, retry count, dead-letter count)
-//   Step 5: Integration test with mock subscriber
+//
+//	Step 1: Define Subscriber model (event_types[], url, secret, active)
+//	Step 2: Implement HTTP client with timeout and retry/exponential-backoff
+//	Step 3: Implement subscriber routing/filtering by event type
+//	Step 4: Add metrics (delivery latency, retry count, dead-letter count)
+//	Step 5: Integration test with mock subscriber
 //
 // All tests are self-contained (no live database required). HTTP delivery
 // is exercised via net/http/httptest.Server instances acting as mock subscribers.
@@ -96,7 +97,7 @@ func TestWebhookClient111_SubscriberWildcard(t *testing.T) {
 // subscribers (Active=false) are not contacted during Dispatch.
 func TestWebhookClient111_InactiveSubscriberSkipped(t *testing.T) {
 	var calls atomic.Int64
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls.Add(1)
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -131,7 +132,7 @@ func TestWebhookClient111_InactiveSubscriberSkipped(t *testing.T) {
 // reachable on the first attempt is contacted exactly once.
 func TestWebhookClient111_SingleAttemptSuccess(t *testing.T) {
 	var calls atomic.Int64
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls.Add(1)
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -158,7 +159,7 @@ func TestWebhookClient111_SingleAttemptSuccess(t *testing.T) {
 // that fails the first attempt but succeeds on the second is retried.
 func TestWebhookClient111_RetryOnTransientFailure(t *testing.T) {
 	var calls atomic.Int64
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		n := calls.Add(1)
 		if n == 1 {
 			w.WriteHeader(http.StatusInternalServerError) // first call fails
@@ -191,7 +192,7 @@ func TestWebhookClient111_RetryOnTransientFailure(t *testing.T) {
 // still returns nil (overall success so the outbox row is marked dispatched).
 func TestWebhookClient111_DeadLetterOnMaxAttempts(t *testing.T) {
 	var calls atomic.Int64
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls.Add(1)
 		w.WriteHeader(http.StatusBadGateway) // always fails
 	}))
@@ -294,19 +295,19 @@ func TestWebhookClient111_DefaultsApplied(t *testing.T) {
 func TestWebhookClient111_RoutingByEventType(t *testing.T) {
 	var orderCalls, ticketCalls, allCalls atomic.Int64
 
-	orderSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	orderSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		orderCalls.Add(1)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer orderSrv.Close()
 
-	ticketSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ticketSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		ticketCalls.Add(1)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer ticketSrv.Close()
 
-	allSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	allSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		allCalls.Add(1)
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -357,13 +358,13 @@ func TestWebhookClient111_RoutingByEventType(t *testing.T) {
 func TestWebhookClient111_MultipleSubscribersSameEventType(t *testing.T) {
 	var calls1, calls2 atomic.Int64
 
-	srv1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls1.Add(1)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv1.Close()
 
-	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls2.Add(1)
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -390,7 +391,7 @@ func TestWebhookClient111_MultipleSubscribersSameEventType(t *testing.T) {
 // an event with no matching subscribers returns nil without any HTTP calls.
 func TestWebhookClient111_NoMatchingSubscribersIsNoop(t *testing.T) {
 	var calls atomic.Int64
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls.Add(1)
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -421,7 +422,7 @@ func TestWebhookClient111_NoMatchingSubscribersIsNoop(t *testing.T) {
 // incremented once for each retry beyond the first attempt.
 func TestWebhookClient111_MetricsRetryCount(t *testing.T) {
 	var calls atomic.Int64
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		n := calls.Add(1)
 		if n < 3 { // fail first 2 attempts
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -465,7 +466,7 @@ func TestWebhookClient111_MetricsRetryCount(t *testing.T) {
 // TestWebhookClient111_MetricsDeadLetterCount verifies that DeadLetterCount
 // is incremented once when all retry attempts are exhausted.
 func TestWebhookClient111_MetricsDeadLetterCount(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
@@ -502,7 +503,7 @@ func TestWebhookClient111_MetricsDeadLetterCount(t *testing.T) {
 // TestWebhookClient111_MetricsDeliveryDuration verifies that the delivery
 // duration histogram is observed for each successful delivery.
 func TestWebhookClient111_MetricsDeliveryDuration(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
@@ -616,7 +617,7 @@ func TestWebhookClient111_IntegrationMockSubscriber(t *testing.T) {
 
 	// --- Subscriber 2: payment handler (fails once then succeeds) ---
 	var paymentHits atomic.Int64
-	paymentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	paymentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		n := paymentHits.Add(1)
 		if n == 1 {
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -628,7 +629,7 @@ func TestWebhookClient111_IntegrationMockSubscriber(t *testing.T) {
 
 	// --- Subscriber 3: dead-letter subscriber (always fails) ---
 	var dlHits atomic.Int64
-	dlSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	dlSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		dlHits.Add(1)
 		w.WriteHeader(http.StatusGatewayTimeout)
 	}))
@@ -829,7 +830,7 @@ func TestWebhookClient111_IdempotencyKeyHeader(t *testing.T) {
 
 // TestWebhookClient111_CompileTimeGuard is the runtime assertion of the
 // compile-time Dispatcher interface guard in webhook_client.go.
-func TestWebhookClient111_CompileTimeGuard(t *testing.T) {
+func TestWebhookClient111_CompileTimeGuard(_ *testing.T) {
 	var _ Dispatcher = (*WebhookClient)(nil)
 }
 
@@ -856,7 +857,7 @@ func TestWebhookClient111_FullVerification(t *testing.T) {
 
 	t.Run("step2_retry_exponential_backoff", func(t *testing.T) {
 		var calls atomic.Int64
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			if calls.Add(1) == 1 {
 				w.WriteHeader(http.StatusServiceUnavailable)
 			} else {
@@ -881,7 +882,7 @@ func TestWebhookClient111_FullVerification(t *testing.T) {
 
 	t.Run("step3_routing_by_event_type", func(t *testing.T) {
 		var hits atomic.Int64
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			hits.Add(1)
 			w.WriteHeader(http.StatusOK)
 		}))
@@ -900,7 +901,7 @@ func TestWebhookClient111_FullVerification(t *testing.T) {
 	})
 
 	t.Run("step4_metrics", func(t *testing.T) {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}))
 		defer srv.Close()
@@ -936,7 +937,7 @@ func TestWebhookClient111_FullVerification(t *testing.T) {
 
 	t.Run("step5_integration_mock_subscriber", func(t *testing.T) {
 		var hits atomic.Int64
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			if hits.Add(1) <= 2 {
 				w.WriteHeader(http.StatusInternalServerError)
 			} else {

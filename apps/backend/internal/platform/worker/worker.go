@@ -44,9 +44,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/database"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/database"
 )
 
 // HandlerFunc is the contract every job-type handler must satisfy.
@@ -612,7 +613,7 @@ func safeHandler(ctx context.Context, h HandlerFunc, payload []byte) (err error)
 // markFailureOrRetry either schedules a retry (status='pending') or
 // finalises the row as failed (status='failed') and copies it into
 // worker_dead_letter. The decision is based on attempts vs max_attempts.
-func (w *Worker) markFailureOrRetry(ctx context.Context, job *Job, handlerErr error) {
+func (w *Worker) markFailureOrRetry(_ context.Context, job *Job, handlerErr error) {
 	errText := truncate(handlerErr.Error(), 4000)
 
 	// Use context.Background() for the same reason as MarkDone: a

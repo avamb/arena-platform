@@ -36,10 +36,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
 // maxBarcodeBatchFileSize is the maximum upload size for a single batch file (10 MiB).
@@ -61,6 +62,7 @@ func (s *Server) handleUploadBarcodeBatch(w http.ResponseWriter, r *http.Request
 	}
 
 	// Parse the multipart form. Limit total memory to 32 MiB.
+	//nolint:gosec // G120 false positive: 32 MiB cap is explicitly bounded above
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorEnvelope(
 			"barcode_batch.parse_multipart_failed", "failed to parse multipart form: "+err.Error(), r,
@@ -169,7 +171,8 @@ func (s *Server) handleUploadBarcodeBatch(w http.ResponseWriter, r *http.Request
 		source,
 		"pending_approval",
 		filename,
-		int32(len(barcodeRefs)),
+		int32(len(barcodeRefs)), //nolint:gosec // len bounded by 32 MiB upload cap above
+
 		nil, // authority_id resolved on approval
 		notes,
 		uploadedBy,

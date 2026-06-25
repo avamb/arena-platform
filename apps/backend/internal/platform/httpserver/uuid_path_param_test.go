@@ -171,8 +171,8 @@ func TestUUIDPathParam_NoPanicOnMalformedInput(t *testing.T) {
 
 	inputs := []string{
 		"not-a-uuid",
-		"",                                    // empty
-		"12345",                               // too short
+		"",                                     // empty
+		"12345",                                // too short
 		"zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz", // wrong chars
 		"00000000-0000-0000-0000-00000000000g", // invalid hex digit
 		"../../../etc/passwd",                  // path traversal attempt

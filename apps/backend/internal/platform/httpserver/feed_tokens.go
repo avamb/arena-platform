@@ -7,22 +7,24 @@
 //
 // Management endpoints (require JWT auth + named permission):
 //
-//   POST   /v1/organizations/{org_id}/channels/{channel_id}/feed-tokens        — issue token (feed_token.create)
-//   GET    /v1/organizations/{org_id}/channels/{channel_id}/feed-tokens        — list tokens (feed_token.read)
-//   GET    /v1/organizations/{org_id}/channels/{channel_id}/feed-tokens/{id}   — get single (feed_token.read)
-//   DELETE /v1/organizations/{org_id}/channels/{channel_id}/feed-tokens/{id}   — revoke token (feed_token.delete)
+//	POST   /v1/organizations/{org_id}/channels/{channel_id}/feed-tokens        — issue token (feed_token.create)
+//	GET    /v1/organizations/{org_id}/channels/{channel_id}/feed-tokens        — list tokens (feed_token.read)
+//	GET    /v1/organizations/{org_id}/channels/{channel_id}/feed-tokens/{id}   — get single (feed_token.read)
+//	DELETE /v1/organizations/{org_id}/channels/{channel_id}/feed-tokens/{id}   — revoke token (feed_token.delete)
 //
 // Public feed read endpoint (no auth, token in path):
 //
-//   GET /v1/feeds/{token} — public feed; validates token, updates last_used_at, returns channel info
+//	GET /v1/feeds/{token} — public feed; validates token, updates last_used_at, returns channel info
 //
 // Token revocation (Step 2):
-//   DELETE sets is_active=false + revoked_at=now(). The row is kept for audit.
-//   Subsequent public feed reads for a revoked token return 404.
+//
+//	DELETE sets is_active=false + revoked_at=now(). The row is kept for audit.
+//	Subsequent public feed reads for a revoked token return 404.
 //
 // Last-used-at update (Step 3):
-//   TouchFeedTokenLastUsed is called best-effort after a successful public feed
-//   read. Errors in the update do not block the response.
+//
+//	TouchFeedTokenLastUsed is called best-effort after a successful public feed
+//	read. Errors in the update do not block the response.
 package httpserver
 
 import (
@@ -36,13 +38,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────

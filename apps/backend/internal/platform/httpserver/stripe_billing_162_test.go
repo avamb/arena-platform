@@ -23,11 +23,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	stripebillingadapter "github.com/abhteam/arena_new/apps/backend/internal/adapters/stripebilling"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
-	"github.com/google/uuid"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -181,7 +182,7 @@ func TestStripeBilling162_Step6_NewAdapterCustomBaseURL(t *testing.T) {
 		t.Fatal("stripebilling.New() returned nil")
 	}
 	// Verify the adapter uses the custom URL by making it hit a test server.
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"id":"cus_test123","email":"","name":""}`)
 	}))
@@ -709,6 +710,12 @@ func TestStripeBilling162_Step21_StripeCustomerRowFields(t *testing.T) {
 	if row.StripeCustomerID != "cus_test" {
 		t.Errorf("StripeCustomerRow.StripeCustomerID = %q", row.StripeCustomerID)
 	}
+	if row.ID == uuid.Nil || row.OrgID == uuid.Nil {
+		t.Errorf("StripeCustomerRow.ID/OrgID must round-trip non-nil")
+	}
+	if row.Email != nil || row.Name != nil {
+		t.Errorf("StripeCustomerRow.Email/Name should be nil when zero-valued")
+	}
 }
 
 // TestStripeBilling162_Step21_InvoiceStripeRowFields verifies the
@@ -722,6 +729,12 @@ func TestStripeBilling162_Step21_InvoiceStripeRowFields(t *testing.T) {
 	}
 	if *row.StripeInvoiceID != "in_abc123" {
 		t.Errorf("InvoiceStripeRow.StripeInvoiceID = %q, want %q", *row.StripeInvoiceID, "in_abc123")
+	}
+	if row.ID == uuid.Nil {
+		t.Errorf("InvoiceStripeRow.ID must round-trip non-nil")
+	}
+	if row.State != "issued" {
+		t.Errorf("InvoiceStripeRow.State = %q, want issued", row.State)
 	}
 }
 
@@ -811,14 +824,14 @@ var payments_errInvalidWebhookSignature = func() error {
 
 // mockStripeBillingAdapter is a test double for stripeBillingHelper.
 type mockStripeBillingAdapter struct {
-	createCustomerID   string
-	createCustomerErr  error
-	createItemID       string
-	createItemErr      error
-	createInvoiceID    string
-	createInvoiceErr   error
-	webhookResponse    *stripebillingadapter.BillingWebhookEvent
-	handleWebhookErr   error
+	createCustomerID  string
+	createCustomerErr error
+	createItemID      string
+	createItemErr     error
+	createInvoiceID   string
+	createInvoiceErr  error
+	webhookResponse   *stripebillingadapter.BillingWebhookEvent
+	handleWebhookErr  error
 }
 
 func (m *mockStripeBillingAdapter) CreateOrUpdateCustomer(_ context.Context, _, _, _ string) (string, error) {

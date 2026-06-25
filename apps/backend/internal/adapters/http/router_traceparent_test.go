@@ -8,27 +8,29 @@
 //
 // Two scenarios are covered:
 //
-//   A. AlwaysSample SDK — the local span is live, sc.TraceID() is valid,
-//      and the trace_id must equal the one carried by the incoming traceparent.
+//	A. AlwaysSample SDK — the local span is live, sc.TraceID() is valid,
+//	   and the trace_id must equal the one carried by the incoming traceparent.
 //
-//   B. NeverSample SDK — the local span is a no-op, sc.TraceID() is zeroed,
-//      but the remote SpanContext extracted by the propagator still holds the
-//      parent trace_id. The middleware must surface THAT trace_id (priority (b)
-//      in tracerMiddleware) rather than minting a fresh random one.
+//	B. NeverSample SDK — the local span is a no-op, sc.TraceID() is zeroed,
+//	   but the remote SpanContext extracted by the propagator still holds the
+//	   parent trace_id. The middleware must surface THAT trace_id (priority (b)
+//	   in tracerMiddleware) rather than minting a fresh random one.
 //
 // Both scenarios confirm that the client's distributed trace context propagates
 // through the server boundary transparently.
 package http_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	httpadapter "github.com/abhteam/arena_new/apps/backend/internal/adapters/http"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+
+	httpadapter "github.com/abhteam/arena_new/apps/backend/internal/adapters/http"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
 // knownTraceparent is a syntactically valid W3C traceparent header whose
@@ -73,7 +75,7 @@ func TestTraceparent_AlwaysSample_TraceIDMatchesParent(t *testing.T) {
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithSampler(sdktrace.AlwaysSample()),
 	)
-	defer func() { _ = tp.Shutdown(nil) }()
+	defer func() { _ = tp.Shutdown(context.Background()) }()
 
 	r := httpadapter.NewRouter(httpadapter.Deps{
 		Propagator: w3cPropagator(),
@@ -104,7 +106,7 @@ func TestTraceparent_AlwaysSample_ContextCarriesParentTraceID(t *testing.T) {
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithSampler(sdktrace.AlwaysSample()),
 	)
-	defer func() { _ = tp.Shutdown(nil) }()
+	defer func() { _ = tp.Shutdown(context.Background()) }()
 
 	r := httpadapter.NewRouter(httpadapter.Deps{
 		Propagator: w3cPropagator(),
@@ -136,7 +138,7 @@ func TestTraceparent_AlwaysSample_NoTraceparent_GeneratesNew(t *testing.T) {
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithSampler(sdktrace.AlwaysSample()),
 	)
-	defer func() { _ = tp.Shutdown(nil) }()
+	defer func() { _ = tp.Shutdown(context.Background()) }()
 
 	r := httpadapter.NewRouter(httpadapter.Deps{
 		Propagator: w3cPropagator(),
@@ -180,7 +182,7 @@ func TestTraceparent_NeverSample_TraceIDHonoured(t *testing.T) {
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithSampler(sdktrace.NeverSample()),
 	)
-	defer func() { _ = tp.Shutdown(nil) }()
+	defer func() { _ = tp.Shutdown(context.Background()) }()
 
 	r := httpadapter.NewRouter(httpadapter.Deps{
 		Propagator: w3cPropagator(),
@@ -214,7 +216,7 @@ func TestTraceparent_NeverSample_UnsampledHonoured(t *testing.T) {
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithSampler(sdktrace.NeverSample()),
 	)
-	defer func() { _ = tp.Shutdown(nil) }()
+	defer func() { _ = tp.Shutdown(context.Background()) }()
 
 	r := httpadapter.NewRouter(httpadapter.Deps{
 		Propagator: w3cPropagator(),
@@ -246,7 +248,7 @@ func TestTraceparent_NeverSample_ContextAlsoCarriesParentTraceID(t *testing.T) {
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithSampler(sdktrace.NeverSample()),
 	)
-	defer func() { _ = tp.Shutdown(nil) }()
+	defer func() { _ = tp.Shutdown(context.Background()) }()
 
 	r := httpadapter.NewRouter(httpadapter.Deps{
 		Propagator: w3cPropagator(),
@@ -279,7 +281,7 @@ func TestTraceparent_NeverSample_NoTraceparent_GeneratesRandom(t *testing.T) {
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithSampler(sdktrace.NeverSample()),
 	)
-	defer func() { _ = tp.Shutdown(nil) }()
+	defer func() { _ = tp.Shutdown(context.Background()) }()
 
 	r := httpadapter.NewRouter(httpadapter.Deps{
 		Propagator: w3cPropagator(),
@@ -308,7 +310,7 @@ func TestTraceparent_InvalidTraceparent_GeneratesNew(t *testing.T) {
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithSampler(sdktrace.AlwaysSample()),
 	)
-	defer func() { _ = tp.Shutdown(nil) }()
+	defer func() { _ = tp.Shutdown(context.Background()) }()
 
 	r := httpadapter.NewRouter(httpadapter.Deps{
 		Propagator: w3cPropagator(),
@@ -343,7 +345,7 @@ func TestTraceparent_DifferentRequests_DifferentTraceIDs(t *testing.T) {
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithSampler(sdktrace.AlwaysSample()),
 	)
-	defer func() { _ = tp.Shutdown(nil) }()
+	defer func() { _ = tp.Shutdown(context.Background()) }()
 
 	r := httpadapter.NewRouter(httpadapter.Deps{
 		Propagator: w3cPropagator(),

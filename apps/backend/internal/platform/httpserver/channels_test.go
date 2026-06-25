@@ -1,11 +1,12 @@
 // channels_test.go — unit tests for feature #121 (Sales channel model + per-channel config).
 //
 // Test coverage:
-//   Step 1: Migration file 0010_sales_channels.sql exists with correct schema + seeds
-//   Step 2: POST/GET/PATCH/DELETE /v1/organizations/{org_id}/channels routes mounted,
-//           auth-gated, with correct request validation behaviour (no DB required)
-//   Step 3: Config validator — payment_mode / provider / provider_account_id rules
-//   Step 4: sqlc gen file (channels.sql.go) and query file (channels.sql) structure
+//
+//	Step 1: Migration file 0010_sales_channels.sql exists with correct schema + seeds
+//	Step 2: POST/GET/PATCH/DELETE /v1/organizations/{org_id}/channels routes mounted,
+//	        auth-gated, with correct request validation behaviour (no DB required)
+//	Step 3: Config validator — payment_mode / provider / provider_account_id rules
+//	Step 4: sqlc gen file (channels.sql.go) and query file (channels.sql) structure
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver
@@ -18,10 +19,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
-	"github.com/google/uuid"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -605,16 +607,16 @@ func TestChannel121_SalesChannelRowHasTTLOverrideField(t *testing.T) {
 func TestChannel121_ChannelResponseShape(t *testing.T) {
 	// Verify channelResponse fields are correct.
 	ch := channelResponse{
-		ID:                    "00000000-0000-0000-0000-000000000001",
-		OrgID:                 "00000000-0000-0000-0000-000000000002",
-		Name:                  "Direct Stripe",
-		PaymentMode:           "direct_merchant",
-		Provider:              "stripe",
-		ProviderAccountID:     nil,
-		FeePercent:            "2.50",
+		ID:                     "00000000-0000-0000-0000-000000000001",
+		OrgID:                  "00000000-0000-0000-0000-000000000002",
+		Name:                   "Direct Stripe",
+		PaymentMode:            "direct_merchant",
+		Provider:               "stripe",
+		ProviderAccountID:      nil,
+		FeePercent:             "2.50",
 		ReservationTTLOverride: nil,
-		CreatedAt:             "2026-01-01T00:00:00Z",
-		UpdatedAt:             "2026-01-01T00:00:00Z",
+		CreatedAt:              "2026-01-01T00:00:00Z",
+		UpdatedAt:              "2026-01-01T00:00:00Z",
 	}
 
 	b, err := json.Marshal(ch)

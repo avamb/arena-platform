@@ -27,10 +27,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -654,4 +655,3 @@ func (s *Server) handleValidatePromoCode(w http.ResponseWriter, r *http.Request)
 		"promo_code":      promoCodeFromRow(pc),
 	})
 }
-

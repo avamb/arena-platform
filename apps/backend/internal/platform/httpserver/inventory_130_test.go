@@ -1,10 +1,11 @@
 // inventory_130_test.go — unit tests for feature #130 (Inventory Ledger - GA capacity).
 //
 // Test coverage:
-//   Step 1: Migration file 0020_inventory_ledger.sql — table, constraints, RBAC seeds
-//   Step 2: SQL query file and gen file structure — atomic operations, FOR UPDATE, invariant
-//   Step 3: Capacity propagation hook — sessions.go wired to inventoryQueries
-//   Step 4: HTTP routes — auth-gating, method-gating, server wiring
+//
+//	Step 1: Migration file 0020_inventory_ledger.sql — table, constraints, RBAC seeds
+//	Step 2: SQL query file and gen file structure — atomic operations, FOR UPDATE, invariant
+//	Step 3: Capacity propagation hook — sessions.go wired to inventoryQueries
+//	Step 4: HTTP routes — auth-gating, method-gating, server wiring
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver

@@ -26,7 +26,7 @@ func New() Clock {
 // realClock is the production implementation of Clock using the system clock.
 type realClock struct{}
 
-func (realClock) Now() time.Time              { return time.Now() }
+func (realClock) Now() time.Time                  { return time.Now() }
 func (realClock) Since(t time.Time) time.Duration { return time.Since(t) }
 
 // FakeClock is a test-only Clock implementation whose time is fully controlled.

@@ -111,14 +111,14 @@ type stripeNextActionRedirectToURL struct {
 }
 
 type stripeNextAction struct {
-	Type            string                         `json:"type"`
-	RedirectToURL   stripeNextActionRedirectToURL  `json:"redirect_to_url"`
+	Type          string                        `json:"type"`
+	RedirectToURL stripeNextActionRedirectToURL `json:"redirect_to_url"`
 }
 
 type stripePaymentIntent struct {
-	ID           string           `json:"id"`
-	ClientSecret string           `json:"client_secret"`
-	Status       string           `json:"status"`
+	ID           string            `json:"id"`
+	ClientSecret string            `json:"client_secret"`
+	Status       string            `json:"status"`
 	NextAction   *stripeNextAction `json:"next_action"`
 }
 
@@ -153,8 +153,8 @@ type stripeAPIError struct {
 }
 
 type stripeOAuthTokenResponse struct {
-	StripeUserID string `json:"stripe_user_id"`
-	Error        string `json:"error"`
+	StripeUserID     string `json:"stripe_user_id"`
+	Error            string `json:"error"`
 	ErrorDescription string `json:"error_description"`
 }
 
@@ -323,7 +323,7 @@ func (a *Adapter) RefundPayment(ctx context.Context, req payments.RefundPaymentR
 // body. The webhook secret is taken from req.Secret if non-empty, otherwise
 // cfg.WebhookSecret is used. Returns payments.ErrInvalidWebhookSignature if
 // signature verification fails.
-func (a *Adapter) HandleWebhook(ctx context.Context, req payments.WebhookRequest) (*payments.WebhookResponse, error) {
+func (a *Adapter) HandleWebhook(_ context.Context, req payments.WebhookRequest) (*payments.WebhookResponse, error) {
 	secret := req.Secret
 	if secret == "" {
 		secret = a.cfg.WebhookSecret

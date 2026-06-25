@@ -23,10 +23,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	httpadapter "github.com/abhteam/arena_new/apps/backend/internal/adapters/http"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
-	"github.com/google/uuid"
 )
 
 // -----------------------------------------------------------------------------
@@ -204,7 +205,7 @@ func TestNewRouter_InvalidInboundRequestIDIsReplaced(t *testing.T) {
 // crash on handler panic" guarantee documented in router.go.
 func TestNewRouter_RecovererCatchesPanic(t *testing.T) {
 	r := httpadapter.NewRouter(httpadapter.Deps{})
-	r.Get("/panic", func(w http.ResponseWriter, _ *http.Request) {
+	r.Get("/panic", func(_ http.ResponseWriter, _ *http.Request) {
 		panic("simulated handler panic")
 	})
 
@@ -245,7 +246,7 @@ func TestNewRouter_TimeoutMiddlewareApplied(t *testing.T) {
 	// Buffered so the handler goroutine never blocks on send even if the
 	// test's ServeHTTP has already returned.
 	ctxErrCh := make(chan error, 1)
-	r.Get("/slow", func(w http.ResponseWriter, req *http.Request) {
+	r.Get("/slow", func(_ http.ResponseWriter, req *http.Request) {
 		select {
 		case <-req.Context().Done():
 			ctxErrCh <- req.Context().Err()

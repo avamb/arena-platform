@@ -18,8 +18,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 )
 
 // Pool wraps a pgxpool.Pool together with a continuous health-checker.
@@ -236,7 +237,7 @@ type Stats struct {
 }
 
 func (p *Pool) Snapshot() Stats {
-	s := p.Pool.Stat()
+	s := p.Stat()
 	return Stats{
 		AcquiredConns:    s.AcquiredConns(),
 		IdleConns:        s.IdleConns(),

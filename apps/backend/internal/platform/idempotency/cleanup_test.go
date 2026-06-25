@@ -4,15 +4,15 @@
 //
 // Step-by-step coverage (all steps, no live database required):
 //
-//   Step 1: Insert 3 idempotency_keys rows: A expired 1h ago, B expired 1d ago,
-//           C still valid (expires 23h from now).
-//   Step 2: Enqueue/invoke the cleanup job handler directly (no worker queue needed
-//           for unit tests — the handler function is called synchronously).
-//   Step 3: Wait for completion (handler call returns).
-//   Step 4: Verify rows A and B were deleted; row C is still present.
-//   Step 5: Verify idempotency_cleanup_deleted_total counter incremented by 2.
-//   Step 6: Verify cleanup job self-schedules the next run (cron-like), confirming
-//           the startup scheduling mechanism works.
+//	Step 1: Insert 3 idempotency_keys rows: A expired 1h ago, B expired 1d ago,
+//	        C still valid (expires 23h from now).
+//	Step 2: Enqueue/invoke the cleanup job handler directly (no worker queue needed
+//	        for unit tests — the handler function is called synchronously).
+//	Step 3: Wait for completion (handler call returns).
+//	Step 4: Verify rows A and B were deleted; row C is still present.
+//	Step 5: Verify idempotency_cleanup_deleted_total counter incremented by 2.
+//	Step 6: Verify cleanup job self-schedules the next run (cron-like), confirming
+//	        the startup scheduling mechanism works.
 package idempotency
 
 import (
@@ -152,9 +152,9 @@ const (
 //   - Row C: expires 23 hours from now (valid)
 func seedThreeRows(c *inMemoryCleaner) {
 	now := time.Now()
-	c.seed("KEY_A", cleanupScopeA, now.Add(-1*time.Hour))   // expired 1h ago
-	c.seed("KEY_B", cleanupScopeB, now.Add(-24*time.Hour))  // expired 1d ago
-	c.seed("KEY_C", cleanupScopeC, now.Add(23*time.Hour))   // still valid
+	c.seed("KEY_A", cleanupScopeA, now.Add(-1*time.Hour))  // expired 1h ago
+	c.seed("KEY_B", cleanupScopeB, now.Add(-24*time.Hour)) // expired 1d ago
+	c.seed("KEY_C", cleanupScopeC, now.Add(23*time.Hour))  // still valid
 }
 
 // ----------------------------------------------------------------------------

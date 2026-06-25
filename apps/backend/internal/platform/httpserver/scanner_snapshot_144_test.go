@@ -1,36 +1,37 @@
 // scanner_snapshot_144_test.go — unit tests for offline scanner snapshot endpoint (feature #144).
 //
 // Tests cover:
-//   Step 1:  SQL query files contain ListSnapshotBarcodesBySession and CountSnapshotBarcodesBySession
-//   Step 2:  Gen file contains ListSnapshotBarcodesBySession and CountSnapshotBarcodesBySession functions
-//   Step 3:  Querier interface has ListSnapshotBarcodesBySession and CountSnapshotBarcodesBySession
-//   Step 4:  scanner_snapshot.go exists and defines the handler functions
-//   Step 5:  scannerRateLimiter struct exists with per-IP + per-session limits
-//   Step 6:  newScannerRateLimiter constructs limiter with correct limits
-//   Step 7:  scannerRateLimiter.checkIP enforces per-IP limit
-//   Step 8:  scannerRateLimiter.checkSession enforces per-session limit
-//   Step 9:  snapshotBarcodeResponse struct has required JSON fields
-//   Step 10: validateBarcodeResponse struct has valid/invalid_reason fields
-//   Step 11: handleScannerSnapshot is registered on Server as a method
-//   Step 12: handleScannerValidate is registered on Server as a method
-//   Step 13: server.go wires GET /scanner/snapshot and POST /scanner/validate routes
-//   Step 14: handleScannerSnapshot requires session_id query param
-//   Step 15: handleScannerSnapshot rejects invalid session_id UUID
-//   Step 16: handleScannerSnapshot rejects invalid since timestamp format
-//   Step 17: handleScannerSnapshot returns 503 when barcodeQueries is nil
-//   Step 18: handleScannerValidate returns 503 when barcodeQueries is nil
-//   Step 19: handleScannerValidate requires external_ref
-//   Step 20: handleScannerValidate requires authority_type
-//   Step 21: validateBarcodeResponse.Valid is true only for active barcodes
-//   Step 22: validateBarcodeResponse.InvalidReason matches status
-//   Step 23: per-IP rate limit returns 429 after threshold
-//   Step 24: per-session rate limit returns 429 after threshold
-//   Step 25: SQL query joins barcodes with tickets on session_id
-//   Step 26: snapshot response contains barcodes array and pagination metadata
-//   Step 27: since cursor in snapshot defaults to zero time (full snapshot mode)
-//   Step 28: serverScannerRL is a package-level rate limiter instance
-//   Step 29: snapshot handler logs session_id + count + total
-//   Step 30: validate handler logs barcode_id + authority_type + valid
+//
+//	Step 1:  SQL query files contain ListSnapshotBarcodesBySession and CountSnapshotBarcodesBySession
+//	Step 2:  Gen file contains ListSnapshotBarcodesBySession and CountSnapshotBarcodesBySession functions
+//	Step 3:  Querier interface has ListSnapshotBarcodesBySession and CountSnapshotBarcodesBySession
+//	Step 4:  scanner_snapshot.go exists and defines the handler functions
+//	Step 5:  scannerRateLimiter struct exists with per-IP + per-session limits
+//	Step 6:  newScannerRateLimiter constructs limiter with correct limits
+//	Step 7:  scannerRateLimiter.checkIP enforces per-IP limit
+//	Step 8:  scannerRateLimiter.checkSession enforces per-session limit
+//	Step 9:  snapshotBarcodeResponse struct has required JSON fields
+//	Step 10: validateBarcodeResponse struct has valid/invalid_reason fields
+//	Step 11: handleScannerSnapshot is registered on Server as a method
+//	Step 12: handleScannerValidate is registered on Server as a method
+//	Step 13: server.go wires GET /scanner/snapshot and POST /scanner/validate routes
+//	Step 14: handleScannerSnapshot requires session_id query param
+//	Step 15: handleScannerSnapshot rejects invalid session_id UUID
+//	Step 16: handleScannerSnapshot rejects invalid since timestamp format
+//	Step 17: handleScannerSnapshot returns 503 when barcodeQueries is nil
+//	Step 18: handleScannerValidate returns 503 when barcodeQueries is nil
+//	Step 19: handleScannerValidate requires external_ref
+//	Step 20: handleScannerValidate requires authority_type
+//	Step 21: validateBarcodeResponse.Valid is true only for active barcodes
+//	Step 22: validateBarcodeResponse.InvalidReason matches status
+//	Step 23: per-IP rate limit returns 429 after threshold
+//	Step 24: per-session rate limit returns 429 after threshold
+//	Step 25: SQL query joins barcodes with tickets on session_id
+//	Step 26: snapshot response contains barcodes array and pagination metadata
+//	Step 27: since cursor in snapshot defaults to zero time (full snapshot mode)
+//	Step 28: serverScannerRL is a package-level rate limiter instance
+//	Step 29: snapshot handler logs session_id + count + total
+//	Step 30: validate handler logs barcode_id + authority_type + valid
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver
@@ -345,13 +346,13 @@ func TestScannerSnapshot144_ValidateResponseInvalidReasonOmittedWhenEmpty(t *tes
 // Step 11 & 12: Handler methods exist on *Server
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestScannerSnapshot144_SnapshotHandlerOnServer(t *testing.T) {
+func TestScannerSnapshot144_SnapshotHandlerOnServer(_ *testing.T) {
 	// Compile-time guard: if handleScannerSnapshot is removed from Server, this won't compile.
 	s := &Server{}
 	_ = s.handleScannerSnapshot
 }
 
-func TestScannerSnapshot144_ValidateHandlerOnServer(t *testing.T) {
+func TestScannerSnapshot144_ValidateHandlerOnServer(_ *testing.T) {
 	// Compile-time guard: if handleScannerValidate is removed from Server, this won't compile.
 	s := &Server{}
 	_ = s.handleScannerValidate
@@ -523,6 +524,9 @@ func TestScannerSnapshot144_ValidateRequiresAuthorityType(t *testing.T) {
 
 func TestScannerSnapshot144_ValidateResponseValid_Active(t *testing.T) {
 	r := validateBarcodeResponse{Status: "active", Valid: true}
+	if r.Status != "active" {
+		t.Errorf("expected Status=active, got %q", r.Status)
+	}
 	if !r.Valid {
 		t.Error("active barcode must have Valid=true")
 	}
@@ -533,6 +537,9 @@ func TestScannerSnapshot144_ValidateResponseValid_Active(t *testing.T) {
 
 func TestScannerSnapshot144_ValidateResponseValid_Revoked(t *testing.T) {
 	r := validateBarcodeResponse{Status: "revoked", Valid: false, InvalidReason: "barcode_revoked"}
+	if r.Status != "revoked" {
+		t.Errorf("expected Status=revoked, got %q", r.Status)
+	}
 	if r.Valid {
 		t.Error("revoked barcode must have Valid=false")
 	}

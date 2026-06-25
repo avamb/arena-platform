@@ -507,7 +507,7 @@ func TestBodyLimit_SafeMethodsNotLimited(t *testing.T) {
 
 	// Mount a GET handler on a fresh router with a 1 MiB body limit.
 	r := httpadapter.NewRouter(httpadapter.Deps{BodyLimitBytes: 1 << 20})
-	r.Get("/test/get", func(w http.ResponseWriter, req *http.Request) {
+	r.Get("/test/get", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 	getServer := httptest.NewServer(r)

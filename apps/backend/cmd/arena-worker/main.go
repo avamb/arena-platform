@@ -40,6 +40,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
@@ -50,7 +52,6 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func main() {
@@ -154,11 +155,11 @@ func run() error {
 	outboxDispatcher := buildOutboxDispatcher(cfg, logger)
 	outboxStore := outbox.NewPGOutboxEventStore(pool.Pool)
 	outboxEventsDisp, outboxDispErr := outbox.NewOutboxEventsDispatcher(outbox.OutboxEventsDispatcherOptions{
-		Store:            outboxStore,
-		Dispatcher:       outboxDispatcher,
-		Logger:           logger,
-		PollInterval:     cfg.OutboxPollInterval,
-		ShutdownTimeout:  cfg.ShutdownTimeout,
+		Store:           outboxStore,
+		Dispatcher:      outboxDispatcher,
+		Logger:          logger,
+		PollInterval:    cfg.OutboxPollInterval,
+		ShutdownTimeout: cfg.ShutdownTimeout,
 	})
 	if outboxDispErr != nil {
 		return fmt.Errorf("init outbox events dispatcher: %w", outboxDispErr)
@@ -201,7 +202,7 @@ func run() error {
 	// unauthenticated because they are expected to sit inside a private
 	// network boundary — the same posture as the arena-api /metrics endpoint.
 	metricsMux := http.NewServeMux()
-	metricsMux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+	metricsMux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
@@ -315,7 +316,7 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, metrics *
 	// noop.test exists for feature #20 (worker job persistence) and for
 	// any future smoke test that wants to prove the queue plumbing
 	// without exercising business code. It always succeeds.
-	reg.Register("noop.test", func(ctx context.Context, payload []byte) error {
+	reg.Register("noop.test", func(_ context.Context, payload []byte) error {
 		logger.Info("noop.test handler invoked", "payload_bytes", len(payload))
 		return nil
 	})

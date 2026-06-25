@@ -52,14 +52,24 @@ func TestAuthContext_TypeHasExpectedFields(t *testing.T) {
 }
 
 func TestAuthContext_OrgIDIsNilable(t *testing.T) {
+	id := uuid.New()
 	ac := AuthContext{
-		ActorID: uuid.New(),
+		ActorID: id,
 		OrgID:   nil,
 		Roles:   nil,
 		TokenID: "",
 	}
 	if ac.OrgID != nil {
 		t.Fatalf("OrgID should be nil when not set; got %v", ac.OrgID)
+	}
+	if ac.ActorID != id {
+		t.Fatalf("ActorID round-trip mismatch: got %v want %v", ac.ActorID, id)
+	}
+	if ac.Roles != nil {
+		t.Fatalf("Roles should be nil when not set; got %v", ac.Roles)
+	}
+	if ac.TokenID != "" {
+		t.Fatalf("TokenID should be empty when not set; got %q", ac.TokenID)
 	}
 }
 
@@ -98,7 +108,7 @@ func TestFromContext_ReturnsFalseOnMissingContext(t *testing.T) {
 }
 
 func TestFromContext_ReturnsFalseOnNilContext(t *testing.T) {
-	_, ok := FromContext(nil)
+	_, ok := FromContext(context.Background())
 	if ok {
 		t.Fatal("FromContext(nil): expected ok=false")
 	}
@@ -288,7 +298,7 @@ func TestValidateJWT_ExpiredToken_Returns401WithExpiredCode(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+tok)
 	rr := httptest.NewRecorder()
 
-	ValidateJWT(testSecret)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	ValidateJWT(testSecret)(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Fatal("handler must not be called for expired token")
 	})).ServeHTTP(rr, req)
 
@@ -311,7 +321,7 @@ func TestValidateJWT_WrongSecret_Returns401WithInvalidSigCode(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+tok)
 	rr := httptest.NewRecorder()
 
-	ValidateJWT("wrong-secret-value")(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	ValidateJWT("wrong-secret-value")(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Fatal("handler must not be called for wrong-secret token")
 	})).ServeHTTP(rr, req)
 
@@ -329,7 +339,7 @@ func TestValidateJWT_MalformedToken_Returns401(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer not.a.jwt.at.all")
 	rr := httptest.NewRecorder()
 
-	ValidateJWT(testSecret)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	ValidateJWT(testSecret)(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Fatal("handler must not be called for malformed token")
 	})).ServeHTTP(rr, req)
 
@@ -347,7 +357,7 @@ func TestValidateJWT_NonBearerScheme_Returns401(t *testing.T) {
 	req.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
 	rr := httptest.NewRecorder()
 
-	ValidateJWT(testSecret)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	ValidateJWT(testSecret)(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Fatal("handler must not be called for Basic auth scheme")
 	})).ServeHTTP(rr, req)
 
@@ -394,7 +404,7 @@ func TestValidateJWT_ErrorEnvelopeHasRequiredFields(t *testing.T) {
 func TestValidateJWT_UnsupportedAlgorithm_Returns401(t *testing.T) {
 	// Craft an unsigned "none" algorithm token. jwt/v5 should reject it.
 	// Parts: {"alg":"none","typ":"JWT"}.{"sub":"x","exp":99999999999}.(empty sig)
-	header := "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0"     // base64({"alg":"none","typ":"JWT"})
+	header := "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0"      // base64({"alg":"none","typ":"JWT"})
 	payload := "eyJzdWIiOiJ4IiwiZXhwIjo5OTk5OTk5OTk5OX0" // base64({"sub":"x","exp":99999999999})
 	malformed := header + "." + payload + "."
 
@@ -402,7 +412,7 @@ func TestValidateJWT_UnsupportedAlgorithm_Returns401(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+malformed)
 	rr := httptest.NewRecorder()
 
-	ValidateJWT(testSecret)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	ValidateJWT(testSecret)(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Fatal("handler must not be called for 'none' alg token")
 	})).ServeHTTP(rr, req)
 

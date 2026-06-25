@@ -24,8 +24,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -211,6 +212,8 @@ func buildEventReportResponse(r gen.EventReportRow, lines []gen.EventReportLineR
 
 // reportLineFromRow converts a gen.EventReportLineRow to an
 // eventReportLineResponse. Used in tests to verify the mapping is correct.
+//
+//nolint:unused // test helper kept available for future event-report regression tests
 func reportLineFromRow(l gen.EventReportLineRow) eventReportLineResponse {
 	return eventReportLineResponse{
 		ID:          l.ID.String(),
@@ -225,6 +228,8 @@ func reportLineFromRow(l gen.EventReportLineRow) eventReportLineResponse {
 
 // encodeReportJSON is a convenience wrapper for handler tests that need to
 // produce a JSON body without setting up a full HTTP stack.
+//
+//nolint:unused // test helper kept available for future event-report regression tests
 func encodeReportJSON(v any) ([]byte, error) {
 	return json.Marshal(v)
 }

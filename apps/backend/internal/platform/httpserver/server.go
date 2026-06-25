@@ -8,7 +8,7 @@
 //   - /v1/info                — service metadata + real SELECT against PG
 //   - /v1/dev/token           — dev-only JWT mint (StubProvider, gated by ENABLE_DEV_AUTH)
 //   - /v1/echo                — example transactional command (audit + outbox
-//                                + idempotency, JWT-protected)
+//   - idempotency, JWT-protected)
 //
 // Dev-only routes (/v1/dev/*, /v1/debug/*) are runtime-gated by ENABLE_DEV_AUTH
 // and DEBUG_ROUTES_ENABLED respectively. They are not registered in the router
@@ -26,8 +26,13 @@ import (
 	"strings"
 	"time"
 
-	httpadapter "github.com/abhteam/arena_new/apps/backend/internal/adapters/http"
+	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
+	httpadapter "github.com/abhteam/arena_new/apps/backend/internal/adapters/http"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
@@ -39,10 +44,6 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/redissession"
-	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Pinger is the legacy readiness-probe contract kept for backward
@@ -106,19 +107,19 @@ type PoolDB interface {
 // disabled auth stub). The route mounts guard against missing dependencies
 // rather than panicking at startup.
 type Server struct {
-	cfg     *config.Config
-	logger  *slog.Logger
-	router  chi.Router
-	srv     *http.Server
-	probes  []ReadinessProbe
-	pool    PoolDB
-	stub    *auth.StubProvider
-	audit   audit.Writer
-	idem    idempotency.Store
-	metrics       http.Handler
-	typedMetrics  *observability.Metrics
-	outboxWriter  outbox.Writer
-	perms         permissions.Checker
+	cfg          *config.Config
+	logger       *slog.Logger
+	router       chi.Router
+	srv          *http.Server
+	probes       []ReadinessProbe
+	pool         PoolDB
+	stub         *auth.StubProvider
+	audit        audit.Writer
+	idem         idempotency.Store
+	metrics      http.Handler
+	typedMetrics *observability.Metrics
+	outboxWriter outbox.Writer
+	perms        permissions.Checker
 
 	// clock provides the wall-clock time used by handleServerInfo (and any
 	// future handler that needs deterministic time in tests). Defaults to

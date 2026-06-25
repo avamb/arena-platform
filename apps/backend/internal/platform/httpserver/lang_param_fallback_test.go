@@ -30,10 +30,9 @@ func getActiveLocaleWithLangParam(t *testing.T, langParam, acceptLang string) (s
 	url := "/v1/info"
 	if langParam != "" {
 		url = "/v1/info?lang=" + langParam
-	} else {
-		// Distinguish "no lang param" from "empty lang param"
-		// For the empty-string case the test explicitly adds ?lang=
 	}
+	// Distinguish "no lang param" from "empty lang param"
+	// For the empty-string case the test explicitly adds ?lang=
 
 	req := httptest.NewRequest(http.MethodGet, url, nil)
 	if acceptLang != "" {
@@ -263,11 +262,11 @@ func TestLangParamFallback_InvalidLangNoAcceptLangFallsToDefault(t *testing.T) {
 // a single table-driven test.
 func TestLangParamFallback_FullVerification(t *testing.T) {
 	cases := []struct {
-		name        string
-		url         string
-		acceptLang  string
-		wantStatus  int
-		wantLocale  string
+		name       string
+		url        string
+		acceptLang string
+		wantStatus int
+		wantLocale string
 	}{
 		// Step 1: ?lang=klingon → 200, active_locale='en'
 		{

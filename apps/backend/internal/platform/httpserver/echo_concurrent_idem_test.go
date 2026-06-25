@@ -32,11 +32,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/idempotency"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // =============================================================================
@@ -55,8 +56,8 @@ type blockingCaptureTx struct {
 	execCalls int
 	store     *replayIdemStore
 	// Latch fields: block controls whether Exec blocks.
-	block      chan struct{} // closed by test to unblock
-	entered    chan struct{} // closed when first Exec enters the block
+	block       chan struct{} // closed by test to unblock
+	entered     chan struct{} // closed when first Exec enters the block
 	enteredOnce sync.Once
 }
 

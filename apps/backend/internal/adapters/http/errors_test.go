@@ -319,7 +319,7 @@ func TestPanicRecoverer_ViaNewRouter_Returns500(t *testing.T) {
 	t.Parallel()
 
 	r := NewRouter(Deps{AppEnv: "production"})
-	r.Get("/boom", func(w http.ResponseWriter, _ *http.Request) {
+	r.Get("/boom", func(_ http.ResponseWriter, _ *http.Request) {
 		panic("test panic")
 	})
 
@@ -338,7 +338,7 @@ func TestPanicRecoverer_BodyIsJSONEnvelope(t *testing.T) {
 	t.Parallel()
 
 	r := NewRouter(Deps{AppEnv: "production"})
-	r.Get("/boom", func(w http.ResponseWriter, _ *http.Request) {
+	r.Get("/boom", func(_ http.ResponseWriter, _ *http.Request) {
 		panic("structured panic value")
 	})
 
@@ -371,7 +371,7 @@ func TestPanicRecoverer_RequestIDPresent(t *testing.T) {
 	t.Parallel()
 
 	r := NewRouter(Deps{AppEnv: "production"})
-	r.Get("/boom", func(w http.ResponseWriter, _ *http.Request) {
+	r.Get("/boom", func(_ http.ResponseWriter, _ *http.Request) {
 		panic("id check")
 	})
 
@@ -396,7 +396,7 @@ func TestPanicRecoverer_ProdNoStackInBody(t *testing.T) {
 	t.Parallel()
 
 	r := NewRouter(Deps{AppEnv: "production"})
-	r.Get("/boom", func(w http.ResponseWriter, _ *http.Request) {
+	r.Get("/boom", func(_ http.ResponseWriter, _ *http.Request) {
 		panic("stack check")
 	})
 
@@ -416,7 +416,7 @@ func TestPanicRecoverer_ContentTypeIsJSON(t *testing.T) {
 	t.Parallel()
 
 	r := NewRouter(Deps{AppEnv: "production"})
-	r.Get("/boom", func(w http.ResponseWriter, _ *http.Request) {
+	r.Get("/boom", func(_ http.ResponseWriter, _ *http.Request) {
 		panic("content type check")
 	})
 
@@ -436,7 +436,7 @@ func TestPanicRecoverer_ServerSurvivesAfterPanic(t *testing.T) {
 	t.Parallel()
 
 	r := NewRouter(Deps{AppEnv: "production"})
-	r.Get("/boom", func(w http.ResponseWriter, _ *http.Request) {
+	r.Get("/boom", func(_ http.ResponseWriter, _ *http.Request) {
 		panic("survive test")
 	})
 	r.Get("/ok", func(w http.ResponseWriter, _ *http.Request) {
@@ -478,8 +478,8 @@ func (e *notFoundDomainErr) NotFound() bool { return true }
 // conflictDomainErr is a test implementation of ConflictErr.
 type conflictDomainErr struct{}
 
-func (e *conflictDomainErr) Error() string   { return "conflict" }
-func (e *conflictDomainErr) Conflict() bool  { return true }
+func (e *conflictDomainErr) Error() string  { return "conflict" }
+func (e *conflictDomainErr) Conflict() bool { return true }
 
 // validationDomainErr is a test implementation of ValidationErr.
 type validationDomainErr struct{}

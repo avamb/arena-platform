@@ -32,8 +32,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	chimw "github.com/go-chi/chi/v5/middleware"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
 // HeaderWWWAuthenticate is the standard challenge header for 401 responses.
@@ -41,6 +42,7 @@ import (
 // distinguish protected endpoints from accidentally-public ones.
 const (
 	HeaderWWWAuthenticate = "WWW-Authenticate"
+	//nolint:gosec // literal HTTP challenge header value, not a credential
 	WWWAuthenticateBearer = `Bearer realm="arena"`
 )
 
@@ -403,18 +405,18 @@ func (p *StubProvider) Verify(_ context.Context, token string) (Actor, error) {
 
 // jwtClaims is the internal payload shape for stub JWTs.
 type jwtClaims struct {
-	Sub                 string   `json:"sub"`
-	Iss                 string   `json:"iss"`
-	Aud                 string   `json:"aud,omitempty"`
-	Iat                 int64    `json:"iat"`
-	Exp                 int64    `json:"exp"`
-	Nbf                 int64    `json:"nbf,omitempty"` // not-before; zero means no restriction
-	ActorType           string   `json:"actor_type,omitempty"`
-	Roles               []string `json:"roles,omitempty"`
+	Sub       string   `json:"sub"`
+	Iss       string   `json:"iss"`
+	Aud       string   `json:"aud,omitempty"`
+	Iat       int64    `json:"iat"`
+	Exp       int64    `json:"exp"`
+	Nbf       int64    `json:"nbf,omitempty"` // not-before; zero means no restriction
+	ActorType string   `json:"actor_type,omitempty"`
+	Roles     []string `json:"roles,omitempty"`
 	// Impersonation claims (feature #167). Set only when this token was issued
 	// by a platform admin via POST /v1/admin/impersonate.
-	ImpersonatedBy      string   `json:"impersonated_by,omitempty"`
-	ImpersonationReason string   `json:"impersonation_reason,omitempty"`
+	ImpersonatedBy      string `json:"impersonated_by,omitempty"`
+	ImpersonationReason string `json:"impersonation_reason,omitempty"`
 }
 
 func signHS256(secret, msg []byte) []byte {

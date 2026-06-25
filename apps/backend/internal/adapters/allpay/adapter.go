@@ -348,7 +348,7 @@ func (a *Adapter) RefundPayment(ctx context.Context, req payments.RefundPaymentR
 //   - payment.expired         — hosted checkout session expired
 //
 // Returns payments.ErrInvalidWebhookSignature when the signature does not match.
-func (a *Adapter) HandleWebhook(ctx context.Context, req payments.WebhookRequest) (*payments.WebhookResponse, error) {
+func (a *Adapter) HandleWebhook(_ context.Context, req payments.WebhookRequest) (*payments.WebhookResponse, error) {
 	secret := req.Secret
 	if secret == "" {
 		secret = a.cfg.WebhookSecret

@@ -1,10 +1,11 @@
 // reservation_131_test.go — unit tests for feature #131 (Reservation state machine + TTL worker).
 //
 // Test coverage:
-//   Step 1: Migration file 0021_reservations.sql — table, state machine, FKs, RBAC seeds
-//   Step 2: SQL query file and gen file structure — InsertReservation, GetExpiredReservations, FOR UPDATE SKIP LOCKED
-//   Step 3: State machine — validReservationTransitions, terminal states
-//   Step 4: HTTP routes — auth-gating, processor structure, server wiring
+//
+//	Step 1: Migration file 0021_reservations.sql — table, state machine, FKs, RBAC seeds
+//	Step 2: SQL query file and gen file structure — InsertReservation, GetExpiredReservations, FOR UPDATE SKIP LOCKED
+//	Step 3: State machine — validReservationTransitions, terminal states
+//	Step 4: HTTP routes — auth-gating, processor structure, server wiring
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver

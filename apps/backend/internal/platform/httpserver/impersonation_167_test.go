@@ -192,6 +192,9 @@ func TestImpersonation167_IssueRequestHasImpersonationFields(t *testing.T) {
 		ImpersonatedBy:      "admin-id",
 		ImpersonationReason: "user support",
 	}
+	if req.ActorID != "target-user-id" {
+		t.Error("IssueRequest.ActorID not set correctly")
+	}
 	if req.ImpersonatedBy != "admin-id" {
 		t.Error("IssueRequest.ImpersonatedBy not set correctly")
 	}

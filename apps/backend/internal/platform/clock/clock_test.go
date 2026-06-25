@@ -30,8 +30,8 @@ func TestRealClock_SinceIsNonNegative(t *testing.T) {
 	}
 }
 
-func TestRealClock_ImplementsInterface(t *testing.T) {
-	var _ clock.Clock = clock.New()
+func TestRealClock_ImplementsInterface(_ *testing.T) {
+	var _ = clock.New()
 }
 
 // ---------------------------------------------------------------------------
@@ -125,7 +125,7 @@ func TestFakeClock_SinceZeroWhenSameTime(t *testing.T) {
 	}
 }
 
-func TestFakeClock_ImplementsInterface(t *testing.T) {
+func TestFakeClock_ImplementsInterface(_ *testing.T) {
 	var _ clock.Clock = clock.NewFake(time.Now())
 }
 

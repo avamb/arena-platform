@@ -220,7 +220,11 @@ func TestConcurrent_SecondRequestGetsReplayHeader(t *testing.T) {
 		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/echo", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set(HeaderName, key)
-		resp, _ := ts.Client().Do(req)
+		resp, err := ts.Client().Do(req)
+		if err != nil || resp == nil {
+			ch <- result{0, nil, nil}
+			return
+		}
 		defer resp.Body.Close()
 		b, _ := io.ReadAll(resp.Body)
 		ch <- result{resp.StatusCode, b, resp.Header.Clone()}
@@ -232,7 +236,11 @@ func TestConcurrent_SecondRequestGetsReplayHeader(t *testing.T) {
 		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/echo", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set(HeaderName, key)
-		resp, _ := ts.Client().Do(req)
+		resp, err := ts.Client().Do(req)
+		if err != nil || resp == nil {
+			ch <- result{0, nil, nil}
+			return
+		}
 		defer resp.Body.Close()
 		b, _ := io.ReadAll(resp.Body)
 		ch <- result{resp.StatusCode, b, resp.Header.Clone()}
@@ -530,4 +538,3 @@ func (s *inMemoryStore) count() int {
 // Ensure the echoJSONHandler produces valid JSON so byte-equality checks are
 // meaningful. This is a compile-time sanity assertion.
 var _ = json.Marshal
-

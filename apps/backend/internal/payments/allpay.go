@@ -244,7 +244,7 @@ func (a *AllPayAdapter) RefundPayment(ctx context.Context, req RefundPaymentRequ
 //     if empty, the adapter-level WebhookSecret from AllPayConfig is used
 //
 // Returns ErrInvalidWebhookSignature (wrapped) when HMAC verification fails.
-func (a *AllPayAdapter) HandleWebhook(ctx context.Context, req WebhookRequest) (*WebhookResponse, error) {
+func (a *AllPayAdapter) HandleWebhook(_ context.Context, req WebhookRequest) (*WebhookResponse, error) {
 	secret := req.Secret
 	if secret == "" {
 		secret = a.webhookSecret

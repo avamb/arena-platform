@@ -76,9 +76,9 @@ func TestProcessedAt_RowNotDeletedAfterDispatch(t *testing.T) {
 // rows are never re-selected by the dispatcher.
 //
 // This test proves this at three levels:
-//   1. The SQL literal in claimSQL contains the correct WHERE clause.
-//   2. The in-memory ClaimNext returns nil after all rows are processed.
-//   3. The dispatcher does NOT call Dispatch a second time for a processed row.
+//  1. The SQL literal in claimSQL contains the correct WHERE clause.
+//  2. The in-memory ClaimNext returns nil after all rows are processed.
+//  3. The dispatcher does NOT call Dispatch a second time for a processed row.
 func TestProcessedAt_PartialIndexExcludesProcessedRows(t *testing.T) {
 	// ── 5a: SQL constant verification ─────────────────────────────────────────
 	// The production claimSQL must filter on processed_at IS NULL so the query

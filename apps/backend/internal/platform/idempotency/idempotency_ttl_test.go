@@ -6,14 +6,15 @@
 // key re-executes the handler and the old row is REPLACED (not duplicated).
 //
 // Step-by-step coverage:
-//   Step 1: POST /v1/echo with Idempotency-Key: TTL_KEY_1
-//   Step 2: Query idempotency_keys, capture expires_at
-//   Step 3: Verify expires_at > now() + 23h
-//   Step 4: Force expiry (SET expires_at = now() - 1s)
-//   Step 5: POST /v1/echo with same Idempotency-Key: TTL_KEY_1, same body
-//   Step 6: Verify HTTP 200 (re-execution allowed)
-//   Step 7: Verify handler was called again (second audit event would be written)
-//   Step 8: Verify idempotency_keys row was REPLACED (single row, new created_at)
+//
+//	Step 1: POST /v1/echo with Idempotency-Key: TTL_KEY_1
+//	Step 2: Query idempotency_keys, capture expires_at
+//	Step 3: Verify expires_at > now() + 23h
+//	Step 4: Force expiry (SET expires_at = now() - 1s)
+//	Step 5: POST /v1/echo with same Idempotency-Key: TTL_KEY_1, same body
+//	Step 6: Verify HTTP 200 (re-execution allowed)
+//	Step 7: Verify handler was called again (second audit event would be written)
+//	Step 8: Verify idempotency_keys row was REPLACED (single row, new created_at)
 package idempotency
 
 import (

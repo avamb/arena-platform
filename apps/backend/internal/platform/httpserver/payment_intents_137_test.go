@@ -1,13 +1,14 @@
 // payment_intents_137_test.go — unit tests for feature #137 (Payment intent state machine).
 //
 // Test coverage:
-//   Step 1: Migration file 0025_payment_intents.sql — table, state enum, idempotency table, RBAC
-//   Step 2: State transition guards — all valid and invalid transitions
-//   Step 3: Provider webhook → state update (mock provider SCA flow end-to-end)
-//   Step 4: Idempotency on provider_payment_id+event_type
-//   Step 5: SQL query file and gen file structure
-//   Step 6: Querier interface — all 7 methods present
-//   Step 7: HTTP routes — auth-gating, server wiring
+//
+//	Step 1: Migration file 0025_payment_intents.sql — table, state enum, idempotency table, RBAC
+//	Step 2: State transition guards — all valid and invalid transitions
+//	Step 3: Provider webhook → state update (mock provider SCA flow end-to-end)
+//	Step 4: Idempotency on provider_payment_id+event_type
+//	Step 5: SQL query file and gen file structure
+//	Step 6: Querier interface — all 7 methods present
+//	Step 7: HTTP routes — auth-gating, server wiring
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver
@@ -394,13 +395,13 @@ func TestPI137_StateTransitionMatrix_ValidTransitions(t *testing.T) {
 
 func TestPI137_StateTransitionMatrix_InvalidTransitions(t *testing.T) {
 	invalid := []struct{ from, to string }{
-		{"created", "succeeded"},    // must go via processing
-		{"created", "failed"},       // must go via processing
-		{"created", "authorized"},   // must go via processing
-		{"requires_action", "created"}, // cannot go back
-		{"succeeded", "failed"},     // terminal
-		{"failed", "succeeded"},     // terminal
-		{"succeeded", "processing"}, // terminal
+		{"created", "succeeded"},             // must go via processing
+		{"created", "failed"},                // must go via processing
+		{"created", "authorized"},            // must go via processing
+		{"requires_action", "created"},       // cannot go back
+		{"succeeded", "failed"},              // terminal
+		{"failed", "succeeded"},              // terminal
+		{"succeeded", "processing"},          // terminal
 		{"manual_review", "requires_action"}, // not valid
 	}
 	for _, tc := range invalid {

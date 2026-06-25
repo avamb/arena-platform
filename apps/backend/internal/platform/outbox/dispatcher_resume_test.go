@@ -316,8 +316,8 @@ func TestOutboxDispatcher_LogsEventTypeAndAggregateID(t *testing.T) {
 	logger, buf := logBuffer()
 
 	const (
-		rowID      = "00000000-0000-0000-0000-000000000040"
-		eventType  = "v1.echo.created"
+		rowID       = "00000000-0000-0000-0000-000000000040"
+		eventType   = "v1.echo.created"
 		aggregateID = "00000000-0000-0000-0000-000000000099"
 	)
 	store.seed(newTestRow(rowID, eventType, aggregateID, "trace-ghi"))
@@ -673,7 +673,7 @@ func TestOutboxDispatcher_DispatcherReceivesCorrectEvent(t *testing.T) {
 
 // TestPGOutboxEventStore_CompileTimeInterfaceGuard is a runtime expression of
 // the compile-time var _ OutboxEventStore = (*PGOutboxEventStore)(nil) guard.
-func TestPGOutboxEventStore_CompileTimeInterfaceGuard(t *testing.T) {
+func TestPGOutboxEventStore_CompileTimeInterfaceGuard(_ *testing.T) {
 	var _ OutboxEventStore = (*PGOutboxEventStore)(nil)
 }
 

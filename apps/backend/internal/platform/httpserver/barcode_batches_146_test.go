@@ -2,11 +2,12 @@
 // (External barcode batch import).
 //
 // Test coverage:
-//   Step 1: Migration 0039_barcode_batches.sql — tables, CHECK constraints, RBAC
-//   Step 2: SQL query file barcode_batches.sql — all named queries present
-//   Step 3: Gen file barcode_batches.sql.go — BarcodeBatchRow, BarcodeBatchEntryRow, all methods
-//   Step 4: Querier interface — all 9 barcode batch methods present
-//   Step 5: HTTP routes — auth-gating, multipart upload, approve/reject endpoints
+//
+//	Step 1: Migration 0039_barcode_batches.sql — tables, CHECK constraints, RBAC
+//	Step 2: SQL query file barcode_batches.sql — all named queries present
+//	Step 3: Gen file barcode_batches.sql.go — BarcodeBatchRow, BarcodeBatchEntryRow, all methods
+//	Step 4: Querier interface — all 9 barcode batch methods present
+//	Step 5: HTTP routes — auth-gating, multipart upload, approve/reject endpoints
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver

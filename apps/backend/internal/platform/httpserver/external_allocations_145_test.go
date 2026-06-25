@@ -2,12 +2,13 @@
 // (External allocation quota model).
 //
 // Test coverage:
-//   Step 1: Migration file 0035_external_allocations.sql — table, status CHECK, RBAC seeds
-//   Step 2: SQL query file external_allocations.sql — all queries present
-//   Step 3: Gen file external_allocations.sql.go — ExternalAllocationRow, all methods
-//   Step 4: Querier interface — all 6 allocation methods present
-//   Step 5: HTTP routes — auth-gating, server wiring, validation
-//   Step 6: State machine — valid/invalid transitions, quota overflow logic
+//
+//	Step 1: Migration file 0035_external_allocations.sql — table, status CHECK, RBAC seeds
+//	Step 2: SQL query file external_allocations.sql — all queries present
+//	Step 3: Gen file external_allocations.sql.go — ExternalAllocationRow, all methods
+//	Step 4: Querier interface — all 6 allocation methods present
+//	Step 5: HTTP routes — auth-gating, server wiring, validation
+//	Step 6: State machine — valid/invalid transitions, quota overflow logic
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver
@@ -500,11 +501,11 @@ func TestExternalAllocation145_StateMachineInvalidTransitions(t *testing.T) {
 		from string
 		to   string
 	}{
-		{"reconciled", "active"},    // terminal
-		{"reconciled", "pending"},   // terminal
-		{"reconciled", "disputed"},  // terminal
-		{"pending", "disputed"},     // skip activation
-		{"disputed", "active"},      // no going back
+		{"reconciled", "active"},   // terminal
+		{"reconciled", "pending"},  // terminal
+		{"reconciled", "disputed"}, // terminal
+		{"pending", "disputed"},    // skip activation
+		{"disputed", "active"},     // no going back
 	}
 	for _, tc := range invalid {
 		if tc.from == "reconciled" {

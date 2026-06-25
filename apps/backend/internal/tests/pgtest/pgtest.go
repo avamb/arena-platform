@@ -209,4 +209,3 @@ func WithTx(t *testing.T, pool *pgxpool.Pool, fn func(tx pgx.Tx)) {
 
 	fn(tx)
 }
-

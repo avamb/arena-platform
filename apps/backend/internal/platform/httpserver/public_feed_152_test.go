@@ -444,7 +444,7 @@ func TestPublicFeed152_ServerMountsPublicFeedRoutes(t *testing.T) {
 // implements the Querier interface (which now includes the three public feed methods).
 // This is a compile-time check via the package-level var _ in querier.go; this test
 // simply confirms the gen package compiles correctly.
-func TestPublicFeed152_CompileTimeQuerierSatisfied(t *testing.T) {
+func TestPublicFeed152_CompileTimeQuerierSatisfied(_ *testing.T) {
 	// If this file compiles, the interface is satisfied.
 	var _ gen.Querier = (*gen.Queries)(nil)
 }

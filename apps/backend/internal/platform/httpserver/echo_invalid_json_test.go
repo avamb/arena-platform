@@ -469,4 +469,3 @@ func TestInvalidJSON_CodeUsesDottedNamespace(t *testing.T) {
 		})
 	}
 }
-

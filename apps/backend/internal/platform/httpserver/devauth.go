@@ -4,7 +4,9 @@
 //
 // Path: POST /v1/dev/auth/token
 // Body: {"actor_id": "<uuid>", "org_id": "<uuid>", "roles": ["admin"],
-//        "ttl_seconds": 3600}
+//
+//	"ttl_seconds": 3600}
+//
 // Returns: 200 {"token":"<jwt>","expires_at":"<rfc3339>","actor_id":"..."}
 //
 // # PLACEHOLDER
@@ -27,8 +29,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/google/uuid"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 )
 
 // devAuthTokenRequest is the POST body for /v1/dev/auth/token.

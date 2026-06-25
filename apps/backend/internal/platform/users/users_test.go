@@ -5,8 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/users"
 	"golang.org/x/crypto/bcrypt"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/users"
 )
 
 // ---------------------------------------------------------------------------

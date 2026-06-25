@@ -3,11 +3,12 @@
 // every operation also carries a non-empty 'summary').
 //
 // Feature #67: "All endpoints have descriptions in OpenAPI"
-//   Step 1: Parse openapi.yaml
-//   Step 2: Loop over every path.method -- assert summary non-empty and description non-empty
-//   Step 3: Loop over parameters -- assert description non-empty
-//   Step 4: Loop over schemas.properties -- assert description non-empty
-//   Step 5: Print list of any undocumented items, exit 1 if any exist
+//
+//	Step 1: Parse openapi.yaml
+//	Step 2: Loop over every path.method -- assert summary non-empty and description non-empty
+//	Step 3: Loop over parameters -- assert description non-empty
+//	Step 4: Loop over schemas.properties -- assert description non-empty
+//	Step 5: Print list of any undocumented items, exit 1 if any exist
 package httpserver
 
 import (

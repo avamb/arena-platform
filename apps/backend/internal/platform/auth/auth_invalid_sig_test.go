@@ -126,7 +126,7 @@ func TestMiddleware_InvalidSignature_ErrorCodeIsInvalidToken(t *testing.T) {
 	badTok := mintWrongKeyJWT(t)
 
 	h := Middleware(provider, MiddlewareOptions{})(
-		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 			t.Fatal("downstream handler must not be called for invalid-signature token")
 		}),
 	)
@@ -159,7 +159,7 @@ func TestMiddleware_InvalidSignature_CodeNotInvalidSignature(t *testing.T) {
 	badTok := mintWrongKeyJWT(t)
 
 	h := Middleware(provider, MiddlewareOptions{})(
-		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 			t.Fatal("downstream handler must not be called for invalid-signature token")
 		}),
 	)
@@ -187,7 +187,7 @@ func TestMiddleware_InvalidSignature_NoInfoLeakInMessage(t *testing.T) {
 	badTok := mintWrongKeyJWT(t)
 
 	h := Middleware(provider, MiddlewareOptions{})(
-		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 			t.Fatal("downstream handler must not be called for invalid-signature token")
 		}),
 	)
@@ -220,7 +220,7 @@ func TestMiddleware_InvalidSignature_DownstreamNotCalled(t *testing.T) {
 
 	auditWriterCalled := false
 	h := Middleware(provider, MiddlewareOptions{})(
-		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 			// In production this handler would write to audit_events.
 			auditWriterCalled = true
 		}),
@@ -261,7 +261,7 @@ func TestMiddleware_InvalidSignature_SlogWarnContainsInvalidSignature(t *testing
 	}))
 
 	h := Middleware(provider, MiddlewareOptions{Logger: testLogger})(
-		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 			t.Fatal("downstream handler must not be called for invalid-signature token")
 		}),
 	)
@@ -313,7 +313,7 @@ func TestMiddleware_InvalidSignature_SlogUsesDefaultWhenLoggerNil(t *testing.T) 
 
 	// No Logger in opts — must not panic.
 	h := Middleware(provider, MiddlewareOptions{Logger: nil})(
-		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 			t.Fatal("downstream handler must not be called")
 		}),
 	)

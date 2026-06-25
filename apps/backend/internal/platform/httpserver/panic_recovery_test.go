@@ -23,10 +23,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 )
 
 // =============================================================================

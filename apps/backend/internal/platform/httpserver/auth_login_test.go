@@ -14,10 +14,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/ratelimit"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/ratelimit"
 )
 
 // ---------------------------------------------------------------------------
@@ -315,7 +316,7 @@ func TestRateLimiter115_ResetClearsCount(t *testing.T) {
 }
 
 func TestRateLimiter115_WindowExpiry(t *testing.T) {
-	var now time.Time = time.Now()
+	var now = time.Now()
 	rl := ratelimit.New(ratelimit.Config{
 		MaxAttempts: 2,
 		Window:      time.Second,
@@ -382,7 +383,7 @@ func TestAuthLogin115_RoutesAreMounted(t *testing.T) {
 	// We inspect the server method directly since full router setup requires
 	// all dependencies to be wired.
 	s := serverWithSecret(t)
-	_ = s.handleAuthLogin  // compile-time check: method exists on *Server
+	_ = s.handleAuthLogin   // compile-time check: method exists on *Server
 	_ = s.handleAuthRefresh // compile-time check: method exists on *Server
 }
 

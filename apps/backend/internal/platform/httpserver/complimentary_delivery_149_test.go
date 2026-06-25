@@ -5,24 +5,27 @@
 // Batch email delivery for all recipients in a complimentary issuance.
 //
 // Test coverage:
-//   Step 1: Invitation email template — constants + renderers in delivery/handler.go
-//   Step 2: Payload.Template field in delivery package
-//   Step 3: enqueueComplimentaryDeliveryJobs — exists in delivery_enqueue.go
-//   Step 4: enqueueComplimentaryDeliveryJobs nil guard (no-op when deps absent)
-//   Step 5: enqueueComplimentaryDeliveryJobs sets template="invitation" in payload
-//   Step 6: handleCreateComplimentaryIssuance calls enqueueComplimentaryDeliveryJobs
-//   Step 7: delivery handler branches on Template field (invitation vs ticket)
-//   Step 8: Audit log strings for complimentary delivery
-//   Step 9: Source file content checks for invitation renderers
+//
+//	Step 1: Invitation email template — constants + renderers in delivery/handler.go
+//	Step 2: Payload.Template field in delivery package
+//	Step 3: enqueueComplimentaryDeliveryJobs — exists in delivery_enqueue.go
+//	Step 4: enqueueComplimentaryDeliveryJobs nil guard (no-op when deps absent)
+//	Step 5: enqueueComplimentaryDeliveryJobs sets template="invitation" in payload
+//	Step 6: handleCreateComplimentaryIssuance calls enqueueComplimentaryDeliveryJobs
+//	Step 7: delivery handler branches on Template field (invitation vs ticket)
+//	Step 8: Audit log strings for complimentary delivery
+//	Step 9: Source file content checks for invitation renderers
 package httpserver
 
 import (
+	"context"
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery"
-	"github.com/google/uuid"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -73,6 +76,9 @@ func TestComplimentaryDelivery149_Step2_PayloadHasTemplateField(t *testing.T) {
 		t.Errorf("Payload.Template not set correctly: got %q, want %q",
 			p.Template, delivery.TemplateInvitation)
 	}
+	if p.TicketID == "" {
+		t.Errorf("Payload.TicketID must round-trip; got empty")
+	}
 }
 
 func TestComplimentaryDelivery149_Step2_PayloadTemplateOmitEmpty(t *testing.T) {
@@ -89,6 +95,9 @@ func TestComplimentaryDelivery149_Step2_PayloadTemplateOmitEmpty(t *testing.T) {
 func TestComplimentaryDelivery149_Step2_PayloadDefaultTemplateIsEmpty(t *testing.T) {
 	// A Payload without Template set should have empty Template (defaults to ticket)
 	p := delivery.Payload{TicketID: "test-id"}
+	if p.TicketID == "" {
+		t.Errorf("Payload.TicketID must round-trip; got empty")
+	}
 	if p.Template != "" {
 		t.Errorf("default Payload.Template should be empty, got %q", p.Template)
 	}
@@ -119,7 +128,6 @@ func TestComplimentaryDelivery149_Step3_EnqueueFunctionIsMethod(t *testing.T) {
 	}
 }
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Step 4: enqueueComplimentaryDeliveryJobs nil guard
 // ─────────────────────────────────────────────────────────────────────────────
@@ -134,13 +142,13 @@ func TestComplimentaryDelivery149_Step4_NilGuardNoPanic(t *testing.T) {
 		},
 	}
 	// Must be a safe no-op when deliveryJobQueries and workerPool are nil.
-	s.enqueueComplimentaryDeliveryJobs(nil, tickets)
+	s.enqueueComplimentaryDeliveryJobs(context.Background(), tickets)
 }
 
 func TestComplimentaryDelivery149_Step4_NilGuardEmptySlice(t *testing.T) {
 	s := buildComplimentaryDelivery149Server(t)
 	// Must not panic even with empty slice.
-	s.enqueueComplimentaryDeliveryJobs(nil, nil)
+	s.enqueueComplimentaryDeliveryJobs(context.Background(), nil)
 }
 
 func TestComplimentaryDelivery149_Step4_NilGuardInSourceFile(t *testing.T) {

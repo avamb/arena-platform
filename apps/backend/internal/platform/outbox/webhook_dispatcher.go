@@ -1,11 +1,12 @@
 // Package outbox — WebhookDispatcher: HTTP delivery with HMAC-SHA256 signing.
 //
 // Feature #110 — Outbox dispatcher:
-//   Step 2: Stable JSON serialisation (encoding/json sorts map keys
-//           alphabetically; using a struct envelope eliminates all
-//           map-key ambiguity in the outer envelope fields).
-//   Step 3: X-Arena-Signature: sha256=<hex> HMAC-SHA256 header.
-//   Step 4: HTTP POST delivery to a configurable webhook URL.
+//
+//	Step 2: Stable JSON serialisation (encoding/json sorts map keys
+//	        alphabetically; using a struct envelope eliminates all
+//	        map-key ambiguity in the outer envelope fields).
+//	Step 3: X-Arena-Signature: sha256=<hex> HMAC-SHA256 header.
+//	Step 4: HTTP POST delivery to a configurable webhook URL.
 //
 // The WebhookDispatcher implements the Dispatcher interface and is wired
 // into OutboxEventsDispatcher (see outbox_events_dispatcher.go) to deliver

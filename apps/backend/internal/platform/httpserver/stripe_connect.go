@@ -61,7 +61,7 @@ func (s *Server) handleStripeConnectAuthorize(w http.ResponseWriter, r *http.Req
 	authorizeURL := s.stripeConnect.ConnectAuthorizeURL(redirectURI, state)
 
 	if r.URL.Query().Get("redirect") == "true" {
-		http.Redirect(w, r, authorizeURL, http.StatusFound)
+		http.Redirect(w, r, authorizeURL, http.StatusFound) //nolint:gosec // URL is derived from configured Stripe credentials, not user input
 		return
 	}
 

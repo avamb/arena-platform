@@ -20,7 +20,7 @@ func migrationContent(t *testing.T) string {
 	// Navigate: permissions/ → platform/ → internal/ → backend/ → migrations/sql/
 	migFile := filepath.Join(
 		filepath.Dir(thisFile), // permissions/
-		"..", "..", "..",        // backend/
+		"..", "..", "..",       // backend/
 		"internal", "migrations", "sql", "0008_rbac.sql",
 	)
 	b, err := os.ReadFile(migFile)

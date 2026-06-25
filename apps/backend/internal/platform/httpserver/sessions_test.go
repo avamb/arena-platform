@@ -1,11 +1,12 @@
 // sessions_test.go — unit tests for feature #126 (Session model + CRUD).
 //
 // Test coverage:
-//   Step 1: Migration file 0016_sessions.sql — schema, status enum, date CHECK, RBAC seeds
-//   Step 2: CRUD endpoints — route mounting, auth-gating, request validation (no DB required)
-//   Step 3: Capacity propagation hook — fired on capacity_total change
-//   Step 4: Integration: date invariant, capacity validation, overlap detection logic
-//   Step 5: sqlc query file (sessions.sql) + gen file (sessions.sql.go) structure
+//
+//	Step 1: Migration file 0016_sessions.sql — schema, status enum, date CHECK, RBAC seeds
+//	Step 2: CRUD endpoints — route mounting, auth-gating, request validation (no DB required)
+//	Step 3: Capacity propagation hook — fired on capacity_total change
+//	Step 4: Integration: date invariant, capacity validation, overlap detection logic
+//	Step 5: sqlc query file (sessions.sql) + gen file (sessions.sql.go) structure
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver
@@ -19,10 +20,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
-	"github.com/google/uuid"
 )
 
 const sessionTestActorID = "00000000-0000-0000-0000-000000000099"
@@ -918,7 +920,7 @@ func TestSession126_GenFileHasCountOverlapMethod(t *testing.T) {
 // Step 5: Querier interface coverage
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestSession126_QuerierInterfaceHasSessionMethods(t *testing.T) {
+func TestSession126_QuerierInterfaceHasSessionMethods(_ *testing.T) {
 	// *gen.Queries must implement the Querier interface, which is a compile-time
 	// assertion in querier.go. This test is a documentation check that confirms
 	// the session methods are part of the Querier contract.

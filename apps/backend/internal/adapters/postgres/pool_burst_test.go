@@ -30,8 +30,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	dto "github.com/prometheus/client_model/go"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 )
 
 // =============================================================================
@@ -79,12 +80,12 @@ func (f *fakePoolStat) release() {
 }
 
 // poolStatReader interface implementation.
-func (f *fakePoolStat) AcquiredConns() int32        { return f.acquired.Load() }
-func (f *fakePoolStat) IdleConns() int32             { return f.idle.Load() }
-func (f *fakePoolStat) MaxConns() int32              { return f.max }
-func (f *fakePoolStat) TotalConns() int32            { return f.total.Load() }
-func (f *fakePoolStat) NewConnsCount() int64         { return f.newConns.Load() }
-func (f *fakePoolStat) EmptyAcquireCount() int64     { return f.emptyAcquire.Load() }
+func (f *fakePoolStat) AcquiredConns() int32     { return f.acquired.Load() }
+func (f *fakePoolStat) IdleConns() int32         { return f.idle.Load() }
+func (f *fakePoolStat) MaxConns() int32          { return f.max }
+func (f *fakePoolStat) TotalConns() int32        { return f.total.Load() }
+func (f *fakePoolStat) NewConnsCount() int64     { return f.newConns.Load() }
+func (f *fakePoolStat) EmptyAcquireCount() int64 { return f.emptyAcquire.Load() }
 func (f *fakePoolStat) AcquireDuration() time.Duration {
 	return time.Duration(f.acquireDuration.Load())
 }
@@ -518,14 +519,14 @@ func newTestRequest(t *testing.T, method, path string, _ interface{}) (*http.Req
 
 // newTestResponseRecorder returns a minimal responseRecorder.
 type responseRecorder struct {
-	Code int
-	Body strings.Builder
+	Code   int
+	Body   strings.Builder
 	header http.Header
 }
 
-func (r *responseRecorder) Header() http.Header       { return r.header }
+func (r *responseRecorder) Header() http.Header         { return r.header }
 func (r *responseRecorder) Write(b []byte) (int, error) { return r.Body.Write(b) }
-func (r *responseRecorder) WriteHeader(code int)       { r.Code = code }
+func (r *responseRecorder) WriteHeader(code int)        { r.Code = code }
 
 func newTestResponseRecorder() *responseRecorder {
 	return &responseRecorder{Code: 200, header: http.Header{}}

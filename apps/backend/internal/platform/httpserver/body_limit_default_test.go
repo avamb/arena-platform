@@ -95,10 +95,10 @@ func TestBodyLimitDefault_ConfigDefaultIs1MiB(t *testing.T) {
 
 	// Minimal required env vars for config.Load() to succeed.
 	required := map[string]string{
-		"APP_ENV":        "development",
-		"DATABASE_URL":   "postgres://arena:arena@localhost:5432/arena?sslmode=disable",
+		"APP_ENV":            "development",
+		"DATABASE_URL":       "postgres://arena:arena@localhost:5432/arena?sslmode=disable",
 		"JWT_SIGNING_SECRET": "dev-secret",
-		"ENABLE_DEV_AUTH": "true",
+		"ENABLE_DEV_AUTH":    "true",
 	}
 	for k, v := range required {
 		saveRestore(k)

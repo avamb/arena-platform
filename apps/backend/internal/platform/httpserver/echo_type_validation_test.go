@@ -282,7 +282,7 @@ func TestTypeValidation_DetailsFieldIsMessage(t *testing.T) {
 	}
 	for _, body := range bodies {
 		body := body
-		t.Run(strings.Replace(body, `"`, "", -1), func(t *testing.T) {
+		t.Run(strings.ReplaceAll(body, `"`, ""), func(t *testing.T) {
 			t.Parallel()
 			baseURL, token := buildEchoTestToken(t)
 
@@ -313,7 +313,7 @@ func TestTypeValidation_DetailsExpectedIsStringForAll(t *testing.T) {
 	}
 	for _, body := range bodies {
 		body := body
-		t.Run(strings.Replace(body, `"`, "", -1), func(t *testing.T) {
+		t.Run(strings.ReplaceAll(body, `"`, ""), func(t *testing.T) {
 			t.Parallel()
 			baseURL, token := buildEchoTestToken(t)
 

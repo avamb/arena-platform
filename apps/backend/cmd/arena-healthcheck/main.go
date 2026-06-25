@@ -28,7 +28,7 @@ func main() {
 	url := addr + "/healthz"
 
 	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get(url) //nolint:noctx // intentional: healthcheck binary has no parent ctx
+	resp, err := client.Get(url) //nolint:noctx,gosec // intentional: healthcheck binary; URL is operator-controlled HEALTHCHECK_URL
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "arena-healthcheck: GET %s: %v\n", url, err)
 		os.Exit(1)

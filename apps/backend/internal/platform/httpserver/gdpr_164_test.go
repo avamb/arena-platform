@@ -1,12 +1,13 @@
 // gdpr_164_test.go — unit tests for feature #164 (GDPR data workflows).
 //
 // Test coverage:
-//   Step 1: Migration file 0018_gdpr.sql — table, constraints, consent columns, RBAC seeds
-//   Step 2: Export endpoint (POST /v1/me/data-export) — auth-gating, response shape
-//   Step 3: Delete endpoint (POST /v1/me/data-delete) — auth-gating, response shape
-//   Step 4: Consent recording — migration columns, POST /v1/me/consent endpoint
-//   Step 5: GDPR processor — export generates JSON, delete anonymizes, worker logic
-//           SQL query file structure and gen file structure
+//
+//	Step 1: Migration file 0018_gdpr.sql — table, constraints, consent columns, RBAC seeds
+//	Step 2: Export endpoint (POST /v1/me/data-export) — auth-gating, response shape
+//	Step 3: Delete endpoint (POST /v1/me/data-delete) — auth-gating, response shape
+//	Step 4: Consent recording — migration columns, POST /v1/me/consent endpoint
+//	Step 5: GDPR processor — export generates JSON, delete anonymizes, worker logic
+//	        SQL query file structure and gen file structure
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver
@@ -19,10 +20,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
-	"github.com/google/uuid"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────

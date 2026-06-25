@@ -1,11 +1,12 @@
 // Package idempotency - tests for feature #60: Idempotency-Key length limit enforced.
 //
 // Verifies all 5 feature steps:
-//   Step 1: POST with Idempotency-Key of 300 chars → HTTP 400
-//   Step 2: code='idempotency.key_too_long'
-//   Step 3: POST with key of exactly 255 chars → 200/401 (accepted by middleware)
-//   Step 4: POST with key of 1 char → accepted
-//   Step 5: error message includes the max_length value (255)
+//
+//	Step 1: POST with Idempotency-Key of 300 chars → HTTP 400
+//	Step 2: code='idempotency.key_too_long'
+//	Step 3: POST with key of exactly 255 chars → 200/401 (accepted by middleware)
+//	Step 4: POST with key of 1 char → accepted
+//	Step 5: error message includes the max_length value (255)
 package idempotency
 
 import (

@@ -2,11 +2,12 @@
 // per-subscriber retry, exponential backoff, dead-letter, and Prometheus metrics.
 //
 // Feature #111 — Webhook delivery client:
-//   Step 1: Subscriber model (event_types[], url, secret, active)
-//   Step 2: HTTP client with timeout and retry/exponential-backoff policy
-//   Step 3: Subscriber routing/filtering by event type
-//   Step 4: Metrics (delivery latency, retry count, dead-letter count)
-//   Step 5: Integration test with mock subscriber (see webhook_client_111_test.go)
+//
+//	Step 1: Subscriber model (event_types[], url, secret, active)
+//	Step 2: HTTP client with timeout and retry/exponential-backoff policy
+//	Step 3: Subscriber routing/filtering by event type
+//	Step 4: Metrics (delivery latency, retry count, dead-letter count)
+//	Step 5: Integration test with mock subscriber (see webhook_client_111_test.go)
 //
 // WebhookClient implements the Dispatcher interface and can be wired directly
 // into OutboxEventsDispatcher.Dispatcher, replacing the single-target
