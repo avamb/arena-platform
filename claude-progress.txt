@@ -13434,3 +13434,37 @@ Scope note: this step extracted the pure wire-format pieces (envelope, result co
 
 Marked #188 passing.
 Progress: 184/188 passing.
+
+=== Session 2026-06-25 (feature #173) ===
+Umbrella feature: "Fill empty internal/app and internal/domain layers (DDD boundaries)".
+
+Status check: all 6 sub-features (#183 catalog, #184 inventory, #185 payments,
+#186 tickets, #187 billing/reporting, #188 bil24_compat) were already marked
+passing in prior sessions. internal/domain/ and internal/app/ are now both
+populated with bounded contexts (billing, catalog, inventory, payments,
+reporting, tickets) -- no longer .gitkeep-only as the feature description
+originally complained.
+
+Static-analysis gates present and passing:
+  apps/backend/tests/staticanalysis/catalog_layout_183_test.go
+  apps/backend/tests/staticanalysis/inventory_layout_184_test.go
+  apps/backend/tests/staticanalysis/payments_layout_185_test.go
+  apps/backend/tests/staticanalysis/tickets_layout_186_test.go
+  apps/backend/tests/staticanalysis/billing_reporting_layout_187_test.go
+  apps/backend/tests/staticanalysis/bil24compat_layout_188_test.go
+
+Each sub-feature's gate enforces:
+  - DomainDirExists, AppDirExists
+  - NoLegacyImports (repo-wide)
+  - DomainHasNoAdapterOrHTTPImports (domain purity)
+
+VERIFICATION (golang:1.24 docker):
+  go build ./...                                                  PASS
+  go vet   ./...                                                  PASS
+  go test  -short -count=1 ./apps/backend/tests/staticanalysis/.. PASS (14.6s)
+
+No code changes required in this session -- #173 was satisfied by the
+completion of its declared dependencies [183, 184, 185, 186, 187, 188].
+
+Marked #173 passing.
+Progress: 186/188 passing.
