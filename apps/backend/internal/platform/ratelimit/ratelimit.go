@@ -67,9 +67,13 @@ type Config struct {
 // Panics when MaxAttempts <= 0 or Window <= 0.
 func New(cfg Config) *SlidingWindow {
 	if cfg.MaxAttempts <= 0 {
+		// allow:panic: constructor-time configuration validation. New is called
+		// from boot wiring with a literal Config; a non-positive value is a
+		// programmer error, not a user-supplied input.
 		panic("ratelimit: MaxAttempts must be > 0")
 	}
 	if cfg.Window <= 0 {
+		// allow:panic: constructor-time configuration validation (see MaxAttempts).
 		panic("ratelimit: Window must be > 0")
 	}
 	nowFn := cfg.Now

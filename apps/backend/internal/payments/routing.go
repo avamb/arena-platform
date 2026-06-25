@@ -54,10 +54,15 @@ func NewPaymentRoutingPolicy() *PaymentRoutingPolicy {
 // Registering the same provider name twice overwrites the previous entry.
 func (p *PaymentRoutingPolicy) Register(adapter PaymentProvider) {
 	if adapter == nil {
+		// allow:panic: init-time programmer-error precondition (Register is
+		// only ever called from application boot wiring, never from a request
+		// path; a nil adapter is a wiring bug, not a runtime condition).
 		panic("payments: Register called with nil adapter")
 	}
 	name := adapter.ProviderName()
 	if name == "" {
+		// allow:panic: init-time programmer-error precondition (see comment
+		// on the nil-adapter branch above).
 		panic("payments: Register called with adapter whose ProviderName() is empty")
 	}
 	p.adapters[name] = adapter

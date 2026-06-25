@@ -35,6 +35,9 @@ import "net/http"
 //     NegotiateLocale falls back to SupportedLocales = ["en","ru"].
 func LocaleMiddleware(b *Bundle, defaultLocale string, supported []string) func(http.Handler) http.Handler {
 	if b == nil {
+		// allow:panic: middleware-construction-time nil-dependency guard.
+		// LocaleMiddleware is invoked once during router assembly at boot;
+		// per-request handlers never reach this branch.
 		panic("i18n.LocaleMiddleware: Bundle must not be nil")
 	}
 	return func(next http.Handler) http.Handler {

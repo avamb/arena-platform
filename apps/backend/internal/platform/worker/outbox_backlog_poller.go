@@ -50,9 +50,13 @@ type OutboxBacklogPoller struct {
 // before the process starts polling).
 func NewOutboxBacklogPoller(opts OutboxBacklogPollerOptions) *OutboxBacklogPoller {
 	if opts.Querier == nil {
+		// allow:panic: constructor-time nil-dependency guard. NewOutboxBacklogPoller
+		// is called once from cmd/arena-worker boot; a nil Querier is a wiring
+		// bug, not a runtime condition.
 		panic("worker: OutboxBacklogPoller requires a non-nil Querier")
 	}
 	if opts.Gauge == nil {
+		// allow:panic: constructor-time nil-dependency guard (see Querier branch).
 		panic("worker: OutboxBacklogPoller requires a non-nil Gauge")
 	}
 	if opts.Logger == nil {

@@ -254,6 +254,10 @@ func Tx(ctx context.Context, pool TxBeginner, fn func(pgx.Tx) error) error {
 	defer func() {
 		if r := recover(); r != nil {
 			_ = tx.Rollback(ctx)
+			// allow:panic: re-raise the original panic after rolling back the
+			// in-flight transaction. Swallowing it here would hide programmer
+			// errors from the outer panic-recoverer middleware; this is the
+			// idiomatic "defer rollback + re-panic" pattern.
 			panic(r)
 		}
 	}()

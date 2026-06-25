@@ -56,6 +56,10 @@ func NewUUIDv7() (uuid.UUID, error) {
 func MustNewUUIDv7() uuid.UUID {
 	id, err := uuid.NewV7()
 	if err != nil {
+		// allow:panic: MustNewUUIDv7 is the documented panic-on-error variant
+		// of NewUUIDv7, intended for package-level var init and test helpers
+		// where entropy exhaustion is treated as system-fatal. Request-path
+		// code must use NewUUIDv7 and propagate the error.
 		panic(fmt.Sprintf("ids: failed to generate UUIDv7: %v", err))
 	}
 	return id

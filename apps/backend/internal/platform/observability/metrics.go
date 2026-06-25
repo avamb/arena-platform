@@ -309,6 +309,9 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 func MustNew(reg *prometheus.Registry) *Metrics {
 	m, err := New(reg)
 	if err != nil {
+		// allow:panic: MustNew is the documented panic-on-error variant of New,
+		// called once from main() where a failed metric registration must
+		// abort startup before any traffic is served.
 		panic("observability: register baseline metrics: " + err.Error())
 	}
 	return m

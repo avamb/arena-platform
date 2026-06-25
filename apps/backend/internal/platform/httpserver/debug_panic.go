@@ -21,5 +21,8 @@ import "net/http"
 // handleDebugPanic intentionally panics to exercise the Recoverer middleware.
 // It is registered only when DebugRoutesEnabled is true.
 func (s *Server) handleDebugPanic(_ http.ResponseWriter, _ *http.Request) {
+	// allow:panic: this endpoint exists specifically to exercise the
+	// panicRecoverer middleware in integration tests. It is mounted only
+	// when DEBUG_ROUTES_ENABLED=true and must never be enabled in production.
 	panic("boom")
 }
