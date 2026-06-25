@@ -9,15 +9,17 @@
 ## Table of Contents
 
 1. [Prerequisites](#1-prerequisites)
-2. [Create the Application in Dokploy](#2-create-the-application-in-dokploy)
-3. [Attach a Managed PostgreSQL Service](#3-attach-a-managed-postgresql-service)
-4. [Configure Environment Variables](#4-configure-environment-variables)
-5. [Run Database Migrations](#5-run-database-migrations)
-6. [Healthcheck & Port Configuration](#6-healthcheck--port-configuration)
-7. [Deploy](#7-deploy)
-8. [Production Environment Variable Checklist](#8-production-environment-variable-checklist)
-9. [Secret Rotation](#9-secret-rotation)
-10. [Troubleshooting](#10-troubleshooting)
+2. [Production Runtime Topology (api, worker, migrate)](#2-production-runtime-topology-api-worker-migrate)
+3. [Create the Application in Dokploy](#3-create-the-application-in-dokploy)
+4. [Attach a Managed PostgreSQL Service](#4-attach-a-managed-postgresql-service)
+5. [Configure Environment Variables](#5-configure-environment-variables)
+6. [Run Database Migrations](#6-run-database-migrations)
+7. [Healthcheck & Port Configuration](#7-healthcheck--port-configuration)
+8. [Deploy](#8-deploy)
+9. [Post-Deploy Smoke Checks](#9-post-deploy-smoke-checks)
+10. [Production Environment Variable Checklist](#10-production-environment-variable-checklist)
+11. [Secret Rotation](#11-secret-rotation)
+12. [Troubleshooting](#12-troubleshooting)
 
 ---
 
@@ -32,7 +34,118 @@
 
 ---
 
-## 2. Create the Application in Dokploy
+## 2. Production Runtime Topology (api, worker, migrate)
+
+A production deployment of arena_new consists of **three distinct runtime roles**,
+all built from the same Docker image but invoked with different entrypoints. The
+diagram below summarises the topology Dokploy should reproduce:
+
+```
+                  ┌────────────────────────┐
+                  │  arena-migrate         │  (one-shot, runs first)
+                  │  /app/arena-migrate up │
+                  └───────────┬────────────┘
+                              │ goose migrations applied
+                              ▼
+   ┌──────────────────────────┐      ┌──────────────────────────┐
+   │  arena-api               │      │  arena-worker            │
+   │  /app/arena-api          │      │  /app/arena-worker       │
+   │  Public port: 8080       │      │  Internal metrics: 9091  │
+   │  GET /healthz, /readyz   │      │  GET /healthz, /metrics  │
+   │  GET /metrics            │      │  Polls worker_jobs,      │
+   │                          │      │  dispatches outbox       │
+   └──────────────┬───────────┘      └──────────────┬───────────┘
+                  │                                 │
+                  └─────────────► PostgreSQL ◄──────┘
+                              (single source of truth)
+```
+
+### 2.1 `arena-api` service (public HTTP)
+
+| Property | Value |
+|---|---|
+| Dokploy service type | **Application** (long-running) |
+| Docker image | `your-registry/arena-api:<tag>` (built from repo root `Dockerfile`) |
+| Entrypoint | `/app/arena-api` (default `CMD` of the image) |
+| Listen port | `8080` (`HTTP_LISTEN_ADDR=:8080`) |
+| Liveness probe | `GET /healthz` → `200 OK` |
+| Readiness probe | `GET /readyz` → `200 OK` once the pgx pool can `Ping` the DB |
+| Metrics scrape | `GET /metrics` (Prometheus exposition on `:8080`) |
+| Start policy | `Always` |
+| Replicas | ≥ 1 (horizontally scalable behind Dokploy's Traefik router) |
+
+Dokploy must expose `8080` as the public HTTP port and route the application
+domain to it. Healthcheck is wired by the image's `HEALTHCHECK` directive (see
+§7).
+
+### 2.2 `arena-worker` service (background jobs + outbox)
+
+| Property | Value |
+|---|---|
+| Dokploy service type | **Application** (long-running, internal only) |
+| Docker image | **Same image** as `arena-api` |
+| Entrypoint | `/app/arena-worker` (override the image `CMD`) |
+| Internal listen | `WORKER_METRICS_ADDR=:9091` (sidecar HTTP for `/healthz` and `/metrics`) |
+| Public port | **None** — do not expose `:9091` to the public router |
+| Liveness probe | `GET http://<container>:9091/healthz` → `200 OK` |
+| Metrics scrape | `GET http://<container>:9091/metrics` (Prometheus) |
+| Start policy | `Always` |
+| Replicas | 1 by default; the queue uses `FOR UPDATE SKIP LOCKED`, so additional replicas scale safely |
+
+The worker is **mandatory** in production: it drives the platform's job queue
+(`worker_jobs`) and dispatches domain events from the `outbox` table. Without a
+running worker, side effects (delivery, billing notifications, reconciliation,
+scheduled reports, retried webhooks, etc.) accumulate in PostgreSQL and never
+fire. Treat it as a first-class production component, not an optional sidecar.
+
+### 2.3 `arena-migrate` one-shot (pre-deploy)
+
+| Property | Value |
+|---|---|
+| Dokploy service type | **Application** with one-shot / "Run on deploy" start policy |
+| Docker image | **Same image** as `arena-api` |
+| Entrypoint | `/app/arena-migrate up` |
+| Listen port | None (the binary exits when migrations are applied) |
+| Start policy | `On Deploy` / `One-shot` (must **not** be `Always`) |
+| Deploy order | Runs **before** `arena-api` and `arena-worker` on every deploy |
+
+`arena-migrate` runs the embedded `goose` migrations (`embed.FS`) against
+`DATABASE_URL` and exits `0` on success. If it fails, the deploy must abort —
+the API and worker rely on the new schema being in place before they boot.
+
+### 2.4 Env passthrough checklist (all three services)
+
+The three services share configuration loaded from the same `config.Load()`
+path. The variables below **must be set identically** on `arena-api`,
+`arena-worker`, and `arena-migrate` (Dokploy "Shared Environment" or copy-paste
+into each service's env tab):
+
+| Variable | Required by | Notes |
+|---|---|---|
+| `APP_ENV` | api / worker / migrate | `production` |
+| `DATABASE_URL` | api / worker / migrate | Must point to the same PostgreSQL instance |
+| `LOG_LEVEL` | api / worker / migrate | `info` |
+| `LOG_FORMAT` | api / worker / migrate | `json` |
+| `APP_NAME` | api / worker | `arena-api` / `arena-worker` respectively |
+| `APP_VERSION` | api / worker / migrate | Injected by CI |
+| `APP_COMMIT` | api / worker / migrate | Injected by CI |
+| `JWT_SIGNING_SECRET` | api (mandatory), worker (recommended) | Worker shares the symmetric secret for inter-service signed callbacks |
+| `ENABLE_DEV_AUTH` | api / worker | `false` |
+| `HTTP_LISTEN_ADDR` | api only | `:8080` |
+| `WORKER_METRICS_ADDR` | worker only | `:9091` (default; do not expose publicly) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | api / worker | Same collector endpoint |
+| `OTEL_SERVICE_NAME` | api / worker | `arena-api` / `arena-worker` respectively |
+| `REDIS_URL` | api / worker | Required once lock / hot-cache features land |
+| `DB_POOL_MIN_CONNS` / `DB_POOL_MAX_CONNS` | api / worker | Tune pools independently — total connections across api + worker must stay below the PostgreSQL `max_connections` limit |
+| `SHUTDOWN_TIMEOUT` | api / worker | `20s` recommended |
+
+> Tip: in Dokploy ≥ 0.6 you can attach a **Shared Environment** group to all
+> three services and only override the service-specific entries (`APP_NAME`,
+> `HTTP_LISTEN_ADDR`, `OTEL_SERVICE_NAME`, `WORKER_METRICS_ADDR`).
+
+---
+
+## 3. Create the Application in Dokploy
 
 1. Log in to your Dokploy dashboard.
 2. Navigate to **Projects** → **New Project** (or open an existing project).
@@ -50,7 +163,7 @@
 
 ---
 
-## 3. Attach a Managed PostgreSQL Service
+## 4. Attach a Managed PostgreSQL Service
 
 ### Option A — Dokploy Managed Database (recommended)
 
@@ -66,7 +179,7 @@ Set `DATABASE_URL` directly to your external DSN (e.g., a managed cloud database
 
 ---
 
-## 4. Configure Environment Variables
+## 5. Configure Environment Variables
 
 In Dokploy, open your `arena-api` application → **Environment Variables** tab.
 Set each variable below.  A full list of *optional* tuning variables is in
@@ -102,7 +215,7 @@ Set each variable below.  A full list of *optional* tuning variables is in
 
 ---
 
-## 5. Run Database Migrations
+## 6. Run Database Migrations
 
 **Migrations must run before `arena-api` starts.**  The `arena-migrate` binary
 is embedded in the same Docker image as `arena-api`, but it must be invoked
@@ -149,7 +262,7 @@ docker run --rm ... --entrypoint /app/arena-migrate your-registry/arena-api:late
 
 ---
 
-## 6. Healthcheck & Port Configuration
+## 7. Healthcheck & Port Configuration
 
 The image already contains a `HEALTHCHECK` directive that Dokploy honours
 automatically:
@@ -178,7 +291,7 @@ unhealthy if `/healthz` fails three consecutive checks.
 
 ---
 
-## 7. Deploy
+## 8. Deploy
 
 1. In the Dokploy dashboard, open the `arena-api` application.
 2. Click **Deploy** (or push to `main` if auto-deploy is configured).
@@ -197,7 +310,78 @@ unhealthy if `/healthz` fails three consecutive checks.
 
 ---
 
-## 8. Production Environment Variable Checklist
+## 9. Post-Deploy Smoke Checks
+
+Run these checks **immediately after every production deploy**, before
+announcing the deploy as successful. They cover all three runtime roles.
+
+### 9.1 `arena-migrate` finished cleanly
+
+```bash
+# Dokploy → arena-migrate → Logs (last run):
+# Expect a final line similar to:
+#   {"level":"INFO","msg":"migrations applied","applied":N}
+# Container exit code must be 0; if it is non-zero, abort the deploy and
+# investigate before bringing arena-api up against an inconsistent schema.
+```
+
+### 9.2 `arena-api` liveness, readiness, and version
+
+```bash
+# Liveness
+curl -fsS https://your-domain.example.com/healthz
+# → 200 {"status":"ok"}
+
+# Readiness (also asserts pgx can reach PostgreSQL)
+curl -fsS https://your-domain.example.com/readyz
+# → 200 {"status":"ok"}
+
+# Confirm the deployed build matches CI (APP_VERSION / APP_COMMIT)
+curl -fsS https://your-domain.example.com/healthz | jq .
+```
+
+### 9.3 `arena-worker` liveness and metrics
+
+The worker has no public route; check it from the Dokploy host or via
+`dokploy exec` into any container on the same internal network:
+
+```bash
+# Liveness (sidecar HTTP on WORKER_METRICS_ADDR, default :9091)
+curl -fsS http://arena-worker:9091/healthz
+# → 200 {"status":"ok"}
+
+# Confirm Prometheus exposition is live
+curl -fsS http://arena-worker:9091/metrics | head -n 20
+# → expect arena_outbox_backlog, arena_worker_jobs_*, process_* gauges
+```
+
+### 9.4 Outbox / job queue is draining
+
+```bash
+# From a DB shell or psql connected via DATABASE_URL:
+SELECT count(*) FROM outbox WHERE dispatched_at IS NULL;
+-- → expect a small, decreasing number; a steadily growing value means
+--    arena-worker is not running or is stuck.
+
+SELECT status, count(*) FROM worker_jobs GROUP BY status;
+-- → expect mostly 'done'; investigate any 'failed' rows.
+```
+
+### 9.5 Logs sanity
+
+In Dokploy **Logs** for both `arena-api` and `arena-worker`, verify:
+
+- Log lines are valid JSON (`LOG_FORMAT=json`).
+- No repeated `ERROR` entries.
+- `arena-api` shows `{"msg":"server started","addr":":8080"}`.
+- `arena-worker` shows `{"msg":"arena-worker metrics server listening","addr":":9091"}` and periodic `{"msg":"outbox backlog","count":...}` ticks.
+
+If any of the above fails, mark the deploy as failed in Dokploy and roll back
+to the previous successful revision before debugging.
+
+---
+
+## 10. Production Environment Variable Checklist
 
 Use this checklist before every first deploy and whenever environment variables
 change.  See [`.env.example`](../.env.example) for full documentation of every
@@ -234,7 +418,7 @@ variable.
 
 ---
 
-## 9. Secret Rotation
+## 11. Secret Rotation
 
 > **Note:** A formal secret-rotation procedure is **out of scope for this
 > (Backend Foundation) milestone.**  The following section documents *where*
@@ -264,7 +448,7 @@ Until those milestones ship, rotate secrets by:
 
 ---
 
-## 10. Troubleshooting
+## 12. Troubleshooting
 
 ### Container exits immediately after start
 
@@ -289,6 +473,18 @@ The API is alive but cannot reach PostgreSQL.  Verify:
   privileges (needed by goose).
 - Check for migration version conflicts: run
   `arena-migrate status` to see which migrations have been applied.
+
+### `arena-worker` is running but jobs / outbox are not draining
+
+- Check that `arena-worker` is actually started in Dokploy (not just defined).
+  Its sidecar `:9091/healthz` must return `200`.
+- Confirm `DATABASE_URL` points to the **same** PostgreSQL instance as
+  `arena-api`. A mismatched DSN means the worker is polling an empty queue.
+- Grep `arena-worker` logs for `handler not registered` — unknown job types
+  are parked as `failed` until a handler ships.
+- `SELECT count(*) FROM outbox WHERE dispatched_at IS NULL;` should trend
+  toward zero. A monotonically increasing value indicates the worker process
+  is crashed, stuck, or pointing at a different DB.
 
 ### High DB connection count
 
