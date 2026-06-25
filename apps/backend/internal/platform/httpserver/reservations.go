@@ -9,10 +9,9 @@
 //	        ↓
 //	      cancelled  (draft can also be cancelled before activation)
 //
-// TTL: expires_at is computed at creation time. In this foundation milestone the
-// server always uses a 1200-second (20-minute) default TTL.
-// TODO: look up channel.reservation_ttl_override and org.reservation_ttl_seconds
-// from the database to honour per-org and per-channel configuration.
+// TTL: expires_at is computed at creation time via resolveReservationTTL, which
+// honours the precedence sales_channels.reservation_ttl_override →
+// organizations.reservation_ttl_seconds → defaultReservationTTL (1200s).
 //
 // Inventory integration: POST /v1/reservations calls ReserveCapacity on the
 // inventory ledger atomically in the same transaction. DELETE /v1/reservations/{id}
@@ -27,6 +26,7 @@
 package httpserver
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -46,11 +46,60 @@ import (
 // Reservation state machine
 // ─────────────────────────────────────────────────────────────────────────────
 
-// defaultReservationTTL is the fallback TTL used when neither a per-channel
-// nor per-org TTL is configured. 1200 seconds = 20 minutes.
-// TODO: replace with lookup of org.reservation_ttl_seconds and
-// channel.reservation_ttl_override from the database.
+// defaultReservationTTL is the system-wide fallback TTL used when neither the
+// sales channel nor the parent organization has a configured TTL.
+// 1200 seconds = 20 minutes (matches the DEFAULT in
+// organizations.reservation_ttl_seconds — migration 0009_organizations.sql).
 const defaultReservationTTL = 1200 * time.Second
+
+// channelTTLLookup is the narrow surface of *gen.Queries that
+// resolveReservationTTL needs to fetch a sales channel row. Declaring it as
+// an interface allows unit tests to substitute fakes without spinning up a
+// real PostgreSQL connection.
+type channelTTLLookup interface {
+	GetSalesChannelByID(ctx context.Context, id, orgID uuid.UUID) (gen.SalesChannelRow, error)
+}
+
+// orgTTLLookup is the narrow surface of *gen.Queries that
+// resolveReservationTTL needs to fetch an organization row.
+type orgTTLLookup interface {
+	GetOrganizationByID(ctx context.Context, id uuid.UUID) (gen.OrganizationRow, error)
+}
+
+// resolveReservationTTL resolves the seat-hold expiry window for a reservation
+// using the documented precedence:
+//
+//  1. sales_channels.reservation_ttl_override (per-channel override) — when set
+//     and positive, it wins;
+//  2. organizations.reservation_ttl_seconds (per-org default) — when positive;
+//  3. defaultReservationTTL (1200 s system-wide fallback).
+//
+// Any lookup error (including pgx.ErrNoRows or a nil lookup) falls through to
+// the next tier; the function never propagates an error because TTL resolution
+// must not block reservation creation. The function is package-private so the
+// reservation handler is its only caller; tests verify all three branches.
+func resolveReservationTTL(
+	ctx context.Context,
+	channelQ channelTTLLookup,
+	orgQ orgTTLLookup,
+	channelID, orgID uuid.UUID,
+) time.Duration {
+	if channelQ != nil {
+		if ch, err := channelQ.GetSalesChannelByID(ctx, channelID, orgID); err == nil {
+			if ch.ReservationTTLOverride != nil && *ch.ReservationTTLOverride > 0 {
+				return time.Duration(*ch.ReservationTTLOverride) * time.Second
+			}
+		}
+	}
+	if orgQ != nil {
+		if org, err := orgQ.GetOrganizationByID(ctx, orgID); err == nil {
+			if org.ReservationTTLSeconds > 0 {
+				return time.Duration(org.ReservationTTLSeconds) * time.Second
+			}
+		}
+	}
+	return defaultReservationTTL
+}
 
 // validReservationTransitions defines the allowed state transitions for reservations.
 // Only transitions listed here are permitted; all others return 422.
@@ -154,8 +203,8 @@ type createReservationRequest struct {
 //
 // Flow (atomic):
 //  1. Parse + validate request body.
-//  2. Compute expires_at using the default TTL (1200s).
-//     TODO: resolve per-channel / per-org TTL from the database.
+//  2. Compute expires_at via resolveReservationTTL — channel override → org
+//     default → 1200 s fallback.
 //  3. Begin transaction.
 //  4. Call ReserveCapacity — returns pgx.ErrNoRows on over-capacity (→ 409).
 //  5. Call InsertReservation — records the draft reservation.
@@ -269,10 +318,20 @@ func (s *Server) handleCreateReservation(w http.ResponseWriter, r *http.Request)
 		userID = &uid
 	}
 
-	// Compute expires_at.
-	// TODO: look up channel.reservation_ttl_override then org.reservation_ttl_seconds
-	// from the database to honour per-org and per-channel TTL configuration.
-	expiresAt := time.Now().UTC().Add(defaultReservationTTL)
+	// Compute expires_at — channel override → org default → system fallback.
+	// Nil queries (test wiring) and lookup errors transparently fall through to
+	// the next tier and ultimately to defaultReservationTTL; see
+	// resolveReservationTTL for the precedence contract.
+	var channelQ channelTTLLookup
+	if s.channelQueries != nil {
+		channelQ = s.channelQueries
+	}
+	var orgQ orgTTLLookup
+	if s.orgQueries != nil {
+		orgQ = s.orgQueries
+	}
+	ttl := resolveReservationTTL(ctx, channelQ, orgQ, channelID, orgID)
+	expiresAt := time.Now().UTC().Add(ttl)
 
 	// Begin transaction: ReserveCapacity + InsertReservation atomically.
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
