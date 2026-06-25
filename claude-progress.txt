@@ -13000,3 +13000,51 @@ PROGRESS METRIC
 Before this session: 173/188 passing.
 After this session:  174/188 passing.
 
+
+=== Session 2026-06-25 (feature #185) ===
+DDD split for checkout / pay / refunds — step 1 (incremental).
+
+Moved internal/payments -> internal/domain/payments:
+  provider.go, routing.go, webhook.go, mock.go, allpay.go
+  + provider_134_test.go, allpay_136_test.go
+(internal/payments/ now contains no .go files.)
+
+Updated 8 importers to the canonical path:
+  internal/adapters/allpay/{adapter.go, allpay_136_test.go}
+  internal/adapters/stripe/{adapter.go, stripe_135_test.go}
+  internal/adapters/stripebilling/adapter.go
+  internal/platform/httpserver/stripe_billing.go
+  internal/domain/payments/{provider_134_test.go, allpay_136_test.go}
+
+Created internal/app/payments/doc.go - skeleton package documenting the layer
+contract (domain -> app -> adapters; handlers stay thin and call into app).
+Reserved for orchestrator code migrated out of httpserver in subsequent
+increments (one workflow at a time).
+
+New static-analysis test tests/staticanalysis/payments_layout_185_test.go:
+  - TestPaymentsLayout185_LegacyDirIsEmpty - fails if any .go appears under
+    apps/backend/internal/payments/
+  - TestPaymentsLayout185_AppDirExists - fails if app/payments dir or its
+    .go skeleton goes missing
+  - TestPaymentsLayout185_NoLegacyImports - repo-wide grep for the legacy
+    import path, fails on any hit
+
+Verification (golang:1.24 docker):
+  - go build ./apps/backend/...      PASS
+  - go vet ./...                     PASS
+  - go test -short ./internal/platform/httpserver/...  PASS
+  - go test ./internal/domain/payments/...             PASS
+  - go test ./internal/adapters/{allpay,stripe,stripebilling}/...  PASS
+  - go test -run TestPaymentsLayout185 ./tests/staticanalysis/...  PASS
+
+golangci-lint:latest reports 4 issues, none touched by this feature
+(mount_v1.go, server.go, nopanic_176_test.go, testfilehelpers_test.go).
+Documented as pre-existing.
+
+Scope note: the migration of orchestration logic out of checkout.go (661 lines),
+payment_intents.go (718 lines), and refunds.go (768 lines) into named services
+under internal/app/payments is explicitly an incremental follow-up. This step
+established the canonical layout, moved the pure-domain layer, and locked the
+contract with a static-analysis gate so subsequent moves are mechanical.
+
+Commit: 2ca47a2. Marked #185 passing. Stats: 178/188 passing (94.7%).
