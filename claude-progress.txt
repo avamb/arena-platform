@@ -13591,3 +13591,36 @@ state from the prior session.
 
 Marked #190 passing. Commit 952618f.
 Progress: 189/195 passing.
+
+=== Session 2026-06-25 (feature #189) ===
+Restored green golangci-lint gate (was red with 11 issues:
+9 gofmt + 1 revive + 1 staticcheck).
+
+FIXES:
+  - gofmt -w on 9 files:
+      apps/backend/internal/app/inventory/doc.go
+      apps/backend/internal/app/reporting/doc.go
+      apps/backend/internal/domain/billing/doc.go
+      apps/backend/internal/domain/reporting/doc.go
+      apps/backend/internal/platform/httpserver/mount_v1.go
+      apps/backend/internal/platform/httpserver/reconciliation.go
+      apps/backend/internal/platform/httpserver/server.go
+      apps/backend/tests/staticanalysis/httpserver_file_size_175_test.go
+      apps/backend/tests/staticanalysis/nopanic_176_test.go
+  - revive stutter (exported name): in
+    apps/backend/internal/domain/billing/invoice_state.go renamed
+    BillingPeriodForTime -> PeriodForTime; the forwarder in
+    apps/backend/internal/platform/httpserver/billing_ledger.go now
+    delegates to billingdomain.PeriodForTime (no behavior change).
+  - staticcheck QF1001 (De Morgan): in
+    apps/backend/internal/platform/httpserver/testfilehelpers_test.go
+    rewrote the skip-condition without the outer negation so the linter
+    is satisfied while keeping the same logic.
+
+VERIFICATION (golang:1.24 / golangci-lint:latest, docker):
+  golangci-lint run --timeout=10m ./...                  0 issues
+  go test ./apps/backend/... -count=1                     PASS
+  go test -race -coverprofile=/tmp/cov -covermode=atomic ./apps/backend/...  PASS
+  git diff --check                                        clean (only CRLF/LF informational warnings)
+
+Marked #189 passing. Commit: 05fc620.
