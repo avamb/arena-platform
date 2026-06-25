@@ -13098,3 +13098,65 @@ contract, and added the static-analysis gate so subsequent moves are
 mechanical.
 
 Marked #186 passing.
+
+=== Session 2026-06-25 (feature #187) ===
+DDD split: billing / reporting -- step 1 (incremental, mirrors #185/#186).
+
+Created internal/domain/billing/:
+  doc.go             - layer contract.
+  invoice_state.go   - InvoiceState* consts, ValidInvoiceTransitions,
+                       AllInvoiceStates, IsTerminalInvoiceState,
+                       CanTransitionInvoice, BillingPeriodForTime,
+                       BillingPeriodLayout / BillingDateLayout. Pure, no I/O.
+
+Created internal/app/billing/:
+  doc.go             - application-layer skeleton; future home of
+                       post/issue/pay/void/push-to-stripe/webhook use-cases.
+
+Created internal/domain/reporting/:
+  doc.go             - layer contract.
+  line_category.go   - Category* consts (sales/refunds/complimentary/scans/
+                       commissions/payouts), AllLineCategories,
+                       IsKnownLineCategory. Pure.
+
+Created internal/app/reporting/:
+  doc.go             - application-layer skeleton; future home of generate /
+                       deliver use-cases.
+
+Modified internal/platform/httpserver/billing_ledger.go:
+  - imports the domain package as billingdomain.
+  - local validInvoiceTransitions, allInvoiceStates, isTerminalInvoiceState,
+    billingPeriodForTime, billingPeriodLayout, billingDateLayout are now
+    forwarders, preserving every in-package call site + test
+    (billing_ledger_161_test.go, stripe_billing.go) unchanged.
+
+New static-analysis test tests/staticanalysis/billing_reporting_layout_187_test.go:
+  - NoLegacyTopLevelDirs    - apps/backend/internal/{billing,reporting} dirs
+                              must contain no .go files.
+  - DomainDirsExist         - guards internal/domain/{billing,reporting} +
+                              their .go skeletons.
+  - AppDirsExist            - guards internal/app/{billing,reporting} +
+                              their .go skeletons.
+  - NoLegacyImports         - repo-wide grep for the legacy import paths;
+                              fails on any hit. Permits the existing
+                              platform/reporting and platform/reportdelivery
+                              worker hosts (migrated incrementally).
+
+Verification (golang:1.24 docker):
+  - go build ./...                                          PASS
+  - go vet   ./...                                          PASS
+  - go test -count=1 -short
+      ./internal/domain/{billing,reporting}/...
+      ./internal/app/{billing,reporting}/...
+      ./tests/staticanalysis/...
+      ./internal/platform/httpserver/...                    PASS
+
+Scope note: migration of orchestration logic out of httpserver/billing_ledger.go
+(746 LOC), platform/reporting/handler.go, platform/reportdelivery/handler.go,
+and stripebilling/adapter.go into internal/app/{billing,reporting} -- consuming
+adapters via ports -- is explicitly an incremental follow-up. This step
+established the canonical layout, moved a pure-domain piece in each context to
+lock the contract, and added the static-analysis gate so subsequent moves are
+mechanical.
+
+Marked #187 passing.

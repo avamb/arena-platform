@@ -43,48 +43,42 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	billingdomain "github.com/abhteam/arena_new/apps/backend/internal/domain/billing"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Invoice state transition table
+//
+// The invoice state machine itself lives in internal/domain/billing
+// (feature #187 — "DDD split: billing / reporting"). The package-level vars
+// and helpers below are thin forwarders so that all in-package call sites
+// and tests continue to compile unchanged, while the canonical source of
+// truth is the pure-domain package.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// validInvoiceTransitions defines allowed invoice state transitions.
-// Terminal states (paid, void) map to empty sets.
-var validInvoiceTransitions = map[string]map[string]bool{
-	"draft": {
-		"issued": true,
-		"void":   true,
-	},
-	"issued": {
-		"paid": true,
-		"void": true,
-	},
-	"paid": {},
-	"void": {},
-}
+// validInvoiceTransitions forwards to billingdomain.ValidInvoiceTransitions.
+var validInvoiceTransitions = billingdomain.ValidInvoiceTransitions
 
-// allInvoiceStates is the complete set of valid invoice states.
-var allInvoiceStates = []string{"draft", "issued", "paid", "void"}
+// allInvoiceStates forwards to billingdomain.AllInvoiceStates.
+var allInvoiceStates = billingdomain.AllInvoiceStates
 
 const (
-	billingPeriodLayout = "2006-01"
-	billingDateLayout   = "2006-01-02"
+	billingPeriodLayout = billingdomain.BillingPeriodLayout
+	billingDateLayout   = billingdomain.BillingDateLayout
 )
 
-// isTerminalInvoiceState returns true for invoice states that admit no further transitions.
+// isTerminalInvoiceState forwards to billingdomain.IsTerminalInvoiceState.
 func isTerminalInvoiceState(state string) bool {
-	targets, exists := validInvoiceTransitions[state]
-	return exists && len(targets) == 0
+	return billingdomain.IsTerminalInvoiceState(state)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// billingPeriodForTime returns the 'YYYY-MM' billing period for a given time.
+// billingPeriodForTime forwards to billingdomain.BillingPeriodForTime.
 // ─────────────────────────────────────────────────────────────────────────────
 
 func billingPeriodForTime(t time.Time) string {
-	return t.UTC().Format(billingPeriodLayout)
+	return billingdomain.BillingPeriodForTime(t)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
