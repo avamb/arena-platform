@@ -2,6 +2,40 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+=== Session 2026-06-25 (feature #176) ===
+Audit + static-analysis gate for panic() in production code.
+
+Audit covered every non-test, non-cmd/ panic( in apps/backend/. 9 call sites
+identified; all classified as either init-time programmer-error preconditions
+(category c), documented Must* variants / idiomatic defer-rethrow (category a),
+or the dedicated debug endpoint exercising the panic recoverer. No category
+(b) recoverable IO panics were found.
+
+Annotated each call site with // allow:panic + one-sentence justification:
+  - internal/payments/routing.go (2)
+  - internal/platform/ids/uuidv7.go (MustNewUUIDv7)
+  - internal/adapters/postgres/pool.go (defer rollback rethrow)
+  - internal/platform/worker/outbox_backlog_poller.go (2)
+  - internal/platform/i18n/middleware.go
+  - internal/platform/ratelimit/ratelimit.go (2)
+  - internal/platform/observability/metrics.go (MustNew)
+  - internal/platform/httpserver/debug_panic.go
+
+New files:
+  apps/backend/tests/staticanalysis/nopanic_176_test.go
+    Walks apps/backend/, skips *_test.go and cmd/, strips trailing
+    line-comments, and fails on any panic( not covered by an // allow:panic
+    marker on the same line or in the contiguous // comment block above.
+  ops/codequality/panic-audit-176.md
+    Audit register with file:line + category + justification table.
+
+Verification (golang:1.24 docker):
+  - go build ./... -> PASS
+  - go test ./tests/staticanalysis/... -> PASS
+  - TestNoUnaudittedPanic -> PASS
+
+Commit: 4f0c5d7. Marked #176 passing.
+
 ================================================================================
 
 --------------------------------------------------------------------------------
