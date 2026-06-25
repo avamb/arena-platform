@@ -116,9 +116,19 @@ func readWPWebhookFile(t *testing.T, relPath string) string {
 }
 
 // readBackendFile reads a file relative to apps/backend/ and returns its content.
+//
+// Special case: when relPath targets the trimmed
+// internal/platform/httpserver/server.go (post-feature-#174 split), the helper
+// returns the concatenated union of server.go + server_struct.go + wire.go +
+// mount_*.go so existing structural tests that grep for symbols still pass.
 func readBackendFile(t *testing.T, relPath string) string {
 	t.Helper()
 	root := wpWebhookRepoRoot(t)
+	if relPath == "internal/platform/httpserver/server.go" {
+		if combined := readServerGoLike(root, "server.go"); combined != "" {
+			return combined
+		}
+	}
 	full := filepath.Join(root, "apps", "backend", relPath)
 	data, err := os.ReadFile(full)
 	if err != nil {

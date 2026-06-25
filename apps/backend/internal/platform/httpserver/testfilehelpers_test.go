@@ -41,6 +41,9 @@ func findFileByName(t *testing.T, name string) string {
 		for i := 0; i < 5; i++ {
 			repoRoot = filepath.Dir(repoRoot)
 		}
+		if combined := readServerGoLike(repoRoot, name); combined != "" {
+			return combined
+		}
 		if candidate := resolveFileInRepo(repoRoot, name); candidate != "" {
 			data, err := os.ReadFile(candidate)
 			if err == nil {
@@ -62,6 +65,9 @@ func findFileByName(t *testing.T, name string) string {
 	for i := 0; i < 10; i++ {
 		if _, statErr := os.Stat(filepath.Join(dir, "go.mod")); statErr == nil {
 			// Found repo root.
+			if combined := readServerGoLike(dir, name); combined != "" {
+				return combined
+			}
 			if candidate := resolveFileInRepo(dir, name); candidate != "" {
 				data, err := os.ReadFile(candidate)
 				if err == nil {
@@ -762,4 +768,57 @@ func resolveFileInRepo(repoRoot, name string) string {
 		}
 	}
 	return ""
+}
+
+// readServerGoLike returns the concatenated source of server.go and its sibling
+// files (server_struct.go, wire.go, mount_*.go) when `name == "server.go"`.
+// After feature #174 split the original 2,396-line server.go into focused
+// per-domain files, existing structural tests that grep server.go for symbols
+// (struct fields, Options entries, route mounts) keep passing by reading the
+// union of those files instead of the trimmed server.go alone.
+//
+// Returns "" for any other name so the caller falls through to the original
+// resolveFileInRepo path.
+func readServerGoLike(repoRoot, name string) string {
+	if name != "server.go" {
+		return ""
+	}
+	httpserverDir := filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver")
+	entries, err := os.ReadDir(httpserverDir)
+	if err != nil {
+		return ""
+	}
+	var buf []byte
+	wantedExact := map[string]bool{
+		"server.go":        true,
+		"server_struct.go": true,
+		"wire.go":          true,
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		n := e.Name()
+		// Skip tests; include the canonical server files and every mount_*.go.
+		if !(wantedExact[n] || (len(n) > len("mount_") && n[:len("mount_")] == "mount_" && filepath.Ext(n) == ".go" && !endsWith(n, "_test.go"))) {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(httpserverDir, n))
+		if err != nil {
+			continue
+		}
+		buf = append(buf, []byte("// === "+n+" ===\n")...)
+		buf = append(buf, data...)
+		buf = append(buf, '\n')
+	}
+	return string(buf)
+}
+
+// endsWith is a tiny strings.HasSuffix-equivalent kept here so the helper
+// stays self-contained (the test package may not import "strings").
+func endsWith(s, suffix string) bool {
+	if len(suffix) > len(s) {
+		return false
+	}
+	return s[len(s)-len(suffix):] == suffix
 }

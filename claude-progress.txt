@@ -12938,3 +12938,65 @@ Two pre-existing TestReservation131_Step4_ServerWiring failures are unchanged
 
 Commit: f19e844. Marked #177 passing.
 
+================================================================================
+
+Session: 2026-06-25 -- Feature #174 (Split httpserver/server.go God-object)
+
+WHAT WAS DONE
+-------------
+Decomposed apps/backend/internal/platform/httpserver/server.go from a
+2,397-line God-object (server lifecycle + Server struct + Options + New
+constructor + 13 route mount blocks) into focused per-domain files.
+
+Result: server.go is now 252 lines (target was <= 400). Total LOC across
+the split file set is 1,505 lines, down from 2,397.
+
+NEW FILES (all in apps/backend/internal/platform/httpserver/)
+  server_struct.go    96 lines - Server struct definition.
+  wire.go            270 lines - Options struct + New constructor. Introduces
+                                 pickQueries helper that collapses 27 near-
+                                 identical gen.New(pool) blocks.
+  mount_v1.go        129 lines - /v1 orchestrator (mountV1Routes) plus
+                                 info/server-info/info-slow/debug/dev-token/echo.
+                                 Introduces s.applyAuth(pr, perm, scope) helper
+                                 that collapses the auth.Middleware + permission
+                                 pattern repeated 60+ times.
+  mount_auth.go       29 lines - public auth + JWT logout.
+  mount_iam.go       115 lines - geo, orgs, channels, members, venues.
+  mount_catalog.go   141 lines - feed tokens, events, sessions, tiers,
+                                 publications, public feed.
+  mount_inventory.go  56 lines - inventory ledger, reservations.
+  mount_commerce.go  178 lines - promo, pricing, checkout, payment-intents,
+                                 stripe-connect, tickets, credentials, refunds,
+                                 gdpr.
+  mount_scanning.go   64 lines - barcodes, scanner, barcode-batches.
+  mount_partner.go    73 lines - allocations, complimentary (+revoke),
+                                 reconciliation.
+  mount_admin.go     102 lines - reports, billing, stripe-billing, superadmin,
+                                 impersonate, webhook subscribers.
+
+MODIFIED FILES
+  server.go - trimmed to 252 lines. Retains interfaces, lifecycle methods,
+              operational routes, 404/405 + healthz/readyz handlers, writeJSON.
+  testfilehelpers_test.go - added readServerGoLike helper that returns the
+              concatenated source of server.go + server_struct.go + wire.go +
+              every mount_*.go when name == "server.go". Keeps existing
+              structural tests (~40) green without re-writing them.
+  wordpress_webhook_156_test.go - patched readBackendFile to call
+              readServerGoLike for the server.go relative path.
+
+VERIFICATION
+------------
+  golang:1.24 docker (volume-cached modules):
+    go build ./apps/backend/...                 - PASS (clean)
+    go vet   ./apps/backend/...                 - PASS (clean)
+    go test  -count=1 -short ./apps/backend/... - all packages PASS
+      (httpserver suite ~7.4s).
+
+  Feature #174 marked passing.
+
+PROGRESS METRIC
+---------------
+Before this session: 173/188 passing.
+After this session:  174/188 passing.
+
