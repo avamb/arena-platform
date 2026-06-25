@@ -13538,3 +13538,56 @@ Verification:
 
 Marked #179 passing. Commit: 471c9b4.
 
+
+=== Session 2026-06-25 (feature #190) ===
+Reconciled release checklist + README with the actual Make targets and CI
+workflow steps. Pure docs change; zero Go source modified.
+
+CHANGES:
+  00_project_control/RELEASE_CHECKLIST.md
+    - Gate 2: replaced the non-existent `make generate` command with
+      `make gen-openapi` + `make gen-ts-client` (kept ./generate-clients.sh
+      as alternative end-to-end driver). Added explicit callout that
+      `make generate` is absent from Makefile so a future reader cannot
+      regress. Cross-referenced CI Job 3 (openapi-check) as the drift
+      authority.
+    - Gate 3: switched documented timeout from --timeout=10m to
+      --timeout=5m to match CI Job 1 (golangci-lint-action@v6 args:
+      --timeout=5m). Added make test / make test-race / make lint
+      Make-target equivalents alongside raw commands.
+    - Gate 4: added `make migrate-up` as install-free alternative to the
+      compiled arena-migrate binary.
+    - Gate 5 (NEW): documents `docker build -t arena-api:local .` plus
+      `docker compose build && docker compose up -d --wait` plus a curl
+      readiness probe. References CI build-and-push and load-test
+      workflows so docs match what CI actually does.
+    - Signature table: added Gate 5 row; added one-line statement that
+      reproduce commands are byte-for-byte aligned with Makefile + CI.
+
+  README.md (Current implementation status section)
+    - Date updated 2026-06-24 -> 2026-06-25.
+    - Gate table rewritten to mirror RELEASE_CHECKLIST.md: lint now GREEN
+      per #182; Gate 5 container build row added; each row links to a
+      reproduce command that matches CI.
+    - Removed stale "lint still red" paragraph; replaced with "all five
+      gates green on main" wording plus a historical note explaining the
+      prior red-lint claim.
+    - Added pointer to RELEASE_CHECKLIST.md as the single source of truth.
+
+VERIFICATION (per feature #190 acceptance steps):
+  1. RELEASE_CHECKLIST.md updated.                                  done
+  2. Outdated green-lint assertions retained ONLY where lint is
+     actually green (it is, per #182).                              done
+  3. README synced with current broad-scaffold status.              done
+  4. Exact reproduce commands provided for test, race, lint, Docker
+     build, migrations.                                             done
+  5. Docs match CI workflow: re-checked .github/workflows/ci.yml
+     (timeout=5m for lint; race+coverage command identical;
+     gen-openapi drift check identical) and docker-compose.yml /
+     Dockerfile (used by build-and-push and load-test jobs).        done
+
+Zero Go source changed, so build / test / lint gates inherit the green
+state from the prior session.
+
+Marked #190 passing. Commit 952618f.
+Progress: 189/195 passing.
