@@ -14292,3 +14292,67 @@ Verification (docker golang:1.24-alpine):
                                                                   (9.9s, no regressions)
 
 Marked #210 passing.
+
+================================================================================
+Session 2026-06-26 — Feature #211 (Extend current-user context endpoint for network scopes)
+================================================================================
+No pre-existing /v1/me handler in code or openapi.yaml (verified via grep).
+Built it from scratch while preserving backwards-compatible additive contract.
+
+Implementation:
+  - queries/memberships.sql: added ListMembershipsByUser :many.
+  - gen/memberships.sql.go: hand-curated listMembershipsByUser const +
+    (*Queries) method (project pattern; sqlc gen still blocked by legacy
+    inventory_ledger ambiguity per #205 notes).
+  - gen/querier.go: registered ListMembershipsByUser in Querier interface.
+  - platform/httpserver/me.go (NEW): handler + DTOs + scope-derivation pure
+    function. Depends on a narrow meQuerier interface (4 methods) so tests
+    do not require a live database. *gen.Queries satisfies the interface.
+    Response payload: user, roles, permissions, organization_memberships,
+    assigned_networks, available_scopes. All slice fields guaranteed
+    non-nil. Timestamps use time.RFC3339Nano per project contract.
+  - server_struct.go: added meQueries field.
+  - wire.go: added Options.MeQueries + pickMeQueries (defaults to
+    gen.New(PgxPool) when not injected).
+  - mount_iam.go: added mountMeRoutes — chi.Group with auth.Middleware
+    only (no RBAC permission; handler is intrinsically user-scoped).
+  - mount_v1.go: registered mountMeRoutes between mountAuthRoutes and
+    mountGeoRoutes.
+  - openapi.yaml: added GET /v1/me + MeResponse / MeUser /
+    MeOrganizationMembership / MeAssignedNetwork schemas with full
+    property descriptions. user uses allOf wrapping the $ref so it can
+    carry a description.
+  - openapi_drift_test.go: injected MeQueries into buildDriftTestServer
+    so the drift check sees the new route.
+
+available_scopes derivation (deterministic ordering):
+  1. "global"     — when actor has a bypass role (platform_superadmin /
+                    admin). platform_operator is intentionally NOT a
+                    bypass (#207 invariant).
+  2. "platform"   — when actor has platform_operator.
+  3. "network:<uuid>"      entries, sorted alphabetically by scope string.
+  4. "organization:<uuid>" entries, sorted alphabetically, deduped.
+
+Tests (me_211_test.go, 8/8 PASS):
+  - Unauthenticated GET returns 401.
+  - superadmin: "global" first; networks + memberships honoured.
+  - network_operator (2 networks): sorted "network:<uuid>" entries, no
+    "global", no "platform".
+  - organizer (1 membership): "organization:<uuid>" present; no "global".
+  - platform_operator: "platform" present; "global" absent (#207 invariant).
+  - Empty assignments: all top-level fields present so clients can rely
+    on non-nil arrays.
+  - computeAvailableScopes pure-function: ordering + dedup of repeated
+    org and network IDs.
+  - computeAvailableScopes pure-function: "global" precedes "platform"
+    when both apply.
+
+Verification (docker golang:1.24-alpine):
+  go build ./...                                              BUILD_OK
+  go vet   ./...                                              VET_OK
+  go test  -run Me211 ./.../httpserver/... -count=1          PASS 8/8
+  go test  -short ./... -count=1                              ALL PASS
+    (only pre-existing failure unrelated to #211:
+     TestNoUnaudittedPanic flagging networkscope.go:184 from #207.)
+
+Marked #211 passing.

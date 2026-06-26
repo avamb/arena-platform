@@ -46,3 +46,14 @@ FROM   memberships
 WHERE  user_id = $1
   AND  status  = 'active'
 ORDER  BY role;
+
+-- name: ListMembershipsByUser :many
+-- Returns all active memberships for a user across every organization they
+-- belong to. Used by the GET /v1/me current-user context endpoint (feature #211)
+-- so the response can enumerate organization_memberships and derive
+-- organization-scoped entries in available_scopes.
+SELECT id, user_id, org_id, role, status, joined_at
+FROM   memberships
+WHERE  user_id = $1
+  AND  status  = 'active'
+ORDER  BY joined_at ASC, id ASC;

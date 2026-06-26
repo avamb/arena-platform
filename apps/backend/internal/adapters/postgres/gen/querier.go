@@ -63,6 +63,7 @@ type Querier interface {
 	RevokeMembership(ctx context.Context, userID, orgID uuid.UUID, role string) (MembershipRow, error)
 	ListMembershipsByOrg(ctx context.Context, orgID uuid.UUID) ([]MembershipRow, error)
 	GetActiveRolesForUser(ctx context.Context, userID uuid.UUID) ([]string, error)
+	ListMembershipsByUser(ctx context.Context, userID uuid.UUID) ([]MembershipRow, error)
 
 	// Agent feed tokens — public read-only channel credentials (feature #122)
 	InsertFeedToken(ctx context.Context, token string, salesChannelID uuid.UUID, label string) (FeedTokenRow, error)

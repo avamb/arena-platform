@@ -144,3 +144,37 @@ func (q *Queries) GetActiveRolesForUser(ctx context.Context, userID uuid.UUID) (
 	}
 	return roles, rows.Err()
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ListMembershipsByUser
+// ─────────────────────────────────────────────────────────────────────────────
+
+const listMembershipsByUser = `-- name: ListMembershipsByUser :many
+SELECT id, user_id, org_id, role, status, joined_at
+FROM   memberships
+WHERE  user_id = $1
+  AND  status  = 'active'
+ORDER  BY joined_at ASC, id ASC`
+
+// ListMembershipsByUser returns every active membership held by the supplied
+// user across all organizations, ordered by join time ascending. Used by the
+// current-user context endpoint (GET /v1/me — feature #211) to populate
+// organization_memberships and the organization-scoped entries inside
+// available_scopes.
+func (q *Queries) ListMembershipsByUser(ctx context.Context, userID uuid.UUID) ([]MembershipRow, error) {
+	rows, err := q.db.Query(ctx, listMembershipsByUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var memberships []MembershipRow
+	for rows.Next() {
+		m, err := scanMembershipRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		memberships = append(memberships, m)
+	}
+	return memberships, rows.Err()
+}

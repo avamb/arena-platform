@@ -1,6 +1,25 @@
 package httpserver
 
-import "github.com/go-chi/chi/v5"
+import (
+	"github.com/go-chi/chi/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+)
+
+// mountMeRoutes mounts the current-user context endpoint introduced in
+// feature #211: GET /v1/me. The route requires authentication (via the stub
+// JWT provider in dev / a real Provider in prod) but no specific permission —
+// every authenticated caller is allowed to read their own context. The handler
+// itself enforces user-scoping by keying every query off actor.ID.
+func (s *Server) mountMeRoutes(r chi.Router) {
+	if s.stub == nil || !s.stub.Enabled() || s.meQueries == nil {
+		return
+	}
+	r.Group(func(pr chi.Router) {
+		pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+		pr.Get("/me", s.handleMe)
+	})
+}
 
 // mountGeoRoutes mounts geo reference endpoints (feature #123).
 func (s *Server) mountGeoRoutes(r chi.Router) {

@@ -65,6 +65,11 @@ type Options struct {
 	WebhookSubQueries     *gen.Queries
 	ReconciliationQueries *gen.Queries
 	NetworkQueries        *gen.Queries
+	// MeQueries overrides the meQuerier used by the GET /v1/me handler
+	// (feature #211). When nil and PgxPool is non-nil, the constructor
+	// builds a default backed by gen.New(PgxPool). Tests inject a fake to
+	// exercise role-specific response shaping without a live database.
+	MeQueries meQuerier
 	GeoQueries            *gen.Queries
 	OrgQueries            *gen.Queries
 	ChannelQueries        *gen.Queries
@@ -253,6 +258,7 @@ func New(opts Options) *Server {
 		webhookSubQueries:     pickQueries(opts.WebhookSubQueries, opts.PgxPool),
 		reconciliationQueries: pickQueries(opts.ReconciliationQueries, opts.PgxPool),
 		networkQueries:        pickQueries(opts.NetworkQueries, opts.PgxPool),
+		meQueries:             pickMeQueries(opts.MeQueries, opts.PgxPool),
 	}
 
 	s.mountOperationalRoutes()

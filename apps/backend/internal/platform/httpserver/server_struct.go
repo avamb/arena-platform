@@ -87,6 +87,7 @@ type Server struct {
 	webhookSubQueries     *gen.Queries
 	reconciliationQueries *gen.Queries
 	networkQueries        *gen.Queries
+	meQueries             meQuerier
 
 	// Dev / test toggles.
 	faultInjectOutboxAfterAudit bool

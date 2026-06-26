@@ -21,6 +21,7 @@ func (s *Server) mountV1Routes() {
 		s.mountDevTokenRoutes(r)
 		s.mountEchoRoute(r)
 		s.mountAuthRoutes(r)
+		s.mountMeRoutes(r)
 		s.mountGeoRoutes(r)
 		s.mountOrgRoutes(r)
 		s.mountChannelRoutes(r)

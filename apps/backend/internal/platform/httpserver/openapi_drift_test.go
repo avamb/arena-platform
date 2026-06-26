@@ -287,6 +287,9 @@ func buildDriftTestServer(t *testing.T) *Server {
 		GeoQueries: gen.New(nil),
 		// Wire org queries so /v1/organizations/* routes are mounted (feature #119).
 		OrgQueries: gen.New(nil),
+		// Wire MeQueries so the /v1/me current-user context route is mounted
+		// (feature #211). *gen.Queries implements meQuerier.
+		MeQueries: gen.New(nil),
 	})
 }
 

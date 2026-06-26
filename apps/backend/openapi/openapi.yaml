@@ -479,6 +479,121 @@ components:
           description: Opaque refresh token issued by POST /v1/auth/login
           example: "a3f8c2d1e0b9..."
 
+    MeResponse:
+      type: object
+      description: |
+        Snapshot of the authenticated user's context returned by GET /v1/me.
+        Backwards-compatible: feature #211 added `assigned_networks` and
+        `available_scopes`; clients that only consume the original blocks
+        keep working without changes.
+      required:
+        - user
+        - roles
+        - permissions
+        - organization_memberships
+        - assigned_networks
+        - available_scopes
+      properties:
+        user:
+          description: Authenticated user header block — identity claims extracted from the JWT
+          allOf:
+            - $ref: "#/components/schemas/MeUser"
+        roles:
+          type: array
+          description: Deduplicated union of JWT roles and active membership roles, sorted ascending
+          items:
+            type: string
+          example: ["network_operator", "organizer"]
+        permissions:
+          type: array
+          description: Flat list of permission names expanded from roles
+          items:
+            type: string
+          example: ["network.read", "org.read"]
+        organization_memberships:
+          type: array
+          description: Every active organization membership held by the user
+          items:
+            $ref: "#/components/schemas/MeOrganizationMembership"
+        assigned_networks:
+          type: array
+          description: |
+            Operator networks the user belongs to (network_users.status='active').
+            Empty for users who are not part of any operator network.
+          items:
+            $ref: "#/components/schemas/MeAssignedNetwork"
+        available_scopes:
+          type: array
+          description: |
+            Deterministically-ordered authorization scopes the caller can act
+            under. Order: "global" (bypass roles), "platform" (platform_operator),
+            sorted "network:<uuid>" entries, sorted "organization:<uuid>" entries.
+          items:
+            type: string
+          example: ["network:0193f01a-1234-7000-8000-000000000001"]
+
+    MeUser:
+      type: object
+      required: [id, type, is_impersonated]
+      properties:
+        id:
+          type: string
+          description: Actor ID from the JWT (typically a UUID)
+        type:
+          type: string
+          description: Actor type — stub_user / user / service / anonymous
+          example: "user"
+        issuer:
+          type: string
+          description: JWT iss claim (omitted when empty)
+        is_impersonated:
+          type: boolean
+          description: True when the token was issued via the impersonation flow (#167)
+        impersonated_by:
+          type: string
+          description: Admin actor ID that minted the impersonation token (omitted when empty)
+        impersonation_reason:
+          type: string
+          description: Business justification recorded when the impersonation token was issued
+
+    MeOrganizationMembership:
+      type: object
+      required: [id, org_id, role, status, joined_at]
+      properties:
+        id:
+          type: string
+          description: Membership row UUID
+        org_id:
+          type: string
+          description: Organization UUID
+        role:
+          type: string
+          description: Role name held by the user inside the organization
+        status:
+          type: string
+          description: Membership lifecycle status (always "active" in this response)
+        joined_at:
+          type: string
+          format: date-time
+          description: When the membership was granted
+
+    MeAssignedNetwork:
+      type: object
+      required: [id, name, slug, status]
+      properties:
+        id:
+          type: string
+          description: Operator network UUID
+        name:
+          type: string
+          description: Human-readable operator network name
+        slug:
+          type: string
+          description: URL-safe operator network slug
+        status:
+          type: string
+          description: Operator network lifecycle status (active / suspended / archived)
+
     AuthLogoutRequest:
       type: object
       required: [refresh_token]
@@ -1491,6 +1606,48 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: Refresh token not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/me:
+    get:
+      operationId: getV1Me
+      summary: Return the authenticated user's context
+      description: |
+        Returns a single, stable snapshot of the calling user's identity,
+        roles, permissions, organization memberships, assigned operator
+        networks, and available authorization scopes. Clients use this
+        endpoint as the entry point after login so they can render UI and
+        gate behaviour without making extra round-trips.
+
+        Backwards-compatible field additions only — feature #211 introduced
+        `assigned_networks` and `available_scopes` alongside the original
+        user / roles / permissions / organization_memberships blocks so the
+        admin and network-operator consoles can resolve their scope filters
+        in a single call.
+
+        Requires a valid bearer token. No specific RBAC permission is
+        required — every authenticated user can read their own context.
+      tags: [v1, iam]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "401":
+          description: Missing or invalid JWT Authorization header
           content:
             application/json:
               schema:
