@@ -320,6 +320,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return the authenticated user's context
+         * @description Returns a single, stable snapshot of the calling user's identity,
+         *     roles, permissions, organization memberships, assigned operator
+         *     networks, and available authorization scopes. Clients use this
+         *     endpoint as the entry point after login so they can render UI and
+         *     gate behaviour without making extra round-trips.
+         *
+         *     Backwards-compatible field additions only — feature #211 introduced
+         *     `assigned_networks` and `available_scopes` alongside the original
+         *     user / roles / permissions / organization_memberships blocks so the
+         *     admin and network-operator consoles can resolve their scope filters
+         *     in a single call.
+         *
+         *     Requires a valid bearer token. No specific RBAC permission is
+         *     required — every authenticated user can read their own context.
+         */
+        get: operations["getV1Me"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/password-reset/request": {
         parameters: {
             query?: never;
@@ -578,6 +611,245 @@ export interface paths {
          *     permission. Returns 409 if the new name or slug conflicts with another active org.
          */
         patch: operations["patchV1OrganizationsId"];
+        trace?: never;
+    };
+    "/v1/operator-networks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List non-archived operator networks
+         * @description Returns every operator network whose status is not `archived`.
+         *     Requires the `network.read` permission (bound to platform_superadmin,
+         *     network_operator, and admin per migration 0044_network_permissions.sql).
+         */
+        get: operations["listOperatorNetworks"];
+        put?: never;
+        /**
+         * Create a new operator network
+         * @description Creates a new operator_network row. Requires the `network.create`
+         *     permission, which migration 0044_network_permissions.sql binds only
+         *     to platform_superadmin and the legacy admin role.
+         */
+        post: operations["createOperatorNetwork"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/operator-networks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fetch a single operator network by ID
+         * @description Returns the operator_network row identified by `id`. Requires the
+         *     `network.read` permission (same role binding as the list endpoint).
+         */
+        get: operations["getOperatorNetwork"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update mutable fields on an operator network
+         * @description Updates `name` and/or `slug` on a non-archived operator network.
+         *     At least one of the two fields must be supplied. Requires the
+         *     `network.update` permission (bound to platform_superadmin,
+         *     network_operator, and admin per 0044_network_permissions.sql).
+         */
+        patch: operations["updateOperatorNetwork"];
+        trace?: never;
+    };
+    "/v1/operator-networks/{id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Soft-archive an operator network
+         * @description Marks the network as `archived` and stamps `archived_at`. Idempotent
+         *     at the database layer: re-archiving an already-archived network
+         *     returns 404 instead of 200. Requires the `network.archive`
+         *     permission, bound only to platform_superadmin and admin per
+         *     migration 0044_network_permissions.sql.
+         */
+        post: operations["archiveOperatorNetwork"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/networks/{id}/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List active users assigned to an operator network
+         * @description Returns every `network_users` row whose status is `active` for the
+         *     named network. Requires the `network.manage_users` permission, which
+         *     migration 0044_network_permissions.sql binds only to
+         *     platform_superadmin and the legacy admin role.
+         */
+        get: operations["listNetworkUsers"];
+        put?: never;
+        /**
+         * Assign a user to an operator network
+         * @description Inserts (or re-activates) a `network_users` row binding the supplied
+         *     user to the network with the default `network_operator` role.
+         *     Idempotent: re-assigning a previously revoked user returns HTTP 200
+         *     with `reactivated: true`; a first-time insert returns HTTP 201.
+         *     Requires the `network.manage_users` permission.
+         */
+        post: operations["assignNetworkUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/networks/{id}/users/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove (soft-revoke) a user from an operator network
+         * @description Soft-revokes the assignment by setting `status='revoked'`; the row
+         *     is preserved for audit visibility. Requires the `network.manage_users`
+         *     permission.
+         */
+        delete: operations["removeNetworkUser"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/networks/{id}/organizers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List organizations attached as organizers
+         * @description Returns active `network_organizations` rows with
+         *     `assignment_kind='organizer'` for the given network. Requires the
+         *     `network.manage_organizers` permission (bound to platform_superadmin,
+         *     network_operator, and admin per 0044_network_permissions.sql).
+         */
+        get: operations["listNetworkOrganizers"];
+        put?: never;
+        /**
+         * Attach an organization as an organizer
+         * @description Inserts (or re-activates) a `network_organizations` row with
+         *     `assignment_kind='organizer'`. Idempotent: a previously revoked
+         *     attachment is reactivated and returned with HTTP 200 +
+         *     `reactivated: true`; a first-time insert returns HTTP 201.
+         *     Requires the `network.manage_organizers` permission.
+         */
+        post: operations["attachNetworkOrganizer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/networks/{id}/organizers/{orgId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Detach (soft-revoke) an organizer from an operator network
+         * @description Soft-revokes the organizer attachment by setting `status='revoked'`;
+         *     the row is preserved for audit visibility. Requires the
+         *     `network.manage_organizers` permission.
+         */
+        delete: operations["detachNetworkOrganizer"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/networks/{id}/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List organizations attached as agents
+         * @description Returns active `network_organizations` rows with
+         *     `assignment_kind='agent'` for the given network. Requires the
+         *     `network.manage_agents` permission (bound to platform_superadmin,
+         *     network_operator, and admin per 0044_network_permissions.sql).
+         */
+        get: operations["listNetworkAgents"];
+        put?: never;
+        /**
+         * Attach an organization as an agent
+         * @description Inserts (or re-activates) a `network_organizations` row with
+         *     `assignment_kind='agent'`. Idempotent: a previously revoked
+         *     attachment is reactivated and returned with HTTP 200 +
+         *     `reactivated: true`; a first-time insert returns HTTP 201.
+         *     Requires the `network.manage_agents` permission.
+         */
+        post: operations["attachNetworkAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/networks/{id}/agents/{orgId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Detach (soft-revoke) an agent from an operator network
+         * @description Soft-revokes the agent attachment by setting `status='revoked'`;
+         *     the row is preserved for audit visibility. Requires the
+         *     `network.manage_agents` permission.
+         */
+        delete: operations["detachNetworkAgent"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/admin/impersonate": {
@@ -1031,6 +1303,388 @@ export interface components {
              * @example a3f8c2d1e0b9...
              */
             refresh_token: string;
+        };
+        /**
+         * @description Snapshot of the authenticated user's context returned by GET /v1/me.
+         *     Backwards-compatible: feature #211 added `assigned_networks` and
+         *     `available_scopes`; clients that only consume the original blocks
+         *     keep working without changes.
+         */
+        MeResponse: {
+            /** @description Authenticated user header block — identity claims extracted from the JWT */
+            user: components["schemas"]["MeUser"];
+            /**
+             * @description Deduplicated union of JWT roles and active membership roles, sorted ascending
+             * @example [
+             *       "network_operator",
+             *       "organizer"
+             *     ]
+             */
+            roles: string[];
+            /**
+             * @description Flat list of permission names expanded from roles
+             * @example [
+             *       "network.read",
+             *       "org.read"
+             *     ]
+             */
+            permissions: string[];
+            /** @description Every active organization membership held by the user */
+            organization_memberships: components["schemas"]["MeOrganizationMembership"][];
+            /**
+             * @description Operator networks the user belongs to (network_users.status='active').
+             *     Empty for users who are not part of any operator network.
+             */
+            assigned_networks: components["schemas"]["MeAssignedNetwork"][];
+            /**
+             * @description Deterministically-ordered authorization scopes the caller can act
+             *     under. Order: "global" (bypass roles), "platform" (platform_operator),
+             *     sorted "network:<uuid>" entries, sorted "organization:<uuid>" entries.
+             * @example [
+             *       "network:0193f01a-1234-7000-8000-000000000001"
+             *     ]
+             */
+            available_scopes: string[];
+        };
+        MeUser: {
+            /** @description Actor ID from the JWT (typically a UUID) */
+            id: string;
+            /**
+             * @description Actor type — stub_user / user / service / anonymous
+             * @example user
+             */
+            type: string;
+            /** @description JWT iss claim (omitted when empty) */
+            issuer?: string;
+            /** @description True when the token was issued via the impersonation flow (#167) */
+            is_impersonated: boolean;
+            /** @description Admin actor ID that minted the impersonation token (omitted when empty) */
+            impersonated_by?: string;
+            /** @description Business justification recorded when the impersonation token was issued */
+            impersonation_reason?: string;
+        };
+        MeOrganizationMembership: {
+            /** @description Membership row UUID */
+            id: string;
+            /** @description Organization UUID */
+            org_id: string;
+            /** @description Role name held by the user inside the organization */
+            role: string;
+            /** @description Membership lifecycle status (always "active" in this response) */
+            status: string;
+            /**
+             * Format: date-time
+             * @description When the membership was granted
+             */
+            joined_at: string;
+        };
+        MeAssignedNetwork: {
+            /** @description Operator network UUID */
+            id: string;
+            /** @description Human-readable operator network name */
+            name: string;
+            /** @description URL-safe operator network slug */
+            slug: string;
+            /** @description Operator network lifecycle status (active / suspended / archived) */
+            status: string;
+        };
+        /**
+         * @description An operator_network row (migration 0043_operator_networks.sql).
+         *     Represents a platform-level grouping that overlays organizations: a
+         *     `network_operator` user is assigned to one or more networks, and
+         *     each network is in turn attached to organizations as either an
+         *     `organizer` or an `agent` via network_organizations.
+         */
+        OperatorNetwork: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the operator network
+             * @example 0193f01a-1234-7000-8000-000000000001
+             */
+            id: string;
+            /**
+             * @description Human-readable operator network name
+             * @example Northern Region Operators
+             */
+            name: string;
+            /**
+             * @description URL-safe slug, matches the CHECK constraint
+             *     `^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$` enforced by migration
+             *     0043_operator_networks.sql.
+             * @example northern-region
+             */
+            slug: string;
+            /**
+             * @description Lifecycle status (active / archived)
+             * @enum {string}
+             */
+            status: "active" | "archived";
+            /**
+             * Format: date-time
+             * @description RFC 3339 archival timestamp; emitted as JSON `null` while the
+             *     operator network is still active. The OAS 3.1 type-array
+             *     idiom (`type: [string, "null"]`) is not yet supported by
+             *     oapi-codegen v2.4.1 (see CLAUDE.md), so nullability is
+             *     described in prose here and surfaced as `*time.Time` in the
+             *     sqlc layer / `*string` in the HTTP DTO (networks.go:61).
+             */
+            archived_at: string;
+            /**
+             * Format: date-time
+             * @description Creation timestamp (RFC 3339)
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description Last-modified timestamp (RFC 3339)
+             */
+            updated_at: string;
+        };
+        OperatorNetworkEnvelope: {
+            /** @description The operator network resource for create/get/update responses */
+            operator_network: components["schemas"]["OperatorNetwork"];
+        };
+        OperatorNetworkArchiveResponse: {
+            /** @description The operator network in its post-archive state (`status=archived`) */
+            operator_network: components["schemas"]["OperatorNetwork"];
+            /**
+             * @description Always true on success; included so callers can branch without inspecting `status`
+             * @example true
+             */
+            archived: boolean;
+        };
+        OperatorNetworkListResponse: {
+            /** @description Array of non-archived operator networks, ordered by `created_at` ascending */
+            operator_networks: components["schemas"]["OperatorNetwork"][];
+            /**
+             * @description Number of operator networks returned (size of the array)
+             * @example 3
+             */
+            total: number;
+        };
+        CreateOperatorNetworkRequest: {
+            /**
+             * @description Human-readable network name (trimmed server-side)
+             * @example Northern Region Operators
+             */
+            name: string;
+            /**
+             * @description URL-safe slug. Lower-cased and trimmed server-side before validation.
+             *     Must satisfy the regex CHECK constraint from migration
+             *     0043_operator_networks.sql.
+             * @example northern-region
+             */
+            slug: string;
+        };
+        /**
+         * @description At least one of `name` or `slug` must be supplied. Empty strings are
+         *     treated as "do not change". Slug is validated against the same regex
+         *     as on create.
+         */
+        UpdateOperatorNetworkRequest: {
+            /**
+             * @description New human-readable network name (omit or empty to leave unchanged)
+             * @example Northern Operators (renamed)
+             */
+            name?: string;
+            /**
+             * @description New URL-safe slug (omit or empty to leave unchanged)
+             * @example northern-operators
+             */
+            slug?: string;
+        };
+        /**
+         * @description A `network_users` row binding a user to an operator network with a
+         *     role (default "network_operator") and a lifecycle status.
+         */
+        NetworkUserAssignment: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the assignment row
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Parent operator_network UUID
+             */
+            network_id: string;
+            /**
+             * Format: uuid
+             * @description Assigned user UUID
+             */
+            user_id: string;
+            /**
+             * @description Role granted by the assignment (currently always "network_operator")
+             * @example network_operator
+             */
+            role: string;
+            /**
+             * @description Lifecycle status of the assignment
+             * @enum {string}
+             */
+            status: "active" | "revoked";
+            /**
+             * Format: date-time
+             * @description When the assignment was first created (RFC 3339)
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description Last-modified timestamp (RFC 3339)
+             */
+            updated_at: string;
+        };
+        AssignNetworkUserRequest: {
+            /**
+             * Format: uuid
+             * @description UUID of the user to attach to the network
+             * @example 0193f01a-1234-7000-8000-000000000010
+             */
+            user_id: string;
+        };
+        NetworkUserAssignResponse: {
+            /** @description The resulting network-user assignment after insert or reactivation */
+            network_user: components["schemas"]["NetworkUserAssignment"];
+            /**
+             * @description Present and true when the call re-activated a previously revoked
+             *     assignment (HTTP 200). Absent on a first-time insert (HTTP 201).
+             * @example true
+             */
+            reactivated?: boolean;
+        };
+        NetworkUserRemoveResponse: {
+            /** @description The network-user assignment in its post-revoke state (`status=revoked`) */
+            network_user: components["schemas"]["NetworkUserAssignment"];
+            /**
+             * @description Always true on success
+             * @example true
+             */
+            removed: boolean;
+        };
+        NetworkUserListResponse: {
+            /**
+             * Format: uuid
+             * @description Parent operator network UUID
+             */
+            network_id: string;
+            /** @description Active network-user assignments for the given operator network */
+            network_users: components["schemas"]["NetworkUserAssignment"][];
+            /**
+             * @description Number of active network user assignments returned
+             * @example 5
+             */
+            total: number;
+        };
+        /**
+         * @description A `network_organizations` row attaching an organization to an
+         *     operator network as either an `organizer` or an `agent`.
+         */
+        NetworkOrganizationAssignment: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the attachment row
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Parent operator_network UUID
+             */
+            network_id: string;
+            /**
+             * Format: uuid
+             * @description Attached organization UUID
+             */
+            organization_id: string;
+            /**
+             * @description Role of the organization within the network
+             * @enum {string}
+             */
+            assignment_kind: "organizer" | "agent";
+            /**
+             * @description Lifecycle status of the attachment
+             * @enum {string}
+             */
+            status: "active" | "revoked";
+            /**
+             * Format: date-time
+             * @description When the organization was first attached (RFC 3339)
+             */
+            attached_at: string;
+            /**
+             * Format: date-time
+             * @description Row creation timestamp (RFC 3339)
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description Last-modified timestamp (RFC 3339)
+             */
+            updated_at: string;
+        };
+        AttachNetworkOrganizationRequest: {
+            /**
+             * Format: uuid
+             * @description UUID of the organization to attach
+             * @example 0193f01a-1234-7000-8000-000000000020
+             */
+            organization_id: string;
+        };
+        NetworkOrganizationAttachResponse: {
+            /** @description The resulting organization attachment after insert or reactivation */
+            network_organization: components["schemas"]["NetworkOrganizationAssignment"];
+            /**
+             * @description Present and true when the call re-activated a previously revoked
+             *     attachment (HTTP 200). Absent on a first-time insert (HTTP 201).
+             * @example true
+             */
+            reactivated?: boolean;
+        };
+        NetworkOrganizationDetachResponse: {
+            /** @description The organization attachment in its post-revoke state (`status=revoked`) */
+            network_organization: components["schemas"]["NetworkOrganizationAssignment"];
+            /**
+             * @description Always true on success
+             * @example true
+             */
+            detached: boolean;
+        };
+        NetworkOrganizersListResponse: {
+            /**
+             * Format: uuid
+             * @description Parent operator network UUID
+             */
+            network_id: string;
+            /**
+             * @description Always "organizer" on this endpoint
+             * @enum {string}
+             */
+            assignment_kind: "organizer";
+            /** @description Active organizer attachments for the given operator network */
+            organizers: components["schemas"]["NetworkOrganizationAssignment"][];
+            /**
+             * @description Number of active organizer attachments returned
+             * @example 2
+             */
+            total: number;
+        };
+        NetworkAgentsListResponse: {
+            /**
+             * Format: uuid
+             * @description Parent operator network UUID
+             */
+            network_id: string;
+            /**
+             * @description Always "agent" on this endpoint
+             * @enum {string}
+             */
+            assignment_kind: "agent";
+            /** @description Active agent attachments for the given operator network */
+            agents: components["schemas"]["NetworkOrganizationAssignment"][];
+            /**
+             * @description Number of active agent attachments returned
+             * @example 1
+             */
+            total: number;
         };
         AuthLogoutRequest: {
             /**
@@ -2151,6 +2805,44 @@ export interface operations {
             };
         };
     };
+    getV1Me: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current user context */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeResponse"];
+                };
+            };
+            /** @description Missing or invalid JWT Authorization header */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     postV1AuthPasswordResetRequest: {
         parameters: {
             query?: never;
@@ -3013,6 +3705,1095 @@ export interface operations {
                 };
             };
             /** @description Database pool or org queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listOperatorNetworks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of active operator networks */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorNetworkListResponse"];
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller does not hold the `network.read` permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createOperatorNetwork: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOperatorNetworkRequest"];
+            };
+        };
+        responses: {
+            /** @description Operator network created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorNetworkEnvelope"];
+                };
+            };
+            /** @description Missing/invalid body, name, or slug */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller does not hold the `network.create` permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description An active operator network with that slug already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getOperatorNetwork: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Operator network UUIDv7 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Operator network found */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorNetworkEnvelope"];
+                };
+            };
+            /** @description `id` path parameter is not a valid UUID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller does not hold the `network.read` permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Operator network not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateOperatorNetwork: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Operator network UUIDv7 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateOperatorNetworkRequest"];
+            };
+        };
+        responses: {
+            /** @description Operator network updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorNetworkEnvelope"];
+                };
+            };
+            /** @description Empty body, no changes supplied, or invalid slug */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller does not hold the `network.update` permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Operator network not found or already archived */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Another active operator network already uses the target slug */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    archiveOperatorNetwork: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Operator network UUIDv7 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Operator network archived */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorNetworkArchiveResponse"];
+                };
+            };
+            /** @description `id` path parameter is not a valid UUID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller does not hold the `network.archive` permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Operator network not found or already archived */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listNetworkUsers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Operator network UUIDv7 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of active network user assignments */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkUserListResponse"];
+                };
+            };
+            /** @description Path `id` is not a valid UUID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller does not hold `network.manage_users` */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Operator network not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Operator network is archived (roster is read-only) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    assignNetworkUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Operator network UUIDv7 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignNetworkUserRequest"];
+            };
+        };
+        responses: {
+            /** @description Previously revoked assignment re-activated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkUserAssignResponse"];
+                };
+            };
+            /** @description New network user assignment created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkUserAssignResponse"];
+                };
+            };
+            /** @description Empty/invalid body or invalid `user_id` / path UUID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller does not hold `network.manage_users` */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Operator network or target user not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Operator network is archived; duplicate assignment race */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    removeNetworkUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Operator network UUIDv7 */
+                id: string;
+                /** @description Target user UUIDv7 */
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Assignment revoked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkUserRemoveResponse"];
+                };
+            };
+            /** @description Path `id` or `userId` is not a valid UUID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller does not hold `network.manage_users` */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Network not found or user not assigned to this network */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Operator network is archived (roster is read-only) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listNetworkOrganizers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Operator network UUIDv7 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of active organizer attachments */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkOrganizersListResponse"];
+                };
+            };
+            /** @description Path `id` is not a valid UUID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller does not hold `network.manage_organizers` */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Operator network not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Operator network is archived (roster is read-only) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    attachNetworkOrganizer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Operator network UUIDv7 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttachNetworkOrganizationRequest"];
+            };
+        };
+        responses: {
+            /** @description Previously revoked attachment re-activated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkOrganizationAttachResponse"];
+                };
+            };
+            /** @description New organizer attachment created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkOrganizationAttachResponse"];
+                };
+            };
+            /** @description Empty/invalid body, or invalid `organization_id` / path UUID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller does not hold `network.manage_organizers` */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Operator network or target organization not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Operator network is archived; duplicate attachment race */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    detachNetworkOrganizer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Operator network UUIDv7 */
+                id: string;
+                /** @description Target organization UUIDv7 */
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Attachment revoked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkOrganizationDetachResponse"];
+                };
+            };
+            /** @description Path `id` or `orgId` is not a valid UUID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller does not hold `network.manage_organizers` */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Network not found or organization not attached as organizer */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Operator network is archived (roster is read-only) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listNetworkAgents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Operator network UUIDv7 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of active agent attachments */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkAgentsListResponse"];
+                };
+            };
+            /** @description Path `id` is not a valid UUID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller does not hold `network.manage_agents` */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Operator network not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Operator network is archived (roster is read-only) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    attachNetworkAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Operator network UUIDv7 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttachNetworkOrganizationRequest"];
+            };
+        };
+        responses: {
+            /** @description Previously revoked attachment re-activated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkOrganizationAttachResponse"];
+                };
+            };
+            /** @description New agent attachment created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkOrganizationAttachResponse"];
+                };
+            };
+            /** @description Empty/invalid body, or invalid `organization_id` / path UUID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller does not hold `network.manage_agents` */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Operator network or target organization not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Operator network is archived; duplicate attachment race */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    detachNetworkAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Operator network UUIDv7 */
+                id: string;
+                /** @description Target organization UUIDv7 */
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Attachment revoked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkOrganizationDetachResponse"];
+                };
+            };
+            /** @description Path `id` or `orgId` is not a valid UUID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller does not hold `network.manage_agents` */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Network not found or organization not attached as agent */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Operator network is archived (roster is read-only) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available */
             503: {
                 headers: {
                     [name: string]: unknown;
