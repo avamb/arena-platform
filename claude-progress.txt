@@ -13854,3 +13854,25 @@ Evidence: 00_project_control/RELEASE_GATE_RUN_FEATURE_201.md and
           00_project_control/runtime_evidence/feature_201_*.txt.
 Marked #201 passing.
 
+================================================================================
+Session 2026-06-26 — Feature #202 (Inspect RBAC scaffolding for operator network)
+================================================================================
+- Inspected migrations 0008_rbac.sql, 0011_memberships.sql, 0034_superadmin.sql.
+- Inspected apps/backend/internal/platform/httpserver/memberships.go,
+  mount_iam.go, mount_admin.go.
+- Confirmed no existing operator_network code in apps/backend (grep clean).
+- Produced design note at
+  09_autoforge/admin_ui/operator_network_design_note.md covering:
+    * role placement: network_operator as new global role, assigned via
+      existing memberships table (extend CHECK constraint);
+    * network<->organization model: single operator_network_organizations
+      join with relationship_type (organizer/agent/operator), reusing
+      organizations rather than parallel agents/network_users tables;
+    * permission middleware extension points: requireNetworkScope
+      chi-middleware + permissions.CheckInNetwork helper layered on top
+      of the existing applyAuth choke point;
+    * permission seed list (network.* + platform.superadmin.*);
+    * migration placement: next slot after 0041_reconciliation_reports.sql.
+- Marked #202 passing.
+
+
