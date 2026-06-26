@@ -14542,3 +14542,80 @@ Verification:
     by oapi-codegen" -- known per spec implementation_status_override.
 
 Committed regenerated TS client. Marked #213 passing.
+
+================================================================================
+Session 2026-06-27 -- Feature #214 (Positive/negative authz tests for networks)
+================================================================================
+Added a comprehensive authorization test suite covering every endpoint family
+on the operator-network HTTP surface (#208/#209/#210) and every role in the
+RBAC matrix from migration 0044_network_permissions.sql (#206).
+
+Implementation: one new test file, no source changes.
+
+  apps/backend/internal/platform/httpserver/network_authz_214_test.go (~920 LOC)
+
+Test layers:
+
+  Layer A -- migration / mount-file alignment
+    TestAuthz214_MountPermissionsAreAllRegisteredInMigration
+      Every permission literal used by mount_networks.go MUST appear in
+      0044_network_permissions.sql (both files parsed structurally).
+    TestAuthz214_NetworkOperatorLifecycleExclusionsHold
+      Re-asserts the in-test matrix's network_operator entry includes the
+      operational subset but NOT lifecycle perms (network.create / archive /
+      manage_users).
+
+  Layer B -- HTTP middleware allow/deny matrix
+    TestAuthz214_PermissionMatrix_PerRolePerEndpoint
+      Table-driven: 14 endpoint families x 5 roles = 70 subtests.
+      A test-only roleAwareChecker214 satisfies permissions.Checker by
+      consulting the same role->perm map derived from migration 0044, so the
+      full middleware chain (auth.Middleware + RequirePermission) runs
+      end-to-end against the chi router.
+      - "allow" expectation: status != 401 AND != 403.
+      - "deny" expectation: exactly 403 with "permissions.denied" envelope.
+      Result: platform_superadmin and admin pass every family; non-network
+      roles are denied every family; network_operator passes only the
+      operational subset (read / update / manage_orgs / manage_agents / etc).
+    TestAuthz214_UnauthenticatedRejectedOnEveryFamily
+      Same family list, no Authorization header -> every endpoint must 401.
+
+  Layer C -- invalid-assignment "fail cleanly" handler tests
+    TestAuthz214_InvalidAssignments_FailCleanly
+      Six direct handler invocations covering malformed slug, non-UUID path
+      params, malformed user_id / organization_id, empty bodies -- each
+      pinned to a typed 4xx envelope. Sanity invariant: bad input must NOT
+      yield 5xx.
+    TestAuthz214_NilDependencies_ShortCircuitTo503
+      14 handler entries (every network handler) called with a zero-value
+      *Server -- each MUST return 503 dependency.database_unavailable
+      rather than panicking on a nil pool/queries.
+
+  Layer D -- legacy role regression
+    TestAuthz214_LegacyRoleScopes_Preserved
+      Four subtests asserting introduction of network_operator gating did
+      not perturb the /v1/me scope contract from #211:
+        platform_superadmin -> scopes[0]=="global"
+        platform_operator   -> "platform" present, "global" absent
+        the event-org role  -> "organization:<id>" present, "global" absent
+        network_operator    -> network:<uuid> scopes present and
+                               lexicographically ordered
+    TestAuthz214_NetworkOperator_OnlySeesAssignedNetworksInMe
+      Cross-tenant guard: a network_operator with one assignment sees
+      exactly one assigned_networks entry and one network:* scope.
+
+  Routing sanity
+    TestAuthz214_AllFamiliesMountedOnChiRouter
+      Walks chi.Routes recursively and confirms each (method, pattern) in
+      the family list resolves to a mounted route. Guards against a future
+      mount_networks.go refactor silently dropping a route.
+
+Verification (docker golang:1.24-alpine):
+  go build ./apps/backend/...                                 OK
+  go vet   ./apps/backend/...                                 OK
+  go test -run Authz214 -count=1 ./.../httpserver/...         ALL PASS
+  go test -short -count=1 ./.../httpserver/...                ALL PASS (7.207s,
+                                                              no regressions in
+                                                              any sibling suite)
+
+Marked #214 passing.
