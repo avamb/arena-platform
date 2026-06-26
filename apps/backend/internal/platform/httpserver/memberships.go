@@ -55,6 +55,11 @@ var validMembershipRoles = map[string]bool{
 	"platform_operator":           true,
 	"external_ticketing_operator": true,
 	"platform_superadmin":         true,
+	// network_operator is the external operator role introduced in
+	// feature #203. It is intentionally distinct from platform_operator
+	// (internal Arena staff) — see migration 0042_network_operator_role.sql
+	// and 09_autoforge/admin_ui/operator_network_design_note.md.
+	"network_operator": true,
 }
 
 // pgForeignKeyViolation is the PostgreSQL error code for foreign-key violations.
@@ -130,7 +135,7 @@ func (s *Server) handleGrantMembership(w http.ResponseWriter, r *http.Request) {
 	if !validMembershipRoles[req.Role] {
 		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
 			"membership.invalid_role",
-			"role must be one of: organizer, agent, platform_operator, external_ticketing_operator, platform_superadmin",
+			"role must be one of: organizer, agent, platform_operator, external_ticketing_operator, platform_superadmin, network_operator",
 			r,
 			map[string]any{"field": "role", "allowed": membershipRoleList()},
 		))
@@ -281,7 +286,7 @@ func (s *Server) handleRevokeMembership(w http.ResponseWriter, r *http.Request) 
 	if !validMembershipRoles[req.Role] {
 		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
 			"membership.invalid_role",
-			"role must be one of: organizer, agent, platform_operator, external_ticketing_operator, platform_superadmin",
+			"role must be one of: organizer, agent, platform_operator, external_ticketing_operator, platform_superadmin, network_operator",
 			r,
 			map[string]any{"field": "role", "allowed": membershipRoleList()},
 		))
@@ -327,6 +332,7 @@ func membershipRoleList() []string {
 	return []string{
 		"agent",
 		"external_ticketing_operator",
+		"network_operator",
 		"organizer",
 		"platform_operator",
 		"platform_superadmin",

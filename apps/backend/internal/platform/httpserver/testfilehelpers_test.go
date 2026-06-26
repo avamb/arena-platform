@@ -739,6 +739,11 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "barcode_batches.go"),
 		}
+	// network_operator role seed (feature #203)
+	case "0042_network_operator_role.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0042_network_operator_role.sql"),
+		}
 	// External reconciliation (feature #147)
 	case "0041_reconciliation_reports.sql":
 		candidates = []string{
