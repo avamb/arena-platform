@@ -13875,4 +13875,35 @@ Session 2026-06-26 — Feature #202 (Inspect RBAC scaffolding for operator netwo
     * migration placement: next slot after 0041_reconciliation_reports.sql.
 - Marked #202 passing.
 
+================================================================================
+Session 2026-06-26 — Feature #204 (Operator network persistence migration)
+================================================================================
+Added apps/backend/internal/migrations/sql/0043_operator_networks.sql.
+- Initially numbered 0042 but renumbered to 0043 after discovering a parallel
+  agent had already committed 0042_network_operator_role.sql (feature #203).
+  Goose duplicate-version panic caught the conflict on first up; renumber
+  resolved it.
+- Tables created:
+    * operator_networks(id uuidv7 PK, name, slug, status (active|suspended|
+      archived), archived_at, created_at, updated_at). Partial UNIQUE index
+      on slug WHERE archived_at IS NULL (slug reusable after archive).
+      Status/archived_at consistency CHECK. Slug-format regex CHECK.
+    * network_users(id, network_id FK CASCADE, user_id FK CASCADE,
+      role=network_operator CHECK, status, timestamps,
+      UNIQUE (network_id, user_id, role)). Partial indexes on (network_id)
+      and (user_id) WHERE status='active'.
+    * network_organizations(id, network_id FK CASCADE, organization_id FK
+      CASCADE, assignment_kind (organizer|agent) CHECK [single join replaces
+      parallel organizer/agent tables per design note #202], status,
+      attached_at, timestamps,
+      UNIQUE (network_id, organization_id, assignment_kind)). Partial
+      indexes on (network_id, assignment_kind) and
+      (organization_id, assignment_kind) WHERE status='active'.
+- Verified via arena-migrate cycle (golang:1.24-alpine vs arena_postgres):
+    up   41 -> 43       OK
+    down 43 -> 42       OK (0043 down rolled back cleanly)
+    up   42 -> 43       OK (idempotent re-apply)
+- Migrations Go tests pass (sequential numbering, goose markers).
+- Marked #204 passing.
+
 
