@@ -36,4 +36,18 @@ func (s *Server) mountOperatorNetworkRoutes(r chi.Router) {
 		s.applyAuth(pr, "network.archive", "networks")
 		pr.Post("/operator-networks/{id}/archive", s.handleArchiveOperatorNetwork)
 	})
+
+	// Network user assignment endpoints (feature #209).
+	//
+	// All three are gated by `network.manage_users`, which per migration
+	// 0044_network_permissions.sql is bound only to platform_superadmin and
+	// the legacy admin role -- never to network_operator. That binding
+	// pattern satisfies the "only platform_superadmin can edit the roster"
+	// requirement without an extra route-level guard.
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "network.manage_users", "networks")
+		pr.Get("/admin/networks/{id}/users", s.handleListNetworkUsers)
+		pr.Post("/admin/networks/{id}/users", s.handleAssignNetworkUser)
+		pr.Delete("/admin/networks/{id}/users/{userId}", s.handleRemoveNetworkUser)
+	})
 }
