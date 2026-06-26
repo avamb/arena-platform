@@ -14105,4 +14105,62 @@ Verification (docker golang:1.24-alpine):
 
 Marked #207 passing.
 
+================================================================================
+Session 2026-06-26 -- Feature #208 (Operator network CRUD API endpoints)
+================================================================================
+Added apps/backend/internal/platform/httpserver/networks.go and
+mount_networks.go plus tests in networks_208_test.go.
+
+Endpoints (all under /v1):
+  POST   /operator-networks            -> handleCreateOperatorNetwork
+  GET    /operator-networks            -> handleListOperatorNetworks
+  GET    /operator-networks/{id}       -> handleGetOperatorNetwork
+  PATCH  /operator-networks/{id}       -> handleUpdateOperatorNetwork
+  POST   /operator-networks/{id}/archive -> handleArchiveOperatorNetwork
+
+Permission wiring leverages applyAuth + the network.* permissions seeded in
+0044_network_permissions.sql (#206). Per that migration network.create and
+network.archive bind only to platform_superadmin/admin, satisfying the
+"only platform_superadmin can create/archive" requirement without an extra
+guard.
+
+Implementation details:
+  - Slug regex preflight matches the 0043 CHECK so bad input returns a typed
+    operator_network.invalid_slug 400 instead of a CHECK 500.
+  - InsertOperatorNetwork 23505 -> operator_network.duplicate_slug 409.
+  - UpdateOperatorNetwork ErrNoRows -> operator_network.not_found 404 (also
+    covers post-archive update via WHERE archived_at IS NULL).
+  - ArchiveOperatorNetwork ErrNoRows -> operator_network.not_found 404
+    (idempotent at DB layer).
+  - Each successful create/update/archive writes a v1.operator_network.*
+    audit_events row via s.audit (fire-and-forget, like superadmin/orgs).
+  - networkQueries *gen.Queries plumbed through Server struct + Options +
+    wire.New via pickQueries; mount guards on stub+pool+queries.
+
+Tests (TestOperatorNetwork208_*):
+  - Auth gating: 5 endpoints, all assert non-404 + 401 without JWT.
+  - Handler unit: nil queries -> 503; empty body -> 400; invalid JSON ->
+    operator_network.invalid_json; missing name/slug -> typed 400;
+    malformed slug ("Bad_Slug") -> operator_network.invalid_slug;
+    list nil queries -> 503; get bad UUID -> 400; patch empty body -> 400;
+    patch with both fields empty -> operator_network.no_changes;
+    archive nil queries -> 503.
+  - Mount file content check pins the four permission strings
+    (network.read/create/update/archive) and the URL patterns so they
+    cannot silently drift from the 0044 bindings.
+
+Verification (docker golang:1.24-alpine):
+  go build ./apps/backend/...                                          OK
+  go vet   ./apps/backend/...                                          OK
+  go test  -run OperatorNetwork208 ./.../httpserver/...                PASS
+
+Note: a parallel agent was concurrently landing feature #211 (/v1/me) in
+the same package -- its unfinished me.go + mount_iam.go + memberships
+sqlc changes were present in the working tree during this session. I
+staged only the three new #208 files plus the minimal +1 line in each of
+mount_v1.go / server_struct.go / wire.go via a temporary backup+restore
+dance, so the commit contains only my own work. #211's untracked files
+were left in the working tree for that agent to land on top.
+
+Marked #208 passing.
 
