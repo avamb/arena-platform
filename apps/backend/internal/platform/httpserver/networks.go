@@ -93,6 +93,16 @@ func (s *Server) writeOperatorNetworkAudit(r *http.Request, action, networkID st
 		actorID = a.ID
 		actorType = "user"
 	}
+	// Stamp network_id (and target=network_id, since the network is itself the
+	// target of the mutation) into metadata so audit consumers can filter
+	// platform-level network mutations by originating network without parsing
+	// the resource_id column. This matches the contract used by
+	// writeNetworkUserAudit / writeNetworkOrgAudit (see feature #215).
+	if metadata == nil {
+		metadata = map[string]any{}
+	}
+	metadata["network_id"] = networkID
+	metadata["target"] = networkID
 	ev := audit.Event{
 		OccurredAt:   time.Now().UTC(),
 		ActorType:    actorType,

@@ -83,6 +83,10 @@ func (s *Server) writeNetworkUserAudit(r *http.Request, action, networkID, userI
 	}
 	metadata["network_id"] = networkID
 	metadata["target_user_id"] = userID
+	// target mirrors the cross-handler audit contract (feature #215): every
+	// network/platform mutation tags its primary subject under "target" so
+	// audit consumers can index without knowing the resource_type.
+	metadata["target"] = userID
 
 	ev := audit.Event{
 		OccurredAt:   time.Now().UTC(),

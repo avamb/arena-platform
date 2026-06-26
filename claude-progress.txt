@@ -14356,3 +14356,62 @@ Verification (docker golang:1.24-alpine):
      TestNoUnaudittedPanic flagging networkscope.go:184 from #207.)
 
 Marked #211 passing.
+
+================================================================================
+Session 2026-06-26 -- Feature #215 (Cross-network/platform audit emission)
+================================================================================
+Verified and tightened the audit emission contract already established by
+features #208 / #209 / #210. Each mutating handler in the operator-network
+surface already emits an audit_events row, but the metadata payload was
+not uniform: writeOperatorNetworkAudit (networks.go) put the network id
+only in ResourceID, while writeNetworkUserAudit / writeNetworkOrgAudit
+already exposed it under metadata.network_id. Audit consumers that index
+by originating network had to know per-resource-type how to extract it.
+
+Changes:
+  apps/backend/internal/platform/httpserver/networks.go
+    writeOperatorNetworkAudit now stamps:
+      metadata["network_id"] = networkID
+      metadata["target"]     = networkID  (network is its own target)
+  apps/backend/internal/platform/httpserver/network_users.go
+    writeNetworkUserAudit now also stamps metadata["target"] = userID
+  apps/backend/internal/platform/httpserver/network_orgs.go
+    writeNetworkOrgAudit now also stamps metadata["target"] = orgID
+  apps/backend/internal/platform/httpserver/audit_215_test.go (NEW ~400 LOC)
+
+Audit contract pinned (matches feature #215 acceptance):
+  - actor       : ActorType + ActorID captured from auth.ActorFromContext
+                  (falls back to "anonymous" with empty ActorID)
+  - action      : versioned dotted verb
+                  v1.operator_network.{create,update,archive}
+                  v1.network.users.{assign,reactivate,remove}
+                  v1.network.{organizers,agents}.{attach,reactivate,detach}
+  - resource    : ResourceType + ResourceID (uuid or composite)
+  - network_id  : metadata key tagging the originating operator_network for
+                  every handler, regardless of resource_type
+  - target      : metadata key tagging the primary subject of the mutation
+                  (network / user / organization id)
+  - request_id, trace_id, ip: already carried by the shared audit.Event
+                  builder via logging helpers (unchanged).
+
+Tests (TestAudit215_*, 14 cases, all PASS):
+  OperatorNetwork: CreateEventCarriesAllFields, UpdateActionAndMetadata,
+                   ArchiveActionAndMetadata, AnonymousActorTagged,
+                   NilAuditWriterIsSafe
+  NetworkUsers:    AssignEventCarriesAllFields, RemoveActionAndTarget,
+                   ReactivateAction, NetworkOperatorActorTagged
+                   (covers the originating-network-id requirement)
+  NetworkOrgs:     AttachOrganizerCarriesAllFields,
+                   DetachAgentActionAndTarget,
+                   ReactivateBothKinds (organizer + agent matrix)
+  Source-file content guards (drift prevention): three tests pin each
+  handler-file's audit verbs and metadata keys so a future refactor
+  cannot silently strip them.
+
+Verification (docker golang:1.24-alpine):
+  go build ./apps/backend/...                              OK
+  go vet   ./apps/backend/...                              OK
+  go test  -run Audit215 ./.../httpserver/... -count=1     PASS
+  go test  -short -count=1 ./.../httpserver/...            PASS (8.8s, no regressions)
+
+Marked #215 passing.
