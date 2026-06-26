@@ -14039,4 +14039,70 @@ Verification against arena_postgres:
 
 Marked #206 passing.
 
+================================================================================
+Session 2026-06-26 — Feature #207 (Network-scope authorization middleware)
+================================================================================
+Added new package apps/backend/internal/platform/networkscope/ layered on top
+of platform/permissions (RBAC) -- does NOT replace or weaken the existing
+PermissionBoundary. Pipeline contract documented in package doc:
+
+    auth.RequireAuth
+      -> permissions.RequirePermission(checker, "network.read", "network")
+         -> networkscope.RequireNetworkScope(scoper, "network_id")
+            -> handler
+
+Files:
+  apps/backend/internal/platform/networkscope/networkscope.go (~430 LOC)
+  apps/backend/internal/platform/networkscope/networkscope_test.go (~480 LOC)
+
+Public surface:
+  - Errors: ErrOutOfScope (sentinel), ErrUnauthenticated, *OutOfScopeError
+    (Resource + ResourceID, HTTPStatus() int = 403 so adapters/http renders
+    it without extra registration).
+  - Querier interface (primitive-only -- no gen import; adapter lives at the
+    wire layer):
+      ListNetworkIDsByUser(ctx, userID)
+      ListNetworkIDsByOrganization(ctx, orgID, *kind)
+  - BypassRoles = []string{"platform_superadmin","admin"} + IsBypassRole.
+    platform_operator explicitly NOT a bypass (#206 invariant).
+  - Scoper engine: NewScoper (panics on nil), LoadAssignedNetworks (bypass
+    -> nil = "all networks"), IsBypass, AssertNetworkInScope,
+    AssertOrganizationInScope (short-circuits when user has zero
+    assignments, saving the org-side query), AssertResourceInScope
+    (re-labels OutOfScopeError to caller's resource: order / ticket / etc).
+  - HTTP middleware (chi): RequireNetworkScope, RequireOrganizationScope.
+    Returns 200 / 400 invalid_id / 401 unauthenticated / 403 out_of_scope /
+    500 internal_error with uniform JSON envelope written WITHOUT importing
+    adapters/http (clean-arch boundary preserved).
+
+Tests (24, all PASS; -count=1):
+  constructor panic; IsBypassRole + BypassRoles regression guard;
+  LoadAssignedNetworks positive/bypass/unauth; AssertNetworkInScope
+  positive+negative (403 status), bypass-skips-Querier, unauth, DB error
+  surfaces as 5xx not 403; AssertOrganizationInScope positive (kind filter
+  propagates), no-overlap negative, no-user-assignments short-circuit,
+  bypass; AssertResourceInScope relabel + positive; IsBypass matrix;
+  middleware: 200 / 403 envelope shape / 401 / bypass (zero Querier calls)
+  / 400 malformed UUID / 500 on Querier error; RequireOrganizationScope
+  out-of-scope 403 with resource=organization.
+
+Route guards: deliberately NOT wired in this feature -- the operator-network
+routes themselves do not exist yet (queued for a later feature per the #202
+design note). When those routes land the wire layer will:
+  1. Build a thin adapter that projects gen.ListNetworksByUser /
+     ListNetworksByOrganization rows down to []uuid.UUID (matches Querier).
+  2. Construct one process-wide *Scoper and pass it to mount_*.go.
+  3. Chain Use(networkscope.RequireNetworkScope(...)) AFTER the existing
+     RequireAuth + RequirePermission middlewares.
+The package doc spells this out so the next agent has zero ambiguity.
+
+Verification (docker golang:1.24-alpine):
+  go build ./...                                              BUILD_OK
+  go test ./apps/backend/internal/platform/networkscope/...   ok 0.008s
+  go vet  ./apps/backend/...                                  VET_OK
+  gofmt -l on the new package                                 clean
+  (test file was reformatted once by gofmt to align fakeQuerier columns.)
+
+Marked #207 passing.
+
 
