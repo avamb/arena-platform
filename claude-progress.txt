@@ -13987,4 +13987,56 @@ sqlc issue is fixed.
 
 Marked #205 passing.
 
+================================================================================
+Session 2026-06-26 — Feature #206 (Add network-scope permissions to RBAC)
+================================================================================
+Added migration 0044_network_permissions.sql:
+- Seeds 14 network.* permissions: read, create, update, archive,
+  manage_users, manage_organizers, manage_agents, manage_channels,
+  view_sales, support_orders, support_tickets, support_refunds,
+  view_reports, view_audit.
+- Binds full set (14) to platform_superadmin via LIKE 'network.%'.
+- Binds operational subset (11) to network_operator: read, update,
+  manage_organizers, manage_agents, manage_channels, view_sales,
+  support_orders, support_tickets, support_refunds, view_reports,
+  view_audit. Excludes create/archive/manage_users (lifecycle + roster
+  remain platform_superadmin-only per the #202 design note).
+- Re-attaches the same 14 to 'admin' so re-seeding stays consistent with
+  the 0008 broad-grant pattern.
+- Intentionally NO platform_operator bindings (behavior preserved).
+- Down: DELETE FROM role_permissions WHERE permission_id IN (...) then
+  DELETE FROM permissions WHERE name LIKE 'network.%'. No DROP TABLE,
+  no role deletions, no touching of unrelated permissions.
+
+Added apps/backend/internal/platform/httpserver/network_permissions_206_test.go:
+- Asserts migration file exists, has goose Up/Down directives.
+- Asserts all 14 permission literals are INSERTed.
+- Asserts platform_superadmin binding clause present + uses LIKE 'network.%'.
+- Asserts network_operator binding clause contains exactly the 11 op-subset
+  literals; checks the block window to assert lifecycle perms ARE NOT present.
+- Asserts platform_operator binding clause is absent.
+- Asserts admin binding clause present.
+- Asserts Down section exact DELETE shape and forbids unsafe statements.
+
+Registered 0043_operator_networks.sql and 0044_network_permissions.sql in
+testfilehelpers_test.go resolver.
+
+Verification (docker golang:1.24-alpine):
+- go build ./... OK; go vet ./... OK.
+- go test -run NetworkPermissions206 ./internal/platform/httpserver/...
+  -count=1 PASS (8/8 cases).
+- go test -short ./... -count=1 ALL PASS (full backend suite, no regressions).
+
+Verification against arena_postgres:
+- arena-migrate up    -> applied 0044 (44).
+- arena-migrate down  -> rolled back 0044 cleanly to 43.
+- arena-migrate up    -> re-applied 0044, idempotent.
+- Post-up role binding counts (network.% perms only):
+    admin               14
+    platform_superadmin 14
+    network_operator    11
+    platform_operator    0
+
+Marked #206 passing.
+
 

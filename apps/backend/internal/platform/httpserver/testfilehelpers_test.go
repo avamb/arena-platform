@@ -744,6 +744,16 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0042_network_operator_role.sql"),
 		}
+	// Operator Network persistence (feature #204)
+	case "0043_operator_networks.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0043_operator_networks.sql"),
+		}
+	// network.* permissions (feature #206)
+	case "0044_network_permissions.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0044_network_permissions.sql"),
+		}
 	// External reconciliation (feature #147)
 	case "0041_reconciliation_reports.sql":
 		candidates = []string{
