@@ -86,6 +86,7 @@ type Server struct {
 	barcodeBatchQueries   *gen.Queries
 	webhookSubQueries     *gen.Queries
 	reconciliationQueries *gen.Queries
+	networkQueries        *gen.Queries
 
 	// Dev / test toggles.
 	faultInjectOutboxAfterAudit bool

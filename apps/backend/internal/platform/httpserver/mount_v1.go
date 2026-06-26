@@ -55,6 +55,7 @@ func (s *Server) mountV1Routes() {
 		s.mountBarcodeBatchRoutes(r)
 		s.mountWebhookSubscriberRoutes(r)
 		s.mountReconciliationRoutes(r)
+		s.mountOperatorNetworkRoutes(r)
 	})
 }
 

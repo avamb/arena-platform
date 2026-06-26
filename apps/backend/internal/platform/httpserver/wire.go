@@ -64,6 +64,7 @@ type Options struct {
 	BarcodeBatchQueries   *gen.Queries
 	WebhookSubQueries     *gen.Queries
 	ReconciliationQueries *gen.Queries
+	NetworkQueries        *gen.Queries
 	GeoQueries            *gen.Queries
 	OrgQueries            *gen.Queries
 	ChannelQueries        *gen.Queries
@@ -251,6 +252,7 @@ func New(opts Options) *Server {
 		barcodeBatchQueries:   pickQueries(opts.BarcodeBatchQueries, opts.PgxPool),
 		webhookSubQueries:     pickQueries(opts.WebhookSubQueries, opts.PgxPool),
 		reconciliationQueries: pickQueries(opts.ReconciliationQueries, opts.PgxPool),
+		networkQueries:        pickQueries(opts.NetworkQueries, opts.PgxPool),
 	}
 
 	s.mountOperationalRoutes()
