@@ -14223,3 +14223,72 @@ unrelated to this feature.
 
 Marked #209 passing.
 
+
+================================================================================
+Session 2026-06-26 -- Feature #210 (Organizer/agent assignment endpoints)
+================================================================================
+Added apps/backend/internal/platform/httpserver/network_orgs.go (~340 LOC)
+and network_orgs_210_test.go (~270 LOC). Updated mount_networks.go to add
+two new chi.Router groups under mountOperatorNetworkRoutes.
+
+Endpoints (all under /v1):
+  POST   /admin/networks/{id}/organizers              -> attach organizer
+  DELETE /admin/networks/{id}/organizers/{orgId}      -> detach organizer
+  GET    /admin/networks/{id}/organizers              -> list organizers
+  POST   /admin/networks/{id}/agents                  -> attach agent
+  DELETE /admin/networks/{id}/agents/{orgId}          -> detach agent
+  GET    /admin/networks/{id}/agents                  -> list agents
+
+Permission gating via applyAuth:
+  network.manage_organizers -- organizer group (3 routes)
+  network.manage_agents     -- agent group (3 routes)
+Both bound to platform_superadmin + network_operator + admin per
+0044_network_permissions.sql so day-to-day operators manage their roster
+without escalating to platform_superadmin (which #209 does require for
+the human-user roster). Constants networkAssignmentKindOrganizer /
+networkAssignmentKindAgent match the
+network_organizations.assignment_kind CHECK in 0043_operator_networks.sql.
+
+Implementation:
+  - Backed by InsertNetworkOrganization / SetNetworkOrganizationStatus /
+    ListOrganizersByNetwork / ListAgentsByNetwork from #205. No new SQL.
+  - Single closure-based handler factory parametrized by kind (organizer
+    or agent) backs both POST/DELETE/GET, so the two route groups share
+    one set of input-validation and audit code paths.
+  - assertNetworkExists pre-flight (reused from #209) -> typed 404
+    operator_network.not_found / 409 operator_network.archived instead of
+    leaking 23503 on the parent FK.
+  - Attach is idempotent: 23505 on
+    (network_id, organization_id, assignment_kind) reactivates the row
+    via SetNetworkOrganizationStatus(...,'active') and returns 200 with
+    reactivated=true; first-time insert returns 201.
+  - 23503 on the organization_id FK -> typed 404
+    network_org.organization_not_found so the operator can distinguish a
+    missing org from a missing network.
+  - Detach is a soft-revoke via SetNetworkOrganizationStatus(...,'revoked')
+    so the lifecycle stays audit-visible. ErrNoRows -> 404
+    network_org.not_found.
+  - Mutations write v1.network.<kind>s.{attach,reactivate,detach} audit
+    events (kind = organizer|agent) carrying network/org/kind/status.
+
+Tests (TestNetworkOrgs210_*, all PASS; -count=1):
+  RoutesRequireAuth: 6 subtests assert non-404 + 401 without JWT
+    (covers all six method/path combinations).
+  Per-kind matrix (each runs twice via eachKind helper):
+    Attach: nil queries -> 503; empty body -> 400; invalid JSON -> 400
+      typed; missing organization_id -> 400 typed; malformed
+      organization_id -> 400 typed; invalid path network UUID -> 400.
+    Detach: nil queries -> 503; invalid orgId UUID -> 400.
+    List:   nil queries -> 503; invalid path UUID -> 400.
+  Mount-file content check pins both permission strings + the four URL
+  patterns + the three handler-factory names + the kind constants so the
+  binding pattern in 0044_network_permissions.sql cannot silently drift.
+
+Verification (docker golang:1.24-alpine):
+  go build ./apps/backend/...                                          OK
+  go vet   ./apps/backend/...                                          OK
+  go test  -run NetworkOrgs210 ./.../httpserver/... -count=1           PASS
+  go test  -short -count=1 ./.../httpserver/...                        PASS
+                                                                  (9.9s, no regressions)
+
+Marked #210 passing.

@@ -50,4 +50,34 @@ func (s *Server) mountOperatorNetworkRoutes(r chi.Router) {
 		pr.Post("/admin/networks/{id}/users", s.handleAssignNetworkUser)
 		pr.Delete("/admin/networks/{id}/users/{userId}", s.handleRemoveNetworkUser)
 	})
+
+	// Organizer attachment endpoints (feature #210).
+	//
+	// Gated by `network.manage_organizers`. Per 0044_network_permissions.sql
+	// this permission is bound to platform_superadmin, network_operator, and
+	// admin -- so the day-to-day operator can manage their organizer roster
+	// without needing platform_superadmin.
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "network.manage_organizers", "networks")
+		pr.Get("/admin/networks/{id}/organizers",
+			s.handleListNetworkOrganizations(networkAssignmentKindOrganizer))
+		pr.Post("/admin/networks/{id}/organizers",
+			s.handleAttachNetworkOrganization(networkAssignmentKindOrganizer))
+		pr.Delete("/admin/networks/{id}/organizers/{orgId}",
+			s.handleDetachNetworkOrganization(networkAssignmentKindOrganizer))
+	})
+
+	// Agent attachment endpoints (feature #210).
+	//
+	// Gated by `network.manage_agents`. Same role-binding set as
+	// network.manage_organizers per 0044_network_permissions.sql.
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "network.manage_agents", "networks")
+		pr.Get("/admin/networks/{id}/agents",
+			s.handleListNetworkOrganizations(networkAssignmentKindAgent))
+		pr.Post("/admin/networks/{id}/agents",
+			s.handleAttachNetworkOrganization(networkAssignmentKindAgent))
+		pr.Delete("/admin/networks/{id}/agents/{orgId}",
+			s.handleDetachNetworkOrganization(networkAssignmentKindAgent))
+	})
 }
