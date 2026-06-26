@@ -14164,3 +14164,62 @@ were left in the working tree for that agent to land on top.
 
 Marked #208 passing.
 
+================================================================================
+Session 2026-06-26 -- Feature #209 (Network user assignment endpoints)
+================================================================================
+Added apps/backend/internal/platform/httpserver/network_users.go (~330 LOC)
+and network_users_209_test.go (~280 LOC). Updated mount_networks.go to
+wire three new routes under the same Server.mountOperatorNetworkRoutes
+helper that #208 already plumbed into mount_v1.go.
+
+Endpoints (all under /v1):
+  POST   /admin/networks/{id}/users               -> handleAssignNetworkUser
+  GET    /admin/networks/{id}/users               -> handleListNetworkUsers
+  DELETE /admin/networks/{id}/users/{userId}      -> handleRemoveNetworkUser
+
+Permission wiring uses applyAuth + network.manage_users. Per migration
+0044_network_permissions.sql (#206) that permission is bound only to
+platform_superadmin + the legacy admin role (NOT to network_operator,
+NOT to platform_operator), satisfying the requirement that only
+platform_superadmin can edit the roster.
+
+Implementation:
+  - Backed by the InsertNetworkUser / SetNetworkUserStatus /
+    ListNetworkUsersByNetwork sqlc helpers landed in #205. No new SQL.
+  - Each handler pre-flights via GetOperatorNetworkByID so an unknown
+    or archived parent network returns a typed 404 / 409 instead of
+    leaking a 23503 FK violation.
+  - Assign is idempotent: a 23505 on the (network_id,user_id,role)
+    unique constraint triggers SetNetworkUserStatus(...,active) so a
+    previously-revoked operator can be re-attached without manual SQL.
+    Reactivation paths return 200 with reactivated=true; first-time
+    inserts return 201 with the row.
+  - DELETE is a soft-revoke (SetNetworkUserStatus(...,revoked)) so the
+    lifecycle stays audit-visible; the row is preserved with status
+    revoked. ErrNoRows -> 404 network_user.not_found.
+  - Mutations write v1.network.users.{assign,reactivate,remove} audit
+    events carrying target user id, role, status. Fire-and-forget like
+    the existing operator_network audit helper.
+
+Tests (12 cases, all PASS; -count=1):
+  RoutesRequireAuth: 3 subtests assert non-404 + 401 without JWT.
+  Assign: nil queries->503; empty body->400; invalid JSON->400 typed;
+  missing user_id->400 typed; malformed user_id->400 typed;
+  invalid path network UUID->400.
+  Remove: nil queries->503; invalid userId UUID->400.
+  List:   nil queries->503; invalid path UUID->400.
+  Mount-file content check pins network.manage_users + the two URL
+  patterns + the three handler names so the binding pattern in
+  0044_network_permissions.sql cannot silently drift.
+
+Verification (docker golang:1.24-alpine):
+  go build ./apps/backend/...                                          OK
+  go vet   ./apps/backend/...                                          OK
+  go test  -run NetworkUsers209 ./.../httpserver/... -count=1          PASS
+
+Pre-existing failure in TestTimestamp_StaticScan_RFC3339NanoWithUTC is
+owned by the parallel #211 agent's untracked me.go (line 346) and is
+unrelated to this feature.
+
+Marked #209 passing.
+
