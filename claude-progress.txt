@@ -13935,4 +13935,56 @@ Session 2026-06-26 — Feature #203 (Add network_operator role to backend)
   feature; it is queued for follow-up features per the #202 design note.
 - Marked #203 passing.
 
+================================================================================
+Session 2026-06-26 — Feature #205 (SQLC queries for operator networks)
+================================================================================
+Added apps/backend/internal/adapters/postgres/queries/operator_networks.sql
+plus the matching hand-curated generated file
+apps/backend/internal/adapters/postgres/gen/operator_networks.sql.go,
+plus Querier interface entries in gen/querier.go.
+
+Queries cover the three tables from migration 0043_operator_networks.sql:
+  * operator_networks:
+      Insert, GetByID, GetBySlug (active only), List,
+      Update (COALESCE/NULLIF empty-string sentinels),
+      SetStatus (active|suspended),
+      Archive (soft-archive, idempotent — returns ErrNoRows on re-archive).
+  * network_users:
+      Insert (default role=network_operator), Get,
+      SetStatus (active|suspended|revoked), Delete,
+      ListByNetwork (active only),
+      ListNetworksByUser (join on operator_networks, archived filter — used
+      by network-scope middleware to enumerate networks visible to a user).
+  * network_organizations:
+      Insert, Get, SetStatus, Delete,
+      ListNetworkOrganizationsByNetwork with NULLABLE assignmentKind filter
+      (organizer|agent),
+      Convenience ListOrganizersByNetwork and ListAgentsByNetwork,
+      ListNetworksByOrganization (reverse join + nullable assignmentKind
+      filter for reporting and the org-scope path resolver).
+
+Design decisions matching the #202 design note:
+  * Single network_organizations table with assignment_kind column (replaces
+    parallel organizer/agent tables).
+  * Listing queries accept nullable assignment_kind via *string so the
+    middleware can scope-filter without query-string branching.
+  * Queries rely on the partial indexes from #204 migration
+    (status='active', archived_at IS NULL).
+
+Verification (docker golang:1.24):
+  go build ./...                                              OK
+  go test ./apps/backend/internal/adapters/postgres/gen/...   OK (0.008s)
+  go vet ./apps/backend/...                                   OK
+
+Note: sqlc generate via docker (sqlc/sqlc:latest v1.31.1) is blocked on
+pre-existing inventory_ledger.sql ambiguous-column errors (4 known issues
+in legacy join queries — unrelated to #205). The gen file is therefore
+hand-curated in the same style as reconciliation.sql.go (#147): per-table
+Row struct + scan helper, const SQL strings, Queries method receivers,
+*time.Time for nullable timestamps, *string for nullable filters. The
+hand-written output remains a drop-in replacement once the inventory_ledger
+sqlc issue is fixed.
+
+Marked #205 passing.
+
 

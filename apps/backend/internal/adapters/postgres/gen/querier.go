@@ -330,6 +330,29 @@ type Querier interface {
 	UpdateReconciliationLineReview(ctx context.Context, id uuid.UUID, operatorNote *string) (ReconciliationLineRow, error)
 	CountExceptionLinesByReport(ctx context.Context, reportID uuid.UUID) (int64, error)
 	LookupBarcodeByExternalRef(ctx context.Context, externalRef string, allocationID uuid.UUID) (BarcodeRefLookupRow, error)
+
+	// Operator networks — admin/operator-network model (feature #205)
+	InsertOperatorNetwork(ctx context.Context, name, slug string) (OperatorNetworkRow, error)
+	GetOperatorNetworkByID(ctx context.Context, id uuid.UUID) (OperatorNetworkRow, error)
+	GetOperatorNetworkBySlug(ctx context.Context, slug string) (OperatorNetworkRow, error)
+	ListOperatorNetworks(ctx context.Context) ([]OperatorNetworkRow, error)
+	UpdateOperatorNetwork(ctx context.Context, id uuid.UUID, name, slug string) (OperatorNetworkRow, error)
+	SetOperatorNetworkStatus(ctx context.Context, id uuid.UUID, status string) (OperatorNetworkRow, error)
+	ArchiveOperatorNetwork(ctx context.Context, id uuid.UUID) (OperatorNetworkRow, error)
+	InsertNetworkUser(ctx context.Context, networkID, userID uuid.UUID) (NetworkUserRow, error)
+	GetNetworkUser(ctx context.Context, networkID, userID uuid.UUID) (NetworkUserRow, error)
+	SetNetworkUserStatus(ctx context.Context, networkID, userID uuid.UUID, status string) (NetworkUserRow, error)
+	DeleteNetworkUser(ctx context.Context, networkID, userID uuid.UUID) error
+	ListNetworkUsersByNetwork(ctx context.Context, networkID uuid.UUID) ([]NetworkUserRow, error)
+	ListNetworksByUser(ctx context.Context, userID uuid.UUID) ([]OperatorNetworkRow, error)
+	InsertNetworkOrganization(ctx context.Context, networkID, organizationID uuid.UUID, assignmentKind string) (NetworkOrganizationRow, error)
+	GetNetworkOrganization(ctx context.Context, networkID, organizationID uuid.UUID, assignmentKind string) (NetworkOrganizationRow, error)
+	SetNetworkOrganizationStatus(ctx context.Context, networkID, organizationID uuid.UUID, assignmentKind, status string) (NetworkOrganizationRow, error)
+	DeleteNetworkOrganization(ctx context.Context, networkID, organizationID uuid.UUID, assignmentKind string) error
+	ListNetworkOrganizationsByNetwork(ctx context.Context, networkID uuid.UUID, assignmentKind *string) ([]NetworkOrganizationRow, error)
+	ListOrganizersByNetwork(ctx context.Context, networkID uuid.UUID) ([]NetworkOrganizationRow, error)
+	ListAgentsByNetwork(ctx context.Context, networkID uuid.UUID) ([]NetworkOrganizationRow, error)
+	ListNetworksByOrganization(ctx context.Context, organizationID uuid.UUID, assignmentKind *string) ([]NetworkByOrganizationRow, error)
 }
 
 // Compile-time assertion: *Queries must implement Querier.
