@@ -14513,3 +14513,32 @@ Verification (docker golang:1.24-alpine):
             the known OAS 3.1 warning matching CLAUDE.md status).
 
 Marked #212 passing.
+
+================================================================================
+Session 2026-06-27 -- Feature #213 (Regenerate generated server/client artifacts)
+================================================================================
+Re-ran oapi-codegen v2.4.1 and openapi-typescript 7.13.0 against the
+current apps/backend/openapi/openapi.yaml (which carries feature #212's
+operator-network schema additions).
+
+Commands:
+  docker run --rm -v C:/Projects/arena_new:/src -w /src golang:1.24-alpine \
+    go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.4.1 \
+      --config=apps/backend/openapi/oapi-codegen.yaml \
+      apps/backend/openapi/openapi.yaml
+  node scripts/gen-ts-client.mjs
+
+Outputs:
+  apps/backend/internal/adapters/http/openapi/types_gen.go
+    Already byte-identical with HEAD after CRLF normalization
+    (previous session committed it).
+  apps/backend/openapi/clients/ts/index.d.ts
+    +1839/-58 -- new operator-network schemas surface as TS types.
+
+Verification:
+  go build ./apps/backend/...            OK (docker golang:1.24-alpine)
+  npx tsc --noEmit clients/ts/index.d.ts OK (no errors)
+  oapi-codegen warning unchanged: "OpenAPI 3.1.x not yet fully supported
+    by oapi-codegen" -- known per spec implementation_status_override.
+
+Committed regenerated TS client. Marked #213 passing.
