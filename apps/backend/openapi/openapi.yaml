@@ -24,6 +24,11 @@ tags:
     description: Version 1 API endpoints
   - name: dev
     description: Development-only endpoints (available only when ENABLE_DEV_AUTH=true)
+  - name: networks
+    description: |
+      Operator-network administration endpoints (features #208–#211): CRUD
+      on operator_networks plus user/organizer/agent roster management under
+      /v1/admin/networks/{id}/*.
 
 components:
   securitySchemes:
@@ -593,6 +598,356 @@ components:
         status:
           type: string
           description: Operator network lifecycle status (active / suspended / archived)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Operator network admin DTOs (features #208–#211)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    OperatorNetwork:
+      type: object
+      description: |
+        An operator_network row (migration 0043_operator_networks.sql).
+        Represents a platform-level grouping that overlays organizations: a
+        `network_operator` user is assigned to one or more networks, and
+        each network is in turn attached to organizations as either an
+        `organizer` or an `agent` via network_organizations.
+      required: [id, name, slug, status, archived_at, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the operator network
+          example: "0193f01a-1234-7000-8000-000000000001"
+        name:
+          type: string
+          description: Human-readable operator network name
+          example: "Northern Region Operators"
+        slug:
+          type: string
+          description: |
+            URL-safe slug, matches the CHECK constraint
+            `^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$` enforced by migration
+            0043_operator_networks.sql.
+          pattern: '^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$'
+          example: "northern-region"
+        status:
+          type: string
+          description: Lifecycle status (active / archived)
+          enum: [active, archived]
+        archived_at:
+          type: string
+          format: date-time
+          description: |
+            RFC 3339 archival timestamp; emitted as JSON `null` while the
+            operator network is still active. The OAS 3.1 type-array
+            idiom (`type: [string, "null"]`) is not yet supported by
+            oapi-codegen v2.4.1 (see CLAUDE.md), so nullability is
+            described in prose here and surfaced as `*time.Time` in the
+            sqlc layer / `*string` in the HTTP DTO (networks.go:61).
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp (RFC 3339)
+        updated_at:
+          type: string
+          format: date-time
+          description: Last-modified timestamp (RFC 3339)
+
+    OperatorNetworkEnvelope:
+      type: object
+      required: [operator_network]
+      properties:
+        operator_network:
+          description: The operator network resource for create/get/update responses
+          $ref: "#/components/schemas/OperatorNetwork"
+
+    OperatorNetworkArchiveResponse:
+      type: object
+      required: [operator_network, archived]
+      properties:
+        operator_network:
+          description: The operator network in its post-archive state (`status=archived`)
+          $ref: "#/components/schemas/OperatorNetwork"
+        archived:
+          type: boolean
+          description: Always true on success; included so callers can branch without inspecting `status`
+          example: true
+
+    OperatorNetworkListResponse:
+      type: object
+      required: [operator_networks, total]
+      properties:
+        operator_networks:
+          type: array
+          description: Array of non-archived operator networks, ordered by `created_at` ascending
+          items:
+            $ref: "#/components/schemas/OperatorNetwork"
+        total:
+          type: integer
+          description: Number of operator networks returned (size of the array)
+          example: 3
+
+    CreateOperatorNetworkRequest:
+      type: object
+      required: [name, slug]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Human-readable network name (trimmed server-side)
+          example: "Northern Region Operators"
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$'
+          description: |
+            URL-safe slug. Lower-cased and trimmed server-side before validation.
+            Must satisfy the regex CHECK constraint from migration
+            0043_operator_networks.sql.
+          example: "northern-region"
+
+    UpdateOperatorNetworkRequest:
+      type: object
+      description: |
+        At least one of `name` or `slug` must be supplied. Empty strings are
+        treated as "do not change". Slug is validated against the same regex
+        as on create.
+      properties:
+        name:
+          type: string
+          description: New human-readable network name (omit or empty to leave unchanged)
+          example: "Northern Operators (renamed)"
+        slug:
+          type: string
+          pattern: '^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$'
+          description: New URL-safe slug (omit or empty to leave unchanged)
+          example: "northern-operators"
+
+    NetworkUserAssignment:
+      type: object
+      description: |
+        A `network_users` row binding a user to an operator network with a
+        role (default "network_operator") and a lifecycle status.
+      required:
+        - id
+        - network_id
+        - user_id
+        - role
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the assignment row
+        network_id:
+          type: string
+          format: uuid
+          description: Parent operator_network UUID
+        user_id:
+          type: string
+          format: uuid
+          description: Assigned user UUID
+        role:
+          type: string
+          description: Role granted by the assignment (currently always "network_operator")
+          example: "network_operator"
+        status:
+          type: string
+          description: Lifecycle status of the assignment
+          enum: [active, revoked]
+        created_at:
+          type: string
+          format: date-time
+          description: When the assignment was first created (RFC 3339)
+        updated_at:
+          type: string
+          format: date-time
+          description: Last-modified timestamp (RFC 3339)
+
+    AssignNetworkUserRequest:
+      type: object
+      required: [user_id]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: UUID of the user to attach to the network
+          example: "0193f01a-1234-7000-8000-000000000010"
+
+    NetworkUserAssignResponse:
+      type: object
+      required: [network_user]
+      properties:
+        network_user:
+          description: The resulting network-user assignment after insert or reactivation
+          $ref: "#/components/schemas/NetworkUserAssignment"
+        reactivated:
+          type: boolean
+          description: |
+            Present and true when the call re-activated a previously revoked
+            assignment (HTTP 200). Absent on a first-time insert (HTTP 201).
+          example: true
+
+    NetworkUserRemoveResponse:
+      type: object
+      required: [network_user, removed]
+      properties:
+        network_user:
+          description: The network-user assignment in its post-revoke state (`status=revoked`)
+          $ref: "#/components/schemas/NetworkUserAssignment"
+        removed:
+          type: boolean
+          description: Always true on success
+          example: true
+
+    NetworkUserListResponse:
+      type: object
+      required: [network_id, network_users, total]
+      properties:
+        network_id:
+          type: string
+          format: uuid
+          description: Parent operator network UUID
+        network_users:
+          type: array
+          description: Active network-user assignments for the given operator network
+          items:
+            $ref: "#/components/schemas/NetworkUserAssignment"
+        total:
+          type: integer
+          description: Number of active network user assignments returned
+          example: 5
+
+    NetworkOrganizationAssignment:
+      type: object
+      description: |
+        A `network_organizations` row attaching an organization to an
+        operator network as either an `organizer` or an `agent`.
+      required:
+        - id
+        - network_id
+        - organization_id
+        - assignment_kind
+        - status
+        - attached_at
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the attachment row
+        network_id:
+          type: string
+          format: uuid
+          description: Parent operator_network UUID
+        organization_id:
+          type: string
+          format: uuid
+          description: Attached organization UUID
+        assignment_kind:
+          type: string
+          description: Role of the organization within the network
+          enum: [organizer, agent]
+        status:
+          type: string
+          description: Lifecycle status of the attachment
+          enum: [active, revoked]
+        attached_at:
+          type: string
+          format: date-time
+          description: When the organization was first attached (RFC 3339)
+        created_at:
+          type: string
+          format: date-time
+          description: Row creation timestamp (RFC 3339)
+        updated_at:
+          type: string
+          format: date-time
+          description: Last-modified timestamp (RFC 3339)
+
+    AttachNetworkOrganizationRequest:
+      type: object
+      required: [organization_id]
+      properties:
+        organization_id:
+          type: string
+          format: uuid
+          description: UUID of the organization to attach
+          example: "0193f01a-1234-7000-8000-000000000020"
+
+    NetworkOrganizationAttachResponse:
+      type: object
+      required: [network_organization]
+      properties:
+        network_organization:
+          description: The resulting organization attachment after insert or reactivation
+          $ref: "#/components/schemas/NetworkOrganizationAssignment"
+        reactivated:
+          type: boolean
+          description: |
+            Present and true when the call re-activated a previously revoked
+            attachment (HTTP 200). Absent on a first-time insert (HTTP 201).
+          example: true
+
+    NetworkOrganizationDetachResponse:
+      type: object
+      required: [network_organization, detached]
+      properties:
+        network_organization:
+          description: The organization attachment in its post-revoke state (`status=revoked`)
+          $ref: "#/components/schemas/NetworkOrganizationAssignment"
+        detached:
+          type: boolean
+          description: Always true on success
+          example: true
+
+    NetworkOrganizersListResponse:
+      type: object
+      required: [network_id, assignment_kind, organizers, total]
+      properties:
+        network_id:
+          type: string
+          format: uuid
+          description: Parent operator network UUID
+        assignment_kind:
+          type: string
+          description: Always "organizer" on this endpoint
+          enum: [organizer]
+        organizers:
+          type: array
+          description: Active organizer attachments for the given operator network
+          items:
+            $ref: "#/components/schemas/NetworkOrganizationAssignment"
+        total:
+          type: integer
+          description: Number of active organizer attachments returned
+          example: 2
+
+    NetworkAgentsListResponse:
+      type: object
+      required: [network_id, assignment_kind, agents, total]
+      properties:
+        network_id:
+          type: string
+          format: uuid
+          description: Parent operator network UUID
+        assignment_kind:
+          type: string
+          description: Always "agent" on this endpoint
+          enum: [agent]
+        agents:
+          type: array
+          description: Active agent attachments for the given operator network
+          items:
+            $ref: "#/components/schemas/NetworkOrganizationAssignment"
+        total:
+          type: integer
+          description: Number of active agent attachments returned
+          example: 1
 
     AuthLogoutRequest:
       type: object
@@ -2394,6 +2749,922 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database pool or org queries not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Operator-network admin endpoints (features #208–#210)
+  # ─────────────────────────────────────────────────────────────────────────
+
+  /v1/operator-networks:
+    get:
+      operationId: listOperatorNetworks
+      summary: List non-archived operator networks
+      description: |
+        Returns every operator network whose status is not `archived`.
+        Requires the `network.read` permission (bound to platform_superadmin,
+        network_operator, and admin per migration 0044_network_permissions.sql).
+      tags: [v1, networks]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of active operator networks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorNetworkListResponse"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller does not hold the `network.read` permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: createOperatorNetwork
+      summary: Create a new operator network
+      description: |
+        Creates a new operator_network row. Requires the `network.create`
+        permission, which migration 0044_network_permissions.sql binds only
+        to platform_superadmin and the legacy admin role.
+      tags: [v1, networks]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOperatorNetworkRequest"
+      responses:
+        "201":
+          description: Operator network created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorNetworkEnvelope"
+        "400":
+          description: Missing/invalid body, name, or slug
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller does not hold the `network.create` permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: An active operator network with that slug already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/operator-networks/{id}:
+    get:
+      operationId: getOperatorNetwork
+      summary: Fetch a single operator network by ID
+      description: |
+        Returns the operator_network row identified by `id`. Requires the
+        `network.read` permission (same role binding as the list endpoint).
+      tags: [v1, networks]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Operator network UUIDv7
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Operator network found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorNetworkEnvelope"
+        "400":
+          description: "`id` path parameter is not a valid UUID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller does not hold the `network.read` permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Operator network not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      operationId: updateOperatorNetwork
+      summary: Update mutable fields on an operator network
+      description: |
+        Updates `name` and/or `slug` on a non-archived operator network.
+        At least one of the two fields must be supplied. Requires the
+        `network.update` permission (bound to platform_superadmin,
+        network_operator, and admin per 0044_network_permissions.sql).
+      tags: [v1, networks]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Operator network UUIDv7
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOperatorNetworkRequest"
+      responses:
+        "200":
+          description: Operator network updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorNetworkEnvelope"
+        "400":
+          description: Empty body, no changes supplied, or invalid slug
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller does not hold the `network.update` permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Operator network not found or already archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Another active operator network already uses the target slug
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/operator-networks/{id}/archive:
+    post:
+      operationId: archiveOperatorNetwork
+      summary: Soft-archive an operator network
+      description: |
+        Marks the network as `archived` and stamps `archived_at`. Idempotent
+        at the database layer: re-archiving an already-archived network
+        returns 404 instead of 200. Requires the `network.archive`
+        permission, bound only to platform_superadmin and admin per
+        migration 0044_network_permissions.sql.
+      tags: [v1, networks]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Operator network UUIDv7
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Operator network archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorNetworkArchiveResponse"
+        "400":
+          description: "`id` path parameter is not a valid UUID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller does not hold the `network.archive` permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Operator network not found or already archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/networks/{id}/users:
+    get:
+      operationId: listNetworkUsers
+      summary: List active users assigned to an operator network
+      description: |
+        Returns every `network_users` row whose status is `active` for the
+        named network. Requires the `network.manage_users` permission, which
+        migration 0044_network_permissions.sql binds only to
+        platform_superadmin and the legacy admin role.
+      tags: [v1, networks]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Operator network UUIDv7
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of active network user assignments
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkUserListResponse"
+        "400":
+          description: Path `id` is not a valid UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller does not hold `network.manage_users`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Operator network not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Operator network is archived (roster is read-only)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: assignNetworkUser
+      summary: Assign a user to an operator network
+      description: |
+        Inserts (or re-activates) a `network_users` row binding the supplied
+        user to the network with the default `network_operator` role.
+        Idempotent: re-assigning a previously revoked user returns HTTP 200
+        with `reactivated: true`; a first-time insert returns HTTP 201.
+        Requires the `network.manage_users` permission.
+      tags: [v1, networks]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Operator network UUIDv7
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignNetworkUserRequest"
+      responses:
+        "200":
+          description: Previously revoked assignment re-activated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkUserAssignResponse"
+        "201":
+          description: New network user assignment created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkUserAssignResponse"
+        "400":
+          description: Empty/invalid body or invalid `user_id` / path UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller does not hold `network.manage_users`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Operator network or target user not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Operator network is archived; duplicate assignment race
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/networks/{id}/users/{userId}:
+    delete:
+      operationId: removeNetworkUser
+      summary: Remove (soft-revoke) a user from an operator network
+      description: |
+        Soft-revokes the assignment by setting `status='revoked'`; the row
+        is preserved for audit visibility. Requires the `network.manage_users`
+        permission.
+      tags: [v1, networks]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Operator network UUIDv7
+          schema:
+            type: string
+            format: uuid
+        - name: userId
+          in: path
+          required: true
+          description: Target user UUIDv7
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Assignment revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkUserRemoveResponse"
+        "400":
+          description: Path `id` or `userId` is not a valid UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller does not hold `network.manage_users`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Network not found or user not assigned to this network
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Operator network is archived (roster is read-only)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/networks/{id}/organizers:
+    get:
+      operationId: listNetworkOrganizers
+      summary: List organizations attached as organizers
+      description: |
+        Returns active `network_organizations` rows with
+        `assignment_kind='organizer'` for the given network. Requires the
+        `network.manage_organizers` permission (bound to platform_superadmin,
+        network_operator, and admin per 0044_network_permissions.sql).
+      tags: [v1, networks]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Operator network UUIDv7
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of active organizer attachments
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkOrganizersListResponse"
+        "400":
+          description: Path `id` is not a valid UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller does not hold `network.manage_organizers`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Operator network not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Operator network is archived (roster is read-only)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: attachNetworkOrganizer
+      summary: Attach an organization as an organizer
+      description: |
+        Inserts (or re-activates) a `network_organizations` row with
+        `assignment_kind='organizer'`. Idempotent: a previously revoked
+        attachment is reactivated and returned with HTTP 200 +
+        `reactivated: true`; a first-time insert returns HTTP 201.
+        Requires the `network.manage_organizers` permission.
+      tags: [v1, networks]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Operator network UUIDv7
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AttachNetworkOrganizationRequest"
+      responses:
+        "200":
+          description: Previously revoked attachment re-activated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkOrganizationAttachResponse"
+        "201":
+          description: New organizer attachment created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkOrganizationAttachResponse"
+        "400":
+          description: Empty/invalid body, or invalid `organization_id` / path UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller does not hold `network.manage_organizers`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Operator network or target organization not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Operator network is archived; duplicate attachment race
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/networks/{id}/organizers/{orgId}:
+    delete:
+      operationId: detachNetworkOrganizer
+      summary: Detach (soft-revoke) an organizer from an operator network
+      description: |
+        Soft-revokes the organizer attachment by setting `status='revoked'`;
+        the row is preserved for audit visibility. Requires the
+        `network.manage_organizers` permission.
+      tags: [v1, networks]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Operator network UUIDv7
+          schema:
+            type: string
+            format: uuid
+        - name: orgId
+          in: path
+          required: true
+          description: Target organization UUIDv7
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Attachment revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkOrganizationDetachResponse"
+        "400":
+          description: Path `id` or `orgId` is not a valid UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller does not hold `network.manage_organizers`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Network not found or organization not attached as organizer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Operator network is archived (roster is read-only)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/networks/{id}/agents:
+    get:
+      operationId: listNetworkAgents
+      summary: List organizations attached as agents
+      description: |
+        Returns active `network_organizations` rows with
+        `assignment_kind='agent'` for the given network. Requires the
+        `network.manage_agents` permission (bound to platform_superadmin,
+        network_operator, and admin per 0044_network_permissions.sql).
+      tags: [v1, networks]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Operator network UUIDv7
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of active agent attachments
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkAgentsListResponse"
+        "400":
+          description: Path `id` is not a valid UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller does not hold `network.manage_agents`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Operator network not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Operator network is archived (roster is read-only)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: attachNetworkAgent
+      summary: Attach an organization as an agent
+      description: |
+        Inserts (or re-activates) a `network_organizations` row with
+        `assignment_kind='agent'`. Idempotent: a previously revoked
+        attachment is reactivated and returned with HTTP 200 +
+        `reactivated: true`; a first-time insert returns HTTP 201.
+        Requires the `network.manage_agents` permission.
+      tags: [v1, networks]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Operator network UUIDv7
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AttachNetworkOrganizationRequest"
+      responses:
+        "200":
+          description: Previously revoked attachment re-activated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkOrganizationAttachResponse"
+        "201":
+          description: New agent attachment created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkOrganizationAttachResponse"
+        "400":
+          description: Empty/invalid body, or invalid `organization_id` / path UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller does not hold `network.manage_agents`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Operator network or target organization not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Operator network is archived; duplicate attachment race
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/networks/{id}/agents/{orgId}:
+    delete:
+      operationId: detachNetworkAgent
+      summary: Detach (soft-revoke) an agent from an operator network
+      description: |
+        Soft-revokes the agent attachment by setting `status='revoked'`;
+        the row is preserved for audit visibility. Requires the
+        `network.manage_agents` permission.
+      tags: [v1, networks]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Operator network UUIDv7
+          schema:
+            type: string
+            format: uuid
+        - name: orgId
+          in: path
+          required: true
+          description: Target organization UUIDv7
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Attachment revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkOrganizationDetachResponse"
+        "400":
+          description: Path `id` or `orgId` is not a valid UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller does not hold `network.manage_agents`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Network not found or organization not attached as agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Operator network is archived (roster is read-only)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available
           content:
             application/json:
               schema:

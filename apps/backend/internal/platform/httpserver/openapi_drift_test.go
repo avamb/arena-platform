@@ -290,6 +290,10 @@ func buildDriftTestServer(t *testing.T) *Server {
 		// Wire MeQueries so the /v1/me current-user context route is mounted
 		// (feature #211). *gen.Queries implements meQuerier.
 		MeQueries: gen.New(nil),
+		// Wire NetworkQueries so all operator-network routes are mounted
+		// (feature #212): /v1/operator-networks/*, /v1/admin/networks/{id}/users,
+		// /v1/admin/networks/{id}/organizers, /v1/admin/networks/{id}/agents.
+		NetworkQueries: gen.New(nil),
 	})
 }
 

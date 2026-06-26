@@ -18,11 +18,57 @@ const (
 	Ok HealthzResponseStatus = "ok"
 )
 
+// Defines values for NetworkAgentsListResponseAssignmentKind.
+const (
+	NetworkAgentsListResponseAssignmentKindAgent NetworkAgentsListResponseAssignmentKind = "agent"
+)
+
+// Defines values for NetworkOrganizationAssignmentAssignmentKind.
+const (
+	NetworkOrganizationAssignmentAssignmentKindAgent     NetworkOrganizationAssignmentAssignmentKind = "agent"
+	NetworkOrganizationAssignmentAssignmentKindOrganizer NetworkOrganizationAssignmentAssignmentKind = "organizer"
+)
+
+// Defines values for NetworkOrganizationAssignmentStatus.
+const (
+	NetworkOrganizationAssignmentStatusActive  NetworkOrganizationAssignmentStatus = "active"
+	NetworkOrganizationAssignmentStatusRevoked NetworkOrganizationAssignmentStatus = "revoked"
+)
+
+// Defines values for NetworkOrganizersListResponseAssignmentKind.
+const (
+	Organizer NetworkOrganizersListResponseAssignmentKind = "organizer"
+)
+
+// Defines values for NetworkUserAssignmentStatus.
+const (
+	NetworkUserAssignmentStatusActive  NetworkUserAssignmentStatus = "active"
+	NetworkUserAssignmentStatusRevoked NetworkUserAssignmentStatus = "revoked"
+)
+
+// Defines values for OperatorNetworkStatus.
+const (
+	Active   OperatorNetworkStatus = "active"
+	Archived OperatorNetworkStatus = "archived"
+)
+
 // Defines values for ReadyzResponseStatus.
 const (
 	NotReady ReadyzResponseStatus = "not_ready"
 	Ready    ReadyzResponseStatus = "ready"
 )
+
+// AssignNetworkUserRequest defines model for AssignNetworkUserRequest.
+type AssignNetworkUserRequest struct {
+	// UserId UUID of the user to attach to the network
+	UserId openapi_types.UUID `json:"user_id"`
+}
+
+// AttachNetworkOrganizationRequest defines model for AttachNetworkOrganizationRequest.
+type AttachNetworkOrganizationRequest struct {
+	// OrganizationId UUID of the organization to attach
+	OrganizationId openapi_types.UUID `json:"organization_id"`
+}
 
 // AuthLoginRequest defines model for AuthLoginRequest.
 type AuthLoginRequest struct {
@@ -115,6 +161,17 @@ type AuthVerifyResponse struct {
 
 	// UserId UUIDv7 of the verified user
 	UserId openapi_types.UUID `json:"user_id"`
+}
+
+// CreateOperatorNetworkRequest defines model for CreateOperatorNetworkRequest.
+type CreateOperatorNetworkRequest struct {
+	// Name Human-readable network name (trimmed server-side)
+	Name string `json:"name"`
+
+	// Slug URL-safe slug. Lower-cased and trimmed server-side before validation.
+	// Must satisfy the regex CHECK constraint from migration
+	// 0043_operator_networks.sql.
+	Slug string `json:"slug"`
 }
 
 // CreateOrganizationRequest Request body for POST /v1/organizations.
@@ -497,6 +554,309 @@ type InfoResponse struct {
 	Version string `json:"version"`
 }
 
+// MeAssignedNetwork defines model for MeAssignedNetwork.
+type MeAssignedNetwork struct {
+	// Id Operator network UUID
+	Id string `json:"id"`
+
+	// Name Human-readable operator network name
+	Name string `json:"name"`
+
+	// Slug URL-safe operator network slug
+	Slug string `json:"slug"`
+
+	// Status Operator network lifecycle status (active / suspended / archived)
+	Status string `json:"status"`
+}
+
+// MeOrganizationMembership defines model for MeOrganizationMembership.
+type MeOrganizationMembership struct {
+	// Id Membership row UUID
+	Id string `json:"id"`
+
+	// JoinedAt When the membership was granted
+	JoinedAt time.Time `json:"joined_at"`
+
+	// OrgId Organization UUID
+	OrgId string `json:"org_id"`
+
+	// Role Role name held by the user inside the organization
+	Role string `json:"role"`
+
+	// Status Membership lifecycle status (always "active" in this response)
+	Status string `json:"status"`
+}
+
+// MeResponse Snapshot of the authenticated user's context returned by GET /v1/me.
+// Backwards-compatible: feature #211 added `assigned_networks` and
+// `available_scopes`; clients that only consume the original blocks
+// keep working without changes.
+type MeResponse struct {
+	// AssignedNetworks Operator networks the user belongs to (network_users.status='active').
+	// Empty for users who are not part of any operator network.
+	AssignedNetworks []MeAssignedNetwork `json:"assigned_networks"`
+
+	// AvailableScopes Deterministically-ordered authorization scopes the caller can act
+	// under. Order: "global" (bypass roles), "platform" (platform_operator),
+	// sorted "network:<uuid>" entries, sorted "organization:<uuid>" entries.
+	AvailableScopes []string `json:"available_scopes"`
+
+	// OrganizationMemberships Every active organization membership held by the user
+	OrganizationMemberships []MeOrganizationMembership `json:"organization_memberships"`
+
+	// Permissions Flat list of permission names expanded from roles
+	Permissions []string `json:"permissions"`
+
+	// Roles Deduplicated union of JWT roles and active membership roles, sorted ascending
+	Roles []string `json:"roles"`
+
+	// User Authenticated user header block — identity claims extracted from the JWT
+	User MeUser `json:"user"`
+}
+
+// MeUser defines model for MeUser.
+type MeUser struct {
+	// Id Actor ID from the JWT (typically a UUID)
+	Id string `json:"id"`
+
+	// ImpersonatedBy Admin actor ID that minted the impersonation token (omitted when empty)
+	ImpersonatedBy *string `json:"impersonated_by,omitempty"`
+
+	// ImpersonationReason Business justification recorded when the impersonation token was issued
+	ImpersonationReason *string `json:"impersonation_reason,omitempty"`
+
+	// IsImpersonated True when the token was issued via the impersonation flow (#167)
+	IsImpersonated bool `json:"is_impersonated"`
+
+	// Issuer JWT iss claim (omitted when empty)
+	Issuer *string `json:"issuer,omitempty"`
+
+	// Type Actor type — stub_user / user / service / anonymous
+	Type string `json:"type"`
+}
+
+// NetworkAgentsListResponse defines model for NetworkAgentsListResponse.
+type NetworkAgentsListResponse struct {
+	// Agents Active agent attachments for the given operator network
+	Agents []NetworkOrganizationAssignment `json:"agents"`
+
+	// AssignmentKind Always "agent" on this endpoint
+	AssignmentKind NetworkAgentsListResponseAssignmentKind `json:"assignment_kind"`
+
+	// NetworkId Parent operator network UUID
+	NetworkId openapi_types.UUID `json:"network_id"`
+
+	// Total Number of active agent attachments returned
+	Total int `json:"total"`
+}
+
+// NetworkAgentsListResponseAssignmentKind Always "agent" on this endpoint
+type NetworkAgentsListResponseAssignmentKind string
+
+// NetworkOrganizationAssignment A `network_organizations` row attaching an organization to an
+// operator network as either an `organizer` or an `agent`.
+type NetworkOrganizationAssignment struct {
+	// AssignmentKind Role of the organization within the network
+	AssignmentKind NetworkOrganizationAssignmentAssignmentKind `json:"assignment_kind"`
+
+	// AttachedAt When the organization was first attached (RFC 3339)
+	AttachedAt time.Time `json:"attached_at"`
+
+	// CreatedAt Row creation timestamp (RFC 3339)
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id UUIDv7 of the attachment row
+	Id openapi_types.UUID `json:"id"`
+
+	// NetworkId Parent operator_network UUID
+	NetworkId openapi_types.UUID `json:"network_id"`
+
+	// OrganizationId Attached organization UUID
+	OrganizationId openapi_types.UUID `json:"organization_id"`
+
+	// Status Lifecycle status of the attachment
+	Status NetworkOrganizationAssignmentStatus `json:"status"`
+
+	// UpdatedAt Last-modified timestamp (RFC 3339)
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// NetworkOrganizationAssignmentAssignmentKind Role of the organization within the network
+type NetworkOrganizationAssignmentAssignmentKind string
+
+// NetworkOrganizationAssignmentStatus Lifecycle status of the attachment
+type NetworkOrganizationAssignmentStatus string
+
+// NetworkOrganizationAttachResponse defines model for NetworkOrganizationAttachResponse.
+type NetworkOrganizationAttachResponse struct {
+	// NetworkOrganization A `network_organizations` row attaching an organization to an
+	// operator network as either an `organizer` or an `agent`.
+	NetworkOrganization NetworkOrganizationAssignment `json:"network_organization"`
+
+	// Reactivated Present and true when the call re-activated a previously revoked
+	// attachment (HTTP 200). Absent on a first-time insert (HTTP 201).
+	Reactivated *bool `json:"reactivated,omitempty"`
+}
+
+// NetworkOrganizationDetachResponse defines model for NetworkOrganizationDetachResponse.
+type NetworkOrganizationDetachResponse struct {
+	// Detached Always true on success
+	Detached bool `json:"detached"`
+
+	// NetworkOrganization A `network_organizations` row attaching an organization to an
+	// operator network as either an `organizer` or an `agent`.
+	NetworkOrganization NetworkOrganizationAssignment `json:"network_organization"`
+}
+
+// NetworkOrganizersListResponse defines model for NetworkOrganizersListResponse.
+type NetworkOrganizersListResponse struct {
+	// AssignmentKind Always "organizer" on this endpoint
+	AssignmentKind NetworkOrganizersListResponseAssignmentKind `json:"assignment_kind"`
+
+	// NetworkId Parent operator network UUID
+	NetworkId openapi_types.UUID `json:"network_id"`
+
+	// Organizers Active organizer attachments for the given operator network
+	Organizers []NetworkOrganizationAssignment `json:"organizers"`
+
+	// Total Number of active organizer attachments returned
+	Total int `json:"total"`
+}
+
+// NetworkOrganizersListResponseAssignmentKind Always "organizer" on this endpoint
+type NetworkOrganizersListResponseAssignmentKind string
+
+// NetworkUserAssignResponse defines model for NetworkUserAssignResponse.
+type NetworkUserAssignResponse struct {
+	// NetworkUser A `network_users` row binding a user to an operator network with a
+	// role (default "network_operator") and a lifecycle status.
+	NetworkUser NetworkUserAssignment `json:"network_user"`
+
+	// Reactivated Present and true when the call re-activated a previously revoked
+	// assignment (HTTP 200). Absent on a first-time insert (HTTP 201).
+	Reactivated *bool `json:"reactivated,omitempty"`
+}
+
+// NetworkUserAssignment A `network_users` row binding a user to an operator network with a
+// role (default "network_operator") and a lifecycle status.
+type NetworkUserAssignment struct {
+	// CreatedAt When the assignment was first created (RFC 3339)
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id UUIDv7 of the assignment row
+	Id openapi_types.UUID `json:"id"`
+
+	// NetworkId Parent operator_network UUID
+	NetworkId openapi_types.UUID `json:"network_id"`
+
+	// Role Role granted by the assignment (currently always "network_operator")
+	Role string `json:"role"`
+
+	// Status Lifecycle status of the assignment
+	Status NetworkUserAssignmentStatus `json:"status"`
+
+	// UpdatedAt Last-modified timestamp (RFC 3339)
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// UserId Assigned user UUID
+	UserId openapi_types.UUID `json:"user_id"`
+}
+
+// NetworkUserAssignmentStatus Lifecycle status of the assignment
+type NetworkUserAssignmentStatus string
+
+// NetworkUserListResponse defines model for NetworkUserListResponse.
+type NetworkUserListResponse struct {
+	// NetworkId Parent operator network UUID
+	NetworkId openapi_types.UUID `json:"network_id"`
+
+	// NetworkUsers Active network-user assignments for the given operator network
+	NetworkUsers []NetworkUserAssignment `json:"network_users"`
+
+	// Total Number of active network user assignments returned
+	Total int `json:"total"`
+}
+
+// NetworkUserRemoveResponse defines model for NetworkUserRemoveResponse.
+type NetworkUserRemoveResponse struct {
+	// NetworkUser A `network_users` row binding a user to an operator network with a
+	// role (default "network_operator") and a lifecycle status.
+	NetworkUser NetworkUserAssignment `json:"network_user"`
+
+	// Removed Always true on success
+	Removed bool `json:"removed"`
+}
+
+// OperatorNetwork An operator_network row (migration 0043_operator_networks.sql).
+// Represents a platform-level grouping that overlays organizations: a
+// `network_operator` user is assigned to one or more networks, and
+// each network is in turn attached to organizations as either an
+// `organizer` or an `agent` via network_organizations.
+type OperatorNetwork struct {
+	// ArchivedAt RFC 3339 archival timestamp; emitted as JSON `null` while the
+	// operator network is still active. The OAS 3.1 type-array
+	// idiom (`type: [string, "null"]`) is not yet supported by
+	// oapi-codegen v2.4.1 (see CLAUDE.md), so nullability is
+	// described in prose here and surfaced as `*time.Time` in the
+	// sqlc layer / `*string` in the HTTP DTO (networks.go:61).
+	ArchivedAt time.Time `json:"archived_at"`
+
+	// CreatedAt Creation timestamp (RFC 3339)
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id UUIDv7 of the operator network
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Human-readable operator network name
+	Name string `json:"name"`
+
+	// Slug URL-safe slug, matches the CHECK constraint
+	// `^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$` enforced by migration
+	// 0043_operator_networks.sql.
+	Slug string `json:"slug"`
+
+	// Status Lifecycle status (active / archived)
+	Status OperatorNetworkStatus `json:"status"`
+
+	// UpdatedAt Last-modified timestamp (RFC 3339)
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// OperatorNetworkStatus Lifecycle status (active / archived)
+type OperatorNetworkStatus string
+
+// OperatorNetworkArchiveResponse defines model for OperatorNetworkArchiveResponse.
+type OperatorNetworkArchiveResponse struct {
+	// Archived Always true on success; included so callers can branch without inspecting `status`
+	Archived bool `json:"archived"`
+
+	// OperatorNetwork An operator_network row (migration 0043_operator_networks.sql).
+	// Represents a platform-level grouping that overlays organizations: a
+	// `network_operator` user is assigned to one or more networks, and
+	// each network is in turn attached to organizations as either an
+	// `organizer` or an `agent` via network_organizations.
+	OperatorNetwork OperatorNetwork `json:"operator_network"`
+}
+
+// OperatorNetworkEnvelope defines model for OperatorNetworkEnvelope.
+type OperatorNetworkEnvelope struct {
+	// OperatorNetwork An operator_network row (migration 0043_operator_networks.sql).
+	// Represents a platform-level grouping that overlays organizations: a
+	// `network_operator` user is assigned to one or more networks, and
+	// each network is in turn attached to organizations as either an
+	// `organizer` or an `agent` via network_organizations.
+	OperatorNetwork OperatorNetwork `json:"operator_network"`
+}
+
+// OperatorNetworkListResponse defines model for OperatorNetworkListResponse.
+type OperatorNetworkListResponse struct {
+	// OperatorNetworks Array of non-archived operator networks, ordered by `created_at` ascending
+	OperatorNetworks []OperatorNetwork `json:"operator_networks"`
+
+	// Total Number of operator networks returned (size of the array)
+	Total int `json:"total"`
+}
+
 // OrganizationItem A single active organization (primary tenant boundary).
 type OrganizationItem struct {
 	// Country ISO 3166-1 alpha-2 country code or empty string
@@ -604,6 +964,17 @@ type ServerInfoResponse struct {
 	WelcomeMessage string `json:"welcome_message"`
 }
 
+// UpdateOperatorNetworkRequest At least one of `name` or `slug` must be supplied. Empty strings are
+// treated as "do not change". Slug is validated against the same regex
+// as on create.
+type UpdateOperatorNetworkRequest struct {
+	// Name New human-readable network name (omit or empty to leave unchanged)
+	Name *string `json:"name,omitempty"`
+
+	// Slug New URL-safe slug (omit or empty to leave unchanged)
+	Slug *string `json:"slug,omitempty"`
+}
+
 // UpdateOrganizationRequest Request body for PATCH /v1/organizations/{id}.
 // All fields are optional — omitted or empty-string fields leave the
 // existing value unchanged.
@@ -668,6 +1039,15 @@ type PatchV1AdminGeoCountriesIso2JSONRequestBody = GeoUpdateCountryRequest
 // PostV1AdminImpersonateJSONRequestBody defines body for PostV1AdminImpersonate for application/json ContentType.
 type PostV1AdminImpersonateJSONRequestBody = ImpersonateRequest
 
+// AttachNetworkAgentJSONRequestBody defines body for AttachNetworkAgent for application/json ContentType.
+type AttachNetworkAgentJSONRequestBody = AttachNetworkOrganizationRequest
+
+// AttachNetworkOrganizerJSONRequestBody defines body for AttachNetworkOrganizer for application/json ContentType.
+type AttachNetworkOrganizerJSONRequestBody = AttachNetworkOrganizationRequest
+
+// AssignNetworkUserJSONRequestBody defines body for AssignNetworkUser for application/json ContentType.
+type AssignNetworkUserJSONRequestBody = AssignNetworkUserRequest
+
 // PostV1AuthLoginJSONRequestBody defines body for PostV1AuthLogin for application/json ContentType.
 type PostV1AuthLoginJSONRequestBody = AuthLoginRequest
 
@@ -694,6 +1074,12 @@ type PostV1DevTokenJSONRequestBody = DevTokenRequest
 
 // PostV1EchoJSONRequestBody defines body for PostV1Echo for application/json ContentType.
 type PostV1EchoJSONRequestBody = EchoRequest
+
+// CreateOperatorNetworkJSONRequestBody defines body for CreateOperatorNetwork for application/json ContentType.
+type CreateOperatorNetworkJSONRequestBody = CreateOperatorNetworkRequest
+
+// UpdateOperatorNetworkJSONRequestBody defines body for UpdateOperatorNetwork for application/json ContentType.
+type UpdateOperatorNetworkJSONRequestBody = UpdateOperatorNetworkRequest
 
 // PostV1OrganizationsJSONRequestBody defines body for PostV1Organizations for application/json ContentType.
 type PostV1OrganizationsJSONRequestBody = CreateOrganizationRequest

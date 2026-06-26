@@ -14415,3 +14415,101 @@ Verification (docker golang:1.24-alpine):
   go test  -short -count=1 ./.../httpserver/...            PASS (8.8s, no regressions)
 
 Marked #215 passing.
+
+================================================================================
+Session 2026-06-27 -- Feature #212 (Update OpenAPI for operator network endpoints and schemas)
+================================================================================
+Reconciled the operator-network OpenAPI surface added piecemeal across
+features #208/#209/#210/#211. Path entries, component schemas, tags and
+security stanzas were already authored; this feature pinned them
+against drift, fixed schema-property documentation gaps, and got the
+spec parsing cleanly through both go test and oapi-codegen v2.4.1.
+
+Changes:
+
+  apps/backend/openapi/openapi.yaml
+    - Fixed two YAML parse errors: lines beginning with the reserved
+      scalar prefix backtick (description: `id` path parameter is not a
+      valid UUID) are now double-quoted so go-yaml/js-yaml/oapi-codegen
+      all accept them.
+    - Replaced archived_at "nullable: true" (OAS 3.0 keyword banned by
+      TestOpenAPI_NoNullableKeyword) with a documented
+      "type: string + format: date-time". Prose explicitly notes
+      oapi-codegen v2.4.1 does not yet support the OAS 3.1 type-array
+      idiom; runtime nullability lives at networks.go:61 (*string DTO
+      field). Keeps linter test green AND keeps Go generation passing
+      with only the known 3.1-not-supported warning per CLAUDE.md.
+    - Added the 10 missing schema-property descriptions that
+      TestOpenAPIDocs_SchemaPropertiesDescription was flagging on
+      *Envelope / *Response wrappers under
+      OperatorNetwork* / NetworkUser* / NetworkOrganization* /
+      NetworkAgents* / NetworkOrganizers*.
+
+  apps/backend/internal/platform/httpserver/openapi_drift_test.go
+    - buildDriftTestServer now wires NetworkQueries (gen.New(nil)) so
+      mountOperatorNetworkRoutes mounts all 14 operator-network routes
+      in the test router. Without this wiring,
+      TestOpenAPIDriftCheck_CodeCoversAllSpecRoutes was failing with the
+      documented spec routes flagged as "missing from code". Same
+      pattern feature #211 used to wire MeQueries.
+
+  apps/backend/internal/platform/httpserver/openapi_networks_212_test.go (NEW)
+    - Nine focused content-guard tests pinning #212's acceptance:
+        Step 1 PathsPresent: 10 path mapping keys
+                  /v1/operator-networks(/{id}|/archive),
+                  /v1/admin/networks/{id}/{users,organizers,agents}
+                  (+ {userId}/{orgId} variants), /v1/me
+        Step 1 OperationIDsPresent: 15 operationIds
+                  list/create/get/update/archiveOperatorNetwork,
+                  list/assign/removeNetworkUser,
+                  list/attach/detachNetworkOrganizer,
+                  list/attach/detachNetworkAgent, getV1Me
+        Step 2 SchemasPresent: 18 component schemas
+        Step 2 MeResponseExtended: assigned_networks + available_scopes
+                  present inside the MeResponse schema block (the
+                  feature #211 backwards-compatible extension)
+        Step 3 NetworksTagRegistered: top-level "- name: networks" tag
+        Step 3 AdminRoutesUseBearerAuth: every operator-network op has
+                  "- bearerAuth: []" and "tags: [v1, networks]"
+        Step 3 PermissionDocumented: all seven
+                  network.{read,create,update,archive,manage_users,
+                  manage_organizers,manage_agents} permissions appear
+                  in the spec (under description blocks for each route
+                  group)
+        Step 4 structural validity covered by existing
+                  openapi_valid_test.go + openapi_drift_test.go suite
+                  which both pass.
+
+  apps/backend/internal/adapters/http/openapi/types_gen.go (REGENERATED)
+    - Re-ran oapi-codegen v2.4.1 against the cleaned spec; types_gen.go
+      grew from 65 -> 98 generated types and now exposes 28 OperatorNet-
+      work* / NetworkUser* / NetworkOrganization* / MeResponse structs
+      so handler code that wants to import them has access. Exit code 0
+      with the pre-existing OAS 3.1 not-fully-supported warning.
+
+  scripts/validate-openapi.mjs (NEW)
+    - Lightweight node validator (js-yaml) used during this session to
+      confirm the spec parses cleanly and that all expected paths +
+      schemas are present. Kept in-tree so future spec edits can run a
+      cheap smoke-check without booting docker.
+
+Verification (docker golang:1.24-alpine):
+  go build ./apps/backend/...                                  OK
+  go vet   ./apps/backend/...                                  OK
+  go test  -run "OpenAPI212|TestOpenAPIDriftCheck" -count=1
+            ./.../httpserver/...                                9/9 PASS
+  go test  -short -count=1 ./.../httpserver/...                ALL PASS
+  go test  -short -count=1 ./...                                ALL PASS
+            except two pre-existing failures already documented in
+            previous sessions:
+              - TestHttpserverFileSize175: networks.go is 407 LOC,
+                7 lines over the 400-line budget. Owned by #208; not
+                introduced by this feature (verified by re-running the
+                test with my changes stashed -- still failed).
+              - TestNoUnaudittedPanic: networkscope.go:184 panic from
+                #207 (same line documented in #211's session notes).
+  oapi-codegen v2.4.1 -> apps/backend/internal/adapters/http/openapi/
+            types_gen.go                                        OK (with
+            the known OAS 3.1 warning matching CLAUDE.md status).
+
+Marked #212 passing.
