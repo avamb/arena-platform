@@ -15450,3 +15450,13 @@ Verification from clean shell:
 
 Commit: 6f32d8f3 docs(SAUI-15): admin web runbook and root README update
 Marked #231 passing.
+
+[2026-06-27 #232] Audit-only feature. Created
+09_autoforge/admin_ui/admin_crud_gap_inventory_232.md inventorying admin
+endpoints (orgs, memberships, venues, channels, payments, billing,
+superadmin, networks, webhook subscribers), seeded RBAC roles (admin,
+geo_admin, platform_superadmin, network_operator, scaffold_user),
+unseeded personas (org_admin, organizer, agent, viewer/support), and
+consolidated gap-list G-R1..G-R4 + G-PC1 + G-D1 + G-E1 with recommended
+downstream features. No code changes. Marked #232 passing.
+Commit: 583ee1b7 docs(autoforge): admin CRUD/RBAC gap inventory (#232)
