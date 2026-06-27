@@ -14836,3 +14836,89 @@ Verification:
   npm run check-ts                            OK
 
 Acceptance criteria all satisfied. Marked #219 passing.
+
+================================================================================
+Session 2026-06-27 -- Feature #220 (SAUI-04 SuperAdmin reason context)
+================================================================================
+Implemented the X-Admin-Reason audit-trail UX for backend superadmin
+endpoints /v1/admin/{organizations,orders,tickets,refunds,impersonate},
+all of which return 400 with code superadmin.missing_reason when the
+header is absent (see superadmin.go requireAdminReason).
+
+New files:
+  apps/admin-web/src/lib/api/reason.ts (~200 LOC)
+    requiresAdminReason(path) prefix predicate (excludes /v1/admin/geo).
+    Module-level active-reason store backed by sessionStorage (drops on
+    tab close so the next session re-prompts). Pub-sub for shell badge
+    updates. setReasonResolver / resolveReasonFor seam lets the API
+    client get a reason without importing React; output trimmed and
+    empty submissions rejected. Test-only reset escape hatch.
+
+  apps/admin-web/src/lib/auth/ReasonContext.tsx (~180 LOC)
+    React provider mounted under AuthProvider/ScopeProvider. Registers
+    a resolver that short-circuits to the cached reason; otherwise it
+    enqueues a pending prompt and resolves on operator submit. Cancel
+    rejects so the API client surfaces a fast superadmin.reason_required
+    error rather than firing without a header. Coalesces concurrent
+    waiters into a single prompt.
+
+  apps/admin-web/src/components/ReasonPromptModal.tsx (~150 LOC)
+    role=dialog with aria labelling, autofocus, Esc-cancel, submit
+    disabled when empty. Shows the triggering path and an anti-pattern
+    hint discouraging generic phrasing.
+
+  apps/admin-web/src/components/ActiveReasonBadge.tsx (~90 LOC)
+    Topbar amber badge: shows current reason (full value in title),
+    Change opens the prompt, Clear discards the reason so the next
+    cross-tenant request re-prompts.
+
+  apps/admin-web/src/lib/api/reason.test.ts (~280 LOC, 28 tests)
+    Predicate matrix, store CRUD + pub-sub, resolver fallback paths,
+    header injection presence/absence by path, fail-fast when no
+    resolver, missing_reason retry-once-and-only-once with stored
+    reason discard, fresh prompt, and adminReason override on the
+    retry leg.
+
+Modified files:
+  apps/admin-web/src/lib/api/client.ts
+    rawFetch now optionally awaits resolveReasonFor() when the path
+    requires it, attaches X-Admin-Reason, and surfaces a synthetic
+    ApiError when the resolver rejects. authedFetch gains a second
+    retry policy: ApiError with code superadmin.missing_reason ->
+    discard active reason, resolveReasonFor() again, retry rawFetch
+    ONCE with adminReason override. Independent of the existing 401
+    refresh retry; each retry policy fires at most once.
+
+  apps/admin-web/src/main.tsx
+    Adds <ReasonProvider> between <ScopeProvider> and <RouterProvider>.
+
+  apps/admin-web/src/components/AppLayout.tsx
+    Renders <ActiveReasonBadge /> in the authenticated topbar and
+    mounts <ReasonPromptModal /> at the shell level (authed-only).
+
+Verification:
+  npm run --prefix apps/admin-web type-check                OK
+  npm run --prefix apps/admin-web test                      79/79 PASS
+  npm run --prefix apps/admin-web build                     OK
+                                                            (216 modules,
+                                                            363.48 kB JS)
+  npm run check-ts                                          OK
+
+Acceptance criteria mapped:
+  Implement reason prompt before first cross-tenant read   ReasonContext
+                                                            + modal
+  Persist reason in session/workspace context only         sessionStorage
+                                                            (one tab)
+  Display active reason in admin shell with change action  ActiveReasonBadge
+  Inject X-Admin-Reason header in cross-tenant API calls   rawFetch + path
+                                                            predicate
+  Block submission of empty reason                         modal markup +
+                                                            setActiveReason
+                                                            collapses ""
+  Handle superadmin.missing_reason: re-prompt, retry once  authedFetch retry
+  API client tests assert header presence                  reason.test.ts
+  Browser smoke (deferred under YOLO mode)                 -
+
+Marked #220 passing. Commit b4deeb5.
+
+Stats: 219 / 231 passing (94.8%).
