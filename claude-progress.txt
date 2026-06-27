@@ -15984,3 +15984,34 @@ payment provider configs CRUD route.
   type-check errors from a concurrent agent (membership work, out of
   scope for #245). Not touched.
   Marked #245 passing.
+
+[2026-06-27 #241] Real Users tab CRUD inside organization drawer.
+  apps/admin-web/src/routes/organizations.tsx UsersTab pivots from a
+  read-only list to full CRUD against the admin endpoints from #234:
+    GET    /v1/admin/organizations/{org_id}/members
+    POST   /v1/admin/organizations/{org_id}/members  (user_id OR email + role)
+    PATCH  /v1/admin/organizations/{org_id}/members/{membership_id}
+    DELETE /v1/admin/organizations/{org_id}/members/{membership_id}
+  - AddMemberDialog (user_id|email + role select) gated on
+    membership.grant; auto-prompts X-Admin-Reason via authedFetch.
+  - Inline RoleEditor per row gated on membership.grant; PATCH only
+    fires when role actually changed.
+  - Revoke button gated on membership.revoke with window.confirm guard.
+  - MEMBERSHIP_ROLES constant + MembershipRole union mirror the OpenAPI
+    enum (organizer, agent, platform_operator,
+    external_ticketing_operator, platform_superadmin, network_operator)
+    so the dropdown stays in sync with memberships_role_check.
+  - mapAddMemberServerError maps admin_membership.* error codes onto
+    user/role/form surfaces with details.field forwards compat.
+  - mapMembershipMutationError collapses PATCH/DELETE envelopes onto
+    the row-level toast surface.
+  - React Query invalidation refreshes the table after each mutation.
+  Tests: organizations.test.ts +18 cases covering MEMBERSHIP_ROLES
+  ordering, isMembershipRole, formatMembershipRole,
+  validateMemberUserInput, buildAddMemberBody, mapAddMemberServerError,
+  mapMembershipMutationError.
+  Verification:
+    npm --prefix apps/admin-web run type-check     OK
+    npm --prefix apps/admin-web test -- --run      OK (365/365)
+    npm --prefix apps/admin-web run build          OK
+  Marked #241 passing.

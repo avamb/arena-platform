@@ -804,10 +804,186 @@ interface MembershipResponse {
 interface MembershipsEnvelope {
   readonly memberships: readonly MembershipResponse[];
 }
+interface MembershipEnvelope {
+  readonly membership: MembershipResponse;
+}
+
+/**
+ * Canonical list of membership roles surfaced by the admin Users tab
+ * (feature #241). Mirrors the `enum` published by the backend OpenAPI
+ * contract for AdminAddMemberRequest / AdminChangeMemberRoleRequest
+ * (apps/backend/openapi/openapi.yaml) which is itself a mirror of the
+ * memberships_role_check CHECK constraint in migration 0011_memberships.sql
+ * as extended by 0042_network_operator_role.sql.
+ *
+ * The list is intentionally hard-coded rather than fetched at runtime so
+ * the dropdown renders synchronously and the type checker can guarantee
+ * exhaustive switch coverage on the union. If the backend adds a new
+ * role, this list and the OpenAPI enum must be updated together.
+ */
+export const MEMBERSHIP_ROLES = [
+  "organizer",
+  "agent",
+  "platform_operator",
+  "external_ticketing_operator",
+  "platform_superadmin",
+  "network_operator",
+] as const;
+
+export type MembershipRole = (typeof MEMBERSHIP_ROLES)[number];
+
+export function isMembershipRole(value: unknown): value is MembershipRole {
+  return (
+    typeof value === "string" &&
+    (MEMBERSHIP_ROLES as readonly string[]).includes(value)
+  );
+}
+
+const MEMBERSHIP_ROLE_LABELS: Record<MembershipRole, string> = {
+  organizer: "Organizer",
+  agent: "Agent",
+  platform_operator: "Platform operator",
+  external_ticketing_operator: "External ticketing operator",
+  platform_superadmin: "Platform superadmin",
+  network_operator: "Network operator",
+};
+
+export function formatMembershipRole(role: string): string {
+  return isMembershipRole(role) ? MEMBERSHIP_ROLE_LABELS[role] : role;
+}
+
+const UUID_RE =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Validate the "user" field of the add-member form. The operator may
+ * type either a UUIDv7 user_id OR an email address; the backend resolves
+ * email -> user_id via GetUserByEmail. Whitespace is ignored.
+ */
+export function validateMemberUserInput(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (trimmed === "") {
+    return "Enter a user_id (UUID) or email address";
+  }
+  if (UUID_RE.test(trimmed)) {
+    return null;
+  }
+  if (EMAIL_RE.test(trimmed)) {
+    return null;
+  }
+  return "Must be a UUID or a valid email address";
+}
+
+/**
+ * Decide whether the operator typed a UUID or an email. Returns the
+ * canonical request body shape for
+ * POST /v1/admin/organizations/{org_id}/members.
+ */
+export function buildAddMemberBody(
+  userInput: string,
+  role: MembershipRole,
+):
+  | { user_id: string; role: MembershipRole }
+  | { email: string; role: MembershipRole } {
+  const trimmed = userInput.trim();
+  if (UUID_RE.test(trimmed)) {
+    return { user_id: trimmed, role };
+  }
+  return { email: trimmed.toLowerCase(), role };
+}
+
+export interface AddMemberFieldErrors {
+  user?: string;
+  role?: string;
+  form?: string;
+}
+
+/**
+ * Map an error envelope from admin_memberships.go onto field-level
+ * errors. The backend emits `details.field` for invalid_role /
+ * user_not_found / invalid_user_id; missing_user / ambiguous_user use
+ * `details.fields`. Duplicate / reference errors land on the form
+ * surface so the operator sees a single coherent message.
+ */
+export function mapAddMemberServerError(err: ApiError): AddMemberFieldErrors {
+  const details = err.details ?? {};
+  const field = typeof details.field === "string" ? details.field : undefined;
+  switch (err.code) {
+    case "admin_membership.invalid_role":
+      return { role: err.message };
+    case "admin_membership.user_not_found":
+      return { user: err.message };
+    case "admin_membership.invalid_user_id":
+      return { user: err.message };
+    case "admin_membership.missing_user":
+    case "admin_membership.ambiguous_user":
+      return { user: err.message };
+    case "admin_membership.duplicate":
+      return { form: err.message };
+    case "admin_membership.invalid_reference":
+      return { user: err.message };
+    case "admin_membership.empty_body":
+    case "admin_membership.invalid_body":
+    case "admin_membership.invalid_json":
+      return { form: err.message };
+    case "permissions.denied":
+      return {
+        form: "Your account is missing membership.grant. Ask a platform administrator.",
+      };
+    case "superadmin.missing_reason":
+    case "superadmin.reason_required":
+      return {
+        form: "An audit reason (X-Admin-Reason) is required. Submit a reason and retry.",
+      };
+    default:
+      if (field === "role") {
+        return { role: err.message };
+      }
+      if (field === "user_id" || field === "email" || field === "user") {
+        return { user: err.message };
+      }
+      return { form: `${err.message} (${err.code})` };
+  }
+}
+
+/**
+ * Map errors from PATCH (change role) / DELETE (deactivate) onto a
+ * single string. These flows are inline (no dedicated dialog), so we
+ * collapse the envelope into the row-level toast surface.
+ */
+export function mapMembershipMutationError(err: ApiError): string {
+  switch (err.code) {
+    case "admin_membership.invalid_role":
+      return err.message;
+    case "admin_membership.duplicate":
+      return "User already holds the requested role.";
+    case "admin_membership.not_found":
+      return "Membership not found or already revoked.";
+    case "permissions.denied":
+      return "Permission denied (membership.grant / membership.revoke).";
+    case "superadmin.missing_reason":
+    case "superadmin.reason_required":
+      return "An audit reason (X-Admin-Reason) is required. Submit a reason and retry.";
+    default:
+      return `${err.message} (${err.code})`;
+  }
+}
 
 function UsersTab({ org }: { org: AdminOrganization }) {
   const { permissions } = useAuth();
-  const canRead = permissions.has("membership.read") || permissions.has("superadmin.read");
+  const queryClient = useQueryClient();
+  const canRead =
+    permissions.has("membership.read") || permissions.has("superadmin.read");
+  const canGrant =
+    permissions.has("membership.grant") || permissions.has("superadmin.read");
+  const canRevoke =
+    permissions.has("membership.revoke") || permissions.has("superadmin.read");
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
+
   const query = useQuery<MembershipsEnvelope, ApiError>({
     queryKey: ["admin", "organizations", org.id, "members"],
     queryFn: () =>
@@ -823,9 +999,67 @@ function UsersTab({ org }: { org: AdminOrganization }) {
     refetchOnWindowFocus: false,
   });
 
+  function invalidate() {
+    queryClient.invalidateQueries({
+      queryKey: ["admin", "organizations", org.id, "members"],
+    });
+  }
+
+  const changeRole = useMutation<
+    MembershipEnvelope,
+    ApiError,
+    { id: string; role: MembershipRole }
+  >({
+    mutationFn: ({ id, role }) =>
+      authedFetch<MembershipEnvelope>({
+        method: "PATCH",
+        path: `/v1/admin/organizations/${org.id}/members/${id}`,
+        body: { role },
+      }),
+    onSuccess: () => {
+      setEditingId(null);
+      setRowError(null);
+      invalidate();
+    },
+    onError: (err, vars) => {
+      setRowError({ id: vars.id, message: mapMembershipMutationError(err) });
+    },
+  });
+
+  const deactivate = useMutation<unknown, ApiError, { id: string }>({
+    mutationFn: ({ id }) =>
+      authedFetch<unknown>({
+        method: "DELETE",
+        path: `/v1/admin/organizations/${org.id}/members/${id}`,
+      }),
+    onSuccess: () => {
+      setRowError(null);
+      invalidate();
+    },
+    onError: (err, vars) => {
+      setRowError({ id: vars.id, message: mapMembershipMutationError(err) });
+    },
+  });
+
   return (
     <>
-      <h3 style={drawerSectionTitleStyle}>Users (memberships)</h3>
+      <div style={tabHeaderStyle}>
+        <h3 style={drawerSectionTitleStyle}>Users (memberships)</h3>
+        {canGrant ? (
+          <button
+            type="button"
+            style={smallPrimaryButtonStyle}
+            onClick={() => setAddOpen(true)}
+            data-testid="orgs-drawer-users-add-open"
+          >
+            Add member
+          </button>
+        ) : (
+          <span style={mutedHintStyle} title="Requires membership.grant">
+            Add requires membership.grant
+          </span>
+        )}
+      </div>
       <p style={drawerHelpStyle}>
         <code>GET /v1/admin/organizations/{org.id}/members</code>
       </p>
@@ -855,22 +1089,316 @@ function UsersTab({ org }: { org: AdminOrganization }) {
                 <th scope="col" style={tabThStyle}>Role</th>
                 <th scope="col" style={tabThStyle}>Status</th>
                 <th scope="col" style={tabThStyle}>Joined</th>
+                <th scope="col" style={tabThStyle} aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
-              {query.data.memberships.map((m) => (
-                <tr key={m.id}>
-                  <td style={tabTdMonoStyle}>{m.user_id}</td>
-                  <td style={tabTdStyle}>{m.role}</td>
-                  <td style={tabTdStyle}>{m.status}</td>
-                  <td style={tabTdStyle}>{formatDateTime(m.joined_at)}</td>
-                </tr>
-              ))}
+              {query.data.memberships.map((m) => {
+                const isEditing = editingId === m.id;
+                const rowErr = rowError?.id === m.id ? rowError.message : null;
+                return (
+                  <tr key={m.id} data-testid={`orgs-drawer-users-row-${m.id}`}>
+                    <td style={tabTdMonoStyle}>{m.user_id}</td>
+                    <td style={tabTdStyle}>
+                      {isEditing && canGrant ? (
+                        <RoleEditor
+                          initial={m.role}
+                          disabled={changeRole.isPending}
+                          onSave={(role) => changeRole.mutate({ id: m.id, role })}
+                          onCancel={() => {
+                            setEditingId(null);
+                            setRowError(null);
+                          }}
+                        />
+                      ) : (
+                        <span data-testid={`orgs-drawer-users-role-${m.id}`}>
+                          {formatMembershipRole(m.role)}
+                        </span>
+                      )}
+                      {rowErr !== null ? (
+                        <div
+                          style={fieldErrorStyle}
+                          role="alert"
+                          data-testid={`orgs-drawer-users-row-error-${m.id}`}
+                        >
+                          {rowErr}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td style={tabTdStyle}>{m.status}</td>
+                    <td style={tabTdStyle}>{formatDateTime(m.joined_at)}</td>
+                    <td style={tabTdStyle}>
+                      <div style={rowActionsStyle}>
+                        {canGrant && !isEditing ? (
+                          <button
+                            type="button"
+                            style={tabRowButtonStyle}
+                            onClick={() => {
+                              setEditingId(m.id);
+                              setRowError(null);
+                            }}
+                            data-testid={`orgs-drawer-users-edit-${m.id}`}
+                            disabled={
+                              changeRole.isPending || deactivate.isPending
+                            }
+                          >
+                            Change role
+                          </button>
+                        ) : null}
+                        {canRevoke && m.status === "active" ? (
+                          <button
+                            type="button"
+                            style={tabRowDangerStyle}
+                            onClick={() => {
+                              if (
+                                typeof window !== "undefined" &&
+                                window.confirm(
+                                  `Revoke ${formatMembershipRole(m.role)} membership for user ${m.user_id}?`,
+                                )
+                              ) {
+                                deactivate.mutate({ id: m.id });
+                              }
+                            }}
+                            data-testid={`orgs-drawer-users-revoke-${m.id}`}
+                            disabled={deactivate.isPending}
+                          >
+                            {deactivate.isPending &&
+                            deactivate.variables?.id === m.id
+                              ? "Revoking…"
+                              : "Revoke"}
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
+
+      {addOpen ? (
+        <AddMemberDialog
+          orgId={org.id}
+          onClose={() => setAddOpen(false)}
+          onCreated={() => {
+            invalidate();
+            setAddOpen(false);
+          }}
+        />
+      ) : null}
     </>
+  );
+}
+
+function RoleEditor({
+  initial,
+  disabled,
+  onSave,
+  onCancel,
+}: {
+  initial: string;
+  disabled: boolean;
+  onSave: (role: MembershipRole) => void;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = useState<MembershipRole>(
+    isMembershipRole(initial) ? initial : "organizer",
+  );
+  const dirty = value !== initial;
+  return (
+    <div style={roleEditorStyle}>
+      <select
+        value={value}
+        onChange={(e) => setValue(e.target.value as MembershipRole)}
+        disabled={disabled}
+        style={inputStyle}
+        data-testid="orgs-drawer-users-role-select"
+        aria-label="Membership role"
+      >
+        {MEMBERSHIP_ROLES.map((r) => (
+          <option key={r} value={r}>
+            {MEMBERSHIP_ROLE_LABELS[r]}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        style={smallPrimaryButtonStyle}
+        onClick={() => onSave(value)}
+        disabled={disabled || !dirty}
+        data-testid="orgs-drawer-users-role-save"
+      >
+        {disabled ? "Saving…" : "Save"}
+      </button>
+      <button
+        type="button"
+        style={tabRowButtonStyle}
+        onClick={onCancel}
+        disabled={disabled}
+        data-testid="orgs-drawer-users-role-cancel"
+      >
+        Cancel
+      </button>
+    </div>
+  );
+}
+
+function AddMemberDialog({
+  orgId,
+  onClose,
+  onCreated,
+}: {
+  orgId: string;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [userInput, setUserInput] = useState("");
+  const [role, setRole] = useState<MembershipRole>("organizer");
+  const [serverErrors, setServerErrors] = useState<AddMemberFieldErrors>({});
+
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  useEscapeClose(true, onClose);
+  useFocusOnMount<HTMLButtonElement>(true, closeRef);
+  useFocusRestore(true);
+
+  const userErr = userInput.length > 0 ? validateMemberUserInput(userInput) : null;
+  const localValid = validateMemberUserInput(userInput) === null;
+
+  const mutation = useMutation<MembershipEnvelope, ApiError, void>({
+    mutationFn: () =>
+      authedFetch<MembershipEnvelope>({
+        method: "POST",
+        path: `/v1/admin/organizations/${orgId}/members`,
+        body: buildAddMemberBody(userInput, role),
+      }),
+    onSuccess: () => {
+      onCreated();
+    },
+    onError: (err) => {
+      setServerErrors(mapAddMemberServerError(err));
+    },
+  });
+
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setServerErrors({});
+    if (!localValid) {
+      return;
+    }
+    mutation.mutate();
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="orgs-add-member-title"
+      style={dialogBackdropStyle}
+      data-testid="orgs-drawer-users-add-dialog"
+    >
+      <div style={dialogStyle}>
+        <header style={dialogHeaderStyle}>
+          <h2 id="orgs-add-member-title" style={dialogTitleStyle}>
+            Add member
+          </h2>
+          <button
+            type="button"
+            ref={closeRef}
+            onClick={onClose}
+            style={dialogCloseStyle}
+            aria-label="Close"
+            data-testid="orgs-drawer-users-add-close"
+          >
+            ×
+          </button>
+        </header>
+        <form onSubmit={onSubmit} style={formStyle} noValidate>
+          <FieldRow
+            label="User (user_id or email)"
+            htmlFor="orgs-add-member-user"
+            error={serverErrors.user ?? null}
+            localError={userErr}
+            hint="Enter a UUIDv7 user_id, or an email address — backend resolves email → user via GetUserByEmail."
+          >
+            <input
+              id="orgs-add-member-user"
+              type="text"
+              value={userInput}
+              onChange={(e) => {
+                setUserInput(e.target.value);
+                if (serverErrors.user !== undefined) {
+                  setServerErrors({ ...serverErrors, user: undefined });
+                }
+              }}
+              style={inputMonoStyle}
+              required
+              autoFocus
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              data-testid="orgs-drawer-users-add-user"
+            />
+          </FieldRow>
+          <FieldRow
+            label="Role"
+            htmlFor="orgs-add-member-role"
+            error={serverErrors.role ?? null}
+            localError={null}
+            hint="Roles are enforced by the memberships_role_check CHECK constraint."
+          >
+            <select
+              id="orgs-add-member-role"
+              value={role}
+              onChange={(e) => {
+                setRole(e.target.value as MembershipRole);
+                if (serverErrors.role !== undefined) {
+                  setServerErrors({ ...serverErrors, role: undefined });
+                }
+              }}
+              style={inputStyle}
+              data-testid="orgs-drawer-users-add-role"
+            >
+              {MEMBERSHIP_ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {MEMBERSHIP_ROLE_LABELS[r]}
+                </option>
+              ))}
+            </select>
+          </FieldRow>
+
+          {serverErrors.form !== undefined ? (
+            <div
+              style={formErrorStyle}
+              role="alert"
+              data-testid="orgs-drawer-users-add-error"
+            >
+              {serverErrors.form}
+            </div>
+          ) : null}
+
+          <div style={formActionsStyle}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={secondaryButtonStyle}
+              data-testid="orgs-drawer-users-add-cancel"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              style={primaryButtonStyle}
+              disabled={!localValid || mutation.isPending}
+              data-testid="orgs-drawer-users-add-submit"
+            >
+              {mutation.isPending ? "Adding…" : "Add member"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 
@@ -2648,6 +3176,50 @@ const tabTdMonoStyle: CSSProperties = {
   ...tabTdStyle,
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
   fontSize: 11,
+};
+
+// Users tab styles (feature #241).
+const tabHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
+};
+const smallPrimaryButtonStyle: CSSProperties = {
+  fontSize: 11,
+  padding: "4px 10px",
+  background: "#0369a1",
+  border: "1px solid #0369a1",
+  borderRadius: 4,
+  cursor: "pointer",
+  color: "#ffffff",
+  fontWeight: 600,
+};
+const tabRowButtonStyle: CSSProperties = {
+  fontSize: 11,
+  padding: "3px 8px",
+  background: "#ffffff",
+  border: "1px solid #cbd5e1",
+  borderRadius: 4,
+  cursor: "pointer",
+  color: "#0f172a",
+};
+const tabRowDangerStyle: CSSProperties = {
+  ...tabRowButtonStyle,
+  borderColor: "#fca5a5",
+  color: "#7f1d1d",
+  background: "#fef2f2",
+};
+const rowActionsStyle: CSSProperties = {
+  display: "flex",
+  gap: 6,
+  flexWrap: "wrap",
+};
+const roleEditorStyle: CSSProperties = {
+  display: "flex",
+  gap: 6,
+  alignItems: "center",
+  flexWrap: "wrap",
 };
 
 // Create-organization dialog styles (feature #238).

@@ -14,20 +14,28 @@
 import { describe, it, expect } from "vitest";
 import {
   DRAWER_TAB_KEYS,
+  MEMBERSHIP_ROLES,
+  buildAddMemberBody,
   filterRows,
   formatDurationSeconds,
+  formatMembershipRole,
+  isMembershipRole,
+  mapAddMemberServerError,
   mapArchiveOrgServerError,
   mapCreateOrgServerError,
+  mapMembershipMutationError,
   mapUpdateOrgServerError,
   parseDrawerHash,
   parseDrawerTab,
   serializeDrawerHash,
+  validateMemberUserInput,
   validateOrgCountry,
   validateOrgLocale,
   validateOrgName,
   validateOrgReservationTTL,
   validateOrgSlug,
   type AdminOrganization,
+  type MembershipRole,
 } from "./organizations";
 import { ApiError } from "@/lib/api/client";
 
@@ -401,6 +409,154 @@ describe("Drawer tab model (feature #240)", () => {
         const hash = serializeDrawerHash(id, tab);
         expect(parseDrawerHash(hash)).toEqual({ org: id, tab });
       }
+    });
+  });
+});
+
+describe("Users tab membership helpers (feature #241)", () => {
+  it("MEMBERSHIP_ROLES mirrors the OpenAPI enum order", () => {
+    expect(MEMBERSHIP_ROLES).toEqual([
+      "organizer",
+      "agent",
+      "platform_operator",
+      "external_ticketing_operator",
+      "platform_superadmin",
+      "network_operator",
+    ]);
+  });
+
+  it("isMembershipRole accepts every documented role and rejects others", () => {
+    for (const role of MEMBERSHIP_ROLES) {
+      expect(isMembershipRole(role)).toBe(true);
+    }
+    expect(isMembershipRole("admin")).toBe(false);
+    expect(isMembershipRole("")).toBe(false);
+    expect(isMembershipRole(undefined)).toBe(false);
+    expect(isMembershipRole(42)).toBe(false);
+  });
+
+  it("formatMembershipRole returns the human label for known roles, passthrough otherwise", () => {
+    expect(formatMembershipRole("organizer")).toBe("Organizer");
+    expect(formatMembershipRole("platform_superadmin")).toBe("Platform superadmin");
+    expect(formatMembershipRole("network_operator")).toBe("Network operator");
+    // Forwards-compat: unknown role string renders as-is so a backend
+    // adding a new role does not blow up the table.
+    expect(formatMembershipRole("future_role")).toBe("future_role");
+  });
+
+  describe("validateMemberUserInput", () => {
+    it("rejects empty / whitespace", () => {
+      expect(validateMemberUserInput("")).not.toBeNull();
+      expect(validateMemberUserInput("   ")).not.toBeNull();
+    });
+    it("accepts a UUIDv7-shaped id", () => {
+      expect(
+        validateMemberUserInput("00000000-0000-0000-0000-000000000001"),
+      ).toBeNull();
+      expect(
+        validateMemberUserInput("01929D0E-0E47-7000-8000-000000000020"),
+      ).toBeNull();
+    });
+    it("accepts a syntactically valid email", () => {
+      expect(validateMemberUserInput("op@example.com")).toBeNull();
+      expect(validateMemberUserInput("first.last+tag@sub.example.co")).toBeNull();
+    });
+    it("rejects malformed input", () => {
+      expect(validateMemberUserInput("not-a-uuid")).not.toBeNull();
+      expect(validateMemberUserInput("op@")).not.toBeNull();
+      expect(validateMemberUserInput("@example.com")).not.toBeNull();
+    });
+  });
+
+  describe("buildAddMemberBody", () => {
+    const role: MembershipRole = "organizer";
+    it("emits user_id when the operator typed a UUID", () => {
+      expect(
+        buildAddMemberBody("00000000-0000-0000-0000-000000000001", role),
+      ).toEqual({
+        user_id: "00000000-0000-0000-0000-000000000001",
+        role: "organizer",
+      });
+    });
+    it("emits a lowercased email when the operator typed an email", () => {
+      expect(buildAddMemberBody("OP@Example.com", role)).toEqual({
+        email: "op@example.com",
+        role: "organizer",
+      });
+    });
+    it("trims surrounding whitespace", () => {
+      expect(buildAddMemberBody("  op@example.com  ", role)).toEqual({
+        email: "op@example.com",
+        role: "organizer",
+      });
+    });
+  });
+
+  describe("mapAddMemberServerError", () => {
+    function makeErr(
+      code: string,
+      message = "boom",
+      details?: Record<string, unknown>,
+    ): ApiError {
+      return new ApiError(400, { code, message, details });
+    }
+
+    it("maps invalid_role to the role field", () => {
+      const out = mapAddMemberServerError(makeErr("admin_membership.invalid_role", "bad"));
+      expect(out.role).toBe("bad");
+      expect(out.user).toBeUndefined();
+    });
+    it("maps user_not_found / invalid_user_id / missing_user / ambiguous_user to the user field", () => {
+      expect(mapAddMemberServerError(makeErr("admin_membership.user_not_found", "x")).user).toBe("x");
+      expect(mapAddMemberServerError(makeErr("admin_membership.invalid_user_id", "x")).user).toBe("x");
+      expect(mapAddMemberServerError(makeErr("admin_membership.missing_user", "x")).user).toBe("x");
+      expect(mapAddMemberServerError(makeErr("admin_membership.ambiguous_user", "x")).user).toBe("x");
+      expect(mapAddMemberServerError(makeErr("admin_membership.invalid_reference", "x")).user).toBe("x");
+    });
+    it("maps duplicate / body-shape / permissions / reason onto the form surface", () => {
+      expect(mapAddMemberServerError(makeErr("admin_membership.duplicate", "dup")).form).toBe("dup");
+      expect(mapAddMemberServerError(makeErr("admin_membership.empty_body", "x")).form).toBe("x");
+      expect(mapAddMemberServerError(makeErr("admin_membership.invalid_body", "x")).form).toBe("x");
+      expect(mapAddMemberServerError(makeErr("admin_membership.invalid_json", "x")).form).toBe("x");
+      expect(mapAddMemberServerError(makeErr("permissions.denied")).form).toMatch(/membership\.grant/);
+      expect(mapAddMemberServerError(makeErr("superadmin.missing_reason")).form).toMatch(/audit reason/i);
+      expect(mapAddMemberServerError(makeErr("superadmin.reason_required")).form).toMatch(/audit reason/i);
+    });
+    it("honours details.field for forwards compatibility", () => {
+      expect(
+        mapAddMemberServerError(makeErr("admin_membership.unknown", "nope", { field: "role" })).role,
+      ).toBe("nope");
+      expect(
+        mapAddMemberServerError(makeErr("admin_membership.unknown", "nope", { field: "email" })).user,
+      ).toBe("nope");
+      expect(
+        mapAddMemberServerError(makeErr("admin_membership.unknown", "nope", { field: "user_id" })).user,
+      ).toBe("nope");
+    });
+    it("falls back to a generic form-level message with the code suffix", () => {
+      const out = mapAddMemberServerError(makeErr("unexpected.code", "boom"));
+      expect(out.form).toBe("boom (unexpected.code)");
+    });
+  });
+
+  describe("mapMembershipMutationError", () => {
+    function makeErr(code: string, message = "boom"): ApiError {
+      return new ApiError(400, { code, message });
+    }
+    it("maps duplicate / not_found / permissions / reason to friendly messages", () => {
+      expect(mapMembershipMutationError(makeErr("admin_membership.duplicate"))).toMatch(/already holds/);
+      expect(mapMembershipMutationError(makeErr("admin_membership.not_found"))).toMatch(/not found/);
+      expect(mapMembershipMutationError(makeErr("permissions.denied"))).toMatch(/membership\.grant/);
+      expect(mapMembershipMutationError(makeErr("superadmin.missing_reason"))).toMatch(/audit reason/i);
+      expect(mapMembershipMutationError(makeErr("superadmin.reason_required"))).toMatch(/audit reason/i);
+    });
+    it("passes through invalid_role server message unchanged", () => {
+      expect(mapMembershipMutationError(makeErr("admin_membership.invalid_role", "role required"))).toBe(
+        "role required",
+      );
+    });
+    it("falls back to message (code) for unknown codes", () => {
+      expect(mapMembershipMutationError(makeErr("weird.unknown", "boom"))).toBe("boom (weird.unknown)");
     });
   });
 });
