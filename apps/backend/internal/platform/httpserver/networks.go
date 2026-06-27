@@ -24,7 +24,10 @@
 // Audit:
 //
 //	Create/update/archive write an audit_events row with action
-//	v1.operator_network.<verb> describing the change.
+//	v1.operator_network.<verb> describing the change. Per SAUI-09 the
+//	caller must supply an X-Admin-Reason header; the value is stamped
+//	into the audit_events metadata under "reason" so the immutable audit
+//	trail records why each mutation was performed.
 package httpserver
 
 import (
@@ -140,6 +143,13 @@ func (s *Server) handleCreateOperatorNetwork(w http.ResponseWriter, r *http.Requ
 		))
 		return
 	}
+	// SAUI-09: every operator-network mutation must carry an audit reason
+	// via X-Admin-Reason; the value is stamped into the audit_events
+	// metadata under "reason" alongside the existing network_id/target fields.
+	reason, ok := requireAdminReason(w, r)
+	if !ok {
+		return
+	}
 	ctx := r.Context()
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
@@ -204,7 +214,7 @@ func (s *Server) handleCreateOperatorNetwork(w http.ResponseWriter, r *http.Requ
 	}
 
 	s.writeOperatorNetworkAudit(r, "v1.operator_network.create", row.ID.String(),
-		map[string]any{"name": row.Name, "slug": row.Slug})
+		map[string]any{"name": row.Name, "slug": row.Slug, "reason": reason})
 
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"operator_network": operatorNetworkFromRow(row),
@@ -293,6 +303,11 @@ func (s *Server) handleUpdateOperatorNetwork(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
+	// SAUI-09: same audit-reason gate as create/archive.
+	reason, ok := requireAdminReason(w, r)
+	if !ok {
+		return
+	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, errorEnvelope(
@@ -356,6 +371,7 @@ func (s *Server) handleUpdateOperatorNetwork(w http.ResponseWriter, r *http.Requ
 		map[string]any{
 			"name_changed": req.Name != "",
 			"slug_changed": req.Slug != "",
+			"reason":       reason,
 		})
 
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -381,6 +397,12 @@ func (s *Server) handleArchiveOperatorNetwork(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
+	// SAUI-09: archive is a destructive operator-network mutation; require
+	// an audit reason just like create/update.
+	reason, ok := requireAdminReason(w, r)
+	if !ok {
+		return
+	}
 
 	row, err := s.networkQueries.ArchiveOperatorNetwork(r.Context(), id)
 	if err != nil {
@@ -398,7 +420,7 @@ func (s *Server) handleArchiveOperatorNetwork(w http.ResponseWriter, r *http.Req
 	}
 
 	s.writeOperatorNetworkAudit(r, "v1.operator_network.archive", row.ID.String(),
-		map[string]any{"slug": row.Slug})
+		map[string]any{"slug": row.Slug, "reason": reason})
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"operator_network": operatorNetworkFromRow(row),

@@ -138,6 +138,7 @@ func TestOperatorNetwork208_Create_InvalidJSONReturns400(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/operator-networks",
 		strings.NewReader("not-json"))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Admin-Reason", "saui-09 test")
 	rec := httptest.NewRecorder()
 	s.handleCreateOperatorNetwork(rec, req)
 	if rec.Code != http.StatusBadRequest {
@@ -157,6 +158,7 @@ func TestOperatorNetwork208_Create_MissingNameReturns400(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/operator-networks",
 		strings.NewReader(`{"name":"","slug":"valid-slug"}`))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Admin-Reason", "saui-09 test")
 	rec := httptest.NewRecorder()
 	s.handleCreateOperatorNetwork(rec, req)
 	if rec.Code != http.StatusBadRequest {
@@ -176,6 +178,7 @@ func TestOperatorNetwork208_Create_MissingSlugReturns400(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/operator-networks",
 		strings.NewReader(`{"name":"Net","slug":""}`))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Admin-Reason", "saui-09 test")
 	rec := httptest.NewRecorder()
 	s.handleCreateOperatorNetwork(rec, req)
 	if rec.Code != http.StatusBadRequest {
@@ -196,6 +199,7 @@ func TestOperatorNetwork208_Create_BadSlugReturns400(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/operator-networks",
 		strings.NewReader(`{"name":"Net","slug":"Bad_Slug"}`))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Admin-Reason", "saui-09 test")
 	rec := httptest.NewRecorder()
 	s.handleCreateOperatorNetwork(rec, req)
 	// Lowercased to "bad_slug", underscore still invalid.
@@ -258,6 +262,7 @@ func TestOperatorNetwork208_Update_NoChangesReturns400(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPatch,
 		"/v1/operator-networks/x", strings.NewReader(`{"name":"","slug":""}`))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Admin-Reason", "saui-09 test")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	rec := httptest.NewRecorder()
 	s.handleUpdateOperatorNetwork(rec, req)

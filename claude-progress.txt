@@ -15088,3 +15088,79 @@ Verification:
                                                 no production stores.
 
 Marked #224 passing.
+
+================================================================================
+Session 2026-06-27 -- Feature #226 (SAUI-10 Orders/Tickets/Refunds SuperAdmin support console)
+================================================================================
+Replaced the SAUI-03 placeholder routes /orders, /tickets, /refunds
+with real read-only support consoles backed by /v1/admin/orders,
+/v1/admin/tickets, /v1/admin/refunds.
+
+New files:
+  apps/admin-web/src/lib/admin/supportConsole.ts
+    Shared filter/query/format helpers (buildSupportQuery, clampLimit,
+    clampOffset, isValidUuid, currentPage, canGoPrev, canGoNext,
+    formatMoneyMinor, formatDateTime, shortUuid,
+    readSupportFiltersFromLocation). Filter contract pinned: only
+    org_id, state/status, limit, offset are emitted; malformed
+    org_id is dropped client-side instead of producing a backend 400.
+  apps/admin-web/src/lib/admin/supportStyles.ts
+    CSS-in-JS tokens lifted from organizations.tsx so the four
+    SuperAdmin consoles share a single visual vocabulary.
+  apps/admin-web/src/components/admin/SupportErrorState.tsx
+    Shared 400-reason / 401 / 403 / generic error state.
+  apps/admin-web/src/routes/orders.tsx
+    Real /v1/admin/orders console with org_id + state filters,
+    limit/offset pagination, detail drawer with cross-tenant deep
+    links to /tickets and /refunds, and explicit backend-gap tiles
+    for tickets-by-order, refunds-by-order, payment intent, line
+    items.
+  apps/admin-web/src/routes/tickets.tsx
+    Real /v1/admin/tickets console with org_id + status filters
+    (the backend uses status not state for tickets), drawer with
+    backend-gap tiles for parent order, event, seat, scan history.
+  apps/admin-web/src/routes/refunds.tsx
+    Real /v1/admin/refunds console with org_id + state filters,
+    drawer including approve/cancel backend-gap tile so the
+    read-only contract is unambiguous.
+  apps/admin-web/src/lib/admin/supportConsole.test.ts
+    35 vitest cases covering isValidUuid, clampLimit/Offset,
+    buildSupportQuery encoding/dropping malformed org_id/status key
+    selection/limit cap, readSupportFiltersFromLocation,
+    currentPage/canGoPrev/canGoNext, formatMoneyMinor, formatDateTime,
+    shortUuid.
+  apps/admin-web/src/routes/orders.test.ts (5 cases)
+  apps/admin-web/src/routes/tickets.test.ts (6 cases)
+  apps/admin-web/src/routes/refunds.test.ts (5 cases)
+    Badge picker + status vocabulary parity tests.
+
+Modified:
+  apps/admin-web/src/routeTree.ts
+    Import Route from orders/tickets/refunds modules; drop the
+    guarded imports for those three paths.
+  apps/admin-web/src/routes/guarded.tsx
+    Drop OrdersRoute/TicketsRoute/RefundsRoute placeholder exports.
+    Add doc comment pointing to the real modules.
+
+Contract guarantees:
+  - Filter UI maps EXACTLY to backend query parameters
+    (org_id, state|status, limit, offset). Unknown params are not
+    emitted; malformed org_id is dropped before the request.
+  - Pagination is backend-aligned offset/limit; total is honestly
+    labelled as page-local row count (backend returns
+    total = len(rows)).
+  - No write actions exposed. Every drawer documents the missing
+    detail/related endpoints explicitly as backend-gap tiles.
+  - Reason injection inherits the SAUI-04 ReasonProvider:
+    requiresAdminReason(/v1/admin/orders|tickets|refunds) already
+    matched by REASON_REQUIRED_PREFIXES.
+
+Verification:
+  npm --prefix apps/admin-web run type-check  OK
+  npm --prefix apps/admin-web test            181/181 PASS (incl. 51 new)
+  npm --prefix apps/admin-web run build       OK (225 modules, 464 kB)
+  npm run check-ts                            OK
+  Mock-data grep                              clean (no globalThis /
+                                                devStore / mockData hits)
+
+Marked #226 passing.

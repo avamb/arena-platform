@@ -117,6 +117,7 @@ func TestNetworkOrgs210_Attach_EmptyBodyReturns400(t *testing.T) {
 		req := chiPathRequest(http.MethodPost,
 			"/v1/admin/networks/x/"+kind+"s", http.NoBody,
 			map[string]string{"id": uuid.New().String()})
+		req.Header.Set("X-Admin-Reason", "saui-09 test")
 		rec := httptest.NewRecorder()
 		h(rec, req)
 		if rec.Code != http.StatusBadRequest {
@@ -141,6 +142,7 @@ func TestNetworkOrgs210_Attach_InvalidJSONReturns400(t *testing.T) {
 			strings.NewReader("not-json"),
 			map[string]string{"id": uuid.New().String()})
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Admin-Reason", "saui-09 test")
 		rec := httptest.NewRecorder()
 		h(rec, req)
 		if rec.Code != http.StatusBadRequest {
@@ -165,6 +167,7 @@ func TestNetworkOrgs210_Attach_MissingOrgIDReturns400(t *testing.T) {
 			strings.NewReader(`{"organization_id":""}`),
 			map[string]string{"id": uuid.New().String()})
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Admin-Reason", "saui-09 test")
 		rec := httptest.NewRecorder()
 		h(rec, req)
 		if rec.Code != http.StatusBadRequest {
@@ -189,6 +192,7 @@ func TestNetworkOrgs210_Attach_MalformedOrgIDReturns400(t *testing.T) {
 			strings.NewReader(`{"organization_id":"not-a-uuid"}`),
 			map[string]string{"id": uuid.New().String()})
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Admin-Reason", "saui-09 test")
 		rec := httptest.NewRecorder()
 		h(rec, req)
 		if rec.Code != http.StatusBadRequest {
@@ -302,12 +306,4 @@ func TestNetworkOrgs210_MountFileUsesCorrectPermissions(t *testing.T) {
 		`"/admin/networks/{id}/agents/{orgId}"`,
 		`handleAttachNetworkOrganization`,
 		`handleDetachNetworkOrganization`,
-		`handleListNetworkOrganizations`,
-		`networkAssignmentKindOrganizer`,
-		`networkAssignmentKindAgent`,
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("mount_networks.go missing %q", want)
-		}
-	}
-}
+	

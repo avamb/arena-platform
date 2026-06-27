@@ -154,6 +154,11 @@ func (s *Server) handleAssignNetworkUser(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
+	// SAUI-09: roster mutations require an X-Admin-Reason audit string.
+	reason, ok := requireAdminReason(w, r)
+	if !ok {
+		return
+	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
@@ -219,7 +224,7 @@ func (s *Server) handleAssignNetworkUser(w http.ResponseWriter, r *http.Request)
 			}
 			s.writeNetworkUserAudit(r, "v1.network.users.reactivate",
 				networkID.String(), userID.String(),
-				map[string]any{"status": existing.Status})
+				map[string]any{"status": existing.Status, "reason": reason})
 			writeJSON(w, http.StatusOK, map[string]any{
 				"network_user": networkUserFromRow(existing),
 				"reactivated":  true,
@@ -241,7 +246,7 @@ func (s *Server) handleAssignNetworkUser(w http.ResponseWriter, r *http.Request)
 
 	s.writeNetworkUserAudit(r, "v1.network.users.assign",
 		networkID.String(), userID.String(),
-		map[string]any{"role": row.Role, "status": row.Status})
+		map[string]any{"role": row.Role, "status": row.Status, "reason": reason})
 
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"network_user": networkUserFromRow(row),
@@ -264,6 +269,11 @@ func (s *Server) handleRemoveNetworkUser(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	userID, ok := uuidPathParam(w, r, "userId")
+	if !ok {
+		return
+	}
+	// SAUI-09: roster mutations require an audit reason.
+	reason, ok := requireAdminReason(w, r)
 	if !ok {
 		return
 	}
@@ -290,7 +300,7 @@ func (s *Server) handleRemoveNetworkUser(w http.ResponseWriter, r *http.Request)
 
 	s.writeNetworkUserAudit(r, "v1.network.users.remove",
 		networkID.String(), userID.String(),
-		map[string]any{"status": row.Status})
+		map[string]any{"status": row.Status, "reason": reason})
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"network_user": networkUserFromRow(row),

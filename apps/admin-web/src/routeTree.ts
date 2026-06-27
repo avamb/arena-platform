@@ -4,12 +4,10 @@ import { Route as LoginRoute } from "@/routes/login";
 import { Route as NetworksRoute } from "@/routes/networks";
 import { Route as NetworkDetailRoute } from "@/routes/networkDetail";
 import { Route as OrganizationsRoute } from "@/routes/organizations";
-import {
-  GeoRoute,
-  OrdersRoute,
-  RefundsRoute,
-  TicketsRoute,
-} from "@/routes/guarded";
+import { Route as OrdersRoute } from "@/routes/orders";
+import { Route as TicketsRoute } from "@/routes/tickets";
+import { Route as RefundsRoute } from "@/routes/refunds";
+import { GeoRoute } from "@/routes/guarded";
 
 /**
  * Manually-assembled route tree.

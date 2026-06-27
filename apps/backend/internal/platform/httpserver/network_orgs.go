@@ -161,6 +161,12 @@ func (s *Server) handleAttachNetworkOrganization(kind string) http.HandlerFunc {
 		if !ok {
 			return
 		}
+		// SAUI-09: attaching an organization to a network is an
+		// auditable mutation; require X-Admin-Reason.
+		reason, ok := requireAdminReason(w, r)
+		if !ok {
+			return
+		}
 
 		body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 		if err != nil {
@@ -223,7 +229,7 @@ func (s *Server) handleAttachNetworkOrganization(kind string) http.HandlerFunc {
 				}
 				s.writeNetworkOrgAudit(r, "v1.network."+kind+"s.reactivate",
 					networkID.String(), orgID.String(), kind,
-					map[string]any{"status": existing.Status})
+					map[string]any{"status": existing.Status, "reason": reason})
 				writeJSON(w, http.StatusOK, map[string]any{
 					"network_organization": networkOrgFromRow(existing),
 					"reactivated":          true,
@@ -247,7 +253,7 @@ func (s *Server) handleAttachNetworkOrganization(kind string) http.HandlerFunc {
 
 		s.writeNetworkOrgAudit(r, "v1.network."+kind+"s.attach",
 			networkID.String(), orgID.String(), kind,
-			map[string]any{"status": row.Status})
+			map[string]any{"status": row.Status, "reason": reason})
 
 		writeJSON(w, http.StatusCreated, map[string]any{
 			"network_organization": networkOrgFromRow(row),
@@ -272,6 +278,11 @@ func (s *Server) handleDetachNetworkOrganization(kind string) http.HandlerFunc {
 			return
 		}
 		orgID, ok := uuidPathParam(w, r, "orgId")
+		if !ok {
+			return
+		}
+		// SAUI-09: detach is a destructive roster mutation; require reason.
+		reason, ok := requireAdminReason(w, r)
 		if !ok {
 			return
 		}
@@ -300,7 +311,7 @@ func (s *Server) handleDetachNetworkOrganization(kind string) http.HandlerFunc {
 
 		s.writeNetworkOrgAudit(r, "v1.network."+kind+"s.detach",
 			networkID.String(), orgID.String(), kind,
-			map[string]any{"status": row.Status})
+			map[string]any{"status": row.Status, "reason": reason})
 
 		writeJSON(w, http.StatusOK, map[string]any{
 			"network_organization": networkOrgFromRow(row),

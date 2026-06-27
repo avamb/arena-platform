@@ -139,6 +139,7 @@ func TestNetworkUsers209_Assign_EmptyBodyReturns400(t *testing.T) {
 	req := chiPathRequest(http.MethodPost,
 		"/v1/admin/networks/x/users", http.NoBody,
 		map[string]string{"id": uuid.New().String()})
+	req.Header.Set("X-Admin-Reason", "saui-09 test")
 	rec := httptest.NewRecorder()
 	s.handleAssignNetworkUser(rec, req)
 	if rec.Code != http.StatusBadRequest {
@@ -160,6 +161,7 @@ func TestNetworkUsers209_Assign_InvalidJSONReturns400(t *testing.T) {
 		strings.NewReader("not-json"),
 		map[string]string{"id": uuid.New().String()})
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Admin-Reason", "saui-09 test")
 	rec := httptest.NewRecorder()
 	s.handleAssignNetworkUser(rec, req)
 	if rec.Code != http.StatusBadRequest {
@@ -181,6 +183,7 @@ func TestNetworkUsers209_Assign_MissingUserIDReturns400(t *testing.T) {
 		strings.NewReader(`{"user_id":""}`),
 		map[string]string{"id": uuid.New().String()})
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Admin-Reason", "saui-09 test")
 	rec := httptest.NewRecorder()
 	s.handleAssignNetworkUser(rec, req)
 	if rec.Code != http.StatusBadRequest {
@@ -202,6 +205,7 @@ func TestNetworkUsers209_Assign_MalformedUserIDReturns400(t *testing.T) {
 		strings.NewReader(`{"user_id":"not-a-uuid"}`),
 		map[string]string{"id": uuid.New().String()})
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Admin-Reason", "saui-09 test")
 	rec := httptest.NewRecorder()
 	s.handleAssignNetworkUser(rec, req)
 	if rec.Code != http.StatusBadRequest {

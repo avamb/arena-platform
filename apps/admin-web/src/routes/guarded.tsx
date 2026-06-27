@@ -57,9 +57,9 @@ function makeRoute(path: string) {
 // See src/routes/networks.tsx — registered directly in routeTree.ts.
 // /organizations is now backed by a real cross-tenant explorer (SAUI-06).
 // See src/routes/organizations.tsx — registered directly in routeTree.ts.
-export const OrdersRoute = makeRoute("/orders");
-export const TicketsRoute = makeRoute("/tickets");
-export const RefundsRoute = makeRoute("/refunds");
+// /orders, /tickets, /refunds are now backed by real SuperAdmin support
+// consoles (SAUI-10). See src/routes/{orders,tickets,refunds}.tsx —
+// registered directly in routeTree.ts.
 export const GeoRoute = makeRoute("/geo");
 
 const pageStyle: CSSProperties = {
