@@ -2,6 +2,7 @@ import { Route as RootRoute } from "@/routes/__root";
 import { Route as IndexRoute } from "@/routes/index";
 import { Route as LoginRoute } from "@/routes/login";
 import { Route as NetworksRoute } from "@/routes/networks";
+import { Route as NetworkDetailRoute } from "@/routes/networkDetail";
 import { Route as OrganizationsRoute } from "@/routes/organizations";
 import {
   GeoRoute,
@@ -26,6 +27,7 @@ export const routeTree = RootRoute.addChildren([
   IndexRoute,
   LoginRoute,
   NetworksRoute,
+  NetworkDetailRoute,
   OrganizationsRoute,
   OrdersRoute,
   TicketsRoute,

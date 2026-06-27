@@ -35,7 +35,7 @@
  * Mock data: NONE. The list, form, and archive flow all hit the live
  * backend. No globalThis / devStore / mockDb.
  */
-import { createRoute } from "@tanstack/react-router";
+import { createRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useMemo,
@@ -300,6 +300,14 @@ function NetworksBody({ query, rows, canUpdate, canArchive, onEdit, onArchive }:
               <td style={tdStyle}>{formatDate(n.created_at)}</td>
               <td style={tdStyle}>{formatDate(n.updated_at)}</td>
               <td style={tdActionsStyle}>
+                <Link
+                  to="/networks/$id"
+                  params={{ id: n.id }}
+                  style={rowActionButtonStyle}
+                  data-testid={`networks-view-${n.slug}`}
+                >
+                  View
+                </Link>
                 {canUpdate && n.status !== "archived" ? (
                   <button
                     type="button"

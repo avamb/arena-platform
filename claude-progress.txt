@@ -15033,3 +15033,58 @@ Verification:
   npm run check-ts                            OK
 
 Marked feature 223 passing. Commit e702af72.
+
+================================================================================
+Session 2026-06-27 -- Feature #224 (SAUI-08 Network roster + org/agent assignments)
+================================================================================
+Implemented the SuperAdmin network detail page with tabbed roster
+management on top of SAUI-07 networks list.
+
+New files:
+  apps/admin-web/src/routes/networkDetail.tsx (~960 LOC)
+    Route /networks/$id wrapped in <RequirePermission> (network.read).
+    Five tabs: Overview, Users, Organizers, Agents, Audit.
+    Each roster tab calls authedFetch against the live backend:
+      Users        GET/POST/DELETE /v1/admin/networks/{id}/users
+      Organizers   GET/POST/DELETE /v1/admin/networks/{id}/organizers
+      Agents       GET/POST/DELETE /v1/admin/networks/{id}/agents
+    Assign forms validate UUIDs client-side (mirrors backend);
+    detach action posts the backend soft-revoke path.
+    Archived banner + read-only tab badges hide all mutation
+    controls when status=archived (backend rejects with
+    operator_network.archived 409 once archived_at is set, so the
+    UI matches).
+    Permission gating per tab: network.manage_users (platform
+    operators only) vs. network.manage_organizers /
+    network.manage_agents (platform OR network operators).
+    Disabled buttons render an inline explanation listing the
+    required permission and why the caller lacks it.
+    Overview tab includes an Operator role glossary distinguishing
+    platform_operator vs network_operator vs organizer vs agent
+    so an operator does not conflate the four roles.
+    Audit tab documents the SAUI-09 backlog inputs G1-G4:
+      G1 /v1/admin/networks/* mutations NOT in X-Admin-Reason
+         REASON_REQUIRED_PREFIXES (reason.ts) -- backend gap.
+      G2 No candidate-lookup endpoint for users/orgs (must paste UUID).
+      G3 No /v1/admin/networks/{id}/audit reader yet.
+      G4 List endpoints omit revoked rows (no ?include_revoked flag).
+
+  apps/admin-web/src/routes/networkDetail.test.ts
+    11 vitest cases for validateUuid + formatDate helpers.
+
+Modified:
+  apps/admin-web/src/routeTree.ts
+    Register NetworkDetailRoute under root.
+  apps/admin-web/src/routes/networks.tsx
+    Import Link from @tanstack/react-router; add a View action on
+    each row that deep-links to /networks/$id.
+
+Verification:
+  npm --prefix apps/admin-web run type-check   OK
+  npm --prefix apps/admin-web test             130/130 PASS (incl. 11 new)
+  npm --prefix apps/admin-web run build        OK (219 modules, 431.93 kB)
+  npm run check-ts                             OK
+  Mock-data grep                               only doc-comments hit;
+                                                no production stores.
+
+Marked #224 passing.
