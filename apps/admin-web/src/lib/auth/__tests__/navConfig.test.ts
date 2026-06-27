@@ -143,6 +143,8 @@ describe("visibleNavEntries -- /v1/me role fixtures", () => {
       "orders",
       "tickets",
       "refunds",
+      "audit",
+      "observability",
       "geo",
     ]);
   });

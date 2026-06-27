@@ -49,6 +49,8 @@ export type NavRoutePath =
   | "/orders"
   | "/tickets"
   | "/refunds"
+  | "/audit"
+  | "/observability"
   | "/geo";
 
 export type PermissionRule =
@@ -124,6 +126,24 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     permission: { anyOf: ["superadmin.read"] },
     scopeKinds: ["global", "platform"],
     purpose: "Cross-tenant refunds. Requires superadmin.read.",
+  },
+  {
+    id: "audit",
+    label: "Audit Log",
+    to: "/audit",
+    permission: { anyOf: ["superadmin.read"] },
+    scopeKinds: ["global", "platform"],
+    purpose:
+      "Cross-tenant audit log shell. Requires superadmin.read. Rendered honestly until a backend audit reader is exposed.",
+  },
+  {
+    id: "observability",
+    label: "Observability",
+    to: "/observability",
+    permission: { anyOf: ["superadmin.read"] },
+    scopeKinds: ["global", "platform"],
+    purpose:
+      "Platform health and observability shell. Requires superadmin.read. Links the operational probes (/healthz, /readyz, /metrics) and documents missing dashboard endpoints.",
   },
   {
     id: "geo",
