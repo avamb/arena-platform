@@ -23,40 +23,40 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { useReason } from "@/lib/auth/ReasonContext";
+import {
+  useEscapeClose,
+  useFocusOnMount,
+  useFocusRestore,
+  useFocusTrap,
+} from "@/lib/a11y";
 
 export function ReasonPromptModal() {
   const { pendingPrompt, submitPrompt, cancelPrompt } = useReason();
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const active = pendingPrompt !== null;
 
-  // Reset draft when a new prompt opens.
+  // Reset the draft each time a new prompt opens. The actual focus
+  // landing on the input is handled by useFocusOnMount below so we no
+  // longer maintain a separate requestAnimationFrame block here.
   useEffect(() => {
-    if (pendingPrompt !== null) {
+    if (active) {
       setDraft("");
-      // Defer focus to the next paint so the input exists in the DOM.
-      requestAnimationFrame(() => {
-        inputRef.current?.focus();
-      });
     }
-  }, [pendingPrompt]);
+  }, [active]);
 
-  // Escape -> cancel. Bound globally so the operator does not have to
-  // focus the modal first.
-  useEffect(() => {
-    if (pendingPrompt === null) {
-      return;
-    }
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        cancelPrompt();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [pendingPrompt, cancelPrompt]);
+  // SAUI-13 accessibility contract for the modal:
+  //   - global Escape closes the prompt (useEscapeClose);
+  //   - first interactive element (the input) receives focus on open;
+  //   - focus restores to the element that opened the prompt when it
+  //     closes -- this is critical because the prompt is triggered by
+  //     authedFetch, often from a button deep in a support console;
+  //   - Tab / Shift+Tab cycle stays inside the modal (useFocusTrap).
+  useEscapeClose(active, cancelPrompt);
+  useFocusOnMount<HTMLInputElement>(active, inputRef);
+  useFocusRestore(active);
+  useFocusTrap<HTMLDivElement>(active, dialogRef);
 
   const onSubmit = useCallback(
     (e: FormEvent<HTMLFormElement>) => {
@@ -94,14 +94,17 @@ export function ReasonPromptModal() {
       role="dialog"
       aria-modal="true"
       aria-labelledby="reason-modal-heading"
+      aria-describedby="reason-modal-body"
       data-testid="reason-prompt-modal"
       style={backdropStyle}
+      ref={dialogRef}
+      tabIndex={-1}
     >
       <form onSubmit={onSubmit} style={modalStyle}>
         <h2 id="reason-modal-heading" style={headingStyle}>
           Audit reason required
         </h2>
-        <p style={bodyStyle}>
+        <p id="reason-modal-body" style={bodyStyle}>
           You are about to read data across tenants. Enter a short, factual
           business reason; it will be attached to the audit trail for this
           and subsequent cross-tenant requests in this session.
@@ -145,9 +148,23 @@ export function ReasonPromptModal() {
             disabled={!canSubmit}
             style={canSubmit ? submitBtnStyle : submitBtnDisabledStyle}
             data-testid="reason-modal-submit"
+            aria-describedby={canSubmit ? undefined : "reason-modal-submit-hint"}
+            title={
+              canSubmit
+                ? undefined
+                : "Enter a non-empty business reason to enable submission."
+            }
           >
             Confirm reason
           </button>
+          {canSubmit ? null : (
+            <span
+              id="reason-modal-submit-hint"
+              style={visuallyHiddenHintStyle}
+            >
+              Enter a non-empty business reason to enable submission.
+            </span>
+          )}
         </div>
       </form>
     </div>
@@ -254,6 +271,21 @@ const submitBtnDisabledStyle: CSSProperties = {
   ...submitBtnStyle,
   background: "#94a3b8",
   cursor: "not-allowed",
+};
+
+// Visually-hidden helper for aria-describedby live text. Mirrors the
+// `visuallyHiddenStyle` helper in @/lib/a11y/tokens; inlined here to
+// avoid a runtime dependency on the barrel import.
+const visuallyHiddenHintStyle: CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: "hidden",
+  clip: "rect(0, 0, 0, 0)",
+  whiteSpace: "nowrap",
+  border: 0,
 };
 
 const codeStyle: CSSProperties = {

@@ -16,7 +16,7 @@ body,
   color: #0f172a;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 14px;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
 a {
@@ -31,4 +31,57 @@ button {
   to {
     transform: rotate(360deg);
   }
+}
+
+/*
+ * SAUI-13 -- high-contrast keyboard focus indicator.
+ *
+ * Mirrors apps/admin-web/src/lib/a11y/tokens.ts:
+ *   FOCUS_RING_COLOR  = #1d4ed8
+ *   FOCUS_RING_WIDTH  = 3px
+ *   FOCUS_RING_OFFSET = 2px
+ *
+ * Using :focus-visible (not :focus) means a mouse click does not
+ * highlight every button, but every Tab/Shift-Tab traversal does --
+ * matching the WCAG 2.4.7 "Focus Visible" intent.
+ */
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Skip-link helper. Visually hidden until focused; tabbing exposes it. */
+.a11y-skip-link {
+  position: absolute;
+  top: -40px;
+  left: 8px;
+  background: #0f172a;
+  color: #ffffff;
+  padding: 8px 12px;
+  border-radius: 4px;
+  z-index: 9999;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.a11y-skip-link:focus {
+  top: 8px;
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
+}
+
+/*
+ * Disabled controls keep enough contrast that the label remains
+ * legible (WCAG 1.4.3) without competing with the active controls.
+ */
+button[disabled],
+input[disabled],
+select[disabled],
+textarea[disabled] {
+  cursor: not-allowed;
 }

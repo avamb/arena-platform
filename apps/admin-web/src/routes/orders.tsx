@@ -38,10 +38,16 @@ import { useQuery } from "@tanstack/react-query";
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
 } from "react";
+import {
+  useEscapeClose,
+  useFocusOnMount,
+  useFocusRestore,
+} from "@/lib/a11y";
 import { Route as RootRoute } from "./__root";
 import { ApiError, authedFetch } from "@/lib/api/client";
 import { RequirePermission } from "@/components/RequirePermission";
@@ -421,6 +427,12 @@ export function badgeForState(state: string): CSSProperties {
 }
 
 function OrderDrawer({ order, onClose }: { order: AdminOrder; onClose: () => void }) {
+  // SAUI-13 accessibility: Escape closes, focus lands on close button,
+  // focus returns to the row's "Details" button on unmount.
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  useEscapeClose(true, onClose);
+  useFocusOnMount<HTMLButtonElement>(true, closeRef);
+  useFocusRestore(true);
   return (
     <aside
       style={S.drawerWrapStyle}
@@ -438,10 +450,12 @@ function OrderDrawer({ order, onClose }: { order: AdminOrder; onClose: () => voi
         </div>
         <button
           type="button"
+          ref={closeRef}
           onClick={onClose}
           style={S.drawerCloseStyle}
           aria-label="Close order details"
           data-testid="orders-drawer-close"
+          title="Close (Esc)"
         >
           ×
         </button>

@@ -57,11 +57,22 @@
  */
 import { createRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { Route as RootRoute } from "./__root";
 import { ApiError, authedFetch } from "@/lib/api/client";
 import { RequirePermission } from "@/components/RequirePermission";
 import { NAV_BY_PATH } from "@/lib/auth/navConfig";
+import {
+  useEscapeClose,
+  useFocusOnMount,
+  useFocusRestore,
+} from "@/lib/a11y";
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -431,6 +442,11 @@ function OrganizationDrawer({
   org: AdminOrganization;
   onClose: () => void;
 }) {
+  // SAUI-13: Escape closes, focus lands on close, focus restores on unmount.
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  useEscapeClose(true, onClose);
+  useFocusOnMount<HTMLButtonElement>(true, closeRef);
+  useFocusRestore(true);
   return (
     <aside
       style={drawerWrapStyle}
@@ -448,10 +464,12 @@ function OrganizationDrawer({
         </div>
         <button
           type="button"
+          ref={closeRef}
           onClick={onClose}
           style={drawerCloseStyle}
           aria-label="Close organization details"
           data-testid="orgs-drawer-close"
+          title="Close (Esc)"
         >
           ×
         </button>

@@ -17,10 +17,16 @@ import { useQuery } from "@tanstack/react-query";
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
 } from "react";
+import {
+  useEscapeClose,
+  useFocusOnMount,
+  useFocusRestore,
+} from "@/lib/a11y";
 import { Route as RootRoute } from "./__root";
 import { ApiError, authedFetch } from "@/lib/api/client";
 import { RequirePermission } from "@/components/RequirePermission";
@@ -400,6 +406,11 @@ function TicketDrawer({
   ticket: AdminTicket;
   onClose: () => void;
 }) {
+  // SAUI-13: Escape closes, focus lands on close, focus restores on unmount.
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  useEscapeClose(true, onClose);
+  useFocusOnMount<HTMLButtonElement>(true, closeRef);
+  useFocusRestore(true);
   return (
     <aside
       style={S.drawerWrapStyle}
@@ -417,10 +428,12 @@ function TicketDrawer({
         </div>
         <button
           type="button"
+          ref={closeRef}
           onClick={onClose}
           style={S.drawerCloseStyle}
           aria-label="Close ticket details"
           data-testid="tickets-drawer-close"
+          title="Close (Esc)"
         >
           ×
         </button>
