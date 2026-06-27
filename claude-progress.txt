@@ -15425,3 +15425,28 @@ Verification:
   npm run admin:smoke (chained)   OK
 
 Marked #230 passing.
+
+
+=== Session 2026-06-27 (feature #231) ===
+Feature #231 SAUI-15 Admin web documentation and runbook - PASSING
+
+Changes:
+- apps/admin-web/README.md: full runbook with env vars, backend base URL,
+  login flow (POST /v1/auth/login, refresh, logout), dev token flow
+  (POST /v1/dev/token, gated by ENABLE_DEV_AUTH=true), required permissions
+  table per SuperAdmin route (driven by navConfig.ts), X-Admin-Reason
+  behavior (sessionStorage, prompt + retry semantics from reason.ts +
+  client.ts), concrete backend gap matrix, complete script table for
+  test/build/type-check, architecture overview, reference pointer to
+  09_autoforge/admin_ui/legacy_admin_reference_map.yaml.
+- README.md (root): removed "admin UI" from the out-of-scope list since
+  the shell ships and works; cross-reference to apps/admin-web/README.md.
+
+Verification from clean shell:
+  npm run admin:type-check       OK
+  npm run admin:test             307/307 tests PASS (17 files)
+  npm run admin:build            OK (tsc -b + vite build)
+  npm run admin:smoke-guardrails OK (scanned 67 files)
+
+Commit: 6f32d8f3 docs(SAUI-15): admin web runbook and root README update
+Marked #231 passing.
