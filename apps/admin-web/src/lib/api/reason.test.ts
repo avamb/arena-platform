@@ -115,6 +115,111 @@ describe("requiresAdminReason()", () => {
     // Superadmin read prefixes always match regardless of method.
     ["/v1/admin/organizations", "GET", true],
     ["/v1/admin/organizations", "POST", true],
+    // SAUI-14 (#246): cross-tenant org-scoped resource mutations
+    // (venues / channels / payment-configs / members) require a reason
+    // on POST/PATCH/PUT/DELETE but not on GET.
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/venues",
+      "POST",
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/venues/22222222-2222-2222-2222-222222222222",
+      "PATCH",
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/venues/22222222-2222-2222-2222-222222222222",
+      "DELETE",
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/channels",
+      "POST",
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/channels/abc",
+      "PATCH",
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/channels/abc",
+      "DELETE",
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/payment-configs",
+      "POST",
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/payment-configs/abc",
+      "PATCH",
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/payment-configs/abc",
+      "DELETE",
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/members",
+      "POST",
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/members/abc",
+      "PATCH",
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/members/abc",
+      "DELETE",
+      true,
+    ],
+    // Reads on the same paths are not gated -- the drawer's read tabs
+    // must not pop the modal for plain browsing.
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/venues",
+      "GET",
+      false,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/channels",
+      "GET",
+      false,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/payment-configs",
+      "GET",
+      false,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/members",
+      "GET",
+      false,
+    ],
+    // The org root itself is NOT in the new regex set so plain
+    // organization PATCH/DELETE still go through the existing
+    // /v1/admin/organizations admin path.
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111",
+      "PATCH",
+      false,
+    ],
+    // Unrelated sub-resources stay out of the gate.
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/events",
+      "POST",
+      false,
+    ],
+    // Query strings are stripped before matching.
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/venues?limit=20",
+      "POST",
+      true,
+    ],
   ])("path %s + method %s -> %s", (path, method, expected) => {
     expect(requiresAdminReason(path, method)).toBe(expected);
   });

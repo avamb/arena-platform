@@ -64,6 +64,24 @@ const REASON_REQUIRED_MUTATION_PREFIXES: readonly string[] = [
   "/v1/admin/networks",
 ];
 
+/**
+ * Regex patterns that require X-Admin-Reason ONLY on mutation methods
+ * (POST/PATCH/PUT/DELETE). Added by SAUI-14 (#246) so that cross-tenant
+ * superadmin mutations on org-scoped resources (venues, sales channels,
+ * payment provider configs, memberships) always pass through the
+ * ReasonPromptModal flow before going to the backend, matching the audit
+ * guarantee that all superadmin mutations carry a non-empty audit reason.
+ *
+ * Each pattern is anchored at both ends and treats trailing /<id> or
+ * /<id>/<subresource> path segments as part of the same resource.
+ */
+const REASON_REQUIRED_MUTATION_REGEX: readonly RegExp[] = [
+  /^\/v1\/organizations\/[^/]+\/venues(?:\/.*)?$/,
+  /^\/v1\/organizations\/[^/]+\/channels(?:\/.*)?$/,
+  /^\/v1\/organizations\/[^/]+\/payment-configs(?:\/.*)?$/,
+  /^\/v1\/organizations\/[^/]+\/members(?:\/.*)?$/,
+];
+
 /** HTTP methods treated as mutations for the SAUI-09 gate. */
 const MUTATION_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
 
@@ -101,6 +119,11 @@ export function requiresAdminReason(path: string, method?: string): boolean {
   if (method !== undefined && MUTATION_METHODS.has(method.toUpperCase())) {
     for (const prefix of REASON_REQUIRED_MUTATION_PREFIXES) {
       if (matchesPrefix(bare, prefix)) {
+        return true;
+      }
+    }
+    for (const re of REASON_REQUIRED_MUTATION_REGEX) {
+      if (re.test(bare)) {
         return true;
       }
     }

@@ -16015,3 +16015,32 @@ payment provider configs CRUD route.
     npm --prefix apps/admin-web test -- --run      OK (365/365)
     npm --prefix apps/admin-web run build          OK
   Marked #241 passing.
+
+[2026-06-27 #246] Cross-tenant org mutations now route through X-Admin-Reason flow.
+  apps/admin-web/src/lib/api/reason.ts: added REASON_REQUIRED_MUTATION_REGEX
+    covering /v1/organizations/{id}/(venues|channels|payment-configs|members)
+    so POST/PATCH/PUT/DELETE on these org-scoped resources trigger the
+    ReasonPromptModal via the existing resolver. GETs to the same paths
+    remain ungated so drawer browsing does not pop the modal. Closes the
+    gap where Venues/Channels/Payments tabs in the OrganizationDrawer
+    (and the top-level superadmin /venues, /channels, /payments routes)
+    were firing mutations without the X-Admin-Reason header even though
+    the operator is acting on a tenant they do not natively belong to.
+  apps/admin-web/src/lib/api/reason.test.ts: +29 cases covering the new
+    regex predicate -- POST/PATCH/DELETE on venues/channels/payment-
+    configs/members (with and without an item id) all require a reason,
+    GETs do not, query strings are stripped, sibling sub-resources are
+    not falsely matched, and bare /v1/organizations/{id} stays out.
+  apps/admin-web/src/routes/{venues,channels,payments}.tsx mapServerError:
+    new superadmin.missing_reason / superadmin.reason_required cases
+    surface a form-level "audit reason required" message instead of the
+    generic "(err.code)" fallback so the operator sees a coherent UX
+    when the modal is dismissed or when the backend retry still fails.
+    Members mutations already had the equivalent mapping in
+    organizations.tsx mapMembershipMutationError / mapAddMemberServerError.
+  Verification:
+    npm --prefix apps/admin-web run type-check     OK
+    npm --prefix apps/admin-web test -- --run      OK (384/384, +29 in
+                                                       reason.test.ts)
+    npm --prefix apps/admin-web run build          OK
+  Marked #246 passing.

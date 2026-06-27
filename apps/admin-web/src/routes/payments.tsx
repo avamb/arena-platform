@@ -1245,6 +1245,11 @@ export function mapServerError(err: ApiError): ServerFieldErrors {
       out.form =
         "Your account is missing payment_config.write. Ask a platform administrator.";
       return out;
+    case "superadmin.missing_reason":
+    case "superadmin.reason_required":
+      out.form =
+        "An audit reason is required for cross-tenant changes. Provide a reason in the prompt and retry.";
+      return out;
     default:
       if (field === "provider") {
         out.provider = err.message;
