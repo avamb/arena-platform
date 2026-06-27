@@ -7,8 +7,8 @@
  *   - unauthenticated   -> redirect to /login (also: if currently on
  *                          /login, just render children so the form is
  *                          reachable).
- *   - authenticating    -> show LoadingScreen overlay (children rendered
- *                          under it would briefly flash the login form).
+ *   - authenticating    -> outside /login show LoadingScreen; on /login keep
+ *                          the form mounted so submit state/errors survive.
  *   - authenticated     -> render children
  *   - me_failed         -> render a hard error recovery screen ("clear
  *                          recovery") with Retry + Sign out actions.
@@ -50,7 +50,7 @@ export function AuthGate({ children }: AuthGateProps) {
     return <LoadingScreen label="Restoring session…" />;
   }
 
-  if (auth.status === "authenticating") {
+  if (auth.status === "authenticating" && !onLogin) {
     return <LoadingScreen label="Signing in…" />;
   }
 

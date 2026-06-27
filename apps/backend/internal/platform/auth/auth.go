@@ -33,6 +33,7 @@ import (
 	"time"
 
 	chimw "github.com/go-chi/chi/v5/middleware"
+	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
@@ -297,7 +298,7 @@ func (p *StubProvider) IssueToken(_ context.Context, req IssueRequest) (string, 
 	payload := jwtClaims{
 		Sub:                 req.ActorID,
 		Iss:                 p.issuer,
-		Aud:                 aud,
+		Aud:                 jwt.ClaimStrings{aud},
 		Iat:                 now.Unix(),
 		Exp:                 exp.Unix(),
 		Nbf:                 nbf.Unix(),
@@ -372,7 +373,7 @@ func (p *StubProvider) Verify(_ context.Context, token string) (Actor, error) {
 	if claims.Iss != "" && claims.Iss != p.issuer {
 		return Actor{}, fmt.Errorf("%w: %q", ErrUnknownIssuer, claims.Iss)
 	}
-	if claims.Aud != "" && claims.Aud != p.audience {
+	if len(claims.Aud) > 0 && !containsAudience(claims.Aud, p.audience) {
 		return Actor{}, fmt.Errorf("%w: %q", ErrUnknownAudience, claims.Aud)
 	}
 	now := p.now().UTC()
@@ -407,7 +408,7 @@ func (p *StubProvider) Verify(_ context.Context, token string) (Actor, error) {
 type jwtClaims struct {
 	Sub       string   `json:"sub"`
 	Iss       string   `json:"iss"`
-	Aud       string   `json:"aud,omitempty"`
+	Aud       jwt.ClaimStrings `json:"aud,omitempty"`
 	Iat       int64    `json:"iat"`
 	Exp       int64    `json:"exp"`
 	Nbf       int64    `json:"nbf,omitempty"` // not-before; zero means no restriction
@@ -431,6 +432,15 @@ func b64encode(b []byte) string {
 
 func b64decode(s string) ([]byte, error) {
 	return base64.RawURLEncoding.DecodeString(s)
+}
+
+func containsAudience(aud jwt.ClaimStrings, want string) bool {
+	for _, got := range aud {
+		if got == want {
+			return true
+		}
+	}
+	return false
 }
 
 // -----------------------------------------------------------------------------

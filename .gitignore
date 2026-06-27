@@ -14,6 +14,7 @@ build/
 coverage.txt
 coverage.html
 profile.cov
+.gocache/
 
 # Local env files (NEVER commit secrets)
 .env

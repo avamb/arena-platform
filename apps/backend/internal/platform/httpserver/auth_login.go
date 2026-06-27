@@ -58,7 +58,10 @@ const (
 	// limiting.
 	loginRateLimitWindow = 15 * time.Minute
 
-	// jwtIssuer is the "iss" claim embedded in access tokens.
+	// jwtIssuer and jwtAudience are fallback claim values used when the stub
+	// auth provider is unavailable. In development we prefer the provider
+	// values so login tokens stay compatible with /v1/me and other stub-
+	// protected routes.
 	jwtIssuer = "arena-api"
 
 	// jwtAudience is the "aud" claim embedded in access tokens.
@@ -84,6 +87,13 @@ var loginRateLimiter ratelimit.Limiter = ratelimit.New(ratelimit.Config{
 func loginRateLimiterKey(r *http.Request, email string) string {
 	ip := clientIP(r)
 	return ip + ":" + email
+}
+
+func (s *Server) loginTokenIssuerAudience() (string, string) {
+	if s.stub != nil {
+		return s.stub.Issuer(), s.stub.Audience()
+	}
+	return jwtIssuer, jwtAudience
 }
 
 // handleAuthLogin serves POST /v1/auth/login.
@@ -206,13 +216,14 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 
 	// --- 9. Issue JWT access token (15 min) ---
 	actorID := userRow.ID
+	issuer, audience := s.loginTokenIssuerAudience()
 	accessToken, exp, err := auth.IssueJWT(
 		s.cfg.JWTSecretStub,
 		actorID,
 		nil, // no org_id in foundation milestone
 		nil, // roles come from DB in a later milestone
-		jwtIssuer,
-		jwtAudience,
+		issuer,
+		audience,
 		accessTokenTTL,
 	)
 	if err != nil {
@@ -414,13 +425,14 @@ func (s *Server) handleAuthRefresh(w http.ResponseWriter, r *http.Request) {
 
 	// --- 7. Issue new JWT access token ---
 	actorID := userRow.ID
+	issuer, audience := s.loginTokenIssuerAudience()
 	accessToken, exp, err := auth.IssueJWT(
 		s.cfg.JWTSecretStub,
 		actorID,
 		nil,
 		nil,
-		jwtIssuer,
-		jwtAudience,
+		issuer,
+		audience,
 		accessTokenTTL,
 	)
 	if err != nil {

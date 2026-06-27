@@ -109,41 +109,14 @@ export const LEGACY_MODULE_PLACEHOLDERS: readonly LegacyModulePlaceholder[] = [
   // entry in navConfig.ts now points at the real module; the visual
   // seating editor remains explicitly deferred and is not part of this
   // CRUD scope.
-  {
-    id: "frontends_channels",
-    label: "Frontends and Channels",
-    path: "/channels",
-    purpose:
-      "Sales surfaces, trusted agents, widgets, external ticketing connections, promotions. Requires network.manage_channels or superadmin.read.",
-    permission: {
-      anyOf: [
-        "superadmin.read",
-        "network.manage_channels",
-        "integration.read",
-      ],
-    },
-    scopeKinds: ["global", "platform", "network", "organization"],
-    sourceReference: {
-      legacyMapModuleId: "frontends_channels",
-      legacyApps: ["TixManager", "TixReporter"],
-      legacyScreens: [
-        "tix_manager/2026-06-11_manager_audit/08_frontends.png",
-        "tix_manager/2026-06-11_manager_audit/11_frontends_trusted_agents.png",
-        "tix_manager/2026-06-11_manager_audit/12_frontends_connections_to_ets.png",
-        "tix_manager/2026-06-11_manager_audit/13_frontends_promotions.png",
-      ],
-    },
-    futureScope: [
-      "Channels table grouped by network or organization scope.",
-      "Channel detail with credentials masked by default.",
-      "Promotions and widget settings as scoped submodules.",
-      "Trusted agents and ETS (external ticketing system) connections as scoped submodules.",
-    ],
-    deferralReason:
-      "Backend gap: the legacy TixManager exposed multiple nested 'Frontends' tabs (Operators, Event organizers, Trusted agents, Connections to ETS, Promotions, Agents) but a modern channels CRUD + credentials contract is not in the unified admin OpenAPI. SAUI-08 covered organizer/agent assignment as part of operator-network rosters; the channels surface is the remaining piece.",
-    workflowShape: ["table/list view", "detail drawer", "settings page"],
-    mvpPriority: "P1",
-  },
+  // frontends_channels removed from placeholder list -- replaced by a
+  // real CRUD route in src/routes/channels.tsx (feature #243). The
+  // /channels nav entry in navConfig.ts now points at the real module
+  // (Sales Channels CRUD against
+  // /v1/organizations/{org_id}/channels). Trusted agents, ETS
+  // connections, promotions, and widgets remain explicitly deferred --
+  // they are separate legacy sub-tabs the channels CRUD scope does not
+  // cover.
   {
     id: "payments_fiscal",
     label: "Payments and Fiscal",

@@ -15761,3 +15761,54 @@ Verification (docker run golang:1.24-alpine):
   npm run gen-ts-client + npm run check-ts              OK
 
 Marked #234 passing. Commit: 312565fa
+
+[2026-06-27 #243] Replaced /channels SAUI-12 placeholder shell with a
+real CRUD route.
+  New file apps/admin-web/src/routes/channels.tsx (mirrors venues.tsx):
+    - Page lets operator pick org_id (prefilled from active org scope).
+    - List backed by GET /v1/organizations/{org_id}/channels.
+    - Create modal -> POST /v1/organizations/{org_id}/channels with
+      name / payment_mode / provider / provider_account_id / fee_percent
+      / reservation_ttl_override / settings.
+    - Edit modal -> PATCH /v1/organizations/{org_id}/channels/{id};
+      the masked provider_account_id is shown read-only with a
+      "Replace credential" toggle that prompts a fresh raw value
+      before sending. The masked value is NEVER echoed back.
+    - Archive (soft-delete) confirm -> DELETE
+      /v1/organizations/{org_id}/channels/{id}. Backend writes a
+      v1.channel.delete audit event atomically.
+    - Client-side validation mirrors the backend whitelist:
+      payment_mode in {direct_merchant, merchant_of_record},
+      provider in {stripe, allpay}, fee_percent decimal 0-100,
+      reservation TTL positive int <= 86400s, settings must be a JSON
+      object (arrays/scalars rejected, matching normalizeChannelSettings).
+    - mapServerError maps channel.invalid_name / invalid_config /
+      invalid_settings / duplicate / not_found / empty_body /
+      invalid_body / invalid_json / permissions.denied onto field
+      surfaces; falls back on details.field for forwards compat.
+    - Buttons gated on channel.create / channel.update / channel.delete
+      so a channel.read-only operator sees a read-only table.
+  Removed frontends_channels from LEGACY_MODULE_PLACEHOLDERS
+    (apps/admin-web/src/lib/admin/legacyModules.ts), leaving 5 modules.
+  legacyPlaceholders.tsx drops placeholderRoute("/channels") export
+    and removes /channels from REGISTERED_PATHS.
+  routeTree.ts wires the new Route from @/routes/channels alongside
+    the remaining placeholder imports.
+  navConfig.ts replaces the frontends_channels placeholder entry with
+    a real "channels" nav entry (label "Sales Channels") gated on
+    {anyOf: superadmin.read | channel.read | channel.create |
+    channel.update | channel.delete}. Note: network.manage_channels no
+    longer unlocks the channels surface -- this matches the venues
+    pattern which uses venue.* perms so the nav gate aligns with the
+    backend permission contract.
+  navConfig.test.ts: platform_superadmin nav id list updated
+    frontends_channels -> channels; network_operator network-scope and
+    organization-scope visible lists no longer include channels (since
+    network_operator lacks channel.* permissions).
+  legacyPlaceholders.test.ts: count 6 -> 5, EXPECTED_PATHS /
+    EXPECTED_MAP_IDS updated.
+  Verification:
+    npm --prefix apps/admin-web run type-check     OK
+    npm --prefix apps/admin-web test -- --run      OK (307/307)
+    npm --prefix apps/admin-web run build          OK
+  Marked #243 passing.

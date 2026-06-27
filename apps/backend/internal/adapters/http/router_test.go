@@ -328,6 +328,60 @@ func TestNewRouter_PrometheusMiddlewareSkippedWhenNil(t *testing.T) {
 	}
 }
 
+func TestNewRouter_CORSPreflightShortCircuitsBeforeRouteHandler(t *testing.T) {
+	r := httpadapter.NewRouter(httpadapter.Deps{
+		CORSAllowedOrigins: []string{"http://localhost:5174"},
+	})
+
+	called := false
+	r.Post("/v1/auth/login", func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodOptions, "/v1/auth/login", nil)
+	req.Header.Set("Origin", "http://localhost:5174")
+	req.Header.Set("Access-Control-Request-Method", http.MethodPost)
+	req.Header.Set("Access-Control-Request-Headers", "content-type")
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for CORS preflight, got %d body=%q", rr.Code, rr.Body.String())
+	}
+	if called {
+		t.Fatal("route handler must not be called for CORS preflight")
+	}
+	if got := rr.Header().Get("Access-Control-Allow-Origin"); got != "http://localhost:5174" {
+		t.Fatalf("Access-Control-Allow-Origin: want localhost origin, got %q", got)
+	}
+	if got := strings.ToLower(rr.Header().Get("Access-Control-Allow-Headers")); !strings.Contains(got, "content-type") {
+		t.Fatalf("Access-Control-Allow-Headers must include requested content-type, got %q", got)
+	}
+}
+
+func TestNewRouter_CORSActualRequestIncludesAllowOrigin(t *testing.T) {
+	r := httpadapter.NewRouter(httpadapter.Deps{
+		CORSAllowedOrigins: []string{"*"},
+	})
+	r.Post("/v1/auth/login", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(`{}`))
+	req.Header.Set("Origin", "http://localhost:5174")
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 from route handler, got %d", rr.Code)
+	}
+	if got := rr.Header().Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Fatalf("Access-Control-Allow-Origin: want *, got %q", got)
+	}
+}
+
 // TestNewRouter_PrometheusMiddlewareRecordsRequest verifies that when a real
 // *observability.Metrics is supplied the prometheusMiddleware records at least
 // one observation on the HTTP histogram for the probe request.

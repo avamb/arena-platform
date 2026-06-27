@@ -30,7 +30,6 @@ import {
 
 const EXPECTED_PATHS = [
   "/events",
-  "/channels",
   "/payments",
   "/reports",
   "/content",
@@ -39,7 +38,6 @@ const EXPECTED_PATHS = [
 
 const EXPECTED_MAP_IDS = [
   "events_sessions",
-  "frontends_channels",
   "payments_fiscal",
   "reports",
   "notifications_content",
@@ -47,8 +45,8 @@ const EXPECTED_MAP_IDS = [
 ] as const;
 
 describe("LEGACY_MODULE_PLACEHOLDERS table", () => {
-  it("ships exactly the 6 remaining SAUI-12 placeholders (venues_seating graduated to real CRUD in feature #242)", () => {
-    expect(LEGACY_MODULE_PLACEHOLDERS).toHaveLength(6);
+  it("ships exactly the 5 remaining SAUI-12 placeholders (venues_seating graduated to real CRUD in feature #242; frontends_channels graduated in feature #243)", () => {
+    expect(LEGACY_MODULE_PLACEHOLDERS).toHaveLength(5);
   });
 
   it("covers every documented path exactly once", () => {
@@ -179,7 +177,7 @@ describe("navConfig <-> legacyModules parity", () => {
     }
   });
 
-  it("NAV_ENTRIES contains all 7 SAUI-12 ids in registration order", () => {
+  it("NAV_ENTRIES contains all remaining SAUI-12 ids in registration order", () => {
     const navIds = NAV_ENTRIES.map((e) => e.id);
     for (const id of EXPECTED_MAP_IDS) {
       expect(navIds).toContain(id);

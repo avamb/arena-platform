@@ -1,6 +1,6 @@
-import { createRoute, useNavigate } from "@tanstack/react-router";
+import { createRoute, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useForm } from "react-hook-form";
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { z } from "zod";
 import { ApiError } from "@/lib/api/client";
 import { useAuth } from "@/lib/auth/useAuth";
@@ -35,7 +35,9 @@ export const Route = createRoute({
 function LoginRoute() {
   const auth = useAuth();
   const navigate = useNavigate();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [redirectPending, setRedirectPending] = useState(false);
   const {
     register,
     handleSubmit,
@@ -44,6 +46,20 @@ function LoginRoute() {
     defaultValues: { email: "", password: "" },
   });
 
+  useEffect(() => {
+    if (!redirectPending) {
+      return;
+    }
+    if (auth.status === "authenticated" && pathname === "/login") {
+      setRedirectPending(false);
+      void navigate({ to: "/", replace: true });
+      return;
+    }
+    if (auth.status === "unauthenticated" || auth.status === "me_failed") {
+      setRedirectPending(false);
+    }
+  }, [auth.status, navigate, pathname, redirectPending]);
+
   const onSubmit = handleSubmit(async (raw) => {
     setSubmitError(null);
     const parsed = loginSchema.safeParse(raw);
@@ -51,9 +67,10 @@ function LoginRoute() {
       return;
     }
     try {
+      setRedirectPending(true);
       await auth.login(parsed.data.email, parsed.data.password);
-      await navigate({ to: "/", replace: true });
     } catch (err) {
+      setRedirectPending(false);
       if (err instanceof ApiError) {
         setSubmitError(`${err.code}: ${err.message}`);
       } else if (err instanceof Error) {
@@ -101,8 +118,8 @@ function LoginRoute() {
             {submitError}
           </div>
         ) : null}
-        <button type="submit" disabled={isSubmitting} style={submitStyle}>
-          {isSubmitting ? "Signing in…" : "Sign in"}
+        <button type="submit" disabled={isSubmitting || redirectPending} style={submitStyle}>
+          {isSubmitting || redirectPending ? "Signing in…" : "Sign in"}
         </button>
       </form>
     </section>

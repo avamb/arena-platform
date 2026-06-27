@@ -154,6 +154,11 @@ type Deps struct {
 	// treated as production.
 	AppEnv string
 
+	// CORSAllowedOrigins controls which browser origins may call the API.
+	// "*" allows any origin and is the development default. Empty disables
+	// CORS headers entirely for callers that terminate CORS at a proxy.
+	CORSAllowedOrigins []string
+
 	// Propagator overrides the W3C trace context propagator. Defaults to
 	// otel.GetTextMapPropagator() so the package picks up whatever the
 	// observability.InitTracer call configured globally.
@@ -207,6 +212,11 @@ func NewRouter(deps Deps) chi.Router {
 	//     sensitive headers (Authorization, Cookie) masked so that raw bearer
 	//     tokens and session cookies never appear in log output.
 	r.Use(requestLogMiddleware(deps.Logger))
+	// 7c. CORS — must run before timeout/body/content-type checks so browser
+	//     preflight OPTIONS requests do not fall through to chi's 405 handler.
+	if len(deps.CORSAllowedOrigins) > 0 {
+		r.Use(corsMiddleware(deps.CORSAllowedOrigins))
+	}
 	// 8. Timeout — only when RequestTimeout > 0.
 	if deps.RequestTimeout > 0 {
 		r.Use(chimw.Timeout(deps.RequestTimeout))
@@ -249,6 +259,66 @@ func (d Deps) withDefaults() Deps {
 		out.AppEnv = "development"
 	}
 	return out
+}
+
+func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
+	allowAll := false
+	allowed := make(map[string]struct{}, len(allowedOrigins))
+	for _, origin := range allowedOrigins {
+		origin = strings.TrimSpace(origin)
+		if origin == "" {
+			continue
+		}
+		if origin == "*" {
+			allowAll = true
+			continue
+		}
+		allowed[origin] = struct{}{}
+	}
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := strings.TrimSpace(r.Header.Get("Origin"))
+			if origin == "" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			allowedOrigin := ""
+			if allowAll {
+				allowedOrigin = "*"
+			} else if _, ok := allowed[origin]; ok {
+				allowedOrigin = origin
+				w.Header().Add("Vary", "Origin")
+			}
+			if allowedOrigin == "" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			h := w.Header()
+			h.Set("Access-Control-Allow-Origin", allowedOrigin)
+			h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+			h.Set("Access-Control-Expose-Headers", "X-Request-Id, X-Trace-Id")
+			h.Set("Access-Control-Max-Age", "600")
+
+			requestHeaders := strings.TrimSpace(r.Header.Get("Access-Control-Request-Headers"))
+			if requestHeaders == "" {
+				requestHeaders = "Accept, Authorization, Content-Type, X-Admin-Reason, X-Request-Id, X-Trace-Id"
+			}
+			h.Set("Access-Control-Allow-Headers", requestHeaders)
+			if requestHeaders != "" {
+				h.Add("Vary", "Access-Control-Request-Headers")
+			}
+
+			if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // -----------------------------------------------------------------------------

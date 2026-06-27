@@ -175,19 +175,21 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // workflow grouping: sales surfaces -> money -> insight -> messaging ->
   // POS. Each is a SHELL ONLY (see LegacyModulePlaceholder.tsx).
   {
-    id: "frontends_channels",
-    label: "Frontends and Channels",
+    id: "channels",
+    label: "Sales Channels",
     to: "/channels",
     permission: {
       anyOf: [
         "superadmin.read",
-        "network.manage_channels",
-        "integration.read",
+        "channel.read",
+        "channel.create",
+        "channel.update",
+        "channel.delete",
       ],
     },
     scopeKinds: ["global", "platform", "network", "organization"],
     purpose:
-      "Sales surfaces, trusted agents, widgets, external ticketing connections, promotions. Shell only. Requires network.manage_channels, integration.read, or superadmin.read.",
+      "Sales channel directory (payment_mode, provider, masked merchant credential, fee_percent, reservation TTL override, settings). Requires channel.read, channel.create, channel.update, channel.delete, or superadmin.read. Trusted agents, ETS connections, promotions, and widgets remain deferred.",
   },
   {
     id: "payments_fiscal",
