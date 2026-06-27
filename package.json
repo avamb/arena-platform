@@ -10,7 +10,9 @@
     "admin:dev": "npm --prefix apps/admin-web run dev",
     "admin:build": "npm --prefix apps/admin-web run build",
     "admin:test": "npm --prefix apps/admin-web run test",
-    "admin:type-check": "npm --prefix apps/admin-web run type-check"
+    "admin:type-check": "npm --prefix apps/admin-web run type-check",
+    "admin:smoke-guardrails": "node scripts/admin-smoke-guardrails.mjs",
+    "admin:smoke": "node scripts/admin-smoke-guardrails.mjs && npm --prefix apps/admin-web run test && npm --prefix apps/admin-web run build && npm run check-ts"
   },
   "devDependencies": {
     "@stoplight/spectral-cli": "^6.16.0",

@@ -15385,3 +15385,43 @@ part of this feature's scope; not committed; the SAUI-14 session
 should repair or rewrite it from scratch.
 
 Marked #229 passing. Commit c10216d8.
+
+================================================================================
+Session 2026-06-27 -- Feature #230 (SAUI-14 End-to-end smoke + real-data guardrails)
+================================================================================
+Closed out the SAUI-14 smoke harness. Script + vitest suite were
+in place from a prior session but three assertions failed against
+the current admin-web layout:
+
+  - registeredRoutePaths scanned routes/*.tsx for path: "/..."
+    literals. That collided with API URL strings inside support
+    consoles (path: /v1/admin/organizations) and the observability
+    gap-tile table (path: /healthz).
+  - placeholders in legacyPlaceholders.tsx use the path, shorthand
+    inside placeholderRoute(), so the regex missed /events /venues
+    /channels /payments /reports /content /pos.
+  - Neutral-path table asserted POST /v1/operator-networks/{id}/audit
+    is unprompted, but SAUI-09 gates all mutations on the
+    /v1/operator-networks prefix. /audit is a read-only subpath;
+    POST/PATCH/DELETE there are not valid endpoints.
+
+Fix in apps/admin-web/src/smoke/saui14_smoke.test.ts:
+  - Replaced source-scan helper with explicit ROUTE_REGISTRY map
+    (navRoutePath -> { routeId, sourceFile }) covering all 15
+    guarded entries. Added NON_NAV_ROUTE_IDS for IndexRoute,
+    LoginRoute, NetworkDetailRoute (public / inherited-gate).
+  - registeredRouteIds() now only parses routeTree.ts
+    addChildren identifier list. No more body-literal pollution.
+  - Each test derives expected set from ROUTE_REGISTRY (single
+    source of truth).
+  - Split network /audit subpath into its own it() that asserts
+    GET (and the method-less default) only.
+
+Verification:
+  npm run admin:smoke-guardrails  OK (67 files, no hits)
+  npm run admin:test              17/17 files PASS (307/307 tests)
+  npm run admin:build             OK (234 modules, 492.90 kB)
+  npm run check-ts                OK
+  npm run admin:smoke (chained)   OK
+
+Marked #230 passing.
