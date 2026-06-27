@@ -30,7 +30,6 @@ import {
 
 const EXPECTED_PATHS = [
   "/events",
-  "/venues",
   "/channels",
   "/payments",
   "/reports",
@@ -40,7 +39,6 @@ const EXPECTED_PATHS = [
 
 const EXPECTED_MAP_IDS = [
   "events_sessions",
-  "venues_seating",
   "frontends_channels",
   "payments_fiscal",
   "reports",
@@ -49,8 +47,8 @@ const EXPECTED_MAP_IDS = [
 ] as const;
 
 describe("LEGACY_MODULE_PLACEHOLDERS table", () => {
-  it("ships exactly the 7 SAUI-12 placeholders", () => {
-    expect(LEGACY_MODULE_PLACEHOLDERS).toHaveLength(7);
+  it("ships exactly the 6 remaining SAUI-12 placeholders (venues_seating graduated to real CRUD in feature #242)", () => {
+    expect(LEGACY_MODULE_PLACEHOLDERS).toHaveLength(6);
   });
 
   it("covers every documented path exactly once", () => {
@@ -190,13 +188,14 @@ describe("navConfig <-> legacyModules parity", () => {
 });
 
 describe("per-module annotations", () => {
-  // Spot-check the four placeholders the SAUI-12 description names as
-  // overbuild risks: reports, pos, venues_seating, and notifications.
+  // Spot-check the placeholders the SAUI-12 description names as
+  // overbuild risks: reports, pos, and notifications. venues_seating
+  // graduated to a real CRUD route (feature #242) so the visual seating
+  // editor deferral is now documented in the venues route, not here.
   // These should all explicitly explain why they ship as a shell.
   const riskyModuleIds = [
     "reports",
     "pos",
-    "venues_seating",
     "notifications_content",
   ] as const;
 
@@ -216,11 +215,6 @@ describe("per-module annotations", () => {
   it("pos placeholder is honest about the SAUI-12 'do not implement' rule", () => {
     const m = modById("pos");
     expect(m.deferralReason.toLowerCase()).toMatch(/(pos|guardrail|overbuild|excludes)/);
-  });
-
-  it("venues_seating placeholder defers the visual seating editor", () => {
-    const m = modById("venues_seating");
-    expect(m.deferralReason.toLowerCase()).toMatch(/seating|defer/);
   });
 
   it("notifications_content placeholder is marked low priority (P2)", () => {

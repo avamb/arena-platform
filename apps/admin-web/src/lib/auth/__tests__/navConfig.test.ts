@@ -141,7 +141,7 @@ describe("visibleNavEntries -- /v1/me role fixtures", () => {
       "networks",
       "organizations",
       "events_sessions",
-      "venues_seating",
+      "venues",
       "orders",
       "tickets",
       "refunds",

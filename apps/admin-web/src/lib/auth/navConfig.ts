@@ -130,15 +130,21 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
       "Event organizer surface (events, sessions, media, pricing, quotas, sync). Shell only -- backend contract gap. Requires event.read, org.read, network.view_sales, or superadmin.read.",
   },
   {
-    id: "venues_seating",
-    label: "Venues and Seating",
+    id: "venues",
+    label: "Venues",
     to: "/venues",
     permission: {
-      anyOf: ["superadmin.read", "org.read", "venue.read", "venue.write"],
+      anyOf: [
+        "superadmin.read",
+        "venue.read",
+        "venue.create",
+        "venue.update",
+        "venue.delete",
+      ],
     },
     scopeKinds: ["global", "platform", "network", "organization"],
     purpose:
-      "Countries, cities, venues, seating plans, categories, quotas. Shell only -- visual seating editor deferred. Requires org.read, venue.*, or superadmin.read.",
+      "Venue directory (name, city, address, capacity_default). Requires venue.read, venue.create, venue.update, venue.delete, or superadmin.read. The visual seating editor remains deferred.",
   },
   {
     id: "orders",

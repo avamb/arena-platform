@@ -15669,3 +15669,48 @@ Marked #237 passing.
     payment-configs OpenAPI param/property descriptions, drift missing
     11 routes) predate this feature and are not introduced here.
   Marked #233 passing. Commit 150f12fc.
+
+[2026-06-27 #242] Replaced /venues SAUI-12 placeholder shell with a
+real CRUD route.
+  New file apps/admin-web/src/routes/venues.tsx (mirrors networks.tsx):
+    - List backed by GET /v1/venues (shared read across orgs).
+    - Create modal -> POST /v1/organizations/{org_id}/venues. org_id
+      is a required input, prefilled from active organization scope
+      when available; name/city_id/address/capacity_default fields
+      with client-side validation matching backend (UUID regex, name
+      1-200, capacity_default non-negative integer).
+    - Edit modal -> PATCH /v1/organizations/{org_id}/venues/{id};
+      org_id taken from the venue row, not editable.
+    - Archive (soft-delete) confirm dialog -> DELETE
+      /v1/organizations/{org_id}/venues/{id}. Backend writes a
+      v1.venue.delete audit event atomically.
+    - Empty / loading / error / 401 / 403 states wired.
+    - Buttons gated on venue.create / venue.update / venue.delete so
+      a venue.read-only operator sees a read-only table.
+    - mapServerError() maps venue.invalid_name, venue.invalid_city_id,
+      venue.duplicate, venue.not_found, body errors, and
+      permissions.denied to per-field surfaces; falls back on
+      details.field for forwards compatibility.
+  Removed venues_seating from LEGACY_MODULE_PLACEHOLDERS
+    (apps/admin-web/src/lib/admin/legacyModules.ts), leaving 6 modules.
+  legacyPlaceholders.tsx drops the placeholderRoute("/venues") export
+    and removes /venues from REGISTERED_PATHS.
+  routeTree.ts wires the new Route from @/routes/venues alongside the
+    remaining placeholder imports.
+  navConfig.ts swaps the venues_seating placeholder entry for a real
+    "venues" nav entry that gates on {anyOf: superadmin.read |
+    venue.read | venue.create | venue.update | venue.delete} with the
+    same scopeKinds; label "Venues", purpose clarified that the
+    visual seating editor remains deferred.
+  navConfig.test.ts platform_superadmin id list updated
+    venues_seating -> venues; other role expectations unchanged --
+    none of the fixtures granted venue.* or superadmin.read so the
+    network_operator visible list still excludes venues.
+  legacyPlaceholders.test.ts: count 7 -> 6, EXPECTED_PATHS /
+    EXPECTED_MAP_IDS updated, riskyModuleIds reduced, removed the
+    venues_seating deferral-reason spot-check.
+  Verification:
+    npm --prefix apps/admin-web run type-check     OK
+    npm --prefix apps/admin-web test -- --run      OK (307/307)
+    npm --prefix apps/admin-web run build          OK
+  Marked #242 passing.

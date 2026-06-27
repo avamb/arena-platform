@@ -9,9 +9,9 @@ import { Route as TicketsRoute } from "@/routes/tickets";
 import { Route as RefundsRoute } from "@/routes/refunds";
 import { Route as AuditRoute } from "@/routes/audit";
 import { Route as ObservabilityRoute } from "@/routes/observability";
+import { Route as VenuesRoute } from "@/routes/venues";
 import {
   EventsRoute,
-  VenuesRoute,
   ChannelsRoute,
   PaymentsRoute,
   ReportsRoute,

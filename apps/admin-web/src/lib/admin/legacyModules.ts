@@ -104,41 +104,11 @@ export const LEGACY_MODULE_PLACEHOLDERS: readonly LegacyModulePlaceholder[] = [
     workflowShape: ["table/list view", "detail drawer", "wizard", "settings page"],
     mvpPriority: "P0",
   },
-  {
-    id: "venues_seating",
-    label: "Venues and Seating",
-    path: "/venues",
-    purpose:
-      "Countries, cities, venues, seating plans, categories, quotas. Requires org.read or superadmin.read. Shell only -- visual seating editor deferred.",
-    permission: {
-      anyOf: ["superadmin.read", "org.read", "venue.read", "venue.write"],
-    },
-    scopeKinds: ["global", "platform", "network", "organization"],
-    sourceReference: {
-      legacyMapModuleId: "venues_seating",
-      legacyApps: ["TixEditor"],
-      legacyScreens: [
-        "tix_editor/2026-06-12_editor_audit/101_add_city_dialog.png",
-        "tix_editor/2026-06-12_editor_audit/144_add_quota_dialog.png",
-        "tix_editor/2026-06-12_editor_audit/156_quota_file_picker_opened.png",
-      ],
-    },
-    futureScope: [
-      "Venue directory with verification status.",
-      "Seating plan management shell (the visual seating editor remains explicitly deferred).",
-      "Quota and category adjustments as focused edit flows.",
-    ],
-    deferralReason:
-      "Guardrail: 09_autoforge/00_AGENT_GUARDRAILS.md and the legacy map both flag the full visual seating editor as deferred -- do NOT overbuild before RBAC and admin shell foundation are stable. Backend gap: no modern venue / seating / quota resource contract is exposed yet.",
-    workflowShape: [
-      "table/list view",
-      "detail drawer",
-      "wizard",
-      "settings page",
-      "deferred/later feature",
-    ],
-    mvpPriority: "P1",
-  },
+  // venues_seating removed from placeholder list -- replaced by a real
+  // CRUD route in src/routes/venues.tsx (feature #242). The /venues nav
+  // entry in navConfig.ts now points at the real module; the visual
+  // seating editor remains explicitly deferred and is not part of this
+  // CRUD scope.
   {
     id: "frontends_channels",
     label: "Frontends and Channels",
