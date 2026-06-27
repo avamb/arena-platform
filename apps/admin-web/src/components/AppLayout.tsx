@@ -1,14 +1,34 @@
 import { Link, Outlet } from "@tanstack/react-router";
 import type { CSSProperties } from "react";
+import { AuthGate } from "@/components/AuthGate";
+import { DevDiagnosticsPanel } from "@/components/DevDiagnosticsPanel";
+import { ScopeSelector } from "@/components/ScopeSelector";
+import { config } from "@/lib/config";
+import { useAuth } from "@/lib/auth/useAuth";
+import { useScope } from "@/lib/auth/ScopeContext";
+import {
+  NAV_ENTRIES,
+  visibleNavEntries,
+  type NavEntry,
+} from "@/lib/auth/navConfig";
 
 /**
- * Base admin layout.
+ * Permission-driven admin shell (SAUI-03).
  *
- * Dense, operational shell: fixed-width left navigation, top header with
- * environment indicator, content area renders nested route via <Outlet />.
- * No marketing surface. The first authenticated screen is the workspace.
+ * Sidebar contents are derived from the caller's /v1/me.permissions and
+ * the currently active scope. No role names are hardcoded anywhere in
+ * this file -- if the backend grants a permission, the surface appears;
+ * otherwise it does not. Role presets (platform_superadmin, etc.) only
+ * influence the *default* active scope, not what the sidebar contains.
+ *
+ * Surfaces hidden from the sidebar remain unreachable through the
+ * navigation, but the corresponding routes are *additionally* protected
+ * by <RequirePermission /> so that direct URL access shows the 403 UI
+ * rather than a broken page. The two layers are deliberately redundant.
  */
 export function AppLayout() {
+  const auth = useAuth();
+  const authed = auth.status === "authenticated";
   return (
     <div style={shellStyle}>
       <aside style={sidebarStyle} aria-label="Primary navigation">
@@ -16,26 +36,138 @@ export function AppLayout() {
           <span style={brandMarkStyle} aria-hidden="true" />
           <span>Arena Admin</span>
         </div>
-        <nav style={navStyle}>
-          <Link to="/" style={navLinkStyle} activeProps={{ style: navLinkActiveStyle }}>
-            Workspace
-          </Link>
-          <Link
-            to="/login"
-            style={navLinkStyle}
-            activeProps={{ style: navLinkActiveStyle }}
-          >
-            Sign in
-          </Link>
-        </nav>
-        <div style={sidebarFooterStyle}>v0.1.0 · scaffold</div>
+        {authed ? <AuthenticatedSidebarNav /> : <UnauthenticatedSidebarNav />}
+        {authed && auth.me !== null ? (
+          <div style={userBlockStyle}>
+            <div style={userIdStyle}>{auth.me.user.id}</div>
+            <div style={userRolesStyle}>
+              {auth.me.roles.join(", ") || "(no roles)"}
+            </div>
+            <button
+              type="button"
+              onClick={() => void auth.logout()}
+              style={logoutBtnStyle}
+            >
+              Sign out
+            </button>
+          </div>
+        ) : null}
+        {config.isDevelopment ? <DevDiagnosticsPanel /> : null}
+        <div style={sidebarFooterStyle}>
+          v0.1.0 {config.isDevelopment ? "· dev" : null}
+        </div>
       </aside>
       <main style={mainStyle}>
-        <Outlet />
+        {authed ? <AuthenticatedTopBar /> : null}
+        <AuthGate>
+          <Outlet />
+        </AuthGate>
       </main>
     </div>
   );
 }
+
+function AuthenticatedSidebarNav() {
+  const { permissions } = useAuth();
+  const { activeScopeKind } = useScope();
+  const entries = visibleNavEntries(NAV_ENTRIES, permissions, activeScopeKind);
+  return (
+    <nav style={navStyle} data-testid="primary-nav">
+      {entries.map((entry) => (
+        <NavItem key={entry.id} entry={entry} />
+      ))}
+      {entries.length === 0 ? (
+        <p style={emptyNavStyle} data-testid="nav-empty" role="status">
+          No surfaces available for your current permissions and scope. Ask a
+          platform administrator to grant access, or switch to a different
+          scope.
+        </p>
+      ) : null}
+    </nav>
+  );
+}
+
+function UnauthenticatedSidebarNav() {
+  return (
+    <nav style={navStyle} data-testid="primary-nav">
+      <Link
+        to="/login"
+        style={navLinkStyle}
+        activeProps={{ style: navLinkActiveStyle }}
+        data-testid="nav-login"
+      >
+        Sign in
+      </Link>
+    </nav>
+  );
+}
+
+function NavItem({ entry }: { entry: NavEntry }) {
+  // TanStack Router's typed Link narrows `to` based on the inferred
+  // current-route context; rendering from a NAV_ENTRIES table requires
+  // a string-cast. Runtime safety: each NAV_ENTRIES.to is a path
+  // registered in routeTree.ts (enforced by `NavRoutePath`), so the
+  // value is always a valid known route.
+  return (
+    <Link
+      to={entry.to as "/"}
+      style={navLinkStyle}
+      activeProps={{ style: navLinkActiveStyle }}
+      data-testid={`nav-${entry.id}`}
+      data-nav-id={entry.id}
+      title={entry.purpose}
+    >
+      {entry.label}
+    </Link>
+  );
+}
+
+function AuthenticatedTopBar() {
+  const { activeScope } = useScope();
+  return (
+    <header style={topBarStyle} data-testid="shell-topbar">
+      <ScopeSelector />
+      <span style={topBarMetaStyle}>
+        {activeScope === null
+          ? "No scope active — surfaces requiring a scope are hidden."
+          : `Active scope: ${activeScope.label}`}
+      </span>
+    </header>
+  );
+}
+
+const userBlockStyle: CSSProperties = {
+  marginTop: 8,
+  padding: "8px 10px",
+  background: "#1e293b",
+  borderRadius: 4,
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+};
+
+const userIdStyle: CSSProperties = {
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+  fontSize: 10,
+  color: "#cbd5e1",
+  wordBreak: "break-all",
+};
+
+const userRolesStyle: CSSProperties = {
+  fontSize: 11,
+  color: "#94a3b8",
+};
+
+const logoutBtnStyle: CSSProperties = {
+  marginTop: 4,
+  background: "#7f1d1d",
+  color: "#fff",
+  border: 0,
+  padding: "6px 8px",
+  borderRadius: 4,
+  fontSize: 11,
+  cursor: "pointer",
+};
 
 const shellStyle: CSSProperties = {
   display: "grid",
@@ -94,6 +226,17 @@ const navLinkActiveStyle: CSSProperties = {
   color: "#f8fafc",
 };
 
+const emptyNavStyle: CSSProperties = {
+  margin: "4px 8px",
+  padding: "8px 10px",
+  background: "#1e293b",
+  color: "#94a3b8",
+  fontSize: 11,
+  borderRadius: 4,
+  fontStyle: "italic",
+  lineHeight: 1.4,
+};
+
 const sidebarFooterStyle: CSSProperties = {
   marginTop: "auto",
   fontSize: 11,
@@ -104,4 +247,18 @@ const sidebarFooterStyle: CSSProperties = {
 const mainStyle: CSSProperties = {
   padding: 24,
   overflowY: "auto",
+};
+
+const topBarStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 12,
+  marginBottom: 20,
+  paddingBottom: 12,
+  borderBottom: "1px solid #e2e8f0",
+};
+
+const topBarMetaStyle: CSSProperties = {
+  fontSize: 12,
+  color: "#64748b",
 };

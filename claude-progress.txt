@@ -14803,3 +14803,36 @@ Verification:
 
 Marked #218 passing. Commit 0a355da.
 
+
+================================================================================
+Session 2026-06-27 -- Feature #219 (SAUI-03 Permission-driven admin shell and scope selector)
+================================================================================
+Implemented the permission-driven admin shell on top of SAUI-02 auth scaffolding.
+Navigation is now derived from /v1/me.permissions + active scope, not role labels.
+Direct URL navigation to a forbidden route shows an explicit 403 surface.
+
+New files (apps/admin-web/src/):
+  lib/auth/navConfig.ts          Permission families + NAV_ENTRIES + predicates
+  lib/auth/scope.ts              Scope parsing (global/platform/network/organization),
+                                 role-preset defaults, sessionStorage persistence
+  lib/auth/ScopeContext.tsx      ScopeProvider + useScope hook
+  components/Forbidden.tsx       Explicit 403 surface (lists required vs held perms)
+  components/RequirePermission.tsx  Route-level guard
+  components/ScopeSelector.tsx   Header scope picker (single/multi/empty variants)
+  routes/guarded.tsx             Placeholders for /networks, /organizations,
+                                 /orders, /tickets, /refunds, /geo
+  lib/auth/__tests__/navConfig.test.ts  23 vitest cases (4-role fixtures)
+  lib/auth/__tests__/scope.test.ts      18 vitest cases (parsing, defaults, persist)
+
+Modified:
+  main.tsx           Wrapped RouterProvider in <ScopeProvider>
+  routeTree.ts       Registered 6 guarded routes
+  components/AppLayout.tsx  Sidebar uses visibleNavEntries() + ScopeSelector top bar
+
+Verification:
+  npm --prefix apps/admin-web run type-check  OK
+  npm --prefix apps/admin-web test            OK (51 tests / 3 suites pass)
+  npm --prefix apps/admin-web run build       OK
+  npm run check-ts                            OK
+
+Acceptance criteria all satisfied. Marked #219 passing.
