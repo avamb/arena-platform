@@ -1,11 +1,11 @@
 import { Route as RootRoute } from "@/routes/__root";
 import { Route as IndexRoute } from "@/routes/index";
 import { Route as LoginRoute } from "@/routes/login";
+import { Route as NetworksRoute } from "@/routes/networks";
+import { Route as OrganizationsRoute } from "@/routes/organizations";
 import {
   GeoRoute,
-  NetworksRoute,
   OrdersRoute,
-  OrganizationsRoute,
   RefundsRoute,
   TicketsRoute,
 } from "@/routes/guarded";

@@ -53,8 +53,10 @@ function makeRoute(path: string) {
   });
 }
 
-export const NetworksRoute = makeRoute("/networks");
-export const OrganizationsRoute = makeRoute("/organizations");
+// /networks is now backed by a real CRUD module (SAUI-07).
+// See src/routes/networks.tsx — registered directly in routeTree.ts.
+// /organizations is now backed by a real cross-tenant explorer (SAUI-06).
+// See src/routes/organizations.tsx — registered directly in routeTree.ts.
 export const OrdersRoute = makeRoute("/orders");
 export const TicketsRoute = makeRoute("/tickets");
 export const RefundsRoute = makeRoute("/refunds");
