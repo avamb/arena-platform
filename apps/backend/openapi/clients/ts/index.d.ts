@@ -613,6 +613,77 @@ export interface paths {
         patch: operations["patchV1OrganizationsId"];
         trace?: never;
     };
+    "/v1/admin/organizations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin — create a new organization
+         * @description Admin-console-facing counterpart to POST /v1/organizations. Requires JWT
+         *     authentication, the "org.create" permission, and an X-Admin-Reason
+         *     request header explaining the business reason for the write (recorded
+         *     in audit_events). The companion GET list endpoint is served by the
+         *     superadmin console (feature #166).
+         */
+        post: operations["postV1AdminOrganizations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/organizations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Admin — update an organization
+         * @description Admin-console-facing counterpart to PATCH /v1/organizations/{id}. Empty
+         *     or omitted fields leave existing values unchanged. Requires JWT
+         *     authentication, the "org.update" permission, and an X-Admin-Reason
+         *     header (audit trail).
+         */
+        patch: operations["patchV1AdminOrganizationsId"];
+        trace?: never;
+    };
+    "/v1/admin/organizations/{id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin — archive (soft-delete) an organization
+         * @description Marks an organization as archived (sets deleted_at = now()). The row is
+         *     not physically removed — it is excluded from all active-org queries. An
+         *     audit event is written inside the same transaction. Requires JWT
+         *     authentication, the "org.delete" permission, and an X-Admin-Reason
+         *     header (audit trail).
+         */
+        post: operations["postV1AdminOrganizationsIdArchive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/venues": {
         parameters: {
             query?: never;
@@ -4181,6 +4252,268 @@ export interface operations {
             };
             /** @description New name or slug conflicts with an existing active organization */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or org queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminOrganizations: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for the admin write (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOrganizationRequest"];
+            };
+        };
+        responses: {
+            /** @description Organization created successfully */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        organization: components["schemas"]["OrganizationItem"];
+                    };
+                };
+            };
+            /** @description Missing X-Admin-Reason, invalid body, or required fields empty */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (org.create) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description An organization with that name or slug already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or org queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    patchV1AdminOrganizationsId: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for the admin write (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description UUIDv7 primary key of the organization to update */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateOrganizationRequest"];
+            };
+        };
+        responses: {
+            /** @description Organization updated successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        organization: components["schemas"]["OrganizationItem"];
+                    };
+                };
+            };
+            /** @description Missing X-Admin-Reason, invalid body, or id path parameter invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (org.update) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Organization not found or has been archived */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description New name or slug conflicts with an existing active organization */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or org queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminOrganizationsIdArchive: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for the admin write (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description UUIDv7 primary key of the organization to archive */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Organization archived successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        organization: components["schemas"]["OrganizationItem"];
+                        /** @example true */
+                        archived: boolean;
+                    };
+                };
+            };
+            /** @description Missing X-Admin-Reason or id path parameter invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (org.delete) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Organization not found or already archived */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

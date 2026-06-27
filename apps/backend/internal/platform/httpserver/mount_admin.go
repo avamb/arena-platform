@@ -69,6 +69,30 @@ func (s *Server) mountSuperadminRoutes(r chi.Router) {
 	})
 }
 
+// mountAdminOrgRoutes mounts admin-namespace Organizations CRUD endpoints
+// (feature #233): POST/PATCH/archive under /v1/admin/organizations. These are
+// the admin-console-facing counterparts to /v1/organizations and require
+// JWT + RBAC (org.create/org.update/org.delete) + an X-Admin-Reason header.
+// The companion GET /v1/admin/organizations list endpoint is mounted by
+// mountSuperadminRoutes (cross-tenant superadmin read; feature #166).
+func (s *Server) mountAdminOrgRoutes(r chi.Router) {
+	if s.stub == nil || !s.stub.Enabled() || s.orgQueries == nil || s.pool == nil {
+		return
+	}
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "org.create", "organizations")
+		pr.Post("/admin/organizations", s.handleAdminCreateOrg)
+	})
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "org.update", "organizations")
+		pr.Patch("/admin/organizations/{id}", s.handleAdminUpdateOrg)
+	})
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "org.delete", "organizations")
+		pr.Post("/admin/organizations/{id}/archive", s.handleAdminArchiveOrg)
+	})
+}
+
 // mountImpersonationRoutes mounts the scoped impersonation JWT endpoint
 // (feature #167).
 func (s *Server) mountImpersonationRoutes(r chi.Router) {
