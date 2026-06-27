@@ -15714,3 +15714,50 @@ real CRUD route.
     npm --prefix apps/admin-web test -- --run      OK (307/307)
     npm --prefix apps/admin-web run build          OK
   Marked #242 passing.
+
+[2026-06-27 #234] Admin organization-memberships console endpoints.
+Added the admin-namespace counterpart to /v1/organizations/{org_id}/members:
+  GET    /v1/admin/organizations/{org_id}/members
+  POST   /v1/admin/organizations/{org_id}/members (user_id OR email + role)
+  PATCH  /v1/admin/organizations/{org_id}/members/{membership_id}
+  DELETE /v1/admin/organizations/{org_id}/members/{membership_id} (soft revoke)
+
+All four carry the standard /v1/admin gate: JWT + RBAC
+(membership read/grant/revoke permissions) + X-Admin-Reason header
+(audit trail recorded under v1.admin.membership.{create,update,deactivate}).
+
+New SQL (apps/backend/internal/adapters/postgres/queries/memberships.sql):
+  - GetMembershipByID(id, org_id) :one
+  - ChangeMembershipRole(id, org_id, role) :one -- UPDATE active row
+  - DeactivateMembership(id, org_id) :one -- SET status='revoked'
+
+sqlc gen: matching Go functions added to memberships.sql.go + querier.go.
+
+HTTP (apps/backend/internal/platform/httpserver/admin_memberships.go):
+  - handleAdminListMembers       reuses ListMembershipsByOrg
+  - handleAdminAddMember         user_id XOR email, GetUserByEmail lookup
+  - handleAdminChangeMemberRole  PATCH by membership_id, scoped by org_id
+  - handleAdminDeactivateMember  DELETE soft-revoke (status='revoked')
+  - writeAdminMembershipAudit    fire-and-forget audit emit
+
+Routes mounted by mountAdminMembershipRoutes in mount_admin.go and wired
+into mount_v1.go. Reuses the membership.* permissions seeded by
+migration 0011 so no schema change is required.
+
+OpenAPI: 4 admin path operations + 3 schemas (MembershipItem,
+AdminAddMemberRequest, AdminChangeMemberRoleRequest). Validator clean:
+46 paths / 69 schemas, no missing refs. TS client regenerated; check-ts OK.
+
+Tests (admin_memberships_test.go): 12 new unit tests covering SQL/gen
+file shape, route mounting (no 404), auth gating (401), X-Admin-Reason
+gating (400), nil-dep guards (503), and body/role/user_id validation.
+All pass alongside the existing TestMembership120_* suite.
+
+Verification (docker run golang:1.24-alpine):
+  go build ./apps/backend/...                           OK
+  go vet ./apps/backend/...                             OK
+  go test -run TestAdminMembership234 ./...             OK
+  node scripts/validate-openapi.mjs                     OK (46 / 69)
+  npm run gen-ts-client + npm run check-ts              OK
+
+Marked #234 passing. Commit: 312565fa
