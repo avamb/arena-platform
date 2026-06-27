@@ -146,7 +146,7 @@ describe("visibleNavEntries -- /v1/me role fixtures", () => {
       "tickets",
       "refunds",
       "channels",
-      "payments_fiscal",
+      "payments",
       "reports",
       "notifications_content",
       "pos",
@@ -169,7 +169,7 @@ describe("visibleNavEntries -- /v1/me role fixtures", () => {
     expect(ids(out)).toEqual(["workspace", "geo"]);
   });
 
-  it("network_operator: sees networks + SAUI-12 events/payments/reports via network.* perms", () => {
+  it("network_operator: sees networks + SAUI-12 events/reports via network.* perms", () => {
     const out = visibleNavEntries(
       NAV_ENTRIES,
       networkOperator.permissions,
@@ -179,21 +179,22 @@ describe("visibleNavEntries -- /v1/me role fixtures", () => {
     // and network.view_reports. SAUI-12 placeholders use {anyOf} rules
     // that grant access from those families:
     //   events_sessions    -> network.view_sales
-    //   payments_fiscal    -> network.view_sales
     //   reports            -> network.view_reports
     // The channels surface graduated to a real CRUD route (feature
     // #243) whose nav gate is keyed on channel.* (matching the backend
     // permission contract) plus superadmin.read; network.manage_channels
     // alone no longer unlocks it.
+    // The payments surface graduated to a real CRUD route (feature
+    // #244) whose nav gate is keyed on payment_config.* (matching the
+    // backend permission contract) plus superadmin.read;
+    // network.view_sales alone no longer unlocks it.
     // The operator still lacks superadmin.read, geo.admin, pos.execute,
-    // org.read, channel.*, venue.*, etc., so organizations / venues /
-    // channels / orders / tickets / refunds / notifications / pos /
-    // audit / observability / geo stay hidden.
+    // org.read, channel.*, venue.*, payment_config.*, etc., so the
+    // remaining sidebar collapses accordingly.
     expect(ids(out)).toEqual([
       "workspace",
       "networks",
       "events_sessions",
-      "payments_fiscal",
       "reports",
     ]);
   });
@@ -204,11 +205,12 @@ describe("visibleNavEntries -- /v1/me role fixtures", () => {
       networkOperator.permissions,
       "organization",
     );
-    // Networks/payments hide (no "organization" in scopeKinds). Pos hides
+    // Networks hides (no "organization" in scopeKinds). Pos hides
     // (no organization scope AND missing pos.execute). Events / reports
     // include "organization" in scopeKinds and are unlocked by
-    // network.view_sales / network.view_reports. Channels now require
-    // channel.* (or superadmin.read) which network_operator lacks.
+    // network.view_sales / network.view_reports. Channels and payments
+    // now require channel.* / payment_config.* (or superadmin.read)
+    // which network_operator lacks.
     expect(ids(out)).toEqual([
       "workspace",
       "events_sessions",

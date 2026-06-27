@@ -35,7 +35,8 @@ export const EventsRoute = placeholderRoute("/events");
 // (feature #242). The Route export now lives there.
 // /channels graduated to a real CRUD route in src/routes/channels.tsx
 // (feature #243). The Route export now lives there.
-export const PaymentsRoute = placeholderRoute("/payments");
+// /payments graduated to a real CRUD route in src/routes/payments.tsx
+// (feature #244). The Route export now lives there.
 export const ReportsRoute = placeholderRoute("/reports");
 export const ContentRoute = placeholderRoute("/content");
 export const PosRoute = placeholderRoute("/pos");
@@ -44,7 +45,6 @@ export const PosRoute = placeholderRoute("/pos");
 // has a Route export above. Catches typos faster than a 404 in browser.
 const REGISTERED_PATHS = new Set<NavRoutePath>([
   "/events",
-  "/payments",
   "/reports",
   "/content",
   "/pos",

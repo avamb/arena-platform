@@ -117,36 +117,13 @@ export const LEGACY_MODULE_PLACEHOLDERS: readonly LegacyModulePlaceholder[] = [
   // connections, promotions, and widgets remain explicitly deferred --
   // they are separate legacy sub-tabs the channels CRUD scope does not
   // cover.
-  {
-    id: "payments_fiscal",
-    label: "Payments and Fiscal",
-    path: "/payments",
-    purpose:
-      "Acquiring, fiscal settings, payment provider status, and POS fiscal dependencies. Requires superadmin.read or a scoped payment permission.",
-    permission: {
-      anyOf: ["superadmin.read", "payment.read", "network.view_sales"],
-    },
-    scopeKinds: ["global", "platform", "network"],
-    sourceReference: {
-      legacyMapModuleId: "payments_fiscal",
-      legacyApps: ["TixManager", "TixCassa"],
-      legacyScreens: [
-        "tix_manager/2026-06-11_manager_audit/01_acquiring.png",
-        "tix_manager/2026-06-11_manager_audit/16_acquiring_agent_dropdown_open.png",
-        "tix_cassa/2026-06-21_cassa_audit/05_template_dialog.png",
-        "tix_cassa/2026-06-21_cassa_audit/10_menu_cash_shift_open.png",
-      ],
-    },
-    futureScope: [
-      "Provider configuration with credential masking.",
-      "Readiness and status checks per acquirer.",
-      "Audit trail for credential changes (links into the SAUI-11 audit surface).",
-    ],
-    deferralReason:
-      "Backend gap: no /v1/admin/payments configuration endpoint is exposed. The platform records payment_intents and refunds but the operator-facing acquirer/fiscal configuration surface (provider keys, fiscal printer templates) is not in the modern admin contract yet.",
-    workflowShape: ["settings page", "detail drawer", "pos mode"],
-    mvpPriority: "P1",
-  },
+  // payments_fiscal removed from placeholder list -- replaced by a real
+  // CRUD route in src/routes/payments.tsx (feature #244). The /payments
+  // nav entry in navConfig.ts now points at the real module backed by
+  // /v1/organizations/{org_id}/payment-configs (feature #237). Fiscal
+  // printer templates and POS shift-side configuration remain explicitly
+  // deferred -- they are separate concerns the payment-configs CRUD scope
+  // does not cover.
   {
     id: "reports",
     label: "Reports",

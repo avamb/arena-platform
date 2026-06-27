@@ -30,7 +30,6 @@ import {
 
 const EXPECTED_PATHS = [
   "/events",
-  "/payments",
   "/reports",
   "/content",
   "/pos",
@@ -38,15 +37,14 @@ const EXPECTED_PATHS = [
 
 const EXPECTED_MAP_IDS = [
   "events_sessions",
-  "payments_fiscal",
   "reports",
   "notifications_content",
   "pos",
 ] as const;
 
 describe("LEGACY_MODULE_PLACEHOLDERS table", () => {
-  it("ships exactly the 5 remaining SAUI-12 placeholders (venues_seating graduated to real CRUD in feature #242; frontends_channels graduated in feature #243)", () => {
-    expect(LEGACY_MODULE_PLACEHOLDERS).toHaveLength(5);
+  it("ships exactly the 4 remaining SAUI-12 placeholders (venues_seating graduated in feature #242; frontends_channels in feature #243; payments_fiscal in feature #244)", () => {
+    expect(LEGACY_MODULE_PLACEHOLDERS).toHaveLength(4);
   });
 
   it("covers every documented path exactly once", () => {

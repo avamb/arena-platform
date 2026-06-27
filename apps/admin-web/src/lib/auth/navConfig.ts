@@ -192,15 +192,19 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
       "Sales channel directory (payment_mode, provider, masked merchant credential, fee_percent, reservation TTL override, settings). Requires channel.read, channel.create, channel.update, channel.delete, or superadmin.read. Trusted agents, ETS connections, promotions, and widgets remain deferred.",
   },
   {
-    id: "payments_fiscal",
-    label: "Payments and Fiscal",
+    id: "payments",
+    label: "Payment Configs",
     to: "/payments",
     permission: {
-      anyOf: ["superadmin.read", "payment.read", "network.view_sales"],
+      anyOf: [
+        "superadmin.read",
+        "payment_config.read",
+        "payment_config.write",
+      ],
     },
-    scopeKinds: ["global", "platform", "network"],
+    scopeKinds: ["global", "platform", "network", "organization"],
     purpose:
-      "Acquiring, fiscal settings, payment provider status, POS fiscal dependencies. Shell only. Requires payment.read, network.view_sales, or superadmin.read.",
+      "Payment provider configurations per organization (provider, mode, provider_account_id, status, masked secrets). Requires payment_config.read, payment_config.write, or superadmin.read. Fiscal/POS settings remain deferred.",
   },
   {
     id: "reports",
