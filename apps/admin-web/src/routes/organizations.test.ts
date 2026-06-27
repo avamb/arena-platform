@@ -12,7 +12,18 @@
  *     edge cases the table is most likely to render.
  */
 import { describe, it, expect } from "vitest";
-import { filterRows, formatDurationSeconds, type AdminOrganization } from "./organizations";
+import {
+  filterRows,
+  formatDurationSeconds,
+  mapCreateOrgServerError,
+  validateOrgCountry,
+  validateOrgLocale,
+  validateOrgName,
+  validateOrgReservationTTL,
+  validateOrgSlug,
+  type AdminOrganization,
+} from "./organizations";
+import { ApiError } from "@/lib/api/client";
 
 const baseOrg: AdminOrganization = {
   id: "00000000-0000-0000-0000-000000000001",
@@ -110,5 +121,114 @@ describe("formatDurationSeconds", () => {
     expect(formatDurationSeconds(0)).toBe("—");
     expect(formatDurationSeconds(-1)).toBe("—");
     expect(formatDurationSeconds(Number.NaN)).toBe("—");
+  });
+});
+
+describe("Create-organization form validators (feature #238)", () => {
+  it("validateOrgName requires non-empty and caps at 200 chars", () => {
+    expect(validateOrgName("")).not.toBeNull();
+    expect(validateOrgName("   ")).not.toBeNull();
+    expect(validateOrgName("Acme")).toBeNull();
+    expect(validateOrgName("a".repeat(200))).toBeNull();
+    expect(validateOrgName("a".repeat(201))).not.toBeNull();
+  });
+
+  it("validateOrgSlug enforces lowercase URL-safe identifier", () => {
+    expect(validateOrgSlug("")).not.toBeNull();
+    expect(validateOrgSlug("acme")).toBeNull();
+    expect(validateOrgSlug("acme-events")).toBeNull();
+    expect(validateOrgSlug("acme_events")).not.toBeNull();
+    expect(validateOrgSlug("acme events")).not.toBeNull();
+    // The validator lowercases internally so SCREAM-CASE is accepted as
+    // input but enforced lowercase on submission.
+    expect(validateOrgSlug("ACME")).toBeNull();
+    expect(validateOrgSlug("-bad")).not.toBeNull();
+    expect(validateOrgSlug("bad-")).not.toBeNull();
+    expect(validateOrgSlug("a".repeat(101))).not.toBeNull();
+  });
+
+  it("validateOrgCountry tolerates blank and rejects malformed codes", () => {
+    expect(validateOrgCountry("")).toBeNull();
+    expect(validateOrgCountry("US")).toBeNull();
+    expect(validateOrgCountry("GBR")).toBeNull();
+    expect(validateOrgCountry("U")).not.toBeNull();
+    expect(validateOrgCountry("USAA")).not.toBeNull();
+    expect(validateOrgCountry("U1")).not.toBeNull();
+  });
+
+  it("validateOrgLocale tolerates blank and accepts BCP-47 tags", () => {
+    expect(validateOrgLocale("")).toBeNull();
+    expect(validateOrgLocale("en")).toBeNull();
+    expect(validateOrgLocale("en-US")).toBeNull();
+    expect(validateOrgLocale("de-DE")).toBeNull();
+    expect(validateOrgLocale("english")).not.toBeNull();
+    expect(validateOrgLocale("en_US")).not.toBeNull();
+  });
+
+  it("validateOrgReservationTTL accepts blank, requires positive int, caps at 86400", () => {
+    expect(validateOrgReservationTTL("")).toBeNull();
+    expect(validateOrgReservationTTL("1200")).toBeNull();
+    expect(validateOrgReservationTTL("86400")).toBeNull();
+    expect(validateOrgReservationTTL("86401")).not.toBeNull();
+    expect(validateOrgReservationTTL("0")).not.toBeNull();
+    expect(validateOrgReservationTTL("-1")).not.toBeNull();
+    expect(validateOrgReservationTTL("1.5")).not.toBeNull();
+    expect(validateOrgReservationTTL("abc")).not.toBeNull();
+  });
+});
+
+describe("mapCreateOrgServerError (feature #238)", () => {
+  function makeErr(code: string, message = "boom", details?: Record<string, unknown>): ApiError {
+    return new ApiError(400, { code, message, details });
+  }
+
+  it("maps invalid_name to the name field", () => {
+    const out = mapCreateOrgServerError(makeErr("admin_org.invalid_name", "bad"));
+    expect(out.name).toBe("bad");
+    expect(out.slug).toBeUndefined();
+  });
+
+  it("maps invalid_slug to the slug field", () => {
+    const out = mapCreateOrgServerError(makeErr("admin_org.invalid_slug", "bad slug"));
+    expect(out.slug).toBe("bad slug");
+  });
+
+  it("maps duplicate to the slug field (uniqueness is per slug)", () => {
+    const out = mapCreateOrgServerError(makeErr("admin_org.duplicate", "already exists"));
+    expect(out.slug).toBe("already exists");
+  });
+
+  it("maps body-shape errors to the form-level surface", () => {
+    expect(mapCreateOrgServerError(makeErr("admin_org.empty_body", "x")).form).toBe("x");
+    expect(mapCreateOrgServerError(makeErr("admin_org.invalid_body", "x")).form).toBe("x");
+    expect(mapCreateOrgServerError(makeErr("admin_org.invalid_json", "x")).form).toBe("x");
+  });
+
+  it("maps permissions.denied to a friendly form-level message", () => {
+    const out = mapCreateOrgServerError(makeErr("permissions.denied"));
+    expect(out.form).toMatch(/org\.create/);
+  });
+
+  it("maps missing-reason errors to a form-level prompt", () => {
+    expect(mapCreateOrgServerError(makeErr("superadmin.missing_reason")).form).toMatch(
+      /audit reason/i,
+    );
+    expect(mapCreateOrgServerError(makeErr("superadmin.reason_required")).form).toMatch(
+      /audit reason/i,
+    );
+  });
+
+  it("honours details.field for forwards compatibility", () => {
+    expect(
+      mapCreateOrgServerError(makeErr("admin_org.unknown", "nope", { field: "name" })).name,
+    ).toBe("nope");
+    expect(
+      mapCreateOrgServerError(makeErr("admin_org.unknown", "nope", { field: "slug" })).slug,
+    ).toBe("nope");
+  });
+
+  it("falls back to a generic form-level message with the code suffix", () => {
+    const out = mapCreateOrgServerError(makeErr("unexpected.code", "boom"));
+    expect(out.form).toBe("boom (unexpected.code)");
   });
 });

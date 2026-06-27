@@ -56,18 +56,20 @@
  * Mock data: NONE. The page renders only what the backend returns.
  */
 import { createRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useMemo,
   useRef,
   useState,
   type CSSProperties,
+  type FormEvent,
   type ReactNode,
 } from "react";
 import { Route as RootRoute } from "./__root";
 import { ApiError, authedFetch } from "@/lib/api/client";
 import { RequirePermission } from "@/components/RequirePermission";
 import { NAV_BY_PATH } from "@/lib/auth/navConfig";
+import { useAuth } from "@/lib/auth/useAuth";
 import {
   useEscapeClose,
   useFocusOnMount,
@@ -123,9 +125,12 @@ function OrganizationsRoute() {
 }
 
 function OrganizationsExplorer() {
+  const { permissions } = useAuth();
+  const canCreate = permissions.has("org.create");
   const [filter, setFilter] = useState("");
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
   const [includeDeleted, setIncludeDeleted] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const query = useQuery<OrganizationsEnvelope, ApiError>({
     queryKey: ["admin", "organizations"],
@@ -186,6 +191,20 @@ function OrganizationsExplorer() {
           >
             {query.isFetching ? "Refreshing…" : "Refresh"}
           </button>
+          {canCreate ? (
+            <button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              style={primaryButtonStyle}
+              data-testid="orgs-create-open"
+            >
+              Create organization
+            </button>
+          ) : (
+            <span style={mutedHintStyle} title="Requires org.create">
+              Create requires org.create
+            </span>
+          )}
         </div>
       </header>
 
@@ -228,6 +247,10 @@ function OrganizationsExplorer() {
           org={activeOrg}
           onClose={() => setActiveOrgId(null)}
         />
+      ) : null}
+
+      {createOpen ? (
+        <CreateOrganizationDialog onClose={() => setCreateOpen(false)} />
       ) : null}
     </section>
   );
@@ -618,6 +641,477 @@ function BackendGapTile({
 }
 
 // ---------------------------------------------------------------------------
+// Create-organization dialog (feature #238)
+// ---------------------------------------------------------------------------
+
+/**
+ * Local validation mirrors the backend (admin_orgs.go::handleAdminCreateOrg):
+ *
+ *   name  — trimmed, required, <= 200 chars
+ *   slug  — trimmed + lowercased, required, <= 100 chars, [a-z0-9-]
+ *   country — optional, 2-letter ISO when present (free-text on the wire)
+ *   default_locale — optional, defaults to "en" server-side
+ *   reservation_ttl_seconds — optional positive integer (server defaults
+ *                              to 1200 when missing or non-positive),
+ *                              capped at 86400 (24h) by the UI.
+ *
+ * Empty `country` / `default_locale` / `reservation_ttl_seconds` are
+ * tolerated so the operator can rely on backend defaults.
+ */
+export function validateOrgName(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (trimmed === "") {
+    return "Name is required";
+  }
+  if (trimmed.length > 200) {
+    return "Name must be at most 200 characters";
+  }
+  return null;
+}
+
+const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+
+export function validateOrgSlug(raw: string): string | null {
+  const trimmed = raw.trim().toLowerCase();
+  if (trimmed === "") {
+    return "Slug is required";
+  }
+  if (trimmed.length > 100) {
+    return "Slug must be at most 100 characters";
+  }
+  if (!SLUG_RE.test(trimmed)) {
+    return "Slug must contain only lowercase letters, digits, and dashes";
+  }
+  return null;
+}
+
+export function validateOrgCountry(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (trimmed === "") {
+    return null;
+  }
+  if (trimmed.length < 2 || trimmed.length > 3) {
+    return "Country must be a 2- or 3-letter ISO code";
+  }
+  if (!/^[A-Za-z]+$/.test(trimmed)) {
+    return "Country must be alphabetic";
+  }
+  return null;
+}
+
+export function validateOrgLocale(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (trimmed === "") {
+    return null;
+  }
+  // BCP-47 lite: language[-REGION]
+  if (!/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})?$/.test(trimmed)) {
+    return "Locale must look like 'en' or 'en-US'";
+  }
+  return null;
+}
+
+export function validateOrgReservationTTL(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (trimmed === "") {
+    return null;
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isInteger(parsed)) {
+    return "Reservation TTL must be a whole number of seconds";
+  }
+  if (parsed <= 0) {
+    return "Reservation TTL must be positive";
+  }
+  if (parsed > 86_400) {
+    return "Reservation TTL must be at most 86400 (24h)";
+  }
+  return null;
+}
+
+interface CreateOrgFieldErrors {
+  name?: string;
+  slug?: string;
+  country?: string;
+  default_locale?: string;
+  reservation_ttl_seconds?: string;
+  form?: string;
+}
+
+interface CreateOrgEnvelope {
+  readonly organization: AdminOrganization;
+}
+
+/**
+ * Map an error envelope from admin_orgs.go::handleAdminCreateOrg onto
+ * field-level errors. The backend emits `details.field = "name" | "slug"`
+ * for admin_org.invalid_name / admin_org.invalid_slug; duplicates are
+ * reported against the slug field (uniqueness is per slug AND name).
+ */
+export function mapCreateOrgServerError(err: ApiError): CreateOrgFieldErrors {
+  const out: CreateOrgFieldErrors = {};
+  const field =
+    err.details !== undefined && typeof err.details.field === "string"
+      ? err.details.field
+      : undefined;
+  switch (err.code) {
+    case "admin_org.invalid_name":
+      out.name = err.message;
+      return out;
+    case "admin_org.invalid_slug":
+      out.slug = err.message;
+      return out;
+    case "admin_org.duplicate":
+      out.slug = err.message;
+      return out;
+    case "admin_org.empty_body":
+    case "admin_org.invalid_body":
+    case "admin_org.invalid_json":
+      out.form = err.message;
+      return out;
+    case "permissions.denied":
+      out.form =
+        "Your account is missing org.create. Ask a platform administrator.";
+      return out;
+    case "superadmin.missing_reason":
+    case "superadmin.reason_required":
+      out.form =
+        "An audit reason (X-Admin-Reason) is required. Submit a reason and retry.";
+      return out;
+    default:
+      if (field === "name") {
+        out.name = err.message;
+      } else if (field === "slug") {
+        out.slug = err.message;
+      } else {
+        out.form = `${err.message} (${err.code})`;
+      }
+      return out;
+  }
+}
+
+function CreateOrganizationDialog({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
+  const [country, setCountry] = useState("");
+  const [locale, setLocale] = useState("");
+  const [ttl, setTtl] = useState("");
+  const [serverErrors, setServerErrors] = useState<CreateOrgFieldErrors>({});
+  const [success, setSuccess] = useState<AdminOrganization | null>(null);
+
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  useEscapeClose(true, onClose);
+  useFocusOnMount<HTMLButtonElement>(true, closeRef);
+  useFocusRestore(true);
+
+  const nameErr = validateOrgName(name);
+  const slugErr = validateOrgSlug(slug);
+  const countryErr = validateOrgCountry(country);
+  const localeErr = validateOrgLocale(locale);
+  const ttlErr = validateOrgReservationTTL(ttl);
+  const localValid =
+    nameErr === null &&
+    slugErr === null &&
+    countryErr === null &&
+    localeErr === null &&
+    ttlErr === null;
+
+  const mutation = useMutation<CreateOrgEnvelope, ApiError, void>({
+    mutationFn: () => {
+      const body: Record<string, unknown> = {
+        name: name.trim(),
+        slug: slug.trim().toLowerCase(),
+        country: country.trim(),
+      };
+      if (locale.trim() !== "") {
+        body.default_locale = locale.trim();
+      }
+      if (ttl.trim() !== "") {
+        body.reservation_ttl_seconds = Number(ttl);
+      }
+      return authedFetch<CreateOrgEnvelope>({
+        method: "POST",
+        path: "/v1/admin/organizations",
+        body,
+      });
+    },
+    onSuccess: (data) => {
+      // Invalidate the list query so the new row appears immediately.
+      queryClient.invalidateQueries({ queryKey: ["admin", "organizations"] });
+      setSuccess(data.organization);
+    },
+    onError: (err) => {
+      setServerErrors(mapCreateOrgServerError(err));
+    },
+  });
+
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setServerErrors({});
+    if (!localValid) {
+      return;
+    }
+    mutation.mutate();
+  }
+
+  if (success !== null) {
+    return (
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="orgs-create-success-title"
+        style={dialogBackdropStyle}
+        data-testid="orgs-create-success"
+      >
+        <div style={dialogStyle}>
+          <header style={dialogHeaderStyle}>
+            <h2 id="orgs-create-success-title" style={dialogTitleStyle}>
+              Organization created
+            </h2>
+            <button
+              type="button"
+              ref={closeRef}
+              onClick={onClose}
+              style={dialogCloseStyle}
+              aria-label="Close"
+              data-testid="orgs-create-close"
+            >
+              ×
+            </button>
+          </header>
+          <div style={successBodyStyle}>
+            <p style={successParaStyle}>
+              <strong>{success.name}</strong> (
+              <code style={monoStyle}>{success.slug}</code>) was created and is
+              now visible in the table.
+            </p>
+            <dl style={metaListStyle}>
+              <MetaRow k="ID" v={<code style={monoStyle}>{success.id}</code>} />
+              <MetaRow k="Country" v={success.country || "—"} />
+              <MetaRow k="Default locale" v={success.default_locale} />
+              <MetaRow
+                k="Reservation TTL"
+                v={`${formatDurationSeconds(success.reservation_ttl_seconds)} (${success.reservation_ttl_seconds.toLocaleString()}s)`}
+              />
+            </dl>
+            <div style={formActionsStyle}>
+              <button
+                type="button"
+                onClick={onClose}
+                style={primaryButtonStyle}
+                data-testid="orgs-create-done"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="orgs-create-title"
+      style={dialogBackdropStyle}
+      data-testid="orgs-create-dialog"
+    >
+      <div style={dialogStyle}>
+        <header style={dialogHeaderStyle}>
+          <h2 id="orgs-create-title" style={dialogTitleStyle}>
+            Create organization
+          </h2>
+          <button
+            type="button"
+            ref={closeRef}
+            onClick={onClose}
+            style={dialogCloseStyle}
+            aria-label="Close"
+            data-testid="orgs-create-close"
+          >
+            ×
+          </button>
+        </header>
+        <form onSubmit={onSubmit} style={formStyle} noValidate>
+          <FieldRow
+            label="Name"
+            htmlFor="orgs-create-name"
+            error={serverErrors.name ?? null}
+            localError={name.length > 0 ? nameErr : null}
+            hint="Operator-visible organization name. Required."
+          >
+            <input
+              id="orgs-create-name"
+              type="text"
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (serverErrors.name !== undefined) {
+                  setServerErrors({ ...serverErrors, name: undefined });
+                }
+              }}
+              style={inputStyle}
+              required
+              maxLength={200}
+              autoFocus
+              data-testid="orgs-create-name"
+            />
+          </FieldRow>
+          <FieldRow
+            label="Slug"
+            htmlFor="orgs-create-slug"
+            error={serverErrors.slug ?? null}
+            localError={slug.length > 0 ? slugErr : null}
+            hint="Lowercase, URL-safe identifier. Required and unique."
+          >
+            <input
+              id="orgs-create-slug"
+              type="text"
+              value={slug}
+              onChange={(e) => {
+                setSlug(e.target.value);
+                if (serverErrors.slug !== undefined) {
+                  setServerErrors({ ...serverErrors, slug: undefined });
+                }
+              }}
+              style={inputMonoStyle}
+              required
+              maxLength={100}
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              data-testid="orgs-create-slug"
+            />
+          </FieldRow>
+          <FieldRow
+            label="Country"
+            htmlFor="orgs-create-country"
+            error={serverErrors.country ?? null}
+            localError={country.length > 0 ? countryErr : null}
+            hint="2-letter ISO 3166-1 country code (e.g. US, GB). Optional."
+          >
+            <input
+              id="orgs-create-country"
+              type="text"
+              value={country}
+              onChange={(e) => setCountry(e.target.value.toUpperCase())}
+              style={inputMonoStyle}
+              maxLength={3}
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+              data-testid="orgs-create-country"
+            />
+          </FieldRow>
+          <FieldRow
+            label="Default locale"
+            htmlFor="orgs-create-locale"
+            error={serverErrors.default_locale ?? null}
+            localError={locale.length > 0 ? localeErr : null}
+            hint="BCP-47 locale tag. Server defaults to 'en' if blank."
+          >
+            <input
+              id="orgs-create-locale"
+              type="text"
+              value={locale}
+              onChange={(e) => setLocale(e.target.value)}
+              style={inputMonoStyle}
+              maxLength={20}
+              placeholder="en"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              data-testid="orgs-create-locale"
+            />
+          </FieldRow>
+          <FieldRow
+            label="Reservation TTL (seconds)"
+            htmlFor="orgs-create-ttl"
+            error={serverErrors.reservation_ttl_seconds ?? null}
+            localError={ttl.length > 0 ? ttlErr : null}
+            hint="Cart-hold timeout. Server defaults to 1200 (20m). Max 86400 (24h)."
+          >
+            <input
+              id="orgs-create-ttl"
+              type="number"
+              value={ttl}
+              onChange={(e) => setTtl(e.target.value)}
+              style={inputStyle}
+              min={1}
+              max={86400}
+              step={1}
+              placeholder="1200"
+              data-testid="orgs-create-ttl"
+            />
+          </FieldRow>
+
+          {serverErrors.form !== undefined ? (
+            <div style={formErrorStyle} role="alert" data-testid="orgs-create-error">
+              {serverErrors.form}
+            </div>
+          ) : null}
+
+          <div style={formActionsStyle}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={secondaryButtonStyle}
+              data-testid="orgs-create-cancel"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              style={primaryButtonStyle}
+              disabled={!localValid || mutation.isPending}
+              data-testid="orgs-create-submit"
+            >
+              {mutation.isPending ? "Creating…" : "Create"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function FieldRow({
+  label,
+  htmlFor,
+  error,
+  localError,
+  hint,
+  children,
+}: {
+  label: string;
+  htmlFor: string;
+  error: string | null;
+  localError: string | null;
+  hint: ReactNode;
+  children: ReactNode;
+}) {
+  const visibleError = error ?? localError;
+  return (
+    <div style={fieldRowStyle}>
+      <label htmlFor={htmlFor} style={fieldLabelStyle}>
+        {label}
+      </label>
+      {children}
+      {visibleError !== null ? (
+        <div style={fieldErrorStyle} role="alert" data-testid={`${htmlFor}-error`}>
+          {visibleError}
+        </div>
+      ) : (
+        <div style={fieldHintStyle}>{hint}</div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Format helpers
 // ---------------------------------------------------------------------------
 
@@ -984,4 +1478,153 @@ const relatedTileGapBadgeStyle: CSSProperties = {
   fontWeight: 600,
   textTransform: "uppercase",
   letterSpacing: 0.4,
+};
+
+// Create-organization dialog styles (feature #238).
+const primaryButtonStyle: CSSProperties = {
+  fontSize: 12,
+  padding: "6px 12px",
+  background: "#0369a1",
+  border: "1px solid #0369a1",
+  borderRadius: 4,
+  cursor: "pointer",
+  color: "#ffffff",
+  fontWeight: 600,
+};
+
+const secondaryButtonStyle: CSSProperties = {
+  fontSize: 12,
+  padding: "6px 12px",
+  background: "#ffffff",
+  border: "1px solid #cbd5e1",
+  borderRadius: 4,
+  cursor: "pointer",
+  color: "#0f172a",
+};
+
+const mutedHintStyle: CSSProperties = {
+  fontSize: 11,
+  color: "#94a3b8",
+  fontStyle: "italic",
+};
+
+const dialogBackdropStyle: CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(15, 23, 42, 0.4)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 16,
+  zIndex: 100,
+};
+
+const dialogStyle: CSSProperties = {
+  background: "#ffffff",
+  borderRadius: 8,
+  border: "1px solid #e2e8f0",
+  boxShadow: "0 10px 25px rgba(15, 23, 42, 0.2)",
+  width: "min(520px, 100%)",
+  maxHeight: "90vh",
+  overflowY: "auto",
+};
+
+const dialogHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  padding: "12px 16px",
+  borderBottom: "1px solid #e2e8f0",
+};
+
+const dialogTitleStyle: CSSProperties = {
+  margin: 0,
+  fontSize: 16,
+  fontWeight: 600,
+  color: "#0f172a",
+};
+
+const dialogCloseStyle: CSSProperties = {
+  background: "transparent",
+  border: "none",
+  fontSize: 22,
+  lineHeight: 1,
+  cursor: "pointer",
+  color: "#64748b",
+  padding: "0 4px",
+};
+
+const formStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 16,
+  padding: 16,
+};
+
+const fieldRowStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+};
+
+const fieldLabelStyle: CSSProperties = {
+  fontSize: 12,
+  fontWeight: 600,
+  color: "#334155",
+};
+
+const inputStyle: CSSProperties = {
+  fontSize: 13,
+  padding: "8px 10px",
+  border: "1px solid #cbd5e1",
+  borderRadius: 4,
+  background: "#ffffff",
+  color: "#0f172a",
+};
+
+const inputMonoStyle: CSSProperties = {
+  ...inputStyle,
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+  fontSize: 12,
+};
+
+const fieldHintStyle: CSSProperties = {
+  fontSize: 11,
+  color: "#64748b",
+  lineHeight: 1.4,
+};
+
+const fieldErrorStyle: CSSProperties = {
+  fontSize: 11,
+  color: "#b91c1c",
+  fontWeight: 500,
+};
+
+const formErrorStyle: CSSProperties = {
+  fontSize: 12,
+  padding: 8,
+  background: "#fef2f2",
+  border: "1px solid #fca5a5",
+  color: "#7f1d1d",
+  borderRadius: 4,
+};
+
+const formActionsStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: 8,
+};
+
+const successBodyStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 12,
+  padding: 16,
+};
+
+const successParaStyle: CSSProperties = {
+  margin: 0,
+  fontSize: 13,
+  color: "#334155",
+  lineHeight: 1.5,
 };
