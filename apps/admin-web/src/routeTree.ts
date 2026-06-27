@@ -9,6 +9,15 @@ import { Route as TicketsRoute } from "@/routes/tickets";
 import { Route as RefundsRoute } from "@/routes/refunds";
 import { Route as AuditRoute } from "@/routes/audit";
 import { Route as ObservabilityRoute } from "@/routes/observability";
+import {
+  EventsRoute,
+  VenuesRoute,
+  ChannelsRoute,
+  PaymentsRoute,
+  ReportsRoute,
+  ContentRoute,
+  PosRoute,
+} from "@/routes/legacyPlaceholders";
 import { GeoRoute } from "@/routes/guarded";
 
 /**
@@ -29,9 +38,16 @@ export const routeTree = RootRoute.addChildren([
   NetworksRoute,
   NetworkDetailRoute,
   OrganizationsRoute,
+  EventsRoute,
+  VenuesRoute,
   OrdersRoute,
   TicketsRoute,
   RefundsRoute,
+  ChannelsRoute,
+  PaymentsRoute,
+  ReportsRoute,
+  ContentRoute,
+  PosRoute,
   AuditRoute,
   ObservabilityRoute,
   GeoRoute,

@@ -140,9 +140,16 @@ describe("visibleNavEntries -- /v1/me role fixtures", () => {
       "workspace",
       "networks",
       "organizations",
+      "events_sessions",
+      "venues_seating",
       "orders",
       "tickets",
       "refunds",
+      "frontends_channels",
+      "payments_fiscal",
+      "reports",
+      "notifications_content",
+      "pos",
       "audit",
       "observability",
       "geo",
@@ -155,27 +162,55 @@ describe("visibleNavEntries -- /v1/me role fixtures", () => {
       platformOperator.permissions,
       "platform",
     );
+    // platform_operator fixture only holds geo.admin. None of the
+    // SAUI-12 placeholders accept a bare geo.admin operator -- each
+    // requires either superadmin.read or a scoped network/event/payment
+    // permission. So the visible sidebar collapses to workspace + geo.
     expect(ids(out)).toEqual(["workspace", "geo"]);
   });
 
-  it("network_operator: workspace + networks, but no superadmin or geo", () => {
+  it("network_operator: sees networks + SAUI-12 events/channels/payments/reports via network.* perms", () => {
     const out = visibleNavEntries(
       NAV_ENTRIES,
       networkOperator.permissions,
       "network",
     );
-    expect(ids(out)).toEqual(["workspace", "networks"]);
+    // network_operator holds network.view_sales, network.manage_channels,
+    // and network.view_reports. SAUI-12 placeholders use {anyOf} rules
+    // that grant access from those families:
+    //   events_sessions    -> network.view_sales
+    //   frontends_channels -> network.manage_channels
+    //   payments_fiscal    -> network.view_sales
+    //   reports            -> network.view_reports
+    // The operator still lacks superadmin.read, geo.admin, pos.execute,
+    // org.read, etc., so organizations/venues/orders/tickets/refunds/
+    // notifications/pos/audit/observability/geo stay hidden.
+    expect(ids(out)).toEqual([
+      "workspace",
+      "networks",
+      "events_sessions",
+      "frontends_channels",
+      "payments_fiscal",
+      "reports",
+    ]);
   });
 
-  it("network_operator under organization scope: organization-incompatible entries hide", () => {
+  it("network_operator under organization scope: only org-compatible entries remain", () => {
     const out = visibleNavEntries(
       NAV_ENTRIES,
       networkOperator.permissions,
       "organization",
     );
-    // The networks entry is scoped to global/platform/network only, so it
-    // disappears when the operator switches to an organization scope.
-    expect(ids(out)).toEqual(["workspace"]);
+    // Networks/payments hide (no "organization" in scopeKinds). Pos hides
+    // (no organization scope AND missing pos.execute). Events / channels /
+    // reports include "organization" in scopeKinds and are unlocked by
+    // network.view_sales / network.manage_channels / network.view_reports.
+    expect(ids(out)).toEqual([
+      "workspace",
+      "events_sessions",
+      "frontends_channels",
+      "reports",
+    ]);
   });
 
   it("no-permission user: only the always-on workspace entry", () => {

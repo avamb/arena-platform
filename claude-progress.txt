@@ -15228,3 +15228,95 @@ Verification:
                                                 in new files)
 
 Marked #227 passing. Commit eb714489.
+
+================================================================================
+Session 2026-06-27 -- Feature #228 (SAUI-12 Legacy-derived module route placeholders)
+================================================================================
+Added 7 permission-filtered legacy-derived module placeholders for the
+unified admin shell: /events, /venues, /channels, /payments, /reports,
+/content, and the POS-mode placeholder. Each is a SHELL ONLY (no
+tables, no synthetic rows, no mock counts).
+
+New files:
+  apps/admin-web/src/lib/admin/legacyModules.ts
+    LEGACY_MODULE_PLACEHOLDERS array -- single source of truth for
+    placeholder metadata: id (mirrors legacy_admin_reference_map.yaml
+    module id), label, path, NAV permission rule, scopeKinds, legacy
+    source reference (legacy app + screenshot paths), future scope
+    bullets, deferral reason, workflow shape, mvpPriority (P0/P1/P2).
+
+  apps/admin-web/src/components/LegacyModulePlaceholder.tsx
+    Shared placeholder UI. Wraps the shell in <RequirePermission /> so
+    direct-URL navigation by an unprivileged operator hits the
+    canonical 403 surface. Renders MVP priority badge, status box
+    ("shell only"), legacy source reference (legacy map module id +
+    screenshots), expected future scope, deferral reason.
+
+  apps/admin-web/src/routes/legacyPlaceholders.tsx
+    Seven createRoute exports (EventsRoute, VenuesRoute, ChannelsRoute,
+    PaymentsRoute, ReportsRoute, ContentRoute, PosRoute). Module-load
+    sanity check throws if an entry in LEGACY_MODULE_PLACEHOLDERS
+    lacks a Route export.
+
+  apps/admin-web/src/routes/legacyPlaceholders.test.ts
+    26 vitest cases pinning: 7-entry count, path/id parity vs the
+    legacy YAML, source reference completeness, deferral prose
+    non-triviality, permission gate present (no "always" rule),
+    superadmin.read accepted, empty perms rejected, navConfig parity.
+
+Modified:
+  apps/admin-web/src/lib/auth/navConfig.ts
+    Extended NavRoutePath union with /events /venues /channels
+    /payments /reports /content + the POS mode path. Added 7
+    NAV_ENTRIES rows ordered operationally: events/venues between
+    organizations and orders; channels/payments/reports/content/POS
+    between refunds and audit.
+
+  apps/admin-web/src/lib/auth/__tests__/navConfig.test.ts
+    Updated platform_superadmin global expectations to include new
+    entries. Updated network_operator network-scope expectations:
+    network.view_sales unlocks events_sessions + payments_fiscal,
+    network.manage_channels unlocks frontends_channels,
+    network.view_reports unlocks reports. Updated org-scope test:
+    events/channels/reports surface; networks/payments/POS hide.
+
+  apps/admin-web/src/routeTree.ts
+    Imported and registered all 7 new routes in the assembled tree.
+
+Permission gating (anyOf rules):
+  events_sessions       -> superadmin.read | event.read | org.read | network.view_sales
+  venues_seating        -> superadmin.read | org.read | venue.read | venue.write
+  frontends_channels    -> superadmin.read | network.manage_channels | integration.read
+  payments_fiscal       -> superadmin.read | payment.read | network.view_sales
+  reports               -> superadmin.read | network.view_reports | report.read
+  notifications_content -> superadmin.read
+  POS mode              -> superadmin.read | pos.execute
+
+Scope filters:
+  - events/venues/channels/reports/content allow global/platform/network/organization
+  - payments/POS drop "organization" (config + POS belong to network or above)
+
+Contract guarantees:
+  - No mock data, no fake counts, no synthetic rows.
+  - Every placeholder names its legacy_admin_reference_map.yaml module id.
+  - Every placeholder names its legacy app(s) (TixManager/TixEditor/
+    TixCassa/TixReporter) and at least one legacy screenshot path.
+  - Every placeholder lists >=2 future-scope bullets.
+  - Every placeholder explains its deferral reason in non-trivial prose.
+  - Reports + POS deferral text explicitly cites the SAUI-12 "do not
+    implement full POS/seating/reports here" rule.
+  - Venues deferral text explicitly defers the visual seating editor.
+  - Notifications/content is tagged P2 (low priority).
+  - Direct URL navigation always resolves to the placeholder behind
+    RequirePermission -- no silent route gaps.
+
+Verification:
+  npm --prefix apps/admin-web run type-check  OK
+  npm --prefix apps/admin-web test            244/244 PASS (incl. 26 new)
+  npm --prefix apps/admin-web run build       OK (230 modules, 490.55 kB)
+  npm run check-ts                            OK
+  Mock-data grep                              clean (no globalThis /
+                                                devStore / mockData hits
+                                                in new files)
+
+Marked #228 passing.

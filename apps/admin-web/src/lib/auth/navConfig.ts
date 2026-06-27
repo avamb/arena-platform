@@ -46,9 +46,16 @@ export type NavRoutePath =
   | "/"
   | "/networks"
   | "/organizations"
+  | "/events"
+  | "/venues"
   | "/orders"
   | "/tickets"
   | "/refunds"
+  | "/channels"
+  | "/payments"
+  | "/reports"
+  | "/content"
+  | "/pos"
   | "/audit"
   | "/observability"
   | "/geo";
@@ -103,6 +110,36 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     purpose:
       "Cross-tenant organizations explorer. Requires superadmin.read.",
   },
+  // ---- SAUI-12 legacy-derived module placeholders (events, venues) ----
+  // These are catalog-shape modules and slot between organizations
+  // (tenant view) and orders (commerce view) in the sidebar.
+  {
+    id: "events_sessions",
+    label: "Events and Sessions",
+    to: "/events",
+    permission: {
+      anyOf: [
+        "superadmin.read",
+        "event.read",
+        "org.read",
+        "network.view_sales",
+      ],
+    },
+    scopeKinds: ["global", "platform", "network", "organization"],
+    purpose:
+      "Event organizer surface (events, sessions, media, pricing, quotas, sync). Shell only -- backend contract gap. Requires event.read, org.read, network.view_sales, or superadmin.read.",
+  },
+  {
+    id: "venues_seating",
+    label: "Venues and Seating",
+    to: "/venues",
+    permission: {
+      anyOf: ["superadmin.read", "org.read", "venue.read", "venue.write"],
+    },
+    scopeKinds: ["global", "platform", "network", "organization"],
+    purpose:
+      "Countries, cities, venues, seating plans, categories, quotas. Shell only -- visual seating editor deferred. Requires org.read, venue.*, or superadmin.read.",
+  },
   {
     id: "orders",
     label: "Orders",
@@ -126,6 +163,69 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     permission: { anyOf: ["superadmin.read"] },
     scopeKinds: ["global", "platform"],
     purpose: "Cross-tenant refunds. Requires superadmin.read.",
+  },
+  // ---- SAUI-12 legacy-derived module placeholders (channels, payments,
+  // reports, content, pos). Ordered to match the legacy_admin_reference_map
+  // workflow grouping: sales surfaces -> money -> insight -> messaging ->
+  // POS. Each is a SHELL ONLY (see LegacyModulePlaceholder.tsx).
+  {
+    id: "frontends_channels",
+    label: "Frontends and Channels",
+    to: "/channels",
+    permission: {
+      anyOf: [
+        "superadmin.read",
+        "network.manage_channels",
+        "integration.read",
+      ],
+    },
+    scopeKinds: ["global", "platform", "network", "organization"],
+    purpose:
+      "Sales surfaces, trusted agents, widgets, external ticketing connections, promotions. Shell only. Requires network.manage_channels, integration.read, or superadmin.read.",
+  },
+  {
+    id: "payments_fiscal",
+    label: "Payments and Fiscal",
+    to: "/payments",
+    permission: {
+      anyOf: ["superadmin.read", "payment.read", "network.view_sales"],
+    },
+    scopeKinds: ["global", "platform", "network"],
+    purpose:
+      "Acquiring, fiscal settings, payment provider status, POS fiscal dependencies. Shell only. Requires payment.read, network.view_sales, or superadmin.read.",
+  },
+  {
+    id: "reports",
+    label: "Reports",
+    to: "/reports",
+    permission: {
+      anyOf: [
+        "superadmin.read",
+        "network.view_reports",
+        "report.read",
+      ],
+    },
+    scopeKinds: ["global", "platform", "network", "organization"],
+    purpose:
+      "Unified reporting by platform, network, organizer, agent, event, period. Shell only -- explicitly out of scope this milestone. Requires network.view_reports, report.read, or superadmin.read.",
+  },
+  {
+    id: "notifications_content",
+    label: "Notifications and Content",
+    to: "/content",
+    permission: { anyOf: ["superadmin.read"] },
+    scopeKinds: ["global", "platform", "network", "organization"],
+    purpose:
+      "Notifications, news, subscriptions, widget and content configuration. Shell only. Requires superadmin.read.",
+  },
+  {
+    id: "pos",
+    label: "POS Mode",
+    to: "/pos",
+    permission: { anyOf: ["superadmin.read", "pos.execute"] },
+    scopeKinds: ["global", "platform", "network"],
+    purpose:
+      "Cash desk mode (shifts, event selection, cart, payment, fiscal, printing, returns). Shell only -- POS execution explicitly out of scope this milestone. Requires pos.execute or superadmin.read.",
   },
   {
     id: "audit",
