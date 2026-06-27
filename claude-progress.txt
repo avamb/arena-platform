@@ -14719,3 +14719,87 @@ Acceptance criteria all satisfied:
   Launchable against backend base URL from env -- YES (VITE_API_BASE_URL)
 
 Marked #217 passing.
+
+================================================================================
+Session 2026-06-27 -- Feature #218 (SAUI-02 auth, API client, /v1/me context)
+================================================================================
+Implemented the admin-web auth wiring on top of the SAUI-01 scaffold.
+
+New files (committed):
+  apps/admin-web/src/lib/api/tokenStore.ts (127 LOC)
+    In-memory access-token store + tab-scoped refresh-token storage,
+    plus a small pub-sub for the diagnostics panel. No tokens hit
+    localStorage; refresh token lives in the per-tab store so a tab
+    close logs the operator out automatically.
+  apps/admin-web/src/lib/api/client.ts (251 LOC)
+    ApiError class + envelope parser, login/refresh/logout/fetchMe
+    wrappers, and authedFetch() which does ONE silent refresh-and-
+    retry on 401 with a singleflight refresh promise to coalesce
+    parallel callers. credentials=omit so bearer is the only auth
+    channel. Network failure becomes ApiError(code=network.failure,
+    status=0).
+  apps/admin-web/src/lib/auth/AuthContext.ts (33 LOC)
+  apps/admin-web/src/lib/auth/useAuth.ts (15 LOC)
+  apps/admin-web/src/lib/auth/AuthProvider.tsx (168 LOC)
+    React context split per file for fast-refresh boundaries.
+    Bootstrap effect attempts a refresh-then-/v1/me if the refresh
+    token is present in tab storage; status transitions cover
+    initializing -> authenticated / unauthenticated / me_failed.
+    Memoised permissions (Set) + availableScopes (array) + helper
+    predicates (hasPermission / hasScope) for downstream surfaces.
+  apps/admin-web/src/components/AuthGate.tsx (129 LOC)
+    Gate component wrapped around the routed outlet in AppLayout.
+    Redirects unauthenticated callers to /login (and authenticated
+    callers away from /login). Renders a hard recovery screen when
+    /v1/me fails (me_failed status) with Retry + Sign out actions,
+    so a broken /v1/me cannot silently degrade authorisation.
+  apps/admin-web/src/components/DevDiagnosticsPanel.tsx (124 LOC)
+    Dev-only panel inside the sidebar. Double-gated by
+    config.isDevelopment + an inline guard. Shows status, redacted
+    access-token prefix, roles, permissions, scopes, assigned
+    networks. Subscribes to the tokenStore pub-sub so the prefix
+    refreshes after login.
+  apps/admin-web/src/lib/api/client.test.ts (283 LOC, 10 tests)
+    Coverage:
+      - login(): success path + 401 envelope rejection.
+      - authedFetch 401 handling: refresh + retry happy path,
+        refresh-failure resets session and rethrows original 401,
+        no-retry path when no refresh token is present.
+      - refresh(): rejects ApiError on server failure, throws
+        auth.no_refresh_token without calling fetch when no token.
+      - logout(): always resets local session even on server 500.
+      - permissions.denied envelope propagates as ApiError.
+      - Network failure -> ApiError code=network.failure, status=0.
+  apps/admin-web/src/test-setup.ts (45 LOC)
+    Minimal in-memory Storage polyfill so tests run in the node
+    env without pulling in jsdom / happy-dom. Provides sessionStorage
+    + localStorage with the standard Web Storage shape.
+  apps/admin-web/vitest.config.ts (24 LOC)
+    Wires @ + @openapi aliases, environment: node, the polyfill
+    setup file, and stubs VITE_API_BASE_URL so the lib/config
+    eager-throw does not fire in tests.
+
+Modified files:
+  apps/admin-web/src/routes/login.tsx (committed; purely SAUI-02
+    wiring -- replaces the scaffold console.log with auth.login()
+    then navigate("/"), surfaces ApiError code+message in an alert).
+  apps/admin-web/src/components/AppLayout.tsx,
+  apps/admin-web/src/main.tsx,
+  apps/admin-web/src/routeTree.ts -- left unstaged in this commit.
+    The working tree contains merged SAUI-02 + SAUI-03 edits made
+    by a parallel orchestrator pass (introduces ScopeProvider,
+    ScopeSelector, navConfig, RequirePermission, Forbidden -- all
+    untracked SAUI-03 files). tsc -b and vitest still pass against
+    the integrated working tree; the SAUI-03 commit picks them up
+    along with its own files.
+
+Verification:
+  node typescript/lib/tsc.js -b apps/admin-web --pretty       OK
+  node vitest/vitest.mjs run --root apps/admin-web            10/10 PASS
+  node vite/bin/vite.js build apps/admin-web                  OK (205 modules,
+                                                              345.99 kB)
+  npm run --prefix apps/admin-web type-check                   OK
+  npm run --prefix apps/admin-web test                         OK
+
+Marked #218 passing. Commit 0a355da.
+
