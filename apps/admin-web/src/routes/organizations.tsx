@@ -128,7 +128,11 @@ function OrganizationsRoute() {
 function OrganizationsExplorer() {
   const { permissions } = useAuth();
   const canCreate = permissions.has("org.create");
+  const canUpdate = permissions.has("org.update");
+  const canArchive = permissions.has("org.delete");
   const [filter, setFilter] = useState("");
+  const [editOrgId, setEditOrgId] = useState<string | null>(null);
+  const [archiveOrgId, setArchiveOrgId] = useState<string | null>(null);
   // SAUI-#240: activeOrgId + activeTab are reflected to the URL hash so a
   // refresh restores the same drawer + tab the operator was looking at.
   const initialHash = parseDrawerHash(
@@ -183,6 +187,14 @@ function OrganizationsExplorer() {
   const activeOrg = useMemo(
     () => (activeOrgId === null ? null : rows.find((o) => o.id === activeOrgId) ?? null),
     [activeOrgId, rows],
+  );
+  const editOrg = useMemo(
+    () => (editOrgId === null ? null : rows.find((o) => o.id === editOrgId) ?? null),
+    [editOrgId, rows],
+  );
+  const archiveOrg = useMemo(
+    () => (archiveOrgId === null ? null : rows.find((o) => o.id === archiveOrgId) ?? null),
+    [archiveOrgId, rows],
   );
 
   return (
@@ -258,6 +270,10 @@ function OrganizationsExplorer() {
         rows={filtered}
         activeOrgId={activeOrgId}
         onOpen={setActiveOrgId}
+        canUpdate={canUpdate}
+        canArchive={canArchive}
+        onEdit={setEditOrgId}
+        onArchive={setArchiveOrgId}
       />
 
       {activeOrg !== null ? (
@@ -271,6 +287,20 @@ function OrganizationsExplorer() {
 
       {createOpen ? (
         <CreateOrganizationDialog onClose={() => setCreateOpen(false)} />
+      ) : null}
+
+      {editOrg !== null ? (
+        <EditOrganizationDialog
+          org={editOrg}
+          onClose={() => setEditOrgId(null)}
+        />
+      ) : null}
+
+      {archiveOrg !== null ? (
+        <ArchiveOrganizationDialog
+          org={archiveOrg}
+          onClose={() => setArchiveOrgId(null)}
+        />
       ) : null}
     </section>
   );
@@ -320,9 +350,22 @@ interface BodyProps {
   rows: readonly AdminOrganization[];
   activeOrgId: string | null;
   onOpen: (id: string) => void;
+  canUpdate: boolean;
+  canArchive: boolean;
+  onEdit: (id: string) => void;
+  onArchive: (id: string) => void;
 }
 
-function OrganizationsBody({ query, rows, activeOrgId, onOpen }: BodyProps) {
+function OrganizationsBody({
+  query,
+  rows,
+  activeOrgId,
+  onOpen,
+  canUpdate,
+  canArchive,
+  onEdit,
+  onArchive,
+}: BodyProps) {
   if (query.isPending) {
     return (
       <div style={statusBoxStyle} role="status" aria-live="polite">
@@ -340,17 +383,35 @@ function OrganizationsBody({ query, rows, activeOrgId, onOpen }: BodyProps) {
       </div>
     );
   }
-  return <OrganizationsTable rows={rows} activeOrgId={activeOrgId} onOpen={onOpen} />;
+  return (
+    <OrganizationsTable
+      rows={rows}
+      activeOrgId={activeOrgId}
+      onOpen={onOpen}
+      canUpdate={canUpdate}
+      canArchive={canArchive}
+      onEdit={onEdit}
+      onArchive={onArchive}
+    />
+  );
 }
 
 function OrganizationsTable({
   rows,
   activeOrgId,
   onOpen,
+  canUpdate,
+  canArchive,
+  onEdit,
+  onArchive,
 }: {
   rows: readonly AdminOrganization[];
   activeOrgId: string | null;
   onOpen: (id: string) => void;
+  canUpdate: boolean;
+  canArchive: boolean;
+  onEdit: (id: string) => void;
+  onArchive: (id: string) => void;
 }) {
   return (
     <div style={tableWrapStyle} role="region" aria-label="Organizations table">
@@ -401,14 +462,48 @@ function OrganizationsTable({
                   )}
                 </td>
                 <td style={tdStyle}>
-                  <button
-                    type="button"
-                    style={rowActionButtonStyle}
-                    onClick={() => onOpen(o.id)}
-                    data-testid={`orgs-open-${o.slug}`}
-                  >
-                    Details
-                  </button>
+                  <div style={rowActionsCellStyle}>
+                    <button
+                      type="button"
+                      style={rowActionButtonStyle}
+                      onClick={() => onOpen(o.id)}
+                      data-testid={`orgs-open-${o.slug}`}
+                    >
+                      Details
+                    </button>
+                    {canUpdate ? (
+                      <button
+                        type="button"
+                        style={rowActionButtonStyle}
+                        onClick={() => onEdit(o.id)}
+                        disabled={o.deleted_at !== null}
+                        title={
+                          o.deleted_at !== null
+                            ? "Soft-deleted organizations cannot be edited"
+                            : "Edit organization"
+                        }
+                        data-testid={`orgs-edit-${o.slug}`}
+                      >
+                        Edit
+                      </button>
+                    ) : null}
+                    {canArchive ? (
+                      <button
+                        type="button"
+                        style={rowActionDangerStyle}
+                        onClick={() => onArchive(o.id)}
+                        disabled={o.deleted_at !== null}
+                        title={
+                          o.deleted_at !== null
+                            ? "Organization is already archived"
+                            : "Archive organization (soft-delete)"
+                        }
+                        data-testid={`orgs-archive-${o.slug}`}
+                      >
+                        Archive
+                      </button>
+                    ) : null}
+                  </div>
                 </td>
               </tr>
             );
@@ -1499,6 +1594,617 @@ function CreateOrganizationDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Edit-organization dialog (feature #239)
+//
+// Mirrors the create dialog but pre-fills every field from the row and
+// PATCHes /v1/admin/organizations/{id}. The X-Admin-Reason header is
+// auto-prompted by authedFetch (requiresAdminReason matches
+// /v1/admin/*). On success we invalidate the ["admin","organizations"]
+// query so the list reflects the edit.
+// ---------------------------------------------------------------------------
+
+interface UpdateOrgFieldErrors {
+  name?: string;
+  slug?: string;
+  country?: string;
+  default_locale?: string;
+  reservation_ttl_seconds?: string;
+  form?: string;
+}
+
+interface UpdateOrgEnvelope {
+  readonly organization: AdminOrganization;
+}
+
+/**
+ * Map an error envelope from admin_orgs.go::handleAdminUpdateOrg onto
+ * field-level errors. Codes mirror the create path:
+ *   - admin_org.invalid_name / invalid_slug -> field-scoped
+ *   - admin_org.duplicate -> slug (uniqueness is per slug AND name)
+ *   - admin_org.not_found -> form-level (the row may have been archived
+ *     in another tab between table load and submit)
+ *   - admin_org.{empty,invalid}_body / invalid_json -> form-level
+ *   - permissions.denied -> form-level, scoped to org.update
+ *   - superadmin.{missing,required}_reason -> form-level prompt
+ *
+ * Unknown codes fall back to a generic surface, honouring
+ * details.field when present (forwards compat).
+ */
+export function mapUpdateOrgServerError(err: ApiError): UpdateOrgFieldErrors {
+  const out: UpdateOrgFieldErrors = {};
+  const field =
+    err.details !== undefined && typeof err.details.field === "string"
+      ? err.details.field
+      : undefined;
+  switch (err.code) {
+    case "admin_org.invalid_name":
+      out.name = err.message;
+      return out;
+    case "admin_org.invalid_slug":
+      out.slug = err.message;
+      return out;
+    case "admin_org.duplicate":
+      out.slug = err.message;
+      return out;
+    case "admin_org.not_found":
+      out.form =
+        "Organization no longer exists. Refresh the list and try again.";
+      return out;
+    case "admin_org.empty_body":
+    case "admin_org.invalid_body":
+    case "admin_org.invalid_json":
+      out.form = err.message;
+      return out;
+    case "permissions.denied":
+      out.form =
+        "Your account is missing org.update. Ask a platform administrator.";
+      return out;
+    case "superadmin.missing_reason":
+    case "superadmin.reason_required":
+      out.form =
+        "An audit reason (X-Admin-Reason) is required. Submit a reason and retry.";
+      return out;
+    default:
+      if (field === "name") {
+        out.name = err.message;
+      } else if (field === "slug") {
+        out.slug = err.message;
+      } else {
+        out.form = `${err.message} (${err.code})`;
+      }
+      return out;
+  }
+}
+
+function EditOrganizationDialog({
+  org,
+  onClose,
+}: {
+  org: AdminOrganization;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState(org.name);
+  const [slug, setSlug] = useState(org.slug);
+  const [country, setCountry] = useState(org.country);
+  const [locale, setLocale] = useState(org.default_locale);
+  const [ttl, setTtl] = useState(String(org.reservation_ttl_seconds));
+  const [serverErrors, setServerErrors] = useState<UpdateOrgFieldErrors>({});
+  const [success, setSuccess] = useState<AdminOrganization | null>(null);
+
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  useEscapeClose(true, onClose);
+  useFocusOnMount<HTMLButtonElement>(true, closeRef);
+  useFocusRestore(true);
+
+  const nameErr = validateOrgName(name);
+  const slugErr = validateOrgSlug(slug);
+  const countryErr = validateOrgCountry(country);
+  const localeErr = validateOrgLocale(locale);
+  const ttlErr = validateOrgReservationTTL(ttl);
+  // Edit semantics: reservation TTL is required on the wire (PATCH does
+  // not partial-update), so blank is rejected here even though create
+  // tolerated blank (server default = 1200).
+  const ttlBlankErr = ttl.trim() === "" ? "Reservation TTL is required" : null;
+  const localValid =
+    nameErr === null &&
+    slugErr === null &&
+    countryErr === null &&
+    localeErr === null &&
+    ttlErr === null &&
+    ttlBlankErr === null;
+
+  const isDirty =
+    name.trim() !== org.name ||
+    slug.trim().toLowerCase() !== org.slug ||
+    country.trim() !== org.country ||
+    locale.trim() !== org.default_locale ||
+    (ttl.trim() !== "" && Number(ttl) !== org.reservation_ttl_seconds);
+
+  const mutation = useMutation<UpdateOrgEnvelope, ApiError, void>({
+    mutationFn: () => {
+      const body: Record<string, unknown> = {
+        name: name.trim(),
+        slug: slug.trim().toLowerCase(),
+        country: country.trim(),
+        default_locale: locale.trim(),
+        reservation_ttl_seconds: Number(ttl),
+      };
+      return authedFetch<UpdateOrgEnvelope>({
+        method: "PATCH",
+        path: `/v1/admin/organizations/${encodeURIComponent(org.id)}`,
+        body,
+      });
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "organizations"] });
+      setSuccess(data.organization);
+    },
+    onError: (err) => {
+      setServerErrors(mapUpdateOrgServerError(err));
+    },
+  });
+
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setServerErrors({});
+    if (!localValid || !isDirty) {
+      return;
+    }
+    mutation.mutate();
+  }
+
+  if (success !== null) {
+    return (
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="orgs-edit-success-title"
+        style={dialogBackdropStyle}
+        data-testid="orgs-edit-success"
+      >
+        <div style={dialogStyle}>
+          <header style={dialogHeaderStyle}>
+            <h2 id="orgs-edit-success-title" style={dialogTitleStyle}>
+              Organization updated
+            </h2>
+            <button
+              type="button"
+              ref={closeRef}
+              onClick={onClose}
+              style={dialogCloseStyle}
+              aria-label="Close"
+              data-testid="orgs-edit-close"
+            >
+              ×
+            </button>
+          </header>
+          <div style={successBodyStyle}>
+            <p style={successParaStyle}>
+              <strong>{success.name}</strong> (
+              <code style={monoStyle}>{success.slug}</code>) was updated.
+            </p>
+            <div style={formActionsStyle}>
+              <button
+                type="button"
+                onClick={onClose}
+                style={primaryButtonStyle}
+                data-testid="orgs-edit-done"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="orgs-edit-title"
+      style={dialogBackdropStyle}
+      data-testid="orgs-edit-dialog"
+    >
+      <div style={dialogStyle}>
+        <header style={dialogHeaderStyle}>
+          <h2 id="orgs-edit-title" style={dialogTitleStyle}>
+            Edit organization
+          </h2>
+          <button
+            type="button"
+            ref={closeRef}
+            onClick={onClose}
+            style={dialogCloseStyle}
+            aria-label="Close"
+            data-testid="orgs-edit-close"
+          >
+            ×
+          </button>
+        </header>
+        <form onSubmit={onSubmit} style={formStyle} noValidate>
+          <FieldRow
+            label="Name"
+            htmlFor="orgs-edit-name"
+            error={serverErrors.name ?? null}
+            localError={name.length > 0 ? nameErr : null}
+            hint="Operator-visible organization name. Required."
+          >
+            <input
+              id="orgs-edit-name"
+              type="text"
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (serverErrors.name !== undefined) {
+                  setServerErrors({ ...serverErrors, name: undefined });
+                }
+              }}
+              style={inputStyle}
+              required
+              maxLength={200}
+              autoFocus
+              data-testid="orgs-edit-name"
+            />
+          </FieldRow>
+          <FieldRow
+            label="Slug"
+            htmlFor="orgs-edit-slug"
+            error={serverErrors.slug ?? null}
+            localError={slug.length > 0 ? slugErr : null}
+            hint="Lowercase, URL-safe identifier. Required and unique."
+          >
+            <input
+              id="orgs-edit-slug"
+              type="text"
+              value={slug}
+              onChange={(e) => {
+                setSlug(e.target.value);
+                if (serverErrors.slug !== undefined) {
+                  setServerErrors({ ...serverErrors, slug: undefined });
+                }
+              }}
+              style={inputMonoStyle}
+              required
+              maxLength={100}
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              data-testid="orgs-edit-slug"
+            />
+          </FieldRow>
+          <FieldRow
+            label="Country"
+            htmlFor="orgs-edit-country"
+            error={serverErrors.country ?? null}
+            localError={country.length > 0 ? countryErr : null}
+            hint="2-letter ISO 3166-1 country code (e.g. US, GB). Optional."
+          >
+            <input
+              id="orgs-edit-country"
+              type="text"
+              value={country}
+              onChange={(e) => setCountry(e.target.value.toUpperCase())}
+              style={inputMonoStyle}
+              maxLength={3}
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+              data-testid="orgs-edit-country"
+            />
+          </FieldRow>
+          <FieldRow
+            label="Default locale"
+            htmlFor="orgs-edit-locale"
+            error={serverErrors.default_locale ?? null}
+            localError={locale.length > 0 ? localeErr : null}
+            hint="BCP-47 locale tag (e.g. en, en-US). Required."
+          >
+            <input
+              id="orgs-edit-locale"
+              type="text"
+              value={locale}
+              onChange={(e) => setLocale(e.target.value)}
+              style={inputMonoStyle}
+              maxLength={20}
+              placeholder="en"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              data-testid="orgs-edit-locale"
+            />
+          </FieldRow>
+          <FieldRow
+            label="Reservation TTL (seconds)"
+            htmlFor="orgs-edit-ttl"
+            error={serverErrors.reservation_ttl_seconds ?? null}
+            localError={ttl.length > 0 ? ttlErr : ttlBlankErr}
+            hint="Cart-hold timeout in seconds. Max 86400 (24h)."
+          >
+            <input
+              id="orgs-edit-ttl"
+              type="number"
+              value={ttl}
+              onChange={(e) => setTtl(e.target.value)}
+              style={inputStyle}
+              min={1}
+              max={86400}
+              step={1}
+              required
+              data-testid="orgs-edit-ttl"
+            />
+          </FieldRow>
+
+          {serverErrors.form !== undefined ? (
+            <div style={formErrorStyle} role="alert" data-testid="orgs-edit-error">
+              {serverErrors.form}
+            </div>
+          ) : null}
+
+          <div style={formActionsStyle}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={secondaryButtonStyle}
+              data-testid="orgs-edit-cancel"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              style={primaryButtonStyle}
+              disabled={!localValid || !isDirty || mutation.isPending}
+              data-testid="orgs-edit-submit"
+            >
+              {mutation.isPending ? "Saving…" : "Save changes"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Archive-organization confirmation dialog (feature #239)
+//
+// POST /v1/admin/organizations/{id}/archive performs a soft-delete in a
+// single transaction with an audit event. The confirmation step requires
+// the operator to retype the slug — this matches the destructive-action
+// pattern used elsewhere in the admin console and protects against
+// fat-fingered archives on the wrong row.
+// ---------------------------------------------------------------------------
+
+interface ArchiveOrgFieldErrors {
+  form?: string;
+}
+
+interface ArchiveOrgEnvelope {
+  readonly organization: AdminOrganization;
+  readonly archived: boolean;
+}
+
+/**
+ * Map an error envelope from admin_orgs.go::handleAdminArchiveOrg onto
+ * a form-level error surface. Archive has no field-scoped errors today;
+ * everything routes through the single `form` slot.
+ */
+export function mapArchiveOrgServerError(err: ApiError): ArchiveOrgFieldErrors {
+  switch (err.code) {
+    case "admin_org.not_found":
+      return {
+        form: "Organization no longer exists. Refresh the list and close this dialog.",
+      };
+    case "permissions.denied":
+      return {
+        form: "Your account is missing org.delete. Ask a platform administrator.",
+      };
+    case "superadmin.missing_reason":
+    case "superadmin.reason_required":
+      return {
+        form: "An audit reason (X-Admin-Reason) is required. Submit a reason and retry.",
+      };
+    case "dependency.database_unavailable":
+      return { form: "Database is unavailable. Try again shortly." };
+    default:
+      return { form: `${err.message} (${err.code})` };
+  }
+}
+
+function ArchiveOrganizationDialog({
+  org,
+  onClose,
+}: {
+  org: AdminOrganization;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [confirmSlug, setConfirmSlug] = useState("");
+  const [serverErrors, setServerErrors] = useState<ArchiveOrgFieldErrors>({});
+  const [success, setSuccess] = useState<AdminOrganization | null>(null);
+
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  useEscapeClose(true, onClose);
+  useFocusOnMount<HTMLButtonElement>(true, closeRef);
+  useFocusRestore(true);
+
+  const slugMatches = confirmSlug.trim().toLowerCase() === org.slug;
+  // Defence-in-depth: the row-level button already disables on archived
+  // rows, but a stale `?org=` link could open this dialog on a soft-
+  // deleted row. The submit guard treats that as a no-op.
+  const alreadyArchived = org.deleted_at !== null;
+
+  const mutation = useMutation<ArchiveOrgEnvelope, ApiError, void>({
+    mutationFn: () =>
+      authedFetch<ArchiveOrgEnvelope>({
+        method: "POST",
+        path: `/v1/admin/organizations/${encodeURIComponent(org.id)}/archive`,
+      }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "organizations"] });
+      setSuccess(data.organization);
+    },
+    onError: (err) => {
+      setServerErrors(mapArchiveOrgServerError(err));
+    },
+  });
+
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setServerErrors({});
+    if (!slugMatches || alreadyArchived) {
+      return;
+    }
+    mutation.mutate();
+  }
+
+  if (success !== null) {
+    return (
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="orgs-archive-success-title"
+        style={dialogBackdropStyle}
+        data-testid="orgs-archive-success"
+      >
+        <div style={dialogStyle}>
+          <header style={dialogHeaderStyle}>
+            <h2 id="orgs-archive-success-title" style={dialogTitleStyle}>
+              Organization archived
+            </h2>
+            <button
+              type="button"
+              ref={closeRef}
+              onClick={onClose}
+              style={dialogCloseStyle}
+              aria-label="Close"
+              data-testid="orgs-archive-close"
+            >
+              ×
+            </button>
+          </header>
+          <div style={successBodyStyle}>
+            <p style={successParaStyle}>
+              <strong>{success.name}</strong> (
+              <code style={monoStyle}>{success.slug}</code>) has been
+              soft-deleted. It remains visible when the "Show soft-deleted"
+              toggle is enabled.
+            </p>
+            <div style={formActionsStyle}>
+              <button
+                type="button"
+                onClick={onClose}
+                style={primaryButtonStyle}
+                data-testid="orgs-archive-done"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="orgs-archive-title"
+      style={dialogBackdropStyle}
+      data-testid="orgs-archive-dialog"
+    >
+      <div style={dialogStyle}>
+        <header style={dialogHeaderStyle}>
+          <h2 id="orgs-archive-title" style={dialogTitleStyle}>
+            Archive organization
+          </h2>
+          <button
+            type="button"
+            ref={closeRef}
+            onClick={onClose}
+            style={dialogCloseStyle}
+            aria-label="Close"
+            data-testid="orgs-archive-close"
+          >
+            ×
+          </button>
+        </header>
+        <form onSubmit={onSubmit} style={formStyle} noValidate>
+          <p style={successParaStyle}>
+            This will soft-delete <strong>{org.name}</strong> (
+            <code style={monoStyle}>{org.slug}</code>). The organization
+            and all its data become hidden from operators by default;
+            superadmins can still see archived rows via the
+            "Show soft-deleted" toggle. An audit event is written with the
+            <code style={monoStyle}> X-Admin-Reason </code> header.
+          </p>
+          <FieldRow
+            label={`Type the slug "${org.slug}" to confirm`}
+            htmlFor="orgs-archive-confirm"
+            error={null}
+            localError={
+              confirmSlug.length > 0 && !slugMatches
+                ? "Slug does not match"
+                : null
+            }
+            hint="The slug is case-insensitive."
+          >
+            <input
+              id="orgs-archive-confirm"
+              type="text"
+              value={confirmSlug}
+              onChange={(e) => setConfirmSlug(e.target.value)}
+              style={inputMonoStyle}
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              autoComplete="off"
+              data-testid="orgs-archive-confirm"
+            />
+          </FieldRow>
+
+          {alreadyArchived ? (
+            <div style={formErrorStyle} role="alert" data-testid="orgs-archive-already">
+              This organization is already archived. Close this dialog.
+            </div>
+          ) : null}
+
+          {serverErrors.form !== undefined ? (
+            <div style={formErrorStyle} role="alert" data-testid="orgs-archive-error">
+              {serverErrors.form}
+            </div>
+          ) : null}
+
+          <div style={formActionsStyle}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={secondaryButtonStyle}
+              data-testid="orgs-archive-cancel"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              style={dangerButtonStyle}
+              disabled={
+                !slugMatches || alreadyArchived || mutation.isPending
+              }
+              data-testid="orgs-archive-submit"
+            >
+              {mutation.isPending ? "Archiving…" : "Archive organization"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function FieldRow({
   label,
   htmlFor,
@@ -1719,6 +2425,29 @@ const rowActionButtonStyle: CSSProperties = {
   borderRadius: 4,
   cursor: "pointer",
   color: "#0f172a",
+};
+
+const rowActionDangerStyle: CSSProperties = {
+  ...rowActionButtonStyle,
+  borderColor: "#fca5a5",
+  color: "#b91c1c",
+};
+
+const rowActionsCellStyle: CSSProperties = {
+  display: "flex",
+  gap: 6,
+  flexWrap: "wrap",
+};
+
+const dangerButtonStyle: CSSProperties = {
+  fontSize: 12,
+  padding: "6px 12px",
+  background: "#b91c1c",
+  border: "1px solid #b91c1c",
+  borderRadius: 4,
+  cursor: "pointer",
+  color: "#ffffff",
+  fontWeight: 600,
 };
 
 const badgeActiveStyle: CSSProperties = {

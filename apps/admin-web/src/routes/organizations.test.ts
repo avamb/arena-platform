@@ -16,7 +16,9 @@ import {
   DRAWER_TAB_KEYS,
   filterRows,
   formatDurationSeconds,
+  mapArchiveOrgServerError,
   mapCreateOrgServerError,
+  mapUpdateOrgServerError,
   parseDrawerHash,
   parseDrawerTab,
   serializeDrawerHash,
@@ -234,6 +236,79 @@ describe("mapCreateOrgServerError (feature #238)", () => {
   it("falls back to a generic form-level message with the code suffix", () => {
     const out = mapCreateOrgServerError(makeErr("unexpected.code", "boom"));
     expect(out.form).toBe("boom (unexpected.code)");
+  });
+});
+
+describe("mapUpdateOrgServerError (feature #239)", () => {
+  function makeErr(code: string, message = "boom", details?: Record<string, unknown>): ApiError {
+    return new ApiError(400, { code, message, details });
+  }
+
+  it("maps invalid_name to the name field", () => {
+    expect(mapUpdateOrgServerError(makeErr("admin_org.invalid_name", "bad")).name).toBe("bad");
+  });
+
+  it("maps invalid_slug to the slug field", () => {
+    expect(mapUpdateOrgServerError(makeErr("admin_org.invalid_slug", "x")).slug).toBe("x");
+  });
+
+  it("maps duplicate to the slug field", () => {
+    expect(mapUpdateOrgServerError(makeErr("admin_org.duplicate", "dup")).slug).toBe("dup");
+  });
+
+  it("maps not_found to a form-level refresh prompt", () => {
+    expect(mapUpdateOrgServerError(makeErr("admin_org.not_found")).form).toMatch(/no longer exists/i);
+  });
+
+  it("maps body-shape errors to the form-level surface", () => {
+    expect(mapUpdateOrgServerError(makeErr("admin_org.empty_body", "x")).form).toBe("x");
+    expect(mapUpdateOrgServerError(makeErr("admin_org.invalid_body", "x")).form).toBe("x");
+    expect(mapUpdateOrgServerError(makeErr("admin_org.invalid_json", "x")).form).toBe("x");
+  });
+
+  it("maps permissions.denied to org.update guidance", () => {
+    expect(mapUpdateOrgServerError(makeErr("permissions.denied")).form).toMatch(/org\.update/);
+  });
+
+  it("maps missing-reason errors to an audit-reason prompt", () => {
+    expect(mapUpdateOrgServerError(makeErr("superadmin.missing_reason")).form).toMatch(/audit reason/i);
+    expect(mapUpdateOrgServerError(makeErr("superadmin.reason_required")).form).toMatch(/audit reason/i);
+  });
+
+  it("honours details.field for forwards compatibility", () => {
+    expect(mapUpdateOrgServerError(makeErr("admin_org.unknown", "nope", { field: "name" })).name).toBe("nope");
+    expect(mapUpdateOrgServerError(makeErr("admin_org.unknown", "nope", { field: "slug" })).slug).toBe("nope");
+  });
+
+  it("falls back to a generic form-level message with the code suffix", () => {
+    expect(mapUpdateOrgServerError(makeErr("unexpected.code", "boom")).form).toBe("boom (unexpected.code)");
+  });
+});
+
+describe("mapArchiveOrgServerError (feature #239)", () => {
+  function makeErr(code: string, message = "boom"): ApiError {
+    return new ApiError(400, { code, message });
+  }
+
+  it("maps not_found to a refresh prompt", () => {
+    expect(mapArchiveOrgServerError(makeErr("admin_org.not_found")).form).toMatch(/no longer exists/i);
+  });
+
+  it("maps permissions.denied to org.delete guidance", () => {
+    expect(mapArchiveOrgServerError(makeErr("permissions.denied")).form).toMatch(/org\.delete/);
+  });
+
+  it("maps missing-reason errors to an audit-reason prompt", () => {
+    expect(mapArchiveOrgServerError(makeErr("superadmin.missing_reason")).form).toMatch(/audit reason/i);
+    expect(mapArchiveOrgServerError(makeErr("superadmin.reason_required")).form).toMatch(/audit reason/i);
+  });
+
+  it("maps database_unavailable to a retry prompt", () => {
+    expect(mapArchiveOrgServerError(makeErr("dependency.database_unavailable")).form).toMatch(/unavailable/i);
+  });
+
+  it("falls back to a generic form-level message with the code suffix", () => {
+    expect(mapArchiveOrgServerError(makeErr("unexpected.code", "boom")).form).toBe("boom (unexpected.code)");
   });
 });
 
