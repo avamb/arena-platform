@@ -15475,3 +15475,16 @@ for follow-up. Final MVP role list for Users tab (#10), memberships
 backend (#3/#120) and seed (#16) fixed at the six business roles.
 No code changes. Marked #249 passing.
 
+[2026-06-27 #235] Documented venues CRUD in OpenAPI (admin UI consumption).
+Added VenueItem/CreateVenueRequest/UpdateVenueRequest schemas plus path
+coverage for /v1/venues, /v1/venues/{id},
+/v1/organizations/{org_id}/venues, and /v1/organizations/{org_id}/venues/{id}
+(GET/POST/PATCH/DELETE) in apps/backend/openapi/openapi.yaml.
+Regenerated apps/backend/openapi/clients/ts/index.d.ts via npm run
+gen-ts-client; npm run check-ts OK; node scripts/validate-openapi.mjs OK
+(39 paths / 63 schemas, no missing); npx spectral lint OK (0 errors).
+Backend handlers, sqlc queries, permissions (venue.read/create/update/delete)
+and 43 unit tests already existed (venues.go + venues_test.go). Closes
+OpenAPI gap noted in 09_autoforge/admin_ui/admin_crud_gap_inventory_232.md.
+Commit: 2935ef11. Marked #235 passing.
+
