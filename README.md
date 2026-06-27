@@ -72,7 +72,8 @@ arena_new/
         ├── cmd/
         │   ├── arena-api/        # HTTP API server binary
         │   ├── arena-worker/     # Background worker binary
-        │   └── arena-migrate/    # goose-driven migration tool binary
+        │   ├── arena-migrate/    # goose-driven migration tool binary
+        │   └── arena-seed/       # Idempotent dev/QA fixture loader (feature #247)
         ├── internal/
         │   ├── platform/         # Config, slog, pgx, otel, chi middleware, boundaries
         │   ├── domain/           # Pure domain types (no I/O)
@@ -116,6 +117,61 @@ Useful URLs once `init.sh` reports readiness:
 | http://localhost:8080/readyz  | readiness probe (DB + migrations)|
 | http://localhost:8080/metrics | Prometheus exposition            |
 | http://localhost:8080/v1/info | service metadata example         |
+
+### Seed test data (`arena-seed`)
+
+For development and QA convenience, the `arena-seed` binary loads a small,
+clearly-marked fixture set into the database so operators can exercise the
+admin UI without manually creating organizations, venues, users, channels and
+payment configs through the API. Inserts are wrapped in a single transaction
+and every row uses `ON CONFLICT (id) DO NOTHING`, so the command is
+**idempotent** — safe to re-run against an already-seeded database.
+
+What the seed inserts (feature #247):
+
+| Table                         | Rows | Notes                                                                |
+| ----------------------------- | ---- | -------------------------------------------------------------------- |
+| `organizations`               | 3    | TEST Arena Tel Aviv (IL/en), Tallinn (EE/en), Riga (LV/ru)           |
+| `venues`                      | 9    | 3 per organization                                                   |
+| `users`                       | 4    | superadmin, org_admin, organizer, agent — all `@test.arena.local`    |
+| `user_roles`                  | 2    | global `admin` for super, org-scoped `org_admin` for the admin user  |
+| `memberships`                 | 2    | organizer in Org A, agent in Org B                                   |
+| `sales_channels`              | 3    | Stripe and AllPay across two organizations                           |
+| `payment_provider_configs`    | 3    | `mode=test` only, fake `TEST_…` credentials                          |
+
+Everything inserted is obviously test data: names are prefixed with `TEST `,
+emails live under `@test.arena.local`, payment secrets all start with `TEST_`
+and `mode` is always `test` — there is no path through the seed that ever
+writes live credentials.
+
+Login credentials for every seeded user: password is `TestPass!23` (the
+plaintext is bcrypt-hashed before insert; only the hash reaches the DB).
+The seeded accounts are:
+
+| Email                          | Role                                            |
+| ------------------------------ | ----------------------------------------------- |
+| `super@test.arena.local`       | global `admin` (all permissions)                |
+| `admin@test.arena.local`       | `org_admin` scoped to TEST Arena Tel Aviv       |
+| `organizer@test.arena.local`   | membership `organizer` in TEST Arena Tel Aviv   |
+| `agent@test.arena.local`       | membership `agent` in TEST Arena Tallinn        |
+
+Usage:
+
+```bash
+# Dry-run: print the planned rows without touching the database
+go run ./apps/backend/cmd/arena-seed --dry-run
+
+# Apply the seed (idempotent — safe to re-run)
+DATABASE_URL=postgres://arena:arena@localhost:5432/arena \
+  go run ./apps/backend/cmd/arena-seed
+
+# Or via the compiled binary (after `go build -o bin/arena-seed ./apps/backend/cmd/arena-seed`)
+./bin/arena-seed
+```
+
+The command logs a per-table count of rows inserted on this run plus an
+`already_present` counter so the first run shows every row inserted and
+every subsequent run shows every row already present.
 
 ---
 

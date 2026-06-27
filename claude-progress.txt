@@ -15910,3 +15910,22 @@ payment provider configs CRUD route.
     npm --prefix apps/admin-web test -- --run      OK (333/333)
     npm --prefix apps/admin-web run build          OK
   Marked #240 passing.
+
+[2026-06-27 #247] Seed test data binary (arena-seed).
+  apps/backend/cmd/arena-seed/main.go + main_test.go: BuildSeed/ApplySeed
+    pair inserts 3 organizations (IL/EE/LV with distinct country+locale)
+    9 venues (3 per org), 4 users (super, org_admin, organizer, agent
+    on @test.arena.local with shared bcrypt-hashed password TestPass!23)
+    2 user_roles, 2 memberships, 3 sales_channels (Stripe+AllPay)
+    3 payment_provider_configs (mode=test, secrets prefixed TEST_).
+    Hard-coded fe-prefixed UUIDv7-shape IDs. INSERT...ON CONFLICT (id)
+    DO NOTHING inside a single tx so re-running is idempotent.
+    --dry-run prints planned rows without touching the DB.
+  Tests cover counts, ID uniqueness, FK integrity, role check whitelist
+    enum invariants, payment_configs test-only, sentinel email domain
+    org country/locale/TTL bounds.
+  README.md: added arena-seed entry and Seed test data subsection.
+  Verification (docker run golang:1.24-alpine):
+    go build ./apps/backend/cmd/arena-seed/   OK
+    go test  ./apps/backend/cmd/arena-seed/...  OK
+  Marked #247 passing.
