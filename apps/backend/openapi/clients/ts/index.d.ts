@@ -633,6 +633,12 @@ export interface paths {
          * @description Creates a new operator_network row. Requires the `network.create`
          *     permission, which migration 0044_network_permissions.sql binds only
          *     to platform_superadmin and the legacy admin role.
+         *
+         *     SAUI-09: the caller must supply an `X-Admin-Reason` header; the
+         *     trimmed value is stamped into the audit_events metadata under
+         *     `reason` so the immutable audit trail records why the network
+         *     was created. Missing/empty reason returns 400
+         *     `superadmin.missing_reason`.
          */
         post: operations["createOperatorNetwork"];
         delete?: never;
@@ -665,6 +671,11 @@ export interface paths {
          *     At least one of the two fields must be supplied. Requires the
          *     `network.update` permission (bound to platform_superadmin,
          *     network_operator, and admin per 0044_network_permissions.sql).
+         *
+         *     SAUI-09: the caller must supply an `X-Admin-Reason` header; the
+         *     trimmed value is stamped into the audit_events metadata under
+         *     `reason`. Missing/empty reason returns 400
+         *     `superadmin.missing_reason`.
          */
         patch: operations["updateOperatorNetwork"];
         trace?: never;
@@ -685,6 +696,11 @@ export interface paths {
          *     returns 404 instead of 200. Requires the `network.archive`
          *     permission, bound only to platform_superadmin and admin per
          *     migration 0044_network_permissions.sql.
+         *
+         *     SAUI-09: the caller must supply an `X-Admin-Reason` header; the
+         *     trimmed value is stamped into the audit_events metadata under
+         *     `reason`. Missing/empty reason returns 400
+         *     `superadmin.missing_reason`.
          */
         post: operations["archiveOperatorNetwork"];
         delete?: never;
@@ -716,6 +732,11 @@ export interface paths {
          *     Idempotent: re-assigning a previously revoked user returns HTTP 200
          *     with `reactivated: true`; a first-time insert returns HTTP 201.
          *     Requires the `network.manage_users` permission.
+         *
+         *     SAUI-09: the caller must supply an `X-Admin-Reason` header; the
+         *     trimmed value is stamped into the audit_events metadata under
+         *     `reason`. Missing/empty reason returns 400
+         *     `superadmin.missing_reason`.
          */
         post: operations["assignNetworkUser"];
         delete?: never;
@@ -739,6 +760,11 @@ export interface paths {
          * @description Soft-revokes the assignment by setting `status='revoked'`; the row
          *     is preserved for audit visibility. Requires the `network.manage_users`
          *     permission.
+         *
+         *     SAUI-09: the caller must supply an `X-Admin-Reason` header; the
+         *     trimmed value is stamped into the audit_events metadata under
+         *     `reason`. Missing/empty reason returns 400
+         *     `superadmin.missing_reason`.
          */
         delete: operations["removeNetworkUser"];
         options?: never;
@@ -769,6 +795,11 @@ export interface paths {
          *     attachment is reactivated and returned with HTTP 200 +
          *     `reactivated: true`; a first-time insert returns HTTP 201.
          *     Requires the `network.manage_organizers` permission.
+         *
+         *     SAUI-09: the caller must supply an `X-Admin-Reason` header; the
+         *     trimmed value is stamped into the audit_events metadata under
+         *     `reason`. Missing/empty reason returns 400
+         *     `superadmin.missing_reason`.
          */
         post: operations["attachNetworkOrganizer"];
         delete?: never;
@@ -792,6 +823,11 @@ export interface paths {
          * @description Soft-revokes the organizer attachment by setting `status='revoked'`;
          *     the row is preserved for audit visibility. Requires the
          *     `network.manage_organizers` permission.
+         *
+         *     SAUI-09: the caller must supply an `X-Admin-Reason` header; the
+         *     trimmed value is stamped into the audit_events metadata under
+         *     `reason`. Missing/empty reason returns 400
+         *     `superadmin.missing_reason`.
          */
         delete: operations["detachNetworkOrganizer"];
         options?: never;
@@ -822,6 +858,11 @@ export interface paths {
          *     attachment is reactivated and returned with HTTP 200 +
          *     `reactivated: true`; a first-time insert returns HTTP 201.
          *     Requires the `network.manage_agents` permission.
+         *
+         *     SAUI-09: the caller must supply an `X-Admin-Reason` header; the
+         *     trimmed value is stamped into the audit_events metadata under
+         *     `reason`. Missing/empty reason returns 400
+         *     `superadmin.missing_reason`.
          */
         post: operations["attachNetworkAgent"];
         delete?: never;
@@ -845,6 +886,11 @@ export interface paths {
          * @description Soft-revokes the agent attachment by setting `status='revoked'`;
          *     the row is preserved for audit visibility. Requires the
          *     `network.manage_agents` permission.
+         *
+         *     SAUI-09: the caller must supply an `X-Admin-Reason` header; the
+         *     trimmed value is stamped into the audit_events metadata under
+         *     `reason`. Missing/empty reason returns 400
+         *     `superadmin.missing_reason`.
          */
         delete: operations["detachNetworkAgent"];
         options?: never;
@@ -3774,7 +3820,16 @@ export interface operations {
     createOperatorNetwork: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /**
+                 * @description SAUI-09 audit-reason header. The trimmed value is stamped
+                 *     into the audit_events metadata under `reason` so the
+                 *     immutable audit trail records why each network mutation
+                 *     was performed. A missing or empty header is rejected with
+                 *     HTTP 400 `superadmin.missing_reason`.
+                 */
+                "X-Admin-Reason": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -3793,7 +3848,10 @@ export interface operations {
                     "application/json": components["schemas"]["OperatorNetworkEnvelope"];
                 };
             };
-            /** @description Missing/invalid body, name, or slug */
+            /**
+             * @description Missing/invalid body, name, or slug; or missing/empty
+             *     `X-Admin-Reason` header (`superadmin.missing_reason`).
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -3920,7 +3978,16 @@ export interface operations {
     updateOperatorNetwork: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /**
+                 * @description SAUI-09 audit-reason header. The trimmed value is stamped
+                 *     into the audit_events metadata under `reason` so the
+                 *     immutable audit trail records why each network mutation
+                 *     was performed. A missing or empty header is rejected with
+                 *     HTTP 400 `superadmin.missing_reason`.
+                 */
+                "X-Admin-Reason": string;
+            };
             path: {
                 /** @description Operator network UUIDv7 */
                 id: string;
@@ -3942,7 +4009,10 @@ export interface operations {
                     "application/json": components["schemas"]["OperatorNetworkEnvelope"];
                 };
             };
-            /** @description Empty body, no changes supplied, or invalid slug */
+            /**
+             * @description Empty body, no changes supplied, invalid slug, or missing/empty
+             *     `X-Admin-Reason` header (`superadmin.missing_reason`).
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -4001,7 +4071,16 @@ export interface operations {
     archiveOperatorNetwork: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /**
+                 * @description SAUI-09 audit-reason header. The trimmed value is stamped
+                 *     into the audit_events metadata under `reason` so the
+                 *     immutable audit trail records why each network mutation
+                 *     was performed. A missing or empty header is rejected with
+                 *     HTTP 400 `superadmin.missing_reason`.
+                 */
+                "X-Admin-Reason": string;
+            };
             path: {
                 /** @description Operator network UUIDv7 */
                 id: string;
@@ -4019,7 +4098,10 @@ export interface operations {
                     "application/json": components["schemas"]["OperatorNetworkArchiveResponse"];
                 };
             };
-            /** @description `id` path parameter is not a valid UUID */
+            /**
+             * @description `id` path parameter is not a valid UUID, or missing/empty
+             *     `X-Admin-Reason` header (`superadmin.missing_reason`).
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -4146,7 +4228,16 @@ export interface operations {
     assignNetworkUser: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /**
+                 * @description SAUI-09 audit-reason header. The trimmed value is stamped
+                 *     into the audit_events metadata under `reason` so the
+                 *     immutable audit trail records why each network mutation
+                 *     was performed. A missing or empty header is rejected with
+                 *     HTTP 400 `superadmin.missing_reason`.
+                 */
+                "X-Admin-Reason": string;
+            };
             path: {
                 /** @description Operator network UUIDv7 */
                 id: string;
@@ -4177,7 +4268,11 @@ export interface operations {
                     "application/json": components["schemas"]["NetworkUserAssignResponse"];
                 };
             };
-            /** @description Empty/invalid body or invalid `user_id` / path UUID */
+            /**
+             * @description Empty/invalid body, invalid `user_id` / path UUID, or
+             *     missing/empty `X-Admin-Reason` header
+             *     (`superadmin.missing_reason`).
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -4236,7 +4331,16 @@ export interface operations {
     removeNetworkUser: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /**
+                 * @description SAUI-09 audit-reason header. The trimmed value is stamped
+                 *     into the audit_events metadata under `reason` so the
+                 *     immutable audit trail records why each network mutation
+                 *     was performed. A missing or empty header is rejected with
+                 *     HTTP 400 `superadmin.missing_reason`.
+                 */
+                "X-Admin-Reason": string;
+            };
             path: {
                 /** @description Operator network UUIDv7 */
                 id: string;
@@ -4256,7 +4360,10 @@ export interface operations {
                     "application/json": components["schemas"]["NetworkUserRemoveResponse"];
                 };
             };
-            /** @description Path `id` or `userId` is not a valid UUID */
+            /**
+             * @description Path `id` or `userId` is not a valid UUID, or missing/empty
+             *     `X-Admin-Reason` header (`superadmin.missing_reason`).
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -4392,7 +4499,16 @@ export interface operations {
     attachNetworkOrganizer: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /**
+                 * @description SAUI-09 audit-reason header. The trimmed value is stamped
+                 *     into the audit_events metadata under `reason` so the
+                 *     immutable audit trail records why each network mutation
+                 *     was performed. A missing or empty header is rejected with
+                 *     HTTP 400 `superadmin.missing_reason`.
+                 */
+                "X-Admin-Reason": string;
+            };
             path: {
                 /** @description Operator network UUIDv7 */
                 id: string;
@@ -4423,7 +4539,11 @@ export interface operations {
                     "application/json": components["schemas"]["NetworkOrganizationAttachResponse"];
                 };
             };
-            /** @description Empty/invalid body, or invalid `organization_id` / path UUID */
+            /**
+             * @description Empty/invalid body, invalid `organization_id` / path UUID,
+             *     or missing/empty `X-Admin-Reason` header
+             *     (`superadmin.missing_reason`).
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -4482,7 +4602,16 @@ export interface operations {
     detachNetworkOrganizer: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /**
+                 * @description SAUI-09 audit-reason header. The trimmed value is stamped
+                 *     into the audit_events metadata under `reason` so the
+                 *     immutable audit trail records why each network mutation
+                 *     was performed. A missing or empty header is rejected with
+                 *     HTTP 400 `superadmin.missing_reason`.
+                 */
+                "X-Admin-Reason": string;
+            };
             path: {
                 /** @description Operator network UUIDv7 */
                 id: string;
@@ -4502,7 +4631,10 @@ export interface operations {
                     "application/json": components["schemas"]["NetworkOrganizationDetachResponse"];
                 };
             };
-            /** @description Path `id` or `orgId` is not a valid UUID */
+            /**
+             * @description Path `id` or `orgId` is not a valid UUID, or missing/empty
+             *     `X-Admin-Reason` header (`superadmin.missing_reason`).
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -4638,7 +4770,16 @@ export interface operations {
     attachNetworkAgent: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /**
+                 * @description SAUI-09 audit-reason header. The trimmed value is stamped
+                 *     into the audit_events metadata under `reason` so the
+                 *     immutable audit trail records why each network mutation
+                 *     was performed. A missing or empty header is rejected with
+                 *     HTTP 400 `superadmin.missing_reason`.
+                 */
+                "X-Admin-Reason": string;
+            };
             path: {
                 /** @description Operator network UUIDv7 */
                 id: string;
@@ -4669,7 +4810,11 @@ export interface operations {
                     "application/json": components["schemas"]["NetworkOrganizationAttachResponse"];
                 };
             };
-            /** @description Empty/invalid body, or invalid `organization_id` / path UUID */
+            /**
+             * @description Empty/invalid body, invalid `organization_id` / path UUID,
+             *     or missing/empty `X-Admin-Reason` header
+             *     (`superadmin.missing_reason`).
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -4728,7 +4873,16 @@ export interface operations {
     detachNetworkAgent: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /**
+                 * @description SAUI-09 audit-reason header. The trimmed value is stamped
+                 *     into the audit_events metadata under `reason` so the
+                 *     immutable audit trail records why each network mutation
+                 *     was performed. A missing or empty header is rejected with
+                 *     HTTP 400 `superadmin.missing_reason`.
+                 */
+                "X-Admin-Reason": string;
+            };
             path: {
                 /** @description Operator network UUIDv7 */
                 id: string;
@@ -4748,7 +4902,10 @@ export interface operations {
                     "application/json": components["schemas"]["NetworkOrganizationDetachResponse"];
                 };
             };
-            /** @description Path `id` or `orgId` is not a valid UUID */
+            /**
+             * @description Path `id` or `orgId` is not a valid UUID, or missing/empty
+             *     `X-Admin-Reason` header (`superadmin.missing_reason`).
+             */
             400: {
                 headers: {
                     [name: string]: unknown;

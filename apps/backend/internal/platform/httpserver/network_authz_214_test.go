@@ -499,7 +499,13 @@ func TestAuthz214_InvalidAssignments_FailCleanly(t *testing.T) {
 				pool:           &dbDownPool{},
 			}
 			rec := httptest.NewRecorder()
-			tc.handlerFn(s)(rec, tc.req())
+			// SAUI-09: network mutations require X-Admin-Reason. Every
+			// mutation case in this table goes through that gate, so set
+			// the header once here -- it is ignored by the read-only
+			// (get) case and accepted by the mutation cases.
+			r := tc.req()
+			r.Header.Set("X-Admin-Reason", "saui-09 test")
+			tc.handlerFn(s)(rec, r)
 			if rec.Code != tc.wantCode {
 				t.Fatalf("%s: status got %d want %d (body=%s)", tc.name, rec.Code, tc.wantCode, rec.Body.String())
 			}

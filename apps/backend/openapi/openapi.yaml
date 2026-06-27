@@ -2807,9 +2807,29 @@ paths:
         Creates a new operator_network row. Requires the `network.create`
         permission, which migration 0044_network_permissions.sql binds only
         to platform_superadmin and the legacy admin role.
+
+        SAUI-09: the caller must supply an `X-Admin-Reason` header; the
+        trimmed value is stamped into the audit_events metadata under
+        `reason` so the immutable audit trail records why the network
+        was created. Missing/empty reason returns 400
+        `superadmin.missing_reason`.
       tags: [v1, networks]
       security:
         - bearerAuth: []
+      parameters:
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: |
+            SAUI-09 audit-reason header. The trimmed value is stamped
+            into the audit_events metadata under `reason` so the
+            immutable audit trail records why each network mutation
+            was performed. A missing or empty header is rejected with
+            HTTP 400 `superadmin.missing_reason`.
+          schema:
+            type: string
+            minLength: 1
+            example: "Onboarding Acme network for 2026 season"
       requestBody:
         required: true
         content:
@@ -2824,7 +2844,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/OperatorNetworkEnvelope"
         "400":
-          description: Missing/invalid body, name, or slug
+          description: |
+            Missing/invalid body, name, or slug; or missing/empty
+            `X-Admin-Reason` header (`superadmin.missing_reason`).
           content:
             application/json:
               schema:
@@ -2923,6 +2945,11 @@ paths:
         At least one of the two fields must be supplied. Requires the
         `network.update` permission (bound to platform_superadmin,
         network_operator, and admin per 0044_network_permissions.sql).
+
+        SAUI-09: the caller must supply an `X-Admin-Reason` header; the
+        trimmed value is stamped into the audit_events metadata under
+        `reason`. Missing/empty reason returns 400
+        `superadmin.missing_reason`.
       tags: [v1, networks]
       security:
         - bearerAuth: []
@@ -2934,6 +2961,19 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: |
+            SAUI-09 audit-reason header. The trimmed value is stamped
+            into the audit_events metadata under `reason` so the
+            immutable audit trail records why each network mutation
+            was performed. A missing or empty header is rejected with
+            HTTP 400 `superadmin.missing_reason`.
+          schema:
+            type: string
+            minLength: 1
+            example: "Onboarding Acme network for 2026 season"
       requestBody:
         required: true
         content:
@@ -2948,7 +2988,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/OperatorNetworkEnvelope"
         "400":
-          description: Empty body, no changes supplied, or invalid slug
+          description: |
+            Empty body, no changes supplied, invalid slug, or missing/empty
+            `X-Admin-Reason` header (`superadmin.missing_reason`).
           content:
             application/json:
               schema:
@@ -2994,6 +3036,11 @@ paths:
         returns 404 instead of 200. Requires the `network.archive`
         permission, bound only to platform_superadmin and admin per
         migration 0044_network_permissions.sql.
+
+        SAUI-09: the caller must supply an `X-Admin-Reason` header; the
+        trimmed value is stamped into the audit_events metadata under
+        `reason`. Missing/empty reason returns 400
+        `superadmin.missing_reason`.
       tags: [v1, networks]
       security:
         - bearerAuth: []
@@ -3005,6 +3052,19 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: |
+            SAUI-09 audit-reason header. The trimmed value is stamped
+            into the audit_events metadata under `reason` so the
+            immutable audit trail records why each network mutation
+            was performed. A missing or empty header is rejected with
+            HTTP 400 `superadmin.missing_reason`.
+          schema:
+            type: string
+            minLength: 1
+            example: "Onboarding Acme network for 2026 season"
       responses:
         "200":
           description: Operator network archived
@@ -3013,7 +3073,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/OperatorNetworkArchiveResponse"
         "400":
-          description: "`id` path parameter is not a valid UUID"
+          description: |
+            `id` path parameter is not a valid UUID, or missing/empty
+            `X-Admin-Reason` header (`superadmin.missing_reason`).
           content:
             application/json:
               schema:
@@ -3115,6 +3177,11 @@ paths:
         Idempotent: re-assigning a previously revoked user returns HTTP 200
         with `reactivated: true`; a first-time insert returns HTTP 201.
         Requires the `network.manage_users` permission.
+
+        SAUI-09: the caller must supply an `X-Admin-Reason` header; the
+        trimmed value is stamped into the audit_events metadata under
+        `reason`. Missing/empty reason returns 400
+        `superadmin.missing_reason`.
       tags: [v1, networks]
       security:
         - bearerAuth: []
@@ -3126,6 +3193,19 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: |
+            SAUI-09 audit-reason header. The trimmed value is stamped
+            into the audit_events metadata under `reason` so the
+            immutable audit trail records why each network mutation
+            was performed. A missing or empty header is rejected with
+            HTTP 400 `superadmin.missing_reason`.
+          schema:
+            type: string
+            minLength: 1
+            example: "Onboarding Acme network for 2026 season"
       requestBody:
         required: true
         content:
@@ -3146,7 +3226,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/NetworkUserAssignResponse"
         "400":
-          description: Empty/invalid body or invalid `user_id` / path UUID
+          description: |
+            Empty/invalid body, invalid `user_id` / path UUID, or
+            missing/empty `X-Admin-Reason` header
+            (`superadmin.missing_reason`).
           content:
             application/json:
               schema:
@@ -3190,6 +3273,11 @@ paths:
         Soft-revokes the assignment by setting `status='revoked'`; the row
         is preserved for audit visibility. Requires the `network.manage_users`
         permission.
+
+        SAUI-09: the caller must supply an `X-Admin-Reason` header; the
+        trimmed value is stamped into the audit_events metadata under
+        `reason`. Missing/empty reason returns 400
+        `superadmin.missing_reason`.
       tags: [v1, networks]
       security:
         - bearerAuth: []
@@ -3208,6 +3296,19 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: |
+            SAUI-09 audit-reason header. The trimmed value is stamped
+            into the audit_events metadata under `reason` so the
+            immutable audit trail records why each network mutation
+            was performed. A missing or empty header is rejected with
+            HTTP 400 `superadmin.missing_reason`.
+          schema:
+            type: string
+            minLength: 1
+            example: "Onboarding Acme network for 2026 season"
       responses:
         "200":
           description: Assignment revoked
@@ -3216,7 +3317,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/NetworkUserRemoveResponse"
         "400":
-          description: Path `id` or `userId` is not a valid UUID
+          description: |
+            Path `id` or `userId` is not a valid UUID, or missing/empty
+            `X-Admin-Reason` header (`superadmin.missing_reason`).
           content:
             application/json:
               schema:
@@ -3324,6 +3427,11 @@ paths:
         attachment is reactivated and returned with HTTP 200 +
         `reactivated: true`; a first-time insert returns HTTP 201.
         Requires the `network.manage_organizers` permission.
+
+        SAUI-09: the caller must supply an `X-Admin-Reason` header; the
+        trimmed value is stamped into the audit_events metadata under
+        `reason`. Missing/empty reason returns 400
+        `superadmin.missing_reason`.
       tags: [v1, networks]
       security:
         - bearerAuth: []
@@ -3335,6 +3443,19 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: |
+            SAUI-09 audit-reason header. The trimmed value is stamped
+            into the audit_events metadata under `reason` so the
+            immutable audit trail records why each network mutation
+            was performed. A missing or empty header is rejected with
+            HTTP 400 `superadmin.missing_reason`.
+          schema:
+            type: string
+            minLength: 1
+            example: "Onboarding Acme network for 2026 season"
       requestBody:
         required: true
         content:
@@ -3355,7 +3476,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/NetworkOrganizationAttachResponse"
         "400":
-          description: Empty/invalid body, or invalid `organization_id` / path UUID
+          description: |
+            Empty/invalid body, invalid `organization_id` / path UUID,
+            or missing/empty `X-Admin-Reason` header
+            (`superadmin.missing_reason`).
           content:
             application/json:
               schema:
@@ -3399,6 +3523,11 @@ paths:
         Soft-revokes the organizer attachment by setting `status='revoked'`;
         the row is preserved for audit visibility. Requires the
         `network.manage_organizers` permission.
+
+        SAUI-09: the caller must supply an `X-Admin-Reason` header; the
+        trimmed value is stamped into the audit_events metadata under
+        `reason`. Missing/empty reason returns 400
+        `superadmin.missing_reason`.
       tags: [v1, networks]
       security:
         - bearerAuth: []
@@ -3417,6 +3546,19 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: |
+            SAUI-09 audit-reason header. The trimmed value is stamped
+            into the audit_events metadata under `reason` so the
+            immutable audit trail records why each network mutation
+            was performed. A missing or empty header is rejected with
+            HTTP 400 `superadmin.missing_reason`.
+          schema:
+            type: string
+            minLength: 1
+            example: "Onboarding Acme network for 2026 season"
       responses:
         "200":
           description: Attachment revoked
@@ -3425,7 +3567,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/NetworkOrganizationDetachResponse"
         "400":
-          description: Path `id` or `orgId` is not a valid UUID
+          description: |
+            Path `id` or `orgId` is not a valid UUID, or missing/empty
+            `X-Admin-Reason` header (`superadmin.missing_reason`).
           content:
             application/json:
               schema:
@@ -3533,6 +3677,11 @@ paths:
         attachment is reactivated and returned with HTTP 200 +
         `reactivated: true`; a first-time insert returns HTTP 201.
         Requires the `network.manage_agents` permission.
+
+        SAUI-09: the caller must supply an `X-Admin-Reason` header; the
+        trimmed value is stamped into the audit_events metadata under
+        `reason`. Missing/empty reason returns 400
+        `superadmin.missing_reason`.
       tags: [v1, networks]
       security:
         - bearerAuth: []
@@ -3544,6 +3693,19 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: |
+            SAUI-09 audit-reason header. The trimmed value is stamped
+            into the audit_events metadata under `reason` so the
+            immutable audit trail records why each network mutation
+            was performed. A missing or empty header is rejected with
+            HTTP 400 `superadmin.missing_reason`.
+          schema:
+            type: string
+            minLength: 1
+            example: "Onboarding Acme network for 2026 season"
       requestBody:
         required: true
         content:
@@ -3564,7 +3726,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/NetworkOrganizationAttachResponse"
         "400":
-          description: Empty/invalid body, or invalid `organization_id` / path UUID
+          description: |
+            Empty/invalid body, invalid `organization_id` / path UUID,
+            or missing/empty `X-Admin-Reason` header
+            (`superadmin.missing_reason`).
           content:
             application/json:
               schema:
@@ -3608,6 +3773,11 @@ paths:
         Soft-revokes the agent attachment by setting `status='revoked'`;
         the row is preserved for audit visibility. Requires the
         `network.manage_agents` permission.
+
+        SAUI-09: the caller must supply an `X-Admin-Reason` header; the
+        trimmed value is stamped into the audit_events metadata under
+        `reason`. Missing/empty reason returns 400
+        `superadmin.missing_reason`.
       tags: [v1, networks]
       security:
         - bearerAuth: []
@@ -3626,6 +3796,19 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: |
+            SAUI-09 audit-reason header. The trimmed value is stamped
+            into the audit_events metadata under `reason` so the
+            immutable audit trail records why each network mutation
+            was performed. A missing or empty header is rejected with
+            HTTP 400 `superadmin.missing_reason`.
+          schema:
+            type: string
+            minLength: 1
+            example: "Onboarding Acme network for 2026 season"
       responses:
         "200":
           description: Attachment revoked
@@ -3634,7 +3817,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/NetworkOrganizationDetachResponse"
         "400":
-          description: Path `id` or `orgId` is not a valid UUID
+          description: |
+            Path `id` or `orgId` is not a valid UUID, or missing/empty
+            `X-Admin-Reason` header (`superadmin.missing_reason`).
           content:
             application/json:
               schema:

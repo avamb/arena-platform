@@ -119,7 +119,10 @@ async function rawFetch<T>(opts: RawFetchOptions): Promise<T> {
   }
   if (opts.adminReason !== undefined) {
     headers["X-Admin-Reason"] = opts.adminReason;
-  } else if (opts.authenticated && requiresAdminReason(opts.path)) {
+  } else if (
+    opts.authenticated &&
+    requiresAdminReason(opts.path, opts.method)
+  ) {
     // Cross-tenant superadmin reads MUST carry a non-empty reason; the
     // resolver is async because it may prompt the operator. If the
     // resolver rejects (operator cancelled, or no resolver registered),
@@ -299,7 +302,7 @@ export async function authedFetch<T>(req: AuthedRequest): Promise<T> {
     if (
       err instanceof ApiError &&
       err.code === MISSING_REASON_CODE &&
-      requiresAdminReason(req.path)
+      requiresAdminReason(req.path, req.method)
     ) {
       // Server rejected our (possibly stale) reason. Drop the cached
       // reason, prompt the operator again, retry once with the new value.

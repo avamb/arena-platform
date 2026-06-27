@@ -306,4 +306,12 @@ func TestNetworkOrgs210_MountFileUsesCorrectPermissions(t *testing.T) {
 		`"/admin/networks/{id}/agents/{orgId}"`,
 		`handleAttachNetworkOrganization`,
 		`handleDetachNetworkOrganization`,
-	
+		`handleListNetworkOrganizations`,
+		`networkAssignmentKindOrganizer`,
+		`networkAssignmentKindAgent`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("mount_networks.go missing %q", want)
+		}
+	}
+}

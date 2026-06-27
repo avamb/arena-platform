@@ -84,12 +84,39 @@ describe("requiresAdminReason()", () => {
     ["/v1/admin/geo/countries", false],
     ["/v1/admin/geo", false],
     ["/v1/me", false],
+    // No method supplied -> mutation-only prefixes are NOT matched,
+    // mirroring the pre-SAUI-09 "would a GET need a reason?" predicate.
     ["/v1/operator-networks", false],
+    ["/v1/admin/networks/abc/users", false],
     ["/v1/auth/login", false],
     ["/v1/admin", false],
     ["/", false],
   ])("path %s -> %s", (path, expected) => {
     expect(requiresAdminReason(path)).toBe(expected);
+  });
+
+  // SAUI-09: operator-network and network-roster mutations need a
+  // reason; GETs to the same prefixes do not.
+  it.each([
+    ["/v1/operator-networks", "POST", true],
+    ["/v1/operator-networks/abc", "PATCH", true],
+    ["/v1/operator-networks/abc/archive", "POST", true],
+    ["/v1/admin/networks/abc/users", "POST", true],
+    ["/v1/admin/networks/abc/users/def", "DELETE", true],
+    ["/v1/admin/networks/abc/organizers", "POST", true],
+    ["/v1/admin/networks/abc/agents/def", "DELETE", true],
+    // GETs to the same prefixes are read-only and not gated.
+    ["/v1/operator-networks", "GET", false],
+    ["/v1/operator-networks/abc", "GET", false],
+    ["/v1/admin/networks/abc/users", "GET", false],
+    ["/v1/admin/networks/abc/organizers", "GET", false],
+    // Method case is normalised.
+    ["/v1/operator-networks", "post", true],
+    // Superadmin read prefixes always match regardless of method.
+    ["/v1/admin/organizations", "GET", true],
+    ["/v1/admin/organizations", "POST", true],
+  ])("path %s + method %s -> %s", (path, method, expected) => {
+    expect(requiresAdminReason(path, method)).toBe(expected);
   });
 });
 

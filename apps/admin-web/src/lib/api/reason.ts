@@ -39,7 +39,11 @@
 /** sessionStorage key holding the active reason for this tab. */
 const REASON_STORAGE_KEY = "arena.admin.adminReason";
 
-/** Set of API path prefixes that require X-Admin-Reason. */
+/**
+ * Set of API path prefixes that require X-Admin-Reason on every method
+ * (read or write). Originally introduced by SAUI-04 for the superadmin
+ * cross-tenant read endpoints.
+ */
 const REASON_REQUIRED_PREFIXES: readonly string[] = [
   "/v1/admin/organizations",
   "/v1/admin/orders",
@@ -49,19 +53,56 @@ const REASON_REQUIRED_PREFIXES: readonly string[] = [
 ];
 
 /**
- * True when the given path's request must carry X-Admin-Reason.
- *
- * Uses prefix matching so `/v1/admin/orders/{id}` and
- * `/v1/admin/orders?state=completed` both qualify, while `/v1/admin/geo`
- * (catalog admin, no cross-tenant data) does NOT.
+ * Set of API path prefixes that require X-Admin-Reason ONLY on
+ * mutation methods (POST/PATCH/PUT/DELETE). GETs are read-only and
+ * are not gated. Added by SAUI-09 so the audit-reason gate covers
+ * operator-network CRUD + user/organizer/agent assignment without
+ * prompting the operator just to browse the list/detail pages.
  */
-export function requiresAdminReason(path: string): boolean {
-  // Strip query string before matching so prefixes stay unambiguous.
+const REASON_REQUIRED_MUTATION_PREFIXES: readonly string[] = [
+  "/v1/operator-networks",
+  "/v1/admin/networks",
+];
+
+/** HTTP methods treated as mutations for the SAUI-09 gate. */
+const MUTATION_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
+
+function stripQuery(path: string): string {
   const qIndex = path.indexOf("?");
-  const bare = qIndex === -1 ? path : path.slice(0, qIndex);
+  return qIndex === -1 ? path : path.slice(0, qIndex);
+}
+
+function matchesPrefix(bare: string, prefix: string): boolean {
+  return bare === prefix || bare.startsWith(`${prefix}/`);
+}
+
+/**
+ * True when the given request must carry X-Admin-Reason.
+ *
+ * Prefix matching:
+ *   - paths matched by REASON_REQUIRED_PREFIXES require the header
+ *     regardless of method (cross-tenant reads + impersonation);
+ *   - paths matched by REASON_REQUIRED_MUTATION_PREFIXES require the
+ *     header only on mutation methods (POST/PATCH/PUT/DELETE) so the
+ *     operator can browse network lists/details without a prompt.
+ *
+ * `method` is optional for backward compatibility. When omitted,
+ * mutation-only prefixes are NOT matched -- a no-method check is
+ * treated as "would a GET need a reason?", which is the predicate the
+ * superadmin reads originally answered.
+ */
+export function requiresAdminReason(path: string, method?: string): boolean {
+  const bare = stripQuery(path);
   for (const prefix of REASON_REQUIRED_PREFIXES) {
-    if (bare === prefix || bare.startsWith(`${prefix}/`)) {
+    if (matchesPrefix(bare, prefix)) {
       return true;
+    }
+  }
+  if (method !== undefined && MUTATION_METHODS.has(method.toUpperCase())) {
+    for (const prefix of REASON_REQUIRED_MUTATION_PREFIXES) {
+      if (matchesPrefix(bare, prefix)) {
+        return true;
+      }
     }
   }
   return false;
