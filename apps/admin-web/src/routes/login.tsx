@@ -1,15 +1,23 @@
-import { createRoute } from "@tanstack/react-router";
+import { createRoute, useNavigate } from "@tanstack/react-router";
 import { useForm } from "react-hook-form";
+import { useState, type CSSProperties } from "react";
 import { z } from "zod";
-import type { CSSProperties } from "react";
+import { ApiError } from "@/lib/api/client";
+import { useAuth } from "@/lib/auth/useAuth";
 import { Route as RootRoute } from "./__root";
 
 /**
- * Sign-in scaffold.
+ * Sign-in route — wired to POST /v1/auth/login via AuthProvider.login().
  *
- * Renders a typed React Hook Form + Zod validated form. This is the
- * scaffold-only version: it validates input shape but does NOT call the
- * backend yet. Real /v1/auth/login wiring lands in SAUI-02.
+ * SAUI-02 wiring:
+ *   - Zod validates input shape client-side before hitting the network.
+ *   - AuthProvider performs login + /v1/me, then sets status="authenticated".
+ *   - On success we navigate to "/"; AuthGate also enforces this transition
+ *     so even if the navigate() call is delayed, the form will not be the
+ *     final view for an authenticated user.
+ *   - ApiError surfaces server-side error codes (auth.invalid_credentials,
+ *     etc.) with their human messages. Network failures surface as
+ *     "network.failure".
  */
 const loginSchema = z.object({
   email: z.string().trim().toLowerCase().email({ message: "Enter a valid email." }),
@@ -25,6 +33,9 @@ export const Route = createRoute({
 });
 
 function LoginRoute() {
+  const auth = useAuth();
+  const navigate = useNavigate();
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const {
     register,
     handleSubmit,
@@ -33,18 +44,24 @@ function LoginRoute() {
     defaultValues: { email: "", password: "" },
   });
 
-  const onSubmit = handleSubmit((raw) => {
-    // Validate via Zod here (scaffold path); SAUI-02 will replace this with
-    // a real call to POST /v1/auth/login and route on success.
+  const onSubmit = handleSubmit(async (raw) => {
+    setSubmitError(null);
     const parsed = loginSchema.safeParse(raw);
     if (!parsed.success) {
-      // eslint-disable-next-line no-console -- operator-visible diagnostic
-      console.warn("[admin-web] login validation failed", parsed.error.flatten());
       return;
     }
-    // No backend call yet. Surface a status message so the form is testable.
-    // eslint-disable-next-line no-console -- operator-visible diagnostic
-    console.info("[admin-web] login submitted (scaffold; not yet wired)");
+    try {
+      await auth.login(parsed.data.email, parsed.data.password);
+      await navigate({ to: "/", replace: true });
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setSubmitError(`${err.code}: ${err.message}`);
+      } else if (err instanceof Error) {
+        setSubmitError(err.message);
+      } else {
+        setSubmitError("Sign-in failed");
+      }
+    }
   });
 
   return (
@@ -53,8 +70,8 @@ function LoginRoute() {
         Sign in
       </h1>
       <p style={subStyle}>
-        Authentication wiring lands in SAUI-02. This scaffold validates input
-        but does not call the backend.
+        Sign in with your operator credentials. Sessions are scoped to this
+        browser tab.
       </p>
       <form onSubmit={onSubmit} style={formStyle} noValidate>
         <label style={labelStyle}>
@@ -79,6 +96,11 @@ function LoginRoute() {
           />
           {errors.password ? <span style={errorStyle}>{errors.password.message}</span> : null}
         </label>
+        {submitError !== null ? (
+          <div role="alert" style={alertStyle}>
+            {submitError}
+          </div>
+        ) : null}
         <button type="submit" disabled={isSubmitting} style={submitStyle}>
           {isSubmitting ? "Signing in…" : "Sign in"}
         </button>
@@ -115,6 +137,14 @@ const inputStyle: CSSProperties = {
   color: "#0f172a",
 };
 const errorStyle: CSSProperties = { fontSize: 11, color: "#b91c1c", fontWeight: 400 };
+const alertStyle: CSSProperties = {
+  fontSize: 12,
+  background: "#fee2e2",
+  border: "1px solid #fecaca",
+  color: "#7f1d1d",
+  padding: "8px 10px",
+  borderRadius: 4,
+};
 const submitStyle: CSSProperties = {
   marginTop: 4,
   background: "#0f172a",
