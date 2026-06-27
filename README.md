@@ -369,8 +369,13 @@ organizations / memberships / roles, catalog (events, sessions, venues,
 seating plans), inventory, reservations, checkout, payments, refunds,
 disputes, payouts, tickets, complimentary issuance, external quotas,
 scanner integration, WordPress plugin, Bil24 gateway, reporting, service
-billing, superadmin console, frontend / admin UI / public checkout UI, payment
-provider adapters (Stripe, YooKassa, etc.).
+billing, public checkout UI, payment provider adapters (Stripe, YooKassa,
+etc.).
+
+The operator / SuperAdmin admin web (`apps/admin-web`) ships as a working
+shell — see `apps/admin-web/README.md` for env vars, login + dev-token
+flow, required permissions per route, the `X-Admin-Reason` behavior, and
+the list of backend gaps the shell surfaces honestly.
 
 See `app_spec.txt` for the authoritative specification driving the
 AutoForge backlog of 80+ scaffold features.
