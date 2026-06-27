@@ -15643,3 +15643,29 @@ Tests:
                               backlog).
 
 Marked #237 passing.
+
+[2026-06-27 #233] Admin Organizations CRUD endpoints (create/update/archive).
+  New file apps/backend/internal/platform/httpserver/admin_orgs.go with
+    handleAdminCreateOrg, handleAdminUpdateOrg, handleAdminArchiveOrg.
+  Reuses existing orgQueries; archive uses tx + audit.WriteTx for atomic
+    soft-delete + audit. Create/update use fire-and-forget audit via
+    writeAdminOrgAudit. All three require X-Admin-Reason header (same
+    gate as /v1/admin/* superadmin endpoints).
+  Routes mounted via new mountAdminOrgRoutes in mount_admin.go and wired
+    into mountV1Routes (mount_v1.go). Permissions:
+      POST   /v1/admin/organizations              -> org.create
+      PATCH  /v1/admin/organizations/{id}         -> org.update
+      POST   /v1/admin/organizations/{id}/archive -> org.delete
+  OpenAPI: added the three paths under tags [v1, admin] with full
+    X-Admin-Reason parameter docs and complete response set
+    (200/201/400/401/403/404/409/500/503). Spec now 44 paths.
+    TS client regenerated; npm run check-ts OK;
+    node scripts/validate-openapi.mjs OK (MISSING_PATHS=[], _SCHEMAS=[]).
+  Tests: admin_orgs_test.go covers auth gates (POST/PATCH/archive return
+    401 without JWT), nil-queries 503 guard, and method/path mounting.
+    go build + go vet PASS via golang:1.24-alpine.
+    Targeted TestAdminOrg233|TestOrg119 PASS.
+    Pre-existing httpserver suite failures (nullable lines 1220-1467,
+    payment-configs OpenAPI param/property descriptions, drift missing
+    11 routes) predate this feature and are not introduced here.
+  Marked #233 passing. Commit 150f12fc.
