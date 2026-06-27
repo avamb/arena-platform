@@ -15812,3 +15812,41 @@ real CRUD route.
     npm --prefix apps/admin-web test -- --run      OK (307/307)
     npm --prefix apps/admin-web run build          OK
   Marked #243 passing.
+
+[2026-06-27 #238] Create Organization form on /organizations.
+  apps/admin-web/src/routes/organizations.tsx:
+    - New "Create organization" button next to Refresh, gated on the
+      org.create permission via useAuth (read-only operators see a
+      muted hint instead).
+    - New CreateOrganizationDialog modal with fields: name, slug,
+      country, default_locale, reservation_ttl_seconds. Slug
+      auto-lowercased; country auto-uppercased. Local validators
+      mirror the backend contract in admin_orgs.go handleAdminCreateOrg
+      (required name and slug; slug regex; optional ISO country;
+      BCP-47 locale; TTL positive int capped at 86400).
+    - React Query useMutation POST /v1/admin/organizations via
+      authedFetch. Audit-reason header is auto-prompted by the existing
+      reason resolver (requiresAdminReason matches /v1/admin/*).
+    - onSuccess invalidates the ["admin","organizations"] query key
+      so the new row appears in the table; a success panel echoes the
+      created org metadata before close.
+    - mapCreateOrgServerError maps the error envelope: invalid_name
+      to the name field, invalid_slug and duplicate to the slug
+      field, body-shape errors and permissions.denied / missing
+      audit reason to a form-level surface, and falls back on
+      details.field for forwards compat.
+    - Accessibility: useEscapeClose + useFocusOnMount + useFocusRestore
+      hooks, matching the existing OrganizationDrawer pattern.
+    - Reuses existing dialog/form/field styles (added primary,
+      secondary, muted-hint, dialog backdrop, form, field, success
+      styles to the existing organizations.tsx style section).
+  apps/admin-web/src/routes/organizations.test.ts:
+    - 13 new unit tests for validateOrgName, validateOrgSlug,
+      validateOrgCountry, validateOrgLocale, validateOrgReservationTTL
+      and mapCreateOrgServerError covering every documented branch
+      including details.field forwards compat.
+  Verification:
+    npm --prefix apps/admin-web run type-check     OK
+    npm --prefix apps/admin-web test -- --run      OK (320/320, +13)
+    npm --prefix apps/admin-web run build          OK
+  Marked #238 passing. Commit: 69881a8d.
