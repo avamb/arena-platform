@@ -15002,3 +15002,34 @@ Verification:
   npm --prefix apps/admin-web test     92/92 PASS (incl. 13 new)
 
 Marked #222 passing. Commit a0241cc.
+
+================================================================================
+Session 2026-06-27 -- Feature 223 (SAUI-07 Operator Networks CRUD UI)
+================================================================================
+Replaced the /networks placeholder with a real CRUD module backed by
+/v1/operator-networks (apps/backend/internal/platform/httpserver/networks.go).
+
+New files:
+  apps/admin-web/src/routes/networks.tsx
+    List/create/edit/archive flows. Per-action permission gating uses
+    network.create, network.update, network.archive from useAuth().
+    Read-only fallback when only network.read is held. Slug regex
+    matches the backend operatorNetworkSlugRE exactly. Server
+    validation envelopes rendered next to fields via mapServerError().
+    Archive uses POST {id}/archive (soft-archive) with explicit
+    consequence copy; no destructive delete.
+  apps/admin-web/src/routes/networks.test.ts (27 vitest cases)
+    Covers validateNetworkSlug, validateNetworkName, regex parity, and
+    mapServerError code coverage including details.field fallback.
+
+Modified:
+  apps/admin-web/src/lib/api/client.ts -- RawFetchOptions.method and
+    AuthedRequest.method extended to include PATCH.
+
+Verification:
+  npm run --prefix apps/admin-web type-check  OK
+  npm run --prefix apps/admin-web test        all pass (6 suites)
+  npm run --prefix apps/admin-web build       OK (218 modules)
+  npm run check-ts                            OK
+
+Marked feature 223 passing. Commit e702af72.
