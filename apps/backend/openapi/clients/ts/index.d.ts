@@ -684,6 +684,65 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/organizations/{org_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin — list memberships in an organization
+         * @description Returns every active membership row for the given organization, ordered
+         *     by joined_at ASC. Admin-console-facing surface for the memberships
+         *     management screen. Requires JWT + membership.read + X-Admin-Reason
+         *     (audit trail).
+         */
+        get: operations["getV1AdminOrganizationsOrgIdMembers"];
+        put?: never;
+        /**
+         * Admin — add a member to an organization
+         * @description Grants a role to a user within an organization. Supply exactly one of
+         *     user_id or email — when email is supplied the user is resolved via
+         *     GetUserByEmail; a missing user yields HTTP 422
+         *     admin_membership.user_not_found. Requires JWT + membership.grant +
+         *     X-Admin-Reason.
+         */
+        post: operations["postV1AdminOrganizationsOrgIdMembers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/organizations/{org_id}/members/{membership_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Admin — deactivate (soft-remove) a membership
+         * @description Soft-removes a membership by setting status='revoked'. The row is
+         *     preserved for historical audit / reporting queries. Requires
+         *     JWT + membership.revoke + X-Admin-Reason.
+         */
+        delete: operations["deleteV1AdminOrganizationsOrgIdMembersMembershipId"];
+        options?: never;
+        head?: never;
+        /**
+         * Admin — change a member's role
+         * @description Updates the role on an existing active membership identified by
+         *     (membership_id, org_id). Requires JWT + membership.grant +
+         *     X-Admin-Reason.
+         */
+        patch: operations["patchV1AdminOrganizationsOrgIdMembersMembershipId"];
+        trace?: never;
+    };
     "/v1/venues": {
         parameters: {
             query?: never;
@@ -2107,6 +2166,85 @@ export interface components {
              * @example Email address verified successfully.
              */
             message: string;
+        };
+        /**
+         * @description A single user → organization → role binding (feature #120). The
+         *     admin memberships endpoints (feature #234) use this shape on every
+         *     list / add / patch / delete response.
+         */
+        MembershipItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the memberships row.
+             * @example 01929d0e-0e47-7000-8000-000000000010
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the user holding this role.
+             * @example 01929d0e-0e47-7000-8000-000000000020
+             */
+            user_id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the organization the role is scoped to.
+             * @example 01929d0e-0e47-7000-8000-000000000001
+             */
+            org_id: string;
+            /**
+             * @description Named role bound to (user_id, org_id). One of organizer, agent, platform_operator, external_ticketing_operator, platform_superadmin, network_operator.
+             * @example organizer
+             * @enum {string}
+             */
+            role: "organizer" | "agent" | "platform_operator" | "external_ticketing_operator" | "platform_superadmin" | "network_operator";
+            /**
+             * @description Lifecycle state of the membership. active = in force, revoked = soft-removed by an admin, suspended = paused.
+             * @example active
+             * @enum {string}
+             */
+            status: "active" | "suspended" | "revoked";
+            /**
+             * Format: date-time
+             * @description ISO 8601 / RFC 3339 timestamp of when the membership was first granted.
+             * @example 2024-01-01T00:00:00Z
+             */
+            joined_at: string;
+        };
+        /**
+         * @description Request body for POST /v1/admin/organizations/{org_id}/members
+         *     (feature #234). Exactly one of user_id and email must be supplied.
+         */
+        AdminAddMemberRequest: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the existing user to add. Mutually exclusive with email.
+             * @example 01929d0e-0e47-7000-8000-000000000020
+             */
+            user_id?: string;
+            /**
+             * Format: email
+             * @description Email of the existing user to add (case-insensitive lookup). Mutually exclusive with user_id.
+             * @example operator@example.com
+             */
+            email?: string;
+            /**
+             * @description Role to grant. Must satisfy the memberships_role_check CHECK constraint.
+             * @example organizer
+             * @enum {string}
+             */
+            role: "organizer" | "agent" | "platform_operator" | "external_ticketing_operator" | "platform_superadmin" | "network_operator";
+        };
+        /**
+         * @description Request body for PATCH /v1/admin/organizations/{org_id}/members/{membership_id}
+         *     (feature #234). Only the role field is mutable; identity is fixed by the path.
+         */
+        AdminChangeMemberRoleRequest: {
+            /**
+             * @description New role to assign to the membership.
+             * @example agent
+             * @enum {string}
+             */
+            role: "organizer" | "agent" | "platform_operator" | "external_ticketing_operator" | "platform_superadmin" | "network_operator";
         };
         /** @description A single active organization (primary tenant boundary). */
         OrganizationItem: {
@@ -4531,6 +4669,361 @@ export interface operations {
                 };
             };
             /** @description Database pool or org queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1AdminOrganizationsOrgIdMembers: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for the admin read (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description UUIDv7 primary key of the organization whose members to list. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Array of active memberships */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description Active memberships in this organization, ordered by joined_at ASC. */
+                        memberships: components["schemas"]["MembershipItem"][];
+                    };
+                };
+            };
+            /** @description Missing X-Admin-Reason or invalid org_id path parameter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (membership.read) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or membership queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminOrganizationsOrgIdMembers: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for the admin write (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description UUIDv7 primary key of the organization to add the member to. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminAddMemberRequest"];
+            };
+        };
+        responses: {
+            /** @description Membership created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        membership: components["schemas"]["MembershipItem"];
+                    };
+                };
+            };
+            /** @description Validation error (missing reason / body, ambiguous user identification, invalid role). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (membership.grant) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description User already holds that role in this organization. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description user_id / org_id does not exist, or email lookup found no user. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or membership queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteV1AdminOrganizationsOrgIdMembersMembershipId: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for the admin write (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description UUIDv7 primary key of the organization that owns the membership. */
+                org_id: string;
+                /** @description UUIDv7 primary key of the membership row to deactivate. */
+                membership_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Membership deactivated successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        membership: components["schemas"]["MembershipItem"];
+                        /**
+                         * @description Always true on a successful soft-removal.
+                         * @example true
+                         */
+                        deactivated: boolean;
+                    };
+                };
+            };
+            /** @description Missing X-Admin-Reason or invalid path parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (membership.revoke) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No active membership matches the (org_id, membership_id) pair. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or membership queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    patchV1AdminOrganizationsOrgIdMembersMembershipId: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for the admin write (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description UUIDv7 primary key of the organization that owns the membership. */
+                org_id: string;
+                /** @description UUIDv7 primary key of the membership row to update. */
+                membership_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminChangeMemberRoleRequest"];
+            };
+        };
+        responses: {
+            /** @description Role updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        membership: components["schemas"]["MembershipItem"];
+                    };
+                };
+            };
+            /** @description Missing X-Admin-Reason / body, or invalid role. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (membership.grant) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No active membership matches the (org_id, membership_id) pair. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description User already holds the requested role in this organization. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or membership queries not available */
             503: {
                 headers: {
                     [name: string]: unknown;

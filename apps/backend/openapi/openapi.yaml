@@ -1094,6 +1094,101 @@ components:
           example: "Email address verified successfully."
 
     # Organization schemas — feature #119
+    MembershipItem:
+      type: object
+      required: [id, user_id, org_id, role, status, joined_at]
+      description: |
+        A single user → organization → role binding (feature #120). The
+        admin memberships endpoints (feature #234) use this shape on every
+        list / add / patch / delete response.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the memberships row.
+          example: "01929d0e-0e47-7000-8000-000000000010"
+        user_id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the user holding this role.
+          example: "01929d0e-0e47-7000-8000-000000000020"
+        org_id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the organization the role is scoped to.
+          example: "01929d0e-0e47-7000-8000-000000000001"
+        role:
+          type: string
+          description: Named role bound to (user_id, org_id). One of organizer, agent, platform_operator, external_ticketing_operator, platform_superadmin, network_operator.
+          example: "organizer"
+          enum:
+            - organizer
+            - agent
+            - platform_operator
+            - external_ticketing_operator
+            - platform_superadmin
+            - network_operator
+        status:
+          type: string
+          description: Lifecycle state of the membership. active = in force, revoked = soft-removed by an admin, suspended = paused.
+          enum: [active, suspended, revoked]
+          example: "active"
+        joined_at:
+          type: string
+          format: date-time
+          description: ISO 8601 / RFC 3339 timestamp of when the membership was first granted.
+          example: "2024-01-01T00:00:00Z"
+
+    AdminAddMemberRequest:
+      type: object
+      required: [role]
+      additionalProperties: false
+      description: |
+        Request body for POST /v1/admin/organizations/{org_id}/members
+        (feature #234). Exactly one of user_id and email must be supplied.
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the existing user to add. Mutually exclusive with email.
+          example: "01929d0e-0e47-7000-8000-000000000020"
+        email:
+          type: string
+          format: email
+          description: Email of the existing user to add (case-insensitive lookup). Mutually exclusive with user_id.
+          example: "operator@example.com"
+        role:
+          type: string
+          description: Role to grant. Must satisfy the memberships_role_check CHECK constraint.
+          enum:
+            - organizer
+            - agent
+            - platform_operator
+            - external_ticketing_operator
+            - platform_superadmin
+            - network_operator
+          example: "organizer"
+
+    AdminChangeMemberRoleRequest:
+      type: object
+      required: [role]
+      additionalProperties: false
+      description: |
+        Request body for PATCH /v1/admin/organizations/{org_id}/members/{membership_id}
+        (feature #234). Only the role field is mutable; identity is fixed by the path.
+      properties:
+        role:
+          type: string
+          description: New role to assign to the membership.
+          enum:
+            - organizer
+            - agent
+            - platform_operator
+            - external_ticketing_operator
+            - platform_superadmin
+            - network_operator
+          example: "agent"
+
     OrganizationItem:
       type: object
       required: [id, name, slug, country, default_locale, reservation_ttl_seconds, created_at, updated_at]
@@ -3282,6 +3377,344 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database pool or org queries not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Admin Memberships console (feature #234)
+  # ─────────────────────────────────────────────────────────────────────────
+
+  /v1/admin/organizations/{org_id}/members:
+    get:
+      operationId: getV1AdminOrganizationsOrgIdMembers
+      summary: Admin — list memberships in an organization
+      description: |
+        Returns every active membership row for the given organization, ordered
+        by joined_at ASC. Admin-console-facing surface for the memberships
+        management screen. Requires JWT + membership.read + X-Admin-Reason
+        (audit trail).
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the organization whose members to list.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for the admin read (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Array of active memberships
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [memberships]
+                properties:
+                  memberships:
+                    type: array
+                    description: Active memberships in this organization, ordered by joined_at ASC.
+                    items:
+                      $ref: "#/components/schemas/MembershipItem"
+        "400":
+          description: Missing X-Admin-Reason or invalid org_id path parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (membership.read)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or membership queries not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: postV1AdminOrganizationsOrgIdMembers
+      summary: Admin — add a member to an organization
+      description: |
+        Grants a role to a user within an organization. Supply exactly one of
+        user_id or email — when email is supplied the user is resolved via
+        GetUserByEmail; a missing user yields HTTP 422
+        admin_membership.user_not_found. Requires JWT + membership.grant +
+        X-Admin-Reason.
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the organization to add the member to.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for the admin write (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAddMemberRequest"
+      responses:
+        "201":
+          description: Membership created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [membership]
+                properties:
+                  membership:
+                    $ref: "#/components/schemas/MembershipItem"
+        "400":
+          description: Validation error (missing reason / body, ambiguous user identification, invalid role).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (membership.grant)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: User already holds that role in this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: user_id / org_id does not exist, or email lookup found no user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or membership queries not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/organizations/{org_id}/members/{membership_id}:
+    patch:
+      operationId: patchV1AdminOrganizationsOrgIdMembersMembershipId
+      summary: Admin — change a member's role
+      description: |
+        Updates the role on an existing active membership identified by
+        (membership_id, org_id). Requires JWT + membership.grant +
+        X-Admin-Reason.
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the organization that owns the membership.
+          schema:
+            type: string
+            format: uuid
+        - name: membership_id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the membership row to update.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for the admin write (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminChangeMemberRoleRequest"
+      responses:
+        "200":
+          description: Role updated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [membership]
+                properties:
+                  membership:
+                    $ref: "#/components/schemas/MembershipItem"
+        "400":
+          description: Missing X-Admin-Reason / body, or invalid role.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (membership.grant)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No active membership matches the (org_id, membership_id) pair.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: User already holds the requested role in this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or membership queries not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      operationId: deleteV1AdminOrganizationsOrgIdMembersMembershipId
+      summary: Admin — deactivate (soft-remove) a membership
+      description: |
+        Soft-removes a membership by setting status='revoked'. The row is
+        preserved for historical audit / reporting queries. Requires
+        JWT + membership.revoke + X-Admin-Reason.
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the organization that owns the membership.
+          schema:
+            type: string
+            format: uuid
+        - name: membership_id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the membership row to deactivate.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for the admin write (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Membership deactivated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [membership, deactivated]
+                properties:
+                  membership:
+                    $ref: "#/components/schemas/MembershipItem"
+                  deactivated:
+                    type: boolean
+                    description: Always true on a successful soft-removal.
+                    example: true
+        "400":
+          description: Missing X-Admin-Reason or invalid path parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (membership.revoke)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No active membership matches the (org_id, membership_id) pair.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or membership queries not available
           content:
             application/json:
               schema:

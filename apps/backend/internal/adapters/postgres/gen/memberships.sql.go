@@ -178,3 +178,63 @@ func (q *Queries) ListMembershipsByUser(ctx context.Context, userID uuid.UUID) (
 	}
 	return memberships, rows.Err()
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GetMembershipByID — feature #234 (admin memberships console)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getMembershipByID = `-- name: GetMembershipByID :one
+SELECT id, user_id, org_id, role, status, joined_at
+FROM   memberships
+WHERE  id     = $1
+  AND  org_id = $2`
+
+// GetMembershipByID returns a single membership row scoped by org_id. The
+// org-scope keeps admin handlers from operating on a membership belonging to a
+// different organization than the one in the URL path. Returns pgx.ErrNoRows
+// when no row matches.
+func (q *Queries) GetMembershipByID(ctx context.Context, id, orgID uuid.UUID) (MembershipRow, error) {
+	row := q.db.QueryRow(ctx, getMembershipByID, id, orgID)
+	return scanMembershipRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ChangeMembershipRole — feature #234 (admin memberships console)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const changeMembershipRole = `-- name: ChangeMembershipRole :one
+UPDATE memberships
+SET    role = $3
+WHERE  id     = $1
+  AND  org_id = $2
+  AND  status = 'active'
+RETURNING id, user_id, org_id, role, status, joined_at`
+
+// ChangeMembershipRole replaces the role on an active membership identified by
+// (id, org_id). Returns pgx.ErrNoRows if no matching active membership exists.
+// Callers must handle a 23505 unique-violation when the target user already
+// holds the new role in the same organization.
+func (q *Queries) ChangeMembershipRole(ctx context.Context, id, orgID uuid.UUID, role string) (MembershipRow, error) {
+	row := q.db.QueryRow(ctx, changeMembershipRole, id, orgID, role)
+	return scanMembershipRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DeactivateMembership — feature #234 (admin memberships console)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const deactivateMembership = `-- name: DeactivateMembership :one
+UPDATE memberships
+SET    status = 'revoked'
+WHERE  id     = $1
+  AND  org_id = $2
+  AND  status = 'active'
+RETURNING id, user_id, org_id, role, status, joined_at`
+
+// DeactivateMembership soft-removes a membership by flipping status to
+// 'revoked'. Preserves the row for historic audit lookups. Returns
+// pgx.ErrNoRows when no matching active membership exists.
+func (q *Queries) DeactivateMembership(ctx context.Context, id, orgID uuid.UUID) (MembershipRow, error) {
+	row := q.db.QueryRow(ctx, deactivateMembership, id, orgID)
+	return scanMembershipRow(row)
+}

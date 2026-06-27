@@ -93,6 +93,32 @@ func (s *Server) mountAdminOrgRoutes(r chi.Router) {
 	})
 }
 
+// mountAdminMembershipRoutes mounts admin-namespace organization-memberships
+// endpoints (feature #234) under /v1/admin/organizations/{org_id}/members.
+//
+// All four routes (list, add, change role, deactivate) carry the standard
+// /v1/admin gate (JWT + RBAC + X-Admin-Reason). They re-use the existing
+// membership.read / membership.grant / membership.revoke permissions seeded
+// in migration 0011_memberships.sql so no schema change is required.
+func (s *Server) mountAdminMembershipRoutes(r chi.Router) {
+	if s.stub == nil || !s.stub.Enabled() || s.membershipQueries == nil || s.pool == nil {
+		return
+	}
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "membership.read", "memberships")
+		pr.Get("/admin/organizations/{org_id}/members", s.handleAdminListMembers)
+	})
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "membership.grant", "memberships")
+		pr.Post("/admin/organizations/{org_id}/members", s.handleAdminAddMember)
+		pr.Patch("/admin/organizations/{org_id}/members/{membership_id}", s.handleAdminChangeMemberRole)
+	})
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "membership.revoke", "memberships")
+		pr.Delete("/admin/organizations/{org_id}/members/{membership_id}", s.handleAdminDeactivateMember)
+	})
+}
+
 // mountImpersonationRoutes mounts the scoped impersonation JWT endpoint
 // (feature #167).
 func (s *Server) mountImpersonationRoutes(r chi.Router) {
