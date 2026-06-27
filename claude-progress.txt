@@ -15959,3 +15959,28 @@ payment provider configs CRUD route.
     npm --prefix apps/admin-web test -- --run      OK (347/347)
     npm --prefix apps/admin-web run build          OK
   Marked #239 passing. Commit: 43541bd5
+
+[2026-06-27 #245] navConfig + legacyPlaceholders cleanup for venues/channels/payments.
+  Cleanup ticket whose work was already performed inline by #242 (venues),
+  #243 (channels), and #244 (payments). Verified current state:
+  - apps/admin-web/src/lib/admin/legacyModules.ts: LEGACY_MODULE_PLACEHOLDERS
+    has exactly 4 entries (events_sessions, reports, notifications_content,
+    pos). venues_seating/frontends_channels/payments_fiscal each replaced
+    with an inline comment pointing at the real CRUD route file.
+  - apps/admin-web/src/lib/auth/navConfig.ts: /venues, /channels, /payments
+    nav entries point at the real routes with proper per-resource
+    permission rules (venue.*, channel.*, payment_config.*) and scopeKinds.
+  - apps/admin-web/src/routes/legacyPlaceholders.test.ts: 24 contract tests
+    expect exactly 4 placeholders with EXPECTED_PATHS=[/events,/reports,
+    /content,/pos] and matching EXPECTED_MAP_IDS. navConfig <-> legacyModules
+    parity check passes for the 4 remaining ids only.
+  reports/content/pos/events placeholders left untouched per ticket.
+  Verification:
+    npm --prefix apps/admin-web test -- --run src/routes/legacyPlaceholders.test.ts
+        OK 24/24
+    npm --prefix apps/admin-web test -- --run src/lib/auth/__tests__/navConfig.test.ts
+        OK 23/23
+  Note: organizations.test.ts/.tsx have uncommitted unused-import
+  type-check errors from a concurrent agent (membership work, out of
+  scope for #245). Not touched.
+  Marked #245 passing.
