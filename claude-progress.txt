@@ -14957,3 +14957,48 @@ Verification:
   npm run check-ts                            OK
 
 Marked #221 passing.
+
+================================================================================
+Session 2026-06-27 -- Feature #222 (SAUI-06 Organizations cross-tenant explorer)
+================================================================================
+Implemented real Organizations explorer replacing the SAUI-03 placeholder.
+Backed by GET /v1/admin/organizations (cross-tenant, superadmin.read,
+X-Admin-Reason required).
+
+New files:
+  apps/admin-web/src/routes/organizations.tsx (~750 LOC)
+    RequirePermission wrap around organizations nav entry
+    (superadmin.read; scope global/platform).
+    useQuery fetches /v1/admin/organizations through authedFetch;
+    X-Admin-Reason injected by existing reason resolver.
+    Toolbar: live local search across name/slug/country/locale/id,
+    include-deleted toggle, page-local count badge, refresh.
+    Table with name/slug/country/locale/TTL/created/status columns.
+    Soft deleted rows hidden by default; visible with red status
+    badge when toggle on.
+    Detail drawer: metadata grid plus related-data tiles. Linkable
+    to /orders /tickets /refunds with org_id filter (backend
+    supports ?org_id=). Backend gap tiles for networks, events,
+    users with explicit reason text.
+    Error states: superadmin.reason_required (prompt retry),
+    403/permissions.denied, 401, generic with code+message+retry.
+    No mock data; pending/empty/error all explicit.
+
+  apps/admin-web/src/routes/organizations.test.ts (13 vitest cases)
+    filterRows: deletion toggle, name/slug/country/locale/uuid
+    substring match, whitespace-only filter equals empty, case
+    insensitive.
+    formatDurationSeconds: sub-minute, sub-hour with remainder,
+    multi-hour, zero/negative/NaN guard.
+
+Modified:
+  apps/admin-web/src/routeTree.ts
+    Import Route as OrganizationsRoute from @/routes/organizations.
+  apps/admin-web/src/routes/guarded.tsx
+    Drop /organizations placeholder generator (now real route).
+
+Verification:
+  npx tsc -b apps/admin-web --pretty   EXIT 0 against my own files
+  npm --prefix apps/admin-web test     92/92 PASS (incl. 13 new)
+
+Marked #222 passing. Commit a0241cc.
