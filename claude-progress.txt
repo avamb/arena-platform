@@ -15460,3 +15460,18 @@ unseeded personas (org_admin, organizer, agent, viewer/support), and
 consolidated gap-list G-R1..G-R4 + G-PC1 + G-D1 + G-E1 with recommended
 downstream features. No code changes. Marked #232 passing.
 Commit: 583ee1b7 docs(autoforge): admin CRUD/RBAC gap inventory (#232)
+
+[2026-06-27 #249] Pure-docs feature. Audited Bil24 legacy UI roles from
+AutoForge screenshots (TixManager/TixEditor/TixCassa/raw_misc) and the
+official Bil24 API docs, extracted 12 legacy role labels (L1-L12),
+mapped them onto the current arena_new RBAC model (organizer, agent,
+platform_operator, external_ticketing_operator, platform_superadmin,
+network_operator) using the seeds in migrations 0008, 0011, 0034,
+0042, 0043, 0044. Source-of-truth document written to
+docs/rbac/legacy_bil24_role_mapping.md. Identified open gaps
+(G-POS-1 pos.execute, G-CONT-1 content/notifications, G-ACQ-1
+payments, G-MFC-1 channel.mfc, G-NAMING-1 'Operator' word collision)
+for follow-up. Final MVP role list for Users tab (#10), memberships
+backend (#3/#120) and seed (#16) fixed at the six business roles.
+No code changes. Marked #249 passing.
+
