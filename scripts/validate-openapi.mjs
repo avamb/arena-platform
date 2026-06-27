@@ -17,12 +17,19 @@ try {
     '/v1/admin/networks/{id}/agents',
     '/v1/admin/networks/{id}/agents/{orgId}',
     '/v1/me',
+    '/v1/venues',
+    '/v1/venues/{id}',
+    '/v1/organizations/{org_id}/venues',
+    '/v1/organizations/{org_id}/venues/{id}',
   ];
   const needSchemas = [
     'OperatorNetwork',
     'NetworkUserAssignment',
     'NetworkOrganizationAssignment',
     'MeResponse',
+    'VenueItem',
+    'CreateVenueRequest',
+    'UpdateVenueRequest',
   ];
   const missingPaths = needPaths.filter((p) => !paths.includes(p));
   const missingSchemas = needSchemas.filter((s) => !schemas.includes(s));

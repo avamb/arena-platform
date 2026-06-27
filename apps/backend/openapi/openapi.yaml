@@ -1193,6 +1193,121 @@ components:
           description: New TTL in seconds (optional; 0 leaves existing value)
           example: 900
 
+    # Venue schemas — feature #124 / extended for admin UI consumption (#235)
+    VenueItem:
+      type: object
+      required: [id, org_id, name, created_at, updated_at]
+      description: |
+        A single active venue (physical event location owned by one organization).
+        Any authenticated org may read venue data, but only the owning org may
+        create, update, or soft-delete a venue.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the venue row
+          example: "01929d0e-0e47-7000-8000-000000000201"
+        org_id:
+          type: string
+          format: uuid
+          description: |
+            Owning organization. Immutable after creation. Only this org may
+            mutate the venue.
+          example: "01929d0e-0e47-7000-8000-000000000001"
+        city_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            Optional FK to the geo.cities reference table. NULL means the city
+            is not specified.
+          example: "01929d0e-0e47-7000-8000-000000000101"
+        name:
+          type: string
+          description: |
+            Human-readable venue name. Unique among active venues within the
+            owning organization.
+          example: "Tel Aviv Convention Center"
+        address:
+          type: string
+          nullable: true
+          description: Optional free-form street address.
+          example: "101 Rothschild Blvd, Tel Aviv-Yafo"
+        capacity_default:
+          type: integer
+          nullable: true
+          description: |
+            Optional default total capacity of the venue. NULL means
+            unspecified. Individual events may override this with their own
+            capacity.
+          example: 1200
+        created_at:
+          type: string
+          format: date-time
+          description: ISO 8601 / RFC 3339 timestamp of row creation
+          example: "2024-01-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: ISO 8601 / RFC 3339 timestamp of last update
+          example: "2024-01-01T00:00:00Z"
+
+    CreateVenueRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      description: |
+        Request body for POST /v1/organizations/{org_id}/venues. Only `name`
+        is required; the optional fields default to NULL.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Display name (unique among active venues within the org).
+          example: "Tel Aviv Convention Center"
+        city_id:
+          type: string
+          format: uuid
+          description: Optional UUID of a row in the geo.cities reference table.
+          example: "01929d0e-0e47-7000-8000-000000000101"
+        address:
+          type: string
+          description: Optional free-form street address.
+          example: "101 Rothschild Blvd, Tel Aviv-Yafo"
+        capacity_default:
+          type: integer
+          nullable: true
+          description: Optional default capacity (positive integer).
+          example: 1200
+
+    UpdateVenueRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Request body for PATCH /v1/organizations/{org_id}/venues/{id}.
+        All fields are optional — omitted (or empty-string) `name` leaves the
+        existing value unchanged. `city_id`, `address`, and `capacity_default`
+        are tri-state: omitted leaves the existing value; provided replaces it.
+      properties:
+        name:
+          type: string
+          description: New display name (optional; empty string leaves existing value).
+          example: "Tel Aviv Convention Center (renamed)"
+        city_id:
+          type: string
+          format: uuid
+          description: Replacement city reference (optional).
+          example: "01929d0e-0e47-7000-8000-000000000101"
+        address:
+          type: string
+          description: Replacement address (optional).
+          example: "200 Allenby St, Tel Aviv-Yafo"
+        capacity_default:
+          type: integer
+          nullable: true
+          description: Replacement default capacity (optional).
+          example: 1500
+
     # Geo schemas — feature #123
     GeoCountryItem:
       type: object
@@ -2749,6 +2864,430 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database pool or org queries not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Venue admin endpoints (feature #124, contract documented under #235)
+  # ─────────────────────────────────────────────────────────────────────────
+
+  /v1/venues:
+    get:
+      operationId: getV1Venues
+      summary: List all active venues across organizations
+      description: |
+        Returns every active (non-soft-deleted) venue across all organizations,
+        ordered by creation time ascending. Requires JWT authentication and the
+        "venue.read" permission. This is the shared cross-tenant read surface
+        used by the SuperAdmin venue picker and global event-creation flows.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Array of active venues
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [venues]
+                properties:
+                  venues:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/VenueItem"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (venue.read)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Venue queries unavailable (database not wired)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/venues/{id}:
+    get:
+      operationId: getV1VenuesId
+      summary: Get a single venue by ID
+      description: |
+        Returns a single active venue regardless of owning organization.
+        Requires JWT authentication and the "venue.read" permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the venue
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Venue details
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [venue]
+                properties:
+                  venue:
+                    $ref: "#/components/schemas/VenueItem"
+        "400":
+          description: id path parameter is not a valid UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (venue.read)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Venue not found or has been soft-deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Venue queries unavailable (database not wired)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/venues:
+    get:
+      operationId: getV1OrganizationsOrgIdVenues
+      summary: List active venues owned by a specific organization
+      description: |
+        Returns only the active venues whose owning org_id matches the
+        path parameter. Requires JWT authentication and the "venue.read"
+        permission. Used by the Admin UI venue list (per-org scope).
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Array of venues owned by the organization
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [venues]
+                properties:
+                  venues:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/VenueItem"
+        "400":
+          description: org_id path parameter is not a valid UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (venue.read)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Venue queries unavailable (database not wired)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: postV1OrganizationsOrgIdVenues
+      summary: Create a new venue inside the given organization
+      description: |
+        Creates a venue owned by the org in the path. Owner-gated:
+        every write enforces the org_id from the path against the venue's
+        owning organization. Requires JWT authentication and the
+        "venue.create" permission. Returns 409 if a venue with the same
+        name already exists (active) inside the org.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVenueRequest"
+      responses:
+        "201":
+          description: Venue created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [venue]
+                properties:
+                  venue:
+                    $ref: "#/components/schemas/VenueItem"
+        "400":
+          description: Body missing/invalid, name empty, or city_id malformed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (venue.create)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: A venue with that name already exists in this organization
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or venue queries unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/venues/{id}:
+    patch:
+      operationId: patchV1OrganizationsOrgIdVenuesId
+      summary: Update a venue owned by the organization
+      description: |
+        Applies a partial update to an active venue. Owner-gated: org_id in
+        the path must match the venue's owning organization (a non-owner
+        request resolves to 404). Empty or omitted fields leave the existing
+        value unchanged. Requires JWT authentication and the "venue.update"
+        permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the venue to update
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateVenueRequest"
+      responses:
+        "200":
+          description: Venue updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [venue]
+                properties:
+                  venue:
+                    $ref: "#/components/schemas/VenueItem"
+        "400":
+          description: Body missing/invalid or city_id malformed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (venue.update)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: |
+            Venue not found, has been soft-deleted, or is owned by a different
+            organization (owner gate resolves to 404).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: New name conflicts with another active venue in the same org
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or venue queries unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      operationId: deleteV1OrganizationsOrgIdVenuesId
+      summary: Soft-delete a venue owned by the organization
+      description: |
+        Marks the venue as deleted (sets deleted_at = now()) and writes an
+        audit event inside the same transaction. Owner-gated: non-owner
+        requests resolve to 404. Requires JWT authentication and the
+        "venue.delete" permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the venue to soft-delete
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Venue soft-deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [venue, deleted]
+                properties:
+                  venue:
+                    $ref: "#/components/schemas/VenueItem"
+                  deleted:
+                    type: boolean
+                    example: true
+        "400":
+          description: id or org_id path parameter is not a valid UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (venue.delete)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: |
+            Venue not found, already soft-deleted, or owned by a different
+            organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or venue queries unavailable
           content:
             application/json:
               schema:

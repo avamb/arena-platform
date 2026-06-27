@@ -613,6 +613,111 @@ export interface paths {
         patch: operations["patchV1OrganizationsId"];
         trace?: never;
     };
+    "/v1/venues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all active venues across organizations
+         * @description Returns every active (non-soft-deleted) venue across all organizations,
+         *     ordered by creation time ascending. Requires JWT authentication and the
+         *     "venue.read" permission. This is the shared cross-tenant read surface
+         *     used by the SuperAdmin venue picker and global event-creation flows.
+         */
+        get: operations["getV1Venues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/venues/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a single venue by ID
+         * @description Returns a single active venue regardless of owning organization.
+         *     Requires JWT authentication and the "venue.read" permission.
+         */
+        get: operations["getV1VenuesId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/venues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List active venues owned by a specific organization
+         * @description Returns only the active venues whose owning org_id matches the
+         *     path parameter. Requires JWT authentication and the "venue.read"
+         *     permission. Used by the Admin UI venue list (per-org scope).
+         */
+        get: operations["getV1OrganizationsOrgIdVenues"];
+        put?: never;
+        /**
+         * Create a new venue inside the given organization
+         * @description Creates a venue owned by the org in the path. Owner-gated:
+         *     every write enforces the org_id from the path against the venue's
+         *     owning organization. Requires JWT authentication and the
+         *     "venue.create" permission. Returns 409 if a venue with the same
+         *     name already exists (active) inside the org.
+         */
+        post: operations["postV1OrganizationsOrgIdVenues"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/venues/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Soft-delete a venue owned by the organization
+         * @description Marks the venue as deleted (sets deleted_at = now()) and writes an
+         *     audit event inside the same transaction. Owner-gated: non-owner
+         *     requests resolve to 404. Requires JWT authentication and the
+         *     "venue.delete" permission.
+         */
+        delete: operations["deleteV1OrganizationsOrgIdVenuesId"];
+        options?: never;
+        head?: never;
+        /**
+         * Update a venue owned by the organization
+         * @description Applies a partial update to an active venue. Owner-gated: org_id in
+         *     the path must match the venue's owning organization (a non-owner
+         *     request resolves to 404). Empty or omitted fields leave the existing
+         *     value unchanged. Requires JWT authentication and the "venue.update"
+         *     permission.
+         */
+        patch: operations["patchV1OrganizationsOrgIdVenuesId"];
+        trace?: never;
+    };
     "/v1/operator-networks": {
         parameters: {
             query?: never;
@@ -1971,6 +2076,119 @@ export interface components {
              * @example 900
              */
             reservation_ttl_seconds?: number;
+        };
+        /**
+         * @description A single active venue (physical event location owned by one organization).
+         *     Any authenticated org may read venue data, but only the owning org may
+         *     create, update, or soft-delete a venue.
+         */
+        VenueItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the venue row
+             * @example 01929d0e-0e47-7000-8000-000000000201
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Owning organization. Immutable after creation. Only this org may
+             *     mutate the venue.
+             * @example 01929d0e-0e47-7000-8000-000000000001
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description Optional FK to the geo.cities reference table. NULL means the city
+             *     is not specified.
+             * @example 01929d0e-0e47-7000-8000-000000000101
+             */
+            city_id?: string | null;
+            /**
+             * @description Human-readable venue name. Unique among active venues within the
+             *     owning organization.
+             * @example Tel Aviv Convention Center
+             */
+            name: string;
+            /**
+             * @description Optional free-form street address.
+             * @example 101 Rothschild Blvd, Tel Aviv-Yafo
+             */
+            address?: string | null;
+            /**
+             * @description Optional default total capacity of the venue. NULL means
+             *     unspecified. Individual events may override this with their own
+             *     capacity.
+             * @example 1200
+             */
+            capacity_default?: number | null;
+            /**
+             * Format: date-time
+             * @description ISO 8601 / RFC 3339 timestamp of row creation
+             * @example 2024-01-01T00:00:00Z
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description ISO 8601 / RFC 3339 timestamp of last update
+             * @example 2024-01-01T00:00:00Z
+             */
+            updated_at: string;
+        };
+        /**
+         * @description Request body for POST /v1/organizations/{org_id}/venues. Only `name`
+         *     is required; the optional fields default to NULL.
+         */
+        CreateVenueRequest: {
+            /**
+             * @description Display name (unique among active venues within the org).
+             * @example Tel Aviv Convention Center
+             */
+            name: string;
+            /**
+             * Format: uuid
+             * @description Optional UUID of a row in the geo.cities reference table.
+             * @example 01929d0e-0e47-7000-8000-000000000101
+             */
+            city_id?: string;
+            /**
+             * @description Optional free-form street address.
+             * @example 101 Rothschild Blvd, Tel Aviv-Yafo
+             */
+            address?: string;
+            /**
+             * @description Optional default capacity (positive integer).
+             * @example 1200
+             */
+            capacity_default?: number | null;
+        };
+        /**
+         * @description Request body for PATCH /v1/organizations/{org_id}/venues/{id}.
+         *     All fields are optional — omitted (or empty-string) `name` leaves the
+         *     existing value unchanged. `city_id`, `address`, and `capacity_default`
+         *     are tri-state: omitted leaves the existing value; provided replaces it.
+         */
+        UpdateVenueRequest: {
+            /**
+             * @description New display name (optional; empty string leaves existing value).
+             * @example Tel Aviv Convention Center (renamed)
+             */
+            name?: string;
+            /**
+             * Format: uuid
+             * @description Replacement city reference (optional).
+             * @example 01929d0e-0e47-7000-8000-000000000101
+             */
+            city_id?: string;
+            /**
+             * @description Replacement address (optional).
+             * @example 200 Allenby St, Tel Aviv-Yafo
+             */
+            address?: string;
+            /**
+             * @description Replacement default capacity (optional).
+             * @example 1500
+             */
+            capacity_default?: number | null;
         };
         GeoCountryItem: {
             /**
@@ -3751,6 +3969,479 @@ export interface operations {
                 };
             };
             /** @description Database pool or org queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1Venues: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Array of active venues */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        venues: components["schemas"]["VenueItem"][];
+                    };
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (venue.read) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Venue queries unavailable (database not wired) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1VenuesId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 primary key of the venue */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Venue details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        venue: components["schemas"]["VenueItem"];
+                    };
+                };
+            };
+            /** @description id path parameter is not a valid UUID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (venue.read) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Venue not found or has been soft-deleted */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Venue queries unavailable (database not wired) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdVenues: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Array of venues owned by the organization */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        venues: components["schemas"]["VenueItem"][];
+                    };
+                };
+            };
+            /** @description org_id path parameter is not a valid UUID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (venue.read) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Venue queries unavailable (database not wired) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdVenues: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateVenueRequest"];
+            };
+        };
+        responses: {
+            /** @description Venue created successfully */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        venue: components["schemas"]["VenueItem"];
+                    };
+                };
+            };
+            /** @description Body missing/invalid, name empty, or city_id malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (venue.create) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A venue with that name already exists in this organization */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or venue queries unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteV1OrganizationsOrgIdVenuesId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization */
+                org_id: string;
+                /** @description UUIDv7 of the venue to soft-delete */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Venue soft-deleted successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        venue: components["schemas"]["VenueItem"];
+                        /** @example true */
+                        deleted: boolean;
+                    };
+                };
+            };
+            /** @description id or org_id path parameter is not a valid UUID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (venue.delete) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Venue not found, already soft-deleted, or owned by a different
+             *     organization.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or venue queries unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    patchV1OrganizationsOrgIdVenuesId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization */
+                org_id: string;
+                /** @description UUIDv7 of the venue to update */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateVenueRequest"];
+            };
+        };
+        responses: {
+            /** @description Venue updated successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        venue: components["schemas"]["VenueItem"];
+                    };
+                };
+            };
+            /** @description Body missing/invalid or city_id malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (venue.update) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Venue not found, has been soft-deleted, or is owned by a different
+             *     organization (owner gate resolves to 404).
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description New name conflicts with another active venue in the same org */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or venue queries unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;
