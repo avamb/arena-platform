@@ -15320,3 +15320,68 @@ Verification:
                                                 in new files)
 
 Marked #228 passing.
+
+================================================================================
+Session 2026-06-27 -- Feature #229 (SAUI-13 Admin UI a11y + keyboard baseline)
+================================================================================
+Delivered the WCAG 2.2 AA baseline for the SuperAdmin shell: a small
+focus/keyboard primitives library under @/lib/a11y and its application
+to every drawer and the cross-tenant reason modal.
+
+New files:
+  apps/admin-web/src/lib/a11y/focusTraversal.ts (+ .test.ts, 25 cases)
+    FOCUSABLE_SELECTOR, isElementFocusable, isEscapeKey, isTabKey,
+    nextTrapIndex(all, current, shiftKey).
+  apps/admin-web/src/lib/a11y/hooks.ts
+    useEscapeClose, useFocusOnMount, useFocusRestore, useFocusTrap.
+    SSR-safe (short-circuit on undefined window).
+  apps/admin-web/src/lib/a11y/tokens.ts (+ .test.ts, 12 cases)
+    FOCUS_RING_COLOR/WIDTH/OFFSET, STATE_TOKENS (AA-clearing palette),
+    STATE_GLYPHS (critical state never color-only), TYPOGRAPHY,
+    focusVisibleStyle, visuallyHiddenStyle.
+  apps/admin-web/src/lib/a11y/index.ts -- barrel.
+  apps/admin-web/src/components/admin/SupportDrawer.tsx
+    Shared accessible inline-drawer wrapper.
+
+Modified:
+  apps/admin-web/src/components/ReasonPromptModal.tsx
+    Replaced bespoke Escape + rAF focus wiring with the a11y hooks.
+    Added aria-describedby + visually-hidden hint on the disabled
+    submit so AT users get the same explanation sighted users see
+    in the tooltip. useFocusTrap wired on the dialog div (true modal).
+  apps/admin-web/src/routes/orders.tsx
+  apps/admin-web/src/routes/tickets.tsx
+  apps/admin-web/src/routes/refunds.tsx
+  apps/admin-web/src/routes/organizations.tsx
+    Drawers now use useEscapeClose + useFocusOnMount + useFocusRestore.
+    Close button gets title="Close (Esc)" + aria-label.
+  apps/admin-web/src/styles.css
+    Global :focus-visible high-contrast 3px ring matching tokens,
+    a11y-skip-link helper, disabled cursor, body line-height 1.5.
+
+Contract guarantees:
+  - Every drawer/dialog: Escape closes, focus lands on first
+    interactive control on open, focus returns to the trigger on
+    close.
+  - Critical state never relies on color alone (STATE_GLYPHS pairs).
+  - Disabled submit surfaces an explanation (title + aria-describedby).
+  - Inline drawers stay non-modal and do NOT trap focus; trap is
+    reserved for ReasonPromptModal (true modal).
+  - Token contrast ratios documented in tokens.ts hit AA/AAA.
+
+Verification:
+  npm --prefix apps/admin-web run type-check     OK
+  npm --prefix apps/admin-web test               281/281 PASS
+                                                 (incl. 37 new a11y
+                                                  unit tests)
+  npm --prefix apps/admin-web run build          OK (234 modules)
+  Mock-data grep                                 clean
+
+Note: an untracked apps/admin-web/src/smoke/saui14_smoke.test.ts file
+from an earlier in-flight SAUI-14 attempt has TypeScript + assertion
+failures (its regex misses path-via-variable in legacyPlaceholders.tsx,
+and operator-network audit GET wrongly expected not-to-prompt). Not
+part of this feature's scope; not committed; the SAUI-14 session
+should repair or rewrite it from scratch.
+
+Marked #229 passing. Commit c10216d8.
