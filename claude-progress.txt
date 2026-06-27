@@ -15850,3 +15850,38 @@ real CRUD route.
     npm --prefix apps/admin-web test -- --run      OK (320/320, +13)
     npm --prefix apps/admin-web run build          OK
   Marked #238 passing. Commit: 69881a8d.
+
+[2026-06-27 #244] Replaced /payments placeholder shell with a real
+payment provider configs CRUD route.
+  apps/admin-web/src/routes/payments.tsx (new): list/create/edit/
+    archive against /v1/organizations/{org_id}/payment-configs
+    (backend feature #237). Org-id picker prefilled from active
+    organization context. Table columns: provider, mode (test/live
+    badge), provider_account_id, status badge (configured / missing
+    required fields), per-key secret summary chips (values never
+    rendered), is_active, updated_at, actions. Edit form uses
+    per-secret-key password inputs with masked placeholders for
+    already-stored keys plus an explicit Clear toggle. PATCH only
+    transmits keys the operator typed; keys the operator did not
+    touch are omitted so the backend preserves existing values.
+  navConfig.ts: legacy placeholder nav entry replaced by id
+    "payments" gated on payment_config.read / payment_config.write /
+    superadmin.read; scopeKinds widened to include organization to
+    match the org-scoped backend resource.
+  legacyModules.ts: legacy entry removed; 4 placeholders remain
+    (events_sessions, reports, notifications_content, pos).
+  legacyPlaceholders.tsx: PaymentsRoute export removed; /payments
+    dropped from REGISTERED_PATHS sanity set.
+  legacyPlaceholders.test.ts: placeholder count 5 -> 4,
+    EXPECTED_PATHS / EXPECTED_MAP_IDS updated accordingly.
+  routeTree.ts: PaymentsRoute imported from real payments.tsx
+    instead of legacyPlaceholders.
+  navConfig.test.ts: superadmin id list updated to new id;
+    network_operator no longer sees the entry through
+    network.view_sales (now requires payment_config.* or
+    superadmin.read).
+  Verification:
+    npm --prefix apps/admin-web run type-check     OK
+    npm --prefix apps/admin-web test -- --run      OK (320/320)
+    npm --prefix apps/admin-web run build          OK
+  Marked #244 passing. Commit: 7b4dee56.
