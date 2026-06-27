@@ -16,27 +16,27 @@
  * a UI workaround — the worst regression we could ship here would be a
  * search box that quietly searches only the first page.
  *
- * The detail drawer exposes the metadata returned by the list endpoint
- * (id, name, slug, country, default locale, reservation TTL, created /
- * updated / deleted timestamps), plus cross-tenant filtered shortcuts
- * to related collections that DO support `?org_id=<uuid>` filtering:
+ * The detail drawer (feature #240) exposes the metadata returned by the
+ * list endpoint inside an OVERVIEW tab, and pivots all per-organization
+ * related-data surfaces into real tabs scoped on `org_id`:
  *
- *   ✓ /orders   — /v1/admin/orders?org_id=<uuid>
- *   ✓ /tickets  — /v1/admin/tickets?org_id=<uuid>
- *   ✓ /refunds  — /v1/admin/refunds?org_id=<uuid>
+ *   ✓ Overview — metadata (id, name, slug, country, default locale,
+ *                reservation TTL, created / updated / deleted timestamps)
+ *   ✓ Users    — GET /v1/admin/organizations/{org_id}/members
+ *   ✓ Venues   — GET /v1/venues (client-filtered by org_id)
+ *   ✓ Channels — GET /v1/organizations/{org_id}/channels
+ *   ✓ Payments — GET /v1/organizations/{org_id}/payment-configs
  *
- * The following related-data links are intentionally rendered as
- * *backend-gap* states, because the corresponding API surfaces do not
- * exist (or are not yet exposed under /v1/admin) at the time of
- * writing:
+ * The previous "backend gap" tiles (Networks, Events, Users) and the
+ * cross-tenant shortcut tiles (Orders, Tickets, Refunds) were honest
+ * but read-only links; tabs let the operator stay inside the
+ * organization context. Cross-tenant collections (Orders / Tickets /
+ * Refunds) remain reachable through the top-level nav with an
+ * `?org_id=` filter and are intentionally not duplicated here.
  *
- *   ✗ Networks-by-organization (no /v1/admin/organizations/{id}/networks)
- *   ✗ Events-by-organization   (no /v1/admin/organizations/{id}/events)
- *   ✗ Users-by-organization    (no /v1/admin/organizations/{id}/users)
- *
- * Showing a disabled tile with a clear "backend gap" explanation is the
- * honest UX: it tells the operator the surface is conceptually expected
- * but no API exists yet. Linking to a 404 would be a regression.
+ * The active drawer tab is part of the page state and reflected to the
+ * URL hash (e.g. `#org=<uuid>&tab=users`) so a refresh restores the
+ * same drawer + tab the operator was looking at.
  *
  * Permissions / scope:
  *   - Wrapped in <RequirePermission /> using the `organizations` nav
@@ -55,9 +55,10 @@
  *
  * Mock data: NONE. The page renders only what the backend returns.
  */
-import { createRoute, Link } from "@tanstack/react-router";
+import { createRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -128,9 +129,26 @@ function OrganizationsExplorer() {
   const { permissions } = useAuth();
   const canCreate = permissions.has("org.create");
   const [filter, setFilter] = useState("");
-  const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
+  // SAUI-#240: activeOrgId + activeTab are reflected to the URL hash so a
+  // refresh restores the same drawer + tab the operator was looking at.
+  const initialHash = parseDrawerHash(
+    typeof window === "undefined" ? "" : window.location.hash,
+  );
+  const [activeOrgId, setActiveOrgId] = useState<string | null>(initialHash.org);
+  const [activeTab, setActiveTab] = useState<DrawerTabKey>(initialHash.tab);
   const [includeDeleted, setIncludeDeleted] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const next = serializeDrawerHash(activeOrgId, activeTab);
+    const current = window.location.hash;
+    if (next !== current) {
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${next}`);
+    }
+  }, [activeOrgId, activeTab]);
 
   const query = useQuery<OrganizationsEnvelope, ApiError>({
     queryKey: ["admin", "organizations"],
@@ -245,6 +263,8 @@ function OrganizationsExplorer() {
       {activeOrg !== null ? (
         <OrganizationDrawer
           org={activeOrg}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
           onClose={() => setActiveOrgId(null)}
         />
       ) : null}
@@ -458,11 +478,100 @@ function OrgErrorState({
 // Detail drawer
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Drawer tab model (feature #240)
+//
+// The drawer pivots from per-row tiles to real tabs scoped on org_id.
+// Each tab is rendered by a small panel component below that fetches
+// the tab-specific data when (and only when) it becomes active.
+// ---------------------------------------------------------------------------
+
+export const DRAWER_TAB_KEYS = [
+  "overview",
+  "users",
+  "venues",
+  "channels",
+  "payments",
+] as const;
+
+export type DrawerTabKey = (typeof DRAWER_TAB_KEYS)[number];
+
+const DRAWER_TAB_LABELS: Record<DrawerTabKey, string> = {
+  overview: "Overview",
+  users: "Users",
+  venues: "Venues",
+  channels: "Channels",
+  payments: "Payments",
+};
+
+/**
+ * Coerce an unknown value (URL hash, query param, persisted state) into a
+ * legal DrawerTabKey. Falls back to "overview" on any unknown / missing
+ * input so a stale link can never crash the drawer.
+ */
+export function parseDrawerTab(raw: unknown): DrawerTabKey {
+  if (typeof raw !== "string") {
+    return "overview";
+  }
+  const lc = raw.toLowerCase();
+  return (DRAWER_TAB_KEYS as readonly string[]).includes(lc)
+    ? (lc as DrawerTabKey)
+    : "overview";
+}
+
+/**
+ * Parse a `#org=<uuid>&tab=<key>` style URL hash into a structured
+ * `{org, tab}` pair. Unknown fields are tolerated; missing org → null,
+ * missing/unknown tab → "overview".
+ */
+export function parseDrawerHash(rawHash: string): {
+  org: string | null;
+  tab: DrawerTabKey;
+} {
+  const trimmed = rawHash.startsWith("#") ? rawHash.slice(1) : rawHash;
+  if (trimmed === "") {
+    return { org: null, tab: "overview" };
+  }
+  const params = new URLSearchParams(trimmed);
+  const orgRaw = params.get("org");
+  const tabRaw = params.get("tab");
+  // UUID-ish: alphanumerics + dashes, 8..64 chars. We don't strictly
+  // validate UUIDv7 here — the explorer simply ignores an unknown id
+  // when it doesn't match a fetched row.
+  const org =
+    orgRaw !== null && /^[0-9a-fA-F-]{8,64}$/.test(orgRaw) ? orgRaw : null;
+  return { org, tab: parseDrawerTab(tabRaw) };
+}
+
+/**
+ * Inverse of parseDrawerHash. Returns an empty string when there is
+ * nothing to record (no drawer open and the default tab is selected) so
+ * the URL stays clean.
+ */
+export function serializeDrawerHash(
+  orgId: string | null,
+  tab: DrawerTabKey,
+): string {
+  if (orgId === null) {
+    return "";
+  }
+  const params = new URLSearchParams();
+  params.set("org", orgId);
+  if (tab !== "overview") {
+    params.set("tab", tab);
+  }
+  return `#${params.toString()}`;
+}
+
 function OrganizationDrawer({
   org,
+  activeTab,
+  onTabChange,
   onClose,
 }: {
   org: AdminOrganization;
+  activeTab: DrawerTabKey;
+  onTabChange: (tab: DrawerTabKey) => void;
   onClose: () => void;
 }) {
   // SAUI-13: Escape closes, focus lands on close, focus restores on unmount.
@@ -498,80 +607,45 @@ function OrganizationDrawer({
         </button>
       </header>
 
-      <section style={drawerSectionStyle} aria-labelledby="orgs-drawer-meta">
-        <h3 id="orgs-drawer-meta" style={drawerSectionTitleStyle}>
-          Metadata
-        </h3>
-        <dl style={metaListStyle}>
-          <MetaRow k="ID" v={<code style={monoStyle}>{org.id}</code>} />
-          <MetaRow k="Slug" v={<code style={monoStyle}>{org.slug}</code>} />
-          <MetaRow k="Country" v={org.country} />
-          <MetaRow k="Default locale" v={org.default_locale} />
-          <MetaRow
-            k="Reservation TTL"
-            v={`${formatDurationSeconds(org.reservation_ttl_seconds)} (${org.reservation_ttl_seconds.toLocaleString()}s)`}
-          />
-          <MetaRow k="Created" v={formatDateTime(org.created_at)} />
-          <MetaRow k="Updated" v={formatDateTime(org.updated_at)} />
-          <MetaRow
-            k="Deleted"
-            v={
-              org.deleted_at === null
-                ? <span style={mutedStyle}>—</span>
-                : formatDateTime(org.deleted_at)
-            }
-          />
-        </dl>
-      </section>
+      <div
+        role="tablist"
+        aria-label="Organization sections"
+        style={tabListStyle}
+        data-testid="orgs-drawer-tablist"
+      >
+        {DRAWER_TAB_KEYS.map((key) => {
+          const selected = key === activeTab;
+          return (
+            <button
+              type="button"
+              key={key}
+              role="tab"
+              id={`orgs-drawer-tab-${key}`}
+              aria-selected={selected}
+              aria-controls={`orgs-drawer-panel-${key}`}
+              tabIndex={selected ? 0 : -1}
+              onClick={() => onTabChange(key)}
+              style={selected ? tabButtonActiveStyle : tabButtonStyle}
+              data-testid={`orgs-drawer-tab-${key}`}
+            >
+              {DRAWER_TAB_LABELS[key]}
+            </button>
+          );
+        })}
+      </div>
 
-      <section style={drawerSectionStyle} aria-labelledby="orgs-drawer-related">
-        <h3 id="orgs-drawer-related" style={drawerSectionTitleStyle}>
-          Related data
-        </h3>
-        <p style={drawerHelpStyle}>
-          Cross-tenant filtered shortcuts. Endpoints that support
-          <code> ?org_id=&lt;uuid&gt; </code>
-          filtering are linkable; collections without an admin endpoint
-          are rendered as <em>backend gap</em> tiles.
-        </p>
-        <div style={relatedGridStyle}>
-          <RelatedLink
-            id="orders"
-            label="Orders"
-            to="/orders"
-            search={{ org_id: org.id }}
-            hint="GET /v1/admin/orders?org_id=…"
-          />
-          <RelatedLink
-            id="tickets"
-            label="Tickets"
-            to="/tickets"
-            search={{ org_id: org.id }}
-            hint="GET /v1/admin/tickets?org_id=…"
-          />
-          <RelatedLink
-            id="refunds"
-            label="Refunds"
-            to="/refunds"
-            search={{ org_id: org.id }}
-            hint="GET /v1/admin/refunds?org_id=…"
-          />
-          <BackendGapTile
-            id="networks"
-            label="Networks"
-            reason="No /v1/admin/organizations/{id}/networks endpoint yet."
-          />
-          <BackendGapTile
-            id="events"
-            label="Events"
-            reason="No /v1/admin/organizations/{id}/events endpoint yet."
-          />
-          <BackendGapTile
-            id="users"
-            label="Users"
-            reason="No /v1/admin/organizations/{id}/users endpoint yet."
-          />
-        </div>
+      <section
+        role="tabpanel"
+        id={`orgs-drawer-panel-${activeTab}`}
+        aria-labelledby={`orgs-drawer-tab-${activeTab}`}
+        style={drawerSectionStyle}
+        data-testid={`orgs-drawer-panel-${activeTab}`}
+      >
+        {activeTab === "overview" ? <OverviewTab org={org} /> : null}
+        {activeTab === "users" ? <UsersTab org={org} /> : null}
+        {activeTab === "venues" ? <VenuesTab org={org} /> : null}
+        {activeTab === "channels" ? <ChannelsTab org={org} /> : null}
+        {activeTab === "payments" ? <PaymentsTab org={org} /> : null}
       </section>
     </aside>
   );
@@ -586,56 +660,403 @@ function MetaRow({ k, v }: { k: string; v: ReactNode }) {
   );
 }
 
-interface RelatedLinkProps {
-  id: string;
-  label: string;
-  to: "/orders" | "/tickets" | "/refunds";
-  search: Record<string, string>;
-  hint: string;
-}
+// ---------------------------------------------------------------------------
+// Tab panels (feature #240)
+//
+// Each panel renders only when its tab is active. We use react-query so
+// the fetch is cached, deduplicated, and survives tab switches without
+// re-issuing the request.
+// ---------------------------------------------------------------------------
 
-function RelatedLink({ id, label, to, search, hint }: RelatedLinkProps) {
-  // TanStack Router only types the routes that have a dedicated `Route`
-  // export; the guarded placeholder routes (/orders /tickets /refunds)
-  // are generated dynamically in `routes/guarded.tsx` and so are absent
-  // from the typed `to` union. We narrow with `as "/"` so the typed
-  // <Link> still works, mirroring the pattern used in routes/index.tsx
-  // for the dashboard shortcut tiles. Search params are forwarded as a
-  // structural record.
+function OverviewTab({ org }: { org: AdminOrganization }) {
   return (
-    <Link
-      to={to as "/"}
-      search={search as unknown as Record<string, never>}
-      style={relatedTileStyle}
-      data-testid={`orgs-related-${id}`}
-      title={hint}
-    >
-      <span style={relatedTileLabelStyle}>{label}</span>
-      <span style={relatedTileHintStyle}>{hint}</span>
-    </Link>
+    <>
+      <h3 style={drawerSectionTitleStyle}>Metadata</h3>
+      <dl style={metaListStyle}>
+        <MetaRow k="ID" v={<code style={monoStyle}>{org.id}</code>} />
+        <MetaRow k="Slug" v={<code style={monoStyle}>{org.slug}</code>} />
+        <MetaRow k="Country" v={org.country} />
+        <MetaRow k="Default locale" v={org.default_locale} />
+        <MetaRow
+          k="Reservation TTL"
+          v={`${formatDurationSeconds(org.reservation_ttl_seconds)} (${org.reservation_ttl_seconds.toLocaleString()}s)`}
+        />
+        <MetaRow k="Created" v={formatDateTime(org.created_at)} />
+        <MetaRow k="Updated" v={formatDateTime(org.updated_at)} />
+        <MetaRow
+          k="Deleted"
+          v={
+            org.deleted_at === null ? (
+              <span style={mutedStyle}>—</span>
+            ) : (
+              formatDateTime(org.deleted_at)
+            )
+          }
+        />
+      </dl>
+    </>
   );
 }
 
-function BackendGapTile({
-  id,
-  label,
-  reason,
-}: {
-  id: string;
-  label: string;
-  reason: string;
-}) {
+interface MembershipResponse {
+  readonly id: string;
+  readonly user_id: string;
+  readonly org_id: string;
+  readonly role: string;
+  readonly status: string;
+  readonly joined_at: string;
+}
+interface MembershipsEnvelope {
+  readonly memberships: readonly MembershipResponse[];
+}
+
+function UsersTab({ org }: { org: AdminOrganization }) {
+  const { permissions } = useAuth();
+  const canRead = permissions.has("membership.read") || permissions.has("superadmin.read");
+  const query = useQuery<MembershipsEnvelope, ApiError>({
+    queryKey: ["admin", "organizations", org.id, "members"],
+    queryFn: () =>
+      authedFetch<MembershipsEnvelope>({
+        method: "GET",
+        path: `/v1/admin/organizations/${org.id}/members`,
+      }),
+    enabled: canRead,
+    retry: (count, err) =>
+      err instanceof ApiError && (err.status === 401 || err.status === 403)
+        ? false
+        : count < 2,
+    refetchOnWindowFocus: false,
+  });
+
   return (
-    <div
-      style={relatedTileDisabledStyle}
-      role="note"
-      aria-disabled="true"
-      data-testid={`orgs-related-gap-${id}`}
-      title={reason}
-    >
-      <span style={relatedTileLabelStyle}>{label}</span>
-      <span style={relatedTileGapBadgeStyle}>backend gap</span>
-      <span style={relatedTileHintStyle}>{reason}</span>
+    <>
+      <h3 style={drawerSectionTitleStyle}>Users (memberships)</h3>
+      <p style={drawerHelpStyle}>
+        <code>GET /v1/admin/organizations/{org.id}/members</code>
+      </p>
+      {!canRead ? (
+        <TabForbidden
+          missing="membership.read"
+          testid="orgs-drawer-users-forbidden"
+        />
+      ) : query.isPending ? (
+        <div style={tabStatusStyle} role="status">Loading memberships…</div>
+      ) : query.isError ? (
+        <TabError
+          error={query.error}
+          retry={() => query.refetch()}
+          testid="orgs-drawer-users-error"
+        />
+      ) : query.data.memberships.length === 0 ? (
+        <div style={tabStatusStyle} data-testid="orgs-drawer-users-empty">
+          No active memberships for this organization.
+        </div>
+      ) : (
+        <div style={tabTableWrapStyle} data-testid="orgs-drawer-users-table">
+          <table style={tabTableStyle}>
+            <thead>
+              <tr>
+                <th scope="col" style={tabThStyle}>User</th>
+                <th scope="col" style={tabThStyle}>Role</th>
+                <th scope="col" style={tabThStyle}>Status</th>
+                <th scope="col" style={tabThStyle}>Joined</th>
+              </tr>
+            </thead>
+            <tbody>
+              {query.data.memberships.map((m) => (
+                <tr key={m.id}>
+                  <td style={tabTdMonoStyle}>{m.user_id}</td>
+                  <td style={tabTdStyle}>{m.role}</td>
+                  <td style={tabTdStyle}>{m.status}</td>
+                  <td style={tabTdStyle}>{formatDateTime(m.joined_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
+interface VenueResponse {
+  readonly id: string;
+  readonly org_id: string;
+  readonly name: string;
+  readonly slug?: string;
+  readonly timezone?: string;
+  readonly deleted_at?: string | null;
+}
+interface VenuesEnvelope {
+  readonly venues: readonly VenueResponse[];
+}
+
+function VenuesTab({ org }: { org: AdminOrganization }) {
+  const { permissions } = useAuth();
+  const canRead = permissions.has("venue.read") || permissions.has("superadmin.read");
+  const query = useQuery<VenuesEnvelope, ApiError>({
+    queryKey: ["admin", "organizations", org.id, "venues"],
+    queryFn: () =>
+      authedFetch<VenuesEnvelope>({ method: "GET", path: "/v1/venues" }),
+    enabled: canRead,
+    retry: (count, err) =>
+      err instanceof ApiError && (err.status === 401 || err.status === 403)
+        ? false
+        : count < 2,
+    refetchOnWindowFocus: false,
+  });
+  const venues = (query.data?.venues ?? []).filter((v) => v.org_id === org.id);
+
+  return (
+    <>
+      <h3 style={drawerSectionTitleStyle}>Venues</h3>
+      <p style={drawerHelpStyle}>
+        <code>GET /v1/venues</code> — filtered to org_id <code>{org.id}</code>{" "}
+        client-side.
+      </p>
+      {!canRead ? (
+        <TabForbidden missing="venue.read" testid="orgs-drawer-venues-forbidden" />
+      ) : query.isPending ? (
+        <div style={tabStatusStyle} role="status">Loading venues…</div>
+      ) : query.isError ? (
+        <TabError
+          error={query.error}
+          retry={() => query.refetch()}
+          testid="orgs-drawer-venues-error"
+        />
+      ) : venues.length === 0 ? (
+        <div style={tabStatusStyle} data-testid="orgs-drawer-venues-empty">
+          No venues registered for this organization.
+        </div>
+      ) : (
+        <div style={tabTableWrapStyle} data-testid="orgs-drawer-venues-table">
+          <table style={tabTableStyle}>
+            <thead>
+              <tr>
+                <th scope="col" style={tabThStyle}>Name</th>
+                <th scope="col" style={tabThStyle}>Slug</th>
+                <th scope="col" style={tabThStyle}>Timezone</th>
+                <th scope="col" style={tabThStyle}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {venues.map((v) => (
+                <tr key={v.id}>
+                  <td style={tabTdStyle}>{v.name}</td>
+                  <td style={tabTdMonoStyle}>{v.slug ?? "—"}</td>
+                  <td style={tabTdStyle}>{v.timezone ?? "—"}</td>
+                  <td style={tabTdStyle}>
+                    {v.deleted_at === null || v.deleted_at === undefined
+                      ? "active"
+                      : "soft-deleted"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
+interface ChannelResponse {
+  readonly id: string;
+  readonly org_id: string;
+  readonly kind: string;
+  readonly name: string;
+  readonly status?: string;
+  readonly enabled?: boolean;
+}
+interface ChannelsEnvelope {
+  readonly channels: readonly ChannelResponse[];
+}
+
+function ChannelsTab({ org }: { org: AdminOrganization }) {
+  const { permissions } = useAuth();
+  const canRead = permissions.has("channel.read") || permissions.has("superadmin.read");
+  const query = useQuery<ChannelsEnvelope, ApiError>({
+    queryKey: ["admin", "organizations", org.id, "channels"],
+    queryFn: () =>
+      authedFetch<ChannelsEnvelope>({
+        method: "GET",
+        path: `/v1/organizations/${org.id}/channels`,
+      }),
+    enabled: canRead,
+    retry: (count, err) =>
+      err instanceof ApiError && (err.status === 401 || err.status === 403)
+        ? false
+        : count < 2,
+    refetchOnWindowFocus: false,
+  });
+
+  return (
+    <>
+      <h3 style={drawerSectionTitleStyle}>Sales channels</h3>
+      <p style={drawerHelpStyle}>
+        <code>GET /v1/organizations/{org.id}/channels</code>
+      </p>
+      {!canRead ? (
+        <TabForbidden missing="channel.read" testid="orgs-drawer-channels-forbidden" />
+      ) : query.isPending ? (
+        <div style={tabStatusStyle} role="status">Loading channels…</div>
+      ) : query.isError ? (
+        <TabError
+          error={query.error}
+          retry={() => query.refetch()}
+          testid="orgs-drawer-channels-error"
+        />
+      ) : query.data.channels.length === 0 ? (
+        <div style={tabStatusStyle} data-testid="orgs-drawer-channels-empty">
+          No sales channels configured for this organization.
+        </div>
+      ) : (
+        <div style={tabTableWrapStyle} data-testid="orgs-drawer-channels-table">
+          <table style={tabTableStyle}>
+            <thead>
+              <tr>
+                <th scope="col" style={tabThStyle}>Name</th>
+                <th scope="col" style={tabThStyle}>Kind</th>
+                <th scope="col" style={tabThStyle}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {query.data.channels.map((c) => (
+                <tr key={c.id}>
+                  <td style={tabTdStyle}>{c.name}</td>
+                  <td style={tabTdMonoStyle}>{c.kind}</td>
+                  <td style={tabTdStyle}>
+                    {c.status ?? (c.enabled === false ? "disabled" : "enabled")}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
+interface PaymentConfigResponse {
+  readonly id: string;
+  readonly org_id: string;
+  readonly provider: string;
+  readonly mode: string;
+  readonly provider_account_id?: string;
+  readonly is_active?: boolean;
+  readonly updated_at?: string;
+}
+interface PaymentConfigsEnvelope {
+  readonly payment_configs: readonly PaymentConfigResponse[];
+}
+
+function PaymentsTab({ org }: { org: AdminOrganization }) {
+  const { permissions } = useAuth();
+  const canRead =
+    permissions.has("payment_config.read") ||
+    permissions.has("payment_config.write") ||
+    permissions.has("superadmin.read");
+  const query = useQuery<PaymentConfigsEnvelope, ApiError>({
+    queryKey: ["admin", "organizations", org.id, "payment-configs"],
+    queryFn: () =>
+      authedFetch<PaymentConfigsEnvelope>({
+        method: "GET",
+        path: `/v1/organizations/${org.id}/payment-configs`,
+      }),
+    enabled: canRead,
+    retry: (count, err) =>
+      err instanceof ApiError && (err.status === 401 || err.status === 403)
+        ? false
+        : count < 2,
+    refetchOnWindowFocus: false,
+  });
+
+  return (
+    <>
+      <h3 style={drawerSectionTitleStyle}>Payment providers</h3>
+      <p style={drawerHelpStyle}>
+        <code>GET /v1/organizations/{org.id}/payment-configs</code>
+      </p>
+      {!canRead ? (
+        <TabForbidden
+          missing="payment_config.read"
+          testid="orgs-drawer-payments-forbidden"
+        />
+      ) : query.isPending ? (
+        <div style={tabStatusStyle} role="status">Loading payment configs…</div>
+      ) : query.isError ? (
+        <TabError
+          error={query.error}
+          retry={() => query.refetch()}
+          testid="orgs-drawer-payments-error"
+        />
+      ) : query.data.payment_configs.length === 0 ? (
+        <div style={tabStatusStyle} data-testid="orgs-drawer-payments-empty">
+          No payment providers configured for this organization.
+        </div>
+      ) : (
+        <div style={tabTableWrapStyle} data-testid="orgs-drawer-payments-table">
+          <table style={tabTableStyle}>
+            <thead>
+              <tr>
+                <th scope="col" style={tabThStyle}>Provider</th>
+                <th scope="col" style={tabThStyle}>Mode</th>
+                <th scope="col" style={tabThStyle}>Account</th>
+                <th scope="col" style={tabThStyle}>Active</th>
+              </tr>
+            </thead>
+            <tbody>
+              {query.data.payment_configs.map((c) => (
+                <tr key={c.id}>
+                  <td style={tabTdStyle}>{c.provider}</td>
+                  <td style={tabTdMonoStyle}>{c.mode}</td>
+                  <td style={tabTdMonoStyle}>{c.provider_account_id ?? "—"}</td>
+                  <td style={tabTdStyle}>
+                    {c.is_active === false ? "no" : "yes"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
+function TabForbidden({ missing, testid }: { missing: string; testid: string }) {
+  return (
+    <div style={tabStatusStyle} role="status" data-testid={testid}>
+      Your account is missing <code>{missing}</code>. Ask a platform
+      administrator to grant the permission.
+    </div>
+  );
+}
+
+function TabError({
+  error,
+  retry,
+  testid,
+}: {
+  error: ApiError | null;
+  retry: () => void;
+  testid: string;
+}) {
+  if (error instanceof ApiError && error.status === 403) {
+    return (
+      <div style={tabStatusStyle} role="alert" data-testid={testid}>
+        Forbidden ({error.code}). {error.message}
+      </div>
+    );
+  }
+  return (
+    <div style={tabStatusStyle} role="alert" data-testid={testid}>
+      <div style={errorCodeStyle}>{error?.code ?? "unknown.error"}</div>
+      {error?.message ? <div>{error.message}</div> : null}
+      <button type="button" style={errorRetryStyle} onClick={retry}>
+        Retry
+      </button>
     </div>
   );
 }
@@ -1435,49 +1856,69 @@ const monoStyle: CSSProperties = {
 };
 const mutedStyle: CSSProperties = { color: "#94a3b8" };
 
-const relatedGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 8,
-};
-const relatedTileStyle: CSSProperties = {
+// Drawer tab styles (feature #240).
+const tabListStyle: CSSProperties = {
   display: "flex",
-  flexDirection: "column",
+  flexWrap: "wrap",
   gap: 4,
-  padding: "10px 12px",
-  border: "1px solid #e2e8f0",
-  borderRadius: 6,
-  background: "#ffffff",
-  textDecoration: "none",
-  color: "#0f172a",
+  borderBottom: "1px solid #e2e8f0",
+  marginTop: -8,
 };
-const relatedTileDisabledStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 4,
-  padding: "10px 12px",
+const tabButtonStyle: CSSProperties = {
+  fontSize: 12,
+  fontWeight: 500,
+  padding: "8px 12px",
+  background: "transparent",
+  border: "none",
+  borderBottom: "2px solid transparent",
+  color: "#475569",
+  cursor: "pointer",
+};
+const tabButtonActiveStyle: CSSProperties = {
+  ...tabButtonStyle,
+  color: "#0369a1",
+  borderBottomColor: "#0369a1",
+  fontWeight: 600,
+};
+const tabStatusStyle: CSSProperties = {
+  padding: 12,
+  border: "1px dashed #cbd5e1",
   borderRadius: 6,
   background: "#f8fafc",
-  border: "1px dashed #cbd5e1",
+  fontSize: 12,
   color: "#475569",
+  display: "flex",
+  flexDirection: "column",
+  gap: 8,
 };
-const relatedTileLabelStyle: CSSProperties = { fontSize: 13, fontWeight: 600 };
-const relatedTileHintStyle: CSSProperties = {
+const tabTableWrapStyle: CSSProperties = {
+  border: "1px solid #e2e8f0",
+  borderRadius: 6,
+  overflowX: "auto",
+};
+const tabTableStyle: CSSProperties = {
+  width: "100%",
+  borderCollapse: "collapse",
+  fontSize: 12,
+};
+const tabThStyle: CSSProperties = {
+  textAlign: "left",
+  padding: "6px 10px",
+  borderBottom: "1px solid #e2e8f0",
   fontSize: 11,
-  color: "#64748b",
-  lineHeight: 1.4,
-  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-};
-const relatedTileGapBadgeStyle: CSSProperties = {
-  alignSelf: "flex-start",
-  fontSize: 10,
-  padding: "2px 6px",
-  borderRadius: 999,
-  background: "#fef3c7",
-  color: "#78350f",
   fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: 0.4,
+  color: "#475569",
+  background: "#f8fafc",
+};
+const tabTdStyle: CSSProperties = {
+  padding: "6px 10px",
+  borderBottom: "1px solid #f1f5f9",
+  color: "#0f172a",
+};
+const tabTdMonoStyle: CSSProperties = {
+  ...tabTdStyle,
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+  fontSize: 11,
 };
 
 // Create-organization dialog styles (feature #238).

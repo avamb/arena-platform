@@ -13,9 +13,13 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+  DRAWER_TAB_KEYS,
   filterRows,
   formatDurationSeconds,
   mapCreateOrgServerError,
+  parseDrawerHash,
+  parseDrawerTab,
+  serializeDrawerHash,
   validateOrgCountry,
   validateOrgLocale,
   validateOrgName,
@@ -230,5 +234,98 @@ describe("mapCreateOrgServerError (feature #238)", () => {
   it("falls back to a generic form-level message with the code suffix", () => {
     const out = mapCreateOrgServerError(makeErr("unexpected.code", "boom"));
     expect(out.form).toBe("boom (unexpected.code)");
+  });
+});
+
+describe("Drawer tab model (feature #240)", () => {
+  it("exposes overview/users/venues/channels/payments in order", () => {
+    expect(DRAWER_TAB_KEYS).toEqual([
+      "overview",
+      "users",
+      "venues",
+      "channels",
+      "payments",
+    ]);
+  });
+
+  describe("parseDrawerTab", () => {
+    it("returns the key as-is for legal lowercase tab names", () => {
+      for (const key of DRAWER_TAB_KEYS) {
+        expect(parseDrawerTab(key)).toBe(key);
+      }
+    });
+    it("is case-insensitive", () => {
+      expect(parseDrawerTab("USERS")).toBe("users");
+      expect(parseDrawerTab("Channels")).toBe("channels");
+    });
+    it("falls back to overview for unknown / non-string input", () => {
+      expect(parseDrawerTab("frontend-gap")).toBe("overview");
+      expect(parseDrawerTab(undefined)).toBe("overview");
+      expect(parseDrawerTab(null)).toBe("overview");
+      expect(parseDrawerTab(42)).toBe("overview");
+      expect(parseDrawerTab("")).toBe("overview");
+    });
+  });
+
+  describe("parseDrawerHash", () => {
+    it("returns the empty / overview default for an empty hash", () => {
+      expect(parseDrawerHash("")).toEqual({ org: null, tab: "overview" });
+      expect(parseDrawerHash("#")).toEqual({ org: null, tab: "overview" });
+    });
+    it("extracts a UUID-ish org id and tab key", () => {
+      expect(
+        parseDrawerHash("#org=00000000-0000-0000-0000-000000000001&tab=users"),
+      ).toEqual({
+        org: "00000000-0000-0000-0000-000000000001",
+        tab: "users",
+      });
+    });
+    it("tolerates a leading-# omission", () => {
+      expect(
+        parseDrawerHash("org=00000000-0000-0000-0000-000000000001&tab=payments"),
+      ).toEqual({
+        org: "00000000-0000-0000-0000-000000000001",
+        tab: "payments",
+      });
+    });
+    it("rejects implausible org values", () => {
+      expect(parseDrawerHash("#org=not%20a%20uuid&tab=venues")).toEqual({
+        org: null,
+        tab: "venues",
+      });
+    });
+    it("normalises an unknown tab to overview", () => {
+      expect(
+        parseDrawerHash("#org=00000000-0000-0000-0000-000000000001&tab=bogus"),
+      ).toEqual({
+        org: "00000000-0000-0000-0000-000000000001",
+        tab: "overview",
+      });
+    });
+  });
+
+  describe("serializeDrawerHash", () => {
+    it("emits an empty string when no drawer is open", () => {
+      expect(serializeDrawerHash(null, "overview")).toBe("");
+      // Even with a non-default tab, no org means no hash.
+      expect(serializeDrawerHash(null, "users")).toBe("");
+    });
+    it("omits the tab key when it is the default overview", () => {
+      expect(
+        serializeDrawerHash("00000000-0000-0000-0000-000000000001", "overview"),
+      ).toBe("#org=00000000-0000-0000-0000-000000000001");
+    });
+    it("includes the tab key when not overview", () => {
+      expect(
+        serializeDrawerHash("00000000-0000-0000-0000-000000000001", "channels"),
+      ).toBe("#org=00000000-0000-0000-0000-000000000001&tab=channels");
+    });
+    it("round-trips parse → serialize for all legal tabs", () => {
+      const id = "00000000-0000-0000-0000-000000000001";
+      for (const tab of DRAWER_TAB_KEYS) {
+        const hash = serializeDrawerHash(id, tab);
+        expect(parseDrawerHash(hash)).toEqual({ org: id, tab });
+      }
+    });
   });
 });

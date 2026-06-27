@@ -15885,3 +15885,28 @@ payment provider configs CRUD route.
     npm --prefix apps/admin-web test -- --run      OK (320/320)
     npm --prefix apps/admin-web run build          OK
   Marked #244 passing. Commit: 7b4dee56.
+
+[2026-06-27 #240] Replaced organization drawer tiles with real tabs.
+  apps/admin-web/src/routes/organizations.tsx: OrganizationDrawer
+    pivots from per-row "tiles" to 5 real tabs scoped on org_id:
+      Overview  - existing org metadata + audit panel
+      Users     - GET /v1/organizations/{org_id}/members (membership.read)
+      Venues    - GET /v1/venues filtered by org_id (venue.read)
+      Channels  - GET /v1/organizations/{org_id}/channels (channel.read)
+      Payments  - GET /v1/organizations/{org_id}/payment-configs
+                  (payment_config.read)
+    DRAWER_TAB_KEYS / DrawerTabKey union exported; parseDrawerTab
+    normalises unknown values to "overview". Active tab is reflected
+    to the URL hash (#org=<uuid>&tab=<key>) so refresh restores the
+    open drawer + tab. Per-tab data fetched lazily via react-query;
+    each panel handles loading / forbidden (TabForbidden) /
+    error / empty / table states.
+    Removed the old "backend gap" + cross-tenant shortcut tiles
+    (Networks/Events/Users/Orders/Tickets/Refunds).
+  apps/admin-web/src/routes/organizations.test.ts: +13 tests for
+    parseDrawerTab + hash round-trip (39 total).
+  Verification:
+    npm --prefix apps/admin-web run type-check     OK
+    npm --prefix apps/admin-web test -- --run      OK (333/333)
+    npm --prefix apps/admin-web run build          OK
+  Marked #240 passing.
