@@ -5,6 +5,7 @@ import { RouterProvider } from "@tanstack/react-router";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider } from "@/lib/auth/AuthProvider";
 import { ScopeProvider } from "@/lib/auth/ScopeContext";
+import { ReasonProvider } from "@/lib/auth/ReasonContext";
 import { queryClient } from "@/lib/queryClient";
 import { router } from "@/router";
 import "@/styles.css";
@@ -20,7 +21,9 @@ createRoot(rootEl).render(
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <ScopeProvider>
-            <RouterProvider router={router} />
+            <ReasonProvider>
+              <RouterProvider router={router} />
+            </ReasonProvider>
           </ScopeProvider>
         </AuthProvider>
       </QueryClientProvider>

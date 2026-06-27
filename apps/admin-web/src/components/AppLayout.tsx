@@ -3,6 +3,8 @@ import type { CSSProperties } from "react";
 import { AuthGate } from "@/components/AuthGate";
 import { DevDiagnosticsPanel } from "@/components/DevDiagnosticsPanel";
 import { ScopeSelector } from "@/components/ScopeSelector";
+import { ActiveReasonBadge } from "@/components/ActiveReasonBadge";
+import { ReasonPromptModal } from "@/components/ReasonPromptModal";
 import { config } from "@/lib/config";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useScope } from "@/lib/auth/ScopeContext";
@@ -63,6 +65,7 @@ export function AppLayout() {
           <Outlet />
         </AuthGate>
       </main>
+      {authed ? <ReasonPromptModal /> : null}
     </div>
   );
 }
@@ -127,6 +130,7 @@ function AuthenticatedTopBar() {
   return (
     <header style={topBarStyle} data-testid="shell-topbar">
       <ScopeSelector />
+      <ActiveReasonBadge />
       <span style={topBarMetaStyle}>
         {activeScope === null
           ? "No scope active — surfaces requiring a scope are hidden."

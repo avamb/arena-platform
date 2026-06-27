@@ -24,6 +24,12 @@ import {
   getRefreshToken,
   setSession,
 } from "@/lib/api/tokenStore";
+import {
+  MISSING_REASON_CODE,
+  clearActiveReason,
+  requiresAdminReason,
+  resolveReasonFor,
+} from "@/lib/api/reason";
 import type {
   AuthLoginRequest,
   AuthLoginResponse,
@@ -89,6 +95,13 @@ interface RawFetchOptions {
   authenticated: boolean;
   /** When true, a 401 does NOT trigger a refresh attempt. */
   noRefresh?: boolean;
+  /**
+   * Explicit reason override. When set, this value is sent as
+   * X-Admin-Reason regardless of path. Used by the missing-reason retry
+   * path to inject the freshly-prompted reason without consulting the
+   * resolver again.
+   */
+  adminReason?: string;
 }
 
 async function rawFetch<T>(opts: RawFetchOptions): Promise<T> {
@@ -103,6 +116,29 @@ async function rawFetch<T>(opts: RawFetchOptions): Promise<T> {
     if (token !== null) {
       headers.Authorization = `Bearer ${token}`;
     }
+  }
+  if (opts.adminReason !== undefined) {
+    headers["X-Admin-Reason"] = opts.adminReason;
+  } else if (opts.authenticated && requiresAdminReason(opts.path)) {
+    // Cross-tenant superadmin reads MUST carry a non-empty reason; the
+    // resolver is async because it may prompt the operator. If the
+    // resolver rejects (operator cancelled, or no resolver registered),
+    // we surface a synthetic ApiError instead of letting the request fly
+    // out without a header (which would 400 with superadmin.missing_reason
+    // anyway, but with a less helpful UX).
+    let reason: string;
+    try {
+      reason = await resolveReasonFor(opts.path);
+    } catch (cause) {
+      throw new ApiError(0, {
+        code: "superadmin.reason_required",
+        message:
+          cause instanceof Error
+            ? cause.message
+            : "An audit reason is required for cross-tenant requests.",
+      });
+    }
+    headers["X-Admin-Reason"] = reason;
   }
 
   let response: Response;
@@ -231,7 +267,21 @@ interface AuthedRequest {
 }
 
 /**
- * Authenticated fetch with a single silent refresh-and-retry on 401.
+ * Authenticated fetch with two silent retry policies:
+ *
+ *   1. 401 -> single refresh-and-retry. If refresh fails the session is
+ *      cleared and the original 401 propagates so AuthProvider can
+ *      redirect to /login.
+ *   2. 400 with code `superadmin.missing_reason` -> clear the cached
+ *      reason (so the resolver re-prompts), resolve a fresh reason for
+ *      this path, retry exactly once with the new reason injected. This
+ *      covers the case where the operator's persisted reason was
+ *      invalidated server-side mid-session.
+ *
+ * Each retry policy fires at most once; a second failure of the same
+ * kind propagates to the caller. The two policies are independent --
+ * the missing_reason retry path does NOT itself trigger a 401 refresh,
+ * because a 401 after a fresh reason is a real auth failure.
  */
 export async function authedFetch<T>(req: AuthedRequest): Promise<T> {
   try {
@@ -245,6 +295,32 @@ export async function authedFetch<T>(req: AuthedRequest): Promise<T> {
         throw err;
       }
       return rawFetch<T>({ ...req, authenticated: true, noRefresh: true });
+    }
+    if (
+      err instanceof ApiError &&
+      err.code === MISSING_REASON_CODE &&
+      requiresAdminReason(req.path)
+    ) {
+      // Server rejected our (possibly stale) reason. Drop the cached
+      // reason, prompt the operator again, retry once with the new value.
+      clearActiveReason();
+      let fresh: string;
+      try {
+        fresh = await resolveReasonFor(req.path);
+      } catch (cause) {
+        throw new ApiError(err.status, {
+          code: "superadmin.reason_required",
+          message:
+            cause instanceof Error
+              ? cause.message
+              : "An audit reason is required for cross-tenant requests.",
+        });
+      }
+      return rawFetch<T>({
+        ...req,
+        authenticated: true,
+        adminReason: fresh,
+      });
     }
     throw err;
   }
