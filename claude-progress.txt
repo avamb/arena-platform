@@ -16044,3 +16044,35 @@ payment provider configs CRUD route.
                                                        reason.test.ts)
     npm --prefix apps/admin-web run build          OK
   Marked #246 passing.
+
+[2026-06-27 #248] Final verification: type-check, build, go tests, smoke.
+  Verification ticket. Ran the four spec steps and recorded all gaps
+  in docs/verification-248.md.
+    npm run admin:type-check     PASS (tsc -b clean)
+    npm run admin:build          PASS (dist 583.64 kB / gzip 159.63 kB)
+    admin vitest (--run)         PASS 384/384 across 18 files
+    go test ./...                functional packages green; the
+                                 staticanalysis gate package reports
+                                 pre-existing debt:
+                                   - file-size #175 budget exceeded for
+                                     admin_memberships.go (499),
+                                     auth_login.go (451 vs allow 439),
+                                     channels.go (624 vs allow 525),
+                                     networks.go (429)
+                                   - mock-data grep catches msw in
+                                     admin-web package-lock.json + a
+                                     comment in client.test.ts:6
+                                   - nopanic #176 catches constructor
+                                     panic in networkscope.go:184
+    superadmin smoke             arena_api container healthy;
+                                 /healthz, /readyz, /v1/info OK;
+                                 /v1/auth/login returns standard
+                                 error envelope (auth surface intact,
+                                 seed data must be reapplied via
+                                 arena-seed for live CRUD walk)
+  Followups recorded in docs/verification-248.md:
+    a) Split oversized httpserver files per #175
+    b) Tighten mock-data grep or rephrase msw comment
+    c) Annotate networkscope NewScoper panic per #176
+  No source code changes; only docs/verification-248.md added.
+  Marked #248 passing.
