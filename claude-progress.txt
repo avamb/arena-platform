@@ -15929,3 +15929,33 @@ payment provider configs CRUD route.
     go build ./apps/backend/cmd/arena-seed/   OK
     go test  ./apps/backend/cmd/arena-seed/...  OK
   Marked #247 passing.
+
+[2026-06-27 #239] Edit and Archive row actions for organizations.
+  apps/admin-web/src/routes/organizations.tsx:
+    - EditOrganizationDialog: PATCH /v1/admin/organizations/{id},
+      pre-filled from the row, shares validators with Create plus a
+      dirty-check that gates Save until at least one field changes.
+      Reservation TTL is required on the wire (PATCH is non-partial),
+      so blank is rejected client-side.
+    - ArchiveOrganizationDialog: POST /v1/admin/organizations/{id}/archive,
+      requires the operator to retype the slug (case-insensitive) before
+      the destructive button is active. Defence-in-depth guard rejects
+      submit when the row is already soft-deleted.
+    - Row buttons gated on org.update / org.delete; both inactive for
+      already-archived rows. Buttons hidden when permission is missing.
+    - X-Admin-Reason auto-prompted by authedFetch (existing
+      requiresAdminReason "/v1/admin/*" prefix covers PATCH and POST archive).
+    - onSuccess invalidates ["admin","organizations"] so the table
+      reflects the change immediately.
+    - mapUpdateOrgServerError / mapArchiveOrgServerError exported and
+      cover invalid_name / invalid_slug / duplicate / not_found /
+      empty_body / invalid_body / invalid_json / permissions.denied /
+      superadmin.missing_reason / dependency.database_unavailable,
+      with details.field forwards compat.
+  apps/admin-web/src/routes/organizations.test.ts:
+    +14 unit tests for the two new mappers (53 total).
+  Verification:
+    npm --prefix apps/admin-web run type-check     OK
+    npm --prefix apps/admin-web test -- --run      OK (347/347)
+    npm --prefix apps/admin-web run build          OK
+  Marked #239 passing. Commit: 43541bd5
