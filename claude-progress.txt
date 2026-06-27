@@ -15564,3 +15564,82 @@ Verification:
 
 Marked #236 passing.
 
+
+[2026-06-27 #237] Added the payment_provider_configs domain (resolves
+G-PC1 from the admin CRUD gap inventory in
+09_autoforge/admin_ui/admin_crud_gap_inventory_232.md). Chose a
+DEDICATED table over reusing sales_channels because (a) one org may
+need multiple parallel provider configs (Stripe live + AllPay test),
+(b) secrets must be excluded from GET responses, and (c) channels
+attach to ONE provider; the configs are a separate provider-keyed
+resource.
+
+Migration 0046_payment_provider_configs.sql:
+  - table: id (uuidv7), org_id (FK organizations), provider, mode
+    ('test'|'live'), provider_account_id, public_config jsonb,
+    secrets jsonb, status ('configured'|'missing_required_fields'),
+    is_active, created_at, updated_at, deleted_at
+  - partial unique index payment_provider_configs_unique_active on
+    (org_id, provider, mode) WHERE deleted_at IS NULL
+  - payment_config.read / payment_config.write permissions seeded and
+    bound to admin (broad seed), org_admin (own-tenant management),
+    and platform_superadmin (read-only for cross-tenant support)
+
+sqlc: queries/payment_provider_configs.sql + hand-written gen file
+matching the existing channels/venues style. Querier interface
+extended with all 5 new methods.
+
+HTTP surface (mount_iam.go::mountPaymentConfigRoutes):
+  GET    /v1/organizations/{org_id}/payment-configs        — list
+  GET    /v1/organizations/{org_id}/payment-configs/{id}   — get one
+  POST   /v1/organizations/{org_id}/payment-configs        — create
+  PATCH  /v1/organizations/{org_id}/payment-configs/{id}   — update
+  DELETE /v1/organizations/{org_id}/payment-configs/{id}   — soft-delete
+
+Code split across three files to stay under the feature #175 size
+budget (≤400 lines/file):
+  payment_configs.go         235 lines — read + delete + audit helper
+  payment_configs_write.go   291 lines — POST + PATCH
+  payment_configs_types.go   224 lines — provider catalogue + helpers
+
+Secret discipline:
+  - paymentConfigFromRow strips the raw `secrets` jsonb from every
+    response; only secret_fields_set (key names of populated secrets)
+    and missing_required_fields (provider catalogue minus stored keys)
+    are exposed.
+  - PATCH `secrets` is a per-key patch map: non-empty replaces,
+    empty-string deletes, omitted leaves alone.
+  - deriveStatus(provider, secrets) recomputes the status column after
+    every write so LIST can filter without rehydrating secrets.
+
+Provider catalogue + required secrets (extensible — see
+payment_configs_types.go::requiredSecretFields):
+  stripe:        api_key, webhook_secret
+  allpay:        merchant_id, secret_key
+  cloudpayments: public_id, api_secret
+  yookassa:      shop_id, secret_key
+  manual:        (none — always configured)
+
+OpenAPI: 3 new schemas (PaymentProviderConfigItem,
+CreatePaymentProviderConfigRequest, UpdatePaymentProviderConfigRequest)
++ 5 path operations under /v1/organizations/{org_id}/payment-configs.
+TypeScript client regenerated; `npm run check-ts` clean;
+`node scripts/validate-openapi.mjs` reports 41 paths / 66 schemas with
+no missing references.
+
+Tests:
+  go test ./apps/backend/...  PASS (overall)
+  PaymentConfig237* suite     24/24 pass (migration shape, auth
+                              gating across all 5 routes, body
+                              validation, deriveStatus per provider,
+                              mergeSecrets replace/delete/no-op,
+                              extractStoredSecretKeys ignores empty,
+                              response NEVER includes raw `secrets`)
+  TestHttpserverFileSize175   payment_configs* files all under the
+                              400-line budget (pre-existing
+                              auth_login.go / channels.go /
+                              networks.go violations are unrelated to
+                              #237 and remain on the migration
+                              backlog).
+
+Marked #237 passing.
