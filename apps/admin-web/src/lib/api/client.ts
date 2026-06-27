@@ -89,7 +89,7 @@ function parseErrorEnvelope(status: number, raw: unknown): ApiError {
 }
 
 interface RawFetchOptions {
-  method: "GET" | "POST" | "DELETE";
+  method: "GET" | "POST" | "PATCH" | "DELETE";
   path: string;
   body?: unknown;
   authenticated: boolean;
@@ -261,7 +261,7 @@ export async function fetchMe(): Promise<MeResponse> {
 }
 
 interface AuthedRequest {
-  method: "GET" | "POST" | "DELETE";
+  method: "GET" | "POST" | "PATCH" | "DELETE";
   path: string;
   body?: unknown;
 }
