@@ -1,0 +1,1121 @@
+version: 2
+purpose: >
+  Structured reference map for replacing the legacy Bil24 four-application admin suite
+  with one modern permission-filtered web backoffice.
+
+principles:
+  - Do not recreate four separate applications.
+  - Use one admin shell with role and permission based navigation.
+  - Treat screenshots as functional references, not visual design targets.
+  - Preserve important workflows but modernize layout, copy, help, validation, and error handling.
+  - Backend authorization must enforce every scope; UI filtering is not sufficient.
+  - Prefer one modern admin app with role/scope switching over role-specific apps or duplicated shells.
+
+legacy_sources:
+  official_api_doc:
+    path: "01_official_bil24_docs/api/bil24_app_api_2023.docx"
+    notes:
+      - "Documents old app roles: OPERATOR, AGENT, ORGANIZER."
+      - "Documents old Editor, Reports, Manager, Cassa application endpoints."
+      - "Shows AUTH/REFRESH/LOGOUT plus editor create/save flows, but not the modern admin contract."
+  ticket_agent_notes:
+    path: "01_official_bil24_docs/api/bil24_ticket_agent_api_notes_ru.md"
+    notes:
+      - "Agent is a sales partner interface with reservation, payment, order, cancel, and local mirror concerns."
+  manager_audit:
+    path: "04_legacy_screenshots/tix_manager/2026-06-11_manager_audit"
+    notes:
+      - "TixManager version 1.6 build 7921, test zone."
+      - "Top tabs include Frontends, Acquiring, Fiscal data, Subscriptions, Widget, Notifications, News, MFC."
+      - "Frontends subtabs include Operators, Event organizers, Trusted agents, Connections to ETS, Promotions, Agents."
+  editor_audit:
+    path: "04_legacy_screenshots/tix_editor/2026-06-12_editor_audit"
+    notes:
+      - "Event organizer oriented content and event setup surface."
+      - "Includes country, city, venue, seating plan, categories, prices, media, sessions, sale windows, sync."
+  cassa_audit:
+    path: "04_legacy_screenshots/tix_cassa/2026-06-21_cassa_audit"
+    notes:
+      - "POS/cash desk workflow: auth, printer/template, shift, event selection, cart, payment, returns."
+  misc_screens:
+    path: "04_legacy_screenshots/raw_misc"
+    notes:
+      - "Mixed captures from legacy manager, editor, reporter, confirmation dialogs, category changes, and order pricing flows."
+  architecture:
+    paths:
+      - "08_architecture/05_interface_taxonomy_and_complimentary_tickets_ru.md"
+      - "08_architecture/08_platform_superadmin_observability_ru.md"
+      - "09_autoforge/00_AGENT_GUARDRAILS.md"
+
+target_shell:
+  name: "Unified Admin Console"
+  frontend_app_candidate: "apps/admin-web"
+  navigation_style:
+    - "Persistent sidebar grouped by domain."
+    - "Global search/command palette."
+    - "Scope switcher for platform, operator network, organization, and agent/channel context."
+    - "Tables with saved filters and detail drawers."
+    - "Wizards only for complex creation flows."
+    - "Contextual hints, empty states, disabled-action reasons."
+
+role_scope_guidance:
+  platform_superadmin:
+    scopes:
+      - platform
+      - operator_network
+      - organization
+      - agent_channel
+      - pos_terminal
+  platform_operator:
+    scopes:
+      - platform
+      - operator_network
+      - organization
+  network_operator:
+    scopes:
+      - operator_network
+      - organization
+      - agent_channel
+  organizer:
+    scopes:
+      - organization
+      - event
+      - venue
+      - sessions
+  agent:
+    scopes:
+      - agent_channel
+      - orders
+      - refunds
+      - pos_terminal
+  external_ticketing_operator:
+    scopes:
+      - platform
+      - operator_network
+      - organization
+      - external_integration
+
+workflow_patterns:
+  table_list_view:
+    use_for:
+      - "Networks, organizations, users, channels, orders, tickets, reports, audit rows."
+    cues:
+      - "Frequent filtering, status inspection, and bulk navigation."
+  detail_drawer:
+    use_for:
+      - "Organization details, network members, order/ticket drilldown, event metadata, payment provider records."
+    cues:
+      - "Need context without leaving the list; actions remain adjacent to the selected row."
+  wizard:
+    use_for:
+      - "Event creation, venue setup, seat/quota setup, imports, and multi-step integration configuration."
+    cues:
+      - "Legacy screens used modal chains or giant forms with sequential dependencies."
+  settings_page:
+    use_for:
+      - "Acquiring, fiscal data, widget/config, notifications, news, trusted agents, connections, and app-level preferences."
+    cues:
+      - "Mostly stateful configuration rather than entity browsing."
+  pos_mode:
+    use_for:
+      - "Cash desk, shift start/close, event selection, add-to-cart, payment, returns."
+    cues:
+      - "Dense keyboard-first workflow that should live inside the same app shell."
+  deferred_later:
+    use_for:
+      - "Full visual seating editor, advanced BI, richer offline POS hardening, and deep automation beyond current API coverage."
+    cues:
+      - "Legacy screenshots prove the workflow exists, but the current task should not overbuild it."
+
+api_gap_notes:
+  - "The legacy API doc only shows AUTH/REFRESH/LOGOUT plus editor create/save flows; it does not define the modern admin surface."
+  - "No explicit modern endpoint is shown for current-user context, memberships, role/scope switching, or operator-network CRUD."
+  - "No explicit endpoint is shown for list retrieval of orders, tickets, reports, audit logs, or support queues."
+  - "No explicit endpoint is shown for unified POS actions, shift lifecycle, or refund orchestration."
+  - "The editor doc collapses multiple dictionaries into GET_INIT_DATA; a modern app should split this into domain reads later, but that is an implementation gap note, not a design assumption."
+  - "Event/session creation exists in the legacy API, but there is no explicit modern contract for venue/seat/quota management from the doc alone."
+
+screen_inventory:
+  manager:
+    - id: manager_current_state_overview
+      files:
+        - "tix_manager/2026-06-11_manager_audit/current_state_overview.png"
+        - "raw_misc/legacy_manager_test_zone_2023.jpg"
+      visible_elements:
+        - "desktop shell with one main form and secondary dialog over it"
+        - "top navigation for platform administration domains"
+        - "large tabbed editor-like workspace"
+      legacy_workflow:
+        - "platform overview"
+        - "frontends and operators"
+      modern_pattern:
+        - "dashboard"
+        - "detail drawer"
+      notes:
+        - "Use as evidence for dense operator-console layout, not as a visual template."
+    - id: manager_frontends_operators
+      files:
+        - "tix_manager/2026-06-11_manager_audit/00_frontends_operators.png"
+        - "tix_manager/2026-06-11_manager_audit/09_frontends_operators.png"
+      visible_elements:
+        - "Frontends tab"
+        - "Operators subtab"
+        - "grid of operator assignments"
+        - "add/edit icon buttons"
+      legacy_workflow:
+        - "operator network setup"
+        - "operator assignment"
+      modern_pattern:
+        - "table/list view"
+        - "detail drawer"
+      notes:
+        - "This is the clearest legacy hint for the operator-network module."
+    - id: manager_frontends_channels
+      files:
+        - "tix_manager/2026-06-11_manager_audit/08_frontends.png"
+        - "tix_manager/2026-06-11_manager_audit/11_frontends_trusted_agents.png"
+        - "tix_manager/2026-06-11_manager_audit/12_frontends_connections_to_ets.png"
+        - "tix_manager/2026-06-11_manager_audit/13_frontends_promotions.png"
+        - "tix_manager/2026-06-11_manager_audit/14_frontends_agents.png"
+        - "tix_manager/2026-06-11_manager_audit/16_acquiring_agent_dropdown_open.png"
+      visible_elements:
+        - "channel/frontends tab set"
+        - "trusted agents"
+        - "ETS connections"
+        - "promotions"
+        - "agent selector dropdown"
+      legacy_workflow:
+        - "sales-channel configuration"
+        - "trusted agent maintenance"
+        - "integration connection setup"
+      modern_pattern:
+        - "settings page"
+        - "detail drawer"
+      notes:
+        - "Some subareas are visually dialog-driven; keep them in a single settings surface."
+    - id: manager_auth_launchers
+      files:
+        - "tix_manager/2026-06-11_manager_audit/30_tixreporter_auth.png"
+        - "tix_manager/2026-06-11_manager_audit/31_tixeditor_auth.png"
+        - "tix_manager/2026-06-11_manager_audit/32_tixcassa_auth.png"
+      visible_elements:
+        - "separate app login launchers"
+        - "role selection before app entry"
+      legacy_workflow:
+        - "app-specific authentication"
+      modern_pattern:
+        - "single login"
+        - "scope switcher"
+      notes:
+        - "This is direct evidence that the current split-app model should be removed."
+
+  editor:
+    - id: editor_full_desktop
+      files:
+        - "tix_editor/2026-06-12_editor_audit/72_logged_in_full_desktop.png"
+        - "raw_misc/legacy_editor_test_zone_2023.jpg"
+      visible_elements:
+        - "monolithic event editor"
+        - "image preview"
+        - "multiple stacked sections"
+        - "tabbed or accordion-like subareas"
+      legacy_workflow:
+        - "event setup"
+        - "media and description editing"
+      modern_pattern:
+        - "event detail drawer"
+        - "wizard"
+      notes:
+        - "This is the primary signal that event editing should be split out of a giant form."
+    - id: editor_sync_and_sessions
+      files:
+        - "tix_editor/2026-06-12_editor_audit/100_sync_open.png"
+        - "tix_editor/2026-06-12_editor_audit/134_current_after_session_add.png"
+        - "tix_editor/2026-06-12_editor_audit/143_open_manage_seats_after_quota.png"
+      visible_elements:
+        - "sync dialog"
+        - "session grid"
+        - "seating/quota management"
+      legacy_workflow:
+        - "event synchronization"
+        - "session creation and editing"
+        - "seat/quota management"
+      modern_pattern:
+        - "settings page"
+        - "wizard"
+        - "detail drawer"
+      notes:
+        - "The workflow is clear even when some labels are small."
+    - id: editor_location_setup
+      files:
+        - "tix_editor/2026-06-12_editor_audit/101_add_city_dialog.png"
+        - "tix_editor/2026-06-12_editor_audit/144_add_quota_dialog.png"
+        - "tix_editor/2026-06-12_editor_audit/145_add_quota_manually_dialog.png"
+        - "tix_editor/2026-06-12_editor_audit/156_quota_file_picker_opened.png"
+      visible_elements:
+        - "add city dialog"
+        - "quota add dialog"
+        - "manual quota entry"
+        - "file picker for quota import"
+      legacy_workflow:
+        - "location creation"
+        - "quota creation and import"
+      modern_pattern:
+        - "wizard"
+        - "settings page"
+      notes:
+        - "Quota file import is visible; exact file format should remain a backend contract gap note, not a hard-coded assumption."
+
+  reporter:
+    - id: reporter_grid_report
+      files:
+        - "raw_misc/legacy_reporter_test_zone_2023.jpg"
+        - "raw_misc/legacy_ticketing_platform_chrome.jpg"
+      visible_elements:
+        - "large result grid"
+        - "filters above the grid"
+        - "detail panel below"
+        - "multiple operational tabs"
+      legacy_workflow:
+        - "report exploration"
+        - "support lookup"
+      modern_pattern:
+        - "table/list view"
+        - "detail drawer"
+      notes:
+        - "This is the strongest signal for a report console rather than a data-entry screen."
+    - id: reporter_special_workflows
+      files:
+        - "raw_misc/legacy_subscriptions.jpg"
+      visible_elements:
+        - "subscription list"
+        - "mailing / quotas / macs / work shifts / statistics related tabs or sections"
+      legacy_workflow:
+        - "mailings"
+        - "quotas"
+        - "MACS"
+        - "work shifts"
+        - "statistics"
+      modern_pattern:
+        - "settings page"
+        - "table/list view"
+        - "deferred/later feature"
+      notes:
+        - "The legacy reporter surface contains several sub-workflows; they should be mapped explicitly instead of absorbed into a generic reports bucket."
+
+  cassa:
+    - id: cassa_auth_shift
+      files:
+        - "tix_cassa/2026-06-21_cassa_audit/00_auth_open.png"
+        - "tix_cassa/2026-06-21_cassa_audit/08_need_shift_alert.png"
+        - "tix_cassa/2026-06-21_cassa_audit/10_menu_cash_shift_open.png"
+      visible_elements:
+        - "auth dialog"
+        - "need-shift alert"
+        - "cash shift menu"
+      legacy_workflow:
+        - "POS authentication"
+        - "shift start"
+      modern_pattern:
+        - "pos mode"
+        - "settings page"
+      notes:
+        - "This is a distinct operational mode, not just another report or event screen."
+    - id: cassa_event_purchase_return
+      files:
+        - "tix_cassa/2026-06-21_cassa_audit/02_current_root.png"
+        - "tix_cassa/2026-06-21_cassa_audit/19_current_before_purchase.png"
+        - "tix_cassa/2026-06-21_cassa_audit/20_event_click.png"
+        - "tix_cassa/2026-06-21_cassa_audit/29_tab10_add_return.png"
+        - "tix_cassa/2026-06-21_cassa_audit/31_broad_click_row.png"
+        - "tix_cassa/2026-06-21_cassa_audit/32_click_down_space.png"
+      visible_elements:
+        - "event list"
+        - "order/cart area"
+        - "total block"
+        - "return tab"
+      legacy_workflow:
+        - "event selection"
+        - "purchase"
+        - "return"
+      modern_pattern:
+        - "pos mode"
+        - "table/list view"
+        - "detail drawer"
+      notes:
+        - "The purchase and return surfaces should reuse the same order model as support screens."
+    - id: cassa_printing
+      files:
+        - "tix_cassa/2026-06-21_cassa_audit/05_template_dialog.png"
+      visible_elements:
+        - "template chooser"
+        - "printer-related options"
+      legacy_workflow:
+        - "receipt/template setup"
+      modern_pattern:
+        - "settings page"
+      notes:
+        - "Keep printer/template configuration inside the unified admin shell."
+
+role_to_screen_matrix:
+  platform_superadmin:
+    primary_screens:
+      - dashboard
+      - networks
+      - organizations
+      - users_access
+      - audit_observability
+    secondary_screens:
+      - frontends_channels
+      - payments_fiscal
+      - events_sessions
+      - venues_seating
+      - orders_tickets_refunds
+      - reports
+      - pos
+  platform_operator:
+    primary_screens:
+      - dashboard
+      - users_access
+      - organizations
+      - frontends_channels
+      - payments_fiscal
+      - audit_observability
+      - reports
+    secondary_screens:
+      - networks
+      - events_sessions
+      - venues_seating
+      - orders_tickets_refunds
+  network_operator:
+    primary_screens:
+      - dashboard
+      - networks
+      - organizations
+      - users_access
+      - events_sessions
+      - orders_tickets_refunds
+      - reports
+    secondary_screens:
+      - frontends_channels
+      - payments_fiscal
+      - venues_seating
+      - pos
+  organizer:
+    primary_screens:
+      - dashboard
+      - organizations
+      - events_sessions
+      - venues_seating
+      - orders_tickets_refunds
+      - reports
+    secondary_screens:
+      - users_access
+      - frontends_channels
+      - notifications_content
+  agent:
+    primary_screens:
+      - dashboard
+      - orders_tickets_refunds
+      - pos
+      - reports
+      - users_access
+    secondary_screens:
+      - frontends_channels
+      - payments_fiscal
+  external_ticketing_operator:
+    primary_screens:
+      - dashboard
+      - frontends_channels
+      - orders_tickets_refunds
+      - reports
+    secondary_screens:
+      - frontends_channels
+      - users_access
+
+role_to_permission_matrix:
+  matrix_note: >
+    This matrix is a planning artifact. Use existing backend permissions where they
+    already exist, and treat the network/operator items as explicit backend gaps
+    until the repo grows a dedicated operator-network contract.
+  platform_superadmin:
+    permission_families:
+      - platform.superadmin.read_all
+      - platform.superadmin.write_all
+      - platform.superadmin.manage_networks
+      - platform.superadmin.manage_roles
+      - platform.superadmin.manage_credentials
+      - platform.superadmin.view_logs
+      - platform.superadmin.view_sensitive_logs
+      - platform.superadmin.impersonate_readonly
+      - platform.superadmin.break_glass
+      - membership.read
+      - membership.grant
+      - membership.revoke
+      - org.read
+      - org.write
+      - event.write
+      - order.read_all
+      - refund.write
+  platform_operator:
+    permission_families:
+      - membership.read
+      - org.read
+      - org.write_limited
+      - event.read
+      - event.write_limited
+      - order.read
+      - refund.read
+      - report.read
+      - audit.read_limited
+  network_operator:
+    permission_families:
+      - network.read
+      - network.manage_users
+      - network.manage_organizers
+      - network.manage_agents
+      - network.manage_channels
+      - network.view_sales
+      - network.support_orders
+      - network.support_tickets
+      - network.support_refunds
+      - network.view_reports
+      - org.read_scoped
+      - event.read_scoped
+      - order.read_scoped
+  organizer:
+    permission_families:
+      - org.read
+      - org.write
+      - event.read
+      - event.write
+      - venue.write
+      - order.read_scoped
+      - refund.read_scoped
+      - report.read_scoped
+      - membership.read
+  agent:
+    permission_families:
+      - catalog.read
+      - reservation.create
+      - order.read_scoped
+      - order.write_scoped
+      - payment.read
+      - refund.read_scoped
+      - report.read_scoped
+      - pos.execute
+  external_ticketing_operator:
+    permission_families:
+      - integration.read
+      - integration.sync
+      - barcode.import
+      - allocation.read
+      - allocation.write
+      - reconciliation.read
+      - reconciliation.write
+      - org.read_scoped
+
+frontend_routes:
+  - path: "/dashboard"
+    module: dashboard
+    pattern: "dashboard"
+    default_scope: "current scope"
+    visible_roles:
+      - platform_superadmin
+      - platform_operator
+      - network_operator
+      - organizer
+      - agent
+      - external_ticketing_operator
+  - path: "/networks"
+    module: networks
+    pattern: "table/list view + detail drawer"
+    default_scope: "platform or assigned network"
+    visible_roles:
+      - platform_superadmin
+      - platform_operator
+      - network_operator
+  - path: "/organizations"
+    module: organizations
+    pattern: "table/list view + detail drawer"
+    default_scope: "platform or network"
+    visible_roles:
+      - platform_superadmin
+      - platform_operator
+      - network_operator
+      - organizer
+  - path: "/users"
+    module: users_access
+    pattern: "table/list view + detail drawer"
+    default_scope: "platform, assigned network, or self/profile"
+    visible_roles:
+      - platform_superadmin
+      - platform_operator
+      - network_operator
+      - organizer
+      - agent
+      - external_ticketing_operator
+    notes:
+      - "For agent and external_ticketing_operator this is self/profile or scoped users only, not arbitrary user management."
+      - "For platform roles and network_operator this can include managed users inside the active scope."
+  - path: "/events"
+    module: events_sessions
+    pattern: "table/list view + detail drawer + wizard"
+    default_scope: "organization"
+    visible_roles:
+      - platform_superadmin
+      - platform_operator
+      - network_operator
+      - organizer
+  - path: "/venues"
+    module: venues_seating
+    pattern: "table/list view + detail drawer + wizard"
+    default_scope: "organization"
+    visible_roles:
+      - platform_superadmin
+      - platform_operator
+      - network_operator
+      - organizer
+  - path: "/orders"
+    module: orders_tickets_refunds
+    pattern: "table/list view + detail drawer"
+    default_scope: "organization or agent"
+    visible_roles:
+      - platform_superadmin
+      - platform_operator
+      - network_operator
+      - organizer
+      - agent
+      - external_ticketing_operator
+  - path: "/reports"
+    module: reports
+    pattern: "table/list view"
+    default_scope: "scope-aware"
+    visible_roles:
+      - platform_superadmin
+      - platform_operator
+      - network_operator
+      - organizer
+      - agent
+      - external_ticketing_operator
+  - path: "/channels"
+    module: frontends_channels
+    pattern: "table/list view + settings page"
+    default_scope: "platform, network, or organization"
+    visible_roles:
+      - platform_superadmin
+      - platform_operator
+      - network_operator
+      - organizer
+      - external_ticketing_operator
+  - path: "/payments"
+    module: payments_fiscal
+    pattern: "settings page"
+    default_scope: "platform or organization"
+    visible_roles:
+      - platform_superadmin
+      - platform_operator
+      - network_operator
+      - agent
+  - path: "/pos"
+    module: pos
+    pattern: "pos mode"
+    default_scope: "terminal or agent channel"
+    visible_roles:
+      - platform_superadmin
+      - platform_operator
+      - network_operator
+      - agent
+  - path: "/content"
+    module: notifications_content
+    pattern: "settings page"
+    default_scope: "platform, network, or organization"
+    visible_roles:
+      - platform_superadmin
+      - platform_operator
+      - network_operator
+      - organizer
+  - path: "/audit"
+    module: audit_observability
+    pattern: "table/list view + detail drawer"
+    default_scope: "platform"
+    visible_roles:
+      - platform_superadmin
+      - platform_operator
+    notes:
+      - "This route is platform audit only. External ticketing operators should use integration-scoped audit on their integration/detail screens, not this page."
+
+backend_api_gaps:
+  repo_state:
+    existing:
+      - "apps/backend/internal/platform/httpserver/superadmin.go exposes GET /v1/admin/organizations, /orders, /tickets, /refunds with X-Admin-Reason."
+      - "apps/backend/internal/platform/httpserver/memberships.go exposes org membership grant/read/revoke endpoints."
+      - "apps/backend/internal/migrations/sql/0011_memberships.sql seeds organizer, agent, platform_operator, external_ticketing_operator, platform_superadmin."
+    missing_or_incomplete:
+      - "network_operator is absent from membership role validation and seed data."
+      - "operator_network CRUD and assignment endpoints do not exist yet."
+      - "current-user / me endpoint that returns memberships, permissions, and available scopes is not present in the current source surface."
+      - "scope-aware admin routes for network dashboards, network users, and network-scoped summaries are not present."
+      - "a unified admin OpenAPI contract for the future web console is not present."
+  notes:
+    - "This is the place to distinguish repo-backed facts from legacy-doc inference."
+    - "Do not treat the old Bil24 API doc as sufficient for the current backend contract."
+    - "If a future agent finds additional admin routes or permission codes, it should extend this section instead of rewriting the legacy map."
+
+modules:
+  - id: dashboard
+    target_name: "Dashboard"
+    legacy_apps:
+      - "TixManager"
+      - "TixReporter"
+    legacy_reference:
+      - "manager_audit/current_state_overview.png"
+      - "raw_misc/legacy_reporter_test_zone_2023.jpg"
+    purpose: "Operational summary for the active scope."
+    likely_roles:
+      - platform_superadmin
+      - platform_operator
+      - network_operator
+      - organizer
+      - agent
+      - external_ticketing_operator
+    likely_scopes:
+      - platform
+      - operator_network
+      - organization
+      - agent_channel
+    modern_ui:
+      - "KPI tiles for sales, orders, refunds, active events, and integration health."
+      - "Warnings for queues, webhook failures, payment errors, and scanner sync issues."
+      - "Role-specific shortcuts."
+    workflow_shape:
+      - "table/list view"
+      - "detail drawer"
+    mvp_priority: "P0"
+    notes:
+      - "Manager screenshots show a desktop-style admin shell; the modern dashboard should expose the same information density without the nested windows."
+      - "Reporter capture is broad enough to infer operational summary patterns, but the exact KPI labels are not fully readable."
+
+  - id: networks
+    target_name: "Operator Networks"
+    legacy_apps:
+      - "TixManager"
+    legacy_reference:
+      - "manager_audit/09_frontends_operators.png"
+      - "manager_audit/10_frontends_event_organizers.png"
+      - "manager_audit/11_frontends_trusted_agents.png"
+      - "manager_audit/14_frontends_agents.png"
+    purpose: "Create and manage internal operator networks that bind organizers and agents."
+    likely_roles:
+      - platform_superadmin
+      - platform_operator
+      - network_operator
+    likely_scopes:
+      - platform
+      - operator_network
+    modern_ui:
+      - "Network list with status, assigned operator users, organizers, agents, and sales volume."
+      - "Network detail page with tabs: Overview, Operators, Organizers, Agents, Channels, Audit."
+      - "Attach and detach organizers and agents with audit reason."
+    workflow_shape:
+      - "table/list view"
+      - "detail drawer"
+      - "settings page"
+    mvp_priority: "P0"
+    api_gap_notes:
+      - "No legacy API endpoint in the source doc defines operator network CRUD; this is a new contract gap."
+    notes:
+      - "The legacy system exposes operators, organizers, and agents as separate frontends tabs rather than one network entity; the network model is a replacement abstraction, not a literal screen copy."
+
+  - id: organizations
+    target_name: "Organizations"
+    legacy_apps:
+      - "TixManager"
+      - "TixEditor"
+    legacy_reference:
+      - "manager_audit/10_frontends_event_organizers.png"
+      - "raw_misc/legacy_manager_test_zone_2023.jpg"
+      - "raw_misc/legacy_editor_test_zone_2023.jpg"
+    purpose: "Organizer and business account management."
+    likely_roles:
+      - platform_superadmin
+      - platform_operator
+      - network_operator
+      - organizer
+    likely_scopes:
+      - platform
+      - operator_network
+      - organization
+    modern_ui:
+      - "Organization table with type, network assignment, status, owner, events, and sales channels."
+      - "Detail drawer/page for users, events, credentials, billing, and audit."
+    workflow_shape:
+      - "table/list view"
+      - "detail drawer"
+      - "settings page"
+    mvp_priority: "P0"
+    notes:
+      - "Manager and editor screenshots blur the boundary between organization management and frontend/channel management; the modern UI should split those concerns cleanly."
+
+  - id: users_access
+    target_name: "Users and Access"
+    legacy_apps:
+      - "TixManager"
+      - "TixEditor"
+      - "TixCassa"
+      - "TixReporter"
+    legacy_reference:
+      - "manager_audit/30_tixreporter_auth.png"
+      - "manager_audit/31_tixeditor_auth.png"
+      - "manager_audit/32_tixcassa_auth.png"
+      - "tix_editor/2026-06-12_editor_audit/17_role_dropdown.png"
+      - "tix_editor/2026-06-12_editor_audit/24_role_dropdown_open.png"
+      - "tix_editor/2026-06-12_editor_audit/28_role_operator_selected.png"
+    purpose: "Unified replacement for role selection and separate app logins."
+    likely_roles:
+      - platform_superadmin
+      - platform_operator
+      - network_operator
+      - organizer
+      - agent
+      - external_ticketing_operator
+    likely_scopes:
+      - platform
+      - operator_network
+      - organization
+      - agent_channel
+    modern_ui:
+      - "Single login."
+      - "User list, invitations, memberships, roles, and effective permissions."
+      - "Permission explanation panel."
+      - "MFA and step-up placeholders for high-risk actions."
+    workflow_shape:
+      - "table/list view"
+      - "detail drawer"
+      - "settings page"
+    mvp_priority: "P0"
+    notes:
+      - "Legacy auth screenshots show separate app logins and a role dropdown; the modern app should collapse these into one identity and one scope chooser."
+      - "Role labels are partly obscured in the screenshots, so the exact old login affordances are not fully legible."
+
+  - id: frontends_channels
+    target_name: "Frontends and Channels"
+    legacy_apps:
+      - "TixManager"
+      - "TixReporter"
+    legacy_reference:
+      - "manager_audit/08_frontends.png"
+      - "manager_audit/11_frontends_trusted_agents.png"
+      - "manager_audit/12_frontends_connections_to_ets.png"
+      - "manager_audit/13_frontends_promotions.png"
+      - "manager_audit/16_acquiring_agent_dropdown_open.png"
+      - "raw_misc/legacy_ticketing_platform_chrome.jpg"
+    purpose: "Sales surfaces, trusted agents, widgets, external ticketing connections, promotions."
+    likely_roles:
+      - platform_superadmin
+      - platform_operator
+      - network_operator
+      - organizer
+      - external_ticketing_operator
+    likely_scopes:
+      - platform
+      - operator_network
+      - organization
+      - agent_channel
+      - external_integration
+    modern_ui:
+      - "Channels table grouped by network or organization scope."
+      - "Channel detail with credentials masked by default."
+      - "Promotions and widget settings as scoped submodules."
+    workflow_shape:
+      - "table/list view"
+      - "detail drawer"
+      - "settings page"
+    mvp_priority: "P1"
+    notes:
+      - "The acquiring/agent dropdown and frontends tabs suggest multiple nested configuration surfaces; the exact field labels are not fully readable."
+      - "Trusted-agent and ETS connection flows are visible enough to map, but the old screen names are implementation-centric and should not be copied verbatim."
+
+  - id: payments_fiscal
+    target_name: "Payments and Fiscal"
+    legacy_apps:
+      - "TixManager"
+      - "TixCassa"
+    legacy_reference:
+      - "manager_audit/01_acquiring.png"
+      - "manager_audit/16_acquiring_agent_dropdown_open.png"
+      - "tix_cassa/2026-06-21_cassa_audit/05_template_dialog.png"
+      - "tix_cassa/2026-06-21_cassa_audit/10_menu_cash_shift_open.png"
+    purpose: "Acquiring, fiscal settings, payment provider status, and POS fiscal dependencies."
+    likely_roles:
+      - platform_superadmin
+      - platform_operator
+      - network_operator
+      - agent
+    likely_scopes:
+      - platform
+      - operator_network
+      - organization
+      - pos_terminal
+    modern_ui:
+      - "Provider configuration with credential masking."
+      - "Readiness and status checks."
+      - "Audit trail for credential changes."
+    workflow_shape:
+      - "settings page"
+      - "detail drawer"
+      - "pos mode"
+    mvp_priority: "P1"
+    notes:
+      - "The manager capture shows an acquiring agent selector inside a settings-like form; this belongs in configuration, not as a standalone app."
+      - "Printer/template steps from Cassa are part of POS setup and should stay inside the same shell."
+
+  - id: events_sessions
+    target_name: "Events and Sessions"
+    legacy_apps:
+      - "TixEditor"
+    legacy_reference:
+      - "tix_editor/2026-06-12_editor_audit/72_logged_in_full_desktop.png"
+      - "tix_editor/2026-06-12_editor_audit/100_sync_open.png"
+      - "tix_editor/2026-06-12_editor_audit/134_current_after_session_add.png"
+      - "tix_editor/2026-06-12_editor_audit/143_open_manage_seats_after_quota.png"
+    purpose: "Modern replacement for the event organizer editor surface."
+    likely_roles:
+      - platform_superadmin
+      - platform_operator
+      - network_operator
+      - organizer
+    likely_scopes:
+      - platform
+      - operator_network
+      - organization
+      - event
+    modern_ui:
+      - "Event list with filters by scope, status, venue, dates, and sales status."
+      - "Event detail with sessions, media, pricing, quotas, publication, and sync."
+      - "Creation wizard instead of one giant form."
+    workflow_shape:
+      - "table/list view"
+      - "detail drawer"
+      - "wizard"
+      - "settings page"
+    mvp_priority: "P0"
+    api_gap_notes:
+      - "Legacy API shows ADD_ACTION and SAVE_ACTION for editor entities, but not a modern event/session resource model."
+    notes:
+      - "Editor screenshots clearly show a large monolithic form, tabbed sections, media preview, and session management; the modern shape should split this into a list plus detail flow."
+      - "The exact widget labels for sync and session creation are partly unreadable, but the workflow is unambiguous."
+
+  - id: venues_seating
+    target_name: "Venues and Seating"
+    legacy_apps:
+      - "TixEditor"
+    legacy_reference:
+      - "tix_editor/2026-06-12_editor_audit/101_add_city_dialog.png"
+      - "tix_editor/2026-06-12_editor_audit/144_add_quota_dialog.png"
+      - "tix_editor/2026-06-12_editor_audit/145_add_quota_manually_dialog.png"
+      - "tix_editor/2026-06-12_editor_audit/156_quota_file_picker_opened.png"
+      - "raw_misc/legacy_change_category.jpg"
+      - "raw_misc/legacy_price_order.jpg"
+    purpose: "Countries, cities, venues, seating plans, categories, quotas."
+    likely_roles:
+      - platform_superadmin
+      - platform_operator
+      - network_operator
+      - organizer
+    likely_scopes:
+      - platform
+      - operator_network
+      - organization
+      - venue
+      - event
+    modern_ui:
+      - "Venue directory with verification status."
+      - "Seating plan management shell."
+      - "Quota and category adjustments as focused edit flows."
+    workflow_shape:
+      - "table/list view"
+      - "detail drawer"
+      - "wizard"
+      - "settings page"
+      - "deferred/later feature"
+    mvp_priority: "P1"
+    notes:
+      - "The legacy seating editor is visually heavy and grid-based; a shell is appropriate first, while the full visual editor should remain deferred."
+      - "Quota import-from-file is visible in screenshots, but the file content and exact validation rules are not legible enough to hard-code from the reference alone."
+
+  - id: orders_tickets_refunds
+    target_name: "Orders, Tickets, Refunds"
+    legacy_apps:
+      - "TixReporter"
+      - "TixCassa"
+    legacy_reference:
+      - "raw_misc/legacy_reporter_test_zone_2023.jpg"
+      - "tix_cassa/2026-06-21_cassa_audit/19_current_before_purchase.png"
+      - "tix_cassa/2026-06-21_cassa_audit/20_event_click.png"
+      - "tix_cassa/2026-06-21_cassa_audit/29_tab10_add_return.png"
+      - "tix_cassa/2026-06-21_cassa_audit/31_broad_click_row.png"
+      - "tix_cassa/2026-06-21_cassa_audit/32_click_down_space.png"
+      - "raw_misc/legacy_confirmation.jpg"
+      - "raw_misc/legacy_price_order.jpg"
+    purpose: "Support and sales operations across orders, tickets, returns, and refunds."
+    likely_roles:
+      - platform_superadmin
+      - platform_operator
+      - network_operator
+      - organizer
+      - agent
+      - external_ticketing_operator
+    likely_scopes:
+      - platform
+      - operator_network
+      - organization
+      - agent_channel
+      - pos_terminal
+    modern_ui:
+      - "Search-first support interface."
+      - "Order detail with payment, tickets, delivery, audit, and refund actions."
+      - "Scoped actions based on role and permissions."
+    workflow_shape:
+      - "table/list view"
+      - "detail drawer"
+      - "pos mode"
+    mvp_priority: "P0"
+    notes:
+      - "Reporter screenshots show the classic grid-and-detail support pattern; this should become a list with a detail drawer, not a nested desktop layout."
+      - "Cassa screenshots show purchase and return-oriented flows; the modern app should keep those in POS mode and reuse the same order/ticket detail model."
+      - "The exact return and confirmation labels are partially obscured, so the screenshots support the workflow but not every field name."
+
+  - id: reports
+    target_name: "Reports"
+    legacy_apps:
+      - "TixReporter"
+      - "TixManager"
+    legacy_reference:
+      - "manager_audit/30_tixreporter_auth.png"
+      - "raw_misc/legacy_reporter_test_zone_2023.jpg"
+      - "raw_misc/legacy_subscriptions.jpg"
+    purpose: "Unified reporting by platform, network, organizer, agent, event, and period."
+    likely_roles:
+      - platform_superadmin
+      - platform_operator
+      - network_operator
+      - organizer
+      - agent
+      - external_ticketing_operator
+    likely_scopes:
+      - platform
+      - operator_network
+      - organization
+      - agent_channel
+    modern_ui:
+      - "Saved report presets."
+      - "Role-scoped data visibility."
+      - "Export later if backend supports it."
+    workflow_shape:
+      - "table/list view"
+      - "detail drawer"
+      - "deferred/later feature"
+    mvp_priority: "P1"
+    notes:
+      - "The reporter capture is strong evidence of a report grid with totals and detail panes, but not enough to justify copying the legacy layout."
+      - "Subscriptions appear as a separate legacy area, but the screenshots do not fully disambiguate whether they belong to reports or a content/notification area; keep them scoped conservatively."
+
+  - id: notifications_content
+    target_name: "Notifications and Content"
+    legacy_apps:
+      - "TixManager"
+    legacy_reference:
+      - "manager_audit/03_subscriptions.png"
+      - "manager_audit/04_widget.png"
+      - "manager_audit/05_notifications.png"
+      - "manager_audit/06_news.png"
+    purpose: "Notifications, news, subscriptions, widget and content configuration."
+    likely_roles:
+      - platform_superadmin
+      - platform_operator
+      - network_operator
+      - organizer
+    likely_scopes:
+      - platform
+      - operator_network
+      - organization
+    modern_ui:
+      - "Templates and campaigns by scope."
+      - "Preview and delivery status."
+    workflow_shape:
+      - "settings page"
+      - "deferred/later feature"
+    mvp_priority: "P2"
+    notes:
+      - "Screenshot evidence is thin here and some areas may overlap with widget or subscription configuration in the old app."
+      - "Treat this as a scoped settings surface, not a standalone content system."
+
+  - id: pos
+    target_name: "POS Mode"
+    legacy_apps:
+      - "TixCassa"
+    legacy_reference:
+      - "tix_cassa/2026-06-21_cassa_audit/00_auth_open.png"
+      - "tix_cassa/2026-06-21_cassa_audit/02_current_root.png"
+      - "tix_cassa/2026-06-21_cassa_audit/05_template_dialog.png"
+      - "tix_cassa/2026-06-21_cassa_audit/08_need_shift_alert.png"
+      - "tix_cassa/2026-06-21_cassa_audit/10_menu_cash_shift_open.png"
+      - "tix_cassa/2026-06-21_cassa_audit/19_current_before_purchase.png"
+      - "tix_cassa/2026-06-21_cassa_audit/20_event_click.png"
+      - "tix_cassa/2026-06-21_cassa_audit/29_tab10_add_return.png"
+    purpose: "Cash desk mode for shifts, event selection, cart, payment, fiscal, printing, and returns."
+    likely_roles:
+      - agent
+      - network_operator
+      - platform_operator
+      - platform_superadmin
+    likely_scopes:
+      - pos_terminal
+      - agent_channel
+      - organization
+    modern_ui:
+      - "Separate POS workspace inside the same app shell, not a separate application."
+      - "Keyboard-friendly dense layout."
+      - "Shift state always visible."
+    workflow_shape:
+      - "pos mode"
+      - "table/list view"
+      - "detail drawer"
+    mvp_priority: "P2"
+    notes:
+      - "The Cassa screenshots are the clearest evidence that POS is a distinct interaction mode, but they do not justify a separate product shell."
+      - "Do not implement full POS in the first admin MVP unless explicitly required."
+
+  - id: audit_observability
+    target_name: "Audit and Observability"
+    legacy_apps:
+      - "TixManager"
+    legacy_reference:
+      - "08_architecture/08_platform_superadmin_observability_ru.md"
+    purpose: "Modern platform operations layer missing from old desktop apps."
+    likely_roles:
+      - platform_superadmin
+      - platform_operator
+    likely_scopes:
+      - platform
+      - operator_network
+    modern_ui:
+      - "Audit log filtered by platform, network, organization, actor, object, and action."
+      - "Webhook logs, queues, workers, scanner sync, external allocations, and payment health."
+      - "Error groups with status, assignee, severity, and trace/request IDs."
+    workflow_shape:
+      - "table/list view"
+      - "detail drawer"
+      - "deferred/later feature"
+    mvp_priority: "P0"
+    notes:
+      - "There is no direct screenshot capture for the observability layer; this module is inferred from the architecture docs and should be treated as an explicit platform need rather than a legacy screen clone."
+
+implementation_warnings:
+  - "Do not build role-specific frontend apps."
+  - "Do not hardcode role checks in UI without backend permissions."
+  - "Do not expose platform-wide data to network_operator."
+  - "Do not confuse platform_operator with network_operator."
+  - "Do not copy old Swing tab density directly; preserve workflows, modernize UX."
+  - "Do not implement full POS/seating editor before RBAC and admin shell foundation."

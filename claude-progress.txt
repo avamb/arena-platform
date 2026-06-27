@@ -14922,3 +14922,38 @@ Acceptance criteria mapped:
 Marked #220 passing. Commit b4deeb5.
 
 Stats: 219 / 231 passing (94.8%).
+
+================================================================================
+Session 2026-06-27 -- Feature #221 (SAUI-05 SuperAdmin global dashboard)
+================================================================================
+Replaced apps/admin-web/src/routes/index.tsx scaffold with the real
+SuperAdmin dashboard surface.
+
+Cards (real data only, via authedFetch + ReasonProvider modal):
+  Organizations   GET /v1/admin/organizations
+  Orders          GET /v1/admin/orders?limit=200
+  Tickets         GET /v1/admin/tickets?limit=200
+  Refunds         GET /v1/admin/refunds?limit=200
+
+Every card labels its count as page-local (<=200) and explicitly says
+"Backend total: not available (no global count endpoint)" because the
+superadmin endpoints return total = len(rows), not a real platform-
+wide total. Loading / empty / 401 / 403 / superadmin.reason_required /
+generic error states each render distinct copy. retry: false for
+auth/forbidden/reason errors so the modal does not loop.
+
+Shortcuts derived from NAV_ENTRIES filtered by visibleNavEntries() --
+same permission+scope filter as the sidebar. Workspace ("/") is
+excluded. Audit/Observability tile is disabled (no UI route yet).
+
+Missing-permission state: caller without superadmin.read sees a
+yellow notice listing required vs. held permission counts; shortcuts
+still render.
+
+Verification:
+  npm --prefix apps/admin-web run type-check  OK
+  npm --prefix apps/admin-web test            79/79 PASS
+  npm --prefix apps/admin-web run build       OK (216 modules, 379.78 kB)
+  npm run check-ts                            OK
+
+Marked #221 passing.
