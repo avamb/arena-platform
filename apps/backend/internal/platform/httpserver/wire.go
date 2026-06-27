@@ -69,34 +69,38 @@ type Options struct {
 	// (feature #211). When nil and PgxPool is non-nil, the constructor
 	// builds a default backed by gen.New(PgxPool). Tests inject a fake to
 	// exercise role-specific response shaping without a live database.
-	MeQueries meQuerier
-	GeoQueries            *gen.Queries
-	OrgQueries            *gen.Queries
-	ChannelQueries        *gen.Queries
-	MembershipQueries     *gen.Queries
-	VenueQueries          *gen.Queries
-	FeedTokenQueries      *gen.Queries
-	EventQueries          *gen.Queries
-	PublicationQueries    *gen.Queries
-	PublicFeedQueries     *gen.Queries
-	SessionQueries        *gen.Queries
-	GDPRQueries           *gen.Queries
-	TierQueries           *gen.Queries
-	InventoryQueries      *gen.Queries
-	ReservationQueries    *gen.Queries
-	PromoQueries          *gen.Queries
-	PricingRules          PricingRules
-	CheckoutQueries       *gen.Queries
-	PaymentIntentQueries  *gen.Queries
-	TicketQueries         *gen.Queries
-	CredentialQueries     *gen.Queries
-	RefundQueries         *gen.Queries
-	BarcodeQueries        *gen.Queries
-	ReportQueries         *gen.Queries
-	BillingQueries        *gen.Queries
-	DeliveryJobQueries    *gen.Queries
-	WorkerPool            *pgxpool.Pool
-	EmailSender           email.Sender
+	MeQueries            meQuerier
+	GeoQueries           *gen.Queries
+	OrgQueries           *gen.Queries
+	ChannelQueries       *gen.Queries
+	// PaymentConfigQueries backs the /v1/organizations/{org_id}/payment-configs
+	// CRUD surface (feature #237). When nil and PgxPool is non-nil, the
+	// constructor falls back to gen.New(PgxPool).
+	PaymentConfigQueries *gen.Queries
+	MembershipQueries    *gen.Queries
+	VenueQueries         *gen.Queries
+	FeedTokenQueries     *gen.Queries
+	EventQueries         *gen.Queries
+	PublicationQueries   *gen.Queries
+	PublicFeedQueries    *gen.Queries
+	SessionQueries       *gen.Queries
+	GDPRQueries          *gen.Queries
+	TierQueries          *gen.Queries
+	InventoryQueries     *gen.Queries
+	ReservationQueries   *gen.Queries
+	PromoQueries         *gen.Queries
+	PricingRules         PricingRules
+	CheckoutQueries      *gen.Queries
+	PaymentIntentQueries *gen.Queries
+	TicketQueries        *gen.Queries
+	CredentialQueries    *gen.Queries
+	RefundQueries        *gen.Queries
+	BarcodeQueries       *gen.Queries
+	ReportQueries        *gen.Queries
+	BillingQueries       *gen.Queries
+	DeliveryJobQueries   *gen.Queries
+	WorkerPool           *pgxpool.Pool
+	EmailSender          email.Sender
 
 	Bundle      *i18n.Bundle
 	Outbox      outbox.Writer
@@ -132,11 +136,12 @@ func New(opts Options) *Server {
 	// Build the chi router via the adapter so the canonical middleware
 	// chain is applied uniformly across every arena_new HTTP listener.
 	r := httpadapter.NewRouter(httpadapter.Deps{
-		Logger:         logger,
-		RequestTimeout: opts.Config.RequestTimeout,
-		BodyLimitBytes: opts.Config.BodyLimitBytes,
-		Metrics:        opts.Metrics,
-		AppEnv:         string(opts.Config.AppEnv),
+		Logger:             logger,
+		RequestTimeout:     opts.Config.RequestTimeout,
+		BodyLimitBytes:     opts.Config.BodyLimitBytes,
+		Metrics:            opts.Metrics,
+		AppEnv:             string(opts.Config.AppEnv),
+		CORSAllowedOrigins: opts.Config.CORSAllowedOrigins,
 	})
 
 	// Wire locale middleware when a Bundle is provided.
@@ -222,6 +227,7 @@ func New(opts Options) *Server {
 		geoQueries:            pickQueries(opts.GeoQueries, opts.PgxPool),
 		orgQueries:            pickQueries(opts.OrgQueries, opts.PgxPool),
 		channelQueries:        pickQueries(opts.ChannelQueries, opts.PgxPool),
+		paymentConfigQueries:  pickQueries(opts.PaymentConfigQueries, opts.PgxPool),
 		membershipQueries:     pickQueries(opts.MembershipQueries, opts.PgxPool),
 		venueQueries:          pickQueries(opts.VenueQueries, opts.PgxPool),
 		feedTokenQueries:      pickQueries(opts.FeedTokenQueries, opts.PgxPool),

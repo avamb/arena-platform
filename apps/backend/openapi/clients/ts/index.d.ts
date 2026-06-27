@@ -718,6 +718,72 @@ export interface paths {
         patch: operations["patchV1OrganizationsOrgIdVenuesId"];
         trace?: never;
     };
+    "/v1/organizations/{org_id}/payment-configs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List payment provider configs for an organization
+         * @description Returns every active payment_provider_configs row belonging to the
+         *     org in the path. Secrets are never included; only the keys with a
+         *     non-empty value are surfaced through `secret_fields_set`. Requires
+         *     the `payment_config.read` permission.
+         */
+        get: operations["listPaymentProviderConfigs"];
+        put?: never;
+        /**
+         * Create a new payment provider config
+         * @description Inserts a new payment_provider_configs row. The (org_id, provider,
+         *     mode) tuple must be unique among active rows — 409 is returned
+         *     otherwise. Status is derived automatically from the supplied secrets
+         *     against the provider's required-secret catalogue. Requires the
+         *     `payment_config.write` permission.
+         */
+        post: operations["createPaymentProviderConfig"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/payment-configs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get one payment provider config by id
+         * @description Returns the matching active config row. 404 when the row does not
+         *     exist, was soft-deleted, or belongs to a different organization.
+         *     Requires `payment_config.read`.
+         */
+        get: operations["getPaymentProviderConfig"];
+        put?: never;
+        post?: never;
+        /**
+         * Soft-delete a payment provider config
+         * @description Marks the config deleted (sets deleted_at = now()) and writes an
+         *     audit event inside the same transaction. Requires
+         *     `payment_config.write`.
+         */
+        delete: operations["deletePaymentProviderConfig"];
+        options?: never;
+        head?: never;
+        /**
+         * Partially update a payment provider config
+         * @description Patches the config in place. The `secrets` map is a per-key patch:
+         *     non-empty values overwrite, empty-string values delete the secret,
+         *     omitted keys are left untouched. The `status` column is recomputed
+         *     from the post-patch secrets jsonb. Requires `payment_config.write`.
+         */
+        patch: operations["updatePaymentProviderConfig"];
+        trace?: never;
+    };
     "/v1/operator-networks": {
         parameters: {
             query?: never;
@@ -2189,6 +2255,169 @@ export interface components {
              * @example 1500
              */
             capacity_default?: number | null;
+        };
+        /**
+         * @description A single payment provider config row for the owning organization.
+         *
+         *     Secret values are NEVER returned. `secret_fields_set` lists the
+         *     secret-jsonb keys currently populated (no values). The status field is
+         *     derived from the stored secrets vs. the provider's required-secret
+         *     catalogue (see internal/platform/httpserver/payment_configs.go).
+         */
+        PaymentProviderConfigItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the config row
+             * @example 01929d0e-0e47-7000-8000-000000000600
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Owning organization. Immutable after creation.
+             * @example 01929d0e-0e47-7000-8000-000000000001
+             */
+            org_id: string;
+            /**
+             * @description Provider slug. Must be one of: stripe, allpay, cloudpayments,
+             *     yookassa, manual.
+             * @example stripe
+             */
+            provider: string;
+            /**
+             * @description Operating mode for the credential set.
+             * @example live
+             * @enum {string}
+             */
+            mode: "test" | "live";
+            /**
+             * @description Optional public account identifier (e.g. Stripe acct_..., AllPay
+             *     merchant id). Safe to return; never a secret.
+             * @example acct_1Q2W3E4R5T6Y
+             */
+            provider_account_id?: string | null;
+            /**
+             * @description Free-form non-secret provider knobs (e.g. statement_descriptor,
+             *     terminal_id, redirect_url). Always present (default `{}`).
+             * @example {
+             *       "statement_descriptor": "ARENA TICKETS"
+             *     }
+             */
+            public_config: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description Names of the secret-jsonb keys currently stored (no values).
+             *     Empty array when no secrets are configured yet.
+             * @example [
+             *       "api_key",
+             *       "webhook_secret"
+             *     ]
+             */
+            secret_fields_set: string[];
+            /**
+             * @description `configured` when every required secret for the provider is
+             *     populated; otherwise `missing_required_fields`.
+             * @example configured
+             * @enum {string}
+             */
+            status: "configured" | "missing_required_fields";
+            /**
+             * @description Names of the required-secret keys still expected for this
+             *     provider. Empty when status = configured.
+             * @example []
+             */
+            missing_required_fields: string[];
+            /**
+             * @description Whether the config is enabled for use by checkout. Soft-disabled
+             *     configs remain in the database but are skipped by the payment
+             *     router.
+             * @example true
+             */
+            is_active: boolean;
+            /**
+             * Format: date-time
+             * @example 2024-01-01T00:00:00Z
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @example 2024-01-01T00:00:00Z
+             */
+            updated_at: string;
+        };
+        /**
+         * @description Request body for POST /v1/organizations/{org_id}/payment-configs.
+         *     `secrets` is a map[string]string of credential fields; non-empty values
+         *     are stored, empty-string values are ignored on create. Use PATCH with
+         *     an empty-string value to clear a previously stored secret.
+         */
+        CreatePaymentProviderConfigRequest: {
+            /**
+             * @description Provider slug (one of stripe, allpay, cloudpayments, yookassa, manual).
+             * @example stripe
+             */
+            provider: string;
+            /**
+             * @description Operating mode for the credential set.
+             * @default test
+             * @example live
+             * @enum {string}
+             */
+            mode: "test" | "live";
+            /**
+             * @description Optional public account identifier.
+             * @example acct_1Q2W3E4R5T6Y
+             */
+            provider_account_id?: string | null;
+            /**
+             * @description Free-form non-secret provider knobs.
+             * @example {
+             *       "statement_descriptor": "ARENA TICKETS"
+             *     }
+             */
+            public_config?: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description Map of secret credential fields to values. Stripe expects
+             *     api_key + webhook_secret; AllPay expects merchant_id +
+             *     secret_key; etc. Values are never returned.
+             * @example {
+             *       "api_key": "sk_live_xxx",
+             *       "webhook_secret": "whsec_xxx"
+             *     }
+             */
+            secrets?: {
+                [key: string]: string;
+            };
+            /**
+             * @description Whether the config is enabled for use by checkout.
+             * @default true
+             */
+            is_active: boolean;
+        };
+        /**
+         * @description Request body for PATCH /v1/organizations/{org_id}/payment-configs/{id}.
+         *     Omitted fields leave the existing value unchanged. The `secrets`
+         *     field is a PATCH map: non-empty values overwrite, empty-string
+         *     values delete the corresponding key.
+         */
+        UpdatePaymentProviderConfigRequest: {
+            /** @description Replacement account identifier (empty string clears it). */
+            provider_account_id?: string | null;
+            /** @description Replacement public_config jsonb (entire object replaces existing). */
+            public_config?: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description Patch map of secret keys. Non-empty value sets the secret,
+             *     empty string deletes the secret, omitted keys are untouched.
+             */
+            secrets?: {
+                [key: string]: string;
+            };
+            /** @description Replacement is_active flag. */
+            is_active?: boolean;
         };
         GeoCountryItem: {
             /**
@@ -4442,6 +4671,328 @@ export interface operations {
                 };
             };
             /** @description Database pool or venue queries unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listPaymentProviderConfigs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of payment provider configs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        payment_configs: components["schemas"]["PaymentProviderConfigItem"][];
+                    };
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks payment_config.read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createPaymentProviderConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePaymentProviderConfigRequest"];
+            };
+        };
+        responses: {
+            /** @description Config created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        payment_config: components["schemas"]["PaymentProviderConfigItem"];
+                    };
+                };
+            };
+            /** @description Invalid body, missing/invalid provider, mode, or public_config */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks payment_config.write */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A config for (org_id, provider, mode) already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPaymentProviderConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Config row */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        payment_config: components["schemas"]["PaymentProviderConfigItem"];
+                    };
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks payment_config.read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found or owned by another org */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deletePaymentProviderConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Config soft-deleted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        payment_config: components["schemas"]["PaymentProviderConfigItem"];
+                        /** @example true */
+                        deleted: boolean;
+                    };
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks payment_config.write */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found or owned by another org */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updatePaymentProviderConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePaymentProviderConfigRequest"];
+            };
+        };
+        responses: {
+            /** @description Config updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        payment_config: components["schemas"]["PaymentProviderConfigItem"];
+                    };
+                };
+            };
+            /** @description Invalid body or invalid public_config jsonb */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks payment_config.write */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found or owned by another org */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
             503: {
                 headers: {
                     [name: string]: unknown;

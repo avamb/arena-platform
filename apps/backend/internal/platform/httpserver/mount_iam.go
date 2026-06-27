@@ -88,6 +88,27 @@ func (s *Server) mountChannelRoutes(r chi.Router) {
 	})
 }
 
+// mountPaymentConfigRoutes mounts payment-provider-config CRUD endpoints (feature #237).
+//
+// Routes are gated on payment_config.read for the GET surface and
+// payment_config.write for create / update / delete.
+func (s *Server) mountPaymentConfigRoutes(r chi.Router) {
+	if s.stub == nil || !s.stub.Enabled() || s.paymentConfigQueries == nil || s.pool == nil {
+		return
+	}
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "payment_config.read", "payments")
+		pr.Get("/organizations/{org_id}/payment-configs", s.handleListPaymentConfigs)
+		pr.Get("/organizations/{org_id}/payment-configs/{id}", s.handleGetPaymentConfig)
+	})
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "payment_config.write", "payments")
+		pr.Post("/organizations/{org_id}/payment-configs", s.handleCreatePaymentConfig)
+		pr.Patch("/organizations/{org_id}/payment-configs/{id}", s.handleUpdatePaymentConfig)
+		pr.Delete("/organizations/{org_id}/payment-configs/{id}", s.handleDeletePaymentConfig)
+	})
+}
+
 // mountMembershipRoutes mounts membership grant/revoke/list endpoints (feature #120).
 func (s *Server) mountMembershipRoutes(r chi.Router) {
 	if s.stub == nil || !s.stub.Enabled() || s.membershipQueries == nil || s.pool == nil {

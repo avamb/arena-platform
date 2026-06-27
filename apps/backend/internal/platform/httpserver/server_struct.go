@@ -51,6 +51,7 @@ type Server struct {
 	geoQueries            *gen.Queries
 	orgQueries            *gen.Queries
 	channelQueries        *gen.Queries
+	paymentConfigQueries  *gen.Queries
 	membershipQueries     *gen.Queries
 	venueQueries          *gen.Queries
 	feedTokenQueries      *gen.Queries

@@ -1308,6 +1308,179 @@ components:
           description: Replacement default capacity (optional).
           example: 1500
 
+    # Payment provider configs — feature #237
+    PaymentProviderConfigItem:
+      type: object
+      required:
+        - id
+        - org_id
+        - provider
+        - mode
+        - public_config
+        - secret_fields_set
+        - status
+        - missing_required_fields
+        - is_active
+        - created_at
+        - updated_at
+      description: |
+        A single payment provider config row for the owning organization.
+
+        Secret values are NEVER returned. `secret_fields_set` lists the
+        secret-jsonb keys currently populated (no values). The status field is
+        derived from the stored secrets vs. the provider's required-secret
+        catalogue (see internal/platform/httpserver/payment_configs.go).
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the config row
+          example: "01929d0e-0e47-7000-8000-000000000600"
+        org_id:
+          type: string
+          format: uuid
+          description: Owning organization. Immutable after creation.
+          example: "01929d0e-0e47-7000-8000-000000000001"
+        provider:
+          type: string
+          description: |
+            Provider slug. Must be one of: stripe, allpay, cloudpayments,
+            yookassa, manual.
+          example: "stripe"
+        mode:
+          type: string
+          enum: [test, live]
+          description: Operating mode for the credential set.
+          example: "live"
+        provider_account_id:
+          type: string
+          nullable: true
+          description: |
+            Optional public account identifier (e.g. Stripe acct_..., AllPay
+            merchant id). Safe to return; never a secret.
+          example: "acct_1Q2W3E4R5T6Y"
+        public_config:
+          type: object
+          additionalProperties: true
+          description: |
+            Free-form non-secret provider knobs (e.g. statement_descriptor,
+            terminal_id, redirect_url). Always present (default `{}`).
+          example:
+            statement_descriptor: "ARENA TICKETS"
+        secret_fields_set:
+          type: array
+          items:
+            type: string
+          description: |
+            Names of the secret-jsonb keys currently stored (no values).
+            Empty array when no secrets are configured yet.
+          example: ["api_key", "webhook_secret"]
+        status:
+          type: string
+          enum: [configured, missing_required_fields]
+          description: |
+            `configured` when every required secret for the provider is
+            populated; otherwise `missing_required_fields`.
+          example: "configured"
+        missing_required_fields:
+          type: array
+          items:
+            type: string
+          description: |
+            Names of the required-secret keys still expected for this
+            provider. Empty when status = configured.
+          example: []
+        is_active:
+          type: boolean
+          description: |
+            Whether the config is enabled for use by checkout. Soft-disabled
+            configs remain in the database but are skipped by the payment
+            router.
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    CreatePaymentProviderConfigRequest:
+      type: object
+      required: [provider]
+      additionalProperties: false
+      description: |
+        Request body for POST /v1/organizations/{org_id}/payment-configs.
+        `secrets` is a map[string]string of credential fields; non-empty values
+        are stored, empty-string values are ignored on create. Use PATCH with
+        an empty-string value to clear a previously stored secret.
+      properties:
+        provider:
+          type: string
+          description: Provider slug (one of stripe, allpay, cloudpayments, yookassa, manual).
+          example: "stripe"
+        mode:
+          type: string
+          enum: [test, live]
+          default: test
+          description: Operating mode for the credential set.
+          example: "live"
+        provider_account_id:
+          type: string
+          nullable: true
+          description: Optional public account identifier.
+          example: "acct_1Q2W3E4R5T6Y"
+        public_config:
+          type: object
+          additionalProperties: true
+          description: Free-form non-secret provider knobs.
+          example:
+            statement_descriptor: "ARENA TICKETS"
+        secrets:
+          type: object
+          additionalProperties:
+            type: string
+          description: |
+            Map of secret credential fields to values. Stripe expects
+            api_key + webhook_secret; AllPay expects merchant_id +
+            secret_key; etc. Values are never returned.
+          example:
+            api_key: "sk_live_xxx"
+            webhook_secret: "whsec_xxx"
+        is_active:
+          type: boolean
+          default: true
+          description: Whether the config is enabled for use by checkout.
+
+    UpdatePaymentProviderConfigRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Request body for PATCH /v1/organizations/{org_id}/payment-configs/{id}.
+        Omitted fields leave the existing value unchanged. The `secrets`
+        field is a PATCH map: non-empty values overwrite, empty-string
+        values delete the corresponding key.
+      properties:
+        provider_account_id:
+          type: string
+          nullable: true
+          description: Replacement account identifier (empty string clears it).
+        public_config:
+          type: object
+          additionalProperties: true
+          description: Replacement public_config jsonb (entire object replaces existing).
+        secrets:
+          type: object
+          additionalProperties:
+            type: string
+          description: |
+            Patch map of secret keys. Non-empty value sets the secret,
+            empty string deletes the secret, omitted keys are untouched.
+        is_active:
+          type: boolean
+          description: Replacement is_active flag.
+
     # Geo schemas — feature #123
     GeoCountryItem:
       type: object
@@ -2870,6 +3043,251 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
   # ─────────────────────────────────────────────────────────────────────────
+  # Admin Organizations CRUD (feature #233)
+  # ─────────────────────────────────────────────────────────────────────────
+
+  /v1/admin/organizations:
+    post:
+      operationId: postV1AdminOrganizations
+      summary: Admin — create a new organization
+      description: |
+        Admin-console-facing counterpart to POST /v1/organizations. Requires JWT
+        authentication, the "org.create" permission, and an X-Admin-Reason
+        request header explaining the business reason for the write (recorded
+        in audit_events). The companion GET list endpoint is served by the
+        superadmin console (feature #166).
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for the admin write (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrganizationRequest"
+      responses:
+        "201":
+          description: Organization created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [organization]
+                properties:
+                  organization:
+                    $ref: "#/components/schemas/OrganizationItem"
+        "400":
+          description: Missing X-Admin-Reason, invalid body, or required fields empty
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (org.create)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: An organization with that name or slug already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or org queries not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/organizations/{id}:
+    patch:
+      operationId: patchV1AdminOrganizationsId
+      summary: Admin — update an organization
+      description: |
+        Admin-console-facing counterpart to PATCH /v1/organizations/{id}. Empty
+        or omitted fields leave existing values unchanged. Requires JWT
+        authentication, the "org.update" permission, and an X-Admin-Reason
+        header (audit trail).
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the organization to update
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for the admin write (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrganizationRequest"
+      responses:
+        "200":
+          description: Organization updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [organization]
+                properties:
+                  organization:
+                    $ref: "#/components/schemas/OrganizationItem"
+        "400":
+          description: Missing X-Admin-Reason, invalid body, or id path parameter invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (org.update)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Organization not found or has been archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: New name or slug conflicts with an existing active organization
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or org queries not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/organizations/{id}/archive:
+    post:
+      operationId: postV1AdminOrganizationsIdArchive
+      summary: Admin — archive (soft-delete) an organization
+      description: |
+        Marks an organization as archived (sets deleted_at = now()). The row is
+        not physically removed — it is excluded from all active-org queries. An
+        audit event is written inside the same transaction. Requires JWT
+        authentication, the "org.delete" permission, and an X-Admin-Reason
+        header (audit trail).
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the organization to archive
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for the admin write (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Organization archived successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [organization, archived]
+                properties:
+                  organization:
+                    $ref: "#/components/schemas/OrganizationItem"
+                  archived:
+                    type: boolean
+                    example: true
+        "400":
+          description: Missing X-Admin-Reason or id path parameter invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (org.delete)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Organization not found or already archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or org queries not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ─────────────────────────────────────────────────────────────────────────
   # Venue admin endpoints (feature #124, contract documented under #235)
   # ─────────────────────────────────────────────────────────────────────────
 
@@ -3288,6 +3706,319 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database pool or venue queries unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Payment provider configs — feature #237
+  # ─────────────────────────────────────────────────────────────────────────
+
+  /v1/organizations/{org_id}/payment-configs:
+    get:
+      operationId: listPaymentProviderConfigs
+      summary: List payment provider configs for an organization
+      description: |
+        Returns every active payment_provider_configs row belonging to the
+        org in the path. Secrets are never included; only the keys with a
+        non-empty value are surfaced through `secret_fields_set`. Requires
+        the `payment_config.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of payment provider configs
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [payment_configs]
+                properties:
+                  payment_configs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PaymentProviderConfigItem"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks payment_config.read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not wired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: createPaymentProviderConfig
+      summary: Create a new payment provider config
+      description: |
+        Inserts a new payment_provider_configs row. The (org_id, provider,
+        mode) tuple must be unique among active rows — 409 is returned
+        otherwise. Status is derived automatically from the supplied secrets
+        against the provider's required-secret catalogue. Requires the
+        `payment_config.write` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePaymentProviderConfigRequest"
+      responses:
+        "201":
+          description: Config created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [payment_config]
+                properties:
+                  payment_config:
+                    $ref: "#/components/schemas/PaymentProviderConfigItem"
+        "400":
+          description: Invalid body, missing/invalid provider, mode, or public_config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks payment_config.write
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: A config for (org_id, provider, mode) already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not wired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/payment-configs/{id}:
+    get:
+      operationId: getPaymentProviderConfig
+      summary: Get one payment provider config by id
+      description: |
+        Returns the matching active config row. 404 when the row does not
+        exist, was soft-deleted, or belongs to a different organization.
+        Requires `payment_config.read`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Config row
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [payment_config]
+                properties:
+                  payment_config:
+                    $ref: "#/components/schemas/PaymentProviderConfigItem"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks payment_config.read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Not found or owned by another org
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not wired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      operationId: updatePaymentProviderConfig
+      summary: Partially update a payment provider config
+      description: |
+        Patches the config in place. The `secrets` map is a per-key patch:
+        non-empty values overwrite, empty-string values delete the secret,
+        omitted keys are left untouched. The `status` column is recomputed
+        from the post-patch secrets jsonb. Requires `payment_config.write`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePaymentProviderConfigRequest"
+      responses:
+        "200":
+          description: Config updated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [payment_config]
+                properties:
+                  payment_config:
+                    $ref: "#/components/schemas/PaymentProviderConfigItem"
+        "400":
+          description: Invalid body or invalid public_config jsonb
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks payment_config.write
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Not found or owned by another org
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not wired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      operationId: deletePaymentProviderConfig
+      summary: Soft-delete a payment provider config
+      description: |
+        Marks the config deleted (sets deleted_at = now()) and writes an
+        audit event inside the same transaction. Requires
+        `payment_config.write`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Config soft-deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [payment_config, deleted]
+                properties:
+                  payment_config:
+                    $ref: "#/components/schemas/PaymentProviderConfigItem"
+                  deleted:
+                    type: boolean
+                    example: true
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks payment_config.write
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Not found or owned by another org
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not wired
           content:
             application/json:
               schema:
