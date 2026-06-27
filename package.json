@@ -5,7 +5,12 @@
   "description": "Backend foundation for arena_new multi-tenant ticketing platform",
   "scripts": {
     "gen-ts-client": "node scripts/gen-ts-client.mjs",
-    "check-ts": "tsc --noEmit apps/backend/openapi/clients/ts/index.d.ts"
+    "check-ts": "tsc --noEmit apps/backend/openapi/clients/ts/index.d.ts",
+    "admin:install": "npm --prefix apps/admin-web install",
+    "admin:dev": "npm --prefix apps/admin-web run dev",
+    "admin:build": "npm --prefix apps/admin-web run build",
+    "admin:test": "npm --prefix apps/admin-web run test",
+    "admin:type-check": "npm --prefix apps/admin-web run type-check"
   },
   "devDependencies": {
     "@stoplight/spectral-cli": "^6.16.0",

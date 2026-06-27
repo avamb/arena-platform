@@ -14665,3 +14665,57 @@ Backend gaps catalogued (G1-G8) for downstream SAUI-* tasks:
     codegen v2.4.1 / OAS 3.1 workaround).
 
 Marked #216 passing.
+
+================================================================================
+Session 2026-06-27 -- Feature #217 (SAUI-01 Create admin web app scaffold)
+================================================================================
+Created apps/admin-web as the first React + TS + Vite + TanStack admin
+shell. Dense operational admin language, no marketing surface, no
+production-route mock data, root scripts that do not collide with the
+existing gen-ts-client / check-ts pipeline.
+
+Files added under apps/admin-web/:
+  package.json           React 18, RDOM, Vite 5, TanStack Router 1.78 /
+                         Query 5.59 / Table 8.20, React Hook Form 7.53,
+                         Zod 3.23, Vitest 2.
+  tsconfig.json/.app.json/.node.json  Strict project-references TS setup.
+  vite.config.ts         React plugin + @/* alias + port 5174.
+  index.html             Single #root mount point.
+  .env.example           VITE_API_BASE_URL only.
+  .gitignore             node_modules, dist, .env.local.
+  README.md              Operating notes + root script table.
+  src/main.tsx           StrictMode > ErrorBoundary > QueryClientProvider
+                         > RouterProvider.
+  src/router.tsx         createRouter + pending fallback (200ms).
+  src/routeTree.ts       Manual route assembly (no codegen step).
+  src/styles.css         Layout primitives + spinner keyframes.
+  src/lib/config.ts      Env ingestion; throws loudly when URL missing.
+  src/lib/queryClient.ts Defaults: 30s stale, no mutation retry, focus refetch.
+  src/components/AppLayout.tsx       Sidebar + content shell.
+  src/components/ErrorBoundary.tsx   Root render-error catcher + retry.
+  src/components/LoadingScreen.tsx   Indeterminate loader.
+  src/routes/__root.tsx              Root route; dev-only lazy devtools.
+  src/routes/index.tsx               Authenticated workspace landing
+                                     (empty-state cards, no marketing).
+  src/routes/login.tsx               RHF + Zod scaffold; backend wiring
+                                     deferred to SAUI-02.
+
+Root package.json scripts added (delegate via npm --prefix apps/admin-web):
+  admin:install / admin:dev / admin:build / admin:test / admin:type-check
+Existing gen-ts-client and check-ts left unchanged.
+
+Verification:
+  npm --prefix apps/admin-web install   OK (119 packages)
+  npm run admin:build                   OK (tsc -b clean; vite built in 1.68s,
+                                        198 modules, 338.88 kB JS bundle)
+  npm run check-ts                      OK (unchanged, still passes)
+
+Acceptance criteria all satisfied:
+  apps/admin-web builds with TypeScript -- YES
+  Root scripts document run/build -- YES (README.md)
+  Router, QueryClient, ErrorBoundary, loading state, base layout -- YES
+  First authenticated route is workspace, not marketing -- YES
+  No production route ships mock business data -- YES (empty states)
+  Launchable against backend base URL from env -- YES (VITE_API_BASE_URL)
+
+Marked #217 passing.
