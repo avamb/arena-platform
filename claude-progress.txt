@@ -15164,3 +15164,67 @@ Verification:
                                                 devStore / mockData hits)
 
 Marked #226 passing.
+
+================================================================================
+Session 2026-06-27 -- Feature #227 (SAUI-11 Audit and observability shell)
+================================================================================
+Added two honest SuperAdmin shell pages -- /audit and /observability --
+gated by superadmin.read via RequirePermission. Both deliberately ship
+NO mock rows and NO fake dashboards; each missing capability is
+rendered as a concrete backend-gap tile naming the exact endpoint
+family that has to land.
+
+New files:
+  apps/admin-web/src/routes/audit.tsx
+    /audit shell. 6 backend gap tiles (GA1..GA6):
+      GA1 GET /v1/admin/audit               list with filters
+      GA2 GET /v1/admin/audit/{id}          detail
+      GA3 GET /v1/admin/networks/{id}/audit network-scoped
+      GA4 GET /v1/admin/orgs/{id}/audit     org-scoped
+      GA5 GET /v1/admin/audit/{id}/raw      sensitive log channel,
+          masked behind superadmin.view_sensitive_logs
+      GA6 GET /v1/admin/audit/{id}/trace    request_id/trace_id link
+    Tiles render the masked badge when the caller lacks the
+    gated permission; the tile is never hidden so operators see
+    what they could gain with the grant.
+
+  apps/admin-web/src/routes/observability.tsx
+    /observability shell. Surfaces:
+      - operational probe links built via probeUrl(apiBaseUrl, path)
+        for /healthz, /readyz, /metrics. /metrics flagged
+        "Plain text -- may be ACLed". Links open in new tabs.
+      - 10 dashboard family gap tiles (GO1..GO10) covering
+        overview, http, checkout, payments, webhooks, scanners,
+        jobs, billing, ingestion, error grouping. Endpoint family
+        /v1/admin/observability/{name}.
+    Deliberately does NOT fetch /metrics text and parse it into
+    charts (the spec's explicit "no fake dashboard" rule).
+
+  apps/admin-web/src/routes/audit.test.ts            (9 cases)
+  apps/admin-web/src/routes/observability.test.ts    (13 cases)
+    Pin gap tables, sensitive-logs permission contract, probeUrl
+    base-url normalization, browser-safe flag on /metrics, and
+    spec-required dashboard family coverage.
+
+Modified:
+  apps/admin-web/src/lib/auth/navConfig.ts
+    NavRoutePath += "/audit" | "/observability".
+    NAV_ENTRIES += { id: "audit" }, { id: "observability" } --
+      both gated by anyOf:["superadmin.read"], scoped to
+      global/platform.
+  apps/admin-web/src/lib/auth/__tests__/navConfig.test.ts
+    platform_superadmin visible-nav assertion updated to include
+    audit + observability between refunds and geo.
+  apps/admin-web/src/routeTree.ts
+    Register AuditRoute and ObservabilityRoute.
+
+Verification:
+  npm --prefix apps/admin-web run type-check  OK
+  npm --prefix apps/admin-web test            203/203 PASS (incl. 22 new)
+  npm --prefix apps/admin-web run build       OK (227 modules, 473.83 kB)
+  npm run check-ts                            OK
+  Mock-data grep                              clean (no globalThis /
+                                                devStore / mockData hits
+                                                in new files)
+
+Marked #227 passing. Commit eb714489.
