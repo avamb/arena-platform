@@ -15488,3 +15488,79 @@ and 43 unit tests already existed (venues.go + venues_test.go). Closes
 OpenAPI gap noted in 09_autoforge/admin_ui/admin_crud_gap_inventory_232.md.
 Commit: 2935ef11. Marked #235 passing.
 
+================================================================================
+Session 2026-06-27 -- Feature #236 (Sales channels: settings + credential masking)
+================================================================================
+Extended sales_channels CRUD with a free-form 'settings' jsonb column and
+masked the merchant credential on every read path.
+
+New files:
+  apps/backend/internal/migrations/sql/0045_channel_settings.sql
+    ALTER TABLE sales_channels ADD COLUMN settings jsonb NOT NULL DEFAULT
+    '{}'. Reversible via DROP COLUMN IF EXISTS.
+
+Modified:
+  apps/backend/internal/adapters/postgres/queries/channels.sql
+    Insert/Get/List/modify/SoftDelete all include settings. INSERT uses
+    COALESCE($8::jsonb, '{}'::jsonb). modify leaves existing settings
+    alone when caller passes nil.
+  apps/backend/internal/adapters/postgres/gen/channels.sql.go
+    SalesChannelRow.Settings json.RawMessage. Insert/modify signatures
+    take settings json.RawMessage. scanSalesChannelRow scans it.
+  apps/backend/internal/adapters/postgres/gen/querier.go
+    Querier interface updated for two new parameters; added encoding/json import.
+  apps/backend/internal/platform/httpserver/channels.go
+    + channelResponse.Settings field.
+    + settingsForResponse() so empty/null DB rows still render as '{}'.
+    + maskProviderAccountID(): last 4 chars kept, '****' fixed mask for
+      strings <= 4 chars, nil-in/nil-out, '' round-trips.
+    + channelFromRowMasked(): GET/LIST/single-GET serializer that hides
+      the credential. Write-path channelFromRow() keeps the raw value
+      so the caller can verify what they just wrote.
+    + normalizeChannelSettings(): rejects arrays/scalars/malformed JSON
+      with 400 'channel.invalid_settings'.
+    Handlers wired:
+      - handleCreateChannel passes settings to InsertSalesChannel and
+        echoes raw credential back (write path).
+      - handleListChannels uses channelFromRowMasked.
+      - handleGetChannel uses channelFromRowMasked.
+      - handleUpdateChannel passes settings and echoes raw credential.
+      - handleDeleteChannel kept the existing channelFromRow.
+  apps/backend/internal/platform/httpserver/testfilehelpers_test.go
+    Registered '0045_channel_settings.sql' for findFileByName.
+  apps/backend/internal/platform/httpserver/channels_test.go
+    + 17 new TestChannel236_* test cases covering masking, settings
+      validation, write-path leakage, migration file presence,
+      query/gen file shape, channelResponse JSON shape.
+
+Contract guarantees:
+  - provider_account_id is NEVER echoed unmasked on GET endpoints
+    (/v1/organizations/{org_id}/channels and .../{id}).
+  - Mask preserves last 4 characters; nothing leaks for <=4-char ids.
+  - Write-path responses (POST/PATCH/DELETE) keep raw credential so
+    callers can verify what they wrote.
+  - settings is always a JSON object on the wire; null/empty becomes '{}'.
+  - Settings must be a JSON object - arrays/scalars rejected with
+    'channel.invalid_settings' 400.
+  - Existing reservation-TTL lookup callers keep access to raw merchant
+    id via gen.SalesChannelRow (mask is applied only in the API layer).
+
+Validation preserved:
+  - direct_merchant still requires provider_account_id.
+  - provider must be 'stripe' or 'allpay'.
+  - payment_mode must be 'direct_merchant' or 'merchant_of_record'.
+
+Known gaps deliberately not addressed in this feature:
+  - OpenAPI documentation for /v1/organizations/{org_id}/channels still
+    absent (was already absent before #236; openapi_drift_test does NOT
+    wire ChannelQueries into buildDriftTestServer so the drift check
+    does not fail on this). Tracking under future docs feature.
+
+Verification:
+  docker run golang:1.24-alpine go build ./...              OK
+  docker run golang:1.24-alpine go vet ./...                OK
+  docker run golang:1.24-alpine go test -run TestChannel    OK (all
+      Channel121_* and Channel236_* tests pass)
+
+Marked #236 passing.
+

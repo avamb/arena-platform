@@ -7,6 +7,7 @@ package gen
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,18 +21,20 @@ import (
 // deleted_at is nil for active channels and non-nil for soft-deleted ones.
 // provider_account_id is nil when not set (only required for direct_merchant mode).
 // reservation_ttl_override is nil when the channel uses the org-level default.
+// settings is a free-form jsonb object — never null (defaults to '{}').
 type SalesChannelRow struct {
-	ID                    uuid.UUID  `json:"id"`
-	OrgID                 uuid.UUID  `json:"org_id"`
-	Name                  string     `json:"name"`
-	PaymentMode           string     `json:"payment_mode"`
-	Provider              string     `json:"provider"`
-	ProviderAccountID     *string    `json:"provider_account_id"`
-	FeePercent            string     `json:"fee_percent"` // numeric(5,2) scanned as string
-	ReservationTTLOverride *int32    `json:"reservation_ttl_override"`
-	CreatedAt             time.Time  `json:"created_at"`
-	UpdatedAt             time.Time  `json:"updated_at"`
-	DeletedAt             *time.Time `json:"deleted_at"`
+	ID                    uuid.UUID       `json:"id"`
+	OrgID                 uuid.UUID       `json:"org_id"`
+	Name                  string          `json:"name"`
+	PaymentMode           string          `json:"payment_mode"`
+	Provider              string          `json:"provider"`
+	ProviderAccountID     *string         `json:"provider_account_id"`
+	FeePercent            string          `json:"fee_percent"` // numeric(5,2) scanned as string
+	ReservationTTLOverride *int32         `json:"reservation_ttl_override"`
+	Settings              json.RawMessage `json:"settings"`
+	CreatedAt             time.Time       `json:"created_at"`
+	UpdatedAt             time.Time       `json:"updated_at"`
+	DeletedAt             *time.Time      `json:"deleted_at"`
 }
 
 // scanSalesChannelRow scans a single sales_channels row into a SalesChannelRow.
@@ -48,6 +51,7 @@ func scanSalesChannelRow(row interface {
 		&ch.ProviderAccountID,
 		&ch.FeePercent,
 		&ch.ReservationTTLOverride,
+		&ch.Settings,
 		&ch.CreatedAt,
 		&ch.UpdatedAt,
 		&ch.DeletedAt,
@@ -60,17 +64,18 @@ func scanSalesChannelRow(row interface {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const insertSalesChannel = `-- name: InsertSalesChannel :one
-INSERT INTO sales_channels (org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, created_at, updated_at, deleted_at`
+INSERT INTO sales_channels (org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings)
+VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::jsonb, '{}'::jsonb))
+RETURNING id, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at`
 
 // InsertSalesChannel creates a new active sales channel row.
 // Returns the created row including the uuidv7 PK assigned by the database.
 // Callers must validate that provider_account_id is non-empty when
 // payment_mode = 'direct_merchant' before calling this method.
-func (q *Queries) InsertSalesChannel(ctx context.Context, orgID uuid.UUID, name, paymentMode, provider string, providerAccountID *string, feePercent string, reservationTTLOverride *int32) (SalesChannelRow, error) {
+// Pass settings = nil to use the database default '{}'::jsonb.
+func (q *Queries) InsertSalesChannel(ctx context.Context, orgID uuid.UUID, name, paymentMode, provider string, providerAccountID *string, feePercent string, reservationTTLOverride *int32, settings json.RawMessage) (SalesChannelRow, error) {
 	row := q.db.QueryRow(ctx, insertSalesChannel,
-		orgID, name, paymentMode, provider, providerAccountID, feePercent, reservationTTLOverride,
+		orgID, name, paymentMode, provider, providerAccountID, feePercent, reservationTTLOverride, settings,
 	)
 	return scanSalesChannelRow(row)
 }
@@ -80,7 +85,7 @@ func (q *Queries) InsertSalesChannel(ctx context.Context, orgID uuid.UUID, name,
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getSalesChannelByID = `-- name: GetSalesChannelByID :one
-SELECT id, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, created_at, updated_at, deleted_at
+SELECT id, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
 FROM   sales_channels
 WHERE  id = $1
   AND  org_id = $2
@@ -98,7 +103,7 @@ func (q *Queries) GetSalesChannelByID(ctx context.Context, id, orgID uuid.UUID) 
 // ─────────────────────────────────────────────────────────────────────────────
 
 const listSalesChannelsByOrg = `-- name: ListSalesChannelsByOrg :many
-SELECT id, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, created_at, updated_at, deleted_at
+SELECT id, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
 FROM   sales_channels
 WHERE  org_id = $1
   AND  deleted_at IS NULL
@@ -136,18 +141,20 @@ SET    name                     = COALESCE(NULLIF($3, ''), name),
        provider_account_id      = CASE WHEN $6::text IS NOT NULL THEN $6::text ELSE provider_account_id END,
        fee_percent              = CASE WHEN $7::numeric IS NOT NULL THEN $7::numeric ELSE fee_percent END,
        reservation_ttl_override = $8,
+       settings                 = CASE WHEN $9::jsonb IS NOT NULL THEN $9::jsonb ELSE settings END,
        updated_at               = now()
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, created_at, updated_at, deleted_at`
+RETURNING id, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at`
 
 // UpdateSalesChannel applies a partial update to an active sales channel.
 // Empty string fields are ignored (existing value kept). Returns pgx.ErrNoRows
 // when the channel does not exist, does not belong to the org, or has been soft-deleted.
-func (q *Queries) UpdateSalesChannel(ctx context.Context, id, orgID uuid.UUID, name, paymentMode, provider string, providerAccountID *string, feePercent *string, reservationTTLOverride *int32) (SalesChannelRow, error) {
+// Pass settings = nil to leave the existing settings value untouched.
+func (q *Queries) UpdateSalesChannel(ctx context.Context, id, orgID uuid.UUID, name, paymentMode, provider string, providerAccountID *string, feePercent *string, reservationTTLOverride *int32, settings json.RawMessage) (SalesChannelRow, error) {
 	row := q.db.QueryRow(ctx, updateSalesChannel,
-		id, orgID, name, paymentMode, provider, providerAccountID, feePercent, reservationTTLOverride,
+		id, orgID, name, paymentMode, provider, providerAccountID, feePercent, reservationTTLOverride, settings,
 	)
 	return scanSalesChannelRow(row)
 }
@@ -163,7 +170,7 @@ SET    deleted_at = now(),
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, created_at, updated_at, deleted_at`
+RETURNING id, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at`
 
 // SoftDeleteSalesChannel marks a sales channel as deleted by setting deleted_at.
 // The row is not physically removed. Returns pgx.ErrNoRows when the channel

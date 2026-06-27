@@ -6,6 +6,7 @@ package gen
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -51,11 +52,18 @@ type Querier interface {
 	UpdateOrganization(ctx context.Context, id uuid.UUID, name, slug, country, defaultLocale string, reservationTTL int32) (OrganizationRow, error)
 	SoftDeleteOrganization(ctx context.Context, id uuid.UUID) (OrganizationRow, error)
 
+	// Payment provider configs — per-org provider credentials + public config (feature #237)
+	InsertPaymentProviderConfig(ctx context.Context, orgID uuid.UUID, provider, mode string, providerAccountID *string, publicConfig, secrets json.RawMessage, status string, isActive bool) (PaymentProviderConfigRow, error)
+	GetPaymentProviderConfigByID(ctx context.Context, id, orgID uuid.UUID) (PaymentProviderConfigRow, error)
+	ListPaymentProviderConfigsByOrg(ctx context.Context, orgID uuid.UUID) ([]PaymentProviderConfigRow, error)
+	UpdatePaymentProviderConfig(ctx context.Context, id, orgID uuid.UUID, providerAccountID *string, publicConfig, secrets json.RawMessage, status string, isActive *bool) (PaymentProviderConfigRow, error)
+	SoftDeletePaymentProviderConfig(ctx context.Context, id, orgID uuid.UUID) (PaymentProviderConfigRow, error)
+
 	// Sales channels — per-org payment configuration (feature #121)
-	InsertSalesChannel(ctx context.Context, orgID uuid.UUID, name, paymentMode, provider string, providerAccountID *string, feePercent string, reservationTTLOverride *int32) (SalesChannelRow, error)
+	InsertSalesChannel(ctx context.Context, orgID uuid.UUID, name, paymentMode, provider string, providerAccountID *string, feePercent string, reservationTTLOverride *int32, settings json.RawMessage) (SalesChannelRow, error)
 	GetSalesChannelByID(ctx context.Context, id, orgID uuid.UUID) (SalesChannelRow, error)
 	ListSalesChannelsByOrg(ctx context.Context, orgID uuid.UUID) ([]SalesChannelRow, error)
-	UpdateSalesChannel(ctx context.Context, id, orgID uuid.UUID, name, paymentMode, provider string, providerAccountID *string, feePercent *string, reservationTTLOverride *int32) (SalesChannelRow, error)
+	UpdateSalesChannel(ctx context.Context, id, orgID uuid.UUID, name, paymentMode, provider string, providerAccountID *string, feePercent *string, reservationTTLOverride *int32, settings json.RawMessage) (SalesChannelRow, error)
 	SoftDeleteSalesChannel(ctx context.Context, id, orgID uuid.UUID) (SalesChannelRow, error)
 
 	// Memberships — user → org role assignments (feature #120)

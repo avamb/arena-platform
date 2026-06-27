@@ -50,20 +50,65 @@ import (
 // ─────────────────────────────────────────────────────────────────────────────
 
 // channelResponse is the JSON representation of a single sales channel.
+//
+// provider_account_id is masked in GET/LIST responses (channelFromRowMasked)
+// so the raw merchant credential is never echoed back to API consumers.
+// Create/update responses keep the raw value so callers can verify what
+// they just wrote (channelFromRow).
 type channelResponse struct {
-	ID                     string  `json:"id"`
-	OrgID                  string  `json:"org_id"`
-	Name                   string  `json:"name"`
-	PaymentMode            string  `json:"payment_mode"`
-	Provider               string  `json:"provider"`
-	ProviderAccountID      *string `json:"provider_account_id"`
-	FeePercent             string  `json:"fee_percent"`
-	ReservationTTLOverride *int32  `json:"reservation_ttl_override"`
-	CreatedAt              string  `json:"created_at"`
-	UpdatedAt              string  `json:"updated_at"`
+	ID                     string          `json:"id"`
+	OrgID                  string          `json:"org_id"`
+	Name                   string          `json:"name"`
+	PaymentMode            string          `json:"payment_mode"`
+	Provider               string          `json:"provider"`
+	ProviderAccountID      *string         `json:"provider_account_id"`
+	FeePercent             string          `json:"fee_percent"`
+	ReservationTTLOverride *int32          `json:"reservation_ttl_override"`
+	Settings               json.RawMessage `json:"settings"`
+	CreatedAt              string          `json:"created_at"`
+	UpdatedAt              string          `json:"updated_at"`
 }
 
-// channelFromRow converts a SalesChannelRow to a channelResponse.
+// settingsForResponse returns a non-nil JSON object for the response body.
+// Empty/null DB values become "{}" so consumers never have to special-case
+// missing settings.
+func settingsForResponse(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return json.RawMessage(`{}`)
+	}
+	return raw
+}
+
+// maskProviderAccountID returns a masked rendering of the merchant credential
+// suitable for read endpoints. The mask preserves the last 4 characters so
+// operators can still recognise which account a channel is wired to, e.g.
+//
+//	"acct_1Q2W3E4R5T6Y" -> "****6Y"
+//	"M123" -> "****" (anything <= 4 chars collapses to a fixed mask)
+//	""     -> "" (empty stays empty; nil stays nil)
+//
+// Returning a pointer matches the SalesChannelRow shape; nil in -> nil out.
+func maskProviderAccountID(in *string) *string {
+	if in == nil {
+		return nil
+	}
+	raw := *in
+	if raw == "" {
+		empty := ""
+		return &empty
+	}
+	const tail = 4
+	if len(raw) <= tail {
+		masked := "****"
+		return &masked
+	}
+	masked := "****" + raw[len(raw)-tail:]
+	return &masked
+}
+
+// channelFromRow converts a SalesChannelRow to a channelResponse without
+// touching the credentials. Use this only on write paths (POST/PATCH/DELETE
+// responses) where the caller already knows the secret they just supplied.
 func channelFromRow(ch gen.SalesChannelRow) channelResponse {
 	return channelResponse{
 		ID:                     ch.ID.String(),
@@ -74,9 +119,19 @@ func channelFromRow(ch gen.SalesChannelRow) channelResponse {
 		ProviderAccountID:      ch.ProviderAccountID,
 		FeePercent:             ch.FeePercent,
 		ReservationTTLOverride: ch.ReservationTTLOverride,
+		Settings:               settingsForResponse(ch.Settings),
 		CreatedAt:              ch.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:              ch.UpdatedAt.UTC().Format(time.RFC3339),
 	}
+}
+
+// channelFromRowMasked is the GET-path serializer: it masks the merchant
+// credential so unauthorised observers of a list/read response can never
+// see the raw provider_account_id value (feature #236).
+func channelFromRowMasked(ch gen.SalesChannelRow) channelResponse {
+	resp := channelFromRow(ch)
+	resp.ProviderAccountID = maskProviderAccountID(ch.ProviderAccountID)
+	return resp
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -120,18 +175,41 @@ func validateChannelConfig(paymentMode, provider, providerAccountID string) stri
 	return ""
 }
 
+// normalizeChannelSettings validates the raw JSON supplied by the client as
+// the channel `settings` field. The value must either be omitted (nil/empty)
+// or be a valid JSON object. JSON arrays, scalars, and malformed payloads
+// are rejected with a 400.
+//
+// Returns the canonical representation to write to the DB and a non-empty
+// error message when invalid.
+func normalizeChannelSettings(raw json.RawMessage) (json.RawMessage, string) {
+	if len(raw) == 0 {
+		return nil, ""
+	}
+	// json.RawMessage may carry whitespace; verify it parses as an object.
+	var probe any
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return nil, "settings must be a valid JSON object"
+	}
+	if _, ok := probe.(map[string]any); !ok {
+		return nil, "settings must be a JSON object (not an array or scalar)"
+	}
+	return raw, ""
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /v1/organizations/{org_id}/channels
 // ─────────────────────────────────────────────────────────────────────────────
 
 // createChannelRequest is the request body for POST /v1/organizations/{org_id}/channels.
 type createChannelRequest struct {
-	Name                   string `json:"name"`
-	PaymentMode            string `json:"payment_mode"`
-	Provider               string `json:"provider"`
-	ProviderAccountID      string `json:"provider_account_id"`
-	FeePercent             string `json:"fee_percent"`
-	ReservationTTLOverride *int32 `json:"reservation_ttl_override"`
+	Name                   string          `json:"name"`
+	PaymentMode            string          `json:"payment_mode"`
+	Provider               string          `json:"provider"`
+	ProviderAccountID      string          `json:"provider_account_id"`
+	FeePercent             string          `json:"fee_percent"`
+	ReservationTTLOverride *int32          `json:"reservation_ttl_override"`
+	Settings               json.RawMessage `json:"settings"`
 }
 
 // handleCreateChannel serves POST /v1/organizations/{org_id}/channels.
@@ -206,9 +284,19 @@ func (s *Server) handleCreateChannel(w http.ResponseWriter, r *http.Request) {
 		providerAccountID = &s
 	}
 
+	// Validate settings is a JSON object when provided.
+	settings, settingsErr := normalizeChannelSettings(req.Settings)
+	if settingsErr != "" {
+		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+			"channel.invalid_settings", settingsErr, r,
+			map[string]any{"field": "settings"},
+		))
+		return
+	}
+
 	ch, err := s.channelQueries.InsertSalesChannel(ctx,
 		orgID, req.Name, req.PaymentMode, req.Provider,
-		providerAccountID, req.FeePercent, req.ReservationTTLOverride,
+		providerAccountID, req.FeePercent, req.ReservationTTLOverride, settings,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -263,7 +351,7 @@ func (s *Server) handleListChannels(w http.ResponseWriter, r *http.Request) {
 
 	result := make([]channelResponse, 0, len(rows))
 	for _, ch := range rows {
-		result = append(result, channelFromRow(ch))
+		result = append(result, channelFromRowMasked(ch))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"channels": result})
 }
@@ -306,7 +394,7 @@ func (s *Server) handleGetChannel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"channel": channelFromRow(ch),
+		"channel": channelFromRowMasked(ch),
 	})
 }
 
@@ -317,12 +405,13 @@ func (s *Server) handleGetChannel(w http.ResponseWriter, r *http.Request) {
 // updateChannelRequest is the request body for PATCH /v1/organizations/{org_id}/channels/{id}.
 // All fields are optional; empty/nil values leave the existing value unchanged.
 type updateChannelRequest struct {
-	Name                   string  `json:"name"`
-	PaymentMode            string  `json:"payment_mode"`
-	Provider               string  `json:"provider"`
-	ProviderAccountID      *string `json:"provider_account_id"`
-	FeePercent             *string `json:"fee_percent"`
-	ReservationTTLOverride *int32  `json:"reservation_ttl_override"`
+	Name                   string          `json:"name"`
+	PaymentMode            string          `json:"payment_mode"`
+	Provider               string          `json:"provider"`
+	ProviderAccountID      *string         `json:"provider_account_id"`
+	FeePercent             *string         `json:"fee_percent"`
+	ReservationTTLOverride *int32          `json:"reservation_ttl_override"`
+	Settings               json.RawMessage `json:"settings"`
 }
 
 // handleUpdateChannel serves PATCH /v1/organizations/{org_id}/channels/{id}.
@@ -404,9 +493,19 @@ func (s *Server) handleUpdateChannel(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Validate settings is a JSON object when provided.
+	settings, settingsErr := normalizeChannelSettings(req.Settings)
+	if settingsErr != "" {
+		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+			"channel.invalid_settings", settingsErr, r,
+			map[string]any{"field": "settings"},
+		))
+		return
+	}
+
 	updated, err := s.channelQueries.UpdateSalesChannel(ctx,
 		chID, orgID, req.Name, req.PaymentMode, req.Provider,
-		req.ProviderAccountID, req.FeePercent, req.ReservationTTLOverride,
+		req.ProviderAccountID, req.FeePercent, req.ReservationTTLOverride, settings,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

@@ -685,6 +685,244 @@ func TestChannel121_DeleteResponseHasDeletedFlag(t *testing.T) {
 	}
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Feature #236 — provider_account_id masking + settings round-trip
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestChannel236_MaskProviderAccountID_Nil(t *testing.T) {
+	if got := maskProviderAccountID(nil); got != nil {
+		t.Errorf("nil input must map to nil pointer, got %v", got)
+	}
+}
+
+func TestChannel236_MaskProviderAccountID_Empty(t *testing.T) {
+	empty := ""
+	got := maskProviderAccountID(&empty)
+	if got == nil || *got != "" {
+		t.Errorf("empty string must round-trip as empty, got %v", got)
+	}
+}
+
+func TestChannel236_MaskProviderAccountID_ShortValueCollapses(t *testing.T) {
+	cases := []string{"a", "ab", "abc", "abcd"}
+	for _, v := range cases {
+		v := v
+		t.Run(v, func(t *testing.T) {
+			got := maskProviderAccountID(&v)
+			if got == nil || *got != "****" {
+				t.Errorf("short value %q must collapse to '****', got %v", v, got)
+			}
+			if got != nil && strings.Contains(*got, v) && len(v) > 0 {
+				t.Errorf("masked value %q must not contain the original %q", *got, v)
+			}
+		})
+	}
+}
+
+func TestChannel236_MaskProviderAccountID_PreservesLast4(t *testing.T) {
+	raw := "acct_1Q2W3E4R5T6Y"
+	got := maskProviderAccountID(&raw)
+	if got == nil {
+		t.Fatal("masked pointer must not be nil")
+	}
+	if *got != "****5T6Y" {
+		t.Errorf("expected mask '****5T6Y' for %q, got %q", raw, *got)
+	}
+	if strings.HasPrefix(*got, "acct_") {
+		t.Errorf("mask must hide the prefix, got %q", *got)
+	}
+}
+
+func TestChannel236_MaskProviderAccountID_AllpayShape(t *testing.T) {
+	raw := "MERCHANT_99887766"
+	got := maskProviderAccountID(&raw)
+	if got == nil || *got != "****7766" {
+		t.Errorf("allpay-shape id must mask to '****7766', got %v", got)
+	}
+}
+
+func TestChannel236_ChannelFromRowMasked_HidesCredential(t *testing.T) {
+	raw := "acct_stripe_SECRET12345"
+	row := gen.SalesChannelRow{
+		ID:                uuid.New(),
+		OrgID:             uuid.New(),
+		Name:              "MoR Stripe",
+		PaymentMode:       "direct_merchant",
+		Provider:          "stripe",
+		ProviderAccountID: &raw,
+		FeePercent:        "1.50",
+	}
+	resp := channelFromRowMasked(row)
+	if resp.ProviderAccountID == nil {
+		t.Fatal("masked response must keep ProviderAccountID non-nil when input non-nil")
+	}
+	if *resp.ProviderAccountID == raw {
+		t.Errorf("masked response leaks raw value: %q", *resp.ProviderAccountID)
+	}
+	if !strings.HasPrefix(*resp.ProviderAccountID, "****") {
+		t.Errorf("masked response must start with '****', got %q", *resp.ProviderAccountID)
+	}
+	if !strings.HasSuffix(*resp.ProviderAccountID, "2345") {
+		t.Errorf("masked response must preserve last 4 chars '2345', got %q", *resp.ProviderAccountID)
+	}
+}
+
+func TestChannel236_ChannelFromRow_WriteResponseKeepsRawCredential(t *testing.T) {
+	// Write-path responses (POST/PATCH) deliberately keep the raw value so
+	// the caller can verify what they just wrote.
+	raw := "acct_admin_SETUP_999"
+	row := gen.SalesChannelRow{
+		ID:                uuid.New(),
+		OrgID:             uuid.New(),
+		Name:              "ch",
+		PaymentMode:       "direct_merchant",
+		Provider:          "stripe",
+		ProviderAccountID: &raw,
+		FeePercent:        "0.00",
+	}
+	resp := channelFromRow(row)
+	if resp.ProviderAccountID == nil || *resp.ProviderAccountID != raw {
+		t.Errorf("write-path serializer must keep raw credential, got %v", resp.ProviderAccountID)
+	}
+}
+
+func TestChannel236_NormalizeChannelSettings_EmptyAccepted(t *testing.T) {
+	settings, msg := normalizeChannelSettings(nil)
+	if msg != "" {
+		t.Errorf("nil settings must validate cleanly, got %q", msg)
+	}
+	if settings != nil {
+		t.Errorf("nil settings must remain nil for the DB driver, got %v", settings)
+	}
+}
+
+func TestChannel236_NormalizeChannelSettings_ObjectAccepted(t *testing.T) {
+	in := []byte(`{"statement_descriptor":"acme","terminal_id":7}`)
+	out, msg := normalizeChannelSettings(in)
+	if msg != "" {
+		t.Errorf("valid JSON object must be accepted, got %q", msg)
+	}
+	if string(out) != string(in) {
+		t.Errorf("settings must be returned verbatim, got %q", string(out))
+	}
+}
+
+func TestChannel236_NormalizeChannelSettings_ArrayRejected(t *testing.T) {
+	_, msg := normalizeChannelSettings([]byte(`[1,2,3]`))
+	if msg == "" {
+		t.Error("array must be rejected")
+	}
+}
+
+func TestChannel236_NormalizeChannelSettings_ScalarRejected(t *testing.T) {
+	_, msg := normalizeChannelSettings([]byte(`"oops"`))
+	if msg == "" {
+		t.Error("scalar must be rejected")
+	}
+}
+
+func TestChannel236_NormalizeChannelSettings_InvalidJSONRejected(t *testing.T) {
+	_, msg := normalizeChannelSettings([]byte(`{not json`))
+	if msg == "" {
+		t.Error("malformed JSON must be rejected")
+	}
+}
+
+func TestChannel236_SettingsForResponse_NeverNil(t *testing.T) {
+	if got := string(settingsForResponse(nil)); got != "{}" {
+		t.Errorf("nil settings must render as '{}', got %q", got)
+	}
+	if got := string(settingsForResponse([]byte{})); got != "{}" {
+		t.Errorf("empty settings must render as '{}', got %q", got)
+	}
+	src := []byte(`{"a":1}`)
+	if got := string(settingsForResponse(src)); got != `{"a":1}` {
+		t.Errorf("populated settings must pass through, got %q", got)
+	}
+}
+
+func TestChannel236_CreateChannel_InvalidSettingsReturns400(t *testing.T) {
+	s := buildChannelServer(t)
+	orgID := uuid.New()
+	token := mintJWT(t, s.stub, "00000000-0000-0000-0000-000000000001")
+
+	// Array is not a JSON object → validation error.
+	body := `{"name":"x","payment_mode":"merchant_of_record","provider":"stripe","settings":[1,2,3]}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/organizations/"+orgID.String()+"/channels",
+		strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	s.router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for non-object settings, got %d (body: %s)", w.Code, w.Body.String())
+	}
+	resp := channelRespJSON(t, w)
+	if code := errorCode(t, resp); code != "channel.invalid_settings" {
+		t.Errorf("expected code='channel.invalid_settings', got %q", code)
+	}
+}
+
+func TestChannel236_MigrationFileExists(t *testing.T) {
+	content := findFileByName(t, "0045_channel_settings.sql")
+	if content == "" {
+		t.Fatal("migration file 0045_channel_settings.sql is empty or missing")
+	}
+	required := []string{
+		"ALTER TABLE sales_channels",
+		"ADD COLUMN",
+		"settings jsonb",
+		"-- +goose Down",
+		"DROP COLUMN",
+	}
+	for _, token := range required {
+		if !strings.Contains(content, token) {
+			t.Errorf("migration 0045 missing token %q", token)
+		}
+	}
+}
+
+func TestChannel236_QueryFileSettingsParameter(t *testing.T) {
+	content := findFileByName(t, "channels.sql")
+	for _, token := range []string{
+		"settings",
+		"$8::jsonb",
+		"$9::jsonb",
+	} {
+		if !strings.Contains(content, token) {
+			t.Errorf("channels.sql missing token %q for #236 settings support", token)
+		}
+	}
+}
+
+func TestChannel236_GenFileSettingsField(t *testing.T) {
+	content := findFileByName(t, "channels.sql.go")
+	for _, token := range []string{
+		"Settings",
+		"json.RawMessage",
+		"settings json.RawMessage",
+	} {
+		if !strings.Contains(content, token) {
+			t.Errorf("channels.sql.go missing token %q for #236 settings support", token)
+		}
+	}
+}
+
+func TestChannel236_ChannelResponse_HasSettingsField(t *testing.T) {
+	ch := channelResponse{Settings: json.RawMessage(`{"feature_flag":true}`)}
+	b, err := json.Marshal(ch)
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+	if !strings.Contains(string(b), `"settings"`) {
+		t.Errorf("channelResponse JSON missing 'settings' key: %s", string(b))
+	}
+	if !strings.Contains(string(b), `"feature_flag":true`) {
+		t.Errorf("channelResponse must round-trip settings JSON verbatim, got %s", string(b))
+	}
+}
+
 func TestChannel121_FullVerification(t *testing.T) {
 	t.Run("migration_exists", func(t *testing.T) {
 		content := findFileByName(t, "0010_sales_channels.sql")

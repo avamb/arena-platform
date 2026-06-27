@@ -754,6 +754,28 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0044_network_permissions.sql"),
 		}
+	// Sales channel settings + credential masking (feature #236)
+	case "0045_channel_settings.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0045_channel_settings.sql"),
+		}
+	// Payment provider configs (feature #237)
+	case "0046_payment_provider_configs.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0046_payment_provider_configs.sql"),
+		}
+	case "payment_provider_configs.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "payment_provider_configs.sql"),
+		}
+	case "payment_provider_configs.sql.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "payment_provider_configs.sql.go"),
+		}
+	case "payment_configs.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "payment_configs.go"),
+		}
 	// External reconciliation (feature #147)
 	case "0041_reconciliation_reports.sql":
 		candidates = []string{
