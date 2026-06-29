@@ -16416,3 +16416,16 @@ Note: Backend handler logic for the new fields (validating IANA tz via
   remains a follow-up Wave V ticket. The DB columns are present from
   #257 (migration 0050) and the OpenAPI contract from #258.
 Marked #259 passing. Backlog: 258/301.
+
+=== Session 2026-06-29 (feature #260) ===
+Feature #260 (A-1: Endpoint audit CSV) PASSED.
+Created 09_autoforge/openapi_endpoint_audit.csv with 183 route rows (header + 183 routes).
+Walked apps/backend/internal/platform/httpserver/*.go (mount_*.go + bil24_compat.go + server.go) and cross-referenced apps/backend/openapi/openapi.yaml.
+Gaps found vs openapi.yaml (worklist for A-2..A-N):
+- POST /compat/bil24/json (bil24_compat.go): path missing in openapi
+- DELETE /v1/admin/organizations/{id}: method missing for path in openapi
+- GET /v1/admin/users: method missing for path in openapi
+- GET /v1/admin/impersonate: method missing for path in openapi
+- GET /v1/auth/refresh: method missing for path in openapi
+- GET /v1/auth/password-reset/confirm: method missing for path in openapi
+Marked #260 passing.
