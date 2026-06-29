@@ -16933,3 +16933,76 @@ Verification:
   npm --prefix apps/admin-web run type-check            OK (silent).
 
 Marked #268 passing. Backlog: 268/301.
+
+=== 2026-06-30: Feature #269 - A-8 Document pricing endpoints in OpenAPI ===
+apps/backend/openapi/openapi.yaml:
+  - Added 3 component schemas: PricingBreakdownItem (itemized
+    ComputePricing result with pipeline-invariant docstring),
+    QuoteResponseItem (PricingBreakdownItem allOf + tier_id/session_id
+    UUIDs + nullable promo_code), QuoteResponseEnvelope (wraps
+    QuoteResponseItem under "quote" key matching handler output).
+  - Rewrote the existing GET /v1/checkout/quote entry (previously a
+    placeholder added under #265): operationId getCheckoutQuote now
+    references QuoteResponseEnvelope on 200, documents every error code
+    surfaced by handleQuote in pricing_calculator.go
+    (pricing.missing_params, pricing.invalid_tier_id,
+    pricing.invalid_session_id, pricing.invalid_org_id,
+    pricing.invalid_quantity, pricing.chosen_price_required,
+    pricing.invalid_chosen_price, pricing.chosen_price_below_min,
+    pricing.chosen_price_above_max, pricing.tier_not_found,
+    pricing.tier_lookup_failed, pricing.promo_lookup_failed,
+    pricing.unknown_pricing_mode, plus the promo state-machine 422
+    codes and dependency.database_unavailable). Added the pricing.quote
+    permission to the description. Added 4 response examples
+    (quoteFixedTier, quoteFixedTierWithPromo, quotePwywTier,
+    quoteFreeTier) all numerically consistent with the
+    (subtotal-discount)+platform_fee+provider_fee+tax==total invariant.
+
+apps/backend/internal/platform/httpserver/openapi_pricing_269_test.go (NEW):
+  8 contract tests pinning the spec for #269:
+    - TestOpenAPI269_PathsPresent (/v1/checkout/quote)
+    - TestOpenAPI269_OperationIDsPresent (getCheckoutQuote)
+    - TestOpenAPI269_SchemasPresent (PricingBreakdownItem,
+      QuoteResponseItem, QuoteResponseEnvelope)
+    - TestOpenAPI269_PermissionsDocumented (pricing.quote)
+    - TestOpenAPI269_BearerAuthAndTags
+    - TestOpenAPI269_ErrorEnvelopeUsed
+    - TestOpenAPI269_PricingErrorCodesDocumented (14 codes)
+    - TestOpenAPI269_SpecExamplesValidate -- the "minimal contract test"
+      called out by step 3. Loads openapi.yaml via gopkg.in/yaml.v3,
+      walks the 200-response examples (extracted from
+      responses.200.content.application/json.examples), and asserts:
+      envelope has the "quote" key; all 12 required fields present;
+      tier_id/session_id UUID-shaped; currency 3-letter uppercase;
+      promo_code is null or non-empty string; numeric fields are
+      non-negative integers; quantity >= 1;
+      subtotal == unit_price * quantity (first step of ComputePricing);
+      discount <= subtotal (ComputePricing cap);
+      (subtotal-discount)+platform_fee+provider_fee+tax == total
+      (full pipeline invariant). Runs in CI without docker / postgres /
+      oapi-codegen.
+  Reuses mustOperation + findOpenAPISpecPath helpers from
+  openapi_events_263_test.go / openapi_drift_test.go and rolls its own
+  response-side example walker (extractExamples helper is requestBody-
+  only because all prior A-series features documented POST/PATCH bodies).
+
+apps/backend/internal/adapters/http/openapi/types_gen.go:
+  Regenerated via oapi-codegen v2.4.1 (golang:1.24 docker). New types
+  added: PricingBreakdownItem, QuoteResponseItem, QuoteResponseEnvelope,
+  GetCheckoutQuoteParams. Known OpenAPI 3.1 "not yet supported by
+  oapi-codegen" warning unchanged.
+apps/backend/openapi/clients/ts/index.d.ts:
+  Regenerated via scripts/gen-ts-client.mjs (openapi-typescript 7.13.0).
+  PricingBreakdownItem / QuoteResponseItem / QuoteResponseEnvelope /
+  getCheckoutQuote type names all present.
+
+Verification:
+  docker golang:1.24 go test ./internal/platform/httpserver/
+      -run TestOpenAPI269 -count=1 -v                  PASS (8/8)
+  docker golang:1.24 go build ./...                    OK
+  docker golang:1.24 go test ./internal/platform/httpserver/
+      -run 'TestOpenAPI263|TestOpenAPI264|TestOpenAPI265|TestOpenAPI266|TestOpenAPI268|TestOpenAPI269|TestOpenAPIDriftCheck_SpecCoversAllCodeRoutes'
+      -count=1                                          PASS
+  npm --prefix apps/admin-web run type-check           OK (silent).
+
+Marked #269 passing. Backlog: 269/301.

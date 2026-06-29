@@ -1715,19 +1715,30 @@ export interface paths {
         /**
          * Compute an itemized pricing quote for a checkout selection
          * @description Returns an itemized pricing breakdown for a ticket-tier selection
-         *     (feature #129). Looks up the tier, resolves the unit price from
-         *     `pricing_mode` (`free`, `fixed`, `pwyw`), optionally validates and
-         *     applies a promo code, then runs the deterministic pricing pipeline.
-         *     All monetary fields are integer cents.
+         *     (feature #129). The handler:
          *
-         *     Documented under feature #265 to keep the OpenAPI spec drift-free
-         *     when `TierQueries` is wired in the drift test (the quote route is
-         *     gated on `tierQueries != nil` in `mount_commerce.go`). The handler
-         *     lives in `pricing_calculator.go`; this entry is intentionally
-         *     minimal and may be expanded by a dedicated A-series feature for
-         *     the pricing/quote group.
+         *       1. Looks up the ticket tier (returns 404 `pricing.tier_not_found`
+         *          if missing).
+         *       2. Resolves the unit price from the tier's `pricing_mode`:
+         *          - `free`  → `unit_price = 0`.
+         *          - `fixed` → `unit_price = tier.price_amount`.
+         *          - `pwyw`  → `unit_price = chosen_price` (required, must lie
+         *            within `[pwyw_min, pwyw_max]` when configured).
+         *       3. Optionally looks up and validates the promo code against the
+         *          subtotal (`subtotal = unit_price * quantity`) using
+         *          `validatePromoCode`. Failed validations short-circuit with
+         *          422 + the relevant `promo.*` code.
+         *       4. Runs the deterministic pricing pipeline (`ComputePricing`)
+         *          with the server's `PricingRules` (`PlatformFeeRate`,
+         *          `ProviderFeeRate`, `TaxRate`, all in basis points).
+         *       5. Emits a structured audit log entry (`pricing: quote computed`)
+         *          and returns the itemized quote envelope.
          *
-         *     Requires JWT + the `pricing.quote` permission.
+         *     All monetary fields are integer cents. The pipeline guarantees
+         *     `(subtotal - discount) + platform_fee + provider_fee + tax == total`.
+         *     Permission: `pricing.quote` (requires JWT).
+         *
+         *     Documented under feature #269 (Wave A-8: pricing endpoint group).
          */
         get: operations["getCheckoutQuote"];
         put?: never;
@@ -5370,6 +5381,105 @@ export interface components {
              */
             final_amount: number;
             promo_code: components["schemas"]["PromoCodeItem"];
+        };
+        /**
+         * @description Itemized result of running the deterministic pricing pipeline
+         *     (`ComputePricing`, feature #129). Every monetary field is
+         *     expressed in the smallest currency unit (integer cents/agorot).
+         *
+         *     Invariant enforced by `ComputePricing`:
+         *
+         *         (subtotal - discount) + platform_fee + provider_fee + tax == total
+         */
+        PricingBreakdownItem: {
+            /**
+             * Format: int64
+             * @description Resolved per-ticket price in minor units. For `free` tiers
+             *     this is 0; for `fixed` tiers it equals the tier's
+             *     `price_amount`; for `pwyw` tiers it equals the buyer's
+             *     `chosen_price` query parameter.
+             */
+            unit_price: number;
+            /**
+             * Format: int32
+             * @description Number of tickets included in the quote.
+             */
+            quantity: number;
+            /**
+             * Format: int64
+             * @description `unit_price * quantity` before any discount or fees.
+             */
+            subtotal: number;
+            /**
+             * Format: int64
+             * @description Absolute promo-code discount applied to the subtotal. The
+             *     handler caps this so `discount <= subtotal` and never goes
+             *     negative.
+             */
+            discount: number;
+            /**
+             * Format: int64
+             * @description Platform service charge computed as
+             *     `(subtotal - discount) * PlatformFeeRate / 10_000` using
+             *     integer (floor) arithmetic. Rate is configured in
+             *     `PricingRules` on the server.
+             */
+            platform_fee: number;
+            /**
+             * Format: int64
+             * @description Payment-provider processing fee computed as
+             *     `(subtotal - discount) * ProviderFeeRate / 10_000` using
+             *     integer (floor) arithmetic.
+             */
+            provider_fee: number;
+            /**
+             * Format: int64
+             * @description Sales/VAT tax computed as
+             *     `(subtotal - discount) * TaxRate / 10_000` using integer
+             *     (floor) arithmetic. Zero on tax-exempt deployments.
+             */
+            tax: number;
+            /**
+             * Format: int64
+             * @description All-in amount the customer pays:
+             *     `(subtotal - discount) + platform_fee + provider_fee + tax`.
+             */
+            total: number;
+            /** @description ISO 4217 currency code (e.g. `USD`, `ILS`, `EUR`). */
+            currency: string;
+        };
+        /**
+         * @description Quote response wrapper. Composes a `PricingBreakdownItem` with
+         *     the checkout context (`tier_id`, `session_id`) and the optional
+         *     `promo_code` echoed from the request. Returned under the
+         *     top-level `quote` key by `GET /v1/checkout/quote`.
+         */
+        QuoteResponseItem: WithRequired<components["schemas"]["PricingBreakdownItem"], "unit_price" | "quantity" | "subtotal" | "discount" | "platform_fee" | "provider_fee" | "tax" | "total" | "currency"> & {
+            /**
+             * Format: uuid
+             * @description UUID of the ticket tier the quote is for.
+             */
+            tier_id: string;
+            /**
+             * Format: uuid
+             * @description UUID of the session that owns the tier.
+             */
+            session_id: string;
+            /**
+             * @description Echoed promo code when one was applied and validated;
+             *     `null` when no promo code was supplied or it failed
+             *     validation.
+             */
+            promo_code: string | null;
+        };
+        /**
+         * @description Top-level response envelope for `GET /v1/checkout/quote`.
+         *     Wraps a `QuoteResponseItem` under the `quote` key (matches the
+         *     legacy single-resource envelope convention used elsewhere in
+         *     this API for read-only resource fetches).
+         */
+        QuoteResponseEnvelope: {
+            quote: components["schemas"]["QuoteResponseItem"];
         };
     };
     responses: never;
@@ -11859,11 +11969,20 @@ export interface operations {
                 quantity: number;
                 /** @description UUID of the organization (for promo-code lookup). */
                 org_id: string;
-                /** @description Optional promo code string to apply. */
+                /**
+                 * @description Optional promo code string to apply. When present the handler
+                 *     performs the full `validatePromoCode` state-machine check;
+                 *     failures surface as 422 with a `promo.*` error code
+                 *     (`promo.not_found`, `promo.not_active`, `promo.not_yet_valid`,
+                 *     `promo.expired`, `promo.invalid_order_amount`,
+                 *     `promo.exhausted`, `promo.per_customer_limit`).
+                 */
                 promo_code?: string;
                 /**
-                 * @description Optional buyer-chosen price in cents. Only meaningful for
-                 *     `pricing_mode = pwyw` tiers.
+                 * @description Buyer-chosen price in cents. Required and validated only for
+                 *     tiers with `pricing_mode = pwyw`; ignored otherwise. Must be
+                 *     a non-negative integer and (when configured on the tier)
+                 *     within `[pwyw_min, pwyw_max]`.
                  */
                 chosen_price?: number;
             };
@@ -11879,42 +11998,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        /**
-                         * Format: int64
-                         * @description Per-ticket price in cents.
-                         */
-                        unit_price: number;
-                        /** Format: int32 */
-                        quantity: number;
-                        /** Format: int64 */
-                        subtotal: number;
-                        /** Format: int64 */
-                        discount: number;
-                        /** Format: int64 */
-                        platform_fee: number;
-                        /** Format: int64 */
-                        provider_fee: number;
-                        /** Format: int64 */
-                        tax: number;
-                        /** Format: int64 */
-                        total: number;
-                        /** @description ISO 4217 currency code. */
-                        currency: string;
-                        /** Format: uuid */
-                        tier_id: string;
-                        /** Format: uuid */
-                        session_id: string;
-                        /** @description Echoed when a promo code was applied; null otherwise. */
-                        promo_code?: string | null;
-                    };
+                    "application/json": components["schemas"]["QuoteResponseEnvelope"];
                 };
             };
             /**
              * @description Missing or invalid query parameters. Possible error codes:
              *     `pricing.missing_params`, `pricing.invalid_tier_id`,
              *     `pricing.invalid_session_id`, `pricing.invalid_org_id`,
-             *     `pricing.invalid_quantity`.
+             *     `pricing.invalid_quantity`, `pricing.chosen_price_required`,
+             *     `pricing.invalid_chosen_price`, `pricing.chosen_price_below_min`,
+             *     `pricing.chosen_price_above_max`.
              */
             400: {
                 headers: {
@@ -11951,7 +12044,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Internal server error (`pricing.tier_lookup_failed`). */
+            /**
+             * @description Promo code rejected by the validate-promo state machine.
+             *     Possible error codes: `promo.not_found`, `promo.not_active`,
+             *     `promo.not_yet_valid`, `promo.expired`,
+             *     `promo.invalid_order_amount`, `promo.exhausted`,
+             *     `promo.per_customer_limit`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error. Possible codes:
+             *     `pricing.tier_lookup_failed`, `pricing.promo_lookup_failed`,
+             *     `pricing.unknown_pricing_mode`.
+             */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -11960,7 +12072,10 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Database pool or tier queries unavailable. */
+            /**
+             * @description Database pool or tier queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -12855,6 +12970,9 @@ export interface operations {
         };
     };
 }
+type WithRequired<T, K extends keyof T> = T & {
+    [P in K]-?: T[P];
+};
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Named type aliases — shorthand for components["schemas"]["..."]

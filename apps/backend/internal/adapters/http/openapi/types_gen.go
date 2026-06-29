@@ -2029,6 +2029,55 @@ type PaymentProviderConfigItemMode string
 // populated; otherwise `missing_required_fields`.
 type PaymentProviderConfigItemStatus string
 
+// PricingBreakdownItem Itemized result of running the deterministic pricing pipeline
+// (`ComputePricing`, feature #129). Every monetary field is
+// expressed in the smallest currency unit (integer cents/agorot).
+//
+// Invariant enforced by `ComputePricing`:
+//
+//	(subtotal - discount) + platform_fee + provider_fee + tax == total
+type PricingBreakdownItem struct {
+	// Currency ISO 4217 currency code (e.g. `USD`, `ILS`, `EUR`).
+	Currency string `json:"currency"`
+
+	// Discount Absolute promo-code discount applied to the subtotal. The
+	// handler caps this so `discount <= subtotal` and never goes
+	// negative.
+	Discount int64 `json:"discount"`
+
+	// PlatformFee Platform service charge computed as
+	// `(subtotal - discount) * PlatformFeeRate / 10_000` using
+	// integer (floor) arithmetic. Rate is configured in
+	// `PricingRules` on the server.
+	PlatformFee int64 `json:"platform_fee"`
+
+	// ProviderFee Payment-provider processing fee computed as
+	// `(subtotal - discount) * ProviderFeeRate / 10_000` using
+	// integer (floor) arithmetic.
+	ProviderFee int64 `json:"provider_fee"`
+
+	// Quantity Number of tickets included in the quote.
+	Quantity int32 `json:"quantity"`
+
+	// Subtotal `unit_price * quantity` before any discount or fees.
+	Subtotal int64 `json:"subtotal"`
+
+	// Tax Sales/VAT tax computed as
+	// `(subtotal - discount) * TaxRate / 10_000` using integer
+	// (floor) arithmetic. Zero on tax-exempt deployments.
+	Tax int64 `json:"tax"`
+
+	// Total All-in amount the customer pays:
+	// `(subtotal - discount) + platform_fee + provider_fee + tax`.
+	Total int64 `json:"total"`
+
+	// UnitPrice Resolved per-ticket price in minor units. For `free` tiers
+	// this is 0; for `fixed` tiers it equals the tier's
+	// `price_amount`; for `pwyw` tiers it equals the buyer's
+	// `chosen_price` query parameter.
+	UnitPrice int64 `json:"unit_price"`
+}
+
 // PromoCodeDeleteResponse Envelope returned by
 // `DELETE /v1/organizations/{org_id}/promo-codes/{id}`. The
 // delete is a soft-delete (sets `deleted_at`); the wrapped row
@@ -2135,6 +2184,72 @@ type PromoCodeItemStatus string
 // promo codes.
 type PromoCodeListResponse struct {
 	PromoCodes []PromoCodeItem `json:"promo_codes"`
+}
+
+// QuoteResponseEnvelope Top-level response envelope for `GET /v1/checkout/quote`.
+// Wraps a `QuoteResponseItem` under the `quote` key (matches the
+// legacy single-resource envelope convention used elsewhere in
+// this API for read-only resource fetches).
+type QuoteResponseEnvelope struct {
+	// Quote Quote response wrapper. Composes a `PricingBreakdownItem` with
+	// the checkout context (`tier_id`, `session_id`) and the optional
+	// `promo_code` echoed from the request. Returned under the
+	// top-level `quote` key by `GET /v1/checkout/quote`.
+	Quote QuoteResponseItem `json:"quote"`
+}
+
+// QuoteResponseItem defines model for QuoteResponseItem.
+type QuoteResponseItem struct {
+	// Currency ISO 4217 currency code (e.g. `USD`, `ILS`, `EUR`).
+	Currency string `json:"currency"`
+
+	// Discount Absolute promo-code discount applied to the subtotal. The
+	// handler caps this so `discount <= subtotal` and never goes
+	// negative.
+	Discount int64 `json:"discount"`
+
+	// PlatformFee Platform service charge computed as
+	// `(subtotal - discount) * PlatformFeeRate / 10_000` using
+	// integer (floor) arithmetic. Rate is configured in
+	// `PricingRules` on the server.
+	PlatformFee int64 `json:"platform_fee"`
+
+	// PromoCode Echoed promo code when one was applied and validated;
+	// `null` when no promo code was supplied or it failed
+	// validation.
+	PromoCode *string `json:"promo_code"`
+
+	// ProviderFee Payment-provider processing fee computed as
+	// `(subtotal - discount) * ProviderFeeRate / 10_000` using
+	// integer (floor) arithmetic.
+	ProviderFee int64 `json:"provider_fee"`
+
+	// Quantity Number of tickets included in the quote.
+	Quantity int32 `json:"quantity"`
+
+	// SessionId UUID of the session that owns the tier.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// Subtotal `unit_price * quantity` before any discount or fees.
+	Subtotal int64 `json:"subtotal"`
+
+	// Tax Sales/VAT tax computed as
+	// `(subtotal - discount) * TaxRate / 10_000` using integer
+	// (floor) arithmetic. Zero on tax-exempt deployments.
+	Tax int64 `json:"tax"`
+
+	// TierId UUID of the ticket tier the quote is for.
+	TierId openapi_types.UUID `json:"tier_id"`
+
+	// Total All-in amount the customer pays:
+	// `(subtotal - discount) + platform_fee + provider_fee + tax`.
+	Total int64 `json:"total"`
+
+	// UnitPrice Resolved per-ticket price in minor units. For `free` tiers
+	// this is 0; for `fixed` tiers it equals the tier's
+	// `price_amount`; for `pwyw` tiers it equals the buyer's
+	// `chosen_price` query parameter.
+	UnitPrice int64 `json:"unit_price"`
 }
 
 // ReadyzResponse defines model for ReadyzResponse.
@@ -3095,11 +3210,18 @@ type GetCheckoutQuoteParams struct {
 	// OrgId UUID of the organization (for promo-code lookup).
 	OrgId openapi_types.UUID `form:"org_id" json:"org_id"`
 
-	// PromoCode Optional promo code string to apply.
+	// PromoCode Optional promo code string to apply. When present the handler
+	// performs the full `validatePromoCode` state-machine check;
+	// failures surface as 422 with a `promo.*` error code
+	// (`promo.not_found`, `promo.not_active`, `promo.not_yet_valid`,
+	// `promo.expired`, `promo.invalid_order_amount`,
+	// `promo.exhausted`, `promo.per_customer_limit`).
 	PromoCode *string `form:"promo_code,omitempty" json:"promo_code,omitempty"`
 
-	// ChosenPrice Optional buyer-chosen price in cents. Only meaningful for
-	// `pricing_mode = pwyw` tiers.
+	// ChosenPrice Buyer-chosen price in cents. Required and validated only for
+	// tiers with `pricing_mode = pwyw`; ignored otherwise. Must be
+	// a non-negative integer and (when configured on the tier)
+	// within `[pwyw_min, pwyw_max]`.
 	ChosenPrice *int64 `form:"chosen_price,omitempty" json:"chosen_price,omitempty"`
 }
 
