@@ -438,6 +438,18 @@ AutoForge backlog of 80+ scaffold features.
 
 ---
 
+## Operator and superadmin documentation
+
+* `docs/ru/superadmin_guide.md` — пошаговое руководство суперадминистратора
+  платформы Arena (RU). Описывает все возможности admin-панели: операторские
+  сети, организации, площадки, мероприятия, продажи, платежи, сканеры,
+  отчётность, webhook-интеграции, аудит и типовые сценарии. Документ
+  обязан обновляться при изменениях superadmin-функциональности
+  (см. чек в шаблоне PR).
+* `docs/rbac/legacy_bil24_role_mapping.md` — маппинг новых ролей на legacy Bil24.
+
+---
+
 ## Reference architecture documents
 
 Detailed architectural rationale lives in `08_architecture/`:
