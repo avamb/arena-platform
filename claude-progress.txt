@@ -16090,3 +16090,30 @@ docs/ru/superadmin_guide.md updates when a PR touches platform_superadmin
 functionality.
 No source code changes (documentation-only feature).
 Marked #250 passing. Backlog: 250/250 (100%).
+
+=== 2026-06-29: Feature #251 — RU localization scaffolding for SuperAdmin UI ===
+- New module apps/admin-web/src/lib/i18n/ with catalog.ts (RU+EN strings)
+  and I18nContext.tsx (provider, useTranslation hook, localStorage
+  persistence under arena.admin.locale, default ru). Zero new deps.
+- LocaleSwitcher component renders RU/EN <select> in topbar.
+- AppLayout switched to t() for: brand, sign-in/out, no-roles fallback,
+  dev-suffix, nav aria-label, empty-nav state, scope-active/none text,
+  nav labels via labelKey -> nav.<id> fallback. Entity names and
+  technical identifiers (Organization/Venue/role enums/slug/code) kept
+  English per spec — only descriptive prose translated.
+- navConfig.NavEntry gained optional labelKey; AppLayout falls back to
+  entry.label when the i18n key is missing so existing nav tests stay
+  green.
+- Tests: +44 (catalog parity, fallback chain, interpolation, isLocaleCode
+  type guard, entity-name policy, provider rendering ru/en, storage
+  helpers round-trip).
+- Verification:
+    npm --prefix apps/admin-web run type-check  OK
+    npm --prefix apps/admin-web test -- --run   OK (429/429, +44)
+    npm --prefix apps/admin-web run build       OK (591.89 kB / 163.10 kB gz)
+- Note: this delivers the i18n infrastructure + shell-level RU defaults.
+  Per-route audit (organizations/networks/venues/channels/payments
+  forms, validation messages, toasts) is partially keyed in catalog.ts
+  (action.*/empty.*/error.*/reason.*) and ready for follow-up tickets to
+  swap remaining hardcoded strings.
+Marked #251 passing.

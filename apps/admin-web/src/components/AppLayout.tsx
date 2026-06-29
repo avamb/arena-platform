@@ -5,9 +5,11 @@ import { DevDiagnosticsPanel } from "@/components/DevDiagnosticsPanel";
 import { ScopeSelector } from "@/components/ScopeSelector";
 import { ActiveReasonBadge } from "@/components/ActiveReasonBadge";
 import { ReasonPromptModal } from "@/components/ReasonPromptModal";
+import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 import { config } from "@/lib/config";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useScope } from "@/lib/auth/ScopeContext";
+import { useTranslation } from "@/lib/i18n/I18nContext";
 import {
   NAV_ENTRIES,
   visibleNavEntries,
@@ -30,33 +32,34 @@ import {
  */
 export function AppLayout() {
   const auth = useAuth();
+  const { t } = useTranslation();
   const authed = auth.status === "authenticated";
   return (
     <div style={shellStyle}>
-      <aside style={sidebarStyle} aria-label="Primary navigation">
+      <aside style={sidebarStyle} aria-label={t("shell.nav.aria")}>
         <div style={brandStyle}>
           <span style={brandMarkStyle} aria-hidden="true" />
-          <span>Arena Admin</span>
+          <span>{t("shell.brand")}</span>
         </div>
         {authed ? <AuthenticatedSidebarNav /> : <UnauthenticatedSidebarNav />}
         {authed && auth.me !== null ? (
           <div style={userBlockStyle}>
             <div style={userIdStyle}>{auth.me.user.id}</div>
             <div style={userRolesStyle}>
-              {auth.me.roles.join(", ") || "(no roles)"}
+              {auth.me.roles.join(", ") || t("shell.noRoles")}
             </div>
             <button
               type="button"
               onClick={() => void auth.logout()}
               style={logoutBtnStyle}
             >
-              Sign out
+              {t("shell.signOut")}
             </button>
           </div>
         ) : null}
         {config.isDevelopment ? <DevDiagnosticsPanel /> : null}
         <div style={sidebarFooterStyle}>
-          v0.1.0 {config.isDevelopment ? "· dev" : null}
+          v0.1.0 {config.isDevelopment ? `· ${t("shell.devSuffix")}` : null}
         </div>
       </aside>
       <main style={mainStyle}>
@@ -73,6 +76,7 @@ export function AppLayout() {
 function AuthenticatedSidebarNav() {
   const { permissions } = useAuth();
   const { activeScopeKind } = useScope();
+  const { t } = useTranslation();
   const entries = visibleNavEntries(NAV_ENTRIES, permissions, activeScopeKind);
   return (
     <nav style={navStyle} data-testid="primary-nav">
@@ -81,9 +85,7 @@ function AuthenticatedSidebarNav() {
       ))}
       {entries.length === 0 ? (
         <p style={emptyNavStyle} data-testid="nav-empty" role="status">
-          No surfaces available for your current permissions and scope. Ask a
-          platform administrator to grant access, or switch to a different
-          scope.
+          {t("shell.nav.empty")}
         </p>
       ) : null}
     </nav>
@@ -91,6 +93,7 @@ function AuthenticatedSidebarNav() {
 }
 
 function UnauthenticatedSidebarNav() {
+  const { t } = useTranslation();
   return (
     <nav style={navStyle} data-testid="primary-nav">
       <Link
@@ -99,13 +102,19 @@ function UnauthenticatedSidebarNav() {
         activeProps={{ style: navLinkActiveStyle }}
         data-testid="nav-login"
       >
-        Sign in
+        {t("shell.signIn")}
       </Link>
     </nav>
   );
 }
 
 function NavItem({ entry }: { entry: NavEntry }) {
+  const { t, locale } = useTranslation();
+  // Resolve label via i18n: explicit labelKey > nav.<id> convention > raw label.
+  const key = entry.labelKey ?? `nav.${entry.id}`;
+  const translated = t(key);
+  // If t() falls back to the raw key (missing translation), use entry.label.
+  const label = translated === key ? entry.label : translated;
   // TanStack Router's typed Link narrows `to` based on the inferred
   // current-route context; rendering from a NAV_ENTRIES table requires
   // a string-cast. Runtime safety: each NAV_ENTRIES.to is a path
@@ -118,24 +127,28 @@ function NavItem({ entry }: { entry: NavEntry }) {
       activeProps={{ style: navLinkActiveStyle }}
       data-testid={`nav-${entry.id}`}
       data-nav-id={entry.id}
+      data-nav-locale={locale}
       title={entry.purpose}
     >
-      {entry.label}
+      {label}
     </Link>
   );
 }
 
 function AuthenticatedTopBar() {
   const { activeScope } = useScope();
+  const { t } = useTranslation();
   return (
     <header style={topBarStyle} data-testid="shell-topbar">
       <ScopeSelector />
       <ActiveReasonBadge />
       <span style={topBarMetaStyle}>
         {activeScope === null
-          ? "No scope active — surfaces requiring a scope are hidden."
-          : `Active scope: ${activeScope.label}`}
+          ? t("shell.scopeNone")
+          : t("shell.scopeActive", { label: activeScope.label })}
       </span>
+      <span style={topBarSpacerStyle} />
+      <LocaleSwitcher />
     </header>
   );
 }
@@ -265,4 +278,8 @@ const topBarStyle: CSSProperties = {
 const topBarMetaStyle: CSSProperties = {
   fontSize: 12,
   color: "#64748b",
+};
+
+const topBarSpacerStyle: CSSProperties = {
+  flex: 1,
 };

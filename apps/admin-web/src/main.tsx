@@ -6,6 +6,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider } from "@/lib/auth/AuthProvider";
 import { ScopeProvider } from "@/lib/auth/ScopeContext";
 import { ReasonProvider } from "@/lib/auth/ReasonContext";
+import { I18nProvider } from "@/lib/i18n/I18nContext";
 import { queryClient } from "@/lib/queryClient";
 import { router } from "@/router";
 import "@/styles.css";
@@ -18,15 +19,17 @@ if (rootEl === null) {
 createRoot(rootEl).render(
   <StrictMode>
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <ScopeProvider>
-            <ReasonProvider>
-              <RouterProvider router={router} />
-            </ReasonProvider>
-          </ScopeProvider>
-        </AuthProvider>
-      </QueryClientProvider>
+      <I18nProvider>
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>
+            <ScopeProvider>
+              <ReasonProvider>
+                <RouterProvider router={router} />
+              </ReasonProvider>
+            </ScopeProvider>
+          </AuthProvider>
+        </QueryClientProvider>
+      </I18nProvider>
     </ErrorBoundary>
   </StrictMode>,
 );

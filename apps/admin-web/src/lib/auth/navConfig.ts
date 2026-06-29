@@ -68,8 +68,18 @@ export type PermissionRule =
 export interface NavEntry {
   /** Stable identifier used by tests and keyed renders. */
   readonly id: string;
-  /** Operator-visible label. Dense, factual; no marketing tone. */
+  /**
+   * Operator-visible label (fallback). Dense, factual; no marketing tone.
+   * In the runtime UI, the i18n key `nav.<id>` is preferred when the
+   * I18nProvider is mounted (Feature #251).
+   */
   readonly label: string;
+  /**
+   * Optional i18n catalog key for the label. When set, the AppLayout
+   * resolves the label via `t(labelKey)` and falls back to `label` if
+   * the key is missing. Defaults to `nav.<id>` if omitted.
+   */
+  readonly labelKey?: string;
   /** TanStack Router path. MUST also exist in the route tree. */
   readonly to: NavRoutePath;
   /** Required permissions. */
