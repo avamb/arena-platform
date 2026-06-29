@@ -1526,6 +1526,111 @@ export interface paths {
         patch: operations["updateSession"];
         trace?: never;
     };
+    "/v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all active ticket tiers for a session
+         * @description Returns all non-deleted ticket tiers belonging to the given session,
+         *     ordered by `sort_order`. Requires JWT + the `tier.read` permission.
+         */
+        get: operations["listTicketTiers"];
+        put?: never;
+        /**
+         * Create a ticket tier (pricing option) under a session
+         * @description Creates a new ticket tier under the given session. The owning
+         *     organization, event, and session are taken from the path; the body
+         *     MUST NOT repeat them. `name` and `pricing_mode` are required.
+         *     Pricing-mode invariants:
+         *
+         *       free  — `price_amount` is forced to 0.
+         *       fixed — `price_amount` must be > 0 (cents).
+         *       pwyw  — when both `pwyw_min` and `pwyw_max` are provided,
+         *               `pwyw_min <= pwyw_max`.
+         *
+         *     `currency` defaults to `USD` when omitted. Requires JWT + the
+         *     `tier.create` permission.
+         */
+        post: operations["createTicketTier"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fetch a single ticket tier by ID
+         * @description Returns one ticket tier by ID, scoped to the parent session.
+         *     Requires JWT + the `tier.read` permission.
+         */
+        get: operations["getTicketTier"];
+        put?: never;
+        post?: never;
+        /**
+         * Soft-delete a ticket tier
+         * @description Soft-deletes a ticket tier (sets `deleted_at = now()`) and writes a
+         *     `v1.tier.delete` audit event inside the same transaction. Requires
+         *     JWT + the `tier.delete` permission.
+         */
+        delete: operations["deleteTicketTier"];
+        options?: never;
+        head?: never;
+        /**
+         * Partially update a ticket tier
+         * @description Applies a partial update to a ticket tier. Omitted / empty fields
+         *     leave existing values unchanged. The effective combination of
+         *     `pricing_mode`, `price_amount`, `pwyw_min`, and `pwyw_max` is
+         *     re-validated against the pricing-mode invariants documented on
+         *     `CreateTicketTierRequest`. Requires JWT + the `tier.update`
+         *     permission.
+         */
+        patch: operations["updateTicketTier"];
+        trace?: never;
+    };
+    "/v1/checkout/quote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compute an itemized pricing quote for a checkout selection
+         * @description Returns an itemized pricing breakdown for a ticket-tier selection
+         *     (feature #129). Looks up the tier, resolves the unit price from
+         *     `pricing_mode` (`free`, `fixed`, `pwyw`), optionally validates and
+         *     applies a promo code, then runs the deterministic pricing pipeline.
+         *     All monetary fields are integer cents.
+         *
+         *     Documented under feature #265 to keep the OpenAPI spec drift-free
+         *     when `TierQueries` is wired in the drift test (the quote route is
+         *     gated on `tierQueries != nil` in `mount_commerce.go`). The handler
+         *     lives in `pricing_calculator.go`; this entry is intentionally
+         *     minimal and may be expanded by a dedicated A-series feature for
+         *     the pricing/quote group.
+         *
+         *     Requires JWT + the `pricing.quote` permission.
+         */
+        get: operations["getCheckoutQuote"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4241,6 +4346,241 @@ export interface components {
         /** @description Soft-delete response envelope. */
         SessionDeleteResponse: {
             session: components["schemas"]["SessionItem"];
+            /** @example true */
+            deleted: boolean;
+        };
+        /**
+         * @description A single pricing tier (ticket type) within a Session. Three pricing
+         *     modes are supported:
+         *
+         *       free  — no charge; `price_amount` is forced to 0.
+         *       fixed — set price; `price_amount` must be > 0 (cents).
+         *       pwyw  — pay-what-you-want; optional `pwyw_min` / `pwyw_max` bounds
+         *               (cents). When both are present, `pwyw_min <= pwyw_max`.
+         *
+         *     `price_amount`, `pwyw_min`, and `pwyw_max` are stored in the smallest
+         *     currency unit (integer cents) for the tier's ISO 4217 `currency`.
+         */
+        TicketTierItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the ticket-tier row.
+             * @example 01929d0e-0e47-7000-8000-000000000701
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description FK to the owning session. Immutable after creation; the
+             *     owner-org check is enforced via the parent session row.
+             * @example 01929d0e-0e47-7000-8000-000000000501
+             */
+            session_id: string;
+            /**
+             * @description Human-readable tier name. Required; trimmed of whitespace.
+             * @example General Admission
+             */
+            name: string;
+            /**
+             * @description Pricing model for the tier. Drives validation of `price_amount`
+             *     and the optional `pwyw_min` / `pwyw_max` bounds.
+             * @example fixed
+             * @enum {string}
+             */
+            pricing_mode: "free" | "fixed" | "pwyw";
+            /**
+             * Format: int64
+             * @description Tier price in the smallest currency unit (cents). Forced to 0
+             *     for `pricing_mode = free`; must be > 0 for `pricing_mode = fixed`.
+             * @example 2500
+             */
+            price_amount: number;
+            /**
+             * @description ISO 4217 currency code. Defaults to `USD` when omitted on create.
+             * @example USD
+             */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Optional lower bound for `pricing_mode = pwyw` (cents). When
+             *     both `pwyw_min` and `pwyw_max` are present, `pwyw_min <= pwyw_max`.
+             * @example 500
+             */
+            pwyw_min?: number | null;
+            /**
+             * Format: int64
+             * @description Optional upper bound for `pricing_mode = pwyw` (cents).
+             * @example 10000
+             */
+            pwyw_max?: number | null;
+            /**
+             * Format: int32
+             * @description Optional per-tier capacity cap. When set, must be > 0. `null`
+             *     means "no tier-level cap" (only the session-level cap applies).
+             * @example 200
+             */
+            capacity?: number | null;
+            /**
+             * Format: date-time
+             * @description Optional sale-window start (RFC 3339, UTC). When both
+             *     `sale_window_start` and `sale_window_end` are present,
+             *     `sale_window_end` must be strictly after `sale_window_start`.
+             * @example 2026-07-01T00:00:00Z
+             */
+            sale_window_start?: string | null;
+            /**
+             * Format: date-time
+             * @description Optional sale-window end (RFC 3339, UTC).
+             * @example 2026-08-15T17:59:59Z
+             */
+            sale_window_end?: string | null;
+            /**
+             * Format: int32
+             * @description Display order; lower values render first.
+             * @example 0
+             */
+            sort_order: number;
+            /**
+             * Format: date-time
+             * @example 2026-06-01T00:00:00Z
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @example 2026-06-02T12:34:56Z
+             */
+            updated_at: string;
+        };
+        /**
+         * @description Create-time payload for POST
+         *     /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers.
+         *     The owning `org_id`, `event_id`, and `session_id` are taken from the
+         *     path; the body MUST NOT repeat them.
+         */
+        CreateTicketTierRequest: {
+            /**
+             * @description Tier name. Required, trimmed of whitespace.
+             * @example General Admission
+             */
+            name: string;
+            /**
+             * @description Pricing model. Required.
+             * @example fixed
+             * @enum {string}
+             */
+            pricing_mode: "free" | "fixed" | "pwyw";
+            /**
+             * Format: int64
+             * @description Tier price in cents. Required for `fixed`; forced to 0 for
+             *     `free`; ignored for `pwyw` (use `pwyw_min` / `pwyw_max`).
+             * @example 2500
+             */
+            price_amount?: number;
+            /**
+             * @description ISO 4217 currency code. Defaults to `USD` when omitted.
+             * @example USD
+             */
+            currency?: string;
+            /**
+             * Format: int64
+             * @description Lower bound for `pricing_mode = pwyw` (cents).
+             */
+            pwyw_min?: number | null;
+            /**
+             * Format: int64
+             * @description Upper bound for `pricing_mode = pwyw` (cents).
+             */
+            pwyw_max?: number | null;
+            /**
+             * Format: int32
+             * @description Optional per-tier capacity. When set, must be > 0.
+             */
+            capacity?: number | null;
+            /**
+             * Format: date-time
+             * @description Optional sale-window start (RFC 3339, UTC).
+             */
+            sale_window_start?: string | null;
+            /**
+             * Format: date-time
+             * @description Optional sale-window end. When both `sale_window_start` and
+             *     `sale_window_end` are set, `sale_window_end` must be strictly
+             *     after `sale_window_start`.
+             */
+            sale_window_end?: string | null;
+            /**
+             * Format: int32
+             * @description Display order; defaults to 0 when omitted.
+             */
+            sort_order?: number;
+        };
+        /**
+         * @description Partial update for PATCH
+         *     /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}.
+         *     All fields are optional; nil / empty fields leave the existing
+         *     value unchanged. When `pricing_mode`, `price_amount`, `pwyw_min`,
+         *     or `pwyw_max` change, the effective combination is re-validated
+         *     against the pricing-mode invariants documented on
+         *     `CreateTicketTierRequest`.
+         */
+        UpdateTicketTierRequest: {
+            /** @description New tier name. When provided, must be non-empty after trim. */
+            name?: string | null;
+            /**
+             * @description New pricing mode. Validated against price / pwyw bounds.
+             * @enum {string|null}
+             */
+            pricing_mode?: "free" | "fixed" | "pwyw" | null;
+            /**
+             * Format: int64
+             * @description New tier price in cents.
+             */
+            price_amount?: number | null;
+            /** @description New ISO 4217 currency code. */
+            currency?: string | null;
+            /**
+             * Format: int64
+             * @description New lower bound for `pricing_mode = pwyw` (cents).
+             */
+            pwyw_min?: number | null;
+            /**
+             * Format: int64
+             * @description New upper bound for `pricing_mode = pwyw` (cents).
+             */
+            pwyw_max?: number | null;
+            /**
+             * Format: int32
+             * @description New per-tier capacity. When provided, must be > 0.
+             */
+            capacity?: number | null;
+            /**
+             * Format: date-time
+             * @description New sale-window start (RFC 3339, UTC).
+             */
+            sale_window_start?: string | null;
+            /**
+             * Format: date-time
+             * @description New sale-window end. When both `sale_window_start` and
+             *     `sale_window_end` are set, `sale_window_end` must be strictly
+             *     after `sale_window_start`.
+             */
+            sale_window_end?: string | null;
+            /**
+             * Format: int32
+             * @description New display order.
+             */
+            sort_order?: number | null;
+        };
+        /** @description Single ticket-tier response envelope. */
+        TicketTierEnvelope: {
+            tier: components["schemas"]["TicketTierItem"];
+        };
+        /** @description List-ticket-tiers response envelope. */
+        TicketTierListResponse: {
+            tiers: components["schemas"]["TicketTierItem"][];
+        };
+        /** @description Soft-delete response envelope for a ticket tier. */
+        TicketTierDeleteResponse: {
+            tier: components["schemas"]["TicketTierItem"];
             /** @example true */
             deleted: boolean;
         };
@@ -9873,6 +10213,522 @@ export interface operations {
                 };
             };
             /** @description Database pool or session queries unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listTicketTiers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the parent event. */
+                event_id: string;
+                /** @description UUIDv7 of the parent session. */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of ticket tiers for the session. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketTierListResponse"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `tier.read` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`tier.list_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or tier queries unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createTicketTier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the parent event. */
+                event_id: string;
+                /** @description UUIDv7 of the parent session. */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTicketTierRequest"];
+            };
+        };
+        responses: {
+            /** @description Ticket tier created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketTierEnvelope"];
+                };
+            };
+            /**
+             * @description Body invalid or required fields missing. Possible error codes:
+             *     `tier.invalid_body`, `tier.empty_body`, `tier.invalid_json`,
+             *     `tier.missing_name`, `tier.missing_pricing_mode`,
+             *     `tier.invalid_pricing_mode`, `tier.invalid_capacity`,
+             *     `tier.invalid_sale_window_start`,
+             *     `tier.invalid_sale_window_end`, `tier.invalid_sale_window`,
+             *     and the pricing-mode validators from the catalog domain layer
+             *     (e.g. `tier.invalid_price_amount`, `tier.invalid_pwyw_bounds`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `tier.create` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`tier.insert_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or tier queries unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getTicketTier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the parent event. */
+                event_id: string;
+                /** @description UUIDv7 of the parent session. */
+                session_id: string;
+                /** @description UUIDv7 of the ticket tier. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ticket tier details. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketTierEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `tier.read` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket tier not found (`tier.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`tier.get_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or tier queries unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteTicketTier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the parent event. */
+                event_id: string;
+                /** @description UUIDv7 of the parent session. */
+                session_id: string;
+                /** @description UUIDv7 of the ticket tier. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ticket tier soft-deleted; audit event written. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketTierDeleteResponse"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `tier.delete` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket tier not found (`tier.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error. Possible codes:
+             *     `tier.delete_failed`, `tier.audit_failed`, `tier.commit_failed`.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or tier queries unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateTicketTier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the parent event. */
+                event_id: string;
+                /** @description UUIDv7 of the parent session. */
+                session_id: string;
+                /** @description UUIDv7 of the ticket tier. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTicketTierRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated ticket tier. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketTierEnvelope"];
+                };
+            };
+            /**
+             * @description Body invalid or fields out of range. Possible error codes:
+             *     `tier.invalid_body`, `tier.empty_body`, `tier.invalid_json`,
+             *     `tier.invalid_name`, `tier.invalid_pricing_mode`,
+             *     `tier.invalid_capacity`, `tier.invalid_sale_window_start`,
+             *     `tier.invalid_sale_window_end`, `tier.invalid_sale_window`,
+             *     and the pricing-mode validators from the catalog domain layer.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `tier.update` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket tier not found (`tier.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`tier.update_failed`, `tier.get_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or tier queries unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getCheckoutQuote: {
+        parameters: {
+            query: {
+                /** @description UUID of the ticket tier. */
+                tier_id: string;
+                /** @description UUID of the session that owns the tier. */
+                session_id: string;
+                /** @description Number of tickets (integer >= 1). */
+                quantity: number;
+                /** @description UUID of the organization (for promo-code lookup). */
+                org_id: string;
+                /** @description Optional promo code string to apply. */
+                promo_code?: string;
+                /**
+                 * @description Optional buyer-chosen price in cents. Only meaningful for
+                 *     `pricing_mode = pwyw` tiers.
+                 */
+                chosen_price?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Itemized pricing quote. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /**
+                         * Format: int64
+                         * @description Per-ticket price in cents.
+                         */
+                        unit_price: number;
+                        /** Format: int32 */
+                        quantity: number;
+                        /** Format: int64 */
+                        subtotal: number;
+                        /** Format: int64 */
+                        discount: number;
+                        /** Format: int64 */
+                        platform_fee: number;
+                        /** Format: int64 */
+                        provider_fee: number;
+                        /** Format: int64 */
+                        tax: number;
+                        /** Format: int64 */
+                        total: number;
+                        /** @description ISO 4217 currency code. */
+                        currency: string;
+                        /** Format: uuid */
+                        tier_id: string;
+                        /** Format: uuid */
+                        session_id: string;
+                        /** @description Echoed when a promo code was applied; null otherwise. */
+                        promo_code?: string | null;
+                    };
+                };
+            };
+            /**
+             * @description Missing or invalid query parameters. Possible error codes:
+             *     `pricing.missing_params`, `pricing.invalid_tier_id`,
+             *     `pricing.invalid_session_id`, `pricing.invalid_org_id`,
+             *     `pricing.invalid_quantity`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `pricing.quote` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket tier not found (`pricing.tier_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`pricing.tier_lookup_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or tier queries unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;

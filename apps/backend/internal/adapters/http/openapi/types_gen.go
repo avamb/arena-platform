@@ -87,6 +87,13 @@ const (
 	CreateSessionRequestStatusScheduled CreateSessionRequestStatus = "scheduled"
 )
 
+// Defines values for CreateTicketTierRequestPricingMode.
+const (
+	CreateTicketTierRequestPricingModeFixed CreateTicketTierRequestPricingMode = "fixed"
+	CreateTicketTierRequestPricingModeFree  CreateTicketTierRequestPricingMode = "free"
+	CreateTicketTierRequestPricingModePwyw  CreateTicketTierRequestPricingMode = "pwyw"
+)
+
 // Defines values for CreateVenueRequestStatus.
 const (
 	CreateVenueRequestStatusActive   CreateVenueRequestStatus = "active"
@@ -208,6 +215,13 @@ const (
 	SessionItemStatusScheduled SessionItemStatus = "scheduled"
 )
 
+// Defines values for TicketTierItemPricingMode.
+const (
+	TicketTierItemPricingModeFixed TicketTierItemPricingMode = "fixed"
+	TicketTierItemPricingModeFree  TicketTierItemPricingMode = "free"
+	TicketTierItemPricingModePwyw  TicketTierItemPricingMode = "pwyw"
+)
+
 // Defines values for UpdateEventRequestVisibility.
 const (
 	UpdateEventRequestVisibilityPrivate  UpdateEventRequestVisibility = "private"
@@ -246,6 +260,13 @@ const (
 	UpdateSessionRequestStatusCompleted UpdateSessionRequestStatus = "completed"
 	UpdateSessionRequestStatusDraft     UpdateSessionRequestStatus = "draft"
 	UpdateSessionRequestStatusScheduled UpdateSessionRequestStatus = "scheduled"
+)
+
+// Defines values for UpdateTicketTierRequestPricingMode.
+const (
+	Fixed UpdateTicketTierRequestPricingMode = "fixed"
+	Free  UpdateTicketTierRequestPricingMode = "free"
+	Pwyw  UpdateTicketTierRequestPricingMode = "pwyw"
 )
 
 // Defines values for UpdateVenueRequestStatus.
@@ -706,6 +727,48 @@ type CreateSessionRequest struct {
 // CreateSessionRequestStatus Initial lifecycle status. Defaults to `draft` on the server
 // when omitted.
 type CreateSessionRequestStatus string
+
+// CreateTicketTierRequest Create-time payload for POST
+// /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers.
+// The owning `org_id`, `event_id`, and `session_id` are taken from the
+// path; the body MUST NOT repeat them.
+type CreateTicketTierRequest struct {
+	// Capacity Optional per-tier capacity. When set, must be > 0.
+	Capacity *int32 `json:"capacity"`
+
+	// Currency ISO 4217 currency code. Defaults to `USD` when omitted.
+	Currency *string `json:"currency,omitempty"`
+
+	// Name Tier name. Required, trimmed of whitespace.
+	Name string `json:"name"`
+
+	// PriceAmount Tier price in cents. Required for `fixed`; forced to 0 for
+	// `free`; ignored for `pwyw` (use `pwyw_min` / `pwyw_max`).
+	PriceAmount *int64 `json:"price_amount,omitempty"`
+
+	// PricingMode Pricing model. Required.
+	PricingMode CreateTicketTierRequestPricingMode `json:"pricing_mode"`
+
+	// PwywMax Upper bound for `pricing_mode = pwyw` (cents).
+	PwywMax *int64 `json:"pwyw_max"`
+
+	// PwywMin Lower bound for `pricing_mode = pwyw` (cents).
+	PwywMin *int64 `json:"pwyw_min"`
+
+	// SaleWindowEnd Optional sale-window end. When both `sale_window_start` and
+	// `sale_window_end` are set, `sale_window_end` must be strictly
+	// after `sale_window_start`.
+	SaleWindowEnd *time.Time `json:"sale_window_end"`
+
+	// SaleWindowStart Optional sale-window start (RFC 3339, UTC).
+	SaleWindowStart *time.Time `json:"sale_window_start"`
+
+	// SortOrder Display order; defaults to 0 when omitted.
+	SortOrder *int32 `json:"sort_order,omitempty"`
+}
+
+// CreateTicketTierRequestPricingMode Pricing model. Required.
+type CreateTicketTierRequestPricingMode string
 
 // CreateVenueRequest Request body for POST /v1/organizations/{org_id}/venues. Only `name`
 // is required; the optional fields default to NULL.
@@ -1867,6 +1930,104 @@ type SessionListResponse struct {
 	Sessions               []SessionItem `json:"sessions"`
 }
 
+// TicketTierDeleteResponse Soft-delete response envelope for a ticket tier.
+type TicketTierDeleteResponse struct {
+	Deleted bool `json:"deleted"`
+
+	// Tier A single pricing tier (ticket type) within a Session. Three pricing
+	// modes are supported:
+	//
+	//   free  — no charge; `price_amount` is forced to 0.
+	//   fixed — set price; `price_amount` must be > 0 (cents).
+	//   pwyw  — pay-what-you-want; optional `pwyw_min` / `pwyw_max` bounds
+	//           (cents). When both are present, `pwyw_min <= pwyw_max`.
+	//
+	// `price_amount`, `pwyw_min`, and `pwyw_max` are stored in the smallest
+	// currency unit (integer cents) for the tier's ISO 4217 `currency`.
+	Tier TicketTierItem `json:"tier"`
+}
+
+// TicketTierEnvelope Single ticket-tier response envelope.
+type TicketTierEnvelope struct {
+	// Tier A single pricing tier (ticket type) within a Session. Three pricing
+	// modes are supported:
+	//
+	//   free  — no charge; `price_amount` is forced to 0.
+	//   fixed — set price; `price_amount` must be > 0 (cents).
+	//   pwyw  — pay-what-you-want; optional `pwyw_min` / `pwyw_max` bounds
+	//           (cents). When both are present, `pwyw_min <= pwyw_max`.
+	//
+	// `price_amount`, `pwyw_min`, and `pwyw_max` are stored in the smallest
+	// currency unit (integer cents) for the tier's ISO 4217 `currency`.
+	Tier TicketTierItem `json:"tier"`
+}
+
+// TicketTierItem A single pricing tier (ticket type) within a Session. Three pricing
+// modes are supported:
+//
+//	free  — no charge; `price_amount` is forced to 0.
+//	fixed — set price; `price_amount` must be > 0 (cents).
+//	pwyw  — pay-what-you-want; optional `pwyw_min` / `pwyw_max` bounds
+//	        (cents). When both are present, `pwyw_min <= pwyw_max`.
+//
+// `price_amount`, `pwyw_min`, and `pwyw_max` are stored in the smallest
+// currency unit (integer cents) for the tier's ISO 4217 `currency`.
+type TicketTierItem struct {
+	// Capacity Optional per-tier capacity cap. When set, must be > 0. `null`
+	// means "no tier-level cap" (only the session-level cap applies).
+	Capacity  *int32    `json:"capacity"`
+	CreatedAt time.Time `json:"created_at"`
+
+	// Currency ISO 4217 currency code. Defaults to `USD` when omitted on create.
+	Currency string `json:"currency"`
+
+	// Id UUIDv7 primary key of the ticket-tier row.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Human-readable tier name. Required; trimmed of whitespace.
+	Name string `json:"name"`
+
+	// PriceAmount Tier price in the smallest currency unit (cents). Forced to 0
+	// for `pricing_mode = free`; must be > 0 for `pricing_mode = fixed`.
+	PriceAmount int64 `json:"price_amount"`
+
+	// PricingMode Pricing model for the tier. Drives validation of `price_amount`
+	// and the optional `pwyw_min` / `pwyw_max` bounds.
+	PricingMode TicketTierItemPricingMode `json:"pricing_mode"`
+
+	// PwywMax Optional upper bound for `pricing_mode = pwyw` (cents).
+	PwywMax *int64 `json:"pwyw_max"`
+
+	// PwywMin Optional lower bound for `pricing_mode = pwyw` (cents). When
+	// both `pwyw_min` and `pwyw_max` are present, `pwyw_min <= pwyw_max`.
+	PwywMin *int64 `json:"pwyw_min"`
+
+	// SaleWindowEnd Optional sale-window end (RFC 3339, UTC).
+	SaleWindowEnd *time.Time `json:"sale_window_end"`
+
+	// SaleWindowStart Optional sale-window start (RFC 3339, UTC). When both
+	// `sale_window_start` and `sale_window_end` are present,
+	// `sale_window_end` must be strictly after `sale_window_start`.
+	SaleWindowStart *time.Time `json:"sale_window_start"`
+
+	// SessionId FK to the owning session. Immutable after creation; the
+	// owner-org check is enforced via the parent session row.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// SortOrder Display order; lower values render first.
+	SortOrder int32     `json:"sort_order"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// TicketTierItemPricingMode Pricing model for the tier. Drives validation of `price_amount`
+// and the optional `pwyw_min` / `pwyw_max` bounds.
+type TicketTierItemPricingMode string
+
+// TicketTierListResponse List-ticket-tiers response envelope.
+type TicketTierListResponse struct {
+	Tiers []TicketTierItem `json:"tiers"`
+}
+
 // UpdateBankAccountRequest Request body for PATCH /v1/organizations/{org_id}/bank-accounts/{id}.
 // Omitted fields are left unchanged. Sending `is_primary: true`
 // atomically demotes any previously primary account in the same
@@ -2113,6 +2274,50 @@ type UpdateSessionRequest struct {
 // is rejected with HTTP 422 and
 // `error.code = "session.invalid_transition"`.
 type UpdateSessionRequestStatus string
+
+// UpdateTicketTierRequest Partial update for PATCH
+// /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}.
+// All fields are optional; nil / empty fields leave the existing
+// value unchanged. When `pricing_mode`, `price_amount`, `pwyw_min`,
+// or `pwyw_max` change, the effective combination is re-validated
+// against the pricing-mode invariants documented on
+// `CreateTicketTierRequest`.
+type UpdateTicketTierRequest struct {
+	// Capacity New per-tier capacity. When provided, must be > 0.
+	Capacity *int32 `json:"capacity"`
+
+	// Currency New ISO 4217 currency code.
+	Currency *string `json:"currency"`
+
+	// Name New tier name. When provided, must be non-empty after trim.
+	Name *string `json:"name"`
+
+	// PriceAmount New tier price in cents.
+	PriceAmount *int64 `json:"price_amount"`
+
+	// PricingMode New pricing mode. Validated against price / pwyw bounds.
+	PricingMode *UpdateTicketTierRequestPricingMode `json:"pricing_mode"`
+
+	// PwywMax New upper bound for `pricing_mode = pwyw` (cents).
+	PwywMax *int64 `json:"pwyw_max"`
+
+	// PwywMin New lower bound for `pricing_mode = pwyw` (cents).
+	PwywMin *int64 `json:"pwyw_min"`
+
+	// SaleWindowEnd New sale-window end. When both `sale_window_start` and
+	// `sale_window_end` are set, `sale_window_end` must be strictly
+	// after `sale_window_start`.
+	SaleWindowEnd *time.Time `json:"sale_window_end"`
+
+	// SaleWindowStart New sale-window start (RFC 3339, UTC).
+	SaleWindowStart *time.Time `json:"sale_window_start"`
+
+	// SortOrder New display order.
+	SortOrder *int32 `json:"sort_order"`
+}
+
+// UpdateTicketTierRequestPricingMode New pricing mode. Validated against price / pwyw bounds.
+type UpdateTicketTierRequestPricingMode string
 
 // UpdateVenueRequest Request body for PATCH /v1/organizations/{org_id}/venues/{id}.
 // All fields are optional — omitted (or empty-string) `name` leaves the
@@ -2400,6 +2605,28 @@ type GetV1AuthVerifyParams struct {
 	Token string `form:"token" json:"token"`
 }
 
+// GetCheckoutQuoteParams defines parameters for GetCheckoutQuote.
+type GetCheckoutQuoteParams struct {
+	// TierId UUID of the ticket tier.
+	TierId openapi_types.UUID `form:"tier_id" json:"tier_id"`
+
+	// SessionId UUID of the session that owns the tier.
+	SessionId openapi_types.UUID `form:"session_id" json:"session_id"`
+
+	// Quantity Number of tickets (integer >= 1).
+	Quantity int32 `form:"quantity" json:"quantity"`
+
+	// OrgId UUID of the organization (for promo-code lookup).
+	OrgId openapi_types.UUID `form:"org_id" json:"org_id"`
+
+	// PromoCode Optional promo code string to apply.
+	PromoCode *string `form:"promo_code,omitempty" json:"promo_code,omitempty"`
+
+	// ChosenPrice Optional buyer-chosen price in cents. Only meaningful for
+	// `pricing_mode = pwyw` tiers.
+	ChosenPrice *int64 `form:"chosen_price,omitempty" json:"chosen_price,omitempty"`
+}
+
 // PostV1EchoParams defines parameters for PostV1Echo.
 type PostV1EchoParams struct {
 	// IdempotencyKey Client-generated UUID that uniquely identifies this mutation request.
@@ -2571,6 +2798,12 @@ type CreateSessionJSONRequestBody = CreateSessionRequest
 
 // UpdateSessionJSONRequestBody defines body for UpdateSession for application/json ContentType.
 type UpdateSessionJSONRequestBody = UpdateSessionRequest
+
+// CreateTicketTierJSONRequestBody defines body for CreateTicketTier for application/json ContentType.
+type CreateTicketTierJSONRequestBody = CreateTicketTierRequest
+
+// UpdateTicketTierJSONRequestBody defines body for UpdateTicketTier for application/json ContentType.
+type UpdateTicketTierJSONRequestBody = UpdateTicketTierRequest
 
 // UpdateEventJSONRequestBody defines body for UpdateEvent for application/json ContentType.
 type UpdateEventJSONRequestBody = UpdateEventRequest

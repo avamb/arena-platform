@@ -3121,6 +3121,275 @@ components:
           type: boolean
           example: true
 
+    TicketTierItem:
+      type: object
+      required:
+        - id
+        - session_id
+        - name
+        - pricing_mode
+        - price_amount
+        - currency
+        - sort_order
+        - created_at
+        - updated_at
+      description: |
+        A single pricing tier (ticket type) within a Session. Three pricing
+        modes are supported:
+
+          free  — no charge; `price_amount` is forced to 0.
+          fixed — set price; `price_amount` must be > 0 (cents).
+          pwyw  — pay-what-you-want; optional `pwyw_min` / `pwyw_max` bounds
+                  (cents). When both are present, `pwyw_min <= pwyw_max`.
+
+        `price_amount`, `pwyw_min`, and `pwyw_max` are stored in the smallest
+        currency unit (integer cents) for the tier's ISO 4217 `currency`.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the ticket-tier row.
+          example: "01929d0e-0e47-7000-8000-000000000701"
+        session_id:
+          type: string
+          format: uuid
+          description: |
+            FK to the owning session. Immutable after creation; the
+            owner-org check is enforced via the parent session row.
+          example: "01929d0e-0e47-7000-8000-000000000501"
+        name:
+          type: string
+          description: Human-readable tier name. Required; trimmed of whitespace.
+          example: "General Admission"
+        pricing_mode:
+          type: string
+          enum: [free, fixed, pwyw]
+          description: |
+            Pricing model for the tier. Drives validation of `price_amount`
+            and the optional `pwyw_min` / `pwyw_max` bounds.
+          example: "fixed"
+        price_amount:
+          type: integer
+          format: int64
+          minimum: 0
+          description: |
+            Tier price in the smallest currency unit (cents). Forced to 0
+            for `pricing_mode = free`; must be > 0 for `pricing_mode = fixed`.
+          example: 2500
+        currency:
+          type: string
+          description: ISO 4217 currency code. Defaults to `USD` when omitted on create.
+          example: "USD"
+        pwyw_min:
+          type: integer
+          format: int64
+          nullable: true
+          description: |
+            Optional lower bound for `pricing_mode = pwyw` (cents). When
+            both `pwyw_min` and `pwyw_max` are present, `pwyw_min <= pwyw_max`.
+          example: 500
+        pwyw_max:
+          type: integer
+          format: int64
+          nullable: true
+          description: Optional upper bound for `pricing_mode = pwyw` (cents).
+          example: 10000
+        capacity:
+          type: integer
+          format: int32
+          nullable: true
+          minimum: 1
+          description: |
+            Optional per-tier capacity cap. When set, must be > 0. `null`
+            means "no tier-level cap" (only the session-level cap applies).
+          example: 200
+        sale_window_start:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            Optional sale-window start (RFC 3339, UTC). When both
+            `sale_window_start` and `sale_window_end` are present,
+            `sale_window_end` must be strictly after `sale_window_start`.
+          example: "2026-07-01T00:00:00Z"
+        sale_window_end:
+          type: string
+          format: date-time
+          nullable: true
+          description: Optional sale-window end (RFC 3339, UTC).
+          example: "2026-08-15T17:59:59Z"
+        sort_order:
+          type: integer
+          format: int32
+          description: Display order; lower values render first.
+          example: 0
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-06-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2026-06-02T12:34:56Z"
+
+    CreateTicketTierRequest:
+      type: object
+      required: [name, pricing_mode]
+      description: |
+        Create-time payload for POST
+        /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers.
+        The owning `org_id`, `event_id`, and `session_id` are taken from the
+        path; the body MUST NOT repeat them.
+      properties:
+        name:
+          type: string
+          description: Tier name. Required, trimmed of whitespace.
+          example: "General Admission"
+        pricing_mode:
+          type: string
+          enum: [free, fixed, pwyw]
+          description: Pricing model. Required.
+          example: "fixed"
+        price_amount:
+          type: integer
+          format: int64
+          minimum: 0
+          description: |
+            Tier price in cents. Required for `fixed`; forced to 0 for
+            `free`; ignored for `pwyw` (use `pwyw_min` / `pwyw_max`).
+          example: 2500
+        currency:
+          type: string
+          description: ISO 4217 currency code. Defaults to `USD` when omitted.
+          example: "USD"
+        pwyw_min:
+          type: integer
+          format: int64
+          nullable: true
+          description: Lower bound for `pricing_mode = pwyw` (cents).
+        pwyw_max:
+          type: integer
+          format: int64
+          nullable: true
+          description: Upper bound for `pricing_mode = pwyw` (cents).
+        capacity:
+          type: integer
+          format: int32
+          nullable: true
+          minimum: 1
+          description: Optional per-tier capacity. When set, must be > 0.
+        sale_window_start:
+          type: string
+          format: date-time
+          nullable: true
+          description: Optional sale-window start (RFC 3339, UTC).
+        sale_window_end:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            Optional sale-window end. When both `sale_window_start` and
+            `sale_window_end` are set, `sale_window_end` must be strictly
+            after `sale_window_start`.
+        sort_order:
+          type: integer
+          format: int32
+          description: Display order; defaults to 0 when omitted.
+
+    UpdateTicketTierRequest:
+      type: object
+      description: |
+        Partial update for PATCH
+        /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}.
+        All fields are optional; nil / empty fields leave the existing
+        value unchanged. When `pricing_mode`, `price_amount`, `pwyw_min`,
+        or `pwyw_max` change, the effective combination is re-validated
+        against the pricing-mode invariants documented on
+        `CreateTicketTierRequest`.
+      properties:
+        name:
+          type: string
+          nullable: true
+          description: New tier name. When provided, must be non-empty after trim.
+        pricing_mode:
+          type: string
+          enum: [free, fixed, pwyw]
+          nullable: true
+          description: New pricing mode. Validated against price / pwyw bounds.
+        price_amount:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+          description: New tier price in cents.
+        currency:
+          type: string
+          nullable: true
+          description: New ISO 4217 currency code.
+        pwyw_min:
+          type: integer
+          format: int64
+          nullable: true
+          description: New lower bound for `pricing_mode = pwyw` (cents).
+        pwyw_max:
+          type: integer
+          format: int64
+          nullable: true
+          description: New upper bound for `pricing_mode = pwyw` (cents).
+        capacity:
+          type: integer
+          format: int32
+          minimum: 1
+          nullable: true
+          description: New per-tier capacity. When provided, must be > 0.
+        sale_window_start:
+          type: string
+          format: date-time
+          nullable: true
+          description: New sale-window start (RFC 3339, UTC).
+        sale_window_end:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            New sale-window end. When both `sale_window_start` and
+            `sale_window_end` are set, `sale_window_end` must be strictly
+            after `sale_window_start`.
+        sort_order:
+          type: integer
+          format: int32
+          nullable: true
+          description: New display order.
+
+    TicketTierEnvelope:
+      type: object
+      required: [tier]
+      description: Single ticket-tier response envelope.
+      properties:
+        tier:
+          $ref: "#/components/schemas/TicketTierItem"
+
+    TicketTierListResponse:
+      type: object
+      required: [tiers]
+      description: List-ticket-tiers response envelope.
+      properties:
+        tiers:
+          type: array
+          items:
+            $ref: "#/components/schemas/TicketTierItem"
+
+    TicketTierDeleteResponse:
+      type: object
+      required: [tier, deleted]
+      description: Soft-delete response envelope for a ticket tier.
+      properties:
+        tier:
+          $ref: "#/components/schemas/TicketTierItem"
+        deleted:
+          type: boolean
+          example: true
+
 paths:
   /healthz:
     get:
@@ -8280,6 +8549,630 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database pool or session queries unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers:
+    post:
+      operationId: createTicketTier
+      summary: Create a ticket tier (pricing option) under a session
+      description: |
+        Creates a new ticket tier under the given session. The owning
+        organization, event, and session are taken from the path; the body
+        MUST NOT repeat them. `name` and `pricing_mode` are required.
+        Pricing-mode invariants:
+
+          free  — `price_amount` is forced to 0.
+          fixed — `price_amount` must be > 0 (cents).
+          pwyw  — when both `pwyw_min` and `pwyw_max` are provided,
+                  `pwyw_min <= pwyw_max`.
+
+        `currency` defaults to `USD` when omitted. Requires JWT + the
+        `tier.create` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the parent event.
+          schema:
+            type: string
+            format: uuid
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the parent session.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTicketTierRequest"
+            examples:
+              fixed:
+                summary: Fixed-price General Admission tier
+                value:
+                  name: "General Admission"
+                  pricing_mode: "fixed"
+                  price_amount: 2500
+                  currency: "USD"
+                  sort_order: 0
+              free:
+                summary: Free RSVP tier
+                value:
+                  name: "Free RSVP"
+                  pricing_mode: "free"
+                  sort_order: 1
+              pwyw:
+                summary: Pay-what-you-want tier with bounds
+                value:
+                  name: "Supporter"
+                  pricing_mode: "pwyw"
+                  currency: "USD"
+                  pwyw_min: 500
+                  pwyw_max: 10000
+                  sort_order: 2
+      responses:
+        "201":
+          description: Ticket tier created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TicketTierEnvelope"
+        "400":
+          description: |
+            Body invalid or required fields missing. Possible error codes:
+            `tier.invalid_body`, `tier.empty_body`, `tier.invalid_json`,
+            `tier.missing_name`, `tier.missing_pricing_mode`,
+            `tier.invalid_pricing_mode`, `tier.invalid_capacity`,
+            `tier.invalid_sale_window_start`,
+            `tier.invalid_sale_window_end`, `tier.invalid_sale_window`,
+            and the pricing-mode validators from the catalog domain layer
+            (e.g. `tier.invalid_price_amount`, `tier.invalid_pwyw_bounds`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `tier.create` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`tier.insert_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or tier queries unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    get:
+      operationId: listTicketTiers
+      summary: List all active ticket tiers for a session
+      description: |
+        Returns all non-deleted ticket tiers belonging to the given session,
+        ordered by `sort_order`. Requires JWT + the `tier.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the parent event.
+          schema:
+            type: string
+            format: uuid
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the parent session.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of ticket tiers for the session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TicketTierListResponse"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `tier.read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`tier.list_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or tier queries unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}:
+    get:
+      operationId: getTicketTier
+      summary: Fetch a single ticket tier by ID
+      description: |
+        Returns one ticket tier by ID, scoped to the parent session.
+        Requires JWT + the `tier.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the parent event.
+          schema:
+            type: string
+            format: uuid
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the parent session.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the ticket tier.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Ticket tier details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TicketTierEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `tier.read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Ticket tier not found (`tier.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`tier.get_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or tier queries unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      operationId: updateTicketTier
+      summary: Partially update a ticket tier
+      description: |
+        Applies a partial update to a ticket tier. Omitted / empty fields
+        leave existing values unchanged. The effective combination of
+        `pricing_mode`, `price_amount`, `pwyw_min`, and `pwyw_max` is
+        re-validated against the pricing-mode invariants documented on
+        `CreateTicketTierRequest`. Requires JWT + the `tier.update`
+        permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the parent event.
+          schema:
+            type: string
+            format: uuid
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the parent session.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the ticket tier.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTicketTierRequest"
+            examples:
+              priceBump:
+                summary: Raise a fixed-price tier
+                value:
+                  price_amount: 3000
+              renameAndReorder:
+                summary: Rename and move to the top
+                value:
+                  name: "VIP"
+                  sort_order: 0
+              switchToPwyw:
+                summary: Switch a tier to pay-what-you-want with bounds
+                value:
+                  pricing_mode: "pwyw"
+                  pwyw_min: 1000
+                  pwyw_max: 20000
+              saleWindow:
+                summary: Extend the on-sale window
+                value:
+                  sale_window_start: "2026-07-15T00:00:00Z"
+                  sale_window_end: "2026-09-01T00:00:00Z"
+      responses:
+        "200":
+          description: Updated ticket tier.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TicketTierEnvelope"
+        "400":
+          description: |
+            Body invalid or fields out of range. Possible error codes:
+            `tier.invalid_body`, `tier.empty_body`, `tier.invalid_json`,
+            `tier.invalid_name`, `tier.invalid_pricing_mode`,
+            `tier.invalid_capacity`, `tier.invalid_sale_window_start`,
+            `tier.invalid_sale_window_end`, `tier.invalid_sale_window`,
+            and the pricing-mode validators from the catalog domain layer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `tier.update` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Ticket tier not found (`tier.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`tier.update_failed`, `tier.get_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or tier queries unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      operationId: deleteTicketTier
+      summary: Soft-delete a ticket tier
+      description: |
+        Soft-deletes a ticket tier (sets `deleted_at = now()`) and writes a
+        `v1.tier.delete` audit event inside the same transaction. Requires
+        JWT + the `tier.delete` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the parent event.
+          schema:
+            type: string
+            format: uuid
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the parent session.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the ticket tier.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Ticket tier soft-deleted; audit event written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TicketTierDeleteResponse"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `tier.delete` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Ticket tier not found (`tier.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error. Possible codes:
+            `tier.delete_failed`, `tier.audit_failed`, `tier.commit_failed`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or tier queries unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/checkout/quote:
+    get:
+      operationId: getCheckoutQuote
+      summary: Compute an itemized pricing quote for a checkout selection
+      description: |
+        Returns an itemized pricing breakdown for a ticket-tier selection
+        (feature #129). Looks up the tier, resolves the unit price from
+        `pricing_mode` (`free`, `fixed`, `pwyw`), optionally validates and
+        applies a promo code, then runs the deterministic pricing pipeline.
+        All monetary fields are integer cents.
+
+        Documented under feature #265 to keep the OpenAPI spec drift-free
+        when `TierQueries` is wired in the drift test (the quote route is
+        gated on `tierQueries != nil` in `mount_commerce.go`). The handler
+        lives in `pricing_calculator.go`; this entry is intentionally
+        minimal and may be expanded by a dedicated A-series feature for
+        the pricing/quote group.
+
+        Requires JWT + the `pricing.quote` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tier_id
+          in: query
+          required: true
+          description: UUID of the ticket tier.
+          schema:
+            type: string
+            format: uuid
+        - name: session_id
+          in: query
+          required: true
+          description: UUID of the session that owns the tier.
+          schema:
+            type: string
+            format: uuid
+        - name: quantity
+          in: query
+          required: true
+          description: Number of tickets (integer >= 1).
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+        - name: org_id
+          in: query
+          required: true
+          description: UUID of the organization (for promo-code lookup).
+          schema:
+            type: string
+            format: uuid
+        - name: promo_code
+          in: query
+          required: false
+          description: Optional promo code string to apply.
+          schema:
+            type: string
+        - name: chosen_price
+          in: query
+          required: false
+          description: |
+            Optional buyer-chosen price in cents. Only meaningful for
+            `pricing_mode = pwyw` tiers.
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+      responses:
+        "200":
+          description: Itemized pricing quote.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: |
+                  Quote envelope. Wraps the generic PricingBreakdown with
+                  the originating tier/session context and (when applied)
+                  the promo code.
+                required:
+                  - unit_price
+                  - quantity
+                  - subtotal
+                  - discount
+                  - platform_fee
+                  - provider_fee
+                  - tax
+                  - total
+                  - currency
+                  - tier_id
+                  - session_id
+                properties:
+                  unit_price:
+                    type: integer
+                    format: int64
+                    description: Per-ticket price in cents.
+                  quantity:
+                    type: integer
+                    format: int32
+                  subtotal:
+                    type: integer
+                    format: int64
+                  discount:
+                    type: integer
+                    format: int64
+                  platform_fee:
+                    type: integer
+                    format: int64
+                  provider_fee:
+                    type: integer
+                    format: int64
+                  tax:
+                    type: integer
+                    format: int64
+                  total:
+                    type: integer
+                    format: int64
+                  currency:
+                    type: string
+                    description: ISO 4217 currency code.
+                  tier_id:
+                    type: string
+                    format: uuid
+                  session_id:
+                    type: string
+                    format: uuid
+                  promo_code:
+                    type: string
+                    nullable: true
+                    description: Echoed when a promo code was applied; null otherwise.
+        "400":
+          description: |
+            Missing or invalid query parameters. Possible error codes:
+            `pricing.missing_params`, `pricing.invalid_tier_id`,
+            `pricing.invalid_session_id`, `pricing.invalid_org_id`,
+            `pricing.invalid_quantity`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `pricing.quote` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Ticket tier not found (`pricing.tier_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`pricing.tier_lookup_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or tier queries unavailable.
           content:
             application/json:
               schema:

@@ -16691,3 +16691,91 @@ Verification:
     introduced here).
 
 Marked #264 passing. Backlog: 264/301.
+
+=== 2026-06-29: Feature #265 — A-4 Document ticket_tiers endpoints in OpenAPI ===
+apps/backend/openapi/openapi.yaml:
+  - Added 6 component schemas: TicketTierItem, CreateTicketTierRequest,
+    UpdateTicketTierRequest, TicketTierEnvelope, TicketTierListResponse,
+    TicketTierDeleteResponse. The pricing_mode enum {free, fixed, pwyw}
+    is pinned in all three item/request schemas. Sale-window pair and
+    pwyw bounds documented with strict-greater / min<=max invariants.
+  - Added 2 path entries / 5 operations covering every ticket_tiers.go
+    handler:
+      POST   .../sessions/{session_id}/tiers        createTicketTier
+      GET    .../sessions/{session_id}/tiers        listTicketTiers
+      GET    .../sessions/{session_id}/tiers/{id}   getTicketTier
+      PATCH  .../sessions/{session_id}/tiers/{id}   updateTicketTier
+      DELETE .../sessions/{session_id}/tiers/{id}   deleteTicketTier
+    Each carries bearerAuth, tags: [v1], the permission name in the
+    description (tier.create/read/update/delete), and the full error
+    catalogue from ticket_tiers.go in the 4xx descriptions
+    (tier.invalid_body, tier.empty_body, tier.invalid_json,
+    tier.missing_name, tier.missing_pricing_mode,
+    tier.invalid_pricing_mode, tier.invalid_capacity,
+    tier.invalid_sale_window_start, tier.invalid_sale_window_end,
+    tier.invalid_sale_window, tier.invalid_name, tier.not_found,
+    tier.insert_failed, tier.list_failed, tier.get_failed,
+    tier.update_failed, tier.delete_failed, tier.audit_failed,
+    tier.commit_failed).
+  - createTicketTier + updateTicketTier requestBodies carry inline
+    examples consumed by the contract test (fixed / free / pwyw create;
+    priceBump, renameAndReorder, switchToPwyw, saleWindow update).
+  - Added a minimal GET /v1/checkout/quote entry. Wiring TierQueries in
+    the drift test unmounts that route's tierQueries-nil gate and would
+    otherwise register /v1/checkout/quote in code-without-spec drift.
+    Documented with the full query parameter set, inline response
+    envelope wrapping the pricing breakdown, and the pricing.* error
+    catalogue. Intentionally minimal; a dedicated A-series ticket for
+    the pricing/quote group can expand it later.
+
+apps/backend/internal/platform/httpserver/openapi_ticket_tiers_265_test.go (NEW):
+  8 contract tests pinning the spec for #265:
+    - TestOpenAPI265_PathsPresent (2 path mappings)
+    - TestOpenAPI265_OperationIDsPresent (5 canonical IDs)
+    - TestOpenAPI265_SchemasPresent (6 component schema names)
+    - TestOpenAPI265_PermissionsDocumented (tier.read/create/update/delete)
+    - TestOpenAPI265_BearerAuthAndTags (bearerAuth + v1 tag on every op)
+    - TestOpenAPI265_ErrorEnvelopeUsed (ErrorEnvelope on every op)
+    - TestOpenAPI265_PricingModeEnumPinned (enum literal appears thrice
+      across TicketTierItem, CreateTicketTierRequest,
+      UpdateTicketTierRequest)
+    - TestOpenAPI265_SpecExamplesValidate -- the "minimal contract test"
+      called out by the ticket. Loads openapi.yaml via gopkg.in/yaml.v3,
+      walks createTicketTier / updateTicketTier inline examples and
+      asserts pricing-mode invariants (fixed => price_amount > 0; free
+      => price_amount = 0; pwyw => pwyw_min <= pwyw_max), required
+      fields {name, pricing_mode}, RFC3339-shaped sale windows, and
+      capacity > 0 when present. Runs in CI without docker / postgres /
+      oapi-codegen.
+  Reuses helpers from openapi_events_263_test.go and
+  openapi_sessions_264_test.go (mustOperation, extractExamples,
+  looksLikeRFC3339, findOpenAPISpecPath) so the new file is purely
+  additive.
+
+apps/backend/internal/platform/httpserver/openapi_drift_test.go:
+  buildDriftTestServer now wires TierQueries: gen.New(nil) so all
+  ticket-tier routes (and the GET /v1/checkout/quote route gated on
+  tierQueries != nil in mount_commerce.go) are mounted on the
+  drift-test chi router. Without this the new spec paths would be
+  reported as phantoms by TestOpenAPIDriftCheck_CodeCoversAllSpecRoutes
+  and /v1/checkout/quote would register as a code-without-spec entry.
+
+apps/backend/internal/adapters/http/openapi/types_gen.go:
+  Regenerated via oapi-codegen v2.4.1 (golang:1.24 docker). The known
+  OpenAPI 3.1 "not yet supported by oapi-codegen" warning is unchanged.
+apps/backend/openapi/clients/ts/index.d.ts:
+  Regenerated via scripts/gen-ts-client.mjs (openapi-typescript 7.13.0).
+
+Verification:
+  docker golang:1.24 go test ./internal/platform/httpserver/
+      -run TestOpenAPI265 -count=1 -v                  PASS (8/8)
+  docker golang:1.24 go build ./...                    OK
+  docker golang:1.24 go test ./internal/platform/httpserver/
+      -run TestOpenAPIDriftCheck_SpecCoversAllCodeRoutes
+      -count=1                                          PASS (no
+      newly-introduced code-without-spec entries; /v1/checkout/quote
+      now documented in the same change).
+  TestOpenAPI263 / TestOpenAPI264 re-run                PASS (no regression).
+  npm --prefix apps/admin-web run type-check            OK (silent).
+
+Marked #265 passing. Backlog: 265/301.

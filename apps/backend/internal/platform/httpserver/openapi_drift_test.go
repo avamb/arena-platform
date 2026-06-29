@@ -303,6 +303,11 @@ func buildDriftTestServer(t *testing.T) *Server {
 		// check: POST/GET/PATCH/DELETE under
 		// /v1/organizations/{org_id}/events/{event_id}/sessions[/{id}].
 		SessionQueries: gen.New(nil),
+		// Wire TierQueries so all ticket-tier routes (feature #127 / documented
+		// under feature #265) are mounted for the drift check:
+		// POST/GET/PATCH/DELETE under
+		// /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers[/{id}].
+		TierQueries: gen.New(nil),
 	})
 }
 
