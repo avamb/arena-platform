@@ -16290,3 +16290,48 @@ Note: Backend handlers for the bank-accounts CRUD endpoints and the
   is a follow-up. The UI surfaces server error codes and renders
   error states correctly when the backend returns 404/503.
 Marked #256 passing. Backlog: 255/301.
+
+=== 2026-06-29: Feature #257 — V-1 Venues structured address & tz migration ===
+Added apps/backend/internal/migrations/sql/0050_venues_extended.sql (next
+free slot — 0049 already taken by organizations_legal_fields under #253).
+
+Columns added to venues:
+  address_line1 / address_line2 / postal_code text NULL
+  country char(2) NULL  (ISO-3166-1 alpha-2 shape via CHECK; app layer
+    enforces country == organization.country unless overridden)
+  geo_lat / geo_lng numeric(9,6) NULL (~10 cm precision, WGS-84
+    envelope enforced via CHECK)
+  tz IANA name text NULL (app-side time.LoadLocation validation, no DB
+    regex by design per the feature description)
+  contact_phone / contact_email / website_url text NULL
+  status text NOT NULL DEFAULT 'active' (CHECK in {active, draft, archived})
+
+Existing free-form address column preserved verbatim for legacy reads;
+COMMENT updated to flag deprecation.
+
+Indexes/constraints:
+  venues_country_check, venues_geo_lat_range_check,
+  venues_geo_lng_range_check, venues_status_check.
+  Partial index venues_org_status_active on (org_id, status)
+  WHERE deleted_at IS NULL for active/draft surfaces.
+
+No new RBAC permissions — venue.create/update from 0012 cover writes.
+Down migration drops the index, all four CHECK constraints, and every
+added column in reverse order.
+
+Verification:
+  docker exec arena_postgres applied SQL Up block — all 21 columns
+    present, indexes + 4 CHECK constraints visible in \d venues.
+  schema_migrations row (50, true) inserted so future api auto-migrate
+    runs do not double-apply.
+  golang:1.24 docker `go build ./...`   OK (exit 0, silent).
+  go test migrations  — only failure is pre-existing
+    TestTimestamptz_NoTimestampWithoutTimeZone hit on 0049 line 92
+    ('Timestamp' inside a COMMENT string literal); 0050 is clean
+    (no bare `timestamp` token).
+
+Note: Go handlers, sqlc queries, OpenAPI surface, and admin-web UI for
+the new venue fields are NOT in scope for #257 (DB-only ticket per V-1).
+Those will land under follow-up Wave V tickets.
+
+Marked #257 passing. Backlog: 256/301.
