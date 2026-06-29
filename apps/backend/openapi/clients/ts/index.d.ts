@@ -2459,6 +2459,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/barcodes/authorities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List barcode authorities
+         * @description Returns every registered barcode authority in the federation
+         *     (feature #142, migration 0029_barcode_authorities.sql). The
+         *     response envelope is non-paginated; the set of authorities is
+         *     small and bounded.
+         *
+         *     Requires JWT + the `barcode.read` permission.
+         */
+        get: operations["listBarcodeAuthorities"];
+        put?: never;
+        /**
+         * Register a new barcode authority
+         * @description Creates a new entry in the barcode authority federation. The
+         *     `type` column drives scan-flow authority resolution; it must be
+         *     one of the four values pinned by the
+         *     `barcode_authorities_type_check` constraint
+         *     (`platform`, `legacy_bil24`, `external_platform`, `guest_list`).
+         *     `label` is a human-readable display name for operator UIs.
+         *
+         *     Requires JWT + the `barcode.create` permission.
+         */
+        post: operations["createBarcodeAuthority"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -5566,6 +5602,67 @@ export interface components {
              * @example null
              */
             revoked_at: string | null;
+        };
+        /**
+         * @description A single barcode authority — one row per originating system in the
+         *     barcode federation model (feature #142, migration
+         *     0029_barcode_authorities.sql). Each barcode in the federation
+         *     belongs to exactly one authority; the `type` column drives
+         *     authority resolution in the scan flow (barcodes.go handleScan).
+         */
+        BarcodeAuthorityItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the barcode_authorities row.
+             * @example 01929d0e-0e47-7000-8000-000000000a01
+             */
+            id: string;
+            /**
+             * @description Authority type. Pinned to the `barcode_authorities_type_check`
+             *     constraint in migration 0029_barcode_authorities.sql.
+             * @example platform
+             * @enum {string}
+             */
+            type: "platform" | "legacy_bil24" | "external_platform" | "guest_list";
+            /**
+             * @description Human-readable display name for operator UIs.
+             * @example Arena Platform
+             */
+            label: string;
+            /**
+             * Format: date-time
+             * @description Row creation timestamp (RFC 3339, UTC).
+             * @example 2026-06-30T12:00:00Z
+             */
+            created_at: string;
+        };
+        /**
+         * @description Response envelope returned by `GET /v1/barcodes/authorities`. Lists
+         *     every registered barcode authority in insertion order. The envelope
+         *     is non-paginated; the set of authorities is small and bounded.
+         */
+        BarcodeAuthorityListResponse: {
+            /** @description Registered barcode authorities (possibly empty). */
+            authorities: components["schemas"]["BarcodeAuthorityItem"][];
+        };
+        /**
+         * @description Request body for `POST /v1/barcodes/authorities`. Both `type` and
+         *     `label` are required; `type` must be one of the four values pinned
+         *     in the `barcode_authorities_type_check` migration constraint.
+         */
+        CreateBarcodeAuthorityRequest: {
+            /**
+             * @description Authority type — drives scan-flow authority resolution. Pinned
+             *     to the `barcode_authorities_type_check` constraint.
+             * @example legacy_bil24
+             * @enum {string}
+             */
+            type: "platform" | "legacy_bil24" | "external_platform" | "guest_list";
+            /**
+             * @description Human-readable display name for operator UIs.
+             * @example Legacy Bil24
+             */
+            label: string;
         };
         /**
          * @description A single inventory_ledger row. Tracks real-time capacity state for a
@@ -15982,6 +16079,148 @@ export interface operations {
             };
             /**
              * @description Refund queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listBarcodeAuthorities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Registered barcode authorities (possibly empty). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BarcodeAuthorityListResponse"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `barcode.read` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error while listing authorities
+             *     (`barcode.list_authorities_failed`).
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Barcode queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createBarcodeAuthority: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateBarcodeAuthorityRequest"];
+            };
+        };
+        responses: {
+            /** @description Barcode authority created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BarcodeAuthorityItem"];
+                };
+            };
+            /**
+             * @description Invalid body or field. Possible error codes:
+             *     `barcode.invalid_body`,
+             *     `barcode.invalid_authority_type`,
+             *     `barcode.missing_label`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `barcode.create` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error while creating the authority
+             *     (`barcode.create_authority_failed`).
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Barcode queries unavailable
              *     (`dependency.database_unavailable`).
              */
             503: {

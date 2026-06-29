@@ -17300,3 +17300,74 @@ Verification:
   npm --prefix apps/admin-web run type-check                   OK.
 
 Marked #274 passing. Backlog: 274/301.
+
+=== 2026-06-30: Feature #275 - A-14 Document barcode_authorities endpoints in OpenAPI ===
+apps/backend/openapi/openapi.yaml:
+  - Added 3 component schemas: BarcodeAuthorityItem (type enum pinned
+    to the four values from barcode_authorities_type_check in
+    0029_barcode_authorities.sql: platform|legacy_bil24|
+    external_platform|guest_list), BarcodeAuthorityListResponse
+    envelope, CreateBarcodeAuthorityRequest (same enum, label
+    minLength: 1).
+  - Added 1 path entry covering both barcode_authorities handlers
+    in barcodes.go (the historical "barcode_authorities.go" group
+    name; the actual file is barcodes.go which hosts the barcode
+    federation):
+      GET  /v1/barcodes/authorities -> listBarcodeAuthorities
+      POST /v1/barcodes/authorities -> createBarcodeAuthority
+    Both carry bearerAuth + tags:[v1] + permission name in
+    description (barcode.read / barcode.create). Full error catalogue
+    from barcodes.go documented across status codes: 400 (barcode
+    invalid_body / invalid_authority_type / missing_label), 500
+    (barcode create_authority_failed / list_authorities_failed),
+    503 (dependency.database_unavailable).
+  - GET 200 response carries 3 inline examples (empty / seedPlatform
+    / allFour) and POST 201 + requestBody each carry inline examples
+    (legacyBil24 / externalPlatform / guestList / created) consumed
+    by the contract test.
+
+apps/backend/internal/platform/httpserver/openapi_barcode_authorities_275_test.go (NEW):
+  9 contract tests pinning spec for #275: PathsPresent (1),
+  OperationIDsPresent (2), SchemasPresent (3),
+  PermissionsDocumented (2), BearerAuthAndTags (2),
+  ErrorEnvelopeUsed (2), BarcodeAuthorityErrorCodesDocumented (6),
+  TypeEnumPinned (4 literals x 2 schemas — cross-checks item schema
+  and create-request schema against barcode_authorities_type_check),
+  SpecExamplesValidate — "minimal contract test" walking GET 200
+  list examples + POST requestBody examples + POST 201 examples and
+  asserting UUID-shaped id, type in migration enum, non-empty label,
+  RFC 3339 created_at. Reuses mustOperation / findOpenAPISpecPath /
+  looksLikeRFC3339 helpers. Local itoaSmall avoids strconv import.
+
+apps/backend/internal/platform/httpserver/openapi_drift_test.go:
+  buildDriftTestServer intentionally does NOT wire BarcodeQueries
+  for this wave. Barcode federation surfaces 7 routes; feature #275
+  documents only the barcode_authorities subset. Wiring queries
+  here would mount the remaining 5 routes and break the
+  SpecCoversAllCodeRoutes drift check until later A-* waves
+  document them. A NOTE comment records this in the wiring block.
+
+apps/backend/internal/adapters/http/openapi/types_gen.go:
+  Regenerated via oapi-codegen v2.4.1 (golang:1.24 docker). 25
+  occurrences of BarcodeAuthority type names / op ids verified.
+  Known OpenAPI 3.1 warning unchanged.
+apps/backend/openapi/clients/ts/index.d.ts:
+  Regenerated via scripts/gen-ts-client.mjs (openapi-typescript
+  7.13.0). 11 occurrences of new type names / op ids verified.
+
+Verification:
+  docker golang:1.24 go test -run TestOpenAPI275 -count=1 -v   PASS (9/9)
+  docker golang:1.24 go build ./...                            OK
+  docker golang:1.24 go test -run TestOpenAPIDriftCheck_SpecCoversAllCodeRoutes
+                                                                PASS
+                (BarcodeQueries unwired in drift server — no newly
+                 introduced "code routes missing from spec" entries.)
+  docker golang:1.24 go test -run TestOpenAPIDriftCheck_CodeCoversAllSpecRoutes
+                                                                FAIL
+                (22 phantom entries: pre-existing 20 from #263 plus 2
+                 new — GET/POST /v1/barcodes/authorities — that will
+                 clear once the rest of the barcode federation is
+                 documented in subsequent A-* waves.)
+  npm --prefix apps/admin-web run type-check                   OK.
+
+Marked #275 passing. Backlog: 275/301.

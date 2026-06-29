@@ -3569,6 +3569,86 @@ components:
             or transfer.
           example: null
 
+    BarcodeAuthorityItem:
+      type: object
+      required:
+        - id
+        - type
+        - label
+        - created_at
+      description: |
+        A single barcode authority — one row per originating system in the
+        barcode federation model (feature #142, migration
+        0029_barcode_authorities.sql). Each barcode in the federation
+        belongs to exactly one authority; the `type` column drives
+        authority resolution in the scan flow (barcodes.go handleScan).
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the barcode_authorities row.
+          example: "01929d0e-0e47-7000-8000-000000000a01"
+        type:
+          type: string
+          enum:
+            - platform
+            - legacy_bil24
+            - external_platform
+            - guest_list
+          description: |
+            Authority type. Pinned to the `barcode_authorities_type_check`
+            constraint in migration 0029_barcode_authorities.sql.
+          example: "platform"
+        label:
+          type: string
+          description: |
+            Human-readable display name for operator UIs.
+          example: "Arena Platform"
+        created_at:
+          type: string
+          format: date-time
+          description: Row creation timestamp (RFC 3339, UTC).
+          example: "2026-06-30T12:00:00Z"
+
+    BarcodeAuthorityListResponse:
+      type: object
+      required: [authorities]
+      description: |
+        Response envelope returned by `GET /v1/barcodes/authorities`. Lists
+        every registered barcode authority in insertion order. The envelope
+        is non-paginated; the set of authorities is small and bounded.
+      properties:
+        authorities:
+          type: array
+          description: Registered barcode authorities (possibly empty).
+          items:
+            $ref: "#/components/schemas/BarcodeAuthorityItem"
+
+    CreateBarcodeAuthorityRequest:
+      type: object
+      required: [type, label]
+      description: |
+        Request body for `POST /v1/barcodes/authorities`. Both `type` and
+        `label` are required; `type` must be one of the four values pinned
+        in the `barcode_authorities_type_check` migration constraint.
+      properties:
+        type:
+          type: string
+          enum:
+            - platform
+            - legacy_bil24
+            - external_platform
+            - guest_list
+          description: |
+            Authority type — drives scan-flow authority resolution. Pinned
+            to the `barcode_authorities_type_check` constraint.
+          example: "legacy_bil24"
+        label:
+          type: string
+          minLength: 1
+          description: Human-readable display name for operator UIs.
+          example: "Legacy Bil24"
+
     InventoryRowItem:
       type: object
       required:
@@ -14068,6 +14148,179 @@ paths:
         "503":
           description: |
             Refund queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/barcodes/authorities:
+    get:
+      operationId: listBarcodeAuthorities
+      summary: List barcode authorities
+      description: |
+        Returns every registered barcode authority in the federation
+        (feature #142, migration 0029_barcode_authorities.sql). The
+        response envelope is non-paginated; the set of authorities is
+        small and bounded.
+
+        Requires JWT + the `barcode.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Registered barcode authorities (possibly empty).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BarcodeAuthorityListResponse"
+              examples:
+                empty:
+                  summary: No authorities registered yet
+                  value:
+                    authorities: []
+                seedPlatform:
+                  summary: Only the seed Arena Platform authority
+                  value:
+                    authorities:
+                      - id: "01929d0e-0e47-7000-8000-000000000a01"
+                        type: "platform"
+                        label: "Arena Platform"
+                        created_at: "2026-06-30T12:00:00Z"
+                allFour:
+                  summary: One authority of each pinned type
+                  value:
+                    authorities:
+                      - id: "01929d0e-0e47-7000-8000-000000000a01"
+                        type: "platform"
+                        label: "Arena Platform"
+                        created_at: "2026-06-30T12:00:00Z"
+                      - id: "01929d0e-0e47-7000-8000-000000000a02"
+                        type: "legacy_bil24"
+                        label: "Legacy Bil24"
+                        created_at: "2026-06-30T12:01:00Z"
+                      - id: "01929d0e-0e47-7000-8000-000000000a03"
+                        type: "external_platform"
+                        label: "TicketMaster Bridge"
+                        created_at: "2026-06-30T12:02:00Z"
+                      - id: "01929d0e-0e47-7000-8000-000000000a04"
+                        type: "guest_list"
+                        label: "VIP Guest List"
+                        created_at: "2026-06-30T12:03:00Z"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `barcode.read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error while listing authorities
+            (`barcode.list_authorities_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Barcode queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: createBarcodeAuthority
+      summary: Register a new barcode authority
+      description: |
+        Creates a new entry in the barcode authority federation. The
+        `type` column drives scan-flow authority resolution; it must be
+        one of the four values pinned by the
+        `barcode_authorities_type_check` constraint
+        (`platform`, `legacy_bil24`, `external_platform`, `guest_list`).
+        `label` is a human-readable display name for operator UIs.
+
+        Requires JWT + the `barcode.create` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBarcodeAuthorityRequest"
+            examples:
+              legacyBil24:
+                summary: Register the legacy Bil24 authority
+                value:
+                  type: "legacy_bil24"
+                  label: "Legacy Bil24"
+              externalPlatform:
+                summary: Register an external ticketing-platform bridge
+                value:
+                  type: "external_platform"
+                  label: "TicketMaster Bridge"
+              guestList:
+                summary: Register a manual guest-list authority
+                value:
+                  type: "guest_list"
+                  label: "VIP Guest List"
+      responses:
+        "201":
+          description: Barcode authority created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BarcodeAuthorityItem"
+              examples:
+                created:
+                  summary: Echo of the newly created authority
+                  value:
+                    id: "01929d0e-0e47-7000-8000-000000000a02"
+                    type: "legacy_bil24"
+                    label: "Legacy Bil24"
+                    created_at: "2026-06-30T12:01:00Z"
+        "400":
+          description: |
+            Invalid body or field. Possible error codes:
+            `barcode.invalid_body`,
+            `barcode.invalid_authority_type`,
+            `barcode.missing_label`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `barcode.create` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error while creating the authority
+            (`barcode.create_authority_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Barcode queries unavailable
             (`dependency.database_unavailable`).
           content:
             application/json:

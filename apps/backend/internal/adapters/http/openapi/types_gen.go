@@ -49,6 +49,14 @@ const (
 	Organization AdminCreatedUserScope = "organization"
 )
 
+// Defines values for BarcodeAuthorityItemType.
+const (
+	BarcodeAuthorityItemTypeExternalPlatform BarcodeAuthorityItemType = "external_platform"
+	BarcodeAuthorityItemTypeGuestList        BarcodeAuthorityItemType = "guest_list"
+	BarcodeAuthorityItemTypeLegacyBil24      BarcodeAuthorityItemType = "legacy_bil24"
+	BarcodeAuthorityItemTypePlatform         BarcodeAuthorityItemType = "platform"
+)
+
 // Defines values for CheckoutSessionItemState.
 const (
 	CheckoutSessionItemStateAbandoned        CheckoutSessionItemState = "abandoned"
@@ -58,6 +66,14 @@ const (
 	CheckoutSessionItemStateManualReview     CheckoutSessionItemState = "manual_review"
 	CheckoutSessionItemStatePaymentStarted   CheckoutSessionItemState = "payment_started"
 	CheckoutSessionItemStatePricingConfirmed CheckoutSessionItemState = "pricing_confirmed"
+)
+
+// Defines values for CreateBarcodeAuthorityRequestType.
+const (
+	CreateBarcodeAuthorityRequestTypeExternalPlatform CreateBarcodeAuthorityRequestType = "external_platform"
+	CreateBarcodeAuthorityRequestTypeGuestList        CreateBarcodeAuthorityRequestType = "guest_list"
+	CreateBarcodeAuthorityRequestTypeLegacyBil24      CreateBarcodeAuthorityRequestType = "legacy_bil24"
+	CreateBarcodeAuthorityRequestTypePlatform         CreateBarcodeAuthorityRequestType = "platform"
 )
 
 // Defines values for CreateEventRequestStatus.
@@ -691,6 +707,38 @@ type BankAccountItem struct {
 	UpdatedAt     time.Time `json:"updated_at"`
 }
 
+// BarcodeAuthorityItem A single barcode authority — one row per originating system in the
+// barcode federation model (feature #142, migration
+// 0029_barcode_authorities.sql). Each barcode in the federation
+// belongs to exactly one authority; the `type` column drives
+// authority resolution in the scan flow (barcodes.go handleScan).
+type BarcodeAuthorityItem struct {
+	// CreatedAt Row creation timestamp (RFC 3339, UTC).
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id UUIDv7 primary key of the barcode_authorities row.
+	Id openapi_types.UUID `json:"id"`
+
+	// Label Human-readable display name for operator UIs.
+	Label string `json:"label"`
+
+	// Type Authority type. Pinned to the `barcode_authorities_type_check`
+	// constraint in migration 0029_barcode_authorities.sql.
+	Type BarcodeAuthorityItemType `json:"type"`
+}
+
+// BarcodeAuthorityItemType Authority type. Pinned to the `barcode_authorities_type_check`
+// constraint in migration 0029_barcode_authorities.sql.
+type BarcodeAuthorityItemType string
+
+// BarcodeAuthorityListResponse Response envelope returned by `GET /v1/barcodes/authorities`. Lists
+// every registered barcode authority in insertion order. The envelope
+// is non-paginated; the set of authorities is small and bounded.
+type BarcodeAuthorityListResponse struct {
+	// Authorities Registered barcode authorities (possibly empty).
+	Authorities []BarcodeAuthorityItem `json:"authorities"`
+}
+
 // CheckoutSessionEnvelope Top-level response envelope returned by every checkout-session
 // endpoint. Wraps a single `CheckoutSessionItem` under the
 // `checkout_session` key, matching the convention used by other
@@ -896,6 +944,22 @@ type CreateBankAccountRequest struct {
 	// RoutingNumber Domestic routing/sort/ABA code (pairs with account_number).
 	RoutingNumber *string `json:"routing_number,omitempty"`
 }
+
+// CreateBarcodeAuthorityRequest Request body for `POST /v1/barcodes/authorities`. Both `type` and
+// `label` are required; `type` must be one of the four values pinned
+// in the `barcode_authorities_type_check` migration constraint.
+type CreateBarcodeAuthorityRequest struct {
+	// Label Human-readable display name for operator UIs.
+	Label string `json:"label"`
+
+	// Type Authority type — drives scan-flow authority resolution. Pinned
+	// to the `barcode_authorities_type_check` constraint.
+	Type CreateBarcodeAuthorityRequestType `json:"type"`
+}
+
+// CreateBarcodeAuthorityRequestType Authority type — drives scan-flow authority resolution. Pinned
+// to the `barcode_authorities_type_check` constraint.
+type CreateBarcodeAuthorityRequestType string
 
 // CreateEventRequest Create-time payload for POST /v1/organizations/{org_id}/events.
 // The owning organization is taken from the path; the body MUST NOT
@@ -4270,6 +4334,9 @@ type PostV1AuthRefreshJSONRequestBody = AuthRefreshRequest
 
 // PostV1AuthRegisterJSONRequestBody defines body for PostV1AuthRegister for application/json ContentType.
 type PostV1AuthRegisterJSONRequestBody = AuthRegisterRequest
+
+// CreateBarcodeAuthorityJSONRequestBody defines body for CreateBarcodeAuthority for application/json ContentType.
+type CreateBarcodeAuthorityJSONRequestBody = CreateBarcodeAuthorityRequest
 
 // ValidatePromoCodeJSONRequestBody defines body for ValidatePromoCode for application/json ContentType.
 type ValidatePromoCodeJSONRequestBody = ValidatePromoCodeRequest
