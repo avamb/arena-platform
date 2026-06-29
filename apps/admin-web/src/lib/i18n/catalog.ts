@@ -45,6 +45,8 @@ export const ruCatalog: Catalog = {
   "shell.noRoles": "(нет ролей)",
   "shell.devSuffix": "разработка",
   "shell.nav.aria": "Основная навигация",
+  "shell.nav.open": "Открыть меню",
+  "shell.nav.close": "Закрыть меню",
 
   // Navigation labels (entity names stay English; labels here are explicit
   // human-readable descriptions paired with the English noun in parens).
@@ -142,6 +144,8 @@ export const enCatalog: Catalog = {
   "shell.noRoles": "(no roles)",
   "shell.devSuffix": "dev",
   "shell.nav.aria": "Primary navigation",
+  "shell.nav.open": "Open menu",
+  "shell.nav.close": "Close menu",
 
   // Navigation labels
   "nav.workspace": "Workspace",

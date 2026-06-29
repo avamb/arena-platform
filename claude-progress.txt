@@ -16473,3 +16473,45 @@ Note: Existing routes are NOT yet migrated to <ResponsiveTable> /
   the primitives + audit baseline; M-2..M-10 land the route migrations
   with 360 x 640 + 1280 x 800 screenshots per the M-8 gate.
 Marked #261 passing. Backlog: 261/301.
+
+=== 2026-06-29: Feature #262 — M-2 Shell navigation + scope selector + header ===
+AppLayout.tsx:
+  - Added responsive shell with forceLayout?: "desktop"|"mobile" prop.
+  - Effective layout = forceLayout || (isSuperadmin || useIsDesktop() ? desktop : mobile).
+    SuperAdmin preset (me.roles contains "platform_superadmin") opts out and
+    keeps the existing desktop two-column layout regardless of viewport.
+  - Mobile shell: single-column with sticky dark header carrying hamburger,
+    brand, reason badge, and the new mobile scope chip. iOS safe-area padding
+    on bottom via env(safe-area-inset-bottom) and top via
+    env(safe-area-inset-top) on header/drawer.
+  - MobileNavDrawer (left-side full-screen sheet) hosts nav + LocaleSwitcher
+    + user/logout block, with Escape-to-close. NavItem.onClick=onNavigate
+    auto-closes the drawer when the operator taps a nav link.
+  - AuthenticatedTopBar passes forceLayout="desktop" to ScopeSelector so the
+    desktop dropdown is rendered there even on a narrow viewport that
+    SuperAdmin holds open.
+ScopeSelector.tsx:
+  - Added forceLayout?: "desktop"|"mobile" prop; below md (auto) renders a
+    chip button (>=44 px hit target) showing the active scope label and
+    opens MobileScopeSheet. Desktop branch unchanged.
+MobileScopeSheet.tsx (NEW):
+  - Full-screen sheet with sticky back button, title, search input, and a
+    radiogroup of scope options (active = aria-checked="true"). Esc closes;
+    initial focus on back. filterScopes(scopes, q) substring-matches label,
+    raw, and id case-insensitively; returns the original array reference
+    when q is empty so callers preserve memoisation.
+i18n catalog: new keys shell.nav.open / shell.nav.close (ru/en).
+MobileScopeSheet.test.tsx (NEW): 11 cases pinning filterScopes (label/raw/id
+  matches, empty/no-match), closed/open render, radio count, aria-checked
+  on active, custom title/back/placeholder, empty-state copy, and stable
+  testids per option.
+Verification:
+  npm --prefix apps/admin-web run type-check  OK (silent)
+  npm --prefix apps/admin-web test -- --run   OK (575/575, +11)
+  npm --prefix apps/admin-web run build       OK (642.26 kB / 174.55 kB gz)
+Note: AppLayout itself is not unit-tested in isolation -- it depends on
+  AuthProvider/ScopeProvider/I18nProvider/Router context. The deeper
+  responsive behaviour is covered transitively via MobileScopeSheet, the
+  layout primitives (M-1), and the i18n key tests. 360x640 / 1280x800
+  screenshot capture for the Wave M-8 gate will land with the M-8 PR.
+Marked #262 passing. Backlog: 262/301.
