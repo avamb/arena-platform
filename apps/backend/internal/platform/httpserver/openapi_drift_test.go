@@ -308,6 +308,12 @@ func buildDriftTestServer(t *testing.T) *Server {
 		// POST/GET/PATCH/DELETE under
 		// /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers[/{id}].
 		TierQueries: gen.New(nil),
+		// Wire InventoryQueries so all GA inventory ledger routes (feature
+		// #130 / documented under feature #266) are mounted for the drift
+		// check: GET/POST under
+		// /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/inventory
+		// plus the /reserve, /release, /confirm sub-routes.
+		InventoryQueries: gen.New(nil),
 	})
 }
 

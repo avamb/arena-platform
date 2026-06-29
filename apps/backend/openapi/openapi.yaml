@@ -3390,6 +3390,125 @@ components:
           type: boolean
           example: true
 
+    InventoryRowItem:
+      type: object
+      required:
+        - id
+        - session_id
+        - tier_id
+        - capacity_total
+        - capacity_held
+        - capacity_sold
+        - capacity_available
+        - updated_at
+      description: |
+        A single inventory_ledger row. Tracks real-time capacity state for a
+        session (and optionally a tier; the GA-first capacity model uses
+        `tier_id = null` for the session-level row). `capacity_available`
+        is derived as `capacity_total - capacity_held - capacity_sold` and
+        is null whenever `capacity_total` is null (unlimited capacity).
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the ledger row.
+        session_id:
+          type: string
+          format: uuid
+          description: FK to the owning session.
+        tier_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            FK to the owning ticket tier, or null for the session-level
+            General-Admission ledger row (the only mode wired by the
+            current handler set).
+        capacity_total:
+          type: integer
+          format: int32
+          nullable: true
+          description: |
+            Total capacity available for sale on this ledger row. `null`
+            means unlimited (and `capacity_available` is then also `null`).
+          minimum: 0
+        capacity_held:
+          type: integer
+          format: int32
+          minimum: 0
+          description: |
+            Capacity units currently reserved but not yet confirmed
+            (purchased). Reservations increment this counter; releases
+            decrement it; confirms move units from held to sold.
+        capacity_sold:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Capacity units that have been confirmed (sold).
+        capacity_available:
+          type: integer
+          format: int32
+          nullable: true
+          minimum: 0
+          description: |
+            Derived field: `capacity_total - capacity_held - capacity_sold`.
+            Null when `capacity_total` is null (unlimited).
+        updated_at:
+          type: string
+          format: date-time
+          description: RFC 3339 timestamp of the last ledger mutation.
+
+    InventoryEnvelope:
+      type: object
+      required: [inventory]
+      description: Single inventory ledger row response envelope.
+      properties:
+        inventory:
+          $ref: "#/components/schemas/InventoryRowItem"
+
+    InventoryListResponse:
+      type: object
+      required: [inventory]
+      description: List-inventory response envelope.
+      properties:
+        inventory:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventoryRowItem"
+
+    InitInventoryRequest:
+      type: object
+      description: |
+        Body for initializing (or returning the existing) session-level
+        inventory ledger row. Body may be empty; when present,
+        `capacity_total` controls the new row's total capacity. A null
+        `capacity_total` (or an absent field on an empty body) creates an
+        unlimited-capacity row.
+      properties:
+        capacity_total:
+          type: integer
+          format: int32
+          nullable: true
+          minimum: 0
+          description: |
+            Total capacity to seed the ledger row with. `null` (or omitted)
+            means unlimited capacity.
+
+    InventoryQuantityRequest:
+      type: object
+      required: [quantity]
+      description: |
+        Body for reserve / release / confirm capacity operations.
+        `quantity` MUST be strictly positive — the handler returns
+        400 `inventory.invalid_quantity` for `quantity <= 0`.
+      properties:
+        quantity:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Number of capacity units to act on (must be > 0).
+          example: 2
+
 paths:
   /healthz:
     get:
@@ -9002,6 +9121,479 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database pool or tier queries unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/inventory:
+    get:
+      operationId: listInventory
+      summary: List inventory ledger rows for a session
+      description: |
+        Returns every inventory_ledger row attached to the session
+        (session-level row first when present, followed by per-tier rows
+        when the per-tier capacity model is later enabled). The GA-first
+        capacity model currently produces one row per session with
+        `tier_id = null`. Requires JWT + the `inventory.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the parent event.
+          schema:
+            type: string
+            format: uuid
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the parent session.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Inventory ledger rows for the session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryListResponse"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `inventory.read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`inventory.list_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Inventory queries or database pool unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: initInventory
+      summary: Initialize the session-level inventory ledger row
+      description: |
+        Creates the session-level (`tier_id = null`) inventory ledger row
+        for the given session, or returns the existing row when one is
+        already present. The request body is optional; when supplied,
+        `capacity_total` seeds the row's total capacity (null = unlimited).
+        Requires JWT + the `inventory.reserve` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the parent event.
+          schema:
+            type: string
+            format: uuid
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the parent session.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InitInventoryRequest"
+            examples:
+              unlimited:
+                summary: Initialize an unlimited-capacity GA row
+                value:
+                  capacity_total: null
+              fixedCapacity:
+                summary: Initialize a 500-seat GA row
+                value:
+                  capacity_total: 500
+      responses:
+        "201":
+          description: |
+            Inventory ledger row created (or, when already present, the
+            existing row is returned with the same envelope shape).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryEnvelope"
+        "400":
+          description: |
+            Body invalid. Possible error codes: `inventory.invalid_body`,
+            `inventory.invalid_json`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `inventory.reserve` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`inventory.init_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Database pool or inventory queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/inventory/reserve:
+    post:
+      operationId: reserveInventory
+      summary: Reserve capacity units on the session-level ledger row
+      description: |
+        Atomically reserves `quantity` capacity units against the
+        session-level inventory ledger row. Uses `SELECT ... FOR UPDATE`
+        in a CTE to enforce the
+        `capacity_held + capacity_sold + quantity <= capacity_total`
+        invariant. Returns 409 `inventory.over_capacity` when the request
+        would exceed available capacity. Requires JWT + the
+        `inventory.reserve` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the parent event.
+          schema:
+            type: string
+            format: uuid
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the parent session.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryQuantityRequest"
+            examples:
+              reserveTwo:
+                summary: Reserve 2 capacity units
+                value:
+                  quantity: 2
+              reserveTen:
+                summary: Reserve 10 capacity units (bulk hold)
+                value:
+                  quantity: 10
+      responses:
+        "200":
+          description: |
+            Capacity successfully reserved; the envelope wraps the updated
+            inventory ledger row.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryEnvelope"
+        "400":
+          description: |
+            Body invalid or quantity non-positive. Possible error codes:
+            `inventory.invalid_body`, `inventory.empty_body`,
+            `inventory.invalid_json`, `inventory.invalid_quantity`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `inventory.reserve` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            Insufficient capacity available for the requested quantity
+            (`inventory.over_capacity`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`inventory.reserve_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Database pool or inventory queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/inventory/release:
+    post:
+      operationId: releaseInventory
+      summary: Release previously reserved capacity units
+      description: |
+        Atomically releases `quantity` previously-reserved capacity units
+        back to available. Uses `SELECT ... FOR UPDATE` in a CTE to
+        enforce `capacity_held >= quantity` atomically; returns 409
+        `inventory.insufficient_held` when held is below the requested
+        amount. Requires JWT + the `inventory.release` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the parent event.
+          schema:
+            type: string
+            format: uuid
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the parent session.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryQuantityRequest"
+            examples:
+              releaseOne:
+                summary: Release a single reserved unit
+                value:
+                  quantity: 1
+              releaseBatch:
+                summary: Release a batch of expired holds
+                value:
+                  quantity: 5
+      responses:
+        "200":
+          description: |
+            Held capacity successfully released; the envelope wraps the
+            updated inventory ledger row.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryEnvelope"
+        "400":
+          description: |
+            Body invalid or quantity non-positive. Possible error codes:
+            `inventory.invalid_body`, `inventory.empty_body`,
+            `inventory.invalid_json`, `inventory.invalid_quantity`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `inventory.release` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            Held capacity is less than the quantity to release
+            (`inventory.insufficient_held`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`inventory.release_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Database pool or inventory queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/inventory/confirm:
+    post:
+      operationId: confirmInventory
+      summary: Confirm reserved capacity (move from held to sold)
+      description: |
+        Atomically moves `quantity` units from `capacity_held` to
+        `capacity_sold` (i.e. finalizes a sale). Uses `SELECT ... FOR
+        UPDATE` in a CTE to enforce `capacity_held >= quantity` atomically;
+        returns 409 `inventory.insufficient_held` when held is below the
+        requested amount. Requires JWT + the `inventory.confirm`
+        permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the parent event.
+          schema:
+            type: string
+            format: uuid
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the parent session.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryQuantityRequest"
+            examples:
+              confirmOne:
+                summary: Confirm a single ticket sale
+                value:
+                  quantity: 1
+              confirmGroup:
+                summary: Confirm a group purchase
+                value:
+                  quantity: 4
+      responses:
+        "200":
+          description: |
+            Held capacity successfully moved to sold; the envelope wraps
+            the updated inventory ledger row.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryEnvelope"
+        "400":
+          description: |
+            Body invalid or quantity non-positive. Possible error codes:
+            `inventory.invalid_body`, `inventory.empty_body`,
+            `inventory.invalid_json`, `inventory.invalid_quantity`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `inventory.confirm` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            Held capacity is less than the quantity to confirm
+            (`inventory.insufficient_held`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`inventory.confirm_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Database pool or inventory queries unavailable
+            (`dependency.database_unavailable`).
           content:
             application/json:
               schema:

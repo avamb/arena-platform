@@ -16779,3 +16779,76 @@ Verification:
   npm --prefix apps/admin-web run type-check            OK (silent).
 
 Marked #265 passing. Backlog: 265/301.
+
+=== 2026-06-29: Feature #266 — A-5 Document inventory endpoints in OpenAPI ===
+apps/backend/openapi/openapi.yaml:
+  - Added 5 component schemas: InventoryRowItem, InventoryEnvelope,
+    InventoryListResponse, InitInventoryRequest, InventoryQuantityRequest.
+    InventoryRowItem documents the nullable tier_id (GA model uses null),
+    nullable capacity_total (null = unlimited) and the derived
+    capacity_available = capacity_total - capacity_held - capacity_sold.
+  - Added 4 path entries / 5 operations covering every inventory.go
+    handler:
+      GET    .../sessions/{session_id}/inventory          listInventory
+      POST   .../sessions/{session_id}/inventory          initInventory
+      POST   .../sessions/{session_id}/inventory/reserve  reserveInventory
+      POST   .../sessions/{session_id}/inventory/release  releaseInventory
+      POST   .../sessions/{session_id}/inventory/confirm  confirmInventory
+    Each carries bearerAuth, tags: [v1], the permission name in the
+    description (inventory.read / inventory.reserve / inventory.release /
+    inventory.confirm), and the full error catalogue from inventory.go:
+    inventory.invalid_body, inventory.empty_body, inventory.invalid_json,
+    inventory.invalid_quantity, inventory.over_capacity (409 on reserve),
+    inventory.insufficient_held (409 on release+confirm-op),
+    inventory.init_failed, inventory.list_failed,
+    inventory.reserve_failed, inventory.release_failed,
+    inventory.confirm_failed, dependency.database_unavailable.
+  - initInventory body is optional (capacity_total null = unlimited);
+    reserve/release/confirm bodies require positive quantity. Inline
+    examples are consumed by the contract test.
+
+apps/backend/internal/platform/httpserver/openapi_inventory_266_test.go (NEW):
+  8 contract tests pinning the spec for #266:
+    - TestOpenAPI266_PathsPresent (4 path mappings)
+    - TestOpenAPI266_OperationIDsPresent (5 canonical IDs)
+    - TestOpenAPI266_SchemasPresent (5 component schema names)
+    - TestOpenAPI266_PermissionsDocumented (read/reserve/release/confirm-op)
+    - TestOpenAPI266_BearerAuthAndTags
+    - TestOpenAPI266_ErrorEnvelopeUsed
+    - TestOpenAPI266_ConflictCodesDocumented (over_capacity +
+      insufficient_held documented in 409 descriptions)
+    - TestOpenAPI266_SpecExamplesValidate — the "minimal contract test"
+      called out by the ticket. Loads openapi.yaml via gopkg.in/yaml.v3,
+      walks the inline init / reserve / release / confirm-op examples
+      and asserts: init capacity_total is null or non-negative, and
+      every reserve/release/confirm-op example carries quantity > 0
+      (matching the handler's inventory.invalid_quantity gate). Runs in
+      CI without docker / postgres / oapi-codegen.
+  Reuses helpers from openapi_events_263_test.go (mustOperation,
+  extractExamples, findOpenAPISpecPath) so the new file is purely
+  additive.
+
+apps/backend/internal/platform/httpserver/openapi_drift_test.go:
+  buildDriftTestServer now wires InventoryQueries: gen.New(nil) so the
+  inventory routes are mounted on the drift-test chi router. Without
+  this the four new spec paths would register as phantom routes in
+  TestOpenAPIDriftCheck_CodeCoversAllSpecRoutes.
+
+apps/backend/internal/adapters/http/openapi/types_gen.go:
+  Regenerated via oapi-codegen v2.4.1 (golang:1.24 docker). Known
+  OpenAPI 3.1 "not yet supported by oapi-codegen" warning unchanged.
+apps/backend/openapi/clients/ts/index.d.ts:
+  Regenerated via scripts/gen-ts-client.mjs (openapi-typescript 7.13.0).
+  29 occurrences of the new Inventory* type names verified in the
+  generated declarations.
+
+Verification:
+  docker golang:1.24 go test ./internal/platform/httpserver/
+      -run TestOpenAPI266 -count=1 -v                  PASS (8/8)
+  docker golang:1.24 go build ./...                    OK
+  docker golang:1.24 go test ./internal/platform/httpserver/
+      -run 'TestOpenAPI263|TestOpenAPI264|TestOpenAPI265|TestOpenAPI266|TestOpenAPIDriftCheck_SpecCoversAllCodeRoutes'
+      -count=1                                          PASS
+  npm --prefix apps/admin-web run type-check           OK (silent).
+
+Marked #266 passing. Backlog: 266/301.

@@ -1291,6 +1291,77 @@ type InfoResponse struct {
 	Version string `json:"version"`
 }
 
+// InitInventoryRequest Body for initializing (or returning the existing) session-level
+// inventory ledger row. Body may be empty; when present,
+// `capacity_total` controls the new row's total capacity. A null
+// `capacity_total` (or an absent field on an empty body) creates an
+// unlimited-capacity row.
+type InitInventoryRequest struct {
+	// CapacityTotal Total capacity to seed the ledger row with. `null` (or omitted)
+	// means unlimited capacity.
+	CapacityTotal *int32 `json:"capacity_total"`
+}
+
+// InventoryEnvelope Single inventory ledger row response envelope.
+type InventoryEnvelope struct {
+	// Inventory A single inventory_ledger row. Tracks real-time capacity state for a
+	// session (and optionally a tier; the GA-first capacity model uses
+	// `tier_id = null` for the session-level row). `capacity_available`
+	// is derived as `capacity_total - capacity_held - capacity_sold` and
+	// is null whenever `capacity_total` is null (unlimited capacity).
+	Inventory InventoryRowItem `json:"inventory"`
+}
+
+// InventoryListResponse List-inventory response envelope.
+type InventoryListResponse struct {
+	Inventory []InventoryRowItem `json:"inventory"`
+}
+
+// InventoryQuantityRequest Body for reserve / release / confirm capacity operations.
+// `quantity` MUST be strictly positive — the handler returns
+// 400 `inventory.invalid_quantity` for `quantity <= 0`.
+type InventoryQuantityRequest struct {
+	// Quantity Number of capacity units to act on (must be > 0).
+	Quantity int32 `json:"quantity"`
+}
+
+// InventoryRowItem A single inventory_ledger row. Tracks real-time capacity state for a
+// session (and optionally a tier; the GA-first capacity model uses
+// `tier_id = null` for the session-level row). `capacity_available`
+// is derived as `capacity_total - capacity_held - capacity_sold` and
+// is null whenever `capacity_total` is null (unlimited capacity).
+type InventoryRowItem struct {
+	// CapacityAvailable Derived field: `capacity_total - capacity_held - capacity_sold`.
+	// Null when `capacity_total` is null (unlimited).
+	CapacityAvailable *int32 `json:"capacity_available"`
+
+	// CapacityHeld Capacity units currently reserved but not yet confirmed
+	// (purchased). Reservations increment this counter; releases
+	// decrement it; confirms move units from held to sold.
+	CapacityHeld int32 `json:"capacity_held"`
+
+	// CapacitySold Capacity units that have been confirmed (sold).
+	CapacitySold int32 `json:"capacity_sold"`
+
+	// CapacityTotal Total capacity available for sale on this ledger row. `null`
+	// means unlimited (and `capacity_available` is then also `null`).
+	CapacityTotal *int32 `json:"capacity_total"`
+
+	// Id UUIDv7 primary key of the ledger row.
+	Id openapi_types.UUID `json:"id"`
+
+	// SessionId FK to the owning session.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// TierId FK to the owning ticket tier, or null for the session-level
+	// General-Admission ledger row (the only mode wired by the
+	// current handler set).
+	TierId *openapi_types.UUID `json:"tier_id"`
+
+	// UpdatedAt RFC 3339 timestamp of the last ledger mutation.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 // MeAssignedNetwork defines model for MeAssignedNetwork.
 type MeAssignedNetwork struct {
 	// Id Operator network UUID
@@ -2798,6 +2869,18 @@ type CreateSessionJSONRequestBody = CreateSessionRequest
 
 // UpdateSessionJSONRequestBody defines body for UpdateSession for application/json ContentType.
 type UpdateSessionJSONRequestBody = UpdateSessionRequest
+
+// InitInventoryJSONRequestBody defines body for InitInventory for application/json ContentType.
+type InitInventoryJSONRequestBody = InitInventoryRequest
+
+// ConfirmInventoryJSONRequestBody defines body for ConfirmInventory for application/json ContentType.
+type ConfirmInventoryJSONRequestBody = InventoryQuantityRequest
+
+// ReleaseInventoryJSONRequestBody defines body for ReleaseInventory for application/json ContentType.
+type ReleaseInventoryJSONRequestBody = InventoryQuantityRequest
+
+// ReserveInventoryJSONRequestBody defines body for ReserveInventory for application/json ContentType.
+type ReserveInventoryJSONRequestBody = InventoryQuantityRequest
 
 // CreateTicketTierJSONRequestBody defines body for CreateTicketTier for application/json ContentType.
 type CreateTicketTierJSONRequestBody = CreateTicketTierRequest

@@ -1598,6 +1598,113 @@ export interface paths {
         patch: operations["updateTicketTier"];
         trace?: never;
     };
+    "/v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/inventory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List inventory ledger rows for a session
+         * @description Returns every inventory_ledger row attached to the session
+         *     (session-level row first when present, followed by per-tier rows
+         *     when the per-tier capacity model is later enabled). The GA-first
+         *     capacity model currently produces one row per session with
+         *     `tier_id = null`. Requires JWT + the `inventory.read` permission.
+         */
+        get: operations["listInventory"];
+        put?: never;
+        /**
+         * Initialize the session-level inventory ledger row
+         * @description Creates the session-level (`tier_id = null`) inventory ledger row
+         *     for the given session, or returns the existing row when one is
+         *     already present. The request body is optional; when supplied,
+         *     `capacity_total` seeds the row's total capacity (null = unlimited).
+         *     Requires JWT + the `inventory.reserve` permission.
+         */
+        post: operations["initInventory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/inventory/reserve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reserve capacity units on the session-level ledger row
+         * @description Atomically reserves `quantity` capacity units against the
+         *     session-level inventory ledger row. Uses `SELECT ... FOR UPDATE`
+         *     in a CTE to enforce the
+         *     `capacity_held + capacity_sold + quantity <= capacity_total`
+         *     invariant. Returns 409 `inventory.over_capacity` when the request
+         *     would exceed available capacity. Requires JWT + the
+         *     `inventory.reserve` permission.
+         */
+        post: operations["reserveInventory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/inventory/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release previously reserved capacity units
+         * @description Atomically releases `quantity` previously-reserved capacity units
+         *     back to available. Uses `SELECT ... FOR UPDATE` in a CTE to
+         *     enforce `capacity_held >= quantity` atomically; returns 409
+         *     `inventory.insufficient_held` when held is below the requested
+         *     amount. Requires JWT + the `inventory.release` permission.
+         */
+        post: operations["releaseInventory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/inventory/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm reserved capacity (move from held to sold)
+         * @description Atomically moves `quantity` units from `capacity_held` to
+         *     `capacity_sold` (i.e. finalizes a sale). Uses `SELECT ... FOR
+         *     UPDATE` in a CTE to enforce `capacity_held >= quantity` atomically;
+         *     returns 409 `inventory.insufficient_held` when held is below the
+         *     requested amount. Requires JWT + the `inventory.confirm`
+         *     permission.
+         */
+        post: operations["confirmInventory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/checkout/quote": {
         parameters: {
             query?: never;
@@ -4583,6 +4690,97 @@ export interface components {
             tier: components["schemas"]["TicketTierItem"];
             /** @example true */
             deleted: boolean;
+        };
+        /**
+         * @description A single inventory_ledger row. Tracks real-time capacity state for a
+         *     session (and optionally a tier; the GA-first capacity model uses
+         *     `tier_id = null` for the session-level row). `capacity_available`
+         *     is derived as `capacity_total - capacity_held - capacity_sold` and
+         *     is null whenever `capacity_total` is null (unlimited capacity).
+         */
+        InventoryRowItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the ledger row.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description FK to the owning session.
+             */
+            session_id: string;
+            /**
+             * Format: uuid
+             * @description FK to the owning ticket tier, or null for the session-level
+             *     General-Admission ledger row (the only mode wired by the
+             *     current handler set).
+             */
+            tier_id: string | null;
+            /**
+             * Format: int32
+             * @description Total capacity available for sale on this ledger row. `null`
+             *     means unlimited (and `capacity_available` is then also `null`).
+             */
+            capacity_total: number | null;
+            /**
+             * Format: int32
+             * @description Capacity units currently reserved but not yet confirmed
+             *     (purchased). Reservations increment this counter; releases
+             *     decrement it; confirms move units from held to sold.
+             */
+            capacity_held: number;
+            /**
+             * Format: int32
+             * @description Capacity units that have been confirmed (sold).
+             */
+            capacity_sold: number;
+            /**
+             * Format: int32
+             * @description Derived field: `capacity_total - capacity_held - capacity_sold`.
+             *     Null when `capacity_total` is null (unlimited).
+             */
+            capacity_available: number | null;
+            /**
+             * Format: date-time
+             * @description RFC 3339 timestamp of the last ledger mutation.
+             */
+            updated_at: string;
+        };
+        /** @description Single inventory ledger row response envelope. */
+        InventoryEnvelope: {
+            inventory: components["schemas"]["InventoryRowItem"];
+        };
+        /** @description List-inventory response envelope. */
+        InventoryListResponse: {
+            inventory: components["schemas"]["InventoryRowItem"][];
+        };
+        /**
+         * @description Body for initializing (or returning the existing) session-level
+         *     inventory ledger row. Body may be empty; when present,
+         *     `capacity_total` controls the new row's total capacity. A null
+         *     `capacity_total` (or an absent field on an empty body) creates an
+         *     unlimited-capacity row.
+         */
+        InitInventoryRequest: {
+            /**
+             * Format: int32
+             * @description Total capacity to seed the ledger row with. `null` (or omitted)
+             *     means unlimited capacity.
+             */
+            capacity_total?: number | null;
+        };
+        /**
+         * @description Body for reserve / release / confirm capacity operations.
+         *     `quantity` MUST be strictly positive — the handler returns
+         *     400 `inventory.invalid_quantity` for `quantity <= 0`.
+         */
+        InventoryQuantityRequest: {
+            /**
+             * Format: int32
+             * @description Number of capacity units to act on (must be > 0).
+             * @example 2
+             */
+            quantity: number;
         };
     };
     responses: never;
@@ -10606,6 +10804,451 @@ export interface operations {
                 };
             };
             /** @description Database pool or tier queries unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listInventory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the parent event. */
+                event_id: string;
+                /** @description UUIDv7 of the parent session. */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Inventory ledger rows for the session. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryListResponse"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `inventory.read` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`inventory.list_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Inventory queries or database pool unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    initInventory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the parent event. */
+                event_id: string;
+                /** @description UUIDv7 of the parent session. */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["InitInventoryRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description Inventory ledger row created (or, when already present, the
+             *     existing row is returned with the same envelope shape).
+             */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryEnvelope"];
+                };
+            };
+            /**
+             * @description Body invalid. Possible error codes: `inventory.invalid_body`,
+             *     `inventory.invalid_json`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `inventory.reserve` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`inventory.init_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Database pool or inventory queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    reserveInventory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the parent event. */
+                event_id: string;
+                /** @description UUIDv7 of the parent session. */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryQuantityRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description Capacity successfully reserved; the envelope wraps the updated
+             *     inventory ledger row.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryEnvelope"];
+                };
+            };
+            /**
+             * @description Body invalid or quantity non-positive. Possible error codes:
+             *     `inventory.invalid_body`, `inventory.empty_body`,
+             *     `inventory.invalid_json`, `inventory.invalid_quantity`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `inventory.reserve` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Insufficient capacity available for the requested quantity
+             *     (`inventory.over_capacity`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`inventory.reserve_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Database pool or inventory queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    releaseInventory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the parent event. */
+                event_id: string;
+                /** @description UUIDv7 of the parent session. */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryQuantityRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description Held capacity successfully released; the envelope wraps the
+             *     updated inventory ledger row.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryEnvelope"];
+                };
+            };
+            /**
+             * @description Body invalid or quantity non-positive. Possible error codes:
+             *     `inventory.invalid_body`, `inventory.empty_body`,
+             *     `inventory.invalid_json`, `inventory.invalid_quantity`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `inventory.release` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Held capacity is less than the quantity to release
+             *     (`inventory.insufficient_held`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`inventory.release_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Database pool or inventory queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    confirmInventory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the parent event. */
+                event_id: string;
+                /** @description UUIDv7 of the parent session. */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryQuantityRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description Held capacity successfully moved to sold; the envelope wraps
+             *     the updated inventory ledger row.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryEnvelope"];
+                };
+            };
+            /**
+             * @description Body invalid or quantity non-positive. Possible error codes:
+             *     `inventory.invalid_body`, `inventory.empty_body`,
+             *     `inventory.invalid_json`, `inventory.invalid_quantity`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `inventory.confirm` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Held capacity is less than the quantity to confirm
+             *     (`inventory.insufficient_held`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`inventory.confirm_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Database pool or inventory queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
             503: {
                 headers: {
                     [name: string]: unknown;
