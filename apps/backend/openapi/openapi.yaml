@@ -4141,6 +4141,368 @@ components:
         quote:
           $ref: "#/components/schemas/QuoteResponseItem"
 
+    CheckoutSessionItem:
+      type: object
+      description: |
+        Canonical representation of a `checkout_sessions` row, returned by
+        every endpoint in the checkout session state machine implemented in
+        `apps/backend/internal/platform/httpserver/checkout.go`. Pricing
+        snapshot fields (`subtotal`, `discount`, `platform_fee`,
+        `provider_fee`, `tax`, `total`, `currency`, `promo_code_id`) are
+        populated once the session transitions out of `created` via
+        `POST /v1/checkout/{id}/confirm`. Payment fields
+        (`payment_intent_id`, `payment_provider`) are populated when the
+        session is completed via the paid path; the free path (total = 0)
+        leaves them `null`. Terminal-state timestamps are mutually
+        exclusive: exactly one of `completed_at`, `abandoned_at`,
+        `expired_at` is set when the session is terminal.
+      required:
+        - id
+        - org_id
+        - channel_id
+        - reservation_id
+        - user_id
+        - state
+        - subtotal
+        - discount
+        - platform_fee
+        - provider_fee
+        - tax
+        - total
+        - currency
+        - promo_code_id
+        - payment_intent_id
+        - payment_provider
+        - completed_at
+        - abandoned_at
+        - expired_at
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the checkout session row.
+        org_id:
+          type: string
+          format: uuid
+          description: Organization that owns the session.
+        channel_id:
+          type: string
+          format: uuid
+          description: Sales channel the session was created in.
+        reservation_id:
+          type: string
+          format: uuid
+          description: |
+            Reservation the session wraps. The reservation must already
+            exist and be in `active` (or compatible) state. When the
+            reservation expires the checkout session is cascaded to
+            `expired` by `reservation_processor.go`.
+        user_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            Authenticated buyer when known; `null` for anonymous /
+            guest checkouts. Set at session creation and immutable.
+        state:
+          type: string
+          enum:
+            - created
+            - pricing_confirmed
+            - payment_started
+            - completed
+            - abandoned
+            - expired
+            - manual_review
+          description: |
+            Current state in the checkout state machine. Valid
+            transitions:
+            `created` → {`pricing_confirmed`, `abandoned`, `expired`};
+            `pricing_confirmed` → {`completed`, `payment_started`,
+            `abandoned`, `expired`};
+            `payment_started` → {`completed`, `manual_review`,
+            `abandoned`, `expired`};
+            `manual_review` → {`completed`, `abandoned`};
+            `completed`, `abandoned`, `expired` are terminal.
+        subtotal:
+          type: integer
+          format: int64
+          nullable: true
+          minimum: 0
+          description: |
+            Pricing-snapshot `unit_price * quantity`, in minor currency
+            units. `null` until the session is confirmed.
+        discount:
+          type: integer
+          format: int64
+          nullable: true
+          minimum: 0
+          description: Pricing-snapshot discount, clamped to `[0, subtotal]`.
+        platform_fee:
+          type: integer
+          format: int64
+          nullable: true
+          minimum: 0
+          description: Pricing-snapshot platform fee.
+        provider_fee:
+          type: integer
+          format: int64
+          nullable: true
+          minimum: 0
+          description: Pricing-snapshot provider fee.
+        tax:
+          type: integer
+          format: int64
+          nullable: true
+          minimum: 0
+          description: Pricing-snapshot tax.
+        total:
+          type: integer
+          format: int64
+          nullable: true
+          minimum: 0
+          description: |
+            Pricing-snapshot grand total:
+            `(subtotal - discount) + platform_fee + provider_fee + tax`.
+        currency:
+          type: string
+          nullable: true
+          minLength: 3
+          maxLength: 3
+          description: ISO 4217 currency code snapshot (`USD`, `EUR`, ...).
+        promo_code_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            ID of the promo code applied at confirm time; `null` when
+            no promo was supplied or it failed validation.
+        payment_intent_id:
+          type: string
+          nullable: true
+          description: |
+            Provider-side payment intent identifier captured when the
+            session is completed via the paid path. `null` for free
+            checkouts (total = 0).
+        payment_provider:
+          type: string
+          nullable: true
+          description: |
+            Payment provider name (e.g. `stripe`, `tinkoff`) captured at
+            completion. `null` for free checkouts.
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: RFC3339 timestamp when the session reached `completed`.
+        abandoned_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: RFC3339 timestamp when the session reached `abandoned`.
+        expired_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            RFC3339 timestamp when the session was force-expired by the
+            reservation processor or TTL worker.
+        created_at:
+          type: string
+          format: date-time
+          description: RFC3339 row-creation timestamp.
+        updated_at:
+          type: string
+          format: date-time
+          description: RFC3339 last-update timestamp.
+
+    CheckoutSessionEnvelope:
+      type: object
+      required: [checkout_session]
+      description: |
+        Top-level response envelope returned by every checkout-session
+        endpoint. Wraps a single `CheckoutSessionItem` under the
+        `checkout_session` key, matching the convention used by other
+        single-resource fetches in this API.
+      properties:
+        checkout_session:
+          $ref: "#/components/schemas/CheckoutSessionItem"
+
+    StartCheckoutRequest:
+      type: object
+      required: [org_id, channel_id, reservation_id]
+      description: |
+        Request body for `POST /v1/checkout/start`. Creates a new checkout
+        session in state `created` linked to an existing reservation. The
+        optional `user_id` attaches the session to an authenticated buyer;
+        omit / send `null` for anonymous checkouts.
+      properties:
+        org_id:
+          type: string
+          format: uuid
+          description: Organization that owns the session.
+        channel_id:
+          type: string
+          format: uuid
+          description: Sales channel the session is created in.
+        reservation_id:
+          type: string
+          format: uuid
+          description: Reservation the session wraps.
+        user_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Optional buyer UUID; `null` for anonymous buyers.
+
+    ConfirmCheckoutRequest:
+      type: object
+      required: [tier_id, session_id, quantity, org_id]
+      description: |
+        Request body for `POST /v1/checkout/{id}/confirm`. Re-quotes the
+        pricing using the current pricing pipeline (`ComputePricing` in
+        `pricing.go`) and stores the immutable snapshot on the session,
+        transitioning `created` → `pricing_confirmed`. `chosen_price` is
+        required for tiers with `pricing_mode = pwyw`.
+      properties:
+        tier_id:
+          type: string
+          format: uuid
+          description: Ticket tier to quote against.
+        session_id:
+          type: string
+          format: uuid
+          description: |
+            Event session that owns the tier (NOT the checkout session
+            id, which is on the URL path).
+        org_id:
+          type: string
+          format: uuid
+          description: Organization that owns the session and any promo.
+        quantity:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Number of tickets being quoted; must be > 0.
+        promo_code:
+          type: string
+          nullable: true
+          description: |
+            Optional promo code; when present the handler resolves and
+            validates it before stamping `promo_code_id`.
+        chosen_price:
+          type: integer
+          format: int64
+          nullable: true
+          minimum: 0
+          description: |
+            Buyer-chosen unit price for pay-what-you-want tiers
+            (required when the tier's `pricing_mode` is `pwyw`; ignored
+            otherwise). Must satisfy any `pwyw_min` / `pwyw_max` bounds
+            on the tier.
+
+    PriceBreakdownLineItem:
+      type: object
+      required: [label, amount]
+      description: |
+        Single named line in a price breakdown. `amount` is in minor
+        currency units. Discount lines carry NEGATIVE amounts (they
+        reduce the buyer's total); fees and taxes carry POSITIVE
+        amounts. The full sum invariant is
+        `subtotal + sum(discounts) + sum(fees) + sum(taxes) == total`.
+      properties:
+        label:
+          type: string
+          description: Localised, human-readable label for the line.
+        amount:
+          type: integer
+          format: int64
+          description: |
+            Signed amount in minor currency units. Negative for
+            discounts, positive for fees and taxes.
+
+    PriceBreakdownItem:
+      type: object
+      required: [subtotal, discounts, fees, taxes, total, currency]
+      description: |
+        Itemised price breakdown returned by
+        `GET /v1/checkout/{id}/price-breakdown`. Sourced from the
+        pricing snapshot persisted on the checkout session when it
+        transitioned to `pricing_confirmed`. No recomputation is
+        performed — the snapshot is the single source of truth.
+      properties:
+        subtotal:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Snapshot subtotal in minor currency units.
+        discounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/PriceBreakdownLineItem"
+          description: |
+            Discount lines; empty when no discount applies. Amounts
+            are negative.
+        fees:
+          type: array
+          items:
+            $ref: "#/components/schemas/PriceBreakdownLineItem"
+          description: Platform / provider fee lines. Amounts are positive.
+        taxes:
+          type: array
+          items:
+            $ref: "#/components/schemas/PriceBreakdownLineItem"
+          description: Tax lines (e.g. VAT). Amounts are positive.
+        total:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Snapshot grand total.
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: ISO 4217 currency code.
+
+    PriceBreakdownEnvelope:
+      type: object
+      required: [price_breakdown]
+      description: |
+        Top-level response envelope returned by
+        `GET /v1/checkout/{id}/price-breakdown`.
+      properties:
+        price_breakdown:
+          $ref: "#/components/schemas/PriceBreakdownItem"
+
+    CompleteCheckoutRequest:
+      type: object
+      description: |
+        Request body for `POST /v1/checkout/{id}/complete`. Two completion
+        modes:
+
+        * **Paid path** (`total > 0`): body MUST carry both
+          `payment_intent_id` and `payment_provider`. Transitions
+          `pricing_confirmed` → `completed`.
+        * **Free path** (`total = 0`, i.e. free tier or 100 %-off promo):
+          body may be empty or omit payment fields. Tickets are issued
+          immediately and delivery jobs are enqueued.
+
+        Sending `payment_provider` without `payment_intent_id` is a 400
+        (`checkout.missing_payment_intent`).
+      properties:
+        payment_intent_id:
+          type: string
+          description: |
+            Provider-side payment intent identifier. Required for the
+            paid path; omit / empty for the free path.
+        payment_provider:
+          type: string
+          description: |
+            Payment provider name (e.g. `stripe`, `tinkoff`). Required
+            for the paid path; omit for the free path.
+
 paths:
   /healthz:
     get:
@@ -11274,6 +11636,544 @@ paths:
         "503":
           description: |
             Promo queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/checkout/start:
+    post:
+      operationId: startCheckoutSession
+      summary: Create a checkout session
+      description: |
+        Creates a new checkout session in state `created` linked to the
+        given reservation. Returns the canonical
+        `CheckoutSessionEnvelope` with pricing-snapshot fields still
+        `null` (populated later by `POST /v1/checkout/{id}/confirm`).
+
+        Requires JWT + the `checkout.start` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartCheckoutRequest"
+            examples:
+              startAuthenticated:
+                summary: Start a checkout for an authenticated buyer
+                value:
+                  org_id: "018f4f00-0000-7000-8000-000000000003"
+                  channel_id: "018f4f00-0000-7000-8000-000000000004"
+                  reservation_id: "018f4f00-0000-7000-8000-000000000010"
+                  user_id: "018f4f00-0000-7000-8000-000000000099"
+              startAnonymous:
+                summary: Start a checkout for an anonymous buyer
+                value:
+                  org_id: "018f4f00-0000-7000-8000-000000000003"
+                  channel_id: "018f4f00-0000-7000-8000-000000000004"
+                  reservation_id: "018f4f00-0000-7000-8000-000000000011"
+      responses:
+        "201":
+          description: Checkout session created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutSessionEnvelope"
+        "400":
+          description: |
+            Invalid body or field. Possible error codes:
+            `checkout.invalid_body`, `checkout.empty_body`,
+            `checkout.invalid_json`, `checkout.invalid_org_id`,
+            `checkout.invalid_channel_id`,
+            `checkout.invalid_reservation_id`,
+            `checkout.invalid_user_id`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `checkout.start` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error (`checkout.start_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Database pool or checkout queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/checkout/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Checkout session UUID.
+    get:
+      operationId: getCheckoutSession
+      summary: Read a checkout session
+      description: |
+        Returns the current state of a checkout session, including any
+        pricing snapshot and terminal-state timestamps.
+
+        Requires JWT + the `checkout.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Checkout session found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutSessionEnvelope"
+        "400":
+          description: |
+            Path id is not a UUID (`checkout.invalid_id`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `checkout.read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Checkout session not found (`checkout.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error (`checkout.get_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Checkout queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/checkout/{id}/price-breakdown:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Checkout session UUID.
+    get:
+      operationId: getCheckoutPriceBreakdown
+      summary: Itemised price breakdown for a checkout session
+      description: |
+        Returns the itemised price breakdown (subtotal, discounts, fees,
+        taxes, total) sourced from the pricing snapshot persisted on the
+        checkout session. Requires the session to have transitioned to
+        `pricing_confirmed` — otherwise returns 409
+        `checkout.pricing_not_confirmed`.
+
+        Compliance: EU and IL consumer-protection law require the
+        all-in price (including taxes and fees) to be displayed to the
+        buyer before payment.
+
+        Requires JWT + the `checkout.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Price breakdown returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PriceBreakdownEnvelope"
+        "400":
+          description: |
+            Path id is not a UUID (`checkout.invalid_id`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `checkout.read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Checkout session not found (`checkout.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            Pricing snapshot is not populated yet — the session has
+            not been confirmed (`checkout.pricing_not_confirmed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error (`checkout.get_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Checkout queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/checkout/{id}/confirm:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Checkout session UUID.
+    post:
+      operationId: confirmCheckoutSession
+      summary: Lock in the pricing snapshot for a checkout session
+      description: |
+        Re-quotes the pricing using the current pricing pipeline
+        (`ComputePricing` in `pricing.go`), persists the resulting
+        snapshot on the session, and transitions
+        `created` → `pricing_confirmed`. When `promo_code` is supplied
+        the handler resolves and validates it; failures surface the
+        promo state-machine error codes (`promo.not_found`,
+        `promo.not_active`, `promo.expired`, etc.).
+
+        Requires JWT + the `checkout.confirm` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmCheckoutRequest"
+            examples:
+              confirmFixedTier:
+                summary: Confirm a fixed-price tier without a promo
+                value:
+                  org_id: "018f4f00-0000-7000-8000-000000000003"
+                  tier_id: "018f4f00-0000-7000-8000-000000000020"
+                  session_id: "018f4f00-0000-7000-8000-000000000021"
+                  quantity: 2
+              confirmFixedTierWithPromo:
+                summary: Confirm a fixed-price tier with a promo code
+                value:
+                  org_id: "018f4f00-0000-7000-8000-000000000003"
+                  tier_id: "018f4f00-0000-7000-8000-000000000020"
+                  session_id: "018f4f00-0000-7000-8000-000000000021"
+                  quantity: 1
+                  promo_code: "SUMMER25"
+              confirmPwywTier:
+                summary: Confirm a pay-what-you-want tier (chosen_price required)
+                value:
+                  org_id: "018f4f00-0000-7000-8000-000000000003"
+                  tier_id: "018f4f00-0000-7000-8000-000000000022"
+                  session_id: "018f4f00-0000-7000-8000-000000000021"
+                  quantity: 1
+                  chosen_price: 1500
+      responses:
+        "200":
+          description: Pricing confirmed; session is now in `pricing_confirmed`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutSessionEnvelope"
+        "400":
+          description: |
+            Invalid body or field. Possible error codes:
+            `checkout.invalid_id`, `checkout.invalid_body`,
+            `checkout.empty_body`, `checkout.invalid_json`,
+            `checkout.invalid_tier_id`,
+            `checkout.invalid_session_id`,
+            `checkout.invalid_org_id`,
+            `checkout.invalid_quantity`,
+            `checkout.chosen_price_required`,
+            `checkout.invalid_chosen_price`,
+            `checkout.chosen_price_below_min`,
+            `checkout.chosen_price_above_max`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `checkout.confirm` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: |
+            Ticket tier not found (`checkout.tier_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            Session is not in the `created` state, so the
+            `created → pricing_confirmed` transition is rejected
+            (`checkout.invalid_transition`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: |
+            Promo code resolved but failed validation. Possible codes
+            propagated from the promo state machine: `promo.not_found`,
+            `promo.not_active`, `promo.not_yet_valid`, `promo.expired`,
+            `promo.invalid_order_amount`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error. Possible codes:
+            `checkout.tier_lookup_failed`,
+            `checkout.promo_lookup_failed`,
+            `checkout.unknown_pricing_mode`,
+            `checkout.confirm_failed`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Required dependency unavailable. Possible codes:
+            `dependency.database_unavailable`,
+            `dependency.tier_unavailable`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/checkout/{id}/complete:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Checkout session UUID.
+    post:
+      operationId: completeCheckoutSession
+      summary: Mark a checkout session as completed
+      description: |
+        Completes a previously confirmed checkout session. Two completion
+        modes are supported:
+
+        * **Paid path** (`total > 0`): `payment_intent_id` and
+          `payment_provider` are both required. Transitions
+          `pricing_confirmed` → `completed`.
+        * **Free path** (`total = 0`): body may be empty. Tickets are
+          issued immediately and email delivery jobs are enqueued.
+
+        Requires JWT + the `checkout.complete` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompleteCheckoutRequest"
+            examples:
+              completePaid:
+                summary: Complete a paid checkout
+                value:
+                  payment_intent_id: "pi_3OqQ6vJk9z2c1abc"
+                  payment_provider: "stripe"
+              completeFree:
+                summary: Complete a free checkout (empty body)
+                value: {}
+      responses:
+        "200":
+          description: Session completed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutSessionEnvelope"
+        "400":
+          description: |
+            Invalid body or missing required payment field. Possible
+            error codes: `checkout.invalid_id`,
+            `checkout.invalid_body`, `checkout.invalid_json`,
+            `checkout.missing_payment_intent`,
+            `checkout.missing_payment_provider`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `checkout.complete` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            State machine rejected the transition. Possible codes:
+            `checkout.invalid_transition` (session not in
+            `pricing_confirmed`), `checkout.payment_required`
+            (free path attempted on a session with `total > 0`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error (`checkout.complete_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Database pool or checkout queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/checkout/{id}/abandon:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Checkout session UUID.
+    post:
+      operationId: abandonCheckoutSession
+      summary: Abandon a checkout session
+      description: |
+        Transitions any non-terminal state → `abandoned`. Idempotent
+        in spirit: re-abandoning a session that is already terminal
+        returns 409 `checkout.already_terminal`.
+
+        Requires JWT + the `checkout.abandon` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Session abandoned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutSessionEnvelope"
+        "400":
+          description: |
+            Path id is not a UUID (`checkout.invalid_id`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `checkout.abandon` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            Session is already in a terminal state
+            (`checkout.already_terminal`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error (`checkout.abandon_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Database pool or checkout queries unavailable
             (`dependency.database_unavailable`).
           content:
             application/json:

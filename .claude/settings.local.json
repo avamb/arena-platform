@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker compose *)",
+      "Bash(git commit -m ' *)",
+      "Bash(xargs grep *)",
+      "Bash(grep -E \"\\\\.sql$\")",
+      "Bash(xargs -I {} basename {})",
+      "Bash(grep -E \"\\\\.go$\")",
+      "Bash(git -C C:/Projects/arena_new log --oneline -30)"
+    ]
+  }
+}

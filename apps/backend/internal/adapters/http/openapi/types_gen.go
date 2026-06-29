@@ -49,6 +49,17 @@ const (
 	Organization AdminCreatedUserScope = "organization"
 )
 
+// Defines values for CheckoutSessionItemState.
+const (
+	CheckoutSessionItemStateAbandoned        CheckoutSessionItemState = "abandoned"
+	CheckoutSessionItemStateCompleted        CheckoutSessionItemState = "completed"
+	CheckoutSessionItemStateCreated          CheckoutSessionItemState = "created"
+	CheckoutSessionItemStateExpired          CheckoutSessionItemState = "expired"
+	CheckoutSessionItemStateManualReview     CheckoutSessionItemState = "manual_review"
+	CheckoutSessionItemStatePaymentStarted   CheckoutSessionItemState = "payment_started"
+	CheckoutSessionItemStatePricingConfirmed CheckoutSessionItemState = "pricing_confirmed"
+)
+
 // Defines values for CreateEventRequestStatus.
 const (
 	CreateEventRequestStatusArchived  CreateEventRequestStatus = "archived"
@@ -338,9 +349,9 @@ const (
 
 // Defines values for VenueItemStatus.
 const (
-	Active   VenueItemStatus = "active"
-	Archived VenueItemStatus = "archived"
-	Draft    VenueItemStatus = "draft"
+	VenueItemStatusActive   VenueItemStatus = "active"
+	VenueItemStatusArchived VenueItemStatus = "archived"
+	VenueItemStatusDraft    VenueItemStatus = "draft"
 )
 
 // Defines values for ListEventsParamsVisibility.
@@ -593,6 +604,185 @@ type BankAccountItem struct {
 	// `account_number`. Optional.
 	RoutingNumber *string   `json:"routing_number"`
 	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+// CheckoutSessionEnvelope Top-level response envelope returned by every checkout-session
+// endpoint. Wraps a single `CheckoutSessionItem` under the
+// `checkout_session` key, matching the convention used by other
+// single-resource fetches in this API.
+type CheckoutSessionEnvelope struct {
+	// CheckoutSession Canonical representation of a `checkout_sessions` row, returned by
+	// every endpoint in the checkout session state machine implemented in
+	// `apps/backend/internal/platform/httpserver/checkout.go`. Pricing
+	// snapshot fields (`subtotal`, `discount`, `platform_fee`,
+	// `provider_fee`, `tax`, `total`, `currency`, `promo_code_id`) are
+	// populated once the session transitions out of `created` via
+	// `POST /v1/checkout/{id}/confirm`. Payment fields
+	// (`payment_intent_id`, `payment_provider`) are populated when the
+	// session is completed via the paid path; the free path (total = 0)
+	// leaves them `null`. Terminal-state timestamps are mutually
+	// exclusive: exactly one of `completed_at`, `abandoned_at`,
+	// `expired_at` is set when the session is terminal.
+	CheckoutSession CheckoutSessionItem `json:"checkout_session"`
+}
+
+// CheckoutSessionItem Canonical representation of a `checkout_sessions` row, returned by
+// every endpoint in the checkout session state machine implemented in
+// `apps/backend/internal/platform/httpserver/checkout.go`. Pricing
+// snapshot fields (`subtotal`, `discount`, `platform_fee`,
+// `provider_fee`, `tax`, `total`, `currency`, `promo_code_id`) are
+// populated once the session transitions out of `created` via
+// `POST /v1/checkout/{id}/confirm`. Payment fields
+// (`payment_intent_id`, `payment_provider`) are populated when the
+// session is completed via the paid path; the free path (total = 0)
+// leaves them `null`. Terminal-state timestamps are mutually
+// exclusive: exactly one of `completed_at`, `abandoned_at`,
+// `expired_at` is set when the session is terminal.
+type CheckoutSessionItem struct {
+	// AbandonedAt RFC3339 timestamp when the session reached `abandoned`.
+	AbandonedAt *time.Time `json:"abandoned_at"`
+
+	// ChannelId Sales channel the session was created in.
+	ChannelId openapi_types.UUID `json:"channel_id"`
+
+	// CompletedAt RFC3339 timestamp when the session reached `completed`.
+	CompletedAt *time.Time `json:"completed_at"`
+
+	// CreatedAt RFC3339 row-creation timestamp.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Currency ISO 4217 currency code snapshot (`USD`, `EUR`, ...).
+	Currency *string `json:"currency"`
+
+	// Discount Pricing-snapshot discount, clamped to `[0, subtotal]`.
+	Discount *int64 `json:"discount"`
+
+	// ExpiredAt RFC3339 timestamp when the session was force-expired by the
+	// reservation processor or TTL worker.
+	ExpiredAt *time.Time `json:"expired_at"`
+
+	// Id UUIDv7 of the checkout session row.
+	Id openapi_types.UUID `json:"id"`
+
+	// OrgId Organization that owns the session.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// PaymentIntentId Provider-side payment intent identifier captured when the
+	// session is completed via the paid path. `null` for free
+	// checkouts (total = 0).
+	PaymentIntentId *string `json:"payment_intent_id"`
+
+	// PaymentProvider Payment provider name (e.g. `stripe`, `tinkoff`) captured at
+	// completion. `null` for free checkouts.
+	PaymentProvider *string `json:"payment_provider"`
+
+	// PlatformFee Pricing-snapshot platform fee.
+	PlatformFee *int64 `json:"platform_fee"`
+
+	// PromoCodeId ID of the promo code applied at confirm time; `null` when
+	// no promo was supplied or it failed validation.
+	PromoCodeId *openapi_types.UUID `json:"promo_code_id"`
+
+	// ProviderFee Pricing-snapshot provider fee.
+	ProviderFee *int64 `json:"provider_fee"`
+
+	// ReservationId Reservation the session wraps. The reservation must already
+	// exist and be in `active` (or compatible) state. When the
+	// reservation expires the checkout session is cascaded to
+	// `expired` by `reservation_processor.go`.
+	ReservationId openapi_types.UUID `json:"reservation_id"`
+
+	// State Current state in the checkout state machine. Valid
+	// transitions:
+	// `created` → {`pricing_confirmed`, `abandoned`, `expired`};
+	// `pricing_confirmed` → {`completed`, `payment_started`,
+	// `abandoned`, `expired`};
+	// `payment_started` → {`completed`, `manual_review`,
+	// `abandoned`, `expired`};
+	// `manual_review` → {`completed`, `abandoned`};
+	// `completed`, `abandoned`, `expired` are terminal.
+	State CheckoutSessionItemState `json:"state"`
+
+	// Subtotal Pricing-snapshot `unit_price * quantity`, in minor currency
+	// units. `null` until the session is confirmed.
+	Subtotal *int64 `json:"subtotal"`
+
+	// Tax Pricing-snapshot tax.
+	Tax *int64 `json:"tax"`
+
+	// Total Pricing-snapshot grand total:
+	// `(subtotal - discount) + platform_fee + provider_fee + tax`.
+	Total *int64 `json:"total"`
+
+	// UpdatedAt RFC3339 last-update timestamp.
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// UserId Authenticated buyer when known; `null` for anonymous /
+	// guest checkouts. Set at session creation and immutable.
+	UserId *openapi_types.UUID `json:"user_id"`
+}
+
+// CheckoutSessionItemState Current state in the checkout state machine. Valid
+// transitions:
+// `created` → {`pricing_confirmed`, `abandoned`, `expired`};
+// `pricing_confirmed` → {`completed`, `payment_started`,
+// `abandoned`, `expired`};
+// `payment_started` → {`completed`, `manual_review`,
+// `abandoned`, `expired`};
+// `manual_review` → {`completed`, `abandoned`};
+// `completed`, `abandoned`, `expired` are terminal.
+type CheckoutSessionItemState string
+
+// CompleteCheckoutRequest Request body for `POST /v1/checkout/{id}/complete`. Two completion
+// modes:
+//
+//   - **Paid path** (`total > 0`): body MUST carry both
+//     `payment_intent_id` and `payment_provider`. Transitions
+//     `pricing_confirmed` → `completed`.
+//   - **Free path** (`total = 0`, i.e. free tier or 100 %-off promo):
+//     body may be empty or omit payment fields. Tickets are issued
+//     immediately and delivery jobs are enqueued.
+//
+// Sending `payment_provider` without `payment_intent_id` is a 400
+// (`checkout.missing_payment_intent`).
+type CompleteCheckoutRequest struct {
+	// PaymentIntentId Provider-side payment intent identifier. Required for the
+	// paid path; omit / empty for the free path.
+	PaymentIntentId *string `json:"payment_intent_id,omitempty"`
+
+	// PaymentProvider Payment provider name (e.g. `stripe`, `tinkoff`). Required
+	// for the paid path; omit for the free path.
+	PaymentProvider *string `json:"payment_provider,omitempty"`
+}
+
+// ConfirmCheckoutRequest Request body for `POST /v1/checkout/{id}/confirm`. Re-quotes the
+// pricing using the current pricing pipeline (`ComputePricing` in
+// `pricing.go`) and stores the immutable snapshot on the session,
+// transitioning `created` → `pricing_confirmed`. `chosen_price` is
+// required for tiers with `pricing_mode = pwyw`.
+type ConfirmCheckoutRequest struct {
+	// ChosenPrice Buyer-chosen unit price for pay-what-you-want tiers
+	// (required when the tier's `pricing_mode` is `pwyw`; ignored
+	// otherwise). Must satisfy any `pwyw_min` / `pwyw_max` bounds
+	// on the tier.
+	ChosenPrice *int64 `json:"chosen_price"`
+
+	// OrgId Organization that owns the session and any promo.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// PromoCode Optional promo code; when present the handler resolves and
+	// validates it before stamping `promo_code_id`.
+	PromoCode *string `json:"promo_code"`
+
+	// Quantity Number of tickets being quoted; must be > 0.
+	Quantity int32 `json:"quantity"`
+
+	// SessionId Event session that owns the tier (NOT the checkout session
+	// id, which is on the URL path).
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// TierId Ticket tier to quote against.
+	TierId openapi_types.UUID `json:"tier_id"`
 }
 
 // CreateBankAccountRequest Request body for POST /v1/organizations/{org_id}/bank-accounts.
@@ -2029,6 +2219,57 @@ type PaymentProviderConfigItemMode string
 // populated; otherwise `missing_required_fields`.
 type PaymentProviderConfigItemStatus string
 
+// PriceBreakdownEnvelope Top-level response envelope returned by
+// `GET /v1/checkout/{id}/price-breakdown`.
+type PriceBreakdownEnvelope struct {
+	// PriceBreakdown Itemised price breakdown returned by
+	// `GET /v1/checkout/{id}/price-breakdown`. Sourced from the
+	// pricing snapshot persisted on the checkout session when it
+	// transitioned to `pricing_confirmed`. No recomputation is
+	// performed — the snapshot is the single source of truth.
+	PriceBreakdown PriceBreakdownItem `json:"price_breakdown"`
+}
+
+// PriceBreakdownItem Itemised price breakdown returned by
+// `GET /v1/checkout/{id}/price-breakdown`. Sourced from the
+// pricing snapshot persisted on the checkout session when it
+// transitioned to `pricing_confirmed`. No recomputation is
+// performed — the snapshot is the single source of truth.
+type PriceBreakdownItem struct {
+	// Currency ISO 4217 currency code.
+	Currency string `json:"currency"`
+
+	// Discounts Discount lines; empty when no discount applies. Amounts
+	// are negative.
+	Discounts []PriceBreakdownLineItem `json:"discounts"`
+
+	// Fees Platform / provider fee lines. Amounts are positive.
+	Fees []PriceBreakdownLineItem `json:"fees"`
+
+	// Subtotal Snapshot subtotal in minor currency units.
+	Subtotal int64 `json:"subtotal"`
+
+	// Taxes Tax lines (e.g. VAT). Amounts are positive.
+	Taxes []PriceBreakdownLineItem `json:"taxes"`
+
+	// Total Snapshot grand total.
+	Total int64 `json:"total"`
+}
+
+// PriceBreakdownLineItem Single named line in a price breakdown. `amount` is in minor
+// currency units. Discount lines carry NEGATIVE amounts (they
+// reduce the buyer's total); fees and taxes carry POSITIVE
+// amounts. The full sum invariant is
+// `subtotal + sum(discounts) + sum(fees) + sum(taxes) == total`.
+type PriceBreakdownLineItem struct {
+	// Amount Signed amount in minor currency units. Negative for
+	// discounts, positive for fees and taxes.
+	Amount int64 `json:"amount"`
+
+	// Label Localised, human-readable label for the line.
+	Label string `json:"label"`
+}
+
 // PricingBreakdownItem Itemized result of running the deterministic pricing pipeline
 // (`ComputePricing`, feature #129). Every monetary field is
 // expressed in the smallest currency unit (integer cents/agorot).
@@ -2438,6 +2679,24 @@ type SessionItemStatus string
 type SessionListResponse struct {
 	HasOverlappingSessions bool          `json:"has_overlapping_sessions"`
 	Sessions               []SessionItem `json:"sessions"`
+}
+
+// StartCheckoutRequest Request body for `POST /v1/checkout/start`. Creates a new checkout
+// session in state `created` linked to an existing reservation. The
+// optional `user_id` attaches the session to an authenticated buyer;
+// omit / send `null` for anonymous checkouts.
+type StartCheckoutRequest struct {
+	// ChannelId Sales channel the session is created in.
+	ChannelId openapi_types.UUID `json:"channel_id"`
+
+	// OrgId Organization that owns the session.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// ReservationId Reservation the session wraps.
+	ReservationId openapi_types.UUID `json:"reservation_id"`
+
+	// UserId Optional buyer UUID; `null` for anonymous buyers.
+	UserId *openapi_types.UUID `json:"user_id"`
 }
 
 // TicketTierDeleteResponse Soft-delete response envelope for a ticket tier.
@@ -3363,6 +3622,15 @@ type PostV1AuthRegisterJSONRequestBody = AuthRegisterRequest
 
 // ValidatePromoCodeJSONRequestBody defines body for ValidatePromoCode for application/json ContentType.
 type ValidatePromoCodeJSONRequestBody = ValidatePromoCodeRequest
+
+// StartCheckoutSessionJSONRequestBody defines body for StartCheckoutSession for application/json ContentType.
+type StartCheckoutSessionJSONRequestBody = StartCheckoutRequest
+
+// CompleteCheckoutSessionJSONRequestBody defines body for CompleteCheckoutSession for application/json ContentType.
+type CompleteCheckoutSessionJSONRequestBody = CompleteCheckoutRequest
+
+// ConfirmCheckoutSessionJSONRequestBody defines body for ConfirmCheckoutSession for application/json ContentType.
+type ConfirmCheckoutSessionJSONRequestBody = ConfirmCheckoutRequest
 
 // PostV1DevAuthTokenJSONRequestBody defines body for PostV1DevAuthToken for application/json ContentType.
 type PostV1DevAuthTokenJSONRequestBody = DevAuthTokenRequest

@@ -325,6 +325,12 @@ func buildDriftTestServer(t *testing.T) *Server {
 		// GET/PATCH/DELETE /v1/organizations/{org_id}/promo-codes/{id},
 		// POST /v1/checkout/promo-validate.
 		PromoQueries: gen.New(nil),
+		// Wire CheckoutQueries so the checkout session state-machine
+		// routes (feature #132 / documented under feature #270) are
+		// mounted for the drift check: POST /v1/checkout/start,
+		// GET /v1/checkout/{id}, POST /v1/checkout/{id}/confirm,
+		// POST /v1/checkout/{id}/complete, POST /v1/checkout/{id}/abandon.
+		CheckoutQueries: gen.New(nil),
 	})
 }
 

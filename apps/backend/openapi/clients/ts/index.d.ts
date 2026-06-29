@@ -1943,6 +1943,180 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/checkout/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a checkout session
+         * @description Creates a new checkout session in state `created` linked to the
+         *     given reservation. Returns the canonical
+         *     `CheckoutSessionEnvelope` with pricing-snapshot fields still
+         *     `null` (populated later by `POST /v1/checkout/{id}/confirm`).
+         *
+         *     Requires JWT + the `checkout.start` permission.
+         */
+        post: operations["startCheckoutSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/checkout/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Checkout session UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a checkout session
+         * @description Returns the current state of a checkout session, including any
+         *     pricing snapshot and terminal-state timestamps.
+         *
+         *     Requires JWT + the `checkout.read` permission.
+         */
+        get: operations["getCheckoutSession"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/checkout/{id}/price-breakdown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Checkout session UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Itemised price breakdown for a checkout session
+         * @description Returns the itemised price breakdown (subtotal, discounts, fees,
+         *     taxes, total) sourced from the pricing snapshot persisted on the
+         *     checkout session. Requires the session to have transitioned to
+         *     `pricing_confirmed` — otherwise returns 409
+         *     `checkout.pricing_not_confirmed`.
+         *
+         *     Compliance: EU and IL consumer-protection law require the
+         *     all-in price (including taxes and fees) to be displayed to the
+         *     buyer before payment.
+         *
+         *     Requires JWT + the `checkout.read` permission.
+         */
+        get: operations["getCheckoutPriceBreakdown"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/checkout/{id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Checkout session UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lock in the pricing snapshot for a checkout session
+         * @description Re-quotes the pricing using the current pricing pipeline
+         *     (`ComputePricing` in `pricing.go`), persists the resulting
+         *     snapshot on the session, and transitions
+         *     `created` → `pricing_confirmed`. When `promo_code` is supplied
+         *     the handler resolves and validates it; failures surface the
+         *     promo state-machine error codes (`promo.not_found`,
+         *     `promo.not_active`, `promo.expired`, etc.).
+         *
+         *     Requires JWT + the `checkout.confirm` permission.
+         */
+        post: operations["confirmCheckoutSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/checkout/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Checkout session UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark a checkout session as completed
+         * @description Completes a previously confirmed checkout session. Two completion
+         *     modes are supported:
+         *
+         *     * **Paid path** (`total > 0`): `payment_intent_id` and
+         *       `payment_provider` are both required. Transitions
+         *       `pricing_confirmed` → `completed`.
+         *     * **Free path** (`total = 0`): body may be empty. Tickets are
+         *       issued immediately and email delivery jobs are enqueued.
+         *
+         *     Requires JWT + the `checkout.complete` permission.
+         */
+        post: operations["completeCheckoutSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/checkout/{id}/abandon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Checkout session UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Abandon a checkout session
+         * @description Transitions any non-terminal state → `abandoned`. Idempotent
+         *     in spirit: re-abandoning a session that is already terminal
+         *     returns 409 `checkout.already_terminal`.
+         *
+         *     Requires JWT + the `checkout.abandon` permission.
+         */
+        post: operations["abandonCheckoutSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -5480,6 +5654,301 @@ export interface components {
          */
         QuoteResponseEnvelope: {
             quote: components["schemas"]["QuoteResponseItem"];
+        };
+        /**
+         * @description Canonical representation of a `checkout_sessions` row, returned by
+         *     every endpoint in the checkout session state machine implemented in
+         *     `apps/backend/internal/platform/httpserver/checkout.go`. Pricing
+         *     snapshot fields (`subtotal`, `discount`, `platform_fee`,
+         *     `provider_fee`, `tax`, `total`, `currency`, `promo_code_id`) are
+         *     populated once the session transitions out of `created` via
+         *     `POST /v1/checkout/{id}/confirm`. Payment fields
+         *     (`payment_intent_id`, `payment_provider`) are populated when the
+         *     session is completed via the paid path; the free path (total = 0)
+         *     leaves them `null`. Terminal-state timestamps are mutually
+         *     exclusive: exactly one of `completed_at`, `abandoned_at`,
+         *     `expired_at` is set when the session is terminal.
+         */
+        CheckoutSessionItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the checkout session row.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Organization that owns the session.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description Sales channel the session was created in.
+             */
+            channel_id: string;
+            /**
+             * Format: uuid
+             * @description Reservation the session wraps. The reservation must already
+             *     exist and be in `active` (or compatible) state. When the
+             *     reservation expires the checkout session is cascaded to
+             *     `expired` by `reservation_processor.go`.
+             */
+            reservation_id: string;
+            /**
+             * Format: uuid
+             * @description Authenticated buyer when known; `null` for anonymous /
+             *     guest checkouts. Set at session creation and immutable.
+             */
+            user_id: string | null;
+            /**
+             * @description Current state in the checkout state machine. Valid
+             *     transitions:
+             *     `created` → {`pricing_confirmed`, `abandoned`, `expired`};
+             *     `pricing_confirmed` → {`completed`, `payment_started`,
+             *     `abandoned`, `expired`};
+             *     `payment_started` → {`completed`, `manual_review`,
+             *     `abandoned`, `expired`};
+             *     `manual_review` → {`completed`, `abandoned`};
+             *     `completed`, `abandoned`, `expired` are terminal.
+             * @enum {string}
+             */
+            state: "created" | "pricing_confirmed" | "payment_started" | "completed" | "abandoned" | "expired" | "manual_review";
+            /**
+             * Format: int64
+             * @description Pricing-snapshot `unit_price * quantity`, in minor currency
+             *     units. `null` until the session is confirmed.
+             */
+            subtotal: number | null;
+            /**
+             * Format: int64
+             * @description Pricing-snapshot discount, clamped to `[0, subtotal]`.
+             */
+            discount: number | null;
+            /**
+             * Format: int64
+             * @description Pricing-snapshot platform fee.
+             */
+            platform_fee: number | null;
+            /**
+             * Format: int64
+             * @description Pricing-snapshot provider fee.
+             */
+            provider_fee: number | null;
+            /**
+             * Format: int64
+             * @description Pricing-snapshot tax.
+             */
+            tax: number | null;
+            /**
+             * Format: int64
+             * @description Pricing-snapshot grand total:
+             *     `(subtotal - discount) + platform_fee + provider_fee + tax`.
+             */
+            total: number | null;
+            /** @description ISO 4217 currency code snapshot (`USD`, `EUR`, ...). */
+            currency: string | null;
+            /**
+             * Format: uuid
+             * @description ID of the promo code applied at confirm time; `null` when
+             *     no promo was supplied or it failed validation.
+             */
+            promo_code_id: string | null;
+            /**
+             * @description Provider-side payment intent identifier captured when the
+             *     session is completed via the paid path. `null` for free
+             *     checkouts (total = 0).
+             */
+            payment_intent_id: string | null;
+            /**
+             * @description Payment provider name (e.g. `stripe`, `tinkoff`) captured at
+             *     completion. `null` for free checkouts.
+             */
+            payment_provider: string | null;
+            /**
+             * Format: date-time
+             * @description RFC3339 timestamp when the session reached `completed`.
+             */
+            completed_at: string | null;
+            /**
+             * Format: date-time
+             * @description RFC3339 timestamp when the session reached `abandoned`.
+             */
+            abandoned_at: string | null;
+            /**
+             * Format: date-time
+             * @description RFC3339 timestamp when the session was force-expired by the
+             *     reservation processor or TTL worker.
+             */
+            expired_at: string | null;
+            /**
+             * Format: date-time
+             * @description RFC3339 row-creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description RFC3339 last-update timestamp.
+             */
+            updated_at: string;
+        };
+        /**
+         * @description Top-level response envelope returned by every checkout-session
+         *     endpoint. Wraps a single `CheckoutSessionItem` under the
+         *     `checkout_session` key, matching the convention used by other
+         *     single-resource fetches in this API.
+         */
+        CheckoutSessionEnvelope: {
+            checkout_session: components["schemas"]["CheckoutSessionItem"];
+        };
+        /**
+         * @description Request body for `POST /v1/checkout/start`. Creates a new checkout
+         *     session in state `created` linked to an existing reservation. The
+         *     optional `user_id` attaches the session to an authenticated buyer;
+         *     omit / send `null` for anonymous checkouts.
+         */
+        StartCheckoutRequest: {
+            /**
+             * Format: uuid
+             * @description Organization that owns the session.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description Sales channel the session is created in.
+             */
+            channel_id: string;
+            /**
+             * Format: uuid
+             * @description Reservation the session wraps.
+             */
+            reservation_id: string;
+            /**
+             * Format: uuid
+             * @description Optional buyer UUID; `null` for anonymous buyers.
+             */
+            user_id?: string | null;
+        };
+        /**
+         * @description Request body for `POST /v1/checkout/{id}/confirm`. Re-quotes the
+         *     pricing using the current pricing pipeline (`ComputePricing` in
+         *     `pricing.go`) and stores the immutable snapshot on the session,
+         *     transitioning `created` → `pricing_confirmed`. `chosen_price` is
+         *     required for tiers with `pricing_mode = pwyw`.
+         */
+        ConfirmCheckoutRequest: {
+            /**
+             * Format: uuid
+             * @description Ticket tier to quote against.
+             */
+            tier_id: string;
+            /**
+             * Format: uuid
+             * @description Event session that owns the tier (NOT the checkout session
+             *     id, which is on the URL path).
+             */
+            session_id: string;
+            /**
+             * Format: uuid
+             * @description Organization that owns the session and any promo.
+             */
+            org_id: string;
+            /**
+             * Format: int32
+             * @description Number of tickets being quoted; must be > 0.
+             */
+            quantity: number;
+            /**
+             * @description Optional promo code; when present the handler resolves and
+             *     validates it before stamping `promo_code_id`.
+             */
+            promo_code?: string | null;
+            /**
+             * Format: int64
+             * @description Buyer-chosen unit price for pay-what-you-want tiers
+             *     (required when the tier's `pricing_mode` is `pwyw`; ignored
+             *     otherwise). Must satisfy any `pwyw_min` / `pwyw_max` bounds
+             *     on the tier.
+             */
+            chosen_price?: number | null;
+        };
+        /**
+         * @description Single named line in a price breakdown. `amount` is in minor
+         *     currency units. Discount lines carry NEGATIVE amounts (they
+         *     reduce the buyer's total); fees and taxes carry POSITIVE
+         *     amounts. The full sum invariant is
+         *     `subtotal + sum(discounts) + sum(fees) + sum(taxes) == total`.
+         */
+        PriceBreakdownLineItem: {
+            /** @description Localised, human-readable label for the line. */
+            label: string;
+            /**
+             * Format: int64
+             * @description Signed amount in minor currency units. Negative for
+             *     discounts, positive for fees and taxes.
+             */
+            amount: number;
+        };
+        /**
+         * @description Itemised price breakdown returned by
+         *     `GET /v1/checkout/{id}/price-breakdown`. Sourced from the
+         *     pricing snapshot persisted on the checkout session when it
+         *     transitioned to `pricing_confirmed`. No recomputation is
+         *     performed — the snapshot is the single source of truth.
+         */
+        PriceBreakdownItem: {
+            /**
+             * Format: int64
+             * @description Snapshot subtotal in minor currency units.
+             */
+            subtotal: number;
+            /**
+             * @description Discount lines; empty when no discount applies. Amounts
+             *     are negative.
+             */
+            discounts: components["schemas"]["PriceBreakdownLineItem"][];
+            /** @description Platform / provider fee lines. Amounts are positive. */
+            fees: components["schemas"]["PriceBreakdownLineItem"][];
+            /** @description Tax lines (e.g. VAT). Amounts are positive. */
+            taxes: components["schemas"]["PriceBreakdownLineItem"][];
+            /**
+             * Format: int64
+             * @description Snapshot grand total.
+             */
+            total: number;
+            /** @description ISO 4217 currency code. */
+            currency: string;
+        };
+        /**
+         * @description Top-level response envelope returned by
+         *     `GET /v1/checkout/{id}/price-breakdown`.
+         */
+        PriceBreakdownEnvelope: {
+            price_breakdown: components["schemas"]["PriceBreakdownItem"];
+        };
+        /**
+         * @description Request body for `POST /v1/checkout/{id}/complete`. Two completion
+         *     modes:
+         *
+         *     * **Paid path** (`total > 0`): body MUST carry both
+         *       `payment_intent_id` and `payment_provider`. Transitions
+         *       `pricing_confirmed` → `completed`.
+         *     * **Free path** (`total = 0`, i.e. free tier or 100 %-off promo):
+         *       body may be empty or omit payment fields. Tickets are issued
+         *       immediately and delivery jobs are enqueued.
+         *
+         *     Sending `payment_provider` without `payment_intent_id` is a 400
+         *     (`checkout.missing_payment_intent`).
+         */
+        CompleteCheckoutRequest: {
+            /**
+             * @description Provider-side payment intent identifier. Required for the
+             *     paid path; omit / empty for the free path.
+             */
+            payment_intent_id?: string;
+            /**
+             * @description Payment provider name (e.g. `stripe`, `tinkoff`). Required
+             *     for the paid path; omit for the free path.
+             */
+            payment_provider?: string;
         };
     };
     responses: never;
@@ -12957,6 +13426,565 @@ export interface operations {
             };
             /**
              * @description Promo queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    startCheckoutSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartCheckoutRequest"];
+            };
+        };
+        responses: {
+            /** @description Checkout session created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckoutSessionEnvelope"];
+                };
+            };
+            /**
+             * @description Invalid body or field. Possible error codes:
+             *     `checkout.invalid_body`, `checkout.empty_body`,
+             *     `checkout.invalid_json`, `checkout.invalid_org_id`,
+             *     `checkout.invalid_channel_id`,
+             *     `checkout.invalid_reservation_id`,
+             *     `checkout.invalid_user_id`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `checkout.start` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`checkout.start_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Database pool or checkout queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getCheckoutSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Checkout session UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Checkout session found. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckoutSessionEnvelope"];
+                };
+            };
+            /** @description Path id is not a UUID (`checkout.invalid_id`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `checkout.read` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Checkout session not found (`checkout.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`checkout.get_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Checkout queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getCheckoutPriceBreakdown: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Checkout session UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Price breakdown returned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PriceBreakdownEnvelope"];
+                };
+            };
+            /** @description Path id is not a UUID (`checkout.invalid_id`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `checkout.read` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Checkout session not found (`checkout.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Pricing snapshot is not populated yet — the session has
+             *     not been confirmed (`checkout.pricing_not_confirmed`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`checkout.get_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Checkout queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    confirmCheckoutSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Checkout session UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmCheckoutRequest"];
+            };
+        };
+        responses: {
+            /** @description Pricing confirmed; session is now in `pricing_confirmed`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckoutSessionEnvelope"];
+                };
+            };
+            /**
+             * @description Invalid body or field. Possible error codes:
+             *     `checkout.invalid_id`, `checkout.invalid_body`,
+             *     `checkout.empty_body`, `checkout.invalid_json`,
+             *     `checkout.invalid_tier_id`,
+             *     `checkout.invalid_session_id`,
+             *     `checkout.invalid_org_id`,
+             *     `checkout.invalid_quantity`,
+             *     `checkout.chosen_price_required`,
+             *     `checkout.invalid_chosen_price`,
+             *     `checkout.chosen_price_below_min`,
+             *     `checkout.chosen_price_above_max`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `checkout.confirm` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket tier not found (`checkout.tier_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Session is not in the `created` state, so the
+             *     `created → pricing_confirmed` transition is rejected
+             *     (`checkout.invalid_transition`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Promo code resolved but failed validation. Possible codes
+             *     propagated from the promo state machine: `promo.not_found`,
+             *     `promo.not_active`, `promo.not_yet_valid`, `promo.expired`,
+             *     `promo.invalid_order_amount`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error. Possible codes:
+             *     `checkout.tier_lookup_failed`,
+             *     `checkout.promo_lookup_failed`,
+             *     `checkout.unknown_pricing_mode`,
+             *     `checkout.confirm_failed`.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Required dependency unavailable. Possible codes:
+             *     `dependency.database_unavailable`,
+             *     `dependency.tier_unavailable`.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    completeCheckoutSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Checkout session UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CompleteCheckoutRequest"];
+            };
+        };
+        responses: {
+            /** @description Session completed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckoutSessionEnvelope"];
+                };
+            };
+            /**
+             * @description Invalid body or missing required payment field. Possible
+             *     error codes: `checkout.invalid_id`,
+             *     `checkout.invalid_body`, `checkout.invalid_json`,
+             *     `checkout.missing_payment_intent`,
+             *     `checkout.missing_payment_provider`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `checkout.complete` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description State machine rejected the transition. Possible codes:
+             *     `checkout.invalid_transition` (session not in
+             *     `pricing_confirmed`), `checkout.payment_required`
+             *     (free path attempted on a session with `total > 0`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`checkout.complete_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Database pool or checkout queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    abandonCheckoutSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Checkout session UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session abandoned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckoutSessionEnvelope"];
+                };
+            };
+            /** @description Path id is not a UUID (`checkout.invalid_id`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `checkout.abandon` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Session is already in a terminal state
+             *     (`checkout.already_terminal`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`checkout.abandon_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Database pool or checkout queries unavailable
              *     (`dependency.database_unavailable`).
              */
             503: {

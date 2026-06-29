@@ -17006,3 +17006,62 @@ Verification:
   npm --prefix apps/admin-web run type-check           OK (silent).
 
 Marked #269 passing. Backlog: 269/301.
+
+=== 2026-06-30: Feature #270 - A-9 Document checkout_sessions endpoints in OpenAPI ===
+apps/backend/openapi/openapi.yaml:
+  - Added 8 component schemas: CheckoutSessionItem (state enum pinned to
+    the 7 values from validCheckoutTransitions in checkout.go),
+    CheckoutSessionEnvelope, StartCheckoutRequest, ConfirmCheckoutRequest,
+    CompleteCheckoutRequest, PriceBreakdownLineItem, PriceBreakdownItem,
+    PriceBreakdownEnvelope. Pricing snapshot fields are nullable to model
+    the "not yet confirmed" state.
+  - Added 6 path entries / 6 operations covering every checkout.go handler
+    + the related price-breakdown handler from price_breakdown.go (also
+    mounted under mountCheckoutRoutes via checkoutQueries):
+      POST /v1/checkout/start                          startCheckoutSession
+      GET  /v1/checkout/{id}                           getCheckoutSession
+      GET  /v1/checkout/{id}/price-breakdown           getCheckoutPriceBreakdown
+      POST /v1/checkout/{id}/confirm                   confirmCheckoutSession
+      POST /v1/checkout/{id}/complete                  completeCheckoutSession
+      POST /v1/checkout/{id}/abandon                   abandonCheckoutSession
+    Each carries bearerAuth, tags: [v1], permission name in description
+    (checkout.start / read / confirm / complete / abandon), and the full
+    error catalogue from checkout.go (32 codes) plus
+    dependency.database_unavailable / dependency.tier_unavailable and
+    promo.not_found propagated from the promo state machine.
+  - start, confirm, complete requestBodies carry inline examples consumed
+    by the contract test (startAuthenticated, startAnonymous,
+    confirmFixedTier, confirmFixedTierWithPromo, confirmPwywTier,
+    completePaid, completeFree).
+
+apps/backend/internal/platform/httpserver/openapi_checkout_sessions_270_test.go (NEW):
+  9 contract tests pinning the spec for #270: PathsPresent (5),
+  OperationIDsPresent (5), SchemasPresent (5), PermissionsDocumented (5),
+  BearerAuthAndTags, ErrorEnvelopeUsed, CheckoutErrorCodesDocumented (32),
+  StateMachineEnumPinned (7), SpecExamplesValidate (minimal contract test
+  walking start/confirm/complete requestBody examples and asserting
+  UUID-shaped IDs, quantity >= 1, non-negative chosen_price,
+  payment_provider without payment_intent_id rejection per
+  checkout.missing_payment_intent). Reuses mustOperation /
+  extractExamples / findOpenAPISpecPath helpers.
+
+apps/backend/internal/platform/httpserver/openapi_drift_test.go:
+  buildDriftTestServer now wires CheckoutQueries: gen.New(nil) so the
+  five new checkout-session paths plus the related price-breakdown route
+  are mounted on the drift-test chi router.
+
+apps/backend/internal/adapters/http/openapi/types_gen.go:
+  Regenerated via oapi-codegen v2.4.1 (golang:1.24 docker). 41
+  occurrences of the new type names verified. Known OpenAPI 3.1
+  warning unchanged.
+apps/backend/openapi/clients/ts/index.d.ts:
+  Regenerated via scripts/gen-ts-client.mjs (openapi-typescript 7.13.0).
+  36 occurrences of the new type names verified.
+
+Verification:
+  docker golang:1.24 go test -run TestOpenAPI270 -count=1 -v   PASS (9/9)
+  docker golang:1.24 go build ./...                            OK
+  docker golang:1.24 go test -run drift+prior 270 superset     PASS
+  npm --prefix apps/admin-web run type-check                   OK.
+
+Marked #270 passing. Backlog: 270/301.
