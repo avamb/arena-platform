@@ -2925,6 +2925,202 @@ components:
           type: boolean
           example: true
 
+    # ───────────────────────────────────────────────────────────────────────
+    # Sessions — feature #126 / Wave A-3 documentation (feature #264)
+    # Backed by apps/backend/internal/platform/httpserver/sessions.go.
+    # A Session is a time slot for an Event with its own capacity_total.
+    # Lifecycle: draft → scheduled → completed|cancelled.
+    # ───────────────────────────────────────────────────────────────────────
+
+    SessionItem:
+      type: object
+      required:
+        - id
+        - event_id
+        - start_at
+        - end_at
+        - capacity_total
+        - status
+        - created_at
+        - updated_at
+        - has_overlapping_sessions
+      description: |
+        A single dated session (time slot) under an event. Overlap with
+        sibling sessions is permitted but flagged via the
+        `has_overlapping_sessions` boolean — the application layer detects
+        overlaps via a count query (CountOverlappingSessions) rather than a
+        DB-level UNIQUE constraint.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the session row.
+          example: "01929d0e-0e47-7000-8000-000000000501"
+        event_id:
+          type: string
+          format: uuid
+          description: |
+            FK to the owning event. Immutable after creation; the
+            owner-org check is enforced via the parent event row.
+          example: "01929d0e-0e47-7000-8000-000000000301"
+        start_at:
+          type: string
+          format: date-time
+          description: Session start time (RFC 3339, UTC). Strictly before `end_at`.
+          example: "2026-08-15T18:00:00Z"
+        end_at:
+          type: string
+          format: date-time
+          description: |
+            Session end time (RFC 3339, UTC). Must be strictly after
+            `start_at` — enforced by both the handler and a CHECK
+            constraint on the sessions table.
+          example: "2026-08-15T21:00:00Z"
+        capacity_total:
+          type: integer
+          format: int32
+          minimum: 1
+          description: |
+            Total seats available for this slot. Must be strictly greater
+            than zero. When this value changes via PATCH, the handler
+            fires the capacity propagation hook (onCapacityChange) to
+            keep the inventory ledger in sync.
+          example: 500
+        status:
+          type: string
+          enum: [draft, scheduled, cancelled, completed]
+          description: |
+            Lifecycle status. Transitions: draft → scheduled, scheduled
+            → cancelled|completed.
+          example: "scheduled"
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-06-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2026-06-02T12:34:56Z"
+        has_overlapping_sessions:
+          type: boolean
+          description: |
+            True when this session overlaps with at least one other active
+            session for the same event. Computed at the application layer
+            from CountOverlappingSessions for single-session responses, or
+            from a pairwise scan for list responses.
+          example: false
+
+    CreateSessionRequest:
+      type: object
+      required: [start_at, end_at, capacity_total]
+      description: |
+        Create-time payload for POST
+        /v1/organizations/{org_id}/events/{event_id}/sessions. The owning
+        org_id and event_id are taken from the path; the body MUST NOT
+        repeat them.
+      properties:
+        start_at:
+          type: string
+          format: date-time
+          description: Session start time (RFC 3339, UTC).
+          example: "2026-08-15T18:00:00Z"
+        end_at:
+          type: string
+          format: date-time
+          description: Session end time (RFC 3339, UTC). Must be strictly after `start_at`.
+          example: "2026-08-15T21:00:00Z"
+        capacity_total:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Total seats available; must be > 0.
+          example: 500
+        status:
+          type: string
+          enum: [draft, scheduled, cancelled, completed]
+          description: |
+            Initial lifecycle status. Defaults to `draft` on the server
+            when omitted.
+
+    UpdateSessionRequest:
+      type: object
+      description: |
+        Partial update for PATCH
+        /v1/organizations/{org_id}/events/{event_id}/sessions/{id}. All
+        fields are optional; nil / empty fields leave the existing value
+        unchanged. When status changes, the transition is validated
+        against the session state machine and 422
+        `session.invalid_transition` is returned for disallowed moves.
+      properties:
+        start_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: New session start time (RFC 3339, UTC). Empty leaves unchanged.
+        end_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            New session end time. When both start_at and end_at are
+            present in the same body, end_at must remain strictly after
+            start_at.
+        capacity_total:
+          type: integer
+          format: int32
+          minimum: 1
+          nullable: true
+          description: |
+            New seat total; must be > 0. Triggers the capacity propagation
+            hook (inventory ledger sync) when changed.
+        status:
+          type: string
+          enum: [draft, scheduled, cancelled, completed]
+          description: |
+            Target lifecycle status. Allowed transitions:
+
+              draft     → scheduled
+              scheduled → cancelled, completed
+
+            Re-applying the same status is a no-op. Any other combination
+            is rejected with HTTP 422 and
+            `error.code = "session.invalid_transition"`.
+
+    SessionEnvelope:
+      type: object
+      required: [session]
+      description: Single-session response envelope.
+      properties:
+        session:
+          $ref: "#/components/schemas/SessionItem"
+
+    SessionListResponse:
+      type: object
+      required: [sessions, has_overlapping_sessions]
+      description: |
+        List-sessions response envelope. The top-level
+        `has_overlapping_sessions` flag is true when any pair of returned
+        sessions overlaps in time.
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionItem"
+        has_overlapping_sessions:
+          type: boolean
+          example: false
+
+    SessionDeleteResponse:
+      type: object
+      required: [session, deleted]
+      description: Soft-delete response envelope.
+      properties:
+        session:
+          $ref: "#/components/schemas/SessionItem"
+        deleted:
+          type: boolean
+          example: true
+
 paths:
   /healthz:
     get:
@@ -7669,6 +7865,421 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database pool or event queries unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ────────────────────────────────────────────────────────────────────────
+  # Sessions group — feature #126, documented under Wave A-3 (feature #264).
+  # Backed by apps/backend/internal/platform/httpserver/sessions.go and
+  # mounted by mount_catalog.go.
+  # ────────────────────────────────────────────────────────────────────────
+
+  /v1/organizations/{org_id}/events/{event_id}/sessions:
+    post:
+      operationId: createSession
+      summary: Create a new session (time slot) for an event
+      description: |
+        Creates a new session under an event. The owning organization is
+        taken from the path; the body MUST NOT repeat it. `end_at` must
+        be strictly after `start_at`. `capacity_total` must be > 0.
+        Overlapping sessions are permitted but flagged in the response
+        via `session.has_overlapping_sessions`. The handler also
+        initialises the inventory ledger for the new session (non-fatal
+        on failure). Requires JWT + the `session.create` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the parent event.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSessionRequest"
+            examples:
+              minimal:
+                summary: Minimal session
+                value:
+                  start_at: "2026-08-15T18:00:00Z"
+                  end_at: "2026-08-15T21:00:00Z"
+                  capacity_total: 500
+              scheduled:
+                summary: Scheduled session with explicit status
+                value:
+                  start_at: "2026-09-01T19:00:00Z"
+                  end_at: "2026-09-01T22:30:00Z"
+                  capacity_total: 1200
+                  status: "scheduled"
+      responses:
+        "201":
+          description: Session created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionEnvelope"
+        "400":
+          description: |
+            Body invalid or required fields missing. Possible error codes:
+            `session.invalid_body`, `session.empty_body`,
+            `session.invalid_json`, `session.invalid_status`,
+            `session.missing_start_at`, `session.invalid_start_at`,
+            `session.missing_end_at`, `session.invalid_end_at`,
+            `session.invalid_date_range`, `session.invalid_capacity`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `session.create` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`session.insert_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or session queries unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    get:
+      operationId: listSessions
+      summary: List all active sessions for an event
+      description: |
+        Returns all non-deleted sessions belonging to the given event.
+        Detects overlaps among the returned set at the application layer
+        and reports the result via the top-level
+        `has_overlapping_sessions` boolean. Requires JWT + the
+        `session.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the parent event.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of sessions for the event.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionListResponse"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `session.read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`session.list_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or session queries unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{event_id}/sessions/{id}:
+    get:
+      operationId: getSession
+      summary: Fetch a single session by ID
+      description: |
+        Returns one session by ID, scoped to the parent event. Requires
+        JWT + the `session.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the parent event.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the session.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Session details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `session.read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found (`session.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`session.get_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or session queries unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      operationId: updateSession
+      summary: Partially update a session
+      description: |
+        Applies a partial update to a session. Omitted / empty fields
+        leave existing values unchanged. When `status` changes, the
+        transition is validated against the state machine and an HTTP
+        422 `session.invalid_transition` envelope is returned for
+        disallowed moves. When `capacity_total` changes, the capacity
+        propagation hook fires to keep the inventory ledger in sync.
+        Requires JWT + the `session.update` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the parent event.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the session.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSessionRequest"
+            examples:
+              capacityBump:
+                summary: Bump capacity (fires inventory propagation hook)
+                value:
+                  capacity_total: 750
+              schedule:
+                summary: Transition draft to scheduled
+                value:
+                  status: "scheduled"
+              reschedule:
+                summary: Reschedule the time window
+                value:
+                  start_at: "2026-08-16T19:00:00Z"
+                  end_at: "2026-08-16T22:00:00Z"
+      responses:
+        "200":
+          description: Updated session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionEnvelope"
+        "400":
+          description: |
+            Body invalid or fields out of range. Possible error codes:
+            `session.invalid_body`, `session.empty_body`,
+            `session.invalid_json`, `session.invalid_status`,
+            `session.invalid_start_at`, `session.invalid_end_at`,
+            `session.invalid_date_range`, `session.invalid_capacity`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `session.update` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found (`session.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: |
+            Status transition not allowed by the state machine. The
+            response uses the standard `ErrorEnvelope` with
+            `error.code = "session.invalid_transition"` and
+            `error.details.current_status` /
+            `error.details.target_status`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`session.update_failed`, `session.get_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or session queries unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      operationId: deleteSession
+      summary: Soft-delete a session
+      description: |
+        Soft-deletes a session (sets `deleted_at = now()`) and writes a
+        `v1.session.delete` audit event inside the same transaction.
+        Requires JWT + the `session.delete` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the parent event.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the session.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Session soft-deleted; audit event written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionDeleteResponse"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `session.delete` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found (`session.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error. Possible codes:
+            `session.delete_failed`, `session.audit_failed`,
+            `session.commit_failed`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or session queries unavailable.
           content:
             application/json:
               schema:

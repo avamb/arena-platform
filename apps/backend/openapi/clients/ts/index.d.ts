@@ -1455,6 +1455,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/events/{event_id}/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all active sessions for an event
+         * @description Returns all non-deleted sessions belonging to the given event.
+         *     Detects overlaps among the returned set at the application layer
+         *     and reports the result via the top-level
+         *     `has_overlapping_sessions` boolean. Requires JWT + the
+         *     `session.read` permission.
+         */
+        get: operations["listSessions"];
+        put?: never;
+        /**
+         * Create a new session (time slot) for an event
+         * @description Creates a new session under an event. The owning organization is
+         *     taken from the path; the body MUST NOT repeat it. `end_at` must
+         *     be strictly after `start_at`. `capacity_total` must be > 0.
+         *     Overlapping sessions are permitted but flagged in the response
+         *     via `session.has_overlapping_sessions`. The handler also
+         *     initialises the inventory ledger for the new session (non-fatal
+         *     on failure). Requires JWT + the `session.create` permission.
+         */
+        post: operations["createSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/sessions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fetch a single session by ID
+         * @description Returns one session by ID, scoped to the parent event. Requires
+         *     JWT + the `session.read` permission.
+         */
+        get: operations["getSession"];
+        put?: never;
+        post?: never;
+        /**
+         * Soft-delete a session
+         * @description Soft-deletes a session (sets `deleted_at = now()`) and writes a
+         *     `v1.session.delete` audit event inside the same transaction.
+         *     Requires JWT + the `session.delete` permission.
+         */
+        delete: operations["deleteSession"];
+        options?: never;
+        head?: never;
+        /**
+         * Partially update a session
+         * @description Applies a partial update to a session. Omitted / empty fields
+         *     leave existing values unchanged. When `status` changes, the
+         *     transition is validated against the state machine and an HTTP
+         *     422 `session.invalid_transition` envelope is returned for
+         *     disallowed moves. When `capacity_total` changes, the capacity
+         *     propagation hook fires to keep the inventory ledger in sync.
+         *     Requires JWT + the `session.update` permission.
+         */
+        patch: operations["updateSession"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4008,6 +4079,168 @@ export interface components {
         /** @description Soft-delete response envelope. */
         EventDeleteResponse: {
             event: components["schemas"]["EventItem"];
+            /** @example true */
+            deleted: boolean;
+        };
+        /**
+         * @description A single dated session (time slot) under an event. Overlap with
+         *     sibling sessions is permitted but flagged via the
+         *     `has_overlapping_sessions` boolean — the application layer detects
+         *     overlaps via a count query (CountOverlappingSessions) rather than a
+         *     DB-level UNIQUE constraint.
+         */
+        SessionItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the session row.
+             * @example 01929d0e-0e47-7000-8000-000000000501
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description FK to the owning event. Immutable after creation; the
+             *     owner-org check is enforced via the parent event row.
+             * @example 01929d0e-0e47-7000-8000-000000000301
+             */
+            event_id: string;
+            /**
+             * Format: date-time
+             * @description Session start time (RFC 3339, UTC). Strictly before `end_at`.
+             * @example 2026-08-15T18:00:00Z
+             */
+            start_at: string;
+            /**
+             * Format: date-time
+             * @description Session end time (RFC 3339, UTC). Must be strictly after
+             *     `start_at` — enforced by both the handler and a CHECK
+             *     constraint on the sessions table.
+             * @example 2026-08-15T21:00:00Z
+             */
+            end_at: string;
+            /**
+             * Format: int32
+             * @description Total seats available for this slot. Must be strictly greater
+             *     than zero. When this value changes via PATCH, the handler
+             *     fires the capacity propagation hook (onCapacityChange) to
+             *     keep the inventory ledger in sync.
+             * @example 500
+             */
+            capacity_total: number;
+            /**
+             * @description Lifecycle status. Transitions: draft → scheduled, scheduled
+             *     → cancelled|completed.
+             * @example scheduled
+             * @enum {string}
+             */
+            status: "draft" | "scheduled" | "cancelled" | "completed";
+            /**
+             * Format: date-time
+             * @example 2026-06-01T00:00:00Z
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @example 2026-06-02T12:34:56Z
+             */
+            updated_at: string;
+            /**
+             * @description True when this session overlaps with at least one other active
+             *     session for the same event. Computed at the application layer
+             *     from CountOverlappingSessions for single-session responses, or
+             *     from a pairwise scan for list responses.
+             * @example false
+             */
+            has_overlapping_sessions: boolean;
+        };
+        /**
+         * @description Create-time payload for POST
+         *     /v1/organizations/{org_id}/events/{event_id}/sessions. The owning
+         *     org_id and event_id are taken from the path; the body MUST NOT
+         *     repeat them.
+         */
+        CreateSessionRequest: {
+            /**
+             * Format: date-time
+             * @description Session start time (RFC 3339, UTC).
+             * @example 2026-08-15T18:00:00Z
+             */
+            start_at: string;
+            /**
+             * Format: date-time
+             * @description Session end time (RFC 3339, UTC). Must be strictly after `start_at`.
+             * @example 2026-08-15T21:00:00Z
+             */
+            end_at: string;
+            /**
+             * Format: int32
+             * @description Total seats available; must be > 0.
+             * @example 500
+             */
+            capacity_total: number;
+            /**
+             * @description Initial lifecycle status. Defaults to `draft` on the server
+             *     when omitted.
+             * @enum {string}
+             */
+            status?: "draft" | "scheduled" | "cancelled" | "completed";
+        };
+        /**
+         * @description Partial update for PATCH
+         *     /v1/organizations/{org_id}/events/{event_id}/sessions/{id}. All
+         *     fields are optional; nil / empty fields leave the existing value
+         *     unchanged. When status changes, the transition is validated
+         *     against the session state machine and 422
+         *     `session.invalid_transition` is returned for disallowed moves.
+         */
+        UpdateSessionRequest: {
+            /**
+             * Format: date-time
+             * @description New session start time (RFC 3339, UTC). Empty leaves unchanged.
+             */
+            start_at?: string | null;
+            /**
+             * Format: date-time
+             * @description New session end time. When both start_at and end_at are
+             *     present in the same body, end_at must remain strictly after
+             *     start_at.
+             */
+            end_at?: string | null;
+            /**
+             * Format: int32
+             * @description New seat total; must be > 0. Triggers the capacity propagation
+             *     hook (inventory ledger sync) when changed.
+             */
+            capacity_total?: number | null;
+            /**
+             * @description Target lifecycle status. Allowed transitions:
+             *
+             *       draft     → scheduled
+             *       scheduled → cancelled, completed
+             *
+             *     Re-applying the same status is a no-op. Any other combination
+             *     is rejected with HTTP 422 and
+             *     `error.code = "session.invalid_transition"`.
+             * @enum {string}
+             */
+            status?: "draft" | "scheduled" | "cancelled" | "completed";
+        };
+        /** @description Single-session response envelope. */
+        SessionEnvelope: {
+            session: components["schemas"]["SessionItem"];
+        };
+        /**
+         * @description List-sessions response envelope. The top-level
+         *     `has_overlapping_sessions` flag is true when any pair of returned
+         *     sessions overlaps in time.
+         */
+        SessionListResponse: {
+            sessions: components["schemas"]["SessionItem"][];
+            /** @example false */
+            has_overlapping_sessions: boolean;
+        };
+        /** @description Soft-delete response envelope. */
+        SessionDeleteResponse: {
+            session: components["schemas"]["SessionItem"];
             /** @example true */
             deleted: boolean;
         };
@@ -9244,6 +9477,402 @@ export interface operations {
                 };
             };
             /** @description Database pool or event queries unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the parent event. */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of sessions for the event. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionListResponse"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `session.read` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`session.list_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or session queries unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the parent event. */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Session created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionEnvelope"];
+                };
+            };
+            /**
+             * @description Body invalid or required fields missing. Possible error codes:
+             *     `session.invalid_body`, `session.empty_body`,
+             *     `session.invalid_json`, `session.invalid_status`,
+             *     `session.missing_start_at`, `session.invalid_start_at`,
+             *     `session.missing_end_at`, `session.invalid_end_at`,
+             *     `session.invalid_date_range`, `session.invalid_capacity`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `session.create` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`session.insert_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or session queries unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the parent event. */
+                event_id: string;
+                /** @description UUIDv7 of the session. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session details. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `session.read` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`session.get_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or session queries unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the parent event. */
+                event_id: string;
+                /** @description UUIDv7 of the session. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session soft-deleted; audit event written. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionDeleteResponse"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `session.delete` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error. Possible codes:
+             *     `session.delete_failed`, `session.audit_failed`,
+             *     `session.commit_failed`.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or session queries unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the parent event. */
+                event_id: string;
+                /** @description UUIDv7 of the session. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated session. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionEnvelope"];
+                };
+            };
+            /**
+             * @description Body invalid or fields out of range. Possible error codes:
+             *     `session.invalid_body`, `session.empty_body`,
+             *     `session.invalid_json`, `session.invalid_status`,
+             *     `session.invalid_start_at`, `session.invalid_end_at`,
+             *     `session.invalid_date_range`, `session.invalid_capacity`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `session.update` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Status transition not allowed by the state machine. The
+             *     response uses the standard `ErrorEnvelope` with
+             *     `error.code = "session.invalid_transition"` and
+             *     `error.details.current_status` /
+             *     `error.details.target_status`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`session.update_failed`, `session.get_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or session queries unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;

@@ -79,6 +79,14 @@ const (
 	CreatePaymentProviderConfigRequestModeTest CreatePaymentProviderConfigRequestMode = "test"
 )
 
+// Defines values for CreateSessionRequestStatus.
+const (
+	CreateSessionRequestStatusCancelled CreateSessionRequestStatus = "cancelled"
+	CreateSessionRequestStatusCompleted CreateSessionRequestStatus = "completed"
+	CreateSessionRequestStatusDraft     CreateSessionRequestStatus = "draft"
+	CreateSessionRequestStatusScheduled CreateSessionRequestStatus = "scheduled"
+)
+
 // Defines values for CreateVenueRequestStatus.
 const (
 	CreateVenueRequestStatusActive   CreateVenueRequestStatus = "active"
@@ -192,6 +200,14 @@ const (
 	Ready    ReadyzResponseStatus = "ready"
 )
 
+// Defines values for SessionItemStatus.
+const (
+	SessionItemStatusCancelled SessionItemStatus = "cancelled"
+	SessionItemStatusCompleted SessionItemStatus = "completed"
+	SessionItemStatusDraft     SessionItemStatus = "draft"
+	SessionItemStatusScheduled SessionItemStatus = "scheduled"
+)
+
 // Defines values for UpdateEventRequestVisibility.
 const (
 	UpdateEventRequestVisibilityPrivate  UpdateEventRequestVisibility = "private"
@@ -224,6 +240,14 @@ const (
 	UsEin UpdateOrganizationRequestTaxIdScheme = "us_ein"
 )
 
+// Defines values for UpdateSessionRequestStatus.
+const (
+	UpdateSessionRequestStatusCancelled UpdateSessionRequestStatus = "cancelled"
+	UpdateSessionRequestStatusCompleted UpdateSessionRequestStatus = "completed"
+	UpdateSessionRequestStatusDraft     UpdateSessionRequestStatus = "draft"
+	UpdateSessionRequestStatusScheduled UpdateSessionRequestStatus = "scheduled"
+)
+
 // Defines values for UpdateVenueRequestStatus.
 const (
 	UpdateVenueRequestStatusActive   UpdateVenueRequestStatus = "active"
@@ -233,9 +257,9 @@ const (
 
 // Defines values for VenueItemStatus.
 const (
-	VenueItemStatusActive   VenueItemStatus = "active"
-	VenueItemStatusArchived VenueItemStatus = "archived"
-	VenueItemStatusDraft    VenueItemStatus = "draft"
+	Active   VenueItemStatus = "active"
+	Archived VenueItemStatus = "archived"
+	Draft    VenueItemStatus = "draft"
 )
 
 // Defines values for ListEventsParamsVisibility.
@@ -659,6 +683,29 @@ type CreatePaymentProviderConfigRequest struct {
 
 // CreatePaymentProviderConfigRequestMode Operating mode for the credential set.
 type CreatePaymentProviderConfigRequestMode string
+
+// CreateSessionRequest Create-time payload for POST
+// /v1/organizations/{org_id}/events/{event_id}/sessions. The owning
+// org_id and event_id are taken from the path; the body MUST NOT
+// repeat them.
+type CreateSessionRequest struct {
+	// CapacityTotal Total seats available; must be > 0.
+	CapacityTotal int32 `json:"capacity_total"`
+
+	// EndAt Session end time (RFC 3339, UTC). Must be strictly after `start_at`.
+	EndAt time.Time `json:"end_at"`
+
+	// StartAt Session start time (RFC 3339, UTC).
+	StartAt time.Time `json:"start_at"`
+
+	// Status Initial lifecycle status. Defaults to `draft` on the server
+	// when omitted.
+	Status *CreateSessionRequestStatus `json:"status,omitempty"`
+}
+
+// CreateSessionRequestStatus Initial lifecycle status. Defaults to `draft` on the server
+// when omitted.
+type CreateSessionRequestStatus string
 
 // CreateVenueRequest Request body for POST /v1/organizations/{org_id}/venues. Only `name`
 // is required; the optional fields default to NULL.
@@ -1746,6 +1793,80 @@ type ServerInfoResponse struct {
 	WelcomeMessage string `json:"welcome_message"`
 }
 
+// SessionDeleteResponse Soft-delete response envelope.
+type SessionDeleteResponse struct {
+	Deleted bool `json:"deleted"`
+
+	// Session A single dated session (time slot) under an event. Overlap with
+	// sibling sessions is permitted but flagged via the
+	// `has_overlapping_sessions` boolean — the application layer detects
+	// overlaps via a count query (CountOverlappingSessions) rather than a
+	// DB-level UNIQUE constraint.
+	Session SessionItem `json:"session"`
+}
+
+// SessionEnvelope Single-session response envelope.
+type SessionEnvelope struct {
+	// Session A single dated session (time slot) under an event. Overlap with
+	// sibling sessions is permitted but flagged via the
+	// `has_overlapping_sessions` boolean — the application layer detects
+	// overlaps via a count query (CountOverlappingSessions) rather than a
+	// DB-level UNIQUE constraint.
+	Session SessionItem `json:"session"`
+}
+
+// SessionItem A single dated session (time slot) under an event. Overlap with
+// sibling sessions is permitted but flagged via the
+// `has_overlapping_sessions` boolean — the application layer detects
+// overlaps via a count query (CountOverlappingSessions) rather than a
+// DB-level UNIQUE constraint.
+type SessionItem struct {
+	// CapacityTotal Total seats available for this slot. Must be strictly greater
+	// than zero. When this value changes via PATCH, the handler
+	// fires the capacity propagation hook (onCapacityChange) to
+	// keep the inventory ledger in sync.
+	CapacityTotal int32     `json:"capacity_total"`
+	CreatedAt     time.Time `json:"created_at"`
+
+	// EndAt Session end time (RFC 3339, UTC). Must be strictly after
+	// `start_at` — enforced by both the handler and a CHECK
+	// constraint on the sessions table.
+	EndAt time.Time `json:"end_at"`
+
+	// EventId FK to the owning event. Immutable after creation; the
+	// owner-org check is enforced via the parent event row.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// HasOverlappingSessions True when this session overlaps with at least one other active
+	// session for the same event. Computed at the application layer
+	// from CountOverlappingSessions for single-session responses, or
+	// from a pairwise scan for list responses.
+	HasOverlappingSessions bool `json:"has_overlapping_sessions"`
+
+	// Id UUIDv7 primary key of the session row.
+	Id openapi_types.UUID `json:"id"`
+
+	// StartAt Session start time (RFC 3339, UTC). Strictly before `end_at`.
+	StartAt time.Time `json:"start_at"`
+
+	// Status Lifecycle status. Transitions: draft → scheduled, scheduled
+	// → cancelled|completed.
+	Status    SessionItemStatus `json:"status"`
+	UpdatedAt time.Time         `json:"updated_at"`
+}
+
+// SessionItemStatus Lifecycle status. Transitions: draft → scheduled, scheduled
+// → cancelled|completed.
+type SessionItemStatus string
+
+// SessionListResponse List-sessions response envelope. The top-level
+// `has_overlapping_sessions` flag is true when any pair of returned
+// sessions overlaps in time.
+type SessionListResponse struct {
+	HasOverlappingSessions bool          `json:"has_overlapping_sessions"`
+	Sessions               []SessionItem `json:"sessions"`
+}
+
 // UpdateBankAccountRequest Request body for PATCH /v1/organizations/{org_id}/bank-accounts/{id}.
 // Omitted fields are left unchanged. Sending `is_primary: true`
 // atomically demotes any previously primary account in the same
@@ -1952,6 +2073,46 @@ type UpdatePaymentProviderConfigRequest struct {
 	// empty string deletes the secret, omitted keys are untouched.
 	Secrets *map[string]string `json:"secrets,omitempty"`
 }
+
+// UpdateSessionRequest Partial update for PATCH
+// /v1/organizations/{org_id}/events/{event_id}/sessions/{id}. All
+// fields are optional; nil / empty fields leave the existing value
+// unchanged. When status changes, the transition is validated
+// against the session state machine and 422
+// `session.invalid_transition` is returned for disallowed moves.
+type UpdateSessionRequest struct {
+	// CapacityTotal New seat total; must be > 0. Triggers the capacity propagation
+	// hook (inventory ledger sync) when changed.
+	CapacityTotal *int32 `json:"capacity_total"`
+
+	// EndAt New session end time. When both start_at and end_at are
+	// present in the same body, end_at must remain strictly after
+	// start_at.
+	EndAt *time.Time `json:"end_at"`
+
+	// StartAt New session start time (RFC 3339, UTC). Empty leaves unchanged.
+	StartAt *time.Time `json:"start_at"`
+
+	// Status Target lifecycle status. Allowed transitions:
+	//
+	//   draft     → scheduled
+	//   scheduled → cancelled, completed
+	//
+	// Re-applying the same status is a no-op. Any other combination
+	// is rejected with HTTP 422 and
+	// `error.code = "session.invalid_transition"`.
+	Status *UpdateSessionRequestStatus `json:"status,omitempty"`
+}
+
+// UpdateSessionRequestStatus Target lifecycle status. Allowed transitions:
+//
+//	draft     → scheduled
+//	scheduled → cancelled, completed
+//
+// Re-applying the same status is a no-op. Any other combination
+// is rejected with HTTP 422 and
+// `error.code = "session.invalid_transition"`.
+type UpdateSessionRequestStatus string
 
 // UpdateVenueRequest Request body for PATCH /v1/organizations/{org_id}/venues/{id}.
 // All fields are optional — omitted (or empty-string) `name` leaves the
@@ -2404,6 +2565,12 @@ type UpdateOrganizationBankAccountJSONRequestBody = UpdateBankAccountRequest
 
 // CreateEventJSONRequestBody defines body for CreateEvent for application/json ContentType.
 type CreateEventJSONRequestBody = CreateEventRequest
+
+// CreateSessionJSONRequestBody defines body for CreateSession for application/json ContentType.
+type CreateSessionJSONRequestBody = CreateSessionRequest
+
+// UpdateSessionJSONRequestBody defines body for UpdateSession for application/json ContentType.
+type UpdateSessionJSONRequestBody = UpdateSessionRequest
 
 // UpdateEventJSONRequestBody defines body for UpdateEvent for application/json ContentType.
 type UpdateEventJSONRequestBody = UpdateEventRequest

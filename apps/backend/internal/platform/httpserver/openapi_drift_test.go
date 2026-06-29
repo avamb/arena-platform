@@ -298,6 +298,11 @@ func buildDriftTestServer(t *testing.T) *Server {
 		// documented under feature #263): /v1/events, /v1/events/{id},
 		// /v1/organizations/{org_id}/events and its child mutations.
 		EventQueries: gen.New(nil),
+		// Wire SessionQueries so all sessions routes (feature #126 / documented
+		// under feature #264) are mounted on the chi router for the drift
+		// check: POST/GET/PATCH/DELETE under
+		// /v1/organizations/{org_id}/events/{event_id}/sessions[/{id}].
+		SessionQueries: gen.New(nil),
 	})
 }
 

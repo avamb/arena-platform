@@ -16610,3 +16610,84 @@ other schema in openapi.yaml; the OAS 3.1 nullable migration is a
 separate follow-up.
 
 Marked #263 passing. Backlog: 263/301.
+
+=== 2026-06-29: Feature #264 — A-3 Document sessions endpoints in OpenAPI ===
+apps/backend/openapi/openapi.yaml:
+  - Added 6 component schemas under components.schemas: SessionItem,
+    CreateSessionRequest, UpdateSessionRequest, SessionEnvelope,
+    SessionListResponse, SessionDeleteResponse.
+  - SessionItem pins status enum {draft, scheduled, cancelled, completed},
+    capacity_total int32 (min 1), required has_overlapping_sessions flag,
+    and RFC3339 start_at/end_at.
+  - Added 2 path entries / 5 operations documenting every sessions.go
+    handler:
+      POST   /v1/organizations/{org_id}/events/{event_id}/sessions       createSession
+      GET    /v1/organizations/{org_id}/events/{event_id}/sessions       listSessions
+      GET    /v1/organizations/{org_id}/events/{event_id}/sessions/{id}  getSession
+      PATCH  /v1/organizations/{org_id}/events/{event_id}/sessions/{id}  updateSession
+      DELETE /v1/organizations/{org_id}/events/{event_id}/sessions/{id}  deleteSession
+  - Each operation carries bearerAuth, tags: [v1], the permission name in
+    its description (session.create/read/update/delete), and the full
+    error-code catalog from sessions.go listed in the 4xx descriptions
+    (session.invalid_body, session.empty_body, session.invalid_json,
+    session.invalid_status, session.missing_start_at,
+    session.invalid_start_at, session.missing_end_at,
+    session.invalid_end_at, session.invalid_date_range,
+    session.invalid_capacity, session.invalid_transition,
+    session.not_found, session.insert_failed, session.list_failed,
+    session.get_failed, session.update_failed, session.delete_failed,
+    session.audit_failed, session.commit_failed).
+  - 422 session.invalid_transition documents the state-machine
+    (draft -> scheduled, scheduled -> cancelled|completed) with the
+    standard ErrorEnvelope plus details.current_status / target_status.
+  - createSession and updateSession requestBody carry inline examples
+    consumed by the new contract test.
+
+apps/backend/internal/platform/httpserver/openapi_sessions_264_test.go (NEW):
+  8 contract tests pinning the spec for #264:
+    - TestOpenAPI264_PathsPresent (2 path mappings)
+    - TestOpenAPI264_OperationIDsPresent (5 canonical IDs)
+    - TestOpenAPI264_SchemasPresent (6 component schema names)
+    - TestOpenAPI264_PermissionsDocumented
+      (session.read/create/update/delete)
+    - TestOpenAPI264_BearerAuthAndTags (every op declares bearerAuth + v1)
+    - TestOpenAPI264_ErrorEnvelopeUsed (ErrorEnvelope on every op)
+    - TestOpenAPI264_StatusEnumPinned (enum draft/scheduled/cancelled/
+      completed across SessionItem, CreateSessionRequest,
+      UpdateSessionRequest)
+    - TestOpenAPI264_SpecExamplesValidate -- the "minimal contract test"
+      called out by the ticket. Loads openapi.yaml via gopkg.in/yaml.v3,
+      walks the inline request examples for createSession and
+      updateSession, and asserts: createSession body has the documented
+      required fields {start_at, end_at, capacity_total}, RFC3339
+      timestamps, and capacity_total > 0; update examples carry status
+      values from the documented enum when present and RFC3339-shaped
+      timestamps. Runs in CI without docker / postgres / oapi-codegen.
+  Reuses helpers from openapi_events_263_test.go (mustOperation,
+  extractExamples, schemaWindow, looksLikeRFC3339, findOpenAPISpecPath)
+  so the new file is purely additive.
+
+apps/backend/internal/platform/httpserver/openapi_drift_test.go:
+  buildDriftTestServer now wires SessionQueries: gen.New(nil) so the
+  sessions routes are mounted on the drift-test chi router. Without
+  this the new spec paths would register as phantom routes in
+  TestOpenAPIDriftCheck_CodeCoversAllSpecRoutes.
+
+apps/backend/internal/adapters/http/openapi/types_gen.go:
+  Regenerated via oapi-codegen v2.4.1 (golang:1.24 docker). Known
+  OpenAPI 3.1 "not yet supported by oapi-codegen" warning unchanged.
+apps/backend/openapi/clients/ts/index.d.ts:
+  Regenerated via scripts/gen-ts-client.mjs (openapi-typescript 7.13.0).
+  16 occurrences of the new Session* type names confirmed.
+
+Verification:
+  docker golang:1.24 go test ./internal/platform/httpserver/
+      -run TestOpenAPI264 -count=1 -v                  PASS (8/8)
+  docker golang:1.24 go build ./...                    OK
+  npm --prefix apps/admin-web run type-check           OK (silent)
+  Drift TestOpenAPIDriftCheck_SpecCoversAllCodeRoutes  PASS
+    (sessions routes now covered both directions; the 20 pre-existing
+    phantom entries documented under #263 are unchanged and not
+    introduced here).
+
+Marked #264 passing. Backlog: 264/301.
