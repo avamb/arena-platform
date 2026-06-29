@@ -35,6 +35,25 @@ and call out the missing backend endpoint by name.
 
 ## Local development
 
+### Option A — docker-compose (recommended)
+
+```bash
+# From the repo root:
+docker compose up -d
+# Wait for arena_admin_web to report healthy (~60s on first boot):
+docker compose ps admin-web
+# Open the SuperAdmin UI:
+open http://localhost:5174
+```
+
+The `admin-web` service (defined in the repo-root `docker-compose.yml`)
+runs the Vite dev server inside a `node:20-alpine` container and binds
+host port `5174`. `VITE_API_BASE_URL` is pinned to
+`http://localhost:8080` so the browser bundle talks to the host-exposed
+`arena-api`.
+
+### Option B — host-side dev server
+
 ```bash
 # 1. From the repo root, install root + admin-web dependencies once:
 npm install
@@ -48,6 +67,10 @@ cp apps/admin-web/.env.example apps/admin-web/.env.local
 # 3. Start the dev server:
 npm run admin:dev   # http://localhost:5174
 ```
+
+If both options are active at once, the host-side `npm run admin:dev`
+will fall through to a non-strict port (Vite default), or you can stop
+the container first: `docker compose stop admin-web`.
 
 The Vite dev server runs independently of the backend; it does not proxy
 API requests. CORS on the backend (`CORS_ALLOWED_ORIGINS`) must include

@@ -101,7 +101,9 @@ platform_superadmin   ← вы
 
 - **Production:** `https://admin.arena.example.com`
 - **Staging:** `https://admin.staging.arena.example.com`
-- **Local dev:** `http://localhost:3001` (см. `apps/admin-web/README.md`)
+- **Local dev:** `http://localhost:5174` — поднимается автоматически вместе со
+  стеком через `docker compose up -d` (сервис `admin-web` в `docker-compose.yml`)
+  либо вручную через `npm run admin:dev` (см. `apps/admin-web/README.md`).
 
 ### Шаги первого входа
 

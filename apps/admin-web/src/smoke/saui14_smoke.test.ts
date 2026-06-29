@@ -202,6 +202,7 @@ const ROUTE_REGISTRY: Readonly<
   Record<string, { readonly routeId: string; readonly file: string }>
 > = {
   "/networks": { routeId: "NetworksRoute", file: "networks.tsx" },
+  "/users": { routeId: "UsersRoute", file: "users.tsx" },
   "/organizations": { routeId: "OrganizationsRoute", file: "organizations.tsx" },
   "/orders": { routeId: "OrdersRoute", file: "orders.tsx" },
   "/tickets": { routeId: "TicketsRoute", file: "tickets.tsx" },
@@ -334,6 +335,7 @@ describe("SAUI-14 superadmin reason-prompt coverage", () => {
   it.each([
     ["/v1/operator-networks", "POST"],
     ["/v1/operator-networks/0193f01a-0001-7000-8000-000000000099", "PATCH"],
+    ["/v1/admin/users", "POST"],
     ["/v1/admin/networks", "POST"],
     ["/v1/admin/networks/0193f01a-0001-7000-8000-000000000099/users", "DELETE"],
   ] as const)(

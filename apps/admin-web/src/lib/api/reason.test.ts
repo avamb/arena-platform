@@ -101,6 +101,8 @@ describe("requiresAdminReason()", () => {
     ["/v1/operator-networks", "POST", true],
     ["/v1/operator-networks/abc", "PATCH", true],
     ["/v1/operator-networks/abc/archive", "POST", true],
+    ["/v1/admin/users", "POST", true],
+    ["/v1/admin/users", "GET", false],
     ["/v1/admin/networks/abc/users", "POST", true],
     ["/v1/admin/networks/abc/users/def", "DELETE", true],
     ["/v1/admin/networks/abc/organizers", "POST", true],

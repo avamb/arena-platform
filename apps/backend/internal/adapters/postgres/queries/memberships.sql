@@ -38,14 +38,26 @@ WHERE  org_id = $1
 ORDER  BY joined_at ASC, id ASC;
 
 -- name: GetActiveRolesForUser :many
--- Returns the distinct set of role names held by a user across ALL organizations
--- (active memberships only). Used by permissions.DBChecker to union JWT roles
--- with membership-derived roles during permission resolution.
+-- Returns the distinct set of role names held by a user. Includes active
+-- organization memberships plus global user_roles assignments (org_id IS
+-- NULL). Scoped user_roles are intentionally excluded because the current
+-- permission checker has no per-resource user_roles scope enforcement.
 SELECT DISTINCT role
-FROM   memberships
-WHERE  user_id = $1
-  AND  status  = 'active'
-ORDER  BY role;
+FROM (
+    SELECT m.role
+    FROM   memberships m
+    WHERE  m.user_id = $1
+      AND  m.status  = 'active'
+
+    UNION
+
+    SELECT r.name AS role
+    FROM   user_roles ur
+    JOIN   roles r ON r.id = ur.role_id
+    WHERE  ur.user_id = $1
+      AND  ur.org_id IS NULL
+) effective_roles
+ORDER BY role;
 
 -- name: ListMembershipsByUser :many
 -- Returns all active memberships for a user across every organization they

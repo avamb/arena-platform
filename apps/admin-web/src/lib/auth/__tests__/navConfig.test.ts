@@ -57,7 +57,7 @@ function fixture(permissions: readonly string[], scopes: readonly string[]) {
 }
 
 const platformSuperadmin = fixture(
-  [...NETWORK_PERMS_FULL, "superadmin.read", "geo.admin"],
+  [...NETWORK_PERMS_FULL, "superadmin.read", "membership.grant", "geo.admin"],
   ["global", "network:0193f01a-0001-7000-8000-000000000001"],
 );
 
@@ -139,6 +139,7 @@ describe("visibleNavEntries -- /v1/me role fixtures", () => {
     expect(ids(out)).toEqual([
       "workspace",
       "networks",
+      "users",
       "organizations",
       "events_sessions",
       "venues",

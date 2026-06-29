@@ -16117,3 +16117,23 @@ Marked #250 passing. Backlog: 250/250 (100%).
   (action.*/empty.*/error.*/reason.*) and ready for follow-up tickets to
   swap remaining hardcoded strings.
 Marked #251 passing.
+
+=== 2026-06-29: Feature #252 — admin-web reachable via docker-compose ===
+docker-compose.yml: added admin-web service (node:20-alpine, port 5174,
+  VITE_API_BASE_URL=http://localhost:8080, depends_on api, healthcheck on
+  /, named volume arena_admin_web_node_modules to isolate Linux modules
+  from Windows host). Header comment + Usage section updated.
+docs/ru/superadmin_guide.md: Local dev URL fixed from :3001 to :5174 with
+  note that the service auto-starts via docker compose.
+README.md: new "Local SuperAdmin UI" subsection under the admin-web
+  paragraph documenting the localhost:5174 + CORS notes + host-side
+  fallback.
+apps/admin-web/README.md: Local development split into Option A
+  (docker compose) and Option B (host npm run admin:dev).
+00_project_control/RELEASE_CHECKLIST.md: Gate 5 bullet added covering
+  admin-web availability as part of `docker compose up`.
+Verification:
+  docker compose config --quiet     OK
+  docker compose config --services  lists admin-web alongside core
+  node scripts/admin-smoke-guardrails.mjs  OK
+Marked #252 passing. Backlog: 252/252 (100%).

@@ -280,4 +280,32 @@ describe("missing-permission surface", () => {
       login({ email: "u@example.com", password: "pw" }),
     ).rejects.toMatchObject({ code: "network.failure", status: 0 });
   });
+
+  it("aborts hung requests with ApiError code=network.timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((_url: string | URL | Request, init?: RequestInit) => {
+          const signal = init?.signal;
+          return new Promise<Response>((_resolve, reject) => {
+            signal?.addEventListener("abort", () => {
+              reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+            });
+          });
+        }),
+      );
+
+      const promise = login({ email: "u@example.com", password: "pw" });
+      void promise.catch(() => undefined);
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      await expect(promise).rejects.toMatchObject({
+        code: "network.timeout",
+        status: 0,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

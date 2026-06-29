@@ -118,15 +118,26 @@ func (q *Queries) ListMembershipsByOrg(ctx context.Context, orgID uuid.UUID) ([]
 
 const getActiveRolesForUser = `-- name: GetActiveRolesForUser :many
 SELECT DISTINCT role
-FROM   memberships
-WHERE  user_id = $1
-  AND  status  = 'active'
-ORDER  BY role`
+FROM (
+    SELECT m.role
+    FROM   memberships m
+    WHERE  m.user_id = $1
+      AND  m.status  = 'active'
+
+    UNION
+
+    SELECT r.name AS role
+    FROM   user_roles ur
+    JOIN   roles r ON r.id = ur.role_id
+    WHERE  ur.user_id = $1
+      AND  ur.org_id IS NULL
+) effective_roles
+ORDER BY role`
 
 // GetActiveRolesForUser returns the distinct set of role names held by a user
-// across all organizations (active memberships only). The result is used by
-// permissions.DBChecker to union JWT roles with membership-derived roles during
-// per-request permission resolution.
+// across active memberships and global user_roles assignments. The result is
+// used by permissions.DBChecker to union JWT roles with database-derived roles
+// during per-request permission resolution.
 func (q *Queries) GetActiveRolesForUser(ctx context.Context, userID uuid.UUID) ([]string, error) {
 	rows, err := q.db.Query(ctx, getActiveRolesForUser, userID)
 	if err != nil {

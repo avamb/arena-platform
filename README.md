@@ -433,6 +433,20 @@ shell — see `apps/admin-web/README.md` for env vars, login + dev-token
 flow, required permissions per route, the `X-Admin-Reason` behavior, and
 the list of backend gaps the shell surfaces honestly.
 
+### Local SuperAdmin UI
+
+`docker compose up -d` now brings up the SuperAdmin UI alongside the
+backend stack. The Vite dev server is reachable at
+**http://localhost:5174** once the `admin-web` container reports healthy
+(the first boot runs `npm ci` inside the container, expect ~60s).
+`VITE_API_BASE_URL` is pinned to `http://localhost:8080` so the browser
+bundle talks to the host-exposed `arena-api`. CORS on `arena-api` is
+`*` for local dev — tighten to `http://localhost:5174` for production.
+
+If you prefer to run the UI on the host instead of in Docker, stop the
+`admin-web` service (`docker compose stop admin-web`) and use
+`npm run admin:install && npm run admin:dev`.
+
 See `app_spec.txt` for the authoritative specification driving the
 AutoForge backlog of 80+ scaffold features.
 

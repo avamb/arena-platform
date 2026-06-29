@@ -3,6 +3,7 @@ import { Route as IndexRoute } from "@/routes/index";
 import { Route as LoginRoute } from "@/routes/login";
 import { Route as NetworksRoute } from "@/routes/networks";
 import { Route as NetworkDetailRoute } from "@/routes/networkDetail";
+import { Route as UsersRoute } from "@/routes/users";
 import { Route as OrganizationsRoute } from "@/routes/organizations";
 import { Route as OrdersRoute } from "@/routes/orders";
 import { Route as TicketsRoute } from "@/routes/tickets";
@@ -37,6 +38,7 @@ export const routeTree = RootRoute.addChildren([
   LoginRoute,
   NetworksRoute,
   NetworkDetailRoute,
+  UsersRoute,
   OrganizationsRoute,
   EventsRoute,
   VenuesRoute,

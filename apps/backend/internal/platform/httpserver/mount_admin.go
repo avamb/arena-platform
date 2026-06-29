@@ -119,6 +119,19 @@ func (s *Server) mountAdminMembershipRoutes(r chi.Router) {
 	})
 }
 
+// mountAdminUserRoutes mounts the SuperAdmin user provisioning endpoint.
+// The route creates a user, issues a password setup token, and assigns either a
+// global platform role or an organization-scoped membership role.
+func (s *Server) mountAdminUserRoutes(r chi.Router) {
+	if s.stub == nil || !s.stub.Enabled() || s.membershipQueries == nil || s.pool == nil {
+		return
+	}
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "membership.grant", "users")
+		pr.Post("/admin/users", s.handleAdminCreateUser)
+	})
+}
+
 // mountImpersonationRoutes mounts the scoped impersonation JWT endpoint
 // (feature #167).
 func (s *Server) mountImpersonationRoutes(r chi.Router) {

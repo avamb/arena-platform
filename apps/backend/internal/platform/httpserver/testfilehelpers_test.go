@@ -764,6 +764,11 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0046_payment_provider_configs.sql"),
 		}
+	// Superadmin user provisioning
+	case "0047_admin_user_provisioning.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0047_admin_user_provisioning.sql"),
+		}
 	case "payment_provider_configs.sql":
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "payment_provider_configs.sql"),

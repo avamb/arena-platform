@@ -222,6 +222,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - create a user and assign a role
+         * @description Creates a new user account by email, assigns the requested role, and
+         *     issues a one-time password setup token. Global platform roles
+         *     (`platform_operator`, `platform_superadmin`) are stored as global
+         *     `user_roles` assignments. Organization-scoped roles (`organizer`,
+         *     `agent`, `network_operator`, `external_ticketing_operator`) require
+         *     `org_id` and are stored as active memberships.
+         *
+         *     Requires JWT + membership.grant + X-Admin-Reason. Existing emails are
+         *     rejected with admin_user.email_already_registered; use the membership
+         *     endpoints to add roles to existing users.
+         */
+        post: operations["postV1AdminUsers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/register": {
         parameters: {
             query?: never;
@@ -2142,6 +2171,86 @@ export interface components {
              */
             message: string;
         };
+        /**
+         * @description SuperAdmin provisioning request. Global platform roles
+         *     (`platform_operator`, `platform_superadmin`) must omit org_id.
+         *     Organization-scoped roles (`organizer`, `agent`, `network_operator`,
+         *     `external_ticketing_operator`) must supply org_id and are created as
+         *     active organization memberships.
+         */
+        AdminCreateUserRequest: {
+            /**
+             * Format: email
+             * @description New user's email address, normalised to lowercase before storage.
+             * @example operator@example.com
+             */
+            email: string;
+            /**
+             * @description Role to assign at creation time.
+             * @enum {string}
+             */
+            role: "organizer" | "agent" | "platform_operator" | "external_ticketing_operator" | "platform_superadmin" | "network_operator";
+            /**
+             * Format: uuid
+             * @description Required for organization-scoped roles; forbidden for global platform roles.
+             * @example 01900000-0000-7000-8000-000000000010
+             */
+            org_id?: string;
+            /**
+             * @description Preferred locale. Defaults to "en" when omitted.
+             * @example en
+             */
+            locale?: string;
+        };
+        AdminCreatedUser: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the newly created user.
+             */
+            id: string;
+            /**
+             * Format: email
+             * @description Normalised email address stored in the DB.
+             */
+            email: string;
+            /** @description Role assigned at creation time. */
+            role: string;
+            /**
+             * @description Assignment scope used for this role.
+             * @enum {string}
+             */
+            scope: "global" | "organization";
+            /**
+             * Format: uuid
+             * @description Organization UUID when scope is organization.
+             */
+            org_id?: string;
+            /**
+             * Format: date-time
+             * @description Account creation timestamp.
+             */
+            created_at: string;
+        };
+        AdminCreatedUserOnboarding: {
+            /** @description Whether a one-time password setup token was issued. */
+            password_reset_issued: boolean;
+            /**
+             * Format: date-time
+             * @description Password setup token expiry.
+             */
+            expires_at: string;
+            /**
+             * @description Delivery channel for the password setup link.
+             * @example email
+             */
+            delivery: string;
+        };
+        AdminCreateUserResponse: {
+            user: components["schemas"]["AdminCreatedUser"];
+            onboarding: components["schemas"]["AdminCreatedUserOnboarding"];
+            /** @example User created. A password setup link has been issued to the email address. */
+            message: string;
+        };
         AuthVerifyResponse: {
             /**
              * Format: uuid
@@ -3268,6 +3377,96 @@ export interface operations {
                 };
             };
             /** @description Echo dependencies not wired (pool, audit, or idempotency store missing) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminUsers: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for the admin write (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCreateUserRequest"];
+            };
+        };
+        responses: {
+            /** @description User created, role assigned, password setup issued. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCreateUserResponse"];
+                };
+            };
+            /** @description Missing reason, invalid body, invalid email, role/scope mismatch, or bad org_id. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold membership.grant. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Email address is already registered. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description org_id does not exist for an organization-scoped role. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Role assignment, token issuance, or audit write failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or user provisioning dependencies not available. */
             503: {
                 headers: {
                     [name: string]: unknown;

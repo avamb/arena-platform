@@ -6,6 +6,7 @@
 #   - redis      : Redis 7 (locks / hot cache)
 #   - api        : arena-api HTTP server  (port 8080)
 #   - worker     : arena-worker background job dispatcher
+#   - admin-web  : SuperAdmin UI (Vite dev server, port 5174)
 #
 # Observability stack (profile: observability):
 #   - prometheus : Prometheus metrics scraper  (port 9090)
@@ -26,6 +27,9 @@
 #
 #   # Open Grafana
 #   open http://localhost:3000   (admin / admin)
+#
+#   # Open SuperAdmin UI
+#   open http://localhost:5174   (login flow via arena-api on :8080)
 #
 #   curl localhost:8080/healthz
 #   curl localhost:8080/readyz
@@ -206,6 +210,50 @@ services:
       ENABLE_DEV_AUTH: "false"
 
   # ------------------------------------------------------------------
+  # admin-web : Vite dev server hosting the SuperAdmin React UI from
+  #              apps/admin-web. Bound to host port 5174 so the browser
+  #              can reach http://localhost:5174 once the stack is up.
+  #              Talks to arena-api at http://localhost:8080 from the
+  #              browser (VITE_API_BASE_URL is read by the client at
+  #              build time and embedded in the bundle). CORS on the
+  #              api service is currently "*" — fine for local dev,
+  #              tighten to http://localhost:5174 in prod.
+  # ------------------------------------------------------------------
+  admin-web:
+    image: node:20-alpine
+    container_name: arena_admin_web
+    restart: unless-stopped
+    working_dir: /app
+    # `npm ci` syncs node_modules into the named volume on first boot;
+    # subsequent boots are fast because the lockfile hasn't changed.
+    # `vite --host 0.0.0.0` is required so the port is reachable from
+    # the Docker host (default bind is 127.0.0.1 inside the container).
+    command: sh -c "npm ci --no-audit --no-fund --prefer-offline && npm run dev -- --host 0.0.0.0 --port 5174 --strictPort"
+    environment:
+      # Browser-side base URL for arena-api. The bundle is built in the
+      # browser, so this MUST be the host-visible address (localhost)
+      # not the docker-network address (api:8080).
+      VITE_API_BASE_URL: "http://localhost:8080"
+      VITE_ENABLE_QUERY_DEVTOOLS: "true"
+    volumes:
+      - ./apps/admin-web:/app
+      # Keep node_modules in a named volume so the host's directory
+      # (which may be Windows / macOS) doesn't pollute the Linux
+      # container's install and vice versa.
+      - arena_admin_web_node_modules:/app/node_modules
+    ports:
+      - "5174:5174"
+    depends_on:
+      api:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:5174/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+
+  # ------------------------------------------------------------------
   # prometheus : scrapes /metrics from api (and worker when it exposes
   #              metrics). Opt-in via --profile observability.
   # ------------------------------------------------------------------
@@ -268,3 +316,4 @@ volumes:
   arena_redis_data:
   arena_prometheus_data:
   arena_grafana_data:
+  arena_admin_web_node_modules:

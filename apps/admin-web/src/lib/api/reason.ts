@@ -62,6 +62,7 @@ const REASON_REQUIRED_PREFIXES: readonly string[] = [
 const REASON_REQUIRED_MUTATION_PREFIXES: readonly string[] = [
   "/v1/operator-networks",
   "/v1/admin/networks",
+  "/v1/admin/users",
 ];
 
 /**

@@ -45,6 +45,7 @@ export type ScopeKind = "global" | "platform" | "network" | "organization";
 export type NavRoutePath =
   | "/"
   | "/networks"
+  | "/users"
   | "/organizations"
   | "/events"
   | "/venues"
@@ -110,6 +111,15 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     scopeKinds: ["global", "platform", "network"],
     purpose:
       "Browse and manage operator networks. Requires network.read or network.create.",
+  },
+  {
+    id: "users",
+    label: "Users",
+    to: "/users",
+    permission: { anyOf: ["membership.grant"] },
+    scopeKinds: ["global", "platform"],
+    purpose:
+      "Create users and assign their first platform or organization role. Requires membership.grant.",
   },
   {
     id: "organizations",

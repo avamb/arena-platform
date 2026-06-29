@@ -9,6 +9,8 @@
  *
  * Error contract:
  *   - Network or non-JSON failures -> ApiError(code='network.failure').
+ *   - Hung requests are aborted after a fixed timeout and reported as
+ *     ApiError(code='network.timeout').
  *   - HTTP >= 400 with ErrorEnvelope body -> ApiError carrying the parsed
  *     envelope code/message/request_id/trace_id.
  *   - 401 triggers exactly ONE refresh attempt; on refresh failure the
@@ -31,6 +33,8 @@ import {
   resolveReasonFor,
 } from "@/lib/api/reason";
 import type {
+  AdminCreateUserRequest,
+  AdminCreateUserResponse,
   AuthLoginRequest,
   AuthLoginResponse,
   AuthLogoutRequest,
@@ -39,6 +43,8 @@ import type {
   ErrorEnvelope,
   MeResponse,
 } from "@/lib/api/types";
+
+const REQUEST_TIMEOUT_MS = 30_000;
 
 export interface ApiErrorBody {
   code: string;
@@ -145,20 +151,35 @@ async function rawFetch<T>(opts: RawFetchOptions): Promise<T> {
   }
 
   let response: Response;
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, REQUEST_TIMEOUT_MS);
   try {
     response = await fetch(`${config.apiBaseUrl}${opts.path}`, {
       method: opts.method,
       headers,
       body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+      signal: controller.signal,
       // Tokens are passed in the Authorization header, never via cookies,
       // so we deliberately omit credentials to avoid CORS preflight noise.
       credentials: "omit",
     });
   } catch (cause) {
+    if (timedOut || (cause instanceof Error && cause.name === "AbortError")) {
+      throw new ApiError(0, {
+        code: "network.timeout",
+        message: `Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s`,
+      });
+    }
     throw new ApiError(0, {
       code: "network.failure",
       message: cause instanceof Error ? cause.message : "Network request failed",
     });
+  } finally {
+    clearTimeout(timeout);
   }
 
   if (response.status === 204) {
@@ -261,6 +282,16 @@ export async function logout(): Promise<void> {
 
 export async function fetchMe(): Promise<MeResponse> {
   return authedFetch<MeResponse>({ method: "GET", path: "/v1/me" });
+}
+
+export async function createAdminUser(
+  req: AdminCreateUserRequest,
+): Promise<AdminCreateUserResponse> {
+  return authedFetch<AdminCreateUserResponse>({
+    method: "POST",
+    path: "/v1/admin/users",
+    body: req,
+  });
 }
 
 interface AuthedRequest {

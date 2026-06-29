@@ -163,6 +163,12 @@ curl -sf http://localhost:8080/readyz       # expect HTTP 200
   `.github/workflows/load-test.yml` uses to spin up the full stack.
 - `init.sh` is a one-shot convenience wrapper around `docker compose up`
   plus migrations for first-time local bring-up.
+- **admin-web reachable on localhost (feature #252):** `docker compose up`
+  brings up the SuperAdmin UI on `http://localhost:5174` via the
+  `admin-web` service. Verification: container `arena_admin_web`
+  reports `healthy`, `curl -I http://localhost:5174/` returns HTTP 200,
+  browser login through `/v1/auth/login` succeeds without CORS errors
+  (api `CORS_ALLOWED_ORIGINS=*` in local dev — tighten for prod).
 
 ---
 

@@ -1069,6 +1069,97 @@ components:
           description: Human-readable confirmation message
           example: "Registration successful. Please check your email to verify your address."
 
+    AdminCreateUserRequest:
+      type: object
+      required: [email, role]
+      description: |
+        SuperAdmin provisioning request. Global platform roles
+        (`platform_operator`, `platform_superadmin`) must omit org_id.
+        Organization-scoped roles (`organizer`, `agent`, `network_operator`,
+        `external_ticketing_operator`) must supply org_id and are created as
+        active organization memberships.
+      properties:
+        email:
+          type: string
+          format: email
+          description: New user's email address, normalised to lowercase before storage.
+          example: "operator@example.com"
+        role:
+          type: string
+          enum:
+            - organizer
+            - agent
+            - platform_operator
+            - external_ticketing_operator
+            - platform_superadmin
+            - network_operator
+          description: Role to assign at creation time.
+        org_id:
+          type: string
+          format: uuid
+          description: Required for organization-scoped roles; forbidden for global platform roles.
+          example: "01900000-0000-7000-8000-000000000010"
+        locale:
+          type: string
+          description: Preferred locale. Defaults to "en" when omitted.
+          example: "en"
+
+    AdminCreatedUser:
+      type: object
+      required: [id, email, role, scope, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the newly created user.
+        email:
+          type: string
+          format: email
+          description: Normalised email address stored in the DB.
+        role:
+          type: string
+          description: Role assigned at creation time.
+        scope:
+          type: string
+          enum: [global, organization]
+          description: Assignment scope used for this role.
+        org_id:
+          type: string
+          format: uuid
+          description: Organization UUID when scope is organization.
+        created_at:
+          type: string
+          format: date-time
+          description: Account creation timestamp.
+
+    AdminCreatedUserOnboarding:
+      type: object
+      required: [password_reset_issued, expires_at, delivery]
+      properties:
+        password_reset_issued:
+          type: boolean
+          description: Whether a one-time password setup token was issued.
+        expires_at:
+          type: string
+          format: date-time
+          description: Password setup token expiry.
+        delivery:
+          type: string
+          description: Delivery channel for the password setup link.
+          example: "email"
+
+    AdminCreateUserResponse:
+      type: object
+      required: [user, onboarding, message]
+      properties:
+        user:
+          $ref: "#/components/schemas/AdminCreatedUser"
+        onboarding:
+          $ref: "#/components/schemas/AdminCreatedUserOnboarding"
+        message:
+          type: string
+          example: "User created. A password setup link has been issued to the email address."
+
     AuthVerifyResponse:
       type: object
       required: [user_id, email, email_verified_at, message]
@@ -2160,6 +2251,88 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Echo dependencies not wired (pool, audit, or idempotency store missing)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/users:
+    post:
+      operationId: postV1AdminUsers
+      summary: Admin - create a user and assign a role
+      description: |
+        Creates a new user account by email, assigns the requested role, and
+        issues a one-time password setup token. Global platform roles
+        (`platform_operator`, `platform_superadmin`) are stored as global
+        `user_roles` assignments. Organization-scoped roles (`organizer`,
+        `agent`, `network_operator`, `external_ticketing_operator`) require
+        `org_id` and are stored as active memberships.
+
+        Requires JWT + membership.grant + X-Admin-Reason. Existing emails are
+        rejected with admin_user.email_already_registered; use the membership
+        endpoints to add roles to existing users.
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for the admin write (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminCreateUserRequest"
+      responses:
+        "201":
+          description: User created, role assigned, password setup issued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCreateUserResponse"
+        "400":
+          description: Missing reason, invalid body, invalid email, role/scope mismatch, or bad org_id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold membership.grant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Email address is already registered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: org_id does not exist for an organization-scoped role.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Role assignment, token issuance, or audit write failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or user provisioning dependencies not available.
           content:
             application/json:
               schema:
