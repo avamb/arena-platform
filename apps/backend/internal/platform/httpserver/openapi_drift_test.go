@@ -314,6 +314,11 @@ func buildDriftTestServer(t *testing.T) *Server {
 		// /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/inventory
 		// plus the /reserve, /release, /confirm sub-routes.
 		InventoryQueries: gen.New(nil),
+		// Wire ReservationQueries so the reservation state-machine routes
+		// (feature #131 / documented under feature #267) are mounted for
+		// the drift check: POST /v1/reservations, GET/DELETE
+		// /v1/reservations/{id}, PATCH /v1/reservations/{id}/activate.
+		ReservationQueries: gen.New(nil),
 	})
 }
 

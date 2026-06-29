@@ -3509,6 +3509,155 @@ components:
           description: Number of capacity units to act on (must be > 0).
           example: 2
 
+    Reservation:
+      type: object
+      description: |
+        A reservation holds capacity for a buyer within a session (and
+        optionally a specific ticket tier). The state machine is:
+        `draft -> active -> converted | expired | cancelled`.
+        `draft` may also transition directly to `cancelled`.
+        TTL is computed at creation time using the precedence
+        `sales_channels.reservation_ttl_override ->
+        organizations.reservation_ttl_seconds -> 1200 s system default`.
+      required:
+        - id
+        - org_id
+        - channel_id
+        - session_id
+        - tier_id
+        - user_id
+        - quantity
+        - state
+        - expires_at
+        - created_at
+        - updated_at
+        - cancelled_at
+        - converted_at
+        - expired_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the reservation.
+        org_id:
+          type: string
+          format: uuid
+          description: Organization that owns the reservation.
+        channel_id:
+          type: string
+          format: uuid
+          description: Sales channel through which the reservation was created.
+        session_id:
+          type: string
+          format: uuid
+          description: Session whose capacity is held by the reservation.
+        tier_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            Optional ticket tier. When `null`, the reservation is a
+            session-level GA hold.
+        user_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            JWT actor that created the reservation. May be `null` for
+            anonymous public-feed checkouts.
+        quantity:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Number of capacity units held by the reservation.
+        state:
+          type: string
+          enum: [draft, active, converted, expired, cancelled]
+          description: Current state in the reservation state machine.
+        expires_at:
+          type: string
+          format: date-time
+          description: |
+            UTC timestamp when the hold is released by the
+            `ReservationProcessor` worker if not converted or cancelled.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        cancelled_at:
+          type: string
+          format: date-time
+          nullable: true
+        converted_at:
+          type: string
+          format: date-time
+          nullable: true
+        expired_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    ReservationEnvelope:
+      type: object
+      required: [reservation]
+      description: Single-reservation response envelope.
+      properties:
+        reservation:
+          $ref: "#/components/schemas/Reservation"
+
+    ReservationCancelEnvelope:
+      type: object
+      required: [reservation, cancelled]
+      description: |
+        Envelope returned by `DELETE /v1/reservations/{id}`. Wraps the
+        now-cancelled reservation plus a `cancelled: true` confirmation
+        flag emitted after held inventory has been released back to the
+        ledger.
+      properties:
+        reservation:
+          $ref: "#/components/schemas/Reservation"
+        cancelled:
+          type: boolean
+          enum: [true]
+          description: Always `true` on a successful cancel response.
+
+    CreateReservationRequest:
+      type: object
+      required: [session_id, channel_id, org_id, quantity]
+      description: |
+        Body for `POST /v1/reservations`. Creates a draft reservation
+        atomically with a `ReserveCapacity` call against the session
+        inventory ledger row; returns 409 `reservation.over_capacity`
+        when there is insufficient capacity.
+      properties:
+        session_id:
+          type: string
+          format: uuid
+          description: Session whose capacity should be held.
+        channel_id:
+          type: string
+          format: uuid
+          description: Sales channel used by the buyer.
+        org_id:
+          type: string
+          format: uuid
+          description: Organization that owns the session.
+        tier_id:
+          type: string
+          format: uuid
+          description: |
+            Optional ticket tier id. When omitted (empty string), the
+            reservation is a session-level GA hold.
+        quantity:
+          type: integer
+          format: int32
+          minimum: 1
+          description: |
+            Number of capacity units to hold; must be strictly positive
+            (`reservation.invalid_quantity` is returned otherwise).
+
 paths:
   /healthz:
     get:
@@ -9765,6 +9914,340 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database pool or tier queries unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/reservations:
+    post:
+      operationId: createReservation
+      summary: Create a draft reservation that holds capacity
+      description: |
+        Creates a draft reservation. The reservation TTL is resolved
+        using the precedence
+        `sales_channels.reservation_ttl_override ->
+        organizations.reservation_ttl_seconds -> 1200 s default`.
+        In the same transaction the handler calls `ReserveCapacity`
+        against the session inventory ledger row; the call returns
+        409 `reservation.over_capacity` when there is insufficient
+        available capacity.
+
+        Requires JWT + the `reservation.create` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReservationRequest"
+            examples:
+              createGAReservation:
+                summary: Hold 2 GA seats on a session (no tier)
+                value:
+                  session_id: "018f4f00-0000-7000-8000-000000000001"
+                  channel_id: "018f4f00-0000-7000-8000-000000000002"
+                  org_id: "018f4f00-0000-7000-8000-000000000003"
+                  quantity: 2
+              createTierReservation:
+                summary: Hold 4 seats on a specific ticket tier
+                value:
+                  session_id: "018f4f00-0000-7000-8000-000000000001"
+                  channel_id: "018f4f00-0000-7000-8000-000000000002"
+                  org_id: "018f4f00-0000-7000-8000-000000000003"
+                  tier_id: "018f4f00-0000-7000-8000-000000000004"
+                  quantity: 4
+      responses:
+        "201":
+          description: Reservation created in `draft` state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationEnvelope"
+        "400":
+          description: |
+            Invalid body or field. Possible error codes:
+            `reservation.invalid_body`, `reservation.empty_body`,
+            `reservation.invalid_json`,
+            `reservation.missing_session_id`,
+            `reservation.invalid_session_id`,
+            `reservation.missing_channel_id`,
+            `reservation.invalid_channel_id`,
+            `reservation.missing_org_id`, `reservation.invalid_org_id`,
+            `reservation.invalid_tier_id`,
+            `reservation.invalid_quantity`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `reservation.create` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            Insufficient capacity available for the requested quantity
+            (`reservation.over_capacity`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error. Possible codes:
+            `reservation.capacity_failed`, `reservation.insert_failed`,
+            `reservation.commit_failed`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Database pool or reservation queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/reservations/{id}:
+    get:
+      operationId: getReservation
+      summary: Get a reservation by ID
+      description: |
+        Returns the reservation row identified by `id`.
+
+        Requires JWT + the `reservation.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the reservation.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Reservation envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationEnvelope"
+        "400":
+          description: |
+            `id` is not a valid UUID (`reservation.invalid_id`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `reservation.read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Reservation not found (`reservation.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`reservation.get_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Database pool or reservation queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      operationId: cancelReservation
+      summary: Cancel a reservation and release held capacity
+      description: |
+        Transitions the reservation to `cancelled` and releases the
+        previously-held capacity back to the inventory ledger in the
+        same database transaction. The transition is rejected with
+        422 `reservation.invalid_transition` when the current state is
+        terminal (`converted`, `expired`, or already `cancelled`).
+
+        Requires JWT + the `reservation.cancel` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the reservation.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Reservation cancelled and capacity released.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationCancelEnvelope"
+        "400":
+          description: |
+            `id` is not a valid UUID (`reservation.invalid_id`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `reservation.cancel` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Reservation not found (`reservation.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: |
+            Current state does not permit cancellation
+            (`reservation.invalid_transition`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error. Possible codes:
+            `reservation.get_failed`, `reservation.cancel_failed`,
+            `reservation.commit_failed`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Database pool or reservation queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/reservations/{id}/activate:
+    patch:
+      operationId: activateReservation
+      summary: Activate a draft reservation
+      description: |
+        Transitions the reservation from `draft` to `active`. The
+        handler validates the transition against the pure-domain state
+        machine (`internal/domain/inventory.ValidReservationTransitions`)
+        and rejects expired reservations with 409
+        `reservation.expired`.
+
+        Requires JWT + the `reservation.activate` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the reservation.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Reservation transitioned to `active`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationEnvelope"
+        "400":
+          description: |
+            `id` is not a valid UUID (`reservation.invalid_id`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `reservation.activate` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Reservation not found (`reservation.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            Reservation has already expired and cannot be activated
+            (`reservation.expired`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: |
+            Current state does not permit activation
+            (`reservation.invalid_transition`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error. Possible codes:
+            `reservation.get_failed`, `reservation.activate_failed`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Database pool or reservation queries unavailable
+            (`dependency.database_unavailable`).
           content:
             application/json:
               schema:

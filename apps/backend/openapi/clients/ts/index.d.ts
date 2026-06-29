@@ -1738,6 +1738,93 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/reservations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a draft reservation that holds capacity
+         * @description Creates a draft reservation. The reservation TTL is resolved
+         *     using the precedence
+         *     `sales_channels.reservation_ttl_override ->
+         *     organizations.reservation_ttl_seconds -> 1200 s default`.
+         *     In the same transaction the handler calls `ReserveCapacity`
+         *     against the session inventory ledger row; the call returns
+         *     409 `reservation.over_capacity` when there is insufficient
+         *     available capacity.
+         *
+         *     Requires JWT + the `reservation.create` permission.
+         */
+        post: operations["createReservation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/reservations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a reservation by ID
+         * @description Returns the reservation row identified by `id`.
+         *
+         *     Requires JWT + the `reservation.read` permission.
+         */
+        get: operations["getReservation"];
+        put?: never;
+        post?: never;
+        /**
+         * Cancel a reservation and release held capacity
+         * @description Transitions the reservation to `cancelled` and releases the
+         *     previously-held capacity back to the inventory ledger in the
+         *     same database transaction. The transition is rejected with
+         *     422 `reservation.invalid_transition` when the current state is
+         *     terminal (`converted`, `expired`, or already `cancelled`).
+         *
+         *     Requires JWT + the `reservation.cancel` permission.
+         */
+        delete: operations["cancelReservation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/reservations/{id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Activate a draft reservation
+         * @description Transitions the reservation from `draft` to `active`. The
+         *     handler validates the transition against the pure-domain state
+         *     machine (`internal/domain/inventory.ValidReservationTransitions`)
+         *     and rejects expired reservations with 409
+         *     `reservation.expired`.
+         *
+         *     Requires JWT + the `reservation.activate` permission.
+         */
+        patch: operations["activateReservation"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4779,6 +4866,128 @@ export interface components {
              * Format: int32
              * @description Number of capacity units to act on (must be > 0).
              * @example 2
+             */
+            quantity: number;
+        };
+        /**
+         * @description A reservation holds capacity for a buyer within a session (and
+         *     optionally a specific ticket tier). The state machine is:
+         *     `draft -> active -> converted | expired | cancelled`.
+         *     `draft` may also transition directly to `cancelled`.
+         *     TTL is computed at creation time using the precedence
+         *     `sales_channels.reservation_ttl_override ->
+         *     organizations.reservation_ttl_seconds -> 1200 s system default`.
+         */
+        Reservation: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the reservation.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Organization that owns the reservation.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description Sales channel through which the reservation was created.
+             */
+            channel_id: string;
+            /**
+             * Format: uuid
+             * @description Session whose capacity is held by the reservation.
+             */
+            session_id: string;
+            /**
+             * Format: uuid
+             * @description Optional ticket tier. When `null`, the reservation is a
+             *     session-level GA hold.
+             */
+            tier_id: string | null;
+            /**
+             * Format: uuid
+             * @description JWT actor that created the reservation. May be `null` for
+             *     anonymous public-feed checkouts.
+             */
+            user_id: string | null;
+            /**
+             * Format: int32
+             * @description Number of capacity units held by the reservation.
+             */
+            quantity: number;
+            /**
+             * @description Current state in the reservation state machine.
+             * @enum {string}
+             */
+            state: "draft" | "active" | "converted" | "expired" | "cancelled";
+            /**
+             * Format: date-time
+             * @description UTC timestamp when the hold is released by the
+             *     `ReservationProcessor` worker if not converted or cancelled.
+             */
+            expires_at: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            cancelled_at: string | null;
+            /** Format: date-time */
+            converted_at: string | null;
+            /** Format: date-time */
+            expired_at: string | null;
+        };
+        /** @description Single-reservation response envelope. */
+        ReservationEnvelope: {
+            reservation: components["schemas"]["Reservation"];
+        };
+        /**
+         * @description Envelope returned by `DELETE /v1/reservations/{id}`. Wraps the
+         *     now-cancelled reservation plus a `cancelled: true` confirmation
+         *     flag emitted after held inventory has been released back to the
+         *     ledger.
+         */
+        ReservationCancelEnvelope: {
+            reservation: components["schemas"]["Reservation"];
+            /**
+             * @description Always `true` on a successful cancel response.
+             * @enum {boolean}
+             */
+            cancelled: true;
+        };
+        /**
+         * @description Body for `POST /v1/reservations`. Creates a draft reservation
+         *     atomically with a `ReserveCapacity` call against the session
+         *     inventory ledger row; returns 409 `reservation.over_capacity`
+         *     when there is insufficient capacity.
+         */
+        CreateReservationRequest: {
+            /**
+             * Format: uuid
+             * @description Session whose capacity should be held.
+             */
+            session_id: string;
+            /**
+             * Format: uuid
+             * @description Sales channel used by the buyer.
+             */
+            channel_id: string;
+            /**
+             * Format: uuid
+             * @description Organization that owns the session.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description Optional ticket tier id. When omitted (empty string), the
+             *     reservation is a session-level GA hold.
+             */
+            tier_id?: string;
+            /**
+             * Format: int32
+             * @description Number of capacity units to hold; must be strictly positive
+             *     (`reservation.invalid_quantity` is returned otherwise).
              */
             quantity: number;
         };
@@ -11372,6 +11581,388 @@ export interface operations {
                 };
             };
             /** @description Database pool or tier queries unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createReservation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateReservationRequest"];
+            };
+        };
+        responses: {
+            /** @description Reservation created in `draft` state. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReservationEnvelope"];
+                };
+            };
+            /**
+             * @description Invalid body or field. Possible error codes:
+             *     `reservation.invalid_body`, `reservation.empty_body`,
+             *     `reservation.invalid_json`,
+             *     `reservation.missing_session_id`,
+             *     `reservation.invalid_session_id`,
+             *     `reservation.missing_channel_id`,
+             *     `reservation.invalid_channel_id`,
+             *     `reservation.missing_org_id`, `reservation.invalid_org_id`,
+             *     `reservation.invalid_tier_id`,
+             *     `reservation.invalid_quantity`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `reservation.create` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Insufficient capacity available for the requested quantity
+             *     (`reservation.over_capacity`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error. Possible codes:
+             *     `reservation.capacity_failed`, `reservation.insert_failed`,
+             *     `reservation.commit_failed`.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Database pool or reservation queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getReservation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the reservation. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reservation envelope. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReservationEnvelope"];
+                };
+            };
+            /** @description `id` is not a valid UUID (`reservation.invalid_id`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `reservation.read` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Reservation not found (`reservation.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`reservation.get_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Database pool or reservation queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    cancelReservation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the reservation. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reservation cancelled and capacity released. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReservationCancelEnvelope"];
+                };
+            };
+            /** @description `id` is not a valid UUID (`reservation.invalid_id`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `reservation.cancel` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Reservation not found (`reservation.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Current state does not permit cancellation
+             *     (`reservation.invalid_transition`).
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error. Possible codes:
+             *     `reservation.get_failed`, `reservation.cancel_failed`,
+             *     `reservation.commit_failed`.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Database pool or reservation queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    activateReservation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the reservation. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reservation transitioned to `active`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReservationEnvelope"];
+                };
+            };
+            /** @description `id` is not a valid UUID (`reservation.invalid_id`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `reservation.activate` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Reservation not found (`reservation.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Reservation has already expired and cannot be activated
+             *     (`reservation.expired`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Current state does not permit activation
+             *     (`reservation.invalid_transition`).
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error. Possible codes:
+             *     `reservation.get_failed`, `reservation.activate_failed`.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Database pool or reservation queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
             503: {
                 headers: {
                     [name: string]: unknown;

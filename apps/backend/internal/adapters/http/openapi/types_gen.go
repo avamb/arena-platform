@@ -207,6 +207,20 @@ const (
 	Ready    ReadyzResponseStatus = "ready"
 )
 
+// Defines values for ReservationState.
+const (
+	ReservationStateActive    ReservationState = "active"
+	ReservationStateCancelled ReservationState = "cancelled"
+	ReservationStateConverted ReservationState = "converted"
+	ReservationStateDraft     ReservationState = "draft"
+	ReservationStateExpired   ReservationState = "expired"
+)
+
+// Defines values for ReservationCancelEnvelopeCancelled.
+const (
+	True ReservationCancelEnvelopeCancelled = true
+)
+
 // Defines values for SessionItemStatus.
 const (
 	SessionItemStatusCancelled SessionItemStatus = "cancelled"
@@ -278,9 +292,9 @@ const (
 
 // Defines values for VenueItemStatus.
 const (
-	Active   VenueItemStatus = "active"
-	Archived VenueItemStatus = "archived"
-	Draft    VenueItemStatus = "draft"
+	VenueItemStatusActive   VenueItemStatus = "active"
+	VenueItemStatusArchived VenueItemStatus = "archived"
+	VenueItemStatusDraft    VenueItemStatus = "draft"
 )
 
 // Defines values for ListEventsParamsVisibility.
@@ -704,6 +718,29 @@ type CreatePaymentProviderConfigRequest struct {
 
 // CreatePaymentProviderConfigRequestMode Operating mode for the credential set.
 type CreatePaymentProviderConfigRequestMode string
+
+// CreateReservationRequest Body for `POST /v1/reservations`. Creates a draft reservation
+// atomically with a `ReserveCapacity` call against the session
+// inventory ledger row; returns 409 `reservation.over_capacity`
+// when there is insufficient capacity.
+type CreateReservationRequest struct {
+	// ChannelId Sales channel used by the buyer.
+	ChannelId openapi_types.UUID `json:"channel_id"`
+
+	// OrgId Organization that owns the session.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// Quantity Number of capacity units to hold; must be strictly positive
+	// (`reservation.invalid_quantity` is returned otherwise).
+	Quantity int32 `json:"quantity"`
+
+	// SessionId Session whose capacity should be held.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// TierId Optional ticket tier id. When omitted (empty string), the
+	// reservation is a session-level GA hold.
+	TierId *openapi_types.UUID `json:"tier_id,omitempty"`
+}
 
 // CreateSessionRequest Create-time payload for POST
 // /v1/organizations/{org_id}/events/{event_id}/sessions. The owning
@@ -1906,6 +1943,87 @@ type ReadyzResponse struct {
 // ReadyzResponseStatus "ready" when all probes pass, "not_ready" when any probe fails
 type ReadyzResponseStatus string
 
+// Reservation A reservation holds capacity for a buyer within a session (and
+// optionally a specific ticket tier). The state machine is:
+// `draft -> active -> converted | expired | cancelled`.
+// `draft` may also transition directly to `cancelled`.
+// TTL is computed at creation time using the precedence
+// `sales_channels.reservation_ttl_override ->
+// organizations.reservation_ttl_seconds -> 1200 s system default`.
+type Reservation struct {
+	CancelledAt *time.Time `json:"cancelled_at"`
+
+	// ChannelId Sales channel through which the reservation was created.
+	ChannelId   openapi_types.UUID `json:"channel_id"`
+	ConvertedAt *time.Time         `json:"converted_at"`
+	CreatedAt   time.Time          `json:"created_at"`
+	ExpiredAt   *time.Time         `json:"expired_at"`
+
+	// ExpiresAt UTC timestamp when the hold is released by the
+	// `ReservationProcessor` worker if not converted or cancelled.
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// Id UUIDv7 of the reservation.
+	Id openapi_types.UUID `json:"id"`
+
+	// OrgId Organization that owns the reservation.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// Quantity Number of capacity units held by the reservation.
+	Quantity int32 `json:"quantity"`
+
+	// SessionId Session whose capacity is held by the reservation.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// State Current state in the reservation state machine.
+	State ReservationState `json:"state"`
+
+	// TierId Optional ticket tier. When `null`, the reservation is a
+	// session-level GA hold.
+	TierId    *openapi_types.UUID `json:"tier_id"`
+	UpdatedAt time.Time           `json:"updated_at"`
+
+	// UserId JWT actor that created the reservation. May be `null` for
+	// anonymous public-feed checkouts.
+	UserId *openapi_types.UUID `json:"user_id"`
+}
+
+// ReservationState Current state in the reservation state machine.
+type ReservationState string
+
+// ReservationCancelEnvelope Envelope returned by `DELETE /v1/reservations/{id}`. Wraps the
+// now-cancelled reservation plus a `cancelled: true` confirmation
+// flag emitted after held inventory has been released back to the
+// ledger.
+type ReservationCancelEnvelope struct {
+	// Cancelled Always `true` on a successful cancel response.
+	Cancelled ReservationCancelEnvelopeCancelled `json:"cancelled"`
+
+	// Reservation A reservation holds capacity for a buyer within a session (and
+	// optionally a specific ticket tier). The state machine is:
+	// `draft -> active -> converted | expired | cancelled`.
+	// `draft` may also transition directly to `cancelled`.
+	// TTL is computed at creation time using the precedence
+	// `sales_channels.reservation_ttl_override ->
+	// organizations.reservation_ttl_seconds -> 1200 s system default`.
+	Reservation Reservation `json:"reservation"`
+}
+
+// ReservationCancelEnvelopeCancelled Always `true` on a successful cancel response.
+type ReservationCancelEnvelopeCancelled bool
+
+// ReservationEnvelope Single-reservation response envelope.
+type ReservationEnvelope struct {
+	// Reservation A reservation holds capacity for a buyer within a session (and
+	// optionally a specific ticket tier). The state machine is:
+	// `draft -> active -> converted | expired | cancelled`.
+	// `draft` may also transition directly to `cancelled`.
+	// TTL is computed at creation time using the precedence
+	// `sales_channels.reservation_ttl_override ->
+	// organizations.reservation_ttl_seconds -> 1200 s system default`.
+	Reservation Reservation `json:"reservation"`
+}
+
 // ServerInfoResponse defines model for ServerInfoResponse.
 type ServerInfoResponse struct {
 	// BuildSha Git commit SHA embedded at build time via runtime/debug.ReadBuildInfo
@@ -2905,3 +3023,6 @@ type PostV1OrganizationsOrgIdVenuesJSONRequestBody = CreateVenueRequest
 
 // PatchV1OrganizationsOrgIdVenuesIdJSONRequestBody defines body for PatchV1OrganizationsOrgIdVenuesId for application/json ContentType.
 type PatchV1OrganizationsOrgIdVenuesIdJSONRequestBody = UpdateVenueRequest
+
+// CreateReservationJSONRequestBody defines body for CreateReservation for application/json ContentType.
+type CreateReservationJSONRequestBody = CreateReservationRequest
