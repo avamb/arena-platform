@@ -2925,10 +2925,94 @@ export interface components {
              */
             name: string;
             /**
-             * @description Optional free-form street address.
+             * @description Legacy free-form street address. Preserved for backward
+             *     compatibility with reads that pre-date the structured
+             *     address fields below. New writes should populate
+             *     `address_line1` / `address_line2` / `postal_code` /
+             *     `country` instead; admin UI hides this field once any
+             *     structured field is set.
              * @example 101 Rothschild Blvd, Tel Aviv-Yafo
              */
             address?: string | null;
+            /**
+             * @description Structured street address line 1 (e.g. street name +
+             *     number). V-1 field (migration 0050). Optional.
+             * @example Rothschild Blvd 101
+             */
+            address_line1?: string | null;
+            /**
+             * @description Structured street address line 2 (e.g. suite, building,
+             *     floor). V-1 field. Optional.
+             * @example Suite 4B
+             */
+            address_line2?: string | null;
+            /**
+             * @description Postal / ZIP code. V-1 field. Country-specific format,
+             *     not validated at the database layer.
+             * @example 6688101
+             */
+            postal_code?: string | null;
+            /**
+             * @description ISO-3166-1 alpha-2 country code (uppercase). V-1 field.
+             *     Must equal the owning organization's country unless an
+             *     explicit override is passed at the API layer.
+             * @example IL
+             */
+            country?: string | null;
+            /**
+             * Format: double
+             * @description WGS-84 latitude in decimal degrees. NUMERIC(9,6) on the
+             *     DB side (~10 cm precision). V-1 field. Optional.
+             * @example 32.063889
+             */
+            geo_lat?: number | null;
+            /**
+             * Format: double
+             * @description WGS-84 longitude in decimal degrees. NUMERIC(9,6) on the
+             *     DB side (~10 cm precision). V-1 field. Optional.
+             * @example 34.770556
+             */
+            geo_lng?: number | null;
+            /**
+             * @description IANA time zone name (e.g. `Europe/Berlin`,
+             *     `Asia/Jerusalem`, `America/New_York`). V-1 field.
+             *     Validated application-side via Go `time.LoadLocation`
+             *     against the bundled tzdata; the database does not
+             *     enforce shape because the IANA database evolves
+             *     independently of schema migrations. Invalid values on
+             *     create/update return HTTP 422 with
+             *     `error.code = "venue.invalid_timezone"`.
+             * @example Asia/Jerusalem
+             */
+            timezone?: string | null;
+            /**
+             * @description Public contact phone number for the venue. V-1 field.
+             *     E.164 format recommended but not enforced.
+             * @example +972-3-555-0100
+             */
+            contact_phone?: string | null;
+            /**
+             * Format: email
+             * @description Public contact email for the venue. V-1 field. Optional.
+             * @example info@tlv-convention.example
+             */
+            contact_email?: string | null;
+            /**
+             * Format: uri
+             * @description Public website URL for the venue. V-1 field. Optional.
+             * @example https://tlv-convention.example
+             */
+            website_url?: string | null;
+            /**
+             * @description Lifecycle status. V-1 field. `active` (default) means
+             *     published and bookable; `draft` means saved but not yet
+             *     published; `archived` means no longer bookable but
+             *     retained for historical references (past events,
+             *     reports). Defaults to `active` when not set on create.
+             * @example active
+             * @enum {string}
+             */
+            status: "active" | "draft" | "archived";
             /**
              * @description Optional default total capacity of the venue. NULL means
              *     unspecified. Individual events may override this with their own
@@ -2966,10 +3050,78 @@ export interface components {
              */
             city_id?: string;
             /**
-             * @description Optional free-form street address.
+             * @description Optional free-form street address. Deprecated in favour
+             *     of the structured address fields below — accepted for
+             *     backward compatibility.
              * @example 101 Rothschild Blvd, Tel Aviv-Yafo
              */
             address?: string;
+            /**
+             * @description Structured street address line 1 (V-1 field). Optional.
+             * @example Rothschild Blvd 101
+             */
+            address_line1?: string;
+            /**
+             * @description Structured street address line 2 (V-1 field). Optional.
+             * @example Suite 4B
+             */
+            address_line2?: string;
+            /**
+             * @description Postal / ZIP code (V-1 field). Optional.
+             * @example 6688101
+             */
+            postal_code?: string;
+            /**
+             * @description ISO-3166-1 alpha-2 country code (uppercase). V-1 field.
+             *     When set, must equal the owning organization's country
+             *     unless an explicit override flag is passed.
+             * @example IL
+             */
+            country?: string;
+            /**
+             * Format: double
+             * @description WGS-84 latitude in decimal degrees (V-1 field).
+             * @example 32.063889
+             */
+            geo_lat?: number;
+            /**
+             * Format: double
+             * @description WGS-84 longitude in decimal degrees (V-1 field).
+             * @example 34.770556
+             */
+            geo_lng?: number;
+            /**
+             * @description IANA time zone name (V-1 field). Validated server-side
+             *     via Go `time.LoadLocation` against the bundled tzdata.
+             *     Unknown / malformed values return HTTP 422 with
+             *     `error.code = "venue.invalid_timezone"`.
+             * @example Asia/Jerusalem
+             */
+            timezone?: string;
+            /**
+             * @description Public contact phone (V-1 field). E.164 recommended.
+             * @example +972-3-555-0100
+             */
+            contact_phone?: string;
+            /**
+             * Format: email
+             * @description Public contact email (V-1 field).
+             * @example info@tlv-convention.example
+             */
+            contact_email?: string;
+            /**
+             * Format: uri
+             * @description Public website URL (V-1 field).
+             * @example https://tlv-convention.example
+             */
+            website_url?: string;
+            /**
+             * @description Initial lifecycle status (V-1 field). Defaults to
+             *     `active` when omitted.
+             * @example active
+             * @enum {string}
+             */
+            status?: "active" | "draft" | "archived";
             /**
              * @description Optional default capacity (positive integer).
              * @example 1200
@@ -2995,10 +3147,88 @@ export interface components {
              */
             city_id?: string;
             /**
-             * @description Replacement address (optional).
+             * @description Replacement legacy free-form address (optional;
+             *     deprecated — prefer the structured address fields).
              * @example 200 Allenby St, Tel Aviv-Yafo
              */
             address?: string;
+            /**
+             * @description Replacement structured street address line 1 (V-1
+             *     field). Tri-state: omitted leaves the existing value;
+             *     explicit `null` clears it; non-empty string replaces it.
+             * @example Allenby St 200
+             */
+            address_line1?: string | null;
+            /**
+             * @description Replacement structured street address line 2 (V-1
+             *     field). Tri-state semantics — see `address_line1`.
+             * @example Floor 2
+             */
+            address_line2?: string | null;
+            /**
+             * @description Replacement postal code (V-1 field). Tri-state
+             *     semantics — see `address_line1`.
+             * @example 6618303
+             */
+            postal_code?: string | null;
+            /**
+             * @description Replacement ISO-3166-1 alpha-2 country code (V-1 field).
+             *     Tri-state semantics — see `address_line1`. When set,
+             *     must equal the owning organization's country unless an
+             *     explicit override flag is passed.
+             * @example IL
+             */
+            country?: string | null;
+            /**
+             * Format: double
+             * @description Replacement WGS-84 latitude (V-1 field). Tri-state
+             *     semantics — see `address_line1`.
+             * @example 32.075
+             */
+            geo_lat?: number | null;
+            /**
+             * Format: double
+             * @description Replacement WGS-84 longitude (V-1 field). Tri-state
+             *     semantics — see `address_line1`.
+             * @example 34.775
+             */
+            geo_lng?: number | null;
+            /**
+             * @description Replacement IANA time zone name (V-1 field). Validated
+             *     server-side via Go `time.LoadLocation`. Unknown values
+             *     return HTTP 422 `venue.invalid_timezone`. Tri-state
+             *     semantics — see `address_line1`.
+             * @example Asia/Jerusalem
+             */
+            timezone?: string | null;
+            /**
+             * @description Replacement public contact phone (V-1 field). Tri-state
+             *     semantics.
+             * @example +972-3-555-0200
+             */
+            contact_phone?: string | null;
+            /**
+             * Format: email
+             * @description Replacement public contact email (V-1 field). Tri-state
+             *     semantics.
+             * @example hello@tlv-convention.example
+             */
+            contact_email?: string | null;
+            /**
+             * Format: uri
+             * @description Replacement public website URL (V-1 field). Tri-state
+             *     semantics.
+             * @example https://tlv-convention.example/new
+             */
+            website_url?: string | null;
+            /**
+             * @description Replacement lifecycle status (V-1 field). Cannot be set
+             *     to `null` — omit the field to leave the existing value
+             *     unchanged.
+             * @example draft
+             * @enum {string}
+             */
+            status?: "active" | "draft" | "archived";
             /**
              * @description Replacement default capacity (optional).
              * @example 1500
@@ -6264,6 +6494,22 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /**
+             * @description Semantically invalid V-1 field — currently emitted when the
+             *     `timezone` value is not a recognised IANA time zone name
+             *     (Go `time.LoadLocation` rejects it). The response uses
+             *     the standard `ErrorEnvelope` with
+             *     `error.code = "venue.invalid_timezone"` and
+             *     `error.details.field = "timezone"`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Internal server error */
             500: {
                 headers: {
@@ -6440,6 +6686,22 @@ export interface operations {
             };
             /** @description New name conflicts with another active venue in the same org */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Semantically invalid V-1 field — currently emitted when the
+             *     `timezone` value is not a recognised IANA time zone name
+             *     (Go `time.LoadLocation` rejects it). The response uses
+             *     the standard `ErrorEnvelope` with
+             *     `error.code = "venue.invalid_timezone"` and
+             *     `error.details.field = "timezone"`.
+             */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

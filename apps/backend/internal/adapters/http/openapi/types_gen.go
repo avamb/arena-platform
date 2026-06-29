@@ -64,6 +64,13 @@ const (
 	CreatePaymentProviderConfigRequestModeTest CreatePaymentProviderConfigRequestMode = "test"
 )
 
+// Defines values for CreateVenueRequestStatus.
+const (
+	CreateVenueRequestStatusActive   CreateVenueRequestStatus = "active"
+	CreateVenueRequestStatusArchived CreateVenueRequestStatus = "archived"
+	CreateVenueRequestStatusDraft    CreateVenueRequestStatus = "draft"
+)
+
 // Defines values for HealthzResponseStatus.
 const (
 	Ok HealthzResponseStatus = "ok"
@@ -170,6 +177,20 @@ const (
 	IlVat UpdateOrganizationRequestTaxIdScheme = "il_vat"
 	Other UpdateOrganizationRequestTaxIdScheme = "other"
 	UsEin UpdateOrganizationRequestTaxIdScheme = "us_ein"
+)
+
+// Defines values for UpdateVenueRequestStatus.
+const (
+	UpdateVenueRequestStatusActive   UpdateVenueRequestStatus = "active"
+	UpdateVenueRequestStatusArchived UpdateVenueRequestStatus = "archived"
+	UpdateVenueRequestStatusDraft    UpdateVenueRequestStatus = "draft"
+)
+
+// Defines values for VenueItemStatus.
+const (
+	Active   VenueItemStatus = "active"
+	Archived VenueItemStatus = "archived"
+	Draft    VenueItemStatus = "draft"
 )
 
 // AdminAddMemberRequest Request body for POST /v1/admin/organizations/{org_id}/members
@@ -546,8 +567,16 @@ type CreatePaymentProviderConfigRequestMode string
 // CreateVenueRequest Request body for POST /v1/organizations/{org_id}/venues. Only `name`
 // is required; the optional fields default to NULL.
 type CreateVenueRequest struct {
-	// Address Optional free-form street address.
+	// Address Optional free-form street address. Deprecated in favour
+	// of the structured address fields below — accepted for
+	// backward compatibility.
 	Address *string `json:"address,omitempty"`
+
+	// AddressLine1 Structured street address line 1 (V-1 field). Optional.
+	AddressLine1 *string `json:"address_line1,omitempty"`
+
+	// AddressLine2 Structured street address line 2 (V-1 field). Optional.
+	AddressLine2 *string `json:"address_line2,omitempty"`
 
 	// CapacityDefault Optional default capacity (positive integer).
 	CapacityDefault *int `json:"capacity_default"`
@@ -555,9 +584,46 @@ type CreateVenueRequest struct {
 	// CityId Optional UUID of a row in the geo.cities reference table.
 	CityId *openapi_types.UUID `json:"city_id,omitempty"`
 
+	// ContactEmail Public contact email (V-1 field).
+	ContactEmail *openapi_types.Email `json:"contact_email,omitempty"`
+
+	// ContactPhone Public contact phone (V-1 field). E.164 recommended.
+	ContactPhone *string `json:"contact_phone,omitempty"`
+
+	// Country ISO-3166-1 alpha-2 country code (uppercase). V-1 field.
+	// When set, must equal the owning organization's country
+	// unless an explicit override flag is passed.
+	Country *string `json:"country,omitempty"`
+
+	// GeoLat WGS-84 latitude in decimal degrees (V-1 field).
+	GeoLat *float64 `json:"geo_lat,omitempty"`
+
+	// GeoLng WGS-84 longitude in decimal degrees (V-1 field).
+	GeoLng *float64 `json:"geo_lng,omitempty"`
+
 	// Name Display name (unique among active venues within the org).
 	Name string `json:"name"`
+
+	// PostalCode Postal / ZIP code (V-1 field). Optional.
+	PostalCode *string `json:"postal_code,omitempty"`
+
+	// Status Initial lifecycle status (V-1 field). Defaults to
+	// `active` when omitted.
+	Status *CreateVenueRequestStatus `json:"status,omitempty"`
+
+	// Timezone IANA time zone name (V-1 field). Validated server-side
+	// via Go `time.LoadLocation` against the bundled tzdata.
+	// Unknown / malformed values return HTTP 422 with
+	// `error.code = "venue.invalid_timezone"`.
+	Timezone *string `json:"timezone,omitempty"`
+
+	// WebsiteUrl Public website URL (V-1 field).
+	WebsiteUrl *string `json:"website_url,omitempty"`
 }
+
+// CreateVenueRequestStatus Initial lifecycle status (V-1 field). Defaults to
+// `active` when omitted.
+type CreateVenueRequestStatus string
 
 // DevAuthTokenRequest defines model for DevAuthTokenRequest.
 type DevAuthTokenRequest struct {
@@ -1640,8 +1706,18 @@ type UpdatePaymentProviderConfigRequest struct {
 // existing value unchanged. `city_id`, `address`, and `capacity_default`
 // are tri-state: omitted leaves the existing value; provided replaces it.
 type UpdateVenueRequest struct {
-	// Address Replacement address (optional).
+	// Address Replacement legacy free-form address (optional;
+	// deprecated — prefer the structured address fields).
 	Address *string `json:"address,omitempty"`
+
+	// AddressLine1 Replacement structured street address line 1 (V-1
+	// field). Tri-state: omitted leaves the existing value;
+	// explicit `null` clears it; non-empty string replaces it.
+	AddressLine1 *string `json:"address_line1"`
+
+	// AddressLine2 Replacement structured street address line 2 (V-1
+	// field). Tri-state semantics — see `address_line1`.
+	AddressLine2 *string `json:"address_line2"`
 
 	// CapacityDefault Replacement default capacity (optional).
 	CapacityDefault *int `json:"capacity_default"`
@@ -1649,16 +1725,75 @@ type UpdateVenueRequest struct {
 	// CityId Replacement city reference (optional).
 	CityId *openapi_types.UUID `json:"city_id,omitempty"`
 
+	// ContactEmail Replacement public contact email (V-1 field). Tri-state
+	// semantics.
+	ContactEmail *openapi_types.Email `json:"contact_email"`
+
+	// ContactPhone Replacement public contact phone (V-1 field). Tri-state
+	// semantics.
+	ContactPhone *string `json:"contact_phone"`
+
+	// Country Replacement ISO-3166-1 alpha-2 country code (V-1 field).
+	// Tri-state semantics — see `address_line1`. When set,
+	// must equal the owning organization's country unless an
+	// explicit override flag is passed.
+	Country *string `json:"country"`
+
+	// GeoLat Replacement WGS-84 latitude (V-1 field). Tri-state
+	// semantics — see `address_line1`.
+	GeoLat *float64 `json:"geo_lat"`
+
+	// GeoLng Replacement WGS-84 longitude (V-1 field). Tri-state
+	// semantics — see `address_line1`.
+	GeoLng *float64 `json:"geo_lng"`
+
 	// Name New display name (optional; empty string leaves existing value).
 	Name *string `json:"name,omitempty"`
+
+	// PostalCode Replacement postal code (V-1 field). Tri-state
+	// semantics — see `address_line1`.
+	PostalCode *string `json:"postal_code"`
+
+	// Status Replacement lifecycle status (V-1 field). Cannot be set
+	// to `null` — omit the field to leave the existing value
+	// unchanged.
+	Status *UpdateVenueRequestStatus `json:"status,omitempty"`
+
+	// Timezone Replacement IANA time zone name (V-1 field). Validated
+	// server-side via Go `time.LoadLocation`. Unknown values
+	// return HTTP 422 `venue.invalid_timezone`. Tri-state
+	// semantics — see `address_line1`.
+	Timezone *string `json:"timezone"`
+
+	// WebsiteUrl Replacement public website URL (V-1 field). Tri-state
+	// semantics.
+	WebsiteUrl *string `json:"website_url"`
 }
+
+// UpdateVenueRequestStatus Replacement lifecycle status (V-1 field). Cannot be set
+// to `null` — omit the field to leave the existing value
+// unchanged.
+type UpdateVenueRequestStatus string
 
 // VenueItem A single active venue (physical event location owned by one organization).
 // Any authenticated org may read venue data, but only the owning org may
 // create, update, or soft-delete a venue.
 type VenueItem struct {
-	// Address Optional free-form street address.
+	// Address Legacy free-form street address. Preserved for backward
+	// compatibility with reads that pre-date the structured
+	// address fields below. New writes should populate
+	// `address_line1` / `address_line2` / `postal_code` /
+	// `country` instead; admin UI hides this field once any
+	// structured field is set.
 	Address *string `json:"address"`
+
+	// AddressLine1 Structured street address line 1 (e.g. street name +
+	// number). V-1 field (migration 0050). Optional.
+	AddressLine1 *string `json:"address_line1"`
+
+	// AddressLine2 Structured street address line 2 (e.g. suite, building,
+	// floor). V-1 field. Optional.
+	AddressLine2 *string `json:"address_line2"`
 
 	// CapacityDefault Optional default total capacity of the venue. NULL means
 	// unspecified. Individual events may override this with their own
@@ -1669,8 +1804,28 @@ type VenueItem struct {
 	// is not specified.
 	CityId *openapi_types.UUID `json:"city_id"`
 
+	// ContactEmail Public contact email for the venue. V-1 field. Optional.
+	ContactEmail *openapi_types.Email `json:"contact_email"`
+
+	// ContactPhone Public contact phone number for the venue. V-1 field.
+	// E.164 format recommended but not enforced.
+	ContactPhone *string `json:"contact_phone"`
+
+	// Country ISO-3166-1 alpha-2 country code (uppercase). V-1 field.
+	// Must equal the owning organization's country unless an
+	// explicit override is passed at the API layer.
+	Country *string `json:"country"`
+
 	// CreatedAt ISO 8601 / RFC 3339 timestamp of row creation
 	CreatedAt time.Time `json:"created_at"`
+
+	// GeoLat WGS-84 latitude in decimal degrees. NUMERIC(9,6) on the
+	// DB side (~10 cm precision). V-1 field. Optional.
+	GeoLat *float64 `json:"geo_lat"`
+
+	// GeoLng WGS-84 longitude in decimal degrees. NUMERIC(9,6) on the
+	// DB side (~10 cm precision). V-1 field. Optional.
+	GeoLng *float64 `json:"geo_lng"`
 
 	// Id UUIDv7 primary key of the venue row
 	Id openapi_types.UUID `json:"id"`
@@ -1683,9 +1838,40 @@ type VenueItem struct {
 	// mutate the venue.
 	OrgId openapi_types.UUID `json:"org_id"`
 
+	// PostalCode Postal / ZIP code. V-1 field. Country-specific format,
+	// not validated at the database layer.
+	PostalCode *string `json:"postal_code"`
+
+	// Status Lifecycle status. V-1 field. `active` (default) means
+	// published and bookable; `draft` means saved but not yet
+	// published; `archived` means no longer bookable but
+	// retained for historical references (past events,
+	// reports). Defaults to `active` when not set on create.
+	Status VenueItemStatus `json:"status"`
+
+	// Timezone IANA time zone name (e.g. `Europe/Berlin`,
+	// `Asia/Jerusalem`, `America/New_York`). V-1 field.
+	// Validated application-side via Go `time.LoadLocation`
+	// against the bundled tzdata; the database does not
+	// enforce shape because the IANA database evolves
+	// independently of schema migrations. Invalid values on
+	// create/update return HTTP 422 with
+	// `error.code = "venue.invalid_timezone"`.
+	Timezone *string `json:"timezone"`
+
 	// UpdatedAt ISO 8601 / RFC 3339 timestamp of last update
 	UpdatedAt time.Time `json:"updated_at"`
+
+	// WebsiteUrl Public website URL for the venue. V-1 field. Optional.
+	WebsiteUrl *string `json:"website_url"`
 }
+
+// VenueItemStatus Lifecycle status. V-1 field. `active` (default) means
+// published and bookable; `draft` means saved but not yet
+// published; `archived` means no longer bookable but
+// retained for historical references (past events,
+// reports). Defaults to `active` when not set on create.
+type VenueItemStatus string
 
 // AttachNetworkAgentParams defines parameters for AttachNetworkAgent.
 type AttachNetworkAgentParams struct {

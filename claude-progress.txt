@@ -16335,3 +16335,42 @@ the new venue fields are NOT in scope for #257 (DB-only ticket per V-1).
 Those will land under follow-up Wave V tickets.
 
 Marked #257 passing. Backlog: 256/301.
+
+=== 2026-06-29: Feature #258 — V-2 Extend Venue OpenAPI with structured address ===
+apps/backend/openapi/openapi.yaml:
+  - VenueItem: required[] gains `status`; added 11 V-1 fields
+    (address_line1/address_line2/postal_code/country [ISO-3166-1
+    alpha-2 pattern ^[A-Z]{2}$]/geo_lat [-90..90]/geo_lng
+    [-180..180]/timezone [IANA, documented]/contact_phone/
+    contact_email [format:email]/website_url [format:uri]/status
+    [enum active|draft|archived]). Legacy `address` documented as
+    deprecated.
+  - CreateVenueRequest: same 11 fields appended as optional create-
+    time inputs (status defaults to active server-side).
+  - UpdateVenueRequest: same 11 fields with nullable:true tri-state
+    semantics where applicable (status not nullable -- omit to
+    leave unchanged). Each field's description references the
+    "omitted leaves unchanged / null clears" convention.
+  - timezone field documented as IANA name in all three schemas
+    and references the new 422 venue.invalid_timezone error code.
+  - Added "422 venue.invalid_timezone" ErrorEnvelope response to
+    POST /v1/organizations/{org_id}/venues and PATCH
+    /v1/organizations/{org_id}/venues/{id}. Description states
+    code = "venue.invalid_timezone", details.field = "timezone".
+
+apps/backend/internal/adapters/http/openapi/types_gen.go:
+  regenerated via oapi-codegen v2.4.1 (golang:1.24 docker).
+  Known OpenAPI 3.1 warning unchanged.
+
+apps/backend/openapi/clients/ts/index.d.ts:
+  regenerated via scripts/gen-ts-client.mjs (openapi-typescript 7.13.0).
+
+Verification:
+  docker run golang:1.24 go build ./...            OK (silent)
+  npm --prefix apps/admin-web run type-check       OK (silent)
+
+Note: Contract-only ticket. Go handler logic to populate the new
+fields, validate IANA timezone via time.LoadLocation, and emit the
+new 422 error code is NOT in scope here -- belongs to a follow-up
+Wave V ticket. The DB columns landed under #257 (migration 0050).
+Marked #258 passing. Backlog: 257/301.
