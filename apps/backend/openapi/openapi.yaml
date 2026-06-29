@@ -2662,6 +2662,269 @@ components:
           description: Echoed-back business justification (as stored in audit_events).
           example: "Investigating user-reported bug #1234 — checking ticket assignment"
 
+    # ───────────────────────────────────────────────────────────────────────
+    # Events — feature #125 / Wave A-2 documentation (feature #263)
+    # ───────────────────────────────────────────────────────────────────────
+
+    EventTranslations:
+      type: object
+      description: |
+        Optional map of locale code → translated event name and description.
+        Keys are BCP-47 locale tags (e.g. "ru", "en", "he"). When provided
+        on create or update, each non-empty entry is upserted into the
+        i18n_text table for the event.name and event.description scopes.
+      additionalProperties:
+        type: object
+        properties:
+          name:
+            type: string
+            description: Translated event name for this locale.
+          description:
+            type: string
+            description: Translated event description for this locale.
+      example:
+        ru:
+          name: "Тестовое событие"
+          description: "Описание на русском"
+        en:
+          name: "Test event"
+          description: "English description"
+
+    EventItem:
+      type: object
+      required:
+        - id
+        - org_id
+        - name
+        - status
+        - start_at
+        - end_at
+        - visibility
+        - created_at
+        - updated_at
+      description: |
+        A single dated event organized by one organization at an optional venue.
+        Lifecycle: draft → published → cancelled|archived (see the status
+        transition rules on POST /v1/organizations/{org_id}/events/{id}/status).
+        The `name` and `description` fields are locale-resolved per the
+        request's Accept-Language header / ?lang= query parameter.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the event row.
+          example: "01929d0e-0e47-7000-8000-000000000301"
+        org_id:
+          type: string
+          format: uuid
+          description: |
+            Owning organization. Immutable after creation. Only this org may
+            mutate the event.
+          example: "01929d0e-0e47-7000-8000-000000000001"
+        venue_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            Optional FK to a venue (see /v1/venues/{id}). NULL when the
+            event has no fixed venue (e.g. online stream, TBD location).
+          example: "01929d0e-0e47-7000-8000-000000000201"
+        name:
+          type: string
+          description: |
+            Human-readable event name. Locale-resolved: if an i18n_text
+            row exists for the negotiated locale, that value is returned;
+            otherwise the canonical name stored on the events row.
+          example: "Summer Festival 2026"
+        description:
+          type: string
+          nullable: true
+          description: |
+            Optional long-form description. Locale-resolved like `name`.
+          example: "Open-air festival on the Tel Aviv beachfront."
+        status:
+          type: string
+          enum: [draft, published, cancelled, archived]
+          description: Lifecycle status.
+          example: "published"
+        start_at:
+          type: string
+          format: date-time
+          description: |
+            Event start time in RFC 3339 / ISO 8601 UTC. Always strictly
+            before `end_at` (enforced by both the handler and a CHECK
+            constraint on the events table).
+          example: "2026-08-15T18:00:00Z"
+        end_at:
+          type: string
+          format: date-time
+          description: |
+            Event end time in RFC 3339 / ISO 8601 UTC. Must be strictly
+            after `start_at`.
+          example: "2026-08-15T23:00:00Z"
+        visibility:
+          type: string
+          enum: [public, private, unlisted]
+          description: |
+            Discovery visibility for the cross-tenant GET /v1/events surface.
+            `public` events appear in the default list; `unlisted` and
+            `private` events require the caller to pass an explicit
+            `?visibility=` filter.
+          example: "public"
+        image_url:
+          type: string
+          format: uri
+          nullable: true
+          description: Optional poster / cover image URL.
+          example: "https://cdn.example/events/summer-2026.jpg"
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-06-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2026-06-02T12:34:56Z"
+
+    CreateEventRequest:
+      type: object
+      required: [name, start_at, end_at]
+      description: |
+        Create-time payload for POST /v1/organizations/{org_id}/events.
+        The owning organization is taken from the path; the body MUST NOT
+        repeat it.
+      properties:
+        name:
+          type: string
+          description: Canonical event name (used when no i18n match for the negotiated locale).
+          example: "Summer Festival 2026"
+        description:
+          type: string
+          description: Optional long-form description.
+        venue_id:
+          type: string
+          format: uuid
+          description: Optional venue UUID. When set, must belong to the same organization.
+        status:
+          type: string
+          enum: [draft, published, cancelled, archived]
+          description: |
+            Initial lifecycle status. Defaults to `draft` on the server when
+            omitted.
+        start_at:
+          type: string
+          format: date-time
+          description: Event start time (RFC 3339, UTC).
+          example: "2026-08-15T18:00:00Z"
+        end_at:
+          type: string
+          format: date-time
+          description: Event end time. Must be strictly after start_at.
+          example: "2026-08-15T23:00:00Z"
+        visibility:
+          type: string
+          enum: [public, private, unlisted]
+          description: Initial visibility. Defaults to `private` on the server when omitted.
+        image_url:
+          type: string
+          format: uri
+          description: Optional poster / cover image URL.
+        translations:
+          $ref: "#/components/schemas/EventTranslations"
+
+    UpdateEventRequest:
+      type: object
+      description: |
+        Partial update for PATCH /v1/organizations/{org_id}/events/{id}.
+        All fields are optional; omitted (or empty) fields leave the
+        existing value unchanged. Status transitions are NOT applied
+        through this endpoint — use POST
+        /v1/organizations/{org_id}/events/{id}/status instead.
+      properties:
+        name:
+          type: string
+          description: New canonical event name. Empty leaves the value unchanged.
+        description:
+          type: string
+          nullable: true
+          description: New long-form description.
+        venue_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Reassign the event to a different (same-org) venue.
+        start_at:
+          type: string
+          format: date-time
+          nullable: true
+        end_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            When both start_at and end_at are present in the same body,
+            end_at must remain strictly after start_at.
+        visibility:
+          type: string
+          enum: [public, private, unlisted]
+        image_url:
+          type: string
+          format: uri
+          nullable: true
+        translations:
+          $ref: "#/components/schemas/EventTranslations"
+
+    UpdateEventStatusRequest:
+      type: object
+      required: [status]
+      description: |
+        Status-transition body for POST
+        /v1/organizations/{org_id}/events/{id}/status.
+      properties:
+        status:
+          type: string
+          enum: [draft, published, cancelled, archived]
+          description: |
+            Target status. Allowed transitions:
+
+              draft     → published, cancelled
+              published → cancelled, archived
+              cancelled → archived
+
+            Re-applying the same status is a no-op (200). Any other
+            combination is rejected with HTTP 422 and
+            `error.code = "event.invalid_transition"`.
+          example: "published"
+
+    EventEnvelope:
+      type: object
+      required: [event]
+      description: Single-event response envelope.
+      properties:
+        event:
+          $ref: "#/components/schemas/EventItem"
+
+    EventListResponse:
+      type: object
+      required: [events]
+      description: List-events response envelope.
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/EventItem"
+
+    EventDeleteResponse:
+      type: object
+      required: [event, deleted]
+      description: Soft-delete response envelope.
+      properties:
+        event:
+          $ref: "#/components/schemas/EventItem"
+        deleted:
+          type: boolean
+          example: true
+
 paths:
   /healthz:
     get:
@@ -6846,6 +7109,566 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Dev auth stub not enabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Events — feature #125 / Wave A-2 documentation (feature #263)
+  #
+  # Permissions:
+  #   GET  /v1/events                                        event.read (shared)
+  #   GET  /v1/events/{id}                                   event.read (shared)
+  #   GET  /v1/organizations/{org_id}/events                 event.read
+  #   POST /v1/organizations/{org_id}/events                 event.create
+  #   PATCH  /v1/organizations/{org_id}/events/{id}          event.update (owner)
+  #   POST   /v1/organizations/{org_id}/events/{id}/status   event.publish (owner)
+  #   DELETE /v1/organizations/{org_id}/events/{id}          event.delete (owner)
+  #
+  # All endpoints return the standard ErrorEnvelope on errors. The Accept-
+  # Language header (and ?lang= override) drives locale resolution for the
+  # `name` / `description` fields. Localizable writes are accepted via the
+  # `translations` map on create / update bodies (see EventTranslations).
+  # ───────────────────────────────────────────────────────────────────────────
+
+  /v1/events:
+    get:
+      operationId: listEvents
+      summary: List public events across all organizations
+      description: |
+        Returns active events across the platform. Defaults to
+        `?visibility=public`; pass `?visibility=all` to include private and
+        unlisted events. The `name` / `description` fields are localized per
+        Accept-Language / ?lang=. Requires JWT + the `event.read` permission
+        (shared read-only).
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: visibility
+          in: query
+          required: false
+          description: |
+            Visibility filter. One of `public` (default), `private`,
+            `unlisted`, or `all` (no filter).
+          schema:
+            type: string
+            enum: [public, private, unlisted, all]
+        - name: lang
+          in: query
+          required: false
+          description: |
+            BCP-47 locale override for `name` / `description` translations.
+            Falls back to Accept-Language, then to the server default.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Array of events.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventListResponse"
+        "400":
+          description: Unsupported `visibility` query parameter value.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.read`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Event queries unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/events/{id}:
+    get:
+      operationId: getEvent
+      summary: Get a single event by ID (shared read-only)
+      description: |
+        Returns one active event regardless of owning organization. Requires
+        JWT + the `event.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the event.
+          schema:
+            type: string
+            format: uuid
+        - name: lang
+          in: query
+          required: false
+          description: BCP-47 locale override (see /v1/events).
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Event details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventEnvelope"
+        "400":
+          description: id path parameter is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.read`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Event not found or has been soft-deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Event queries unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events:
+    get:
+      operationId: listOrgEvents
+      summary: List events owned by an organization
+      description: |
+        Returns only the active events whose owning org_id matches the path.
+        Requires JWT + the `event.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: lang
+          in: query
+          required: false
+          description: BCP-47 locale override.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Array of events owned by the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventListResponse"
+        "400":
+          description: org_id path parameter is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.read`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Event queries unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: createEvent
+      summary: Create a new event inside the given organization
+      description: |
+        Creates an event owned by the org in the path. Owner-gated: writes
+        enforce the org_id from the path. Requires JWT + the `event.create`
+        permission. Accepts optional i18n translations for `name` and
+        `description` (see EventTranslations).
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEventRequest"
+            examples:
+              minimal:
+                summary: Minimal create payload
+                value:
+                  name: "Summer Festival 2026"
+                  start_at: "2026-08-15T18:00:00Z"
+                  end_at: "2026-08-15T23:00:00Z"
+              withTranslations:
+                summary: Create with localized name and description
+                value:
+                  name: "Summer Festival 2026"
+                  description: "Open-air festival on the Tel Aviv beachfront."
+                  status: "draft"
+                  visibility: "public"
+                  start_at: "2026-08-15T18:00:00Z"
+                  end_at: "2026-08-15T23:00:00Z"
+                  translations:
+                    ru:
+                      name: "Летний фестиваль 2026"
+                      description: "Опен-эйр фестиваль на набережной Тель-Авива."
+      responses:
+        "201":
+          description: Event created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventEnvelope"
+        "400":
+          description: |
+            Body missing/invalid. Possible error codes:
+            `event.invalid_body`, `event.empty_body`, `event.invalid_json`,
+            `event.invalid_name`, `event.invalid_status`,
+            `event.invalid_visibility`, `event.missing_start_at`,
+            `event.invalid_start_at`, `event.missing_end_at`,
+            `event.invalid_end_at`, `event.invalid_date_range`,
+            `event.invalid_venue_id`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.create`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (event.insert_failed).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or event queries unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{id}:
+    patch:
+      operationId: updateEvent
+      summary: Update an event owned by the organization
+      description: |
+        Applies a partial update to an active event. Owner-gated: org_id in
+        the path must match the event's owning organization (a non-owner
+        request resolves to 404). Status transitions are not handled here —
+        use POST /v1/organizations/{org_id}/events/{id}/status. Requires JWT
+        + the `event.update` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the event to update.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateEventRequest"
+      responses:
+        "200":
+          description: Event updated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventEnvelope"
+        "400":
+          description: |
+            Body invalid. Possible error codes:
+            `event.invalid_body`, `event.empty_body`, `event.invalid_json`,
+            `event.invalid_visibility`, `event.invalid_venue_id`,
+            `event.invalid_start_at`, `event.invalid_end_at`,
+            `event.invalid_date_range`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: |
+            Event not found, has been soft-deleted, or is owned by a
+            different organization (owner gate resolves to 404).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (event.update_failed).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or event queries unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      operationId: deleteEvent
+      summary: Soft-delete an event owned by the organization
+      description: |
+        Marks the event as deleted (sets deleted_at = now()) and writes an
+        audit_events row inside the same transaction. Owner-gated: a
+        non-owner request resolves to 404. Requires JWT + the `event.delete`
+        permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the event to soft-delete.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Event soft-deleted successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventDeleteResponse"
+        "400":
+          description: id or org_id path parameter is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.delete`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Event not found, already soft-deleted, or owned by a different org.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (event.delete_failed / event.audit_failed / event.commit_failed).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or event queries unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{id}/status:
+    post:
+      operationId: updateEventStatus
+      summary: Transition an event to a new lifecycle status
+      description: |
+        Validates and applies a status transition according to the event
+        lifecycle (draft → published → cancelled|archived). Re-applying the
+        same status is a no-op (HTTP 200). Owner-gated: org_id in the path
+        must match the event's owning organization. Requires JWT + the
+        `event.publish` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the event.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateEventStatusRequest"
+            examples:
+              publish:
+                summary: Publish a draft event
+                value:
+                  status: "published"
+              cancel:
+                summary: Cancel a published event
+                value:
+                  status: "cancelled"
+      responses:
+        "200":
+          description: Status updated (or no-op when already in the target state).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventEnvelope"
+        "400":
+          description: |
+            Body invalid or missing status. Possible error codes:
+            `event.invalid_body`, `event.empty_body`, `event.invalid_json`,
+            `event.missing_status`, `event.invalid_status`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.publish`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Event not found or owned by a different organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: |
+            Transition not allowed by the state machine. The response uses
+            the standard `ErrorEnvelope` with
+            `error.code = "event.invalid_transition"` and
+            `error.details.current_status` / `error.details.target_status`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (event.update_status_failed).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or event queries unavailable.
           content:
             application/json:
               schema:

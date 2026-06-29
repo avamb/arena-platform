@@ -294,6 +294,10 @@ func buildDriftTestServer(t *testing.T) *Server {
 		// (feature #212): /v1/operator-networks/*, /v1/admin/networks/{id}/users,
 		// /v1/admin/networks/{id}/organizers, /v1/admin/networks/{id}/agents.
 		NetworkQueries: gen.New(nil),
+		// Wire EventQueries so all events routes are mounted (feature #125 /
+		// documented under feature #263): /v1/events, /v1/events/{id},
+		// /v1/organizations/{org_id}/events and its child mutations.
+		EventQueries: gen.New(nil),
 	})
 }
 

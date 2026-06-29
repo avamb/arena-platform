@@ -1327,6 +1327,134 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List public events across all organizations
+         * @description Returns active events across the platform. Defaults to
+         *     `?visibility=public`; pass `?visibility=all` to include private and
+         *     unlisted events. The `name` / `description` fields are localized per
+         *     Accept-Language / ?lang=. Requires JWT + the `event.read` permission
+         *     (shared read-only).
+         */
+        get: operations["listEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/events/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a single event by ID (shared read-only)
+         * @description Returns one active event regardless of owning organization. Requires
+         *     JWT + the `event.read` permission.
+         */
+        get: operations["getEvent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List events owned by an organization
+         * @description Returns only the active events whose owning org_id matches the path.
+         *     Requires JWT + the `event.read` permission.
+         */
+        get: operations["listOrgEvents"];
+        put?: never;
+        /**
+         * Create a new event inside the given organization
+         * @description Creates an event owned by the org in the path. Owner-gated: writes
+         *     enforce the org_id from the path. Requires JWT + the `event.create`
+         *     permission. Accepts optional i18n translations for `name` and
+         *     `description` (see EventTranslations).
+         */
+        post: operations["createEvent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Soft-delete an event owned by the organization
+         * @description Marks the event as deleted (sets deleted_at = now()) and writes an
+         *     audit_events row inside the same transaction. Owner-gated: a
+         *     non-owner request resolves to 404. Requires JWT + the `event.delete`
+         *     permission.
+         */
+        delete: operations["deleteEvent"];
+        options?: never;
+        head?: never;
+        /**
+         * Update an event owned by the organization
+         * @description Applies a partial update to an active event. Owner-gated: org_id in
+         *     the path must match the event's owning organization (a non-owner
+         *     request resolves to 404). Status transitions are not handled here —
+         *     use POST /v1/organizations/{org_id}/events/{id}/status. Requires JWT
+         *     + the `event.update` permission.
+         */
+        patch: operations["updateEvent"];
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Transition an event to a new lifecycle status
+         * @description Validates and applies a status transition according to the event
+         *     lifecycle (draft → published → cancelled|archived). Re-applying the
+         *     same status is a no-op (HTTP 200). Owner-gated: org_id in the path
+         *     must match the event's owning organization. Requires JWT + the
+         *     `event.publish` permission.
+         */
+        post: operations["updateEventStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3658,6 +3786,230 @@ export interface components {
              * @example Investigating user-reported bug #1234 — checking ticket assignment
              */
             reason?: string;
+        };
+        /**
+         * @description Optional map of locale code → translated event name and description.
+         *     Keys are BCP-47 locale tags (e.g. "ru", "en", "he"). When provided
+         *     on create or update, each non-empty entry is upserted into the
+         *     i18n_text table for the event.name and event.description scopes.
+         * @example {
+         *       "ru": {
+         *         "name": "Тестовое событие",
+         *         "description": "Описание на русском"
+         *       },
+         *       "en": {
+         *         "name": "Test event",
+         *         "description": "English description"
+         *       }
+         *     }
+         */
+        EventTranslations: {
+            [key: string]: {
+                /** @description Translated event name for this locale. */
+                name?: string;
+                /** @description Translated event description for this locale. */
+                description?: string;
+            };
+        };
+        /**
+         * @description A single dated event organized by one organization at an optional venue.
+         *     Lifecycle: draft → published → cancelled|archived (see the status
+         *     transition rules on POST /v1/organizations/{org_id}/events/{id}/status).
+         *     The `name` and `description` fields are locale-resolved per the
+         *     request's Accept-Language header / ?lang= query parameter.
+         */
+        EventItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the event row.
+             * @example 01929d0e-0e47-7000-8000-000000000301
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Owning organization. Immutable after creation. Only this org may
+             *     mutate the event.
+             * @example 01929d0e-0e47-7000-8000-000000000001
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description Optional FK to a venue (see /v1/venues/{id}). NULL when the
+             *     event has no fixed venue (e.g. online stream, TBD location).
+             * @example 01929d0e-0e47-7000-8000-000000000201
+             */
+            venue_id?: string | null;
+            /**
+             * @description Human-readable event name. Locale-resolved: if an i18n_text
+             *     row exists for the negotiated locale, that value is returned;
+             *     otherwise the canonical name stored on the events row.
+             * @example Summer Festival 2026
+             */
+            name: string;
+            /**
+             * @description Optional long-form description. Locale-resolved like `name`.
+             * @example Open-air festival on the Tel Aviv beachfront.
+             */
+            description?: string | null;
+            /**
+             * @description Lifecycle status.
+             * @example published
+             * @enum {string}
+             */
+            status: "draft" | "published" | "cancelled" | "archived";
+            /**
+             * Format: date-time
+             * @description Event start time in RFC 3339 / ISO 8601 UTC. Always strictly
+             *     before `end_at` (enforced by both the handler and a CHECK
+             *     constraint on the events table).
+             * @example 2026-08-15T18:00:00Z
+             */
+            start_at: string;
+            /**
+             * Format: date-time
+             * @description Event end time in RFC 3339 / ISO 8601 UTC. Must be strictly
+             *     after `start_at`.
+             * @example 2026-08-15T23:00:00Z
+             */
+            end_at: string;
+            /**
+             * @description Discovery visibility for the cross-tenant GET /v1/events surface.
+             *     `public` events appear in the default list; `unlisted` and
+             *     `private` events require the caller to pass an explicit
+             *     `?visibility=` filter.
+             * @example public
+             * @enum {string}
+             */
+            visibility: "public" | "private" | "unlisted";
+            /**
+             * Format: uri
+             * @description Optional poster / cover image URL.
+             * @example https://cdn.example/events/summer-2026.jpg
+             */
+            image_url?: string | null;
+            /**
+             * Format: date-time
+             * @example 2026-06-01T00:00:00Z
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @example 2026-06-02T12:34:56Z
+             */
+            updated_at: string;
+        };
+        /**
+         * @description Create-time payload for POST /v1/organizations/{org_id}/events.
+         *     The owning organization is taken from the path; the body MUST NOT
+         *     repeat it.
+         */
+        CreateEventRequest: {
+            /**
+             * @description Canonical event name (used when no i18n match for the negotiated locale).
+             * @example Summer Festival 2026
+             */
+            name: string;
+            /** @description Optional long-form description. */
+            description?: string;
+            /**
+             * Format: uuid
+             * @description Optional venue UUID. When set, must belong to the same organization.
+             */
+            venue_id?: string;
+            /**
+             * @description Initial lifecycle status. Defaults to `draft` on the server when
+             *     omitted.
+             * @enum {string}
+             */
+            status?: "draft" | "published" | "cancelled" | "archived";
+            /**
+             * Format: date-time
+             * @description Event start time (RFC 3339, UTC).
+             * @example 2026-08-15T18:00:00Z
+             */
+            start_at: string;
+            /**
+             * Format: date-time
+             * @description Event end time. Must be strictly after start_at.
+             * @example 2026-08-15T23:00:00Z
+             */
+            end_at: string;
+            /**
+             * @description Initial visibility. Defaults to `private` on the server when omitted.
+             * @enum {string}
+             */
+            visibility?: "public" | "private" | "unlisted";
+            /**
+             * Format: uri
+             * @description Optional poster / cover image URL.
+             */
+            image_url?: string;
+            translations?: components["schemas"]["EventTranslations"];
+        };
+        /**
+         * @description Partial update for PATCH /v1/organizations/{org_id}/events/{id}.
+         *     All fields are optional; omitted (or empty) fields leave the
+         *     existing value unchanged. Status transitions are NOT applied
+         *     through this endpoint — use POST
+         *     /v1/organizations/{org_id}/events/{id}/status instead.
+         */
+        UpdateEventRequest: {
+            /** @description New canonical event name. Empty leaves the value unchanged. */
+            name?: string;
+            /** @description New long-form description. */
+            description?: string | null;
+            /**
+             * Format: uuid
+             * @description Reassign the event to a different (same-org) venue.
+             */
+            venue_id?: string | null;
+            /** Format: date-time */
+            start_at?: string | null;
+            /**
+             * Format: date-time
+             * @description When both start_at and end_at are present in the same body,
+             *     end_at must remain strictly after start_at.
+             */
+            end_at?: string | null;
+            /** @enum {string} */
+            visibility?: "public" | "private" | "unlisted";
+            /** Format: uri */
+            image_url?: string | null;
+            translations?: components["schemas"]["EventTranslations"];
+        };
+        /**
+         * @description Status-transition body for POST
+         *     /v1/organizations/{org_id}/events/{id}/status.
+         */
+        UpdateEventStatusRequest: {
+            /**
+             * @description Target status. Allowed transitions:
+             *
+             *       draft     → published, cancelled
+             *       published → cancelled, archived
+             *       cancelled → archived
+             *
+             *     Re-applying the same status is a no-op (200). Any other
+             *     combination is rejected with HTTP 422 and
+             *     `error.code = "event.invalid_transition"`.
+             * @example published
+             * @enum {string}
+             */
+            status: "draft" | "published" | "cancelled" | "archived";
+        };
+        /** @description Single-event response envelope. */
+        EventEnvelope: {
+            event: components["schemas"]["EventItem"];
+        };
+        /** @description List-events response envelope. */
+        EventListResponse: {
+            events: components["schemas"]["EventItem"][];
+        };
+        /** @description Soft-delete response envelope. */
+        EventDeleteResponse: {
+            event: components["schemas"]["EventItem"];
+            /** @example true */
+            deleted: boolean;
         };
     };
     responses: never;
@@ -8313,6 +8665,585 @@ export interface operations {
                 };
             };
             /** @description Dev auth stub not enabled */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listEvents: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Visibility filter. One of `public` (default), `private`,
+                 *     `unlisted`, or `all` (no filter).
+                 */
+                visibility?: "public" | "private" | "unlisted" | "all";
+                /**
+                 * @description BCP-47 locale override for `name` / `description` translations.
+                 *     Falls back to Accept-Language, then to the server default.
+                 */
+                lang?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Array of events. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventListResponse"];
+                };
+            };
+            /** @description Unsupported `visibility` query parameter value. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.read`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event queries unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getEvent: {
+        parameters: {
+            query?: {
+                /** @description BCP-47 locale override (see /v1/events). */
+                lang?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 primary key of the event. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Event details. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventEnvelope"];
+                };
+            };
+            /** @description id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.read`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found or has been soft-deleted. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event queries unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listOrgEvents: {
+        parameters: {
+            query?: {
+                /** @description BCP-47 locale override. */
+                lang?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Array of events owned by the organization. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventListResponse"];
+                };
+            };
+            /** @description org_id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.read`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event queries unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateEventRequest"];
+            };
+        };
+        responses: {
+            /** @description Event created successfully. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventEnvelope"];
+                };
+            };
+            /**
+             * @description Body missing/invalid. Possible error codes:
+             *     `event.invalid_body`, `event.empty_body`, `event.invalid_json`,
+             *     `event.invalid_name`, `event.invalid_status`,
+             *     `event.invalid_visibility`, `event.missing_start_at`,
+             *     `event.invalid_start_at`, `event.missing_end_at`,
+             *     `event.invalid_end_at`, `event.invalid_date_range`,
+             *     `event.invalid_venue_id`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.create`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (event.insert_failed). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or event queries unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the event to soft-delete. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Event soft-deleted successfully. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventDeleteResponse"];
+                };
+            };
+            /** @description id or org_id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.delete`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found, already soft-deleted, or owned by a different org. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (event.delete_failed / event.audit_failed / event.commit_failed). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or event queries unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the event to update. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateEventRequest"];
+            };
+        };
+        responses: {
+            /** @description Event updated successfully. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventEnvelope"];
+                };
+            };
+            /**
+             * @description Body invalid. Possible error codes:
+             *     `event.invalid_body`, `event.empty_body`, `event.invalid_json`,
+             *     `event.invalid_visibility`, `event.invalid_venue_id`,
+             *     `event.invalid_start_at`, `event.invalid_end_at`,
+             *     `event.invalid_date_range`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Event not found, has been soft-deleted, or is owned by a
+             *     different organization (owner gate resolves to 404).
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (event.update_failed). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or event queries unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateEventStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the event. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateEventStatusRequest"];
+            };
+        };
+        responses: {
+            /** @description Status updated (or no-op when already in the target state). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventEnvelope"];
+                };
+            };
+            /**
+             * @description Body invalid or missing status. Possible error codes:
+             *     `event.invalid_body`, `event.empty_body`, `event.invalid_json`,
+             *     `event.missing_status`, `event.invalid_status`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.publish`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found or owned by a different organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Transition not allowed by the state machine. The response uses
+             *     the standard `ErrorEnvelope` with
+             *     `error.code = "event.invalid_transition"` and
+             *     `error.details.current_status` / `error.details.target_status`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (event.update_status_failed). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or event queries unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;

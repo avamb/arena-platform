@@ -49,6 +49,21 @@ const (
 	Organization AdminCreatedUserScope = "organization"
 )
 
+// Defines values for CreateEventRequestStatus.
+const (
+	CreateEventRequestStatusArchived  CreateEventRequestStatus = "archived"
+	CreateEventRequestStatusCancelled CreateEventRequestStatus = "cancelled"
+	CreateEventRequestStatusDraft     CreateEventRequestStatus = "draft"
+	CreateEventRequestStatusPublished CreateEventRequestStatus = "published"
+)
+
+// Defines values for CreateEventRequestVisibility.
+const (
+	CreateEventRequestVisibilityPrivate  CreateEventRequestVisibility = "private"
+	CreateEventRequestVisibilityPublic   CreateEventRequestVisibility = "public"
+	CreateEventRequestVisibilityUnlisted CreateEventRequestVisibility = "unlisted"
+)
+
 // Defines values for CreateOrganizationRequestTaxIdScheme.
 const (
 	CreateOrganizationRequestTaxIdSchemeEuVat CreateOrganizationRequestTaxIdScheme = "eu_vat"
@@ -69,6 +84,21 @@ const (
 	CreateVenueRequestStatusActive   CreateVenueRequestStatus = "active"
 	CreateVenueRequestStatusArchived CreateVenueRequestStatus = "archived"
 	CreateVenueRequestStatusDraft    CreateVenueRequestStatus = "draft"
+)
+
+// Defines values for EventItemStatus.
+const (
+	EventItemStatusArchived  EventItemStatus = "archived"
+	EventItemStatusCancelled EventItemStatus = "cancelled"
+	EventItemStatusDraft     EventItemStatus = "draft"
+	EventItemStatusPublished EventItemStatus = "published"
+)
+
+// Defines values for EventItemVisibility.
+const (
+	EventItemVisibilityPrivate  EventItemVisibility = "private"
+	EventItemVisibilityPublic   EventItemVisibility = "public"
+	EventItemVisibilityUnlisted EventItemVisibility = "unlisted"
 )
 
 // Defines values for HealthzResponseStatus.
@@ -162,6 +192,21 @@ const (
 	Ready    ReadyzResponseStatus = "ready"
 )
 
+// Defines values for UpdateEventRequestVisibility.
+const (
+	UpdateEventRequestVisibilityPrivate  UpdateEventRequestVisibility = "private"
+	UpdateEventRequestVisibilityPublic   UpdateEventRequestVisibility = "public"
+	UpdateEventRequestVisibilityUnlisted UpdateEventRequestVisibility = "unlisted"
+)
+
+// Defines values for UpdateEventStatusRequestStatus.
+const (
+	UpdateEventStatusRequestStatusArchived  UpdateEventStatusRequestStatus = "archived"
+	UpdateEventStatusRequestStatusCancelled UpdateEventStatusRequestStatus = "cancelled"
+	UpdateEventStatusRequestStatusDraft     UpdateEventStatusRequestStatus = "draft"
+	UpdateEventStatusRequestStatusPublished UpdateEventStatusRequestStatus = "published"
+)
+
 // Defines values for UpdateOrganizationRequestKybStatus.
 const (
 	UpdateOrganizationRequestKybStatusPending    UpdateOrganizationRequestKybStatus = "pending"
@@ -188,9 +233,17 @@ const (
 
 // Defines values for VenueItemStatus.
 const (
-	Active   VenueItemStatus = "active"
-	Archived VenueItemStatus = "archived"
-	Draft    VenueItemStatus = "draft"
+	VenueItemStatusActive   VenueItemStatus = "active"
+	VenueItemStatusArchived VenueItemStatus = "archived"
+	VenueItemStatusDraft    VenueItemStatus = "draft"
+)
+
+// Defines values for ListEventsParamsVisibility.
+const (
+	ListEventsParamsVisibilityAll      ListEventsParamsVisibility = "all"
+	ListEventsParamsVisibilityPrivate  ListEventsParamsVisibility = "private"
+	ListEventsParamsVisibilityPublic   ListEventsParamsVisibility = "public"
+	ListEventsParamsVisibilityUnlisted ListEventsParamsVisibility = "unlisted"
 )
 
 // AdminAddMemberRequest Request body for POST /v1/admin/organizations/{org_id}/members
@@ -463,6 +516,49 @@ type CreateBankAccountRequest struct {
 	// RoutingNumber Domestic routing/sort/ABA code (pairs with account_number).
 	RoutingNumber *string `json:"routing_number,omitempty"`
 }
+
+// CreateEventRequest Create-time payload for POST /v1/organizations/{org_id}/events.
+// The owning organization is taken from the path; the body MUST NOT
+// repeat it.
+type CreateEventRequest struct {
+	// Description Optional long-form description.
+	Description *string `json:"description,omitempty"`
+
+	// EndAt Event end time. Must be strictly after start_at.
+	EndAt time.Time `json:"end_at"`
+
+	// ImageUrl Optional poster / cover image URL.
+	ImageUrl *string `json:"image_url,omitempty"`
+
+	// Name Canonical event name (used when no i18n match for the negotiated locale).
+	Name string `json:"name"`
+
+	// StartAt Event start time (RFC 3339, UTC).
+	StartAt time.Time `json:"start_at"`
+
+	// Status Initial lifecycle status. Defaults to `draft` on the server when
+	// omitted.
+	Status *CreateEventRequestStatus `json:"status,omitempty"`
+
+	// Translations Optional map of locale code → translated event name and description.
+	// Keys are BCP-47 locale tags (e.g. "ru", "en", "he"). When provided
+	// on create or update, each non-empty entry is upserted into the
+	// i18n_text table for the event.name and event.description scopes.
+	Translations *EventTranslations `json:"translations,omitempty"`
+
+	// VenueId Optional venue UUID. When set, must belong to the same organization.
+	VenueId *openapi_types.UUID `json:"venue_id,omitempty"`
+
+	// Visibility Initial visibility. Defaults to `private` on the server when omitted.
+	Visibility *CreateEventRequestVisibility `json:"visibility,omitempty"`
+}
+
+// CreateEventRequestStatus Initial lifecycle status. Defaults to `draft` on the server when
+// omitted.
+type CreateEventRequestStatus string
+
+// CreateEventRequestVisibility Initial visibility. Defaults to `private` on the server when omitted.
+type CreateEventRequestVisibility string
 
 // CreateOperatorNetworkRequest defines model for CreateOperatorNetworkRequest.
 type CreateOperatorNetworkRequest struct {
@@ -755,6 +851,104 @@ type ErrorEnvelope struct {
 		// TraceId Distributed trace ID (also in X-Trace-Id response header)
 		TraceId string `json:"trace_id"`
 	} `json:"error"`
+}
+
+// EventDeleteResponse Soft-delete response envelope.
+type EventDeleteResponse struct {
+	Deleted bool `json:"deleted"`
+
+	// Event A single dated event organized by one organization at an optional venue.
+	// Lifecycle: draft → published → cancelled|archived (see the status
+	// transition rules on POST /v1/organizations/{org_id}/events/{id}/status).
+	// The `name` and `description` fields are locale-resolved per the
+	// request's Accept-Language header / ?lang= query parameter.
+	Event EventItem `json:"event"`
+}
+
+// EventEnvelope Single-event response envelope.
+type EventEnvelope struct {
+	// Event A single dated event organized by one organization at an optional venue.
+	// Lifecycle: draft → published → cancelled|archived (see the status
+	// transition rules on POST /v1/organizations/{org_id}/events/{id}/status).
+	// The `name` and `description` fields are locale-resolved per the
+	// request's Accept-Language header / ?lang= query parameter.
+	Event EventItem `json:"event"`
+}
+
+// EventItem A single dated event organized by one organization at an optional venue.
+// Lifecycle: draft → published → cancelled|archived (see the status
+// transition rules on POST /v1/organizations/{org_id}/events/{id}/status).
+// The `name` and `description` fields are locale-resolved per the
+// request's Accept-Language header / ?lang= query parameter.
+type EventItem struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// Description Optional long-form description. Locale-resolved like `name`.
+	Description *string `json:"description"`
+
+	// EndAt Event end time in RFC 3339 / ISO 8601 UTC. Must be strictly
+	// after `start_at`.
+	EndAt time.Time `json:"end_at"`
+
+	// Id UUIDv7 primary key of the event row.
+	Id openapi_types.UUID `json:"id"`
+
+	// ImageUrl Optional poster / cover image URL.
+	ImageUrl *string `json:"image_url"`
+
+	// Name Human-readable event name. Locale-resolved: if an i18n_text
+	// row exists for the negotiated locale, that value is returned;
+	// otherwise the canonical name stored on the events row.
+	Name string `json:"name"`
+
+	// OrgId Owning organization. Immutable after creation. Only this org may
+	// mutate the event.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// StartAt Event start time in RFC 3339 / ISO 8601 UTC. Always strictly
+	// before `end_at` (enforced by both the handler and a CHECK
+	// constraint on the events table).
+	StartAt time.Time `json:"start_at"`
+
+	// Status Lifecycle status.
+	Status    EventItemStatus `json:"status"`
+	UpdatedAt time.Time       `json:"updated_at"`
+
+	// VenueId Optional FK to a venue (see /v1/venues/{id}). NULL when the
+	// event has no fixed venue (e.g. online stream, TBD location).
+	VenueId *openapi_types.UUID `json:"venue_id"`
+
+	// Visibility Discovery visibility for the cross-tenant GET /v1/events surface.
+	// `public` events appear in the default list; `unlisted` and
+	// `private` events require the caller to pass an explicit
+	// `?visibility=` filter.
+	Visibility EventItemVisibility `json:"visibility"`
+}
+
+// EventItemStatus Lifecycle status.
+type EventItemStatus string
+
+// EventItemVisibility Discovery visibility for the cross-tenant GET /v1/events surface.
+// `public` events appear in the default list; `unlisted` and
+// `private` events require the caller to pass an explicit
+// `?visibility=` filter.
+type EventItemVisibility string
+
+// EventListResponse List-events response envelope.
+type EventListResponse struct {
+	Events []EventItem `json:"events"`
+}
+
+// EventTranslations Optional map of locale code → translated event name and description.
+// Keys are BCP-47 locale tags (e.g. "ru", "en", "he"). When provided
+// on create or update, each non-empty entry is upserted into the
+// i18n_text table for the event.name and event.description scopes.
+type EventTranslations map[string]struct {
+	// Description Translated event description for this locale.
+	Description *string `json:"description,omitempty"`
+
+	// Name Translated event name for this locale.
+	Name *string `json:"name,omitempty"`
 }
 
 // GeoCitiesResponse defines model for GeoCitiesResponse.
@@ -1579,6 +1773,64 @@ type UpdateBankAccountRequest struct {
 	RoutingNumber *string `json:"routing_number"`
 }
 
+// UpdateEventRequest Partial update for PATCH /v1/organizations/{org_id}/events/{id}.
+// All fields are optional; omitted (or empty) fields leave the
+// existing value unchanged. Status transitions are NOT applied
+// through this endpoint — use POST
+// /v1/organizations/{org_id}/events/{id}/status instead.
+type UpdateEventRequest struct {
+	// Description New long-form description.
+	Description *string `json:"description"`
+
+	// EndAt When both start_at and end_at are present in the same body,
+	// end_at must remain strictly after start_at.
+	EndAt    *time.Time `json:"end_at"`
+	ImageUrl *string    `json:"image_url"`
+
+	// Name New canonical event name. Empty leaves the value unchanged.
+	Name    *string    `json:"name,omitempty"`
+	StartAt *time.Time `json:"start_at"`
+
+	// Translations Optional map of locale code → translated event name and description.
+	// Keys are BCP-47 locale tags (e.g. "ru", "en", "he"). When provided
+	// on create or update, each non-empty entry is upserted into the
+	// i18n_text table for the event.name and event.description scopes.
+	Translations *EventTranslations `json:"translations,omitempty"`
+
+	// VenueId Reassign the event to a different (same-org) venue.
+	VenueId    *openapi_types.UUID           `json:"venue_id"`
+	Visibility *UpdateEventRequestVisibility `json:"visibility,omitempty"`
+}
+
+// UpdateEventRequestVisibility defines model for UpdateEventRequest.Visibility.
+type UpdateEventRequestVisibility string
+
+// UpdateEventStatusRequest Status-transition body for POST
+// /v1/organizations/{org_id}/events/{id}/status.
+type UpdateEventStatusRequest struct {
+	// Status Target status. Allowed transitions:
+	//
+	//   draft     → published, cancelled
+	//   published → cancelled, archived
+	//   cancelled → archived
+	//
+	// Re-applying the same status is a no-op (200). Any other
+	// combination is rejected with HTTP 422 and
+	// `error.code = "event.invalid_transition"`.
+	Status UpdateEventStatusRequestStatus `json:"status"`
+}
+
+// UpdateEventStatusRequestStatus Target status. Allowed transitions:
+//
+//	draft     → published, cancelled
+//	published → cancelled, archived
+//	cancelled → archived
+//
+// Re-applying the same status is a no-op (200). Any other
+// combination is rejected with HTTP 422 and
+// `error.code = "event.invalid_transition"`.
+type UpdateEventStatusRequestStatus string
+
 // UpdateOperatorNetworkRequest At least one of `name` or `slug` must be supplied. Empty strings are
 // treated as "do not change". Slug is validated against the same regex
 // as on create.
@@ -1995,6 +2247,26 @@ type PostV1EchoParams struct {
 	IdempotencyKey openapi_types.UUID `json:"Idempotency-Key"`
 }
 
+// ListEventsParams defines parameters for ListEvents.
+type ListEventsParams struct {
+	// Visibility Visibility filter. One of `public` (default), `private`,
+	// `unlisted`, or `all` (no filter).
+	Visibility *ListEventsParamsVisibility `form:"visibility,omitempty" json:"visibility,omitempty"`
+
+	// Lang BCP-47 locale override for `name` / `description` translations.
+	// Falls back to Accept-Language, then to the server default.
+	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
+}
+
+// ListEventsParamsVisibility defines parameters for ListEvents.
+type ListEventsParamsVisibility string
+
+// GetEventParams defines parameters for GetEvent.
+type GetEventParams struct {
+	// Lang BCP-47 locale override (see /v1/events).
+	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
+}
+
 // GetV1GeoCitiesParams defines parameters for GetV1GeoCities.
 type GetV1GeoCitiesParams struct {
 	// CountryId Filter cities by country UUID
@@ -2038,6 +2310,12 @@ type ArchiveOperatorNetworkParams struct {
 	// was performed. A missing or empty header is rejected with
 	// HTTP 400 `superadmin.missing_reason`.
 	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// ListOrgEventsParams defines parameters for ListOrgEvents.
+type ListOrgEventsParams struct {
+	// Lang BCP-47 locale override.
+	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
 }
 
 // PostV1AdminGeoCitiesJSONRequestBody defines body for PostV1AdminGeoCities for application/json ContentType.
@@ -2123,6 +2401,15 @@ type CreateOrganizationBankAccountJSONRequestBody = CreateBankAccountRequest
 
 // UpdateOrganizationBankAccountJSONRequestBody defines body for UpdateOrganizationBankAccount for application/json ContentType.
 type UpdateOrganizationBankAccountJSONRequestBody = UpdateBankAccountRequest
+
+// CreateEventJSONRequestBody defines body for CreateEvent for application/json ContentType.
+type CreateEventJSONRequestBody = CreateEventRequest
+
+// UpdateEventJSONRequestBody defines body for UpdateEvent for application/json ContentType.
+type UpdateEventJSONRequestBody = UpdateEventRequest
+
+// UpdateEventStatusJSONRequestBody defines body for UpdateEventStatus for application/json ContentType.
+type UpdateEventStatusJSONRequestBody = UpdateEventStatusRequest
 
 // CreatePaymentProviderConfigJSONRequestBody defines body for CreatePaymentProviderConfig for application/json ContentType.
 type CreatePaymentProviderConfigJSONRequestBody = CreatePaymentProviderConfigRequest

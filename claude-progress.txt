@@ -16515,3 +16515,98 @@ Note: AppLayout itself is not unit-tested in isolation -- it depends on
   layout primitives (M-1), and the i18n key tests. 360x640 / 1280x800
   screenshot capture for the Wave M-8 gate will land with the M-8 PR.
 Marked #262 passing. Backlog: 262/301.
+
+=== 2026-06-29: Feature #263 — A-2 Document events endpoints in OpenAPI ===
+apps/backend/openapi/openapi.yaml:
+  - Added 8 component schemas: EventItem, EventEnvelope, EventListResponse,
+    EventDeleteResponse, CreateEventRequest, UpdateEventRequest,
+    UpdateEventStatusRequest, EventTranslations. EventTranslations is a
+    locale-keyed map of {name, description} pairs, referenced from both
+    Create and Update bodies for localizable field upserts (matches the
+    `translations` field in events.go createEventRequest / updateEventRequest).
+  - Added 5 path entries / 7 operations documenting every events.go handler:
+      GET    /v1/events                                        listEvents
+      GET    /v1/events/{id}                                   getEvent
+      GET    /v1/organizations/{org_id}/events                 listOrgEvents
+      POST   /v1/organizations/{org_id}/events                 createEvent
+      PATCH  /v1/organizations/{org_id}/events/{id}            updateEvent
+      DELETE /v1/organizations/{org_id}/events/{id}            deleteEvent
+      POST   /v1/organizations/{org_id}/events/{id}/status     updateEventStatus
+    Each carries `bearerAuth: []`, `tags: [v1]`, ErrorEnvelope on every
+    non-2xx response, the permission name in the description, and the
+    full error-code catalog from events.go listed in the 4xx descriptions
+    (event.invalid_body, event.invalid_json, event.invalid_name,
+    event.invalid_status, event.invalid_visibility, event.missing_start_at,
+    event.invalid_start_at, event.missing_end_at, event.invalid_end_at,
+    event.invalid_date_range, event.invalid_venue_id, event.missing_status,
+    event.invalid_transition, event.not_found, etc.).
+    /v1/events GET documents the `visibility` query filter enum
+    (public|private|unlisted|all) and `lang` locale override.
+    /v1/organizations/{org_id}/events/{id}/status documents the lifecycle
+    transition table (draft -> published|cancelled, published ->
+    cancelled|archived, cancelled -> archived) and the 422
+    event.invalid_transition envelope with details.current_status /
+    details.target_status. POST createEvent and POST status carry inline
+    request examples that the new contract test consumes.
+
+apps/backend/internal/platform/httpserver/openapi_events_263_test.go (NEW):
+  9 contract tests pinning the spec for #263:
+    - TestOpenAPI263_PathsPresent (5 path mappings)
+    - TestOpenAPI263_OperationIDsPresent (7 canonical IDs)
+    - TestOpenAPI263_SchemasPresent (8 component schema names)
+    - TestOpenAPI263_PermissionsDocumented
+      (event.read/create/update/publish/delete)
+    - TestOpenAPI263_BearerAuthAndTags (every op declares bearerAuth + v1)
+    - TestOpenAPI263_ErrorEnvelopeUsed (ErrorEnvelope on every op)
+    - TestOpenAPI263_TranslationsDocumented (EventTranslations referenced
+      from CreateEventRequest + UpdateEventRequest)
+    - TestOpenAPI263_StatusTransitionEnumPinned (status enum covers
+      draft/published/cancelled/archived)
+    - TestOpenAPI263_SpecExamplesValidate -- the "minimal contract test"
+      called out by the ticket. Loads openapi.yaml via gopkg.in/yaml.v3,
+      walks the inline request examples for createEvent and
+      updateEventStatus, and asserts: createEvent body has the documented
+      required fields {name,start_at,end_at} and RFC3339 timestamps;
+      updateEventStatus body carries a valid lifecycle enum value;
+      optional visibility / status values fall inside the documented
+      enums. Runs in CI without docker / postgres / oapi-codegen.
+    schemaWindow() helper extracts the slice between a schema header and
+    its next 4-space sibling so enum / $ref assertions never leak into
+    adjacent schemas.
+
+apps/backend/internal/platform/httpserver/openapi_drift_test.go:
+  buildDriftTestServer now wires EventQueries: gen.New(nil) so the
+  events routes are mounted on the drift-test chi router. Without this
+  the new spec paths would register as phantom routes in
+  TestOpenAPIDriftCheck_CodeCoversAllSpecRoutes. The pre-existing
+  phantom-route list (venues/bank-accounts/payment-configs/admin-members)
+  was confirmed via `git stash` to predate this ticket and is NOT
+  introduced here.
+
+apps/backend/internal/adapters/http/openapi/types_gen.go:
+  Regenerated via oapi-codegen v2.4.1 (golang:1.24 docker). Known
+  OpenAPI 3.1 "not yet supported by oapi-codegen" warning unchanged.
+apps/backend/openapi/clients/ts/index.d.ts:
+  Regenerated via scripts/gen-ts-client.mjs (openapi-typescript 7.13.0).
+
+Verification:
+  docker golang:1.24 go test ./internal/platform/httpserver/
+      -run TestOpenAPI263 -count=1 -v             PASS (9/9)
+  npm --prefix apps/admin-web run type-check      OK (silent)
+
+Pre-existing test failures verified to NOT have been introduced by
+this ticket (`git stash` reproduces them on master at 1f9340e6):
+  TestOpenAPI_NoNullableKeyword,
+  TestOpenAPI_NullableNotPresent,
+  TestOpenAPIDocs_ParametersDescription,
+  TestOpenAPIDocs_SchemaPropertiesDescription,
+  TestOpenAPI_FullVerification,
+  TestOpenAPIDriftCheck_CodeCoversAllSpecRoutes
+    (for non-event routes inherited from earlier waves).
+The nullable usage on EventItem.venue_id / description / image_url and
+the corresponding UpdateEventRequest fields follows the existing
+convention used by VenueItem (V-1/V-2), OrganizationItem, and every
+other schema in openapi.yaml; the OAS 3.1 nullable migration is a
+separate follow-up.
+
+Marked #263 passing. Backlog: 263/301.
