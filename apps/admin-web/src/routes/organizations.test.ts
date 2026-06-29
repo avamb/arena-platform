@@ -34,6 +34,21 @@ import {
   validateOrgName,
   validateOrgReservationTTL,
   validateOrgSlug,
+  // Feature #256 — Legal & billing tab helpers.
+  KYB_STATUSES,
+  TAX_ID_SCHEMES,
+  buildCreateBankBody,
+  buildUpdateBankBody,
+  mapBankAccountServerError,
+  mapLegalServerError,
+  validateBankCountry,
+  validateBankCurrency,
+  validateBankHolderName,
+  validateBankIdentifier,
+  validateLegalCountry,
+  validateLegalEmail,
+  validateLegalUrl,
+  validateTaxId,
   type AdminOrganization,
   type MembershipRole,
 } from "./organizations";
@@ -321,14 +336,24 @@ describe("mapArchiveOrgServerError (feature #239)", () => {
 });
 
 describe("Drawer tab model (feature #240)", () => {
-  it("exposes overview/users/venues/channels/payments in order", () => {
+  it("exposes overview/legal_billing/users/venues/channels/payments in order", () => {
     expect(DRAWER_TAB_KEYS).toEqual([
       "overview",
+      "legal_billing",
       "users",
       "venues",
       "channels",
       "payments",
     ]);
+  });
+
+  it("places legal_billing between overview and users (feature #256)", () => {
+    const overviewIdx = DRAWER_TAB_KEYS.indexOf("overview");
+    const legalIdx = DRAWER_TAB_KEYS.indexOf("legal_billing");
+    const usersIdx = DRAWER_TAB_KEYS.indexOf("users");
+    expect(overviewIdx).toBeGreaterThanOrEqual(0);
+    expect(legalIdx).toBe(overviewIdx + 1);
+    expect(usersIdx).toBe(legalIdx + 1);
   });
 
   describe("parseDrawerTab", () => {
@@ -557,6 +582,203 @@ describe("Users tab membership helpers (feature #241)", () => {
     });
     it("falls back to message (code) for unknown codes", () => {
       expect(mapMembershipMutationError(makeErr("weird.unknown", "boom"))).toBe("boom (weird.unknown)");
+    });
+  });
+});
+
+describe("Legal & billing tab helpers (feature #256)", () => {
+  function makeErr(
+    code: string,
+    message = "boom",
+    details?: Record<string, unknown>,
+  ): ApiError {
+    return new ApiError(400, { code, message, details });
+  }
+
+  it("TAX_ID_SCHEMES mirrors the OpenAPI enum", () => {
+    expect(TAX_ID_SCHEMES).toEqual(["eu_vat", "gb_vat", "il_vat", "us_ein", "other"]);
+  });
+  it("KYB_STATUSES mirrors the OpenAPI enum", () => {
+    expect(KYB_STATUSES).toEqual(["unverified", "pending", "verified", "rejected"]);
+  });
+
+  describe("validateLegalCountry", () => {
+    it("accepts empty (clears the field)", () => {
+      expect(validateLegalCountry("")).toBeNull();
+      expect(validateLegalCountry("   ")).toBeNull();
+    });
+    it("requires 2 uppercase letters", () => {
+      expect(validateLegalCountry("DE")).toBeNull();
+      expect(validateLegalCountry("de")).not.toBeNull();
+      expect(validateLegalCountry("DEU")).not.toBeNull();
+    });
+  });
+
+  describe("validateLegalEmail", () => {
+    it("accepts empty", () => { expect(validateLegalEmail("")).toBeNull(); });
+    it("accepts a basic email", () => { expect(validateLegalEmail("a@b.co")).toBeNull(); });
+    it("rejects malformed", () => { expect(validateLegalEmail("not-an-email")).not.toBeNull(); });
+  });
+
+  describe("validateLegalUrl", () => {
+    it("accepts http(s)://...", () => {
+      expect(validateLegalUrl("https://example.com")).toBeNull();
+      expect(validateLegalUrl("http://x.test/y")).toBeNull();
+    });
+    it("rejects bare hostnames or other schemes", () => {
+      expect(validateLegalUrl("example.com")).not.toBeNull();
+      expect(validateLegalUrl("ftp://x")).not.toBeNull();
+    });
+    it("accepts empty", () => { expect(validateLegalUrl("")).toBeNull(); });
+  });
+
+  describe("validateTaxId", () => {
+    it("accepts both empty", () => { expect(validateTaxId("", "")).toBeNull(); });
+    it("requires tax_id when scheme set", () => {
+      expect(validateTaxId("", "eu_vat")).not.toBeNull();
+    });
+    it("requires scheme when tax_id set", () => {
+      expect(validateTaxId("DE123", "")).not.toBeNull();
+    });
+    it("accepts both filled", () => {
+      expect(validateTaxId("DE123", "eu_vat")).toBeNull();
+    });
+  });
+
+  describe("mapLegalServerError", () => {
+    it("routes invalid_tax_id onto tax_id field", () => {
+      expect(mapLegalServerError(makeErr("organization.invalid_tax_id", "bad")).tax_id).toBe("bad");
+    });
+    it("routes invalid_tax_id_scheme onto tax_id_scheme field", () => {
+      expect(mapLegalServerError(makeErr("organization.invalid_tax_id_scheme", "bad")).tax_id_scheme).toBe("bad");
+    });
+    it("routes legal_name_required onto legal_name field", () => {
+      expect(mapLegalServerError(makeErr("organization.legal_name_required", "need")).legal_name).toBe("need");
+    });
+    it("maps permissions.denied to a friendly form message", () => {
+      expect(mapLegalServerError(makeErr("permissions.denied")).form).toMatch(/org\.update/);
+    });
+    it("maps missing_reason / reason_required to audit-reason hint", () => {
+      expect(mapLegalServerError(makeErr("superadmin.missing_reason")).form).toMatch(/audit reason/i);
+      expect(mapLegalServerError(makeErr("superadmin.reason_required")).form).toMatch(/audit reason/i);
+    });
+    it("honours details.field for unknown codes", () => {
+      expect(
+        mapLegalServerError(makeErr("unexpected.code", "oops", { field: "website_url" })).website_url,
+      ).toBe("oops");
+    });
+    it("falls back to message + code on the form surface", () => {
+      expect(mapLegalServerError(makeErr("unexpected.code", "oops")).form).toBe("oops (unexpected.code)");
+    });
+  });
+
+  describe("validateBank helpers", () => {
+    it("validateBankHolderName requires non-empty", () => {
+      expect(validateBankHolderName("")).not.toBeNull();
+      expect(validateBankHolderName("ACME")).toBeNull();
+    });
+    it("validateBankCurrency requires ISO 4217 (normalises case)", () => {
+      expect(validateBankCurrency("")).not.toBeNull();
+      expect(validateBankCurrency("EUR")).toBeNull();
+      // Lowercase input is auto-normalised — the buildCreateBankBody helper
+      // re-uppercases before sending, so the validator accepts it.
+      expect(validateBankCurrency("eur")).toBeNull();
+      expect(validateBankCurrency("EURO")).not.toBeNull();
+      expect(validateBankCurrency("12")).not.toBeNull();
+    });
+    it("validateBankCountry requires ISO 3166-1 alpha-2 (normalises case)", () => {
+      expect(validateBankCountry("")).not.toBeNull();
+      expect(validateBankCountry("DE")).toBeNull();
+      expect(validateBankCountry("de")).toBeNull();
+      expect(validateBankCountry("DEU")).not.toBeNull();
+    });
+    it("validateBankIdentifier accepts IBAN alone", () => {
+      expect(validateBankIdentifier("DE89", "", "")).toBeNull();
+    });
+    it("validateBankIdentifier accepts account+routing pair", () => {
+      expect(validateBankIdentifier("", "123", "021")).toBeNull();
+    });
+    it("validateBankIdentifier rejects metadata-only rows", () => {
+      expect(validateBankIdentifier("", "", "")).not.toBeNull();
+      expect(validateBankIdentifier("", "123", "")).not.toBeNull();
+      expect(validateBankIdentifier("", "", "021")).not.toBeNull();
+    });
+  });
+
+  describe("mapBankAccountServerError", () => {
+    it("maps identifier_required to form-level error", () => {
+      expect(mapBankAccountServerError(makeErr("bank_account.identifier_required", "need")).form).toBe("need");
+    });
+    it("routes invalid_iban / invalid_bic / invalid_currency / invalid_country", () => {
+      expect(mapBankAccountServerError(makeErr("bank_account.invalid_iban", "bad")).iban).toBe("bad");
+      expect(mapBankAccountServerError(makeErr("bank_account.invalid_bic", "bad")).bic).toBe("bad");
+      expect(mapBankAccountServerError(makeErr("bank_account.invalid_currency", "bad")).currency).toBe("bad");
+      expect(mapBankAccountServerError(makeErr("bank_account.invalid_country", "bad")).country).toBe("bad");
+    });
+    it("maps duplicate and primary_required to form-level", () => {
+      expect(mapBankAccountServerError(makeErr("bank_account.duplicate", "dup")).form).toBe("dup");
+      expect(mapBankAccountServerError(makeErr("bank_account.primary_required", "pr")).form).toBe("pr");
+    });
+    it("maps permissions.denied / reason codes", () => {
+      expect(mapBankAccountServerError(makeErr("permissions.denied")).form).toMatch(/org\.update/);
+      expect(mapBankAccountServerError(makeErr("superadmin.reason_required")).form).toMatch(/audit reason/i);
+    });
+    it("falls back to message (code)", () => {
+      expect(mapBankAccountServerError(makeErr("weird.x", "boom")).form).toBe("boom (weird.x)");
+    });
+  });
+
+  describe("buildCreateBankBody", () => {
+    it("emits only filled optional fields and trims", () => {
+      const body = buildCreateBankBody({
+        holder_name: "  ACME  ",
+        currency: "eur",
+        country: "de",
+        bank_name: "",
+        iban: " DE89 ",
+        bic: "",
+        account_number: "",
+        routing_number: "",
+        is_primary: true,
+      });
+      expect(body).toEqual({
+        holder_name: "ACME",
+        currency: "EUR",
+        country: "DE",
+        is_primary: true,
+        iban: "DE89",
+      });
+    });
+    it("preserves account_number + routing_number pair", () => {
+      const body = buildCreateBankBody({
+        holder_name: "X", currency: "USD", country: "US",
+        bank_name: "", iban: "", bic: "",
+        account_number: "00012345",
+        routing_number: "021000021",
+        is_primary: false,
+      });
+      expect(body.account_number).toBe("00012345");
+      expect(body.routing_number).toBe("021000021");
+      expect(body.iban).toBeUndefined();
+    });
+  });
+
+  describe("buildUpdateBankBody", () => {
+    const base = {
+      holder_name: "X", currency: "EUR", country: "DE",
+      bank_name: "Commerz", iban: "DE89", bic: "",
+      account_number: "", routing_number: "", is_primary: false,
+    };
+    it("emits an empty object when nothing changed", () => {
+      expect(buildUpdateBankBody(base, base)).toEqual({});
+    });
+    it("emits null for cleared optional fields", () => {
+      const next = { ...base, bank_name: "" };
+      expect(buildUpdateBankBody(next, base)).toEqual({ bank_name: null });
+    });
+    it("emits trimmed values for changed fields", () => {
+      const next = { ...base, holder_name: "  Y  ", is_primary: true };
+      expect(buildUpdateBankBody(next, base)).toEqual({ holder_name: "Y", is_primary: true });
     });
   });
 });

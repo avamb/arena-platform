@@ -16199,3 +16199,94 @@ Note: contract-only ticket. Go handlers and SQL queries for the new
   DB migration 0049 (feature #253) already added the storage
   columns; migration 0050 (feature #254) added the storage table.
 Marked #255 passing. Backlog: 254/301.
+
+=== 2026-06-29: Feature #256 — O-4 Admin UI Organization Legal & billing tab ===
+Added "Legal & billing" drawer tab between Overview and Users in
+apps/admin-web/src/routes/organizations.tsx:
+  - DRAWER_TAB_KEYS extended with "legal_billing" at index 1.
+  - DRAWER_TAB_LABELS["legal_billing"] = "Legal & billing".
+  - Drawer panel renders <LegalBillingTab org={org}/> when the new tab
+    is active.
+  - AdminOrganization interface extended with all 15 O-1 legal/contact
+    fields as optional readonly so OrganizationItem responses (which
+    started carrying these fields under #255) deserialise cleanly.
+
+LegalBillingTab renders two stacked sections:
+  1. LegalEntitySection — inline PATCH form against
+     /v1/organizations/{id} with legal_name, tax_id, tax_id_scheme
+     (select with eu_vat|gb_vat|il_vat|us_ein|other),
+     registration_number, full legal address
+     (line1/line2/postal/city/country), contact_email, contact_phone,
+     website_url, kyb_status (select with unverified|pending|verified|
+     rejected). Includes a disabled "Upload (Wave G)" logo placeholder
+     that surfaces the current logo_media_id read-only.
+  2. BankAccountsSection — full CRUD against
+     /v1/organizations/{id}/bank-accounts:
+       GET list, POST create, PATCH edit, DELETE soft-delete,
+       "Designate default" button on non-primary rows (PATCH
+       is_primary:true). Inline add/edit form via BankAccountForm.
+
+Local validators (server is authoritative for tax_id format per scheme):
+  validateLegalCountry, validateLegalEmail, validateLegalUrl,
+  validateTaxId, validateBankHolderName, validateBankCurrency,
+  validateBankCountry, validateBankIdentifier (enforces IBAN OR
+  account+routing pair).
+
+Error mappers: mapLegalServerError (organization.invalid_tax_id /
+invalid_tax_id_scheme / legal_name_required / permissions.denied /
+superadmin.reason_required / details.field forwards-compat), and
+mapBankAccountServerError (bank_account.identifier_required / invalid_iban
+/ invalid_bic / invalid_currency / invalid_country / duplicate /
+primary_required + permissions/reason gates).
+
+Body builders:
+  - buildCreateBankBody trims, uppercases currency/country, emits only
+    filled optional fields, always sets is_primary.
+  - buildUpdateBankBody emits a diff against initial state, sending
+    null to clear optional fields that the operator cleared.
+
+reason.ts: added
+  /^\/v1\/organizations\/[^/]+\/bank-accounts(?:\/.*)?$/
+to REASON_REQUIRED_MUTATION_REGEX so POST/PATCH/DELETE on bank-accounts
+trigger the X-Admin-Reason prompt; GET stays ungated for plain
+browsing.
+
+i18n: copy is funnelled through useTranslation() for the section
+headers and action labels via the existing #251 scaffolding; new
+keys are not added in this ticket because the existing action.*/
+empty.*/error.*/loading.* catalog entries already cover the labels
+used by the new tab. Entity names (Bank Account, Legal entity) stay
+English in both locales per the #251 policy.
+
+Tests:
+  organizations.test.ts +43 cases:
+    - DRAWER_TAB_KEYS order (overview, legal_billing, users, venues,
+      channels, payments) + positional invariant (legal_billing
+      between overview and users).
+    - TAX_ID_SCHEMES / KYB_STATUSES mirror the OpenAPI enum.
+    - validateLegal{Country,Email,Url} happy + sad paths.
+    - validateTaxId cross-field constraint.
+    - mapLegalServerError per code.
+    - validateBank{HolderName,Currency,Country,Identifier} including
+      identifier-required (rejects metadata-only rows).
+    - mapBankAccountServerError per code.
+    - buildCreateBankBody trims and emits only filled optionals.
+    - buildUpdateBankBody emits {} when unchanged and null for cleared
+      optionals.
+  reason.test.ts +4 cases:
+    - POST /bank-accounts requires reason.
+    - PATCH /bank-accounts/{id} requires reason.
+    - DELETE /bank-accounts/{id} requires reason.
+    - GET /bank-accounts does NOT require reason.
+
+Verification:
+  npm --prefix apps/admin-web run type-check  OK
+  npm --prefix apps/admin-web test -- --run   OK (487/487, +47)
+  npm --prefix apps/admin-web run build       OK (620.49 kB / 169.22 kB gz)
+
+Note: Backend handlers for the bank-accounts CRUD endpoints and the
+  legal-fields PATCH validators are NOT in scope for this ticket --
+  the OpenAPI contract was shipped under #255 and the Go handler work
+  is a follow-up. The UI surfaces server error codes and renders
+  error states correctly when the backend returns 404/503.
+Marked #256 passing. Backlog: 255/301.

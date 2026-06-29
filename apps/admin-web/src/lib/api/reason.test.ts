@@ -180,6 +180,28 @@ describe("requiresAdminReason()", () => {
       "DELETE",
       true,
     ],
+    // Wave O / feature #256 — banking coordinate mutations.
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/bank-accounts",
+      "POST",
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/bank-accounts/abc",
+      "PATCH",
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/bank-accounts/abc",
+      "DELETE",
+      true,
+    ],
+    // Bank-account READS are not gated.
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/bank-accounts",
+      "GET",
+      false,
+    ],
     // Reads on the same paths are not gated -- the drawer's read tabs
     // must not pop the modal for plain browsing.
     [

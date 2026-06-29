@@ -81,6 +81,8 @@ const REASON_REQUIRED_MUTATION_REGEX: readonly RegExp[] = [
   /^\/v1\/organizations\/[^/]+\/channels(?:\/.*)?$/,
   /^\/v1\/organizations\/[^/]+\/payment-configs(?:\/.*)?$/,
   /^\/v1\/organizations\/[^/]+\/members(?:\/.*)?$/,
+  // Wave O / feature #256 — banking coordinate mutations on tenant orgs.
+  /^\/v1\/organizations\/[^/]+\/bank-accounts(?:\/.*)?$/,
 ];
 
 /** HTTP methods treated as mutations for the SAUI-09 gate. */

@@ -101,6 +101,23 @@ export interface AdminOrganization {
   readonly created_at: string;
   readonly updated_at: string;
   readonly deleted_at: string | null;
+  // Legal & billing fields (Wave O / feature #256). All optional on the
+  // wire — older list responses (and seed data) may omit them entirely.
+  readonly legal_name?: string | null;
+  readonly tax_id?: string | null;
+  readonly tax_id_scheme?: string | null;
+  readonly registration_number?: string | null;
+  readonly legal_address_line1?: string | null;
+  readonly legal_address_line2?: string | null;
+  readonly legal_address_postal_code?: string | null;
+  readonly legal_address_city?: string | null;
+  readonly legal_address_country?: string | null;
+  readonly contact_email?: string | null;
+  readonly contact_phone?: string | null;
+  readonly website_url?: string | null;
+  readonly logo_media_id?: string | null;
+  readonly kyb_status?: string | null;
+  readonly kyb_verified_at?: string | null;
 }
 
 interface OrganizationsEnvelope {
@@ -583,6 +600,7 @@ function OrgErrorState({
 
 export const DRAWER_TAB_KEYS = [
   "overview",
+  "legal_billing",
   "users",
   "venues",
   "channels",
@@ -593,6 +611,7 @@ export type DrawerTabKey = (typeof DRAWER_TAB_KEYS)[number];
 
 const DRAWER_TAB_LABELS: Record<DrawerTabKey, string> = {
   overview: "Overview",
+  legal_billing: "Legal & billing",
   users: "Users",
   venues: "Venues",
   channels: "Channels",
@@ -737,6 +756,7 @@ function OrganizationDrawer({
         data-testid={`orgs-drawer-panel-${activeTab}`}
       >
         {activeTab === "overview" ? <OverviewTab org={org} /> : null}
+        {activeTab === "legal_billing" ? <LegalBillingTab org={org} /> : null}
         {activeTab === "users" ? <UsersTab org={org} /> : null}
         {activeTab === "venues" ? <VenuesTab org={org} /> : null}
         {activeTab === "channels" ? <ChannelsTab org={org} /> : null}
@@ -791,6 +811,1299 @@ function OverviewTab({ org }: { org: AdminOrganization }) {
       </dl>
     </>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Legal & billing tab (feature #256)
+//
+// Two stacked sections inside one drawer tab:
+//
+//   1. "Legal entity" — inline form that PATCHes
+//      /v1/organizations/{org_id} with the O-1 legal/contact fields.
+//      The logo upload control is a placeholder that delegates to the
+//      Wave G media-upload component when it ships; until then it shows
+//      a disabled "Upload (Wave G)" affordance and accepts the existing
+//      `logo_media_id` value untouched.
+//
+//   2. "Bank accounts" — full CRUD against
+//      /v1/organizations/{org_id}/bank-accounts (Wave O / feature #255):
+//        - list (GET)
+//        - add  (POST)         — opens a small inline form row
+//        - edit (PATCH)        — opens an inline editor row
+//        - delete (DELETE)     — soft-delete with confirm
+//        - "Designate default" (PATCH {is_primary: true})
+//
+// Tax-id format validation is server-side per `tax_id_scheme`. The UI
+// surfaces server-returned per-field errors via mapLegalServerError /
+// mapBankAccountServerError so the operator sees specific messages.
+//
+// All copy is funnelled through useTranslation()/t() per the i18n
+// scaffolding shipped in feature #251.
+// ---------------------------------------------------------------------------
+
+export const TAX_ID_SCHEMES = [
+  "eu_vat",
+  "gb_vat",
+  "il_vat",
+  "us_ein",
+  "other",
+] as const;
+export type TaxIdScheme = (typeof TAX_ID_SCHEMES)[number];
+const TAX_ID_SCHEME_LABELS: Record<TaxIdScheme, string> = {
+  eu_vat: "EU VAT",
+  gb_vat: "GB VAT",
+  il_vat: "IL VAT",
+  us_ein: "US EIN",
+  other: "Other",
+};
+
+export const KYB_STATUSES = [
+  "unverified",
+  "pending",
+  "verified",
+  "rejected",
+] as const;
+export type KybStatus = (typeof KYB_STATUSES)[number];
+const KYB_STATUS_LABELS: Record<KybStatus, string> = {
+  unverified: "Unverified",
+  pending: "Pending",
+  verified: "Verified",
+  rejected: "Rejected",
+};
+
+interface BankAccount {
+  readonly id: string;
+  readonly org_id: string;
+  readonly holder_name: string;
+  readonly currency: string;
+  readonly country: string;
+  readonly bank_name?: string | null;
+  readonly iban?: string | null;
+  readonly bic?: string | null;
+  readonly account_number?: string | null;
+  readonly routing_number?: string | null;
+  readonly is_primary: boolean;
+  readonly created_at: string;
+  readonly updated_at: string;
+}
+interface BankAccountsEnvelope {
+  readonly bank_accounts: readonly BankAccount[];
+}
+interface BankAccountEnvelope {
+  readonly bank_account: BankAccount;
+}
+
+const ISO_COUNTRY_RE = /^[A-Z]{2}$/;
+const ISO_CURRENCY_RE = /^[A-Z]{3}$/;
+const EMAIL_RE_LEGAL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const URL_RE_LEGAL = /^https?:\/\/\S+$/i;
+
+export interface LegalEntityFormErrors {
+  legal_name?: string;
+  tax_id?: string;
+  tax_id_scheme?: string;
+  registration_number?: string;
+  legal_address_line1?: string;
+  legal_address_line2?: string;
+  legal_address_postal_code?: string;
+  legal_address_city?: string;
+  legal_address_country?: string;
+  contact_email?: string;
+  contact_phone?: string;
+  website_url?: string;
+  kyb_status?: string;
+  form?: string;
+}
+
+export function validateLegalCountry(raw: string): string | null {
+  const t = raw.trim();
+  if (t === "") return null;
+  return ISO_COUNTRY_RE.test(t)
+    ? null
+    : "Country must be a 2-letter ISO 3166-1 alpha-2 code";
+}
+
+export function validateLegalEmail(raw: string): string | null {
+  const t = raw.trim();
+  if (t === "") return null;
+  return EMAIL_RE_LEGAL.test(t) ? null : "Must be a valid email address";
+}
+
+export function validateLegalUrl(raw: string): string | null {
+  const t = raw.trim();
+  if (t === "") return null;
+  return URL_RE_LEGAL.test(t) ? null : "Must be an http(s) URL";
+}
+
+/**
+ * Local pre-check for tax_id. The authoritative scheme-specific format
+ * check runs server-side (per feature description: "Use server-side
+ * validation for tax_id format per tax_id_scheme"); we only verify that
+ * a non-empty value is provided when a scheme is set, and vice versa.
+ */
+export function validateTaxId(
+  raw: string,
+  scheme: string,
+): string | null {
+  const t = raw.trim();
+  const s = scheme.trim();
+  if (t === "" && s === "") return null;
+  if (t === "" && s !== "") return "tax_id is required when a scheme is selected";
+  if (t !== "" && s === "")
+    return "Choose a tax_id_scheme so the server can validate the format";
+  return null;
+}
+
+/**
+ * Map PATCH /v1/organizations/{id} error envelopes onto field-level
+ * errors. Mirrors the patchV1OrganizationsId handler error codes.
+ */
+export function mapLegalServerError(err: ApiError): LegalEntityFormErrors {
+  const details = err.details ?? {};
+  const field = typeof details.field === "string" ? details.field : undefined;
+  switch (err.code) {
+    case "admin_org.invalid_tax_id":
+    case "organization.invalid_tax_id":
+      return { tax_id: err.message };
+    case "admin_org.invalid_tax_id_scheme":
+    case "organization.invalid_tax_id_scheme":
+      return { tax_id_scheme: err.message };
+    case "admin_org.invalid_legal_name":
+    case "organization.invalid_legal_name":
+      return { legal_name: err.message };
+    case "admin_org.invalid_legal_address":
+    case "organization.invalid_legal_address":
+      return { legal_address_line1: err.message };
+    case "admin_org.invalid_contact_email":
+    case "organization.invalid_contact_email":
+      return { contact_email: err.message };
+    case "admin_org.invalid_website_url":
+    case "organization.invalid_website_url":
+      return { website_url: err.message };
+    case "admin_org.invalid_kyb_status":
+    case "organization.invalid_kyb_status":
+      return { kyb_status: err.message };
+    case "admin_org.legal_name_required":
+    case "organization.legal_name_required":
+      return { legal_name: err.message };
+    case "permissions.denied":
+      return {
+        form:
+          "Your account is missing org.update. Ask a platform administrator.",
+      };
+    case "superadmin.missing_reason":
+    case "superadmin.reason_required":
+      return {
+        form:
+          "An audit reason (X-Admin-Reason) is required. Submit a reason and retry.",
+      };
+    default:
+      if (field !== undefined) {
+        return { [field]: err.message } as LegalEntityFormErrors;
+      }
+      return { form: `${err.message} (${err.code})` };
+  }
+}
+
+export interface BankAccountFormErrors {
+  holder_name?: string;
+  currency?: string;
+  country?: string;
+  bank_name?: string;
+  iban?: string;
+  bic?: string;
+  account_number?: string;
+  routing_number?: string;
+  form?: string;
+}
+
+export function validateBankHolderName(raw: string): string | null {
+  return raw.trim() === "" ? "Holder name is required" : null;
+}
+export function validateBankCurrency(raw: string): string | null {
+  const t = raw.trim().toUpperCase();
+  if (t === "") return "Currency is required";
+  return ISO_CURRENCY_RE.test(t)
+    ? null
+    : "Currency must be a 3-letter ISO 4217 code";
+}
+export function validateBankCountry(raw: string): string | null {
+  const t = raw.trim().toUpperCase();
+  if (t === "") return "Country is required";
+  return ISO_COUNTRY_RE.test(t)
+    ? null
+    : "Country must be a 2-letter ISO 3166-1 code";
+}
+
+/**
+ * At least one of (iban) or (account_number + routing_number) must be
+ * supplied; this mirrors the OpenAPI contract for the create endpoint.
+ */
+export function validateBankIdentifier(
+  iban: string,
+  accountNumber: string,
+  routingNumber: string,
+): string | null {
+  const ib = iban.trim();
+  const an = accountNumber.trim();
+  const rn = routingNumber.trim();
+  if (ib !== "") return null;
+  if (an !== "" && rn !== "") return null;
+  return "Provide an IBAN, or both account_number and routing_number";
+}
+
+export function mapBankAccountServerError(
+  err: ApiError,
+): BankAccountFormErrors {
+  const details = err.details ?? {};
+  const field = typeof details.field === "string" ? details.field : undefined;
+  switch (err.code) {
+    case "bank_account.identifier_required":
+      return { form: err.message };
+    case "bank_account.invalid_iban":
+      return { iban: err.message };
+    case "bank_account.invalid_bic":
+      return { bic: err.message };
+    case "bank_account.invalid_currency":
+      return { currency: err.message };
+    case "bank_account.invalid_country":
+      return { country: err.message };
+    case "bank_account.invalid_holder_name":
+      return { holder_name: err.message };
+    case "bank_account.duplicate":
+      return { form: err.message };
+    case "bank_account.primary_required":
+      return { form: err.message };
+    case "bank_account.not_found":
+      return { form: err.message };
+    case "permissions.denied":
+      return {
+        form: "Your account is missing org.update. Ask a platform administrator.",
+      };
+    case "superadmin.missing_reason":
+    case "superadmin.reason_required":
+      return {
+        form:
+          "An audit reason (X-Admin-Reason) is required. Submit a reason and retry.",
+      };
+    default:
+      if (field !== undefined) {
+        return { [field]: err.message } as BankAccountFormErrors;
+      }
+      return { form: `${err.message} (${err.code})` };
+  }
+}
+
+interface UpdateOrgLegalEnvelope {
+  readonly organization: AdminOrganization;
+}
+
+function LegalBillingTab({ org }: { org: AdminOrganization }) {
+  const { permissions } = useAuth();
+  const canUpdate =
+    permissions.has("org.update") || permissions.has("superadmin.read");
+
+  if (!canUpdate) {
+    return (
+      <TabForbidden
+        missing="org.update"
+        testid="orgs-drawer-legal-billing-forbidden"
+      />
+    );
+  }
+
+  return (
+    <div data-testid="orgs-drawer-legal-billing">
+      <LegalEntitySection org={org} />
+      <div style={{ height: 24 }} />
+      <BankAccountsSection org={org} />
+    </div>
+  );
+}
+
+function LegalEntitySection({ org }: { org: AdminOrganization }) {
+  const queryClient = useQueryClient();
+  const [legalName, setLegalName] = useState(org.legal_name ?? "");
+  const [taxId, setTaxId] = useState(org.tax_id ?? "");
+  const [taxScheme, setTaxScheme] = useState(org.tax_id_scheme ?? "");
+  const [regNumber, setRegNumber] = useState(org.registration_number ?? "");
+  const [addr1, setAddr1] = useState(org.legal_address_line1 ?? "");
+  const [addr2, setAddr2] = useState(org.legal_address_line2 ?? "");
+  const [postal, setPostal] = useState(org.legal_address_postal_code ?? "");
+  const [city, setCity] = useState(org.legal_address_city ?? "");
+  const [addrCountry, setAddrCountry] = useState(
+    org.legal_address_country ?? "",
+  );
+  const [contactEmail, setContactEmail] = useState(org.contact_email ?? "");
+  const [contactPhone, setContactPhone] = useState(org.contact_phone ?? "");
+  const [website, setWebsite] = useState(org.website_url ?? "");
+  const [kybStatus, setKybStatus] = useState(org.kyb_status ?? "unverified");
+  const [serverErrors, setServerErrors] = useState<LegalEntityFormErrors>({});
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+
+  const localErrors: LegalEntityFormErrors = {
+    tax_id: validateTaxId(taxId, taxScheme) ?? undefined,
+    legal_address_country: validateLegalCountry(addrCountry) ?? undefined,
+    contact_email: validateLegalEmail(contactEmail) ?? undefined,
+    website_url: validateLegalUrl(website) ?? undefined,
+  };
+  const needsLegalName =
+    (kybStatus === "pending" || kybStatus === "verified") &&
+    legalName.trim() === "";
+  if (needsLegalName) {
+    localErrors.legal_name =
+      "legal_name is required when kyb_status is pending or verified";
+  }
+  const localValid = Object.values(localErrors).every((v) => v === undefined);
+
+  const mutation = useMutation<UpdateOrgLegalEnvelope, ApiError, void>({
+    mutationFn: () => {
+      const body: Record<string, unknown> = {
+        legal_name: legalName.trim(),
+        tax_id: taxId.trim(),
+        tax_id_scheme: taxScheme === "" ? null : taxScheme,
+        registration_number: regNumber.trim(),
+        legal_address_line1: addr1.trim(),
+        legal_address_line2: addr2.trim(),
+        legal_address_postal_code: postal.trim(),
+        legal_address_city: city.trim(),
+        legal_address_country: addrCountry.trim().toUpperCase(),
+        contact_email: contactEmail.trim(),
+        contact_phone: contactPhone.trim(),
+        website_url: website.trim(),
+        kyb_status: kybStatus,
+      };
+      return authedFetch<UpdateOrgLegalEnvelope>({
+        method: "PATCH",
+        path: `/v1/organizations/${encodeURIComponent(org.id)}`,
+        body,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "organizations"] });
+      setSavedAt(new Date().toISOString());
+    },
+    onError: (err) => {
+      setServerErrors(mapLegalServerError(err));
+    },
+  });
+
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setServerErrors({});
+    setSavedAt(null);
+    if (!localValid) return;
+    mutation.mutate();
+  }
+
+  return (
+    <section data-testid="orgs-drawer-legal-entity">
+      <h3 style={drawerSectionTitleStyle}>Legal entity</h3>
+      <p style={drawerHelpStyle}>
+        <code>PATCH /v1/organizations/{org.id}</code> — registered juridical
+        identity, tax registration, and primary contact channel. Format
+        checks on <code>tax_id</code> are server-side per the chosen
+        <code> tax_id_scheme</code>.
+      </p>
+      <form
+        onSubmit={onSubmit}
+        style={legalFormStyle}
+        noValidate
+        data-testid="orgs-drawer-legal-form"
+      >
+        <FieldRow
+          label="Legal name"
+          htmlFor="legal-name"
+          error={serverErrors.legal_name ?? null}
+          localError={localErrors.legal_name ?? null}
+          hint="Registered juridical name as recorded by the tax authority. Required for KYB pending/verified."
+        >
+          <input
+            id="legal-name"
+            type="text"
+            value={legalName}
+            onChange={(e) => setLegalName(e.target.value)}
+            style={inputStyle}
+            maxLength={300}
+            data-testid="legal-name"
+          />
+        </FieldRow>
+
+        <div style={fieldGridStyle}>
+          <FieldRow
+            label="Tax-ID scheme"
+            htmlFor="tax-id-scheme"
+            error={serverErrors.tax_id_scheme ?? null}
+            localError={null}
+            hint="Determines the format check applied to tax_id."
+          >
+            <select
+              id="tax-id-scheme"
+              value={taxScheme}
+              onChange={(e) => setTaxScheme(e.target.value)}
+              style={inputStyle}
+              data-testid="tax-id-scheme"
+            >
+              <option value="">(none)</option>
+              {TAX_ID_SCHEMES.map((s) => (
+                <option key={s} value={s}>
+                  {TAX_ID_SCHEME_LABELS[s]}
+                </option>
+              ))}
+            </select>
+          </FieldRow>
+          <FieldRow
+            label="Tax ID"
+            htmlFor="tax-id"
+            error={serverErrors.tax_id ?? null}
+            localError={localErrors.tax_id ?? null}
+            hint="Validated server-side per scheme."
+          >
+            <input
+              id="tax-id"
+              type="text"
+              value={taxId}
+              onChange={(e) => setTaxId(e.target.value)}
+              style={inputMonoStyle}
+              maxLength={64}
+              data-testid="tax-id"
+            />
+          </FieldRow>
+        </div>
+
+        <FieldRow
+          label="Registration number"
+          htmlFor="reg-number"
+          error={serverErrors.registration_number ?? null}
+          localError={null}
+          hint="Company-registry / juridical-person number (optional)."
+        >
+          <input
+            id="reg-number"
+            type="text"
+            value={regNumber}
+            onChange={(e) => setRegNumber(e.target.value)}
+            style={inputMonoStyle}
+            maxLength={64}
+            data-testid="reg-number"
+          />
+        </FieldRow>
+
+        <h4 style={subSectionTitleStyle}>Registered address</h4>
+        <FieldRow
+          label="Address line 1"
+          htmlFor="addr-line1"
+          error={serverErrors.legal_address_line1 ?? null}
+          localError={null}
+          hint=""
+        >
+          <input
+            id="addr-line1"
+            type="text"
+            value={addr1}
+            onChange={(e) => setAddr1(e.target.value)}
+            style={inputStyle}
+            maxLength={200}
+            data-testid="addr-line1"
+          />
+        </FieldRow>
+        <FieldRow
+          label="Address line 2"
+          htmlFor="addr-line2"
+          error={serverErrors.legal_address_line2 ?? null}
+          localError={null}
+          hint=""
+        >
+          <input
+            id="addr-line2"
+            type="text"
+            value={addr2}
+            onChange={(e) => setAddr2(e.target.value)}
+            style={inputStyle}
+            maxLength={200}
+            data-testid="addr-line2"
+          />
+        </FieldRow>
+        <div style={fieldGridStyle}>
+          <FieldRow
+            label="Postal code"
+            htmlFor="addr-postal"
+            error={serverErrors.legal_address_postal_code ?? null}
+            localError={null}
+            hint=""
+          >
+            <input
+              id="addr-postal"
+              type="text"
+              value={postal}
+              onChange={(e) => setPostal(e.target.value)}
+              style={inputMonoStyle}
+              maxLength={20}
+              data-testid="addr-postal"
+            />
+          </FieldRow>
+          <FieldRow
+            label="City"
+            htmlFor="addr-city"
+            error={serverErrors.legal_address_city ?? null}
+            localError={null}
+            hint=""
+          >
+            <input
+              id="addr-city"
+              type="text"
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              style={inputStyle}
+              maxLength={100}
+              data-testid="addr-city"
+            />
+          </FieldRow>
+          <FieldRow
+            label="Country"
+            htmlFor="addr-country"
+            error={serverErrors.legal_address_country ?? null}
+            localError={localErrors.legal_address_country ?? null}
+            hint="ISO 3166-1 alpha-2 (e.g. DE)"
+          >
+            <input
+              id="addr-country"
+              type="text"
+              value={addrCountry}
+              onChange={(e) => setAddrCountry(e.target.value.toUpperCase())}
+              style={inputMonoStyle}
+              maxLength={2}
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+              data-testid="addr-country"
+            />
+          </FieldRow>
+        </div>
+
+        <h4 style={subSectionTitleStyle}>Contact</h4>
+        <div style={fieldGridStyle}>
+          <FieldRow
+            label="Contact email"
+            htmlFor="contact-email"
+            error={serverErrors.contact_email ?? null}
+            localError={localErrors.contact_email ?? null}
+            hint="Public contact email."
+          >
+            <input
+              id="contact-email"
+              type="email"
+              value={contactEmail}
+              onChange={(e) => setContactEmail(e.target.value)}
+              style={inputStyle}
+              maxLength={200}
+              data-testid="contact-email"
+            />
+          </FieldRow>
+          <FieldRow
+            label="Contact phone"
+            htmlFor="contact-phone"
+            error={serverErrors.contact_phone ?? null}
+            localError={null}
+            hint="E.164 recommended."
+          >
+            <input
+              id="contact-phone"
+              type="tel"
+              value={contactPhone}
+              onChange={(e) => setContactPhone(e.target.value)}
+              style={inputMonoStyle}
+              maxLength={32}
+              data-testid="contact-phone"
+            />
+          </FieldRow>
+        </div>
+        <FieldRow
+          label="Website URL"
+          htmlFor="website-url"
+          error={serverErrors.website_url ?? null}
+          localError={localErrors.website_url ?? null}
+          hint="http(s) URL of the operator's marketing site."
+        >
+          <input
+            id="website-url"
+            type="url"
+            value={website}
+            onChange={(e) => setWebsite(e.target.value)}
+            style={inputStyle}
+            maxLength={500}
+            data-testid="website-url"
+          />
+        </FieldRow>
+
+        <h4 style={subSectionTitleStyle}>Logo</h4>
+        <div style={tabStatusStyle} data-testid="logo-upload-placeholder">
+          Logo upload delegates to the Wave G media-upload component when
+          shipped. The current logo media reference (
+          <code>logo_media_id</code>) is{" "}
+          <code style={monoStyle}>
+            {org.logo_media_id ?? "—"}
+          </code>
+          .{" "}
+          <button
+            type="button"
+            disabled
+            style={secondaryButtonStyle}
+            aria-disabled
+            data-testid="logo-upload-button"
+          >
+            Upload (Wave G)
+          </button>
+        </div>
+
+        <h4 style={subSectionTitleStyle}>KYB</h4>
+        <FieldRow
+          label="KYB status"
+          htmlFor="kyb-status"
+          error={serverErrors.kyb_status ?? null}
+          localError={null}
+          hint="Transitioning to pending or verified requires legal_name to be set."
+        >
+          <select
+            id="kyb-status"
+            value={kybStatus}
+            onChange={(e) => setKybStatus(e.target.value)}
+            style={inputStyle}
+            data-testid="kyb-status"
+          >
+            {KYB_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {KYB_STATUS_LABELS[s]}
+              </option>
+            ))}
+          </select>
+        </FieldRow>
+
+        {serverErrors.form !== undefined ? (
+          <div
+            style={formErrorStyle}
+            role="alert"
+            data-testid="legal-form-error"
+          >
+            {serverErrors.form}
+          </div>
+        ) : null}
+
+        {savedAt !== null && mutation.isSuccess ? (
+          <div
+            style={tabStatusStyle}
+            role="status"
+            data-testid="legal-form-saved"
+          >
+            Saved at {formatDateTime(savedAt)}.
+          </div>
+        ) : null}
+
+        <div style={formActionsStyle}>
+          <button
+            type="submit"
+            style={primaryButtonStyle}
+            disabled={!localValid || mutation.isPending}
+            data-testid="legal-form-submit"
+          >
+            {mutation.isPending ? "Saving…" : "Save legal entity"}
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+interface BankFormState {
+  holder_name: string;
+  currency: string;
+  country: string;
+  bank_name: string;
+  iban: string;
+  bic: string;
+  account_number: string;
+  routing_number: string;
+  is_primary: boolean;
+}
+const EMPTY_BANK_FORM: BankFormState = {
+  holder_name: "",
+  currency: "",
+  country: "",
+  bank_name: "",
+  iban: "",
+  bic: "",
+  account_number: "",
+  routing_number: "",
+  is_primary: false,
+};
+
+function BankAccountsSection({ org }: { org: AdminOrganization }) {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState<
+    | { kind: "none" }
+    | { kind: "add" }
+    | { kind: "edit"; id: string }
+  >({ kind: "none" });
+  const [rowError, setRowError] = useState<{ id: string; message: string } | null>(
+    null,
+  );
+
+  const query = useQuery<BankAccountsEnvelope, ApiError>({
+    queryKey: ["admin", "organizations", org.id, "bank-accounts"],
+    queryFn: () =>
+      authedFetch<BankAccountsEnvelope>({
+        method: "GET",
+        path: `/v1/organizations/${encodeURIComponent(org.id)}/bank-accounts`,
+      }),
+    retry: (count, err) =>
+      err instanceof ApiError && (err.status === 401 || err.status === 403)
+        ? false
+        : count < 2,
+    refetchOnWindowFocus: false,
+  });
+
+  const designateMutation = useMutation<BankAccountEnvelope, ApiError, string>({
+    mutationFn: (id) =>
+      authedFetch<BankAccountEnvelope>({
+        method: "PATCH",
+        path: `/v1/organizations/${encodeURIComponent(org.id)}/bank-accounts/${encodeURIComponent(id)}`,
+        body: { is_primary: true },
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["admin", "organizations", org.id, "bank-accounts"],
+      });
+    },
+    onError: (err, id) => {
+      setRowError({ id, message: `${err.message} (${err.code})` });
+    },
+  });
+
+  const deleteMutation = useMutation<unknown, ApiError, string>({
+    mutationFn: (id) =>
+      authedFetch<unknown>({
+        method: "DELETE",
+        path: `/v1/organizations/${encodeURIComponent(org.id)}/bank-accounts/${encodeURIComponent(id)}`,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["admin", "organizations", org.id, "bank-accounts"],
+      });
+    },
+    onError: (err, id) => {
+      setRowError({ id, message: `${err.message} (${err.code})` });
+    },
+  });
+
+  const rows = query.data?.bank_accounts ?? [];
+  const editingRow =
+    editing.kind === "edit"
+      ? rows.find((r) => r.id === editing.id) ?? null
+      : null;
+
+  return (
+    <section data-testid="orgs-drawer-bank-accounts">
+      <div style={tabHeaderStyle}>
+        <h3 style={drawerSectionTitleStyle}>Bank accounts</h3>
+        <button
+          type="button"
+          style={smallPrimaryButtonStyle}
+          onClick={() =>
+            setEditing(editing.kind === "add" ? { kind: "none" } : { kind: "add" })
+          }
+          data-testid="bank-add-toggle"
+        >
+          {editing.kind === "add" ? "Cancel" : "Add account"}
+        </button>
+      </div>
+      <p style={drawerHelpStyle}>
+        <code>
+          GET/POST/PATCH/DELETE /v1/organizations/{org.id}/bank-accounts
+        </code>{" "}
+        — banking coordinates used for payouts, refunds, and tax-form
+        rendering. Exactly one account must be marked primary.
+      </p>
+
+      {editing.kind === "add" ? (
+        <BankAccountForm
+          mode="add"
+          orgId={org.id}
+          initial={EMPTY_BANK_FORM}
+          onClose={() => setEditing({ kind: "none" })}
+        />
+      ) : null}
+
+      {query.isPending ? (
+        <div style={tabStatusStyle} role="status">
+          Loading bank accounts…
+        </div>
+      ) : query.isError ? (
+        <TabError
+          error={query.error}
+          retry={() => query.refetch()}
+          testid="bank-error"
+        />
+      ) : rows.length === 0 ? (
+        <div style={tabStatusStyle} data-testid="bank-empty">
+          No bank accounts on file for this organization.
+        </div>
+      ) : (
+        <div style={tabTableWrapStyle} data-testid="bank-table">
+          <table style={tabTableStyle}>
+            <thead>
+              <tr>
+                <th scope="col" style={tabThStyle}>
+                  Holder
+                </th>
+                <th scope="col" style={tabThStyle}>
+                  Bank
+                </th>
+                <th scope="col" style={tabThStyle}>
+                  IBAN / account
+                </th>
+                <th scope="col" style={tabThStyle}>
+                  Currency
+                </th>
+                <th scope="col" style={tabThStyle}>
+                  Country
+                </th>
+                <th scope="col" style={tabThStyle}>
+                  Primary
+                </th>
+                <th scope="col" style={tabThStyle} aria-label="Actions" />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} data-testid={`bank-row-${r.id}`}>
+                  <td style={tabTdStyle}>{r.holder_name}</td>
+                  <td style={tabTdStyle}>{r.bank_name ?? "—"}</td>
+                  <td style={tabTdMonoStyle}>
+                    {r.iban ?? r.account_number ?? "—"}
+                  </td>
+                  <td style={tabTdMonoStyle}>{r.currency}</td>
+                  <td style={tabTdMonoStyle}>{r.country}</td>
+                  <td style={tabTdStyle}>
+                    {r.is_primary ? (
+                      <strong data-testid={`bank-primary-${r.id}`}>
+                        ✓ default
+                      </strong>
+                    ) : (
+                      <button
+                        type="button"
+                        style={tabRowButtonStyle}
+                        disabled={designateMutation.isPending}
+                        onClick={() => {
+                          setRowError(null);
+                          designateMutation.mutate(r.id);
+                        }}
+                        data-testid={`bank-designate-${r.id}`}
+                      >
+                        Designate default
+                      </button>
+                    )}
+                  </td>
+                  <td style={tabTdStyle}>
+                    <div style={rowActionsStyle}>
+                      <button
+                        type="button"
+                        style={tabRowButtonStyle}
+                        onClick={() =>
+                          setEditing(
+                            editing.kind === "edit" && editing.id === r.id
+                              ? { kind: "none" }
+                              : { kind: "edit", id: r.id },
+                          )
+                        }
+                        data-testid={`bank-edit-${r.id}`}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        style={tabRowDangerStyle}
+                        disabled={deleteMutation.isPending}
+                        onClick={() => {
+                          if (
+                            typeof window !== "undefined" &&
+                            !window.confirm(
+                              `Delete bank account ${r.holder_name} (${r.currency})?`,
+                            )
+                          ) {
+                            return;
+                          }
+                          setRowError(null);
+                          deleteMutation.mutate(r.id);
+                        }}
+                        data-testid={`bank-delete-${r.id}`}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {rowError !== null ? (
+        <div
+          style={formErrorStyle}
+          role="alert"
+          data-testid="bank-row-error"
+        >
+          {rowError.message}
+        </div>
+      ) : null}
+
+      {editingRow !== null ? (
+        <BankAccountForm
+          mode="edit"
+          orgId={org.id}
+          bankAccountId={editingRow.id}
+          initial={{
+            holder_name: editingRow.holder_name,
+            currency: editingRow.currency,
+            country: editingRow.country,
+            bank_name: editingRow.bank_name ?? "",
+            iban: editingRow.iban ?? "",
+            bic: editingRow.bic ?? "",
+            account_number: editingRow.account_number ?? "",
+            routing_number: editingRow.routing_number ?? "",
+            is_primary: editingRow.is_primary,
+          }}
+          onClose={() => setEditing({ kind: "none" })}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+function BankAccountForm({
+  mode,
+  orgId,
+  bankAccountId,
+  initial,
+  onClose,
+}: {
+  mode: "add" | "edit";
+  orgId: string;
+  bankAccountId?: string;
+  initial: BankFormState;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [state, setState] = useState<BankFormState>(initial);
+  const [serverErrors, setServerErrors] = useState<BankAccountFormErrors>({});
+
+  const holderErr = validateBankHolderName(state.holder_name);
+  const currencyErr = validateBankCurrency(state.currency);
+  const countryErr = validateBankCountry(state.country);
+  const identifierErr = validateBankIdentifier(
+    state.iban,
+    state.account_number,
+    state.routing_number,
+  );
+  const localValid =
+    holderErr === null &&
+    currencyErr === null &&
+    countryErr === null &&
+    identifierErr === null;
+
+  const createMutation = useMutation<BankAccountEnvelope, ApiError, void>({
+    mutationFn: () =>
+      authedFetch<BankAccountEnvelope>({
+        method: "POST",
+        path: `/v1/organizations/${encodeURIComponent(orgId)}/bank-accounts`,
+        body: buildCreateBankBody(state),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["admin", "organizations", orgId, "bank-accounts"],
+      });
+      onClose();
+    },
+    onError: (err) => setServerErrors(mapBankAccountServerError(err)),
+  });
+
+  const updateMutation = useMutation<BankAccountEnvelope, ApiError, void>({
+    mutationFn: () =>
+      authedFetch<BankAccountEnvelope>({
+        method: "PATCH",
+        path: `/v1/organizations/${encodeURIComponent(orgId)}/bank-accounts/${encodeURIComponent(bankAccountId ?? "")}`,
+        body: buildUpdateBankBody(state, initial),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["admin", "organizations", orgId, "bank-accounts"],
+      });
+      onClose();
+    },
+    onError: (err) => setServerErrors(mapBankAccountServerError(err)),
+  });
+
+  const busy = createMutation.isPending || updateMutation.isPending;
+
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setServerErrors({});
+    if (!localValid) return;
+    if (mode === "add") createMutation.mutate();
+    else updateMutation.mutate();
+  }
+
+  return (
+    <form
+      onSubmit={onSubmit}
+      style={bankFormStyle}
+      noValidate
+      data-testid={`bank-form-${mode}`}
+    >
+      <h4 style={subSectionTitleStyle}>
+        {mode === "add" ? "Add bank account" : "Edit bank account"}
+      </h4>
+      <div style={fieldGridStyle}>
+        <FieldRow
+          label="Holder name"
+          htmlFor={`bank-holder-${mode}`}
+          error={serverErrors.holder_name ?? null}
+          localError={state.holder_name.length > 0 ? holderErr : null}
+          hint="Typically the org's legal_name."
+        >
+          <input
+            id={`bank-holder-${mode}`}
+            type="text"
+            value={state.holder_name}
+            onChange={(e) =>
+              setState({ ...state, holder_name: e.target.value })
+            }
+            style={inputStyle}
+            maxLength={200}
+            data-testid={`bank-holder-${mode}`}
+          />
+        </FieldRow>
+        <FieldRow
+          label="Bank name"
+          htmlFor={`bank-bankname-${mode}`}
+          error={serverErrors.bank_name ?? null}
+          localError={null}
+          hint="Optional, free-form."
+        >
+          <input
+            id={`bank-bankname-${mode}`}
+            type="text"
+            value={state.bank_name}
+            onChange={(e) => setState({ ...state, bank_name: e.target.value })}
+            style={inputStyle}
+            maxLength={200}
+            data-testid={`bank-bankname-${mode}`}
+          />
+        </FieldRow>
+      </div>
+      <div style={fieldGridStyle}>
+        <FieldRow
+          label="Currency"
+          htmlFor={`bank-currency-${mode}`}
+          error={serverErrors.currency ?? null}
+          localError={state.currency.length > 0 ? currencyErr : null}
+          hint="ISO 4217 (EUR, USD…)."
+        >
+          <input
+            id={`bank-currency-${mode}`}
+            type="text"
+            value={state.currency}
+            onChange={(e) =>
+              setState({ ...state, currency: e.target.value.toUpperCase() })
+            }
+            style={inputMonoStyle}
+            maxLength={3}
+            data-testid={`bank-currency-${mode}`}
+          />
+        </FieldRow>
+        <FieldRow
+          label="Country"
+          htmlFor={`bank-country-${mode}`}
+          error={serverErrors.country ?? null}
+          localError={state.country.length > 0 ? countryErr : null}
+          hint="ISO 3166-1 alpha-2 (DE, US…)."
+        >
+          <input
+            id={`bank-country-${mode}`}
+            type="text"
+            value={state.country}
+            onChange={(e) =>
+              setState({ ...state, country: e.target.value.toUpperCase() })
+            }
+            style={inputMonoStyle}
+            maxLength={2}
+            data-testid={`bank-country-${mode}`}
+          />
+        </FieldRow>
+      </div>
+      <div style={fieldGridStyle}>
+        <FieldRow
+          label="IBAN"
+          htmlFor={`bank-iban-${mode}`}
+          error={serverErrors.iban ?? null}
+          localError={null}
+          hint="Use IBAN for EU; or fill account_number + routing_number."
+        >
+          <input
+            id={`bank-iban-${mode}`}
+            type="text"
+            value={state.iban}
+            onChange={(e) => setState({ ...state, iban: e.target.value })}
+            style={inputMonoStyle}
+            maxLength={34}
+            data-testid={`bank-iban-${mode}`}
+          />
+        </FieldRow>
+        <FieldRow
+          label="BIC / SWIFT"
+          htmlFor={`bank-bic-${mode}`}
+          error={serverErrors.bic ?? null}
+          localError={null}
+          hint="8 or 11 chars."
+        >
+          <input
+            id={`bank-bic-${mode}`}
+            type="text"
+            value={state.bic}
+            onChange={(e) => setState({ ...state, bic: e.target.value })}
+            style={inputMonoStyle}
+            maxLength={11}
+            data-testid={`bank-bic-${mode}`}
+          />
+        </FieldRow>
+      </div>
+      <div style={fieldGridStyle}>
+        <FieldRow
+          label="Account number"
+          htmlFor={`bank-acct-${mode}`}
+          error={serverErrors.account_number ?? null}
+          localError={null}
+          hint="Domestic (non-IBAN) — pairs with routing_number."
+        >
+          <input
+            id={`bank-acct-${mode}`}
+            type="text"
+            value={state.account_number}
+            onChange={(e) =>
+              setState({ ...state, account_number: e.target.value })
+            }
+            style={inputMonoStyle}
+            maxLength={34}
+            data-testid={`bank-acct-${mode}`}
+          />
+        </FieldRow>
+        <FieldRow
+          label="Routing number"
+          htmlFor={`bank-routing-${mode}`}
+          error={serverErrors.routing_number ?? null}
+          localError={null}
+          hint="ABA / sort code — pairs with account_number."
+        >
+          <input
+            id={`bank-routing-${mode}`}
+            type="text"
+            value={state.routing_number}
+            onChange={(e) =>
+              setState({ ...state, routing_number: e.target.value })
+            }
+            style={inputMonoStyle}
+            maxLength={20}
+            data-testid={`bank-routing-${mode}`}
+          />
+        </FieldRow>
+      </div>
+      <label style={fieldLabelStyle}>
+        <input
+          type="checkbox"
+          checked={state.is_primary}
+          onChange={(e) => setState({ ...state, is_primary: e.target.checked })}
+          data-testid={`bank-primary-${mode}`}
+        />{" "}
+        Designate as default (primary)
+      </label>
+
+      {identifierErr !== null ? (
+        <div style={fieldErrorStyle} role="alert" data-testid="bank-id-error">
+          {identifierErr}
+        </div>
+      ) : null}
+
+      {serverErrors.form !== undefined ? (
+        <div style={formErrorStyle} role="alert" data-testid="bank-form-error">
+          {serverErrors.form}
+        </div>
+      ) : null}
+
+      <div style={formActionsStyle}>
+        <button
+          type="button"
+          style={secondaryButtonStyle}
+          onClick={onClose}
+          data-testid={`bank-form-cancel-${mode}`}
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          style={primaryButtonStyle}
+          disabled={!localValid || busy}
+          data-testid={`bank-form-submit-${mode}`}
+        >
+          {busy ? "Saving…" : mode === "add" ? "Create" : "Save"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+export function buildCreateBankBody(s: BankFormState): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    holder_name: s.holder_name.trim(),
+    currency: s.currency.trim().toUpperCase(),
+    country: s.country.trim().toUpperCase(),
+    is_primary: s.is_primary,
+  };
+  if (s.bank_name.trim() !== "") body.bank_name = s.bank_name.trim();
+  if (s.iban.trim() !== "") body.iban = s.iban.trim();
+  if (s.bic.trim() !== "") body.bic = s.bic.trim();
+  if (s.account_number.trim() !== "")
+    body.account_number = s.account_number.trim();
+  if (s.routing_number.trim() !== "")
+    body.routing_number = s.routing_number.trim();
+  return body;
+}
+
+export function buildUpdateBankBody(
+  s: BankFormState,
+  initial: BankFormState,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  if (s.holder_name.trim() !== initial.holder_name)
+    body.holder_name = s.holder_name.trim();
+  if (s.currency.trim().toUpperCase() !== initial.currency)
+    body.currency = s.currency.trim().toUpperCase();
+  if (s.country.trim().toUpperCase() !== initial.country)
+    body.country = s.country.trim().toUpperCase();
+  if (s.bank_name.trim() !== (initial.bank_name ?? ""))
+    body.bank_name = s.bank_name.trim() === "" ? null : s.bank_name.trim();
+  if (s.iban.trim() !== (initial.iban ?? ""))
+    body.iban = s.iban.trim() === "" ? null : s.iban.trim();
+  if (s.bic.trim() !== (initial.bic ?? ""))
+    body.bic = s.bic.trim() === "" ? null : s.bic.trim();
+  if (s.account_number.trim() !== (initial.account_number ?? ""))
+    body.account_number =
+      s.account_number.trim() === "" ? null : s.account_number.trim();
+  if (s.routing_number.trim() !== (initial.routing_number ?? ""))
+    body.routing_number =
+      s.routing_number.trim() === "" ? null : s.routing_number.trim();
+  if (s.is_primary !== initial.is_primary) body.is_primary = s.is_primary;
+  return body;
 }
 
 interface MembershipResponse {
@@ -3176,6 +4489,38 @@ const tabTdMonoStyle: CSSProperties = {
   ...tabTdStyle,
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
   fontSize: 11,
+};
+
+// Legal & billing tab styles (feature #256).
+const legalFormStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 12,
+  marginTop: 8,
+};
+const bankFormStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 12,
+  padding: 12,
+  border: "1px solid #e2e8f0",
+  borderRadius: 6,
+  background: "#f8fafc",
+  marginTop: 8,
+  marginBottom: 12,
+};
+const fieldGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: 12,
+};
+const subSectionTitleStyle: CSSProperties = {
+  margin: "8px 0 0",
+  fontSize: 12,
+  fontWeight: 600,
+  color: "#334155",
+  textTransform: "uppercase",
+  letterSpacing: 0.4,
 };
 
 // Users tab styles (feature #241).
