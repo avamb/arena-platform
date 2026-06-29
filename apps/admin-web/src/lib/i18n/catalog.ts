@@ -50,6 +50,7 @@ export const ruCatalog: Catalog = {
   // human-readable descriptions paired with the English noun in parens).
   "nav.workspace": "Рабочее место",
   "nav.networks": "Сети операторов (Operator Networks)",
+  "nav.users": "Users",
   "nav.organizations": "Организации (Organizations)",
   "nav.events_sessions": "События и сеансы (Events and Sessions)",
   "nav.venues": "Площадки (Venues)",
@@ -145,6 +146,7 @@ export const enCatalog: Catalog = {
   // Navigation labels
   "nav.workspace": "Workspace",
   "nav.networks": "Operator Networks",
+  "nav.users": "Users",
   "nav.organizations": "Organizations",
   "nav.events_sessions": "Events and Sessions",
   "nav.venues": "Venues",

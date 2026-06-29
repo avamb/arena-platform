@@ -130,6 +130,17 @@ func TestAdminUsers_CreateUserValidGlobalRoleReachesDB(t *testing.T) {
 	}
 }
 
+func TestAdminUsers_RouteRequiresSuperadminRead(t *testing.T) {
+	t.Parallel()
+	content := findFileByName(t, "server.go")
+	if !strings.Contains(content, `s.applyAuth(pr, "superadmin.read", "users")`) {
+		t.Fatalf("POST /v1/admin/users must be gated by superadmin.read")
+	}
+	if strings.Contains(content, `s.applyAuth(pr, "membership.grant", "users")`) {
+		t.Fatalf("POST /v1/admin/users must not be gated only by membership.grant")
+	}
+}
+
 func TestAdminUsers_RoleResolverIncludesGlobalUserRoles(t *testing.T) {
 	t.Parallel()
 	sql := findFileByName(t, "memberships.sql")

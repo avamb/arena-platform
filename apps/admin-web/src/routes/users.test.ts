@@ -110,7 +110,7 @@ describe("Users provisioning helpers", () => {
       ).orgId,
     ).toBe("bad org");
     expect(mapCreateUserServerError(err("permissions.denied")).form).toMatch(
-      /membership\.grant/,
+      /superadmin\.read/,
     );
     expect(
       mapCreateUserServerError(err("superadmin.reason_required")).form,

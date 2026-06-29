@@ -121,6 +121,7 @@ describe("entity name / technical identifier policy (Feature #251)", () => {
 
   const ENTITY_NAME_BY_NAV_KEY: Readonly<Record<string, string>> = {
     "nav.networks": "Operator Networks",
+    "nav.users": "Users",
     "nav.organizations": "Organizations",
     "nav.venues": "Venues",
     "nav.orders": "Orders",

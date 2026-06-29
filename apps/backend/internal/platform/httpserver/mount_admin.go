@@ -127,7 +127,7 @@ func (s *Server) mountAdminUserRoutes(r chi.Router) {
 		return
 	}
 	r.Group(func(pr chi.Router) {
-		s.applyAuth(pr, "membership.grant", "users")
+		s.applyAuth(pr, "superadmin.read", "users")
 		pr.Post("/admin/users", s.handleAdminCreateUser)
 	})
 }

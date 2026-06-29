@@ -116,10 +116,10 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     id: "users",
     label: "Users",
     to: "/users",
-    permission: { anyOf: ["membership.grant"] },
+    permission: { anyOf: ["superadmin.read", "membership.grant"] },
     scopeKinds: ["global", "platform"],
     purpose:
-      "Create users and assign their first platform or organization role. Requires membership.grant.",
+      "Create users and assign their first platform or organization role. Requires superadmin.read to view and membership.grant to submit.",
   },
   {
     id: "organizations",

@@ -157,6 +157,15 @@ describe("visibleNavEntries -- /v1/me role fixtures", () => {
     ]);
   });
 
+  it("superadmin.read alone shows the Users entry in the SuperAdmin sidebar", () => {
+    const out = visibleNavEntries(
+      NAV_ENTRIES,
+      new Set(["superadmin.read"]),
+      "global",
+    );
+    expect(ids(out)).toContain("users");
+  });
+
   it("platform_operator: only workspace + geo (no superadmin.read, no network.*)", () => {
     const out = visibleNavEntries(
       NAV_ENTRIES,
@@ -304,6 +313,10 @@ describe("route guard predicate (sidebar parity)", () => {
     for (const e of NAV_ENTRIES) {
       expect(canAccess(e.to, platformSuperadmin.permissions, "global")).toBe(true);
     }
+  });
+
+  it("superadmin.read can access /users even before membership.grant is present", () => {
+    expect(canAccess("/users", new Set(["superadmin.read"]), "global")).toBe(true);
   });
 
   it("network_operator cannot access /organizations or /geo", () => {

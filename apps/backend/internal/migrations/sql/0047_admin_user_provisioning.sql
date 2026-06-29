@@ -2,11 +2,10 @@
 -- =====================================================================
 -- arena_new - SuperAdmin user provisioning permission grant
 --
--- The POST /v1/admin/users provisioning endpoint is gated by
--- membership.grant because it creates either an organization membership or a
--- global platform role assignment. The platform_superadmin role needs that
--- existing capability to perform the documented "create user + assign role"
--- workflow from the SuperAdmin console.
+-- SuperAdmin user provisioning is exposed through the SuperAdmin console and
+-- gated by superadmin.read at the route level. The same workflow may also
+-- need membership.grant for organization membership management surfaces, so
+-- platform_superadmin receives the grant explicitly.
 -- =====================================================================
 
 INSERT INTO role_permissions (role_id, permission_id)

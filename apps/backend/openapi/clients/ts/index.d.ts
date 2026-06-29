@@ -240,7 +240,7 @@ export interface paths {
          *     `agent`, `network_operator`, `external_ticketing_operator`) require
          *     `org_id` and are stored as active memberships.
          *
-         *     Requires JWT + membership.grant + X-Admin-Reason. Existing emails are
+         *     Requires JWT + superadmin.read + X-Admin-Reason. Existing emails are
          *     rejected with admin_user.email_already_registered; use the membership
          *     endpoints to add roles to existing users.
          */
@@ -3430,7 +3430,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor does not hold membership.grant. */
+            /** @description Actor does not hold superadmin.read. */
             403: {
                 headers: {
                     [name: string]: unknown;

@@ -350,7 +350,7 @@ export function mapCreateUserServerError(err: ApiError): CreateUserErrors {
     case "admin_user.org_not_allowed":
       return { orgId: err.message };
     case "permissions.denied":
-      return { form: "Your account is missing membership.grant." };
+      return { form: "Your account is missing superadmin.read." };
     case "superadmin.missing_reason":
     case "superadmin.reason_required":
       return { form: "An audit reason is required before creating users." };
