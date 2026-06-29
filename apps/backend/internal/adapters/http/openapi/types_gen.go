@@ -84,6 +84,15 @@ const (
 	CreateOrganizationRequestTaxIdSchemeUsEin CreateOrganizationRequestTaxIdScheme = "us_ein"
 )
 
+// Defines values for CreatePaymentIntentRequestInitialState.
+const (
+	CreatePaymentIntentRequestInitialStateAuthorized     CreatePaymentIntentRequestInitialState = "authorized"
+	CreatePaymentIntentRequestInitialStateCreated        CreatePaymentIntentRequestInitialState = "created"
+	CreatePaymentIntentRequestInitialStateManualReview   CreatePaymentIntentRequestInitialState = "manual_review"
+	CreatePaymentIntentRequestInitialStateProcessing     CreatePaymentIntentRequestInitialState = "processing"
+	CreatePaymentIntentRequestInitialStateRequiresAction CreatePaymentIntentRequestInitialState = "requires_action"
+)
+
 // Defines values for CreatePaymentProviderConfigRequestMode.
 const (
 	CreatePaymentProviderConfigRequestModeLive CreatePaymentProviderConfigRequestMode = "live"
@@ -212,6 +221,27 @@ const (
 	OrganizationItemTaxIdSchemeUsEin OrganizationItemTaxIdScheme = "us_ein"
 )
 
+// Defines values for PaymentIntentItemState.
+const (
+	PaymentIntentItemStateAuthorized     PaymentIntentItemState = "authorized"
+	PaymentIntentItemStateCreated        PaymentIntentItemState = "created"
+	PaymentIntentItemStateFailed         PaymentIntentItemState = "failed"
+	PaymentIntentItemStateManualReview   PaymentIntentItemState = "manual_review"
+	PaymentIntentItemStateProcessing     PaymentIntentItemState = "processing"
+	PaymentIntentItemStateRequiresAction PaymentIntentItemState = "requires_action"
+	PaymentIntentItemStateSucceeded      PaymentIntentItemState = "succeeded"
+)
+
+// Defines values for PaymentIntentWebhookRequestTargetState.
+const (
+	PaymentIntentWebhookRequestTargetStateAuthorized     PaymentIntentWebhookRequestTargetState = "authorized"
+	PaymentIntentWebhookRequestTargetStateFailed         PaymentIntentWebhookRequestTargetState = "failed"
+	PaymentIntentWebhookRequestTargetStateManualReview   PaymentIntentWebhookRequestTargetState = "manual_review"
+	PaymentIntentWebhookRequestTargetStateProcessing     PaymentIntentWebhookRequestTargetState = "processing"
+	PaymentIntentWebhookRequestTargetStateRequiresAction PaymentIntentWebhookRequestTargetState = "requires_action"
+	PaymentIntentWebhookRequestTargetStateSucceeded      PaymentIntentWebhookRequestTargetState = "succeeded"
+)
+
 // Defines values for PaymentProviderConfigItemMode.
 const (
 	PaymentProviderConfigItemModeLive PaymentProviderConfigItemMode = "live"
@@ -274,6 +304,17 @@ const (
 	TicketTierItemPricingModeFixed TicketTierItemPricingMode = "fixed"
 	TicketTierItemPricingModeFree  TicketTierItemPricingMode = "free"
 	TicketTierItemPricingModePwyw  TicketTierItemPricingMode = "pwyw"
+)
+
+// Defines values for TransitionPaymentIntentRequestState.
+const (
+	Authorized     TransitionPaymentIntentRequestState = "authorized"
+	Created        TransitionPaymentIntentRequestState = "created"
+	Failed         TransitionPaymentIntentRequestState = "failed"
+	ManualReview   TransitionPaymentIntentRequestState = "manual_review"
+	Processing     TransitionPaymentIntentRequestState = "processing"
+	RequiresAction TransitionPaymentIntentRequestState = "requires_action"
+	Succeeded      TransitionPaymentIntentRequestState = "succeeded"
 )
 
 // Defines values for UpdateEventRequestVisibility.
@@ -349,9 +390,9 @@ const (
 
 // Defines values for VenueItemStatus.
 const (
-	VenueItemStatusActive   VenueItemStatus = "active"
-	VenueItemStatusArchived VenueItemStatus = "archived"
-	VenueItemStatusDraft    VenueItemStatus = "draft"
+	Active   VenueItemStatus = "active"
+	Archived VenueItemStatus = "archived"
+	Draft    VenueItemStatus = "draft"
 )
 
 // Defines values for ListEventsParamsVisibility.
@@ -925,6 +966,51 @@ type CreateOrganizationRequest struct {
 
 // CreateOrganizationRequestTaxIdScheme Tax-id scheme (optional on create).
 type CreateOrganizationRequestTaxIdScheme string
+
+// CreatePaymentIntentRequest Request body for `POST /v1/payment-intents`. Creates a new
+// payment intent in state `created` (the default) or in
+// `requires_action` / `processing` when the provider already
+// issued a challenge synchronously. Terminal states cannot be
+// used as the initial state.
+type CreatePaymentIntentRequest struct {
+	// Amount Total payment amount in minor currency units.
+	Amount int64 `json:"amount"`
+
+	// CheckoutSessionId Optional checkout session this payment is linked to. When
+	// provided, a webhook transition to `succeeded` will trigger
+	// ticket issuance for the session.
+	CheckoutSessionId *openapi_types.UUID `json:"checkout_session_id"`
+
+	// ClientSecret Optional provider client secret for SDK-based SCA flows.
+	ClientSecret *string `json:"client_secret"`
+
+	// Currency ISO 4217 currency code.
+	Currency string `json:"currency"`
+
+	// InitialState Optional initial state. Defaults to `created` when omitted.
+	// Terminal states (`succeeded`, `failed`) are rejected with
+	// `payment_intent.invalid_initial_state`.
+	InitialState *CreatePaymentIntentRequestInitialState `json:"initial_state,omitempty"`
+
+	// OrgId Organization that owns the payment intent.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// Provider Payment provider name (e.g. `stripe`, `tinkoff`, `mock`).
+	Provider string `json:"provider"`
+
+	// ProviderPaymentId Provider-side payment intent identifier; may be `null` and
+	// set later via webhook or transition.
+	ProviderPaymentId *string `json:"provider_payment_id"`
+
+	// ScaRedirectUrl 3DS / SCA redirect URL; set when creating an intent that
+	// already requires a buyer-side challenge.
+	ScaRedirectUrl *string `json:"sca_redirect_url"`
+}
+
+// CreatePaymentIntentRequestInitialState Optional initial state. Defaults to `created` when omitted.
+// Terminal states (`succeeded`, `failed`) are rejected with
+// `payment_intent.invalid_initial_state`.
+type CreatePaymentIntentRequestInitialState string
 
 // CreatePaymentProviderConfigRequest Request body for POST /v1/organizations/{org_id}/payment-configs.
 // `secrets` is a map[string]string of credential fields; non-empty values
@@ -2163,6 +2249,168 @@ type PasswordResetRequestResponse struct {
 	Message string `json:"message"`
 }
 
+// PaymentIntentEnvelope Top-level response envelope returned by every payment-intent
+// endpoint that yields a single row. Wraps a single
+// `PaymentIntentItem` under the `payment_intent` key.
+type PaymentIntentEnvelope struct {
+	// PaymentIntent Canonical representation of a `payment_intents` row, returned by
+	// every endpoint in the payment intent state machine implemented
+	// in `apps/backend/internal/platform/httpserver/payment_intents.go`.
+	// The state column tracks the full SCA/3DS lifecycle. Terminal
+	// states (`succeeded`, `failed`) admit no further transitions.
+	PaymentIntent PaymentIntentItem `json:"payment_intent"`
+}
+
+// PaymentIntentItem Canonical representation of a `payment_intents` row, returned by
+// every endpoint in the payment intent state machine implemented
+// in `apps/backend/internal/platform/httpserver/payment_intents.go`.
+// The state column tracks the full SCA/3DS lifecycle. Terminal
+// states (`succeeded`, `failed`) admit no further transitions.
+type PaymentIntentItem struct {
+	// Amount Total payment amount in minor currency units.
+	Amount int64 `json:"amount"`
+
+	// AuthorizedAt RFC3339 timestamp when the intent reached `authorized`.
+	AuthorizedAt *time.Time `json:"authorized_at"`
+
+	// CheckoutSessionId Optional link to the checkout session this payment was created
+	// for; `null` for standalone payments not tied to a checkout.
+	CheckoutSessionId *openapi_types.UUID `json:"checkout_session_id"`
+
+	// ClientSecret Provider client secret for SDK-based SCA flows (e.g. Stripe.js
+	// `confirmCardPayment`). Treat as a bearer credential.
+	ClientSecret *string `json:"client_secret"`
+
+	// CreatedAt RFC3339 row-creation timestamp.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Currency ISO 4217 currency code (`USD`, `EUR`, ...).
+	Currency string `json:"currency"`
+
+	// FailedAt RFC3339 timestamp when the intent reached `failed`.
+	FailedAt *time.Time `json:"failed_at"`
+
+	// FailureCode Structured failure code populated when the intent transitions
+	// to `failed` (provider-specific, e.g. `card_declined`).
+	FailureCode *string `json:"failure_code"`
+
+	// FailureMessage Human-readable failure description populated when the intent
+	// transitions to `failed`.
+	FailureMessage *string `json:"failure_message"`
+
+	// Id UUIDv7 of the payment intent row.
+	Id openapi_types.UUID `json:"id"`
+
+	// OrgId Organization that owns the payment intent.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// Provider Payment provider name (e.g. `stripe`, `tinkoff`, `mock`).
+	Provider string `json:"provider"`
+
+	// ProviderPaymentId Provider-side payment intent identifier. May be `null` at
+	// creation when the provider issues the id asynchronously; set
+	// on the first webhook callback or transition that carries it.
+	ProviderPaymentId *string `json:"provider_payment_id"`
+
+	// ScaRedirectUrl 3DS / SCA redirect URL. Populated when the intent enters
+	// `requires_action` so the buyer can complete the challenge.
+	ScaRedirectUrl *string `json:"sca_redirect_url"`
+
+	// State Current state in the payment intent state machine. Valid
+	// transitions:
+	// `created` → {`requires_action`, `processing`};
+	// `requires_action` → {`processing`, `failed`};
+	// `processing` → {`authorized`, `succeeded`, `failed`,
+	// `manual_review`};
+	// `authorized` → {`succeeded`, `failed`};
+	// `manual_review` → {`succeeded`, `failed`};
+	// `succeeded`, `failed` are terminal.
+	State PaymentIntentItemState `json:"state"`
+
+	// SucceededAt RFC3339 timestamp when the intent reached `succeeded`.
+	SucceededAt *time.Time `json:"succeeded_at"`
+
+	// UpdatedAt RFC3339 last-update timestamp.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// PaymentIntentItemState Current state in the payment intent state machine. Valid
+// transitions:
+// `created` → {`requires_action`, `processing`};
+// `requires_action` → {`processing`, `failed`};
+// `processing` → {`authorized`, `succeeded`, `failed`,
+// `manual_review`};
+// `authorized` → {`succeeded`, `failed`};
+// `manual_review` → {`succeeded`, `failed`};
+// `succeeded`, `failed` are terminal.
+type PaymentIntentItemState string
+
+// PaymentIntentWebhookAck Acknowledgement envelope returned by the webhook endpoint on
+// `200 OK`. `processed: true` means the state machine advanced;
+// `processed: false` means the event was recorded (or recognised)
+// but no transition was applied — see `reason` for the cause
+// (unknown event type, terminal intent, invalid transition).
+// When `processed: true` and the resulting state is non-terminal,
+// the response also includes the updated `payment_intent`.
+type PaymentIntentWebhookAck struct {
+	// Acknowledged Always `true` when the webhook is accepted.
+	Acknowledged bool `json:"acknowledged"`
+
+	// EventType Echo of the inbound `event_type`.
+	EventType string `json:"event_type"`
+
+	// PaymentIntent Present when `processed: true`; carries the updated intent.
+	PaymentIntent *PaymentIntentItem `json:"payment_intent"`
+
+	// Processed `true` when the state machine advanced; `false` when the
+	// event was acknowledged without transitioning.
+	Processed bool `json:"processed"`
+
+	// Reason Present when `processed` is `false`; explains why no
+	// transition was performed.
+	Reason *string `json:"reason,omitempty"`
+}
+
+// PaymentIntentWebhookRequest Normalised webhook body for `POST /v1/payment-intents/webhook`.
+// Real deployments verify provider HMAC / signature headers (e.g.
+// `Stripe-Signature`) before parsing. The handler maps
+// `event_type` → target state via a Stripe-compatible mapping
+// plus `mock.*` shorthand aliases; `target_state` may be supplied
+// to override the mapping (used by mock-provider tests).
+//
+// Idempotency: each `(provider_payment_id, event_type)` pair is
+// recorded with a UNIQUE constraint. Duplicate deliveries return
+// `204 No Content` without reprocessing.
+type PaymentIntentWebhookRequest struct {
+	ClientSecret *string `json:"client_secret"`
+
+	// EventPayload Raw provider webhook payload, persisted verbatim for audit
+	// in `payment_intent_events.event_payload`.
+	EventPayload *interface{} `json:"event_payload,omitempty"`
+
+	// EventType Provider event type string (e.g.
+	// `payment_intent.succeeded`,
+	// `payment_intent.payment_failed`,
+	// `payment_intent.requires_action`). Unknown event types are
+	// acknowledged with `processed: false` (no transition).
+	EventType      string  `json:"event_type"`
+	FailureCode    *string `json:"failure_code"`
+	FailureMessage *string `json:"failure_message"`
+
+	// ProviderPaymentId Provider-side payment intent identifier used to look up the
+	// row to transition.
+	ProviderPaymentId string  `json:"provider_payment_id"`
+	ScaRedirectUrl    *string `json:"sca_redirect_url"`
+
+	// TargetState Optional explicit target state that overrides the
+	// `event_type` → state mapping.
+	TargetState *PaymentIntentWebhookRequestTargetState `json:"target_state,omitempty"`
+}
+
+// PaymentIntentWebhookRequestTargetState Optional explicit target state that overrides the
+// `event_type` → state mapping.
+type PaymentIntentWebhookRequestTargetState string
+
 // PaymentProviderConfigItem A single payment provider config row for the owning organization.
 //
 // Secret values are NEVER returned. `secret_fields_set` lists the
@@ -2796,6 +3044,40 @@ type TicketTierItemPricingMode string
 type TicketTierListResponse struct {
 	Tiers []TicketTierItem `json:"tiers"`
 }
+
+// TransitionPaymentIntentRequest Request body for `POST /v1/payment-intents/{id}/transition`.
+// Drives the payment intent state machine forward. Transitioning
+// to `requires_action` REQUIRES `sca_redirect_url`
+// (handler rejects with
+// `payment_intent.missing_sca_redirect_url` otherwise).
+// Transitioning from a terminal state returns 409
+// `payment_intent.terminal_state`; invalid transitions return
+// 409 `payment_intent.invalid_transition`.
+type TransitionPaymentIntentRequest struct {
+	// ClientSecret Provider client secret for SDK-based SCA flows.
+	ClientSecret *string `json:"client_secret"`
+
+	// FailureCode Structured failure code; set when transitioning to `failed`.
+	FailureCode *string `json:"failure_code"`
+
+	// FailureMessage Human-readable failure message; set when transitioning to
+	// `failed`.
+	FailureMessage *string `json:"failure_message"`
+
+	// ProviderPaymentId Provider-side payment intent identifier; may be set on the
+	// first transition if it was unknown at creation.
+	ProviderPaymentId *string `json:"provider_payment_id"`
+
+	// ScaRedirectUrl 3DS / SCA redirect URL; required when transitioning to
+	// `requires_action`.
+	ScaRedirectUrl *string `json:"sca_redirect_url"`
+
+	// State Target state.
+	State TransitionPaymentIntentRequestState `json:"state"`
+}
+
+// TransitionPaymentIntentRequestState Target state.
+type TransitionPaymentIntentRequestState string
 
 // UpdateBankAccountRequest Request body for PATCH /v1/organizations/{org_id}/bank-accounts/{id}.
 // Omitted fields are left unchanged. Sending `is_primary: true`
@@ -3709,6 +3991,15 @@ type PostV1OrganizationsOrgIdVenuesJSONRequestBody = CreateVenueRequest
 
 // PatchV1OrganizationsOrgIdVenuesIdJSONRequestBody defines body for PatchV1OrganizationsOrgIdVenuesId for application/json ContentType.
 type PatchV1OrganizationsOrgIdVenuesIdJSONRequestBody = UpdateVenueRequest
+
+// CreatePaymentIntentJSONRequestBody defines body for CreatePaymentIntent for application/json ContentType.
+type CreatePaymentIntentJSONRequestBody = CreatePaymentIntentRequest
+
+// PaymentIntentWebhookJSONRequestBody defines body for PaymentIntentWebhook for application/json ContentType.
+type PaymentIntentWebhookJSONRequestBody = PaymentIntentWebhookRequest
+
+// TransitionPaymentIntentJSONRequestBody defines body for TransitionPaymentIntent for application/json ContentType.
+type TransitionPaymentIntentJSONRequestBody = TransitionPaymentIntentRequest
 
 // CreateReservationJSONRequestBody defines body for CreateReservation for application/json ContentType.
 type CreateReservationJSONRequestBody = CreateReservationRequest

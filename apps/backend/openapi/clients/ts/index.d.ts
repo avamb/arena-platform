@@ -2117,6 +2117,121 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/payment-intents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a payment intent
+         * @description Creates a new payment intent in the requested initial state
+         *     (defaults to `created`). Optionally linked to a checkout
+         *     session — when the payment later transitions to `succeeded`
+         *     via webhook, tickets are issued for that session.
+         *
+         *     Requires JWT + the `payment_intent.create` permission.
+         */
+        post: operations["createPaymentIntent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/payment-intents/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Payment intent UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a payment intent
+         * @description Returns the current state of a payment intent.
+         *
+         *     Requires JWT + the `payment_intent.read` permission.
+         */
+        get: operations["getPaymentIntent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/payment-intents/{id}/transition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Payment intent UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Drive the payment intent state machine
+         * @description Validates the requested state transition against the state
+         *     machine, then persists the new state. Transitioning to
+         *     `requires_action` requires `sca_redirect_url`. Transitioning
+         *     from a terminal state returns 409 `payment_intent.terminal_state`;
+         *     invalid transitions return 409 `payment_intent.invalid_transition`.
+         *
+         *     Requires JWT + the `payment_intent.update` permission.
+         */
+        post: operations["transitionPaymentIntent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/payment-intents/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Provider webhook ingestion
+         * @description Provider-side webhook endpoint. **Unauthenticated** — providers
+         *     deliver from their own infrastructure and authenticate via
+         *     HMAC / signature headers (e.g. `Stripe-Signature`); signature
+         *     verification is performed inside the handler (or a deployment
+         *     edge proxy) prior to parsing.
+         *
+         *     Idempotency: each `(provider_payment_id, event_type)` pair is
+         *     recorded in `payment_intent_events` with a UNIQUE constraint.
+         *     Duplicate deliveries return `204 No Content` without
+         *     reprocessing. Unknown event types are acknowledged with
+         *     `processed: false`. When the resulting state would advance an
+         *     already-terminal intent the response is `200` with
+         *     `processed: false` and a `reason` string.
+         *
+         *     No bearer token is required; this endpoint is excluded from
+         *     every server permission. The `payment_intent.create` permission
+         *     documented elsewhere does not apply.
+         */
+        post: operations["paymentIntentWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -5949,6 +6064,266 @@ export interface components {
              *     for the paid path; omit for the free path.
              */
             payment_provider?: string;
+        };
+        /**
+         * @description Canonical representation of a `payment_intents` row, returned by
+         *     every endpoint in the payment intent state machine implemented
+         *     in `apps/backend/internal/platform/httpserver/payment_intents.go`.
+         *     The state column tracks the full SCA/3DS lifecycle. Terminal
+         *     states (`succeeded`, `failed`) admit no further transitions.
+         */
+        PaymentIntentItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the payment intent row.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Optional link to the checkout session this payment was created
+             *     for; `null` for standalone payments not tied to a checkout.
+             */
+            checkout_session_id: string | null;
+            /**
+             * Format: uuid
+             * @description Organization that owns the payment intent.
+             */
+            org_id: string;
+            /** @description Payment provider name (e.g. `stripe`, `tinkoff`, `mock`). */
+            provider: string;
+            /**
+             * @description Provider-side payment intent identifier. May be `null` at
+             *     creation when the provider issues the id asynchronously; set
+             *     on the first webhook callback or transition that carries it.
+             */
+            provider_payment_id: string | null;
+            /**
+             * Format: int64
+             * @description Total payment amount in minor currency units.
+             */
+            amount: number;
+            /** @description ISO 4217 currency code (`USD`, `EUR`, ...). */
+            currency: string;
+            /**
+             * @description Current state in the payment intent state machine. Valid
+             *     transitions:
+             *     `created` → {`requires_action`, `processing`};
+             *     `requires_action` → {`processing`, `failed`};
+             *     `processing` → {`authorized`, `succeeded`, `failed`,
+             *     `manual_review`};
+             *     `authorized` → {`succeeded`, `failed`};
+             *     `manual_review` → {`succeeded`, `failed`};
+             *     `succeeded`, `failed` are terminal.
+             * @enum {string}
+             */
+            state: "created" | "requires_action" | "processing" | "authorized" | "manual_review" | "succeeded" | "failed";
+            /**
+             * @description 3DS / SCA redirect URL. Populated when the intent enters
+             *     `requires_action` so the buyer can complete the challenge.
+             */
+            sca_redirect_url: string | null;
+            /**
+             * @description Provider client secret for SDK-based SCA flows (e.g. Stripe.js
+             *     `confirmCardPayment`). Treat as a bearer credential.
+             */
+            client_secret: string | null;
+            /**
+             * @description Structured failure code populated when the intent transitions
+             *     to `failed` (provider-specific, e.g. `card_declined`).
+             */
+            failure_code: string | null;
+            /**
+             * @description Human-readable failure description populated when the intent
+             *     transitions to `failed`.
+             */
+            failure_message: string | null;
+            /**
+             * Format: date-time
+             * @description RFC3339 timestamp when the intent reached `authorized`.
+             */
+            authorized_at: string | null;
+            /**
+             * Format: date-time
+             * @description RFC3339 timestamp when the intent reached `succeeded`.
+             */
+            succeeded_at: string | null;
+            /**
+             * Format: date-time
+             * @description RFC3339 timestamp when the intent reached `failed`.
+             */
+            failed_at: string | null;
+            /**
+             * Format: date-time
+             * @description RFC3339 row-creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description RFC3339 last-update timestamp.
+             */
+            updated_at: string;
+        };
+        /**
+         * @description Top-level response envelope returned by every payment-intent
+         *     endpoint that yields a single row. Wraps a single
+         *     `PaymentIntentItem` under the `payment_intent` key.
+         */
+        PaymentIntentEnvelope: {
+            payment_intent: components["schemas"]["PaymentIntentItem"];
+        };
+        /**
+         * @description Request body for `POST /v1/payment-intents`. Creates a new
+         *     payment intent in state `created` (the default) or in
+         *     `requires_action` / `processing` when the provider already
+         *     issued a challenge synchronously. Terminal states cannot be
+         *     used as the initial state.
+         */
+        CreatePaymentIntentRequest: {
+            /**
+             * Format: uuid
+             * @description Optional checkout session this payment is linked to. When
+             *     provided, a webhook transition to `succeeded` will trigger
+             *     ticket issuance for the session.
+             */
+            checkout_session_id?: string | null;
+            /**
+             * Format: uuid
+             * @description Organization that owns the payment intent.
+             */
+            org_id: string;
+            /** @description Payment provider name (e.g. `stripe`, `tinkoff`, `mock`). */
+            provider: string;
+            /**
+             * @description Provider-side payment intent identifier; may be `null` and
+             *     set later via webhook or transition.
+             */
+            provider_payment_id?: string | null;
+            /**
+             * Format: int64
+             * @description Total payment amount in minor currency units.
+             */
+            amount: number;
+            /** @description ISO 4217 currency code. */
+            currency: string;
+            /**
+             * @description Optional initial state. Defaults to `created` when omitted.
+             *     Terminal states (`succeeded`, `failed`) are rejected with
+             *     `payment_intent.invalid_initial_state`.
+             * @enum {string}
+             */
+            initial_state?: "created" | "requires_action" | "processing" | "authorized" | "manual_review";
+            /**
+             * @description 3DS / SCA redirect URL; set when creating an intent that
+             *     already requires a buyer-side challenge.
+             */
+            sca_redirect_url?: string | null;
+            /** @description Optional provider client secret for SDK-based SCA flows. */
+            client_secret?: string | null;
+        };
+        /**
+         * @description Request body for `POST /v1/payment-intents/{id}/transition`.
+         *     Drives the payment intent state machine forward. Transitioning
+         *     to `requires_action` REQUIRES `sca_redirect_url`
+         *     (handler rejects with
+         *     `payment_intent.missing_sca_redirect_url` otherwise).
+         *     Transitioning from a terminal state returns 409
+         *     `payment_intent.terminal_state`; invalid transitions return
+         *     409 `payment_intent.invalid_transition`.
+         */
+        TransitionPaymentIntentRequest: {
+            /**
+             * @description Target state.
+             * @enum {string}
+             */
+            state: "created" | "requires_action" | "processing" | "authorized" | "manual_review" | "succeeded" | "failed";
+            /**
+             * @description 3DS / SCA redirect URL; required when transitioning to
+             *     `requires_action`.
+             */
+            sca_redirect_url?: string | null;
+            /** @description Provider client secret for SDK-based SCA flows. */
+            client_secret?: string | null;
+            /** @description Structured failure code; set when transitioning to `failed`. */
+            failure_code?: string | null;
+            /**
+             * @description Human-readable failure message; set when transitioning to
+             *     `failed`.
+             */
+            failure_message?: string | null;
+            /**
+             * @description Provider-side payment intent identifier; may be set on the
+             *     first transition if it was unknown at creation.
+             */
+            provider_payment_id?: string | null;
+        };
+        /**
+         * @description Normalised webhook body for `POST /v1/payment-intents/webhook`.
+         *     Real deployments verify provider HMAC / signature headers (e.g.
+         *     `Stripe-Signature`) before parsing. The handler maps
+         *     `event_type` → target state via a Stripe-compatible mapping
+         *     plus `mock.*` shorthand aliases; `target_state` may be supplied
+         *     to override the mapping (used by mock-provider tests).
+         *
+         *     Idempotency: each `(provider_payment_id, event_type)` pair is
+         *     recorded with a UNIQUE constraint. Duplicate deliveries return
+         *     `204 No Content` without reprocessing.
+         */
+        PaymentIntentWebhookRequest: {
+            /**
+             * @description Provider-side payment intent identifier used to look up the
+             *     row to transition.
+             */
+            provider_payment_id: string;
+            /**
+             * @description Provider event type string (e.g.
+             *     `payment_intent.succeeded`,
+             *     `payment_intent.payment_failed`,
+             *     `payment_intent.requires_action`). Unknown event types are
+             *     acknowledged with `processed: false` (no transition).
+             */
+            event_type: string;
+            /**
+             * @description Optional explicit target state that overrides the
+             *     `event_type` → state mapping.
+             * @enum {string}
+             */
+            target_state?: "requires_action" | "processing" | "authorized" | "manual_review" | "succeeded" | "failed";
+            sca_redirect_url?: string | null;
+            client_secret?: string | null;
+            failure_code?: string | null;
+            failure_message?: string | null;
+            /**
+             * @description Raw provider webhook payload, persisted verbatim for audit
+             *     in `payment_intent_events.event_payload`.
+             */
+            event_payload?: unknown;
+        };
+        /**
+         * @description Acknowledgement envelope returned by the webhook endpoint on
+         *     `200 OK`. `processed: true` means the state machine advanced;
+         *     `processed: false` means the event was recorded (or recognised)
+         *     but no transition was applied — see `reason` for the cause
+         *     (unknown event type, terminal intent, invalid transition).
+         *     When `processed: true` and the resulting state is non-terminal,
+         *     the response also includes the updated `payment_intent`.
+         */
+        PaymentIntentWebhookAck: {
+            /** @description Always `true` when the webhook is accepted. */
+            acknowledged: boolean;
+            /** @description Echo of the inbound `event_type`. */
+            event_type: string;
+            /**
+             * @description `true` when the state machine advanced; `false` when the
+             *     event was acknowledged without transitioning.
+             */
+            processed: boolean;
+            /**
+             * @description Present when `processed` is `false`; explains why no
+             *     transition was performed.
+             */
+            reason?: string;
+            /** @description Present when `processed: true`; carries the updated intent. */
+            payment_intent?: components["schemas"]["PaymentIntentItem"] | null;
         };
     };
     responses: never;
@@ -13985,6 +14360,367 @@ export interface operations {
             };
             /**
              * @description Database pool or checkout queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createPaymentIntent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePaymentIntentRequest"];
+            };
+        };
+        responses: {
+            /** @description Payment intent created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentIntentEnvelope"];
+                };
+            };
+            /**
+             * @description Invalid body or field. Possible error codes:
+             *     `payment_intent.invalid_body`, `payment_intent.empty_body`,
+             *     `payment_intent.invalid_json`,
+             *     `payment_intent.invalid_org_id`,
+             *     `payment_intent.missing_provider`,
+             *     `payment_intent.invalid_amount`,
+             *     `payment_intent.missing_currency`,
+             *     `payment_intent.invalid_initial_state`,
+             *     `payment_intent.invalid_checkout_session_id`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `payment_intent.create` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`payment_intent.create_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Database pool or payment intent queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPaymentIntent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Payment intent UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Payment intent found. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentIntentEnvelope"];
+                };
+            };
+            /** @description Path id is not a UUID (`payment_intent.invalid_id`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `payment_intent.read` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Payment intent not found (`payment_intent.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`payment_intent.get_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Payment intent queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    transitionPaymentIntent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Payment intent UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TransitionPaymentIntentRequest"];
+            };
+        };
+        responses: {
+            /** @description State transition applied. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentIntentEnvelope"];
+                };
+            };
+            /**
+             * @description Invalid body or field. Possible error codes:
+             *     `payment_intent.invalid_id`, `payment_intent.invalid_body`,
+             *     `payment_intent.empty_body`,
+             *     `payment_intent.invalid_json`,
+             *     `payment_intent.missing_state`,
+             *     `payment_intent.missing_sca_redirect_url`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `payment_intent.update` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Payment intent not found (`payment_intent.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Transition not valid from the current state, or the intent
+             *     is already in a terminal state
+             *     (`payment_intent.invalid_transition`,
+             *     `payment_intent.terminal_state`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error (`payment_intent.fetch_failed`,
+             *     `payment_intent.transition_failed`).
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Database pool or payment intent queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    paymentIntentWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PaymentIntentWebhookRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description Webhook acknowledged. `processed: true` means the state
+             *     machine advanced; `processed: false` means the event was
+             *     recognised but no transition was performed
+             *     (unknown event type, terminal intent, invalid transition).
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentIntentWebhookAck"];
+                };
+            };
+            /**
+             * @description Duplicate webhook delivery — the
+             *     `(provider_payment_id, event_type)` pair was already
+             *     recorded. No body.
+             */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description Invalid body. Possible error codes: `webhook.invalid_body`,
+             *     `webhook.empty_body`, `webhook.invalid_json`,
+             *     `webhook.missing_provider_payment_id`,
+             *     `webhook.missing_event_type`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description No payment intent matches `provider_payment_id`
+             *     (`webhook.intent_not_found`).
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error (`webhook.lookup_failed`,
+             *     `webhook.event_record_failed`,
+             *     `webhook.state_update_failed`).
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Database pool or payment intent queries unavailable
              *     (`dependency.database_unavailable`).
              */
             503: {

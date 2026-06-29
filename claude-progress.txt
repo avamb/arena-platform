@@ -17065,3 +17065,64 @@ Verification:
   npm --prefix apps/admin-web run type-check                   OK.
 
 Marked #270 passing. Backlog: 270/301.
+
+=== 2026-06-30: Feature #271 - A-10 Document payment_intents endpoints in OpenAPI ===
+apps/backend/openapi/openapi.yaml:
+  - Added 6 component schemas: PaymentIntentItem (state enum pinned to
+    7 values from validPaymentIntentTransitions in payment_intents.go),
+    PaymentIntentEnvelope, CreatePaymentIntentRequest,
+    TransitionPaymentIntentRequest, PaymentIntentWebhookRequest,
+    PaymentIntentWebhookAck.
+  - Added 4 path entries covering every payment_intents.go handler:
+      POST /v1/payment-intents              -> createPaymentIntent
+      GET  /v1/payment-intents/{id}         -> getPaymentIntent
+      POST /v1/payment-intents/{id}/transition -> transitionPaymentIntent
+      POST /v1/payment-intents/webhook      -> paymentIntentWebhook
+    Authenticated 3 carry bearerAuth + tags:[v1] + permission name in
+    description (payment_intent.create / read / update). Webhook
+    operation is intentionally unauthenticated (documented in
+    description) and carries no bearerAuth entry. Full error catalogue
+    from payment_intents.go (19 codes) plus webhook codes (9) and
+    dependency.database_unavailable documented across status codes.
+  - create / transition / webhook requestBodies carry inline examples
+    consumed by contract test (createCreated, createRequiresAction,
+    transitionToProcessing / RequiresAction / Succeeded / Failed,
+    succeeded / failed / mockShorthand).
+
+apps/backend/internal/platform/httpserver/openapi_payment_intents_271_test.go (NEW):
+  9 contract tests pinning spec for #271: PathsPresent (4),
+  OperationIDsPresent (4), SchemasPresent (6), PermissionsDocumented (3),
+  BearerAuthAndTags (asserts webhook does NOT carry bearerAuth),
+  ErrorEnvelopeUsed, PaymentIntentErrorCodesDocumented (29),
+  StateMachineEnumPinned (7 + cross-checks every key in
+  validPaymentIntentTransitions), SpecExamplesValidate -- "minimal
+  contract test" walking create / transition / webhook examples and
+  asserting UUID-shaped IDs, non-empty provider, non-negative amount,
+  initial_state must be non-terminal, requires_action requires
+  sca_redirect_url, provider_payment_id + event_type non-empty,
+  target_state must be reachable in state machine. Reuses
+  mustOperation / extractExamples / findOpenAPISpecPath helpers.
+
+apps/backend/internal/platform/httpserver/openapi_drift_test.go:
+  buildDriftTestServer now wires PaymentIntentQueries: gen.New(nil) so
+  the four new payment-intent paths are mounted on the drift-test chi
+  router.
+
+apps/backend/internal/adapters/http/openapi/types_gen.go:
+  Regenerated via oapi-codegen v2.4.1 (golang:1.24 docker). 68
+  occurrences of PaymentIntent type names verified. Known OpenAPI 3.1
+  warning unchanged.
+apps/backend/openapi/clients/ts/index.d.ts:
+  Regenerated via scripts/gen-ts-client.mjs (openapi-typescript 7.13.0).
+  22 occurrences of PaymentIntent type names verified.
+
+Verification:
+  docker golang:1.24 go test -run TestOpenAPI271 -count=1 -v   PASS (9/9)
+  docker golang:1.24 go build ./...                            OK
+  docker golang:1.24 go test -run TestOpenAPIDriftCheck_SpecCoversAllCodeRoutes
+                                                                PASS
+                (no newly-introduced phantom entries; 20 pre-existing
+                 phantom entries documented under #263 unchanged.)
+  npm --prefix apps/admin-web run type-check                   OK.
+
+Marked #271 passing. Backlog: 271/301.

@@ -331,6 +331,13 @@ func buildDriftTestServer(t *testing.T) *Server {
 		// GET /v1/checkout/{id}, POST /v1/checkout/{id}/confirm,
 		// POST /v1/checkout/{id}/complete, POST /v1/checkout/{id}/abandon.
 		CheckoutQueries: gen.New(nil),
+		// Wire PaymentIntentQueries so the payment intent state-machine
+		// routes (feature #137 / documented under feature #271) are
+		// mounted for the drift check: POST /v1/payment-intents,
+		// GET /v1/payment-intents/{id},
+		// POST /v1/payment-intents/{id}/transition,
+		// POST /v1/payment-intents/webhook.
+		PaymentIntentQueries: gen.New(nil),
 	})
 }
 
