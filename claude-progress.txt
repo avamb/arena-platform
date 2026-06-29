@@ -16076,3 +16076,17 @@ payment provider configs CRUD route.
     c) Annotate networkscope NewScoper panic per #176
   No source code changes; only docs/verification-248.md added.
   Marked #248 passing.
+
+=== 2026-06-29: Feature #250 — RU superadmin guide ===
+Added docs/ru/superadmin_guide.md (852 lines, 18 sections covering first
+login through cookbook/FAQ, including networks, organizations, users/roles,
+venues, events, sales, payments, scanners, reporting/reconciliation,
+webhooks, audit, prod-vs-test, and doc maintenance process).
+Added docs/README.md as a docs index.
+Updated README.md with new 'Operator and superadmin documentation' section
+linking the new guide and the RBAC mapping.
+Added .github/PULL_REQUEST_TEMPLATE.md with explicit checkbox requiring
+docs/ru/superadmin_guide.md updates when a PR touches platform_superadmin
+functionality.
+No source code changes (documentation-only feature).
+Marked #250 passing. Backlog: 250/250 (100%).
