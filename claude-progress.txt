@@ -16137,3 +16137,22 @@ Verification:
   docker compose config --services  lists admin-web alongside core
   node scripts/admin-smoke-guardrails.mjs  OK
 Marked #252 passing. Backlog: 252/252 (100%).
+
+=== 2026-06-29: Feature #254 — O-2 organization_bank_accounts table ===
+Added apps/backend/internal/migrations/sql/0048_organization_bank_accounts.sql.
+Columns: id (uuid PK uuidv7()), org_id uuid NOT NULL REFERENCES organizations(id),
+label text, holder_name text NOT NULL, iban text, bic_swift text, account_number text,
+routing_number text, currency char(3) NOT NULL, is_default boolean NOT NULL DEFAULT false,
+created_at/updated_at timestamptz DEFAULT now(), deleted_at timestamptz NULL.
+Indexes:
+  - organization_bank_accounts_one_default_per_org UNIQUE on (org_id)
+    WHERE is_default AND deleted_at IS NULL  (at most one default per org)
+  - organization_bank_accounts_org_active on (org_id) WHERE deleted_at IS NULL
+Metadata only -- no FX/clearing logic; PSP/Stripe Connect/AllPay config remains in
+payment_provider_configs (migration 0046). Down migration drops both indexes and
+the table.
+Verification:
+  golang:1.24 docker `go build ./apps/backend/...`     OK (exit 0)
+  arena_postgres `\d organization_bank_accounts`        OK (all columns, indexes, FK)
+  arena_api status                                      Up (healthy) after auto-migrate
+Marked #254 passing. Commit: 95299c59
