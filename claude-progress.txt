@@ -16852,3 +16852,84 @@ Verification:
   npm --prefix apps/admin-web run type-check           OK (silent).
 
 Marked #266 passing. Backlog: 266/301.
+
+=== 2026-06-30: Feature #268 - A-7 Document promo_codes endpoints in OpenAPI ===
+apps/backend/openapi/openapi.yaml:
+  - Added 8 component schemas: PromoCodeItem, PromoCodeEnvelope,
+    PromoCodeListResponse, PromoCodeDeleteResponse, CreatePromoCodeRequest,
+    UpdatePromoCodeRequest, ValidatePromoCodeRequest,
+    ValidatePromoCodeResponse. The discount_type enum {percent, fixed_amount}
+    is pinned in PromoCodeItem + CreatePromoCodeRequest + UpdatePromoCodeRequest.
+    Validity windows are RFC3339 nullable; min_order_amount is non-negative.
+  - Added 3 path entries / 6 operations covering every promo_codes.go handler:
+      POST   /v1/organizations/{org_id}/promo-codes        createPromoCode
+      GET    /v1/organizations/{org_id}/promo-codes        listPromoCodes
+      GET    /v1/organizations/{org_id}/promo-codes/{id}   getPromoCode
+      PATCH  /v1/organizations/{org_id}/promo-codes/{id}   updatePromoCode
+      DELETE /v1/organizations/{org_id}/promo-codes/{id}   deletePromoCode
+      POST   /v1/checkout/promo-validate                   validatePromoCode
+    Each carries bearerAuth, tags: [v1], the permission name in the description
+    (promo.create / read / update / delete / validate) and the full error
+    catalogue from promo_codes.go: promo.invalid_body, promo.empty_body,
+    promo.invalid_json, promo.invalid_code, promo.invalid_discount_type,
+    promo.invalid_discount_value, promo.invalid_valid_from,
+    promo.invalid_valid_until, promo.invalid_org_id, promo.duplicate (409),
+    promo.not_found (404), promo.not_active (422), promo.not_yet_valid (422),
+    promo.expired (422), promo.invalid_order_amount (422), promo.exhausted
+    (409), promo.per_customer_limit (409), promo.insert_failed,
+    promo.list_failed, promo.get_failed, promo.update_failed,
+    promo.delete_failed, promo.lookup_failed, promo.count_failed,
+    dependency.database_unavailable (503).
+  - createPromoCode + updatePromoCode + validatePromoCode requestBodies carry
+    inline examples consumed by the contract test (createPercentCode,
+    createFixedAmountCode, pauseCode, extendWindow, bumpDiscount,
+    validateAnonymous, validateForUser).
+
+apps/backend/internal/platform/httpserver/openapi_promo_codes_268_test.go (NEW):
+  9 contract tests pinning the spec for #268:
+    - TestOpenAPI268_PathsPresent (3 path mappings)
+    - TestOpenAPI268_OperationIDsPresent (6 canonical IDs)
+    - TestOpenAPI268_SchemasPresent (8 component schema names)
+    - TestOpenAPI268_PermissionsDocumented (5 permission names)
+    - TestOpenAPI268_BearerAuthAndTags
+    - TestOpenAPI268_ErrorEnvelopeUsed
+    - TestOpenAPI268_DiscountTypeEnumPinned (enum literal in three schemas)
+    - TestOpenAPI268_StateMachineCodesDocumented (8 validate-side error codes)
+    - TestOpenAPI268_SpecExamplesValidate -- the "minimal contract test"
+      called out by the ticket. Loads openapi.yaml via gopkg.in/yaml.v3,
+      walks the inline create / update / validate examples and asserts:
+      create has non-empty code, discount_type in enum, discount_value > 0
+      (and <= 100 when percent), RFC3339 date windows, non-negative
+      min_order_amount; update keeps discount_type within the enum when
+      present and date strings RFC3339; validate carries UUID-shaped
+      org_id (and optional user_id), non-empty code, non-negative
+      order_amount. Runs in CI without docker / postgres / oapi-codegen.
+  Reuses helpers from openapi_events_263_test.go (mustOperation,
+  extractExamples, looksLikeRFC3339, schemaWindow, findOpenAPISpecPath).
+
+apps/backend/internal/platform/httpserver/openapi_drift_test.go:
+  buildDriftTestServer now wires PromoQueries: gen.New(nil) so the six
+  promo-code routes are mounted on the drift-test chi router. Without this
+  the new spec paths would register as phantom routes in
+  TestOpenAPIDriftCheck_CodeCoversAllSpecRoutes.
+
+apps/backend/internal/adapters/http/openapi/types_gen.go:
+  Regenerated via oapi-codegen v2.4.1 (golang:1.24 docker). Known
+  OpenAPI 3.1 "not yet supported by oapi-codegen" warning unchanged.
+apps/backend/openapi/clients/ts/index.d.ts:
+  Regenerated via scripts/gen-ts-client.mjs (openapi-typescript 7.13.0).
+  21 occurrences of PromoCode/CreatePromoCodeRequest/ValidatePromoCode
+  type names verified in the generated declarations.
+
+Verification:
+  docker golang:1.24 go test ./internal/platform/httpserver/
+      -run TestOpenAPI268 -count=1 -v                  PASS (9/9)
+  docker golang:1.24 go build ./...                    OK
+  docker golang:1.24 go test ./internal/platform/httpserver/
+      -run TestOpenAPIDriftCheck_SpecCoversAllCodeRoutes
+      -count=1                                          PASS (no
+      newly-introduced entries; the 20 pre-existing phantom entries
+      documented under #263 are unchanged).
+  npm --prefix apps/admin-web run type-check            OK (silent).
+
+Marked #268 passing. Backlog: 268/301.
