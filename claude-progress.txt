@@ -16374,3 +16374,45 @@ fields, validate IANA timezone via time.LoadLocation, and emit the
 new 422 error code is NOT in scope here -- belongs to a follow-up
 Wave V ticket. The DB columns landed under #257 (migration 0050).
 Marked #258 passing. Backlog: 257/301.
+
+=== 2026-06-29: Feature #259 — V-3 Structured venue address admin form ===
+apps/admin-web/src/routes/venues.tsx:
+  - Venue interface extended with V-1 fields (address_line1/line2,
+    postal_code, country, geo_lat, geo_lng, timezone, contact_phone,
+    contact_email, website_url, status). Legacy `address` retained for
+    backward-compat reads.
+  - New validators: validateVenueCountry (ISO-3166-1 alpha-2),
+    validateVenuePostalCode (<=32), validateVenueAddressLine (<=200),
+    validateVenueGeoLat/Lng (range + parse), validateVenueGeoPair
+    (both-or-neither), validateVenueTimezone (IANA shape),
+    validateVenueContactEmail/Phone, validateVenueWebsiteUrl
+    (http/https only). isVenueStatus + VENUE_STATUSES const.
+  - listIanaTimezones(): Intl.supportedValuesOf when available, with
+    a curated 38-zone fallback; wired to a <datalist> autocomplete.
+  - CRUD table columns reworked to Name | Organization | City | Country
+    | Capacity | Status | Updated | Actions; renders a colour-coded
+    VenueStatusBadge for active/draft/archived.
+  - Create form preselects country from the owning organization via
+    GET /v1/organizations/{org_id}; countryTouchedRef gate keeps the
+    prefill from clobbering operator edits.
+  - Extracted buildCreateVenueBody / buildUpdateVenueBody helpers with
+    PATCH-diff semantics (null clears optional strings, capacity stays
+    omit-or-number, status only sent when changed).
+  - mapServerError grown to handle V-1 codes from #258:
+    venue.invalid_{country,postal_code,address_line,geo_lat,geo_lng,
+    timezone,email,contact_email,phone,contact_phone,website,
+    website_url,status} plus generic details.field forwards-compat via
+    a FIELD_KEYS allowlist.
+apps/admin-web/src/routes/venues.test.ts (NEW):
+  63 cases pinning the validators, normalizeCountry, listIanaTimezones,
+  both body builders (including the null-clearing path on update), and
+  every new mapServerError code.
+Verification:
+  npm --prefix apps/admin-web run type-check   OK
+  npm --prefix apps/admin-web test -- --run    OK (550/550, +63)
+  npm --prefix apps/admin-web run build        OK (632.94 kB / 172.56 kB gz)
+Note: Backend handler logic for the new fields (validating IANA tz via
+  time.LoadLocation, ISO-3166-1 enforcement, primary-write paths)
+  remains a follow-up Wave V ticket. The DB columns are present from
+  #257 (migration 0050) and the OpenAPI contract from #258.
+Marked #259 passing. Backlog: 258/301.
