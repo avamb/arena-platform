@@ -346,6 +346,12 @@ func buildDriftTestServer(t *testing.T) *Server {
 		// GET /v1/tickets/{id}/credential (feature #140 / documented
 		// under feature #273) is mounted for the drift check.
 		CredentialQueries: gen.New(nil),
+		// Wire RefundQueries so all refund state-machine + webhook
+		// routes (feature #138 / documented under feature #274) are
+		// mounted for the drift check: POST /v1/refunds,
+		// GET /v1/refunds/{id}, POST /v1/refunds/{id}/approve,
+		// POST /v1/refunds/{id}/reject, POST /v1/refunds/webhook.
+		RefundQueries: gen.New(nil),
 	})
 }
 

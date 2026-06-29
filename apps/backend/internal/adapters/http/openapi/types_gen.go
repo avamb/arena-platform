@@ -277,6 +277,27 @@ const (
 	Ready    ReadyzResponseStatus = "ready"
 )
 
+// Defines values for RefundItemState.
+const (
+	RefundItemStateApproved        RefundItemState = "approved"
+	RefundItemStateFailed          RefundItemState = "failed"
+	RefundItemStateManualReview    RefundItemState = "manual_review"
+	RefundItemStateProviderPending RefundItemState = "provider_pending"
+	RefundItemStateRejected        RefundItemState = "rejected"
+	RefundItemStateRequested       RefundItemState = "requested"
+	RefundItemStateSucceeded       RefundItemState = "succeeded"
+)
+
+// Defines values for RefundWebhookRequestTargetState.
+const (
+	RefundWebhookRequestTargetStateApproved        RefundWebhookRequestTargetState = "approved"
+	RefundWebhookRequestTargetStateFailed          RefundWebhookRequestTargetState = "failed"
+	RefundWebhookRequestTargetStateManualReview    RefundWebhookRequestTargetState = "manual_review"
+	RefundWebhookRequestTargetStateProviderPending RefundWebhookRequestTargetState = "provider_pending"
+	RefundWebhookRequestTargetStateRejected        RefundWebhookRequestTargetState = "rejected"
+	RefundWebhookRequestTargetStateSucceeded       RefundWebhookRequestTargetState = "succeeded"
+)
+
 // Defines values for ReservationState.
 const (
 	ReservationStateActive    ReservationState = "active"
@@ -321,13 +342,13 @@ const (
 
 // Defines values for TransitionPaymentIntentRequestState.
 const (
-	Authorized     TransitionPaymentIntentRequestState = "authorized"
-	Created        TransitionPaymentIntentRequestState = "created"
-	Failed         TransitionPaymentIntentRequestState = "failed"
-	ManualReview   TransitionPaymentIntentRequestState = "manual_review"
-	Processing     TransitionPaymentIntentRequestState = "processing"
-	RequiresAction TransitionPaymentIntentRequestState = "requires_action"
-	Succeeded      TransitionPaymentIntentRequestState = "succeeded"
+	TransitionPaymentIntentRequestStateAuthorized     TransitionPaymentIntentRequestState = "authorized"
+	TransitionPaymentIntentRequestStateCreated        TransitionPaymentIntentRequestState = "created"
+	TransitionPaymentIntentRequestStateFailed         TransitionPaymentIntentRequestState = "failed"
+	TransitionPaymentIntentRequestStateManualReview   TransitionPaymentIntentRequestState = "manual_review"
+	TransitionPaymentIntentRequestStateProcessing     TransitionPaymentIntentRequestState = "processing"
+	TransitionPaymentIntentRequestStateRequiresAction TransitionPaymentIntentRequestState = "requires_action"
+	TransitionPaymentIntentRequestStateSucceeded      TransitionPaymentIntentRequestState = "succeeded"
 )
 
 // Defines values for UpdateEventRequestVisibility.
@@ -347,10 +368,10 @@ const (
 
 // Defines values for UpdateOrganizationRequestKybStatus.
 const (
-	UpdateOrganizationRequestKybStatusPending    UpdateOrganizationRequestKybStatus = "pending"
-	UpdateOrganizationRequestKybStatusRejected   UpdateOrganizationRequestKybStatus = "rejected"
-	UpdateOrganizationRequestKybStatusUnverified UpdateOrganizationRequestKybStatus = "unverified"
-	UpdateOrganizationRequestKybStatusVerified   UpdateOrganizationRequestKybStatus = "verified"
+	Pending    UpdateOrganizationRequestKybStatus = "pending"
+	Rejected   UpdateOrganizationRequestKybStatus = "rejected"
+	Unverified UpdateOrganizationRequestKybStatus = "unverified"
+	Verified   UpdateOrganizationRequestKybStatus = "verified"
 )
 
 // Defines values for UpdateOrganizationRequestTaxIdScheme.
@@ -505,6 +526,16 @@ type AdminCreatedUserOnboarding struct {
 
 	// PasswordResetIssued Whether a one-time password setup token was issued.
 	PasswordResetIssued bool `json:"password_reset_issued"`
+}
+
+// ApproveRefundRequest Request body for `POST /v1/refunds/{id}/approve` and
+// `POST /v1/refunds/{id}/reject`. The body is optional; if
+// present the handler parses it but currently only the `notes`
+// field is recognised. Future revisions may surface the notes on
+// the refund audit trail.
+type ApproveRefundRequest struct {
+	// Notes Optional approval/rejection note.
+	Notes *string `json:"notes"`
 }
 
 // AssignNetworkUserRequest defines model for AssignNetworkUserRequest.
@@ -1105,6 +1136,32 @@ type CreatePromoCodeRequestDiscountType string
 // CreatePromoCodeRequestStatus Lifecycle status; defaults to `active` when omitted or
 // empty.
 type CreatePromoCodeRequestStatus string
+
+// CreateRefundRequest Request body for `POST /v1/refunds`. Creates a new refund row
+// in the `requested` state. The handler looks up the parent
+// payment intent to copy `org_id`; a missing intent returns 404
+// `refund.payment_intent_not_found`.
+type CreateRefundRequest struct {
+	// Amount Refund amount in minor currency units. Must be positive;
+	// handler rejects `amount <= 0` with `refund.invalid_amount`.
+	Amount int64 `json:"amount"`
+
+	// Currency ISO 4217 currency code. Empty values are rejected with
+	// `refund.missing_currency`.
+	Currency string `json:"currency"`
+
+	// PaymentIntentId Payment intent the refund is against. The handler rejects
+	// non-UUID values with `refund.invalid_payment_intent_id`.
+	PaymentIntentId openapi_types.UUID `json:"payment_intent_id"`
+
+	// Reason Optional customer-facing refund reason persisted with the
+	// refund row.
+	Reason *string `json:"reason"`
+
+	// RequestedBy Optional free-form identifier of the requesting actor
+	// (admin user id, support ticket id, etc.).
+	RequestedBy *string `json:"requested_by"`
+}
 
 // CreateReservationRequest Body for `POST /v1/reservations`. Creates a draft reservation
 // atomically with a `ReserveCapacity` call against the session
@@ -2766,6 +2823,180 @@ type ReadyzResponse struct {
 // ReadyzResponseStatus "ready" when all probes pass, "not_ready" when any probe fails
 type ReadyzResponseStatus string
 
+// RefundEnvelope Top-level response envelope returned by every refund endpoint
+// that yields a single row. Wraps a single `RefundItem` under the
+// `refund` key.
+type RefundEnvelope struct {
+	// Refund Canonical representation of a `refunds` row, returned by every
+	// endpoint in the refund state machine implemented in
+	// `apps/backend/internal/platform/httpserver/refunds.go`. The
+	// state column tracks the full refund lifecycle from customer
+	// request to provider completion. Terminal states (`succeeded`,
+	// `failed`, `rejected`) admit no further transitions.
+	Refund RefundItem `json:"refund"`
+}
+
+// RefundItem Canonical representation of a `refunds` row, returned by every
+// endpoint in the refund state machine implemented in
+// `apps/backend/internal/platform/httpserver/refunds.go`. The
+// state column tracks the full refund lifecycle from customer
+// request to provider completion. Terminal states (`succeeded`,
+// `failed`, `rejected`) admit no further transitions.
+type RefundItem struct {
+	// Amount Refund amount in minor currency units. Must be a positive
+	// integer; the handler rejects `amount <= 0` with
+	// `refund.invalid_amount`. May be less than the payment-intent
+	// amount (partial refund); the approval handler routes partial
+	// refunds whose linked tickets are not all `active` to
+	// `manual_review`.
+	Amount int64 `json:"amount"`
+
+	// ApprovedAt RFC3339 timestamp when the refund reached `approved`.
+	ApprovedAt *time.Time `json:"approved_at"`
+
+	// CreatedAt RFC3339 row-creation timestamp.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Currency ISO 4217 currency code (`USD`, `EUR`, ...).
+	Currency string `json:"currency"`
+
+	// FailedAt RFC3339 timestamp when the refund reached `failed`.
+	FailedAt *time.Time `json:"failed_at"`
+
+	// FailureReason Structured failure reason populated when the refund
+	// transitions to `failed` (provider-specific).
+	FailureReason *string `json:"failure_reason"`
+
+	// Id UUIDv7 of the refund row.
+	Id openapi_types.UUID `json:"id"`
+
+	// OrgId Organization that owns the refund. Copied from the parent
+	// payment intent at creation time.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// PaymentIntentId Payment intent this refund is associated with. Resolves the
+	// `org_id`, currency, and (optionally) the linked checkout
+	// session whose tickets are cancelled on a successful refund.
+	PaymentIntentId openapi_types.UUID `json:"payment_intent_id"`
+
+	// ProviderRefundId Provider-side refund identifier (e.g. Stripe's `re_…`
+	// string). `null` until the provider webhook carries it.
+	ProviderRefundId *string `json:"provider_refund_id"`
+
+	// Reason Optional customer-facing refund reason captured at request
+	// time.
+	Reason *string `json:"reason"`
+
+	// RequestedAt RFC3339 timestamp when the refund was first requested.
+	RequestedAt time.Time `json:"requested_at"`
+
+	// RequestedBy Optional free-form identifier of the actor that requested
+	// the refund (admin user id, support ticket id, etc.).
+	RequestedBy *string `json:"requested_by"`
+
+	// State Current state in the refund state machine. Valid
+	// transitions:
+	// `requested` → {`approved`, `rejected`};
+	// `approved` → {`provider_pending`};
+	// `provider_pending` → {`succeeded`, `failed`,
+	// `manual_review`};
+	// `manual_review` → {`succeeded`, `failed`};
+	// `rejected`, `succeeded`, `failed` are terminal.
+	State RefundItemState `json:"state"`
+
+	// SucceededAt RFC3339 timestamp when the refund reached `succeeded`.
+	SucceededAt *time.Time `json:"succeeded_at"`
+
+	// UpdatedAt RFC3339 last-update timestamp.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// RefundItemState Current state in the refund state machine. Valid
+// transitions:
+// `requested` → {`approved`, `rejected`};
+// `approved` → {`provider_pending`};
+// `provider_pending` → {`succeeded`, `failed`,
+// `manual_review`};
+// `manual_review` → {`succeeded`, `failed`};
+// `rejected`, `succeeded`, `failed` are terminal.
+type RefundItemState string
+
+// RefundWebhookAck Acknowledgement envelope returned by the refund webhook
+// endpoint on `200 OK`. `processed: true` means the refund state
+// machine advanced; `processed: false` means the event was
+// recorded (or recognised) but no transition was applied — see
+// `reason` for the cause (unknown event type, terminal refund,
+// invalid transition). When `processed: true`, the response also
+// includes the updated `refund`.
+type RefundWebhookAck struct {
+	// Acknowledged Always `true` when the webhook is accepted.
+	Acknowledged bool `json:"acknowledged"`
+
+	// EventType Echo of the inbound `event_type`.
+	EventType string `json:"event_type"`
+
+	// Processed `true` when the state machine advanced; `false` when the
+	// event was acknowledged without transitioning.
+	Processed bool `json:"processed"`
+
+	// Reason Present when `processed` is `false`; explains why no
+	// transition was performed.
+	Reason *string `json:"reason,omitempty"`
+
+	// Refund Present when `processed: true`; carries the updated refund.
+	Refund *RefundItem `json:"refund"`
+}
+
+// RefundWebhookRequest Normalised webhook body for `POST /v1/refunds/webhook`. Real
+// deployments verify provider HMAC / signature headers before
+// parsing. The handler maps `event_type` → target state via a
+// Stripe-compatible mapping plus `mock.refund.*` shorthand
+// aliases; `target_state` may be supplied to override the
+// mapping (used by mock-provider tests).
+//
+// Idempotency: each `(provider_refund_id, event_type)` pair is
+// recorded in `refund_events` with a UNIQUE constraint.
+// Duplicate deliveries return `204 No Content` without
+// reprocessing.
+//
+// Ticket revocation: when the resulting state is `succeeded` and
+// the payment intent carries a `checkout_session_id`, all
+// `active` tickets for that session are cancelled automatically.
+type RefundWebhookRequest struct {
+	// EventPayload Raw provider webhook payload, persisted verbatim for audit
+	// in `refund_events.event_payload`.
+	EventPayload *interface{} `json:"event_payload,omitempty"`
+
+	// EventType Provider event type string (e.g. `charge.refund.updated`,
+	// `refund.succeeded`, `refund.failed`,
+	// `refund.manual_review`, or `mock.refund.*` shorthand).
+	// Unknown event types are acknowledged with `processed:
+	// false` and no state transition.
+	EventType string `json:"event_type"`
+
+	// FailureReason Optional failure reason persisted when the refund
+	// transitions to `failed`.
+	FailureReason *string `json:"failure_reason"`
+
+	// ProviderRefundId Provider-side refund identifier (e.g. Stripe's `re_…`
+	// string). Required; empty values are rejected with
+	// `refund_webhook.missing_provider_refund_id`.
+	ProviderRefundId string `json:"provider_refund_id"`
+
+	// RefundId Arena refund UUID required to look the refund row up.
+	// Non-UUID values are rejected with
+	// `refund_webhook.invalid_refund_id`.
+	RefundId openapi_types.UUID `json:"refund_id"`
+
+	// TargetState Optional explicit target state that overrides the
+	// `event_type` → state mapping.
+	TargetState *RefundWebhookRequestTargetState `json:"target_state,omitempty"`
+}
+
+// RefundWebhookRequestTargetState Optional explicit target state that overrides the
+// `event_type` → state mapping.
+type RefundWebhookRequestTargetState string
+
 // Reservation A reservation holds capacity for a buyer within a session (and
 // optionally a specific ticket tier). The state machine is:
 // `draft -> active -> converted | expired | cancelled`.
@@ -4138,6 +4369,18 @@ type PaymentIntentWebhookJSONRequestBody = PaymentIntentWebhookRequest
 
 // TransitionPaymentIntentJSONRequestBody defines body for TransitionPaymentIntent for application/json ContentType.
 type TransitionPaymentIntentJSONRequestBody = TransitionPaymentIntentRequest
+
+// CreateRefundJSONRequestBody defines body for CreateRefund for application/json ContentType.
+type CreateRefundJSONRequestBody = CreateRefundRequest
+
+// RefundWebhookJSONRequestBody defines body for RefundWebhook for application/json ContentType.
+type RefundWebhookJSONRequestBody = RefundWebhookRequest
+
+// ApproveRefundJSONRequestBody defines body for ApproveRefund for application/json ContentType.
+type ApproveRefundJSONRequestBody = ApproveRefundRequest
+
+// RejectRefundJSONRequestBody defines body for RejectRefund for application/json ContentType.
+type RejectRefundJSONRequestBody = ApproveRefundRequest
 
 // CreateReservationJSONRequestBody defines body for CreateReservation for application/json ContentType.
 type CreateReservationJSONRequestBody = CreateReservationRequest

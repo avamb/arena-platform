@@ -17237,3 +17237,66 @@ Verification:
   npm --prefix apps/admin-web run type-check                   OK.
 
 Marked #273 passing. Backlog: 273/301.
+
+=== 2026-06-30: Feature #274 - A-13 Document refunds endpoints in OpenAPI ===
+apps/backend/openapi/openapi.yaml:
+  - Added 6 component schemas: RefundItem (state enum pinned to the 7
+    values from validRefundTransitions in refunds.go:
+    requested|approved|provider_pending|manual_review|succeeded|
+    failed|rejected), RefundEnvelope, CreateRefundRequest,
+    ApproveRefundRequest (shared by approve + reject),
+    RefundWebhookRequest, RefundWebhookAck.
+  - Added 5 path entries covering every refunds.go handler:
+      POST /v1/refunds                  -> createRefund
+      GET  /v1/refunds/{id}             -> getRefund
+      POST /v1/refunds/{id}/approve     -> approveRefund
+      POST /v1/refunds/{id}/reject      -> rejectRefund
+      POST /v1/refunds/webhook          -> refundWebhook
+    Authenticated 4 carry bearerAuth + tags:[v1] + permission name in
+    description (refund.create / read / approve x2). Webhook operation
+    is intentionally unauthenticated (documented) and carries no
+    bearerAuth entry. Full error catalogue from refunds.go (15 refund
+    codes + 11 refund_webhook codes + dependency.database_unavailable)
+    documented across status codes.
+  - create / approve / reject / webhook requestBodies carry inline
+    examples consumed by contract test (createFull / createPartial,
+    approveNoNotes / approveWithNotes, rejectNoNotes / rejectWithNotes,
+    succeeded / failed / mockManualReview).
+
+apps/backend/internal/platform/httpserver/openapi_refunds_274_test.go (NEW):
+  9 contract tests pinning spec for #274: PathsPresent (5),
+  OperationIDsPresent (5), SchemasPresent (6), PermissionsDocumented
+  (3), BearerAuthAndTags (asserts webhook does NOT carry bearerAuth),
+  ErrorEnvelopeUsed, RefundErrorCodesDocumented (27),
+  StateMachineEnumPinned (7 + cross-checks every key in
+  validRefundTransitions), SpecExamplesValidate -- minimal contract
+  test walking create / approve / reject / webhook examples and
+  asserting UUID-shaped payment_intent_id / refund_id, amount > 0 for
+  create, 3-char currency, optional notes is non-empty when present,
+  webhook provider_refund_id / event_type / refund_id non-empty,
+  target_state must be reachable in the state machine. Reuses
+  mustOperation / extractExamples / findOpenAPISpecPath helpers.
+
+apps/backend/internal/platform/httpserver/openapi_drift_test.go:
+  buildDriftTestServer now wires RefundQueries: gen.New(nil) so the
+  five new refund paths are mounted on the drift-test chi router.
+
+apps/backend/internal/adapters/http/openapi/types_gen.go:
+  Regenerated via oapi-codegen v2.4.1 (golang:1.24 docker). 100
+  occurrences of Refund type names verified. Known OpenAPI 3.1
+  warning unchanged.
+apps/backend/openapi/clients/ts/index.d.ts:
+  Regenerated via scripts/gen-ts-client.mjs (openapi-typescript 7.13.0).
+  174 occurrences of Refund type names verified.
+
+Verification:
+  docker golang:1.24 go test -run TestOpenAPI274 -count=1 -v   PASS (9/9)
+  docker golang:1.24 go build ./...                            OK
+  docker golang:1.24 go test -run TestOpenAPIDriftCheck_SpecCoversAllCodeRoutes
+                                                                PASS
+                (no newly-introduced phantom entries; the 20 phantom
+                 entries documented previously under #263 are
+                 unchanged.)
+  npm --prefix apps/admin-web run type-check                   OK.
+
+Marked #274 passing. Backlog: 274/301.

@@ -5034,6 +5034,303 @@ components:
           description: |
             Present when `processed: true`; carries the updated intent.
 
+    RefundItem:
+      type: object
+      description: |
+        Canonical representation of a `refunds` row, returned by every
+        endpoint in the refund state machine implemented in
+        `apps/backend/internal/platform/httpserver/refunds.go`. The
+        state column tracks the full refund lifecycle from customer
+        request to provider completion. Terminal states (`succeeded`,
+        `failed`, `rejected`) admit no further transitions.
+      required:
+        - id
+        - payment_intent_id
+        - org_id
+        - amount
+        - currency
+        - reason
+        - requested_by
+        - state
+        - provider_refund_id
+        - failure_reason
+        - requested_at
+        - approved_at
+        - succeeded_at
+        - failed_at
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the refund row.
+        payment_intent_id:
+          type: string
+          format: uuid
+          description: |
+            Payment intent this refund is associated with. Resolves the
+            `org_id`, currency, and (optionally) the linked checkout
+            session whose tickets are cancelled on a successful refund.
+        org_id:
+          type: string
+          format: uuid
+          description: |
+            Organization that owns the refund. Copied from the parent
+            payment intent at creation time.
+        amount:
+          type: integer
+          format: int64
+          minimum: 1
+          description: |
+            Refund amount in minor currency units. Must be a positive
+            integer; the handler rejects `amount <= 0` with
+            `refund.invalid_amount`. May be less than the payment-intent
+            amount (partial refund); the approval handler routes partial
+            refunds whose linked tickets are not all `active` to
+            `manual_review`.
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: ISO 4217 currency code (`USD`, `EUR`, ...).
+        reason:
+          type: string
+          nullable: true
+          description: |
+            Optional customer-facing refund reason captured at request
+            time.
+        requested_by:
+          type: string
+          nullable: true
+          description: |
+            Optional free-form identifier of the actor that requested
+            the refund (admin user id, support ticket id, etc.).
+        state:
+          type: string
+          enum:
+            - requested
+            - approved
+            - provider_pending
+            - manual_review
+            - succeeded
+            - failed
+            - rejected
+          description: |
+            Current state in the refund state machine. Valid
+            transitions:
+            `requested` → {`approved`, `rejected`};
+            `approved` → {`provider_pending`};
+            `provider_pending` → {`succeeded`, `failed`,
+            `manual_review`};
+            `manual_review` → {`succeeded`, `failed`};
+            `rejected`, `succeeded`, `failed` are terminal.
+        provider_refund_id:
+          type: string
+          nullable: true
+          description: |
+            Provider-side refund identifier (e.g. Stripe's `re_…`
+            string). `null` until the provider webhook carries it.
+        failure_reason:
+          type: string
+          nullable: true
+          description: |
+            Structured failure reason populated when the refund
+            transitions to `failed` (provider-specific).
+        requested_at:
+          type: string
+          format: date-time
+          description: RFC3339 timestamp when the refund was first requested.
+        approved_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: RFC3339 timestamp when the refund reached `approved`.
+        succeeded_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: RFC3339 timestamp when the refund reached `succeeded`.
+        failed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: RFC3339 timestamp when the refund reached `failed`.
+        created_at:
+          type: string
+          format: date-time
+          description: RFC3339 row-creation timestamp.
+        updated_at:
+          type: string
+          format: date-time
+          description: RFC3339 last-update timestamp.
+
+    RefundEnvelope:
+      type: object
+      required: [refund]
+      description: |
+        Top-level response envelope returned by every refund endpoint
+        that yields a single row. Wraps a single `RefundItem` under the
+        `refund` key.
+      properties:
+        refund:
+          $ref: "#/components/schemas/RefundItem"
+
+    CreateRefundRequest:
+      type: object
+      required: [payment_intent_id, amount, currency]
+      description: |
+        Request body for `POST /v1/refunds`. Creates a new refund row
+        in the `requested` state. The handler looks up the parent
+        payment intent to copy `org_id`; a missing intent returns 404
+        `refund.payment_intent_not_found`.
+      properties:
+        payment_intent_id:
+          type: string
+          format: uuid
+          description: |
+            Payment intent the refund is against. The handler rejects
+            non-UUID values with `refund.invalid_payment_intent_id`.
+        amount:
+          type: integer
+          format: int64
+          minimum: 1
+          description: |
+            Refund amount in minor currency units. Must be positive;
+            handler rejects `amount <= 0` with `refund.invalid_amount`.
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: |
+            ISO 4217 currency code. Empty values are rejected with
+            `refund.missing_currency`.
+        reason:
+          type: string
+          nullable: true
+          description: |
+            Optional customer-facing refund reason persisted with the
+            refund row.
+        requested_by:
+          type: string
+          nullable: true
+          description: |
+            Optional free-form identifier of the requesting actor
+            (admin user id, support ticket id, etc.).
+
+    ApproveRefundRequest:
+      type: object
+      description: |
+        Request body for `POST /v1/refunds/{id}/approve` and
+        `POST /v1/refunds/{id}/reject`. The body is optional; if
+        present the handler parses it but currently only the `notes`
+        field is recognised. Future revisions may surface the notes on
+        the refund audit trail.
+      properties:
+        notes:
+          type: string
+          nullable: true
+          description: Optional approval/rejection note.
+
+    RefundWebhookRequest:
+      type: object
+      required: [provider_refund_id, event_type, refund_id]
+      description: |
+        Normalised webhook body for `POST /v1/refunds/webhook`. Real
+        deployments verify provider HMAC / signature headers before
+        parsing. The handler maps `event_type` → target state via a
+        Stripe-compatible mapping plus `mock.refund.*` shorthand
+        aliases; `target_state` may be supplied to override the
+        mapping (used by mock-provider tests).
+
+        Idempotency: each `(provider_refund_id, event_type)` pair is
+        recorded in `refund_events` with a UNIQUE constraint.
+        Duplicate deliveries return `204 No Content` without
+        reprocessing.
+
+        Ticket revocation: when the resulting state is `succeeded` and
+        the payment intent carries a `checkout_session_id`, all
+        `active` tickets for that session are cancelled automatically.
+      properties:
+        provider_refund_id:
+          type: string
+          description: |
+            Provider-side refund identifier (e.g. Stripe's `re_…`
+            string). Required; empty values are rejected with
+            `refund_webhook.missing_provider_refund_id`.
+        event_type:
+          type: string
+          description: |
+            Provider event type string (e.g. `charge.refund.updated`,
+            `refund.succeeded`, `refund.failed`,
+            `refund.manual_review`, or `mock.refund.*` shorthand).
+            Unknown event types are acknowledged with `processed:
+            false` and no state transition.
+        target_state:
+          type: string
+          enum:
+            - approved
+            - provider_pending
+            - manual_review
+            - succeeded
+            - failed
+            - rejected
+          description: |
+            Optional explicit target state that overrides the
+            `event_type` → state mapping.
+        refund_id:
+          type: string
+          format: uuid
+          description: |
+            Arena refund UUID required to look the refund row up.
+            Non-UUID values are rejected with
+            `refund_webhook.invalid_refund_id`.
+        failure_reason:
+          type: string
+          nullable: true
+          description: |
+            Optional failure reason persisted when the refund
+            transitions to `failed`.
+        event_payload:
+          description: |
+            Raw provider webhook payload, persisted verbatim for audit
+            in `refund_events.event_payload`.
+
+    RefundWebhookAck:
+      type: object
+      required: [acknowledged, event_type, processed]
+      description: |
+        Acknowledgement envelope returned by the refund webhook
+        endpoint on `200 OK`. `processed: true` means the refund state
+        machine advanced; `processed: false` means the event was
+        recorded (or recognised) but no transition was applied — see
+        `reason` for the cause (unknown event type, terminal refund,
+        invalid transition). When `processed: true`, the response also
+        includes the updated `refund`.
+      properties:
+        acknowledged:
+          type: boolean
+          description: Always `true` when the webhook is accepted.
+        event_type:
+          type: string
+          description: Echo of the inbound `event_type`.
+        processed:
+          type: boolean
+          description: |
+            `true` when the state machine advanced; `false` when the
+            event was acknowledged without transitioning.
+        reason:
+          type: string
+          description: |
+            Present when `processed` is `false`; explains why no
+            transition was performed.
+        refund:
+          allOf:
+            - $ref: "#/components/schemas/RefundItem"
+          nullable: true
+          description: |
+            Present when `processed: true`; carries the updated refund.
+
 paths:
   /healthz:
     get:
@@ -13307,6 +13604,470 @@ paths:
         "503":
           description: |
             Credential queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/refunds:
+    post:
+      operationId: createRefund
+      summary: Create a refund request
+      description: |
+        Creates a new refund row in the `requested` state. The handler
+        looks up the parent payment intent to copy `org_id`; a missing
+        payment intent returns 404 `refund.payment_intent_not_found`.
+        Amount may be less than the payment-intent amount (partial
+        refund); the approval handler routes partial refunds whose
+        linked tickets are not all `active` to `manual_review`.
+
+        Requires JWT + the `refund.create` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRefundRequest"
+            examples:
+              createFull:
+                summary: Full refund with a customer-facing reason
+                value:
+                  payment_intent_id: "018f4f00-0000-7000-8000-000000000040"
+                  amount: 5000
+                  currency: "USD"
+                  reason: "Buyer cancelled order"
+                  requested_by: "admin:018f4f00-0000-7000-8000-000000000001"
+              createPartial:
+                summary: Partial refund (amount < payment intent amount)
+                value:
+                  payment_intent_id: "018f4f00-0000-7000-8000-000000000041"
+                  amount: 1200
+                  currency: "EUR"
+                  reason: "Goodwill credit for one ticket"
+      responses:
+        "201":
+          description: Refund created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefundEnvelope"
+        "400":
+          description: |
+            Invalid body or field. Possible error codes:
+            `refund.invalid_body`, `refund.empty_body`,
+            `refund.invalid_json`,
+            `refund.invalid_payment_intent_id`,
+            `refund.invalid_amount`, `refund.missing_currency`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `refund.create` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: |
+            Parent payment intent not found
+            (`refund.payment_intent_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error (`refund.pi_lookup_failed`,
+            `refund.create_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Database pool, refund queries, or payment intent queries
+            unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/refunds/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Refund UUID.
+    get:
+      operationId: getRefund
+      summary: Read a refund
+      description: |
+        Returns the current state of a refund.
+
+        Requires JWT + the `refund.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Refund found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefundEnvelope"
+        "400":
+          description: |
+            Path id is not a UUID (`refund.invalid_id`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `refund.read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Refund not found (`refund.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error (`refund.get_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Refund queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/refunds/{id}/approve:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Refund UUID.
+    post:
+      operationId: approveRefund
+      summary: Approve a refund request
+      description: |
+        Approves a refund in the `requested` state. Standard path
+        transitions `requested → approved → provider_pending`
+        (simulating provider submission). When the refund is partial
+        AND the payment intent has a checkout session AND at least one
+        ticket is not in `active` status, the refund instead
+        transitions directly to `manual_review` for admin resolution.
+        Approving a refund that is not in `requested` returns 409
+        `refund.invalid_state`.
+
+        Requires JWT + the `refund.approve` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApproveRefundRequest"
+            examples:
+              approveNoNotes:
+                summary: Approve without notes (empty body)
+                value: {}
+              approveWithNotes:
+                summary: Approve with admin notes
+                value:
+                  notes: "Customer contacted support; full refund authorized."
+      responses:
+        "200":
+          description: |
+            Refund transitioned to `provider_pending` (or
+            `manual_review` for partial refunds with non-active
+            tickets).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefundEnvelope"
+        "400":
+          description: |
+            Invalid body or path id. Possible error codes:
+            `refund.invalid_id`, `refund.invalid_body`,
+            `refund.invalid_json`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `refund.approve` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Refund not found (`refund.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            Refund is not in the `requested` state
+            (`refund.invalid_state`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error (`refund.fetch_failed`,
+            `refund.transition_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Database pool or refund queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/refunds/{id}/reject:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Refund UUID.
+    post:
+      operationId: rejectRefund
+      summary: Reject a refund request
+      description: |
+        Rejects a refund in the `requested` state, transitioning it to
+        the terminal `rejected` state. Rejecting a refund that is not
+        in `requested` returns 409 `refund.invalid_state`.
+
+        Requires JWT + the `refund.approve` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApproveRefundRequest"
+            examples:
+              rejectNoNotes:
+                summary: Reject without notes
+                value: {}
+              rejectWithNotes:
+                summary: Reject with admin notes
+                value:
+                  notes: "Refund window expired."
+      responses:
+        "200":
+          description: Refund transitioned to `rejected`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefundEnvelope"
+        "400":
+          description: |
+            Invalid body or path id. Possible error codes:
+            `refund.invalid_id`, `refund.invalid_body`,
+            `refund.invalid_json`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `refund.approve` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Refund not found (`refund.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            Refund is not in the `requested` state
+            (`refund.invalid_state`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error (`refund.fetch_failed`,
+            `refund.transition_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Database pool or refund queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/refunds/webhook:
+    post:
+      operationId: refundWebhook
+      summary: Provider refund webhook ingestion
+      description: |
+        Provider-side webhook endpoint. **Unauthenticated** — providers
+        deliver from their own infrastructure and authenticate via
+        HMAC / signature headers (e.g. `Stripe-Signature`); signature
+        verification is performed inside the handler (or a deployment
+        edge proxy) prior to parsing.
+
+        Idempotency: each `(provider_refund_id, event_type)` pair is
+        recorded in `refund_events` with a UNIQUE constraint.
+        Duplicate deliveries return `204 No Content` without
+        reprocessing. Unknown event types are acknowledged with
+        `processed: false`. When the resulting state would advance an
+        already-terminal refund the response is `200` with
+        `processed: false` and a `reason` string.
+
+        On a `succeeded` transition the handler additionally cancels
+        all `active` tickets for the payment intent's linked checkout
+        session and publishes Bil24-compatible scanner refund events.
+
+        No bearer token is required; this endpoint is excluded from
+        every server permission.
+      tags: [v1]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefundWebhookRequest"
+            examples:
+              succeeded:
+                summary: Stripe-shaped `charge.refund.updated` callback (succeeded)
+                value:
+                  provider_refund_id: "re_3OqQ6vJk9z2c1abc"
+                  event_type: "charge.refund.updated"
+                  refund_id: "018f4f00-0000-7000-8000-000000000050"
+              failed:
+                summary: Stripe-shaped `refund.failed` callback with reason
+                value:
+                  provider_refund_id: "re_3OqQ6vJk9z2c1abc"
+                  event_type: "refund.failed"
+                  refund_id: "018f4f00-0000-7000-8000-000000000051"
+                  failure_reason: "insufficient_balance"
+              mockManualReview:
+                summary: Mock-provider shorthand routing to manual review
+                value:
+                  provider_refund_id: "re_mock_0001"
+                  event_type: "mock.refund.manual_review"
+                  refund_id: "018f4f00-0000-7000-8000-000000000052"
+      responses:
+        "200":
+          description: |
+            Webhook acknowledged. `processed: true` means the state
+            machine advanced; `processed: false` means the event was
+            recognised but no transition was performed
+            (unknown event type, terminal refund, invalid transition).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefundWebhookAck"
+        "204":
+          description: |
+            Duplicate webhook delivery — the
+            `(provider_refund_id, event_type)` pair was already
+            recorded. No body.
+        "400":
+          description: |
+            Invalid body. Possible error codes:
+            `refund_webhook.invalid_body`,
+            `refund_webhook.empty_body`,
+            `refund_webhook.invalid_json`,
+            `refund_webhook.missing_provider_refund_id`,
+            `refund_webhook.missing_event_type`,
+            `refund_webhook.missing_refund_id`,
+            `refund_webhook.invalid_refund_id`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: |
+            No refund matches `refund_id`
+            (`refund_webhook.refund_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error (`refund_webhook.lookup_failed`,
+            `refund_webhook.event_record_failed`,
+            `refund_webhook.state_update_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Refund queries unavailable
             (`dependency.database_unavailable`).
           content:
             application/json:
