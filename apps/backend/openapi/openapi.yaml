@@ -3491,6 +3491,84 @@ components:
           items:
             $ref: "#/components/schemas/TicketItem"
 
+    TicketCredentialItem:
+      type: object
+      required:
+        - id
+        - ticket_id
+        - type
+        - payload
+        - issued_at
+        - revoked_at
+      description: |
+        A bearer credential issued for a single ticket. There is at most
+        one row per `(ticket_id, type)` pair, enforced by the
+        `ticket_credentials_ticket_type_unique` UNIQUE constraint in
+        migration 0027_ticket_credentials.sql.
+
+        Credential types (pinned to `ticket_credentials_type_check`):
+
+          static_qr — 64-char lowercase hex token (32 cryptographically
+                       random bytes). The token itself is NOT the ticket
+                       UUID; the binding is stored server-side. Scanners
+                       resolve the token via the server.
+
+          pdf       — standard base64-encoded PDF document bytes
+                       rendered server-side (PDF/1.4, Helvetica). The
+                       PDF embeds a fresh QR token; if both static_qr
+                       and pdf credentials are needed, issue static_qr
+                       first so both share the same token.
+
+        Lifecycle: credentials are generated lazily on first access by
+        `GET /v1/tickets/{id}/credential`. `revoked_at` is set on
+        ticket cancellation, refund, or transfer; the payload is
+        retained for audit purposes after revocation.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the credential row.
+          example: "01929d0e-0e47-7000-8000-000000000901"
+        ticket_id:
+          type: string
+          format: uuid
+          description: |
+            FK to the ticket this credential grants access to
+            (CASCADE on ticket delete).
+          example: "01929d0e-0e47-7000-8000-000000000801"
+        type:
+          type: string
+          enum:
+            - static_qr
+            - pdf
+          description: |
+            Credential type. Pinned to the
+            `ticket_credentials_type_check` constraint in
+            0027_ticket_credentials.sql.
+          example: "static_qr"
+        payload:
+          type: string
+          description: |
+            Opaque credential body.
+            For `static_qr`: a 64-char lowercase hexadecimal token
+            (32 random bytes).
+            For `pdf`: standard base64-encoded PDF document bytes.
+          example: "8d3b1c9a4f7e6a2c5d8b3f1e9c7a4d6b2f8e1c5a7d9b3e6f2a4c8d1b5e7f9a3c"
+        issued_at:
+          type: string
+          format: date-time
+          description: Issuance timestamp (RFC 3339, UTC).
+          example: "2026-06-30T12:00:00Z"
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            Revocation timestamp (RFC 3339, UTC). `null` means the
+            credential is active. Set on ticket cancellation, refund,
+            or transfer.
+          example: null
+
     InventoryRowItem:
       type: object
       required:
@@ -13108,6 +13186,127 @@ paths:
         "503":
           description: |
             Database pool or payment intent queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/tickets/{id}/credential:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Ticket UUID whose credential to fetch (or lazily issue).
+      - name: type
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+            - static_qr
+            - pdf
+          default: static_qr
+        description: |
+          Credential type to retrieve. Defaults to `static_qr` when
+          absent. Pinned to the `ticket_credentials_type_check`
+          constraint in 0027_ticket_credentials.sql.
+    get:
+      operationId: getTicketCredential
+      summary: Fetch (lazy-issue) a ticket credential
+      description: |
+        Returns the bearer credential for the given ticket and type.
+        If no credential exists yet for the `(ticket_id, type)` pair,
+        the handler generates one on first access and stores it in
+        `ticket_credentials` before responding.
+
+        Credential body (`payload`):
+
+          - `static_qr` — 64-char lowercase hex token (32 bytes from
+            crypto/rand). The token itself is NOT the ticket UUID;
+            scanners must resolve the token server-side.
+          - `pdf` — standard base64-encoded PDF document bytes
+            (PDF/1.4, Helvetica). The PDF embeds a freshly generated
+            QR token; if both static_qr and pdf credentials are
+            needed, issue static_qr first so they share a token.
+
+        Requires JWT + the `credential.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Credential payload for the ticket.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TicketCredentialItem"
+              examples:
+                staticQR:
+                  summary: static_qr credential
+                  value:
+                    id: "01929d0e-0e47-7000-8000-000000000901"
+                    ticket_id: "01929d0e-0e47-7000-8000-000000000801"
+                    type: "static_qr"
+                    payload: "8d3b1c9a4f7e6a2c5d8b3f1e9c7a4d6b2f8e1c5a7d9b3e6f2a4c8d1b5e7f9a3c"
+                    issued_at: "2026-06-30T12:00:00Z"
+                    revoked_at: null
+                pdf:
+                  summary: pdf credential (payload truncated for brevity)
+                  value:
+                    id: "01929d0e-0e47-7000-8000-000000000902"
+                    ticket_id: "01929d0e-0e47-7000-8000-000000000801"
+                    type: "pdf"
+                    payload: "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCg=="
+                    issued_at: "2026-06-30T12:00:00Z"
+                    revoked_at: null
+                revoked:
+                  summary: A previously-issued credential that has been revoked
+                  value:
+                    id: "01929d0e-0e47-7000-8000-000000000903"
+                    ticket_id: "01929d0e-0e47-7000-8000-000000000802"
+                    type: "static_qr"
+                    payload: "a1b2c3d4e5f6071829304a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d"
+                    issued_at: "2026-06-30T12:00:00Z"
+                    revoked_at: "2026-06-30T13:00:00Z"
+        "400":
+          description: |
+            Validation failure. Possible error codes:
+            `credential.invalid_ticket_id` (path id is not a UUID),
+            `credential.invalid_type` (query `?type=` is neither
+            `static_qr` nor `pdf`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `credential.read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error while reading, generating, or storing
+            the credential. Possible error codes:
+            `credential.fetch_failed`, `credential.generation_failed`,
+            `credential.store_failed`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Credential queries unavailable
             (`dependency.database_unavailable`).
           content:
             application/json:

@@ -2264,6 +2264,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/tickets/{id}/credential": {
+        parameters: {
+            query?: {
+                /**
+                 * @description Credential type to retrieve. Defaults to `static_qr` when
+                 *     absent. Pinned to the `ticket_credentials_type_check`
+                 *     constraint in 0027_ticket_credentials.sql.
+                 */
+                type?: "static_qr" | "pdf";
+            };
+            header?: never;
+            path: {
+                /** @description Ticket UUID whose credential to fetch (or lazily issue). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Fetch (lazy-issue) a ticket credential
+         * @description Returns the bearer credential for the given ticket and type.
+         *     If no credential exists yet for the `(ticket_id, type)` pair,
+         *     the handler generates one on first access and stores it in
+         *     `ticket_credentials` before responding.
+         *
+         *     Credential body (`payload`):
+         *
+         *       - `static_qr` — 64-char lowercase hex token (32 bytes from
+         *         crypto/rand). The token itself is NOT the ticket UUID;
+         *         scanners must resolve the token server-side.
+         *       - `pdf` — standard base64-encoded PDF document bytes
+         *         (PDF/1.4, Helvetica). The PDF embeds a freshly generated
+         *         QR token; if both static_qr and pdf credentials are
+         *         needed, issue static_qr first so they share a token.
+         *
+         *     Requires JWT + the `credential.read` permission.
+         */
+        get: operations["getTicketCredential"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -5302,6 +5347,75 @@ export interface components {
         TicketListResponse: {
             /** @description Tickets issued for the checkout session (possibly empty). */
             tickets: components["schemas"]["TicketItem"][];
+        };
+        /**
+         * @description A bearer credential issued for a single ticket. There is at most
+         *     one row per `(ticket_id, type)` pair, enforced by the
+         *     `ticket_credentials_ticket_type_unique` UNIQUE constraint in
+         *     migration 0027_ticket_credentials.sql.
+         *
+         *     Credential types (pinned to `ticket_credentials_type_check`):
+         *
+         *       static_qr — 64-char lowercase hex token (32 cryptographically
+         *                    random bytes). The token itself is NOT the ticket
+         *                    UUID; the binding is stored server-side. Scanners
+         *                    resolve the token via the server.
+         *
+         *       pdf       — standard base64-encoded PDF document bytes
+         *                    rendered server-side (PDF/1.4, Helvetica). The
+         *                    PDF embeds a fresh QR token; if both static_qr
+         *                    and pdf credentials are needed, issue static_qr
+         *                    first so both share the same token.
+         *
+         *     Lifecycle: credentials are generated lazily on first access by
+         *     `GET /v1/tickets/{id}/credential`. `revoked_at` is set on
+         *     ticket cancellation, refund, or transfer; the payload is
+         *     retained for audit purposes after revocation.
+         */
+        TicketCredentialItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the credential row.
+             * @example 01929d0e-0e47-7000-8000-000000000901
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description FK to the ticket this credential grants access to
+             *     (CASCADE on ticket delete).
+             * @example 01929d0e-0e47-7000-8000-000000000801
+             */
+            ticket_id: string;
+            /**
+             * @description Credential type. Pinned to the
+             *     `ticket_credentials_type_check` constraint in
+             *     0027_ticket_credentials.sql.
+             * @example static_qr
+             * @enum {string}
+             */
+            type: "static_qr" | "pdf";
+            /**
+             * @description Opaque credential body.
+             *     For `static_qr`: a 64-char lowercase hexadecimal token
+             *     (32 random bytes).
+             *     For `pdf`: standard base64-encoded PDF document bytes.
+             * @example 8d3b1c9a4f7e6a2c5d8b3f1e9c7a4d6b2f8e1c5a7d9b3e6f2a4c8d1b5e7f9a3c
+             */
+            payload: string;
+            /**
+             * Format: date-time
+             * @description Issuance timestamp (RFC 3339, UTC).
+             * @example 2026-06-30T12:00:00Z
+             */
+            issued_at: string;
+            /**
+             * Format: date-time
+             * @description Revocation timestamp (RFC 3339, UTC). `null` means the
+             *     credential is active. Set on ticket cancellation, refund,
+             *     or transfer.
+             * @example null
+             */
+            revoked_at: string | null;
         };
         /**
          * @description A single inventory_ledger row. Tracks real-time capacity state for a
@@ -14913,6 +15027,94 @@ export interface operations {
             };
             /**
              * @description Database pool or payment intent queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getTicketCredential: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Credential type to retrieve. Defaults to `static_qr` when
+                 *     absent. Pinned to the `ticket_credentials_type_check`
+                 *     constraint in 0027_ticket_credentials.sql.
+                 */
+                type?: "static_qr" | "pdf";
+            };
+            header?: never;
+            path: {
+                /** @description Ticket UUID whose credential to fetch (or lazily issue). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Credential payload for the ticket. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketCredentialItem"];
+                };
+            };
+            /**
+             * @description Validation failure. Possible error codes:
+             *     `credential.invalid_ticket_id` (path id is not a UUID),
+             *     `credential.invalid_type` (query `?type=` is neither
+             *     `static_qr` nor `pdf`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `credential.read` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error while reading, generating, or storing
+             *     the credential. Possible error codes:
+             *     `credential.fetch_failed`, `credential.generation_failed`,
+             *     `credential.store_failed`.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Credential queries unavailable
              *     (`dependency.database_unavailable`).
              */
             503: {

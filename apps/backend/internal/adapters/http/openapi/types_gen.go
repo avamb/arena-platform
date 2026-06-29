@@ -299,6 +299,12 @@ const (
 	SessionItemStatusScheduled SessionItemStatus = "scheduled"
 )
 
+// Defines values for TicketCredentialItemType.
+const (
+	Pdf      TicketCredentialItemType = "pdf"
+	StaticQr TicketCredentialItemType = "static_qr"
+)
+
 // Defines values for TicketItemStatus.
 const (
 	TicketItemStatusActive      TicketItemStatus = "active"
@@ -2954,6 +2960,61 @@ type StartCheckoutRequest struct {
 	UserId *openapi_types.UUID `json:"user_id"`
 }
 
+// TicketCredentialItem A bearer credential issued for a single ticket. There is at most
+// one row per `(ticket_id, type)` pair, enforced by the
+// `ticket_credentials_ticket_type_unique` UNIQUE constraint in
+// migration 0027_ticket_credentials.sql.
+//
+// Credential types (pinned to `ticket_credentials_type_check`):
+//
+//	static_qr — 64-char lowercase hex token (32 cryptographically
+//	             random bytes). The token itself is NOT the ticket
+//	             UUID; the binding is stored server-side. Scanners
+//	             resolve the token via the server.
+//
+//	pdf       — standard base64-encoded PDF document bytes
+//	             rendered server-side (PDF/1.4, Helvetica). The
+//	             PDF embeds a fresh QR token; if both static_qr
+//	             and pdf credentials are needed, issue static_qr
+//	             first so both share the same token.
+//
+// Lifecycle: credentials are generated lazily on first access by
+// `GET /v1/tickets/{id}/credential`. `revoked_at` is set on
+// ticket cancellation, refund, or transfer; the payload is
+// retained for audit purposes after revocation.
+type TicketCredentialItem struct {
+	// Id UUIDv7 primary key of the credential row.
+	Id openapi_types.UUID `json:"id"`
+
+	// IssuedAt Issuance timestamp (RFC 3339, UTC).
+	IssuedAt time.Time `json:"issued_at"`
+
+	// Payload Opaque credential body.
+	// For `static_qr`: a 64-char lowercase hexadecimal token
+	// (32 random bytes).
+	// For `pdf`: standard base64-encoded PDF document bytes.
+	Payload string `json:"payload"`
+
+	// RevokedAt Revocation timestamp (RFC 3339, UTC). `null` means the
+	// credential is active. Set on ticket cancellation, refund,
+	// or transfer.
+	RevokedAt *time.Time `json:"revoked_at"`
+
+	// TicketId FK to the ticket this credential grants access to
+	// (CASCADE on ticket delete).
+	TicketId openapi_types.UUID `json:"ticket_id"`
+
+	// Type Credential type. Pinned to the
+	// `ticket_credentials_type_check` constraint in
+	// 0027_ticket_credentials.sql.
+	Type TicketCredentialItemType `json:"type"`
+}
+
+// TicketCredentialItemType Credential type. Pinned to the
+// `ticket_credentials_type_check` constraint in
+// 0027_ticket_credentials.sql.
+type TicketCredentialItemType string
+
 // TicketItem A single ticket (atomic entitlement) issued after payment.succeeded
 // or free-checkout completion. One row per unit in the underlying
 // reservation quantity. Issuance is idempotent per
@@ -3912,6 +3973,14 @@ type ArchiveOperatorNetworkParams struct {
 type ListOrgEventsParams struct {
 	// Lang BCP-47 locale override.
 	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
+}
+
+// GetTicketCredentialParams defines parameters for GetTicketCredential.
+type GetTicketCredentialParams struct {
+	// Type Credential type to retrieve. Defaults to `static_qr` when
+	// absent. Pinned to the `ticket_credentials_type_check`
+	// constraint in 0027_ticket_credentials.sql.
+	Type *string `form:"type,omitempty" json:"type,omitempty"`
 }
 
 // PostV1AdminGeoCitiesJSONRequestBody defines body for PostV1AdminGeoCities for application/json ContentType.

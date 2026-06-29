@@ -342,6 +342,10 @@ func buildDriftTestServer(t *testing.T) *Server {
 		// endpoint (feature #139 / documented under feature #272) is
 		// mounted for the drift check.
 		TicketQueries: gen.New(nil),
+		// Wire CredentialQueries so the lazy ticket-credential endpoint
+		// GET /v1/tickets/{id}/credential (feature #140 / documented
+		// under feature #273) is mounted for the drift check.
+		CredentialQueries: gen.New(nil),
 	})
 }
 
