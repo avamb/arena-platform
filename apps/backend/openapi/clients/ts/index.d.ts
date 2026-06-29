@@ -1825,6 +1825,113 @@ export interface paths {
         patch: operations["activateReservation"];
         trace?: never;
     };
+    "/v1/organizations/{org_id}/promo-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List promo codes for an organization
+         * @description Returns all promo codes for `org_id` ordered by the underlying
+         *     query (typically `created_at DESC`). Soft-deleted rows are
+         *     excluded.
+         *
+         *     Requires JWT + the `promo.read` permission.
+         */
+        get: operations["listPromoCodes"];
+        put?: never;
+        /**
+         * Create a promo code for an organization
+         * @description Creates a promo code scoped to `org_id`. The `code` string is
+         *     trimmed and must be unique within the organization; duplicates
+         *     return 409 `promo.duplicate`. `discount_type` must be `percent`
+         *     (1-100) or `fixed_amount`; `discount_value` must be > 0.
+         *
+         *     Requires JWT + the `promo.create` permission.
+         */
+        post: operations["createPromoCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/promo-codes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a single promo code
+         * @description Returns a promo code by `(org_id, id)`. Soft-deleted rows are
+         *     treated as `promo.not_found`.
+         *
+         *     Requires JWT + the `promo.read` permission.
+         */
+        get: operations["getPromoCode"];
+        put?: never;
+        post?: never;
+        /**
+         * Soft-delete a promo code
+         * @description Soft-deletes the promo code (sets `deleted_at = now()`). The
+         *     wrapped row in the response reflects state immediately before
+         *     the delete marker was applied.
+         *
+         *     Requires JWT + the `promo.delete` permission.
+         */
+        delete: operations["deletePromoCode"];
+        options?: never;
+        head?: never;
+        /**
+         * Update a promo code
+         * @description Partial update; only fields present in the body are applied.
+         *     Validation rules mirror create: `discount_type` (when set) must
+         *     be in the enum, and date fields (when set) must be RFC3339.
+         *
+         *     Requires JWT + the `promo.update` permission.
+         */
+        patch: operations["updatePromoCode"];
+        trace?: never;
+    };
+    "/v1/checkout/promo-validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate a promo code and compute its discount
+         * @description Validates a promo code against a candidate order and returns
+         *     the computed discount when applicable. Validation steps:
+         *
+         *       1. Look up the code by `(org_id, code)` -- missing returns 404
+         *          `promo.not_found`.
+         *       2. Check status, validity window and `min_order_amount` --
+         *          returns 422 with one of `promo.not_active`,
+         *          `promo.not_yet_valid`, `promo.expired`,
+         *          `promo.invalid_order_amount`.
+         *       3. Enforce `max_uses` globally -- exhausted returns 409
+         *          `promo.exhausted`.
+         *       4. When `user_id` is a valid UUID, enforce
+         *          `max_uses_per_customer` -- exceeded returns 409
+         *          `promo.per_customer_limit`.
+         *
+         *     Requires JWT + the `promo.validate` permission.
+         */
+        post: operations["validatePromoCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4990,6 +5097,279 @@ export interface components {
              *     (`reservation.invalid_quantity` is returned otherwise).
              */
             quantity: number;
+        };
+        /**
+         * @description A promo code is a discount voucher scoped to one organization. It
+         *     applies either a fixed amount or percentage discount to an order,
+         *     with optional restrictions on which ticket tiers it applies to,
+         *     total usage limits, per-customer usage limits, a validity date
+         *     window, and a minimum order amount.
+         */
+        PromoCodeItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the promo code.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Organization that owns the promo code.
+             */
+            org_id: string;
+            /**
+             * @description The redeemable code string (e.g. `SUMMER25`). Unique per
+             *     organization; duplicate inserts return 409 `promo.duplicate`.
+             */
+            code: string;
+            /**
+             * @description Either `percent` (1-100) or `fixed_amount`. Other values are
+             *     rejected with 400 `promo.invalid_discount_type`.
+             * @enum {string}
+             */
+            discount_type: "percent" | "fixed_amount";
+            /**
+             * Format: int64
+             * @description For `percent`: integer percentage in [1, 100]. For
+             *     `fixed_amount`: minor units (e.g. cents/kopecks). Zero or
+             *     negative is rejected with 400 `promo.invalid_discount_value`.
+             */
+            discount_value: number;
+            /**
+             * @description Optional whitelist of ticket-tier UUIDs the code applies to.
+             *     Empty array means the code applies order-wide.
+             */
+            applies_to_tier_ids: string[];
+            /**
+             * Format: int32
+             * @description Total redemption cap across all customers. `null` means
+             *     unlimited. When the cap is reached, `promo-validate` returns
+             *     409 `promo.exhausted`.
+             */
+            max_uses: number | null;
+            /**
+             * Format: int32
+             * @description Per-customer redemption cap. `null` means unlimited. Enforced
+             *     in `promo-validate` only when a `user_id` is supplied;
+             *     anonymous validations bypass the per-customer counter.
+             */
+            max_uses_per_customer: number | null;
+            /**
+             * Format: date-time
+             * @description RFC3339 start of the validity window. `null` means no lower
+             *     bound. Validation returns 422 `promo.not_yet_valid` for
+             *     requests before this instant.
+             */
+            valid_from: string | null;
+            /**
+             * Format: date-time
+             * @description RFC3339 end of the validity window. `null` means no upper
+             *     bound. Validation returns 422 `promo.expired` for requests
+             *     after this instant.
+             */
+            valid_until: string | null;
+            /**
+             * Format: int64
+             * @description Minor-units minimum order subtotal required for the code to
+             *     apply. Validation returns 422 `promo.invalid_order_amount`
+             *     when the order is below the threshold.
+             */
+            min_order_amount: number;
+            /**
+             * @description Lifecycle status. `paused` codes return 422
+             *     `promo.not_active` from `promo-validate`. Defaults to
+             *     `active` on create when omitted.
+             * @enum {string}
+             */
+            status: "active" | "paused";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description Single-promo-code response envelope. */
+        PromoCodeEnvelope: {
+            promo_code: components["schemas"]["PromoCodeItem"];
+        };
+        /**
+         * @description Envelope returned by `GET /v1/organizations/{org_id}/promo-codes`.
+         *     The `promo_codes` array is empty when the organization has no
+         *     promo codes.
+         */
+        PromoCodeListResponse: {
+            promo_codes: components["schemas"]["PromoCodeItem"][];
+        };
+        /**
+         * @description Envelope returned by
+         *     `DELETE /v1/organizations/{org_id}/promo-codes/{id}`. The
+         *     delete is a soft-delete (sets `deleted_at`); the wrapped row
+         *     reflects state immediately before the soft-delete marker was
+         *     applied.
+         */
+        PromoCodeDeleteResponse: {
+            promo_code: components["schemas"]["PromoCodeItem"];
+            /**
+             * @description Always `true` on a successful delete response.
+             * @enum {boolean}
+             */
+            deleted: true;
+        };
+        /**
+         * @description Body for `POST /v1/organizations/{org_id}/promo-codes`. Validates
+         *     `code` (trimmed, non-empty), `discount_type`
+         *     (`percent` | `fixed_amount`), `discount_value` (> 0; 1-100 when
+         *     type is `percent`), and the optional RFC3339 date window.
+         */
+        CreatePromoCodeRequest: {
+            /**
+             * @description The redeemable code string. Trimmed and required; empty
+             *     after trim returns 400 `promo.invalid_code`.
+             */
+            code: string;
+            /**
+             * @description Either `percent` or `fixed_amount`. Other values are
+             *     rejected with 400 `promo.invalid_discount_type`.
+             * @enum {string}
+             */
+            discount_type: "percent" | "fixed_amount";
+            /**
+             * Format: int64
+             * @description Must be > 0; for `percent` must be in [1, 100]. Otherwise
+             *     the handler returns 400 `promo.invalid_discount_value`.
+             */
+            discount_value: number;
+            /**
+             * @description Optional ticket-tier UUID whitelist. Omitted/null is
+             *     normalised to an empty array server-side.
+             */
+            applies_to_tier_ids?: string[];
+            /**
+             * Format: int32
+             * @description Total redemption cap; null = unlimited.
+             */
+            max_uses?: number | null;
+            /**
+             * Format: int32
+             * @description Per-customer redemption cap; null = unlimited.
+             */
+            max_uses_per_customer?: number | null;
+            /**
+             * Format: date-time
+             * @description RFC3339 start of the validity window. Non-RFC3339 values are
+             *     rejected with 400 `promo.invalid_valid_from`.
+             */
+            valid_from?: string | null;
+            /**
+             * Format: date-time
+             * @description RFC3339 end of the validity window. Non-RFC3339 values are
+             *     rejected with 400 `promo.invalid_valid_until`.
+             */
+            valid_until?: string | null;
+            /**
+             * Format: int64
+             * @description Minor-units minimum order subtotal required for the code to
+             *     apply. Defaults to 0 when omitted.
+             */
+            min_order_amount?: number;
+            /**
+             * @description Lifecycle status; defaults to `active` when omitted or
+             *     empty.
+             * @enum {string}
+             */
+            status?: "active" | "paused";
+        };
+        /**
+         * @description Body for `PATCH /v1/organizations/{org_id}/promo-codes/{id}`.
+         *     All fields are optional; omitted fields leave the corresponding
+         *     column unchanged. Validation rules mirror create.
+         */
+        UpdatePromoCodeRequest: {
+            /**
+             * @description Optional new discount type. Values outside the enum are
+             *     rejected with 400 `promo.invalid_discount_type`.
+             * @enum {string}
+             */
+            discount_type?: "percent" | "fixed_amount";
+            /** Format: int64 */
+            discount_value?: number | null;
+            applies_to_tier_ids?: string[];
+            /** Format: int32 */
+            max_uses?: number | null;
+            /** Format: int32 */
+            max_uses_per_customer?: number | null;
+            /**
+             * Format: date-time
+             * @description RFC3339 instant. Non-RFC3339 values return 400
+             *     `promo.invalid_valid_from`.
+             */
+            valid_from?: string | null;
+            /**
+             * Format: date-time
+             * @description RFC3339 instant. Non-RFC3339 values return 400
+             *     `promo.invalid_valid_until`.
+             */
+            valid_until?: string | null;
+            /** Format: int64 */
+            min_order_amount?: number | null;
+            /** @enum {string} */
+            status?: "active" | "paused";
+        };
+        /**
+         * @description Body for `POST /v1/checkout/promo-validate`. The handler looks
+         *     up the code by `(org_id, code)`, runs the state/date/min-amount
+         *     gates, then enforces the global and per-customer redemption
+         *     caps before returning the computed discount.
+         */
+        ValidatePromoCodeRequest: {
+            /**
+             * Format: uuid
+             * @description Organization that owns the promo code. Non-UUID values are
+             *     rejected with 400 `promo.invalid_org_id`.
+             */
+            org_id: string;
+            /**
+             * @description The redeemable code string. Trimmed and required; empty
+             *     after trim returns 400 `promo.invalid_code`.
+             */
+            code: string;
+            /**
+             * Format: int64
+             * @description Order subtotal in minor units used to compute the discount
+             *     and enforce `min_order_amount`.
+             */
+            order_amount: number;
+            /**
+             * Format: uuid
+             * @description Optional buyer UUID. When present, the handler enforces
+             *     `max_uses_per_customer` against this user's previous
+             *     redemptions. Anonymous (empty or non-UUID) callers bypass
+             *     the per-customer counter.
+             */
+            user_id?: string;
+        };
+        /**
+         * @description Successful validation result. `discount_amount` is the absolute
+         *     minor-units discount and `final_amount = order_amount -
+         *     discount_amount`. The original promo-code row is echoed back.
+         */
+        ValidatePromoCodeResponse: {
+            /**
+             * @description Always `true` on a 200 response.
+             * @enum {boolean}
+             */
+            valid: true;
+            /**
+             * Format: int64
+             * @description Computed discount in minor units.
+             */
+            discount_amount: number;
+            /**
+             * Format: int64
+             * @description `order_amount - discount_amount`. May be negative for
+             *     mis-specified fixed-amount codes; the checkout pipeline
+             *     clamps at zero.
+             */
+            final_amount: number;
+            promo_code: components["schemas"]["PromoCodeItem"];
         };
     };
     responses: never;
@@ -11961,6 +12341,507 @@ export interface operations {
             };
             /**
              * @description Database pool or reservation queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listPromoCodes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Promo-code list envelope (may be empty). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromoCodeListResponse"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `promo.read` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`promo.list_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Promo queries unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createPromoCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization that owns the promo code. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePromoCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description Promo code created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromoCodeEnvelope"];
+                };
+            };
+            /**
+             * @description Invalid body or field. Possible error codes:
+             *     `promo.invalid_body`, `promo.empty_body`,
+             *     `promo.invalid_json`, `promo.invalid_code`,
+             *     `promo.invalid_discount_type`,
+             *     `promo.invalid_discount_value`,
+             *     `promo.invalid_valid_from`, `promo.invalid_valid_until`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `promo.create` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description A promo code with the same `code` already exists in this
+             *     organization (`promo.duplicate`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`promo.insert_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Database pool or promo queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPromoCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization. */
+                org_id: string;
+                /** @description UUIDv7 of the promo code. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Promo-code envelope. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromoCodeEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `promo.read` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Promo code not found (`promo.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`promo.get_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Promo queries unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deletePromoCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization. */
+                org_id: string;
+                /** @description UUIDv7 of the promo code. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Promo code soft-deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromoCodeDeleteResponse"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `promo.delete` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Promo code not found (`promo.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`promo.delete_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Database pool or promo queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updatePromoCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization. */
+                org_id: string;
+                /** @description UUIDv7 of the promo code. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePromoCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated promo-code envelope. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromoCodeEnvelope"];
+                };
+            };
+            /**
+             * @description Invalid body or field. Possible error codes:
+             *     `promo.invalid_body`, `promo.empty_body`,
+             *     `promo.invalid_json`, `promo.invalid_discount_type`,
+             *     `promo.invalid_valid_from`, `promo.invalid_valid_until`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `promo.update` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Promo code not found (`promo.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`promo.update_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Database pool or promo queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    validatePromoCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ValidatePromoCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description Promo code is valid for the order; discount returned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidatePromoCodeResponse"];
+                };
+            };
+            /**
+             * @description Invalid body or field. Possible error codes:
+             *     `promo.invalid_body`, `promo.empty_body`,
+             *     `promo.invalid_json`, `promo.invalid_code`,
+             *     `promo.invalid_org_id`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `promo.validate` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Promo code not found (`promo.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Redemption cap reached. Possible codes:
+             *     `promo.exhausted`, `promo.per_customer_limit`.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Promo cannot be applied to this order. Possible codes:
+             *     `promo.not_active`, `promo.not_yet_valid`, `promo.expired`,
+             *     `promo.invalid_order_amount`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error. Possible codes:
+             *     `promo.lookup_failed`, `promo.count_failed`.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Promo queries unavailable
              *     (`dependency.database_unavailable`).
              */
             503: {

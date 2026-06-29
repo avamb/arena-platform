@@ -79,6 +79,18 @@ const (
 	CreatePaymentProviderConfigRequestModeTest CreatePaymentProviderConfigRequestMode = "test"
 )
 
+// Defines values for CreatePromoCodeRequestDiscountType.
+const (
+	CreatePromoCodeRequestDiscountTypeFixedAmount CreatePromoCodeRequestDiscountType = "fixed_amount"
+	CreatePromoCodeRequestDiscountTypePercent     CreatePromoCodeRequestDiscountType = "percent"
+)
+
+// Defines values for CreatePromoCodeRequestStatus.
+const (
+	CreatePromoCodeRequestStatusActive CreatePromoCodeRequestStatus = "active"
+	CreatePromoCodeRequestStatusPaused CreatePromoCodeRequestStatus = "paused"
+)
+
 // Defines values for CreateSessionRequestStatus.
 const (
 	CreateSessionRequestStatusCancelled CreateSessionRequestStatus = "cancelled"
@@ -201,6 +213,23 @@ const (
 	MissingRequiredFields PaymentProviderConfigItemStatus = "missing_required_fields"
 )
 
+// Defines values for PromoCodeDeleteResponseDeleted.
+const (
+	PromoCodeDeleteResponseDeletedTrue PromoCodeDeleteResponseDeleted = true
+)
+
+// Defines values for PromoCodeItemDiscountType.
+const (
+	PromoCodeItemDiscountTypeFixedAmount PromoCodeItemDiscountType = "fixed_amount"
+	PromoCodeItemDiscountTypePercent     PromoCodeItemDiscountType = "percent"
+)
+
+// Defines values for PromoCodeItemStatus.
+const (
+	PromoCodeItemStatusActive PromoCodeItemStatus = "active"
+	PromoCodeItemStatusPaused PromoCodeItemStatus = "paused"
+)
+
 // Defines values for ReadyzResponseStatus.
 const (
 	NotReady ReadyzResponseStatus = "not_ready"
@@ -218,7 +247,7 @@ const (
 
 // Defines values for ReservationCancelEnvelopeCancelled.
 const (
-	True ReservationCancelEnvelopeCancelled = true
+	ReservationCancelEnvelopeCancelledTrue ReservationCancelEnvelopeCancelled = true
 )
 
 // Defines values for SessionItemStatus.
@@ -268,6 +297,18 @@ const (
 	UsEin UpdateOrganizationRequestTaxIdScheme = "us_ein"
 )
 
+// Defines values for UpdatePromoCodeRequestDiscountType.
+const (
+	FixedAmount UpdatePromoCodeRequestDiscountType = "fixed_amount"
+	Percent     UpdatePromoCodeRequestDiscountType = "percent"
+)
+
+// Defines values for UpdatePromoCodeRequestStatus.
+const (
+	UpdatePromoCodeRequestStatusActive UpdatePromoCodeRequestStatus = "active"
+	UpdatePromoCodeRequestStatusPaused UpdatePromoCodeRequestStatus = "paused"
+)
+
 // Defines values for UpdateSessionRequestStatus.
 const (
 	UpdateSessionRequestStatusCancelled UpdateSessionRequestStatus = "cancelled"
@@ -290,11 +331,16 @@ const (
 	UpdateVenueRequestStatusDraft    UpdateVenueRequestStatus = "draft"
 )
 
+// Defines values for ValidatePromoCodeResponseValid.
+const (
+	True ValidatePromoCodeResponseValid = true
+)
+
 // Defines values for VenueItemStatus.
 const (
-	VenueItemStatusActive   VenueItemStatus = "active"
-	VenueItemStatusArchived VenueItemStatus = "archived"
-	VenueItemStatusDraft    VenueItemStatus = "draft"
+	Active   VenueItemStatus = "active"
+	Archived VenueItemStatus = "archived"
+	Draft    VenueItemStatus = "draft"
 )
 
 // Defines values for ListEventsParamsVisibility.
@@ -718,6 +764,58 @@ type CreatePaymentProviderConfigRequest struct {
 
 // CreatePaymentProviderConfigRequestMode Operating mode for the credential set.
 type CreatePaymentProviderConfigRequestMode string
+
+// CreatePromoCodeRequest Body for `POST /v1/organizations/{org_id}/promo-codes`. Validates
+// `code` (trimmed, non-empty), `discount_type`
+// (`percent` | `fixed_amount`), `discount_value` (> 0; 1-100 when
+// type is `percent`), and the optional RFC3339 date window.
+type CreatePromoCodeRequest struct {
+	// AppliesToTierIds Optional ticket-tier UUID whitelist. Omitted/null is
+	// normalised to an empty array server-side.
+	AppliesToTierIds *[]openapi_types.UUID `json:"applies_to_tier_ids,omitempty"`
+
+	// Code The redeemable code string. Trimmed and required; empty
+	// after trim returns 400 `promo.invalid_code`.
+	Code string `json:"code"`
+
+	// DiscountType Either `percent` or `fixed_amount`. Other values are
+	// rejected with 400 `promo.invalid_discount_type`.
+	DiscountType CreatePromoCodeRequestDiscountType `json:"discount_type"`
+
+	// DiscountValue Must be > 0; for `percent` must be in [1, 100]. Otherwise
+	// the handler returns 400 `promo.invalid_discount_value`.
+	DiscountValue int64 `json:"discount_value"`
+
+	// MaxUses Total redemption cap; null = unlimited.
+	MaxUses *int32 `json:"max_uses"`
+
+	// MaxUsesPerCustomer Per-customer redemption cap; null = unlimited.
+	MaxUsesPerCustomer *int32 `json:"max_uses_per_customer"`
+
+	// MinOrderAmount Minor-units minimum order subtotal required for the code to
+	// apply. Defaults to 0 when omitted.
+	MinOrderAmount *int64 `json:"min_order_amount,omitempty"`
+
+	// Status Lifecycle status; defaults to `active` when omitted or
+	// empty.
+	Status *CreatePromoCodeRequestStatus `json:"status,omitempty"`
+
+	// ValidFrom RFC3339 start of the validity window. Non-RFC3339 values are
+	// rejected with 400 `promo.invalid_valid_from`.
+	ValidFrom *time.Time `json:"valid_from"`
+
+	// ValidUntil RFC3339 end of the validity window. Non-RFC3339 values are
+	// rejected with 400 `promo.invalid_valid_until`.
+	ValidUntil *time.Time `json:"valid_until"`
+}
+
+// CreatePromoCodeRequestDiscountType Either `percent` or `fixed_amount`. Other values are
+// rejected with 400 `promo.invalid_discount_type`.
+type CreatePromoCodeRequestDiscountType string
+
+// CreatePromoCodeRequestStatus Lifecycle status; defaults to `active` when omitted or
+// empty.
+type CreatePromoCodeRequestStatus string
 
 // CreateReservationRequest Body for `POST /v1/reservations`. Creates a draft reservation
 // atomically with a `ReserveCapacity` call against the session
@@ -1931,6 +2029,114 @@ type PaymentProviderConfigItemMode string
 // populated; otherwise `missing_required_fields`.
 type PaymentProviderConfigItemStatus string
 
+// PromoCodeDeleteResponse Envelope returned by
+// `DELETE /v1/organizations/{org_id}/promo-codes/{id}`. The
+// delete is a soft-delete (sets `deleted_at`); the wrapped row
+// reflects state immediately before the soft-delete marker was
+// applied.
+type PromoCodeDeleteResponse struct {
+	// Deleted Always `true` on a successful delete response.
+	Deleted PromoCodeDeleteResponseDeleted `json:"deleted"`
+
+	// PromoCode A promo code is a discount voucher scoped to one organization. It
+	// applies either a fixed amount or percentage discount to an order,
+	// with optional restrictions on which ticket tiers it applies to,
+	// total usage limits, per-customer usage limits, a validity date
+	// window, and a minimum order amount.
+	PromoCode PromoCodeItem `json:"promo_code"`
+}
+
+// PromoCodeDeleteResponseDeleted Always `true` on a successful delete response.
+type PromoCodeDeleteResponseDeleted bool
+
+// PromoCodeEnvelope Single-promo-code response envelope.
+type PromoCodeEnvelope struct {
+	// PromoCode A promo code is a discount voucher scoped to one organization. It
+	// applies either a fixed amount or percentage discount to an order,
+	// with optional restrictions on which ticket tiers it applies to,
+	// total usage limits, per-customer usage limits, a validity date
+	// window, and a minimum order amount.
+	PromoCode PromoCodeItem `json:"promo_code"`
+}
+
+// PromoCodeItem A promo code is a discount voucher scoped to one organization. It
+// applies either a fixed amount or percentage discount to an order,
+// with optional restrictions on which ticket tiers it applies to,
+// total usage limits, per-customer usage limits, a validity date
+// window, and a minimum order amount.
+type PromoCodeItem struct {
+	// AppliesToTierIds Optional whitelist of ticket-tier UUIDs the code applies to.
+	// Empty array means the code applies order-wide.
+	AppliesToTierIds []openapi_types.UUID `json:"applies_to_tier_ids"`
+
+	// Code The redeemable code string (e.g. `SUMMER25`). Unique per
+	// organization; duplicate inserts return 409 `promo.duplicate`.
+	Code      string    `json:"code"`
+	CreatedAt time.Time `json:"created_at"`
+
+	// DiscountType Either `percent` (1-100) or `fixed_amount`. Other values are
+	// rejected with 400 `promo.invalid_discount_type`.
+	DiscountType PromoCodeItemDiscountType `json:"discount_type"`
+
+	// DiscountValue For `percent`: integer percentage in [1, 100]. For
+	// `fixed_amount`: minor units (e.g. cents/kopecks). Zero or
+	// negative is rejected with 400 `promo.invalid_discount_value`.
+	DiscountValue int64 `json:"discount_value"`
+
+	// Id UUIDv7 of the promo code.
+	Id openapi_types.UUID `json:"id"`
+
+	// MaxUses Total redemption cap across all customers. `null` means
+	// unlimited. When the cap is reached, `promo-validate` returns
+	// 409 `promo.exhausted`.
+	MaxUses *int32 `json:"max_uses"`
+
+	// MaxUsesPerCustomer Per-customer redemption cap. `null` means unlimited. Enforced
+	// in `promo-validate` only when a `user_id` is supplied;
+	// anonymous validations bypass the per-customer counter.
+	MaxUsesPerCustomer *int32 `json:"max_uses_per_customer"`
+
+	// MinOrderAmount Minor-units minimum order subtotal required for the code to
+	// apply. Validation returns 422 `promo.invalid_order_amount`
+	// when the order is below the threshold.
+	MinOrderAmount int64 `json:"min_order_amount"`
+
+	// OrgId Organization that owns the promo code.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// Status Lifecycle status. `paused` codes return 422
+	// `promo.not_active` from `promo-validate`. Defaults to
+	// `active` on create when omitted.
+	Status    PromoCodeItemStatus `json:"status"`
+	UpdatedAt time.Time           `json:"updated_at"`
+
+	// ValidFrom RFC3339 start of the validity window. `null` means no lower
+	// bound. Validation returns 422 `promo.not_yet_valid` for
+	// requests before this instant.
+	ValidFrom *time.Time `json:"valid_from"`
+
+	// ValidUntil RFC3339 end of the validity window. `null` means no upper
+	// bound. Validation returns 422 `promo.expired` for requests
+	// after this instant.
+	ValidUntil *time.Time `json:"valid_until"`
+}
+
+// PromoCodeItemDiscountType Either `percent` (1-100) or `fixed_amount`. Other values are
+// rejected with 400 `promo.invalid_discount_type`.
+type PromoCodeItemDiscountType string
+
+// PromoCodeItemStatus Lifecycle status. `paused` codes return 422
+// `promo.not_active` from `promo-validate`. Defaults to
+// `active` on create when omitted.
+type PromoCodeItemStatus string
+
+// PromoCodeListResponse Envelope returned by `GET /v1/organizations/{org_id}/promo-codes`.
+// The `promo_codes` array is empty when the organization has no
+// promo codes.
+type PromoCodeListResponse struct {
+	PromoCodes []PromoCodeItem `json:"promo_codes"`
+}
+
 // ReadyzResponse defines model for ReadyzResponse.
 type ReadyzResponse struct {
 	// Checks Map of probe name to status string ("ok" or error message)
@@ -2424,6 +2630,37 @@ type UpdatePaymentProviderConfigRequest struct {
 	Secrets *map[string]string `json:"secrets,omitempty"`
 }
 
+// UpdatePromoCodeRequest Body for `PATCH /v1/organizations/{org_id}/promo-codes/{id}`.
+// All fields are optional; omitted fields leave the corresponding
+// column unchanged. Validation rules mirror create.
+type UpdatePromoCodeRequest struct {
+	AppliesToTierIds *[]openapi_types.UUID `json:"applies_to_tier_ids,omitempty"`
+
+	// DiscountType Optional new discount type. Values outside the enum are
+	// rejected with 400 `promo.invalid_discount_type`.
+	DiscountType       *UpdatePromoCodeRequestDiscountType `json:"discount_type,omitempty"`
+	DiscountValue      *int64                              `json:"discount_value"`
+	MaxUses            *int32                              `json:"max_uses"`
+	MaxUsesPerCustomer *int32                              `json:"max_uses_per_customer"`
+	MinOrderAmount     *int64                              `json:"min_order_amount"`
+	Status             *UpdatePromoCodeRequestStatus       `json:"status,omitempty"`
+
+	// ValidFrom RFC3339 instant. Non-RFC3339 values return 400
+	// `promo.invalid_valid_from`.
+	ValidFrom *time.Time `json:"valid_from"`
+
+	// ValidUntil RFC3339 instant. Non-RFC3339 values return 400
+	// `promo.invalid_valid_until`.
+	ValidUntil *time.Time `json:"valid_until"`
+}
+
+// UpdatePromoCodeRequestDiscountType Optional new discount type. Values outside the enum are
+// rejected with 400 `promo.invalid_discount_type`.
+type UpdatePromoCodeRequestDiscountType string
+
+// UpdatePromoCodeRequestStatus defines model for UpdatePromoCodeRequest.Status.
+type UpdatePromoCodeRequestStatus string
+
 // UpdateSessionRequest Partial update for PATCH
 // /v1/organizations/{org_id}/events/{event_id}/sessions/{id}. All
 // fields are optional; nil / empty fields leave the existing value
@@ -2581,6 +2818,56 @@ type UpdateVenueRequest struct {
 // to `null` — omit the field to leave the existing value
 // unchanged.
 type UpdateVenueRequestStatus string
+
+// ValidatePromoCodeRequest Body for `POST /v1/checkout/promo-validate`. The handler looks
+// up the code by `(org_id, code)`, runs the state/date/min-amount
+// gates, then enforces the global and per-customer redemption
+// caps before returning the computed discount.
+type ValidatePromoCodeRequest struct {
+	// Code The redeemable code string. Trimmed and required; empty
+	// after trim returns 400 `promo.invalid_code`.
+	Code string `json:"code"`
+
+	// OrderAmount Order subtotal in minor units used to compute the discount
+	// and enforce `min_order_amount`.
+	OrderAmount int64 `json:"order_amount"`
+
+	// OrgId Organization that owns the promo code. Non-UUID values are
+	// rejected with 400 `promo.invalid_org_id`.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// UserId Optional buyer UUID. When present, the handler enforces
+	// `max_uses_per_customer` against this user's previous
+	// redemptions. Anonymous (empty or non-UUID) callers bypass
+	// the per-customer counter.
+	UserId *openapi_types.UUID `json:"user_id,omitempty"`
+}
+
+// ValidatePromoCodeResponse Successful validation result. `discount_amount` is the absolute
+// minor-units discount and `final_amount = order_amount -
+// discount_amount`. The original promo-code row is echoed back.
+type ValidatePromoCodeResponse struct {
+	// DiscountAmount Computed discount in minor units.
+	DiscountAmount int64 `json:"discount_amount"`
+
+	// FinalAmount `order_amount - discount_amount`. May be negative for
+	// mis-specified fixed-amount codes; the checkout pipeline
+	// clamps at zero.
+	FinalAmount int64 `json:"final_amount"`
+
+	// PromoCode A promo code is a discount voucher scoped to one organization. It
+	// applies either a fixed amount or percentage discount to an order,
+	// with optional restrictions on which ticket tiers it applies to,
+	// total usage limits, per-customer usage limits, a validity date
+	// window, and a minimum order amount.
+	PromoCode PromoCodeItem `json:"promo_code"`
+
+	// Valid Always `true` on a 200 response.
+	Valid ValidatePromoCodeResponseValid `json:"valid"`
+}
+
+// ValidatePromoCodeResponseValid Always `true` on a 200 response.
+type ValidatePromoCodeResponseValid bool
 
 // VenueItem A single active venue (physical event location owned by one organization).
 // Any authenticated org may read venue data, but only the owning org may
@@ -2952,6 +3239,9 @@ type PostV1AuthRefreshJSONRequestBody = AuthRefreshRequest
 // PostV1AuthRegisterJSONRequestBody defines body for PostV1AuthRegister for application/json ContentType.
 type PostV1AuthRegisterJSONRequestBody = AuthRegisterRequest
 
+// ValidatePromoCodeJSONRequestBody defines body for ValidatePromoCode for application/json ContentType.
+type ValidatePromoCodeJSONRequestBody = ValidatePromoCodeRequest
+
 // PostV1DevAuthTokenJSONRequestBody defines body for PostV1DevAuthToken for application/json ContentType.
 type PostV1DevAuthTokenJSONRequestBody = DevAuthTokenRequest
 
@@ -3017,6 +3307,12 @@ type CreatePaymentProviderConfigJSONRequestBody = CreatePaymentProviderConfigReq
 
 // UpdatePaymentProviderConfigJSONRequestBody defines body for UpdatePaymentProviderConfig for application/json ContentType.
 type UpdatePaymentProviderConfigJSONRequestBody = UpdatePaymentProviderConfigRequest
+
+// CreatePromoCodeJSONRequestBody defines body for CreatePromoCode for application/json ContentType.
+type CreatePromoCodeJSONRequestBody = CreatePromoCodeRequest
+
+// UpdatePromoCodeJSONRequestBody defines body for UpdatePromoCode for application/json ContentType.
+type UpdatePromoCodeJSONRequestBody = UpdatePromoCodeRequest
 
 // PostV1OrganizationsOrgIdVenuesJSONRequestBody defines body for PostV1OrganizationsOrgIdVenues for application/json ContentType.
 type PostV1OrganizationsOrgIdVenuesJSONRequestBody = CreateVenueRequest

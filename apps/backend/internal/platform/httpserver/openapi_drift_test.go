@@ -319,6 +319,12 @@ func buildDriftTestServer(t *testing.T) *Server {
 		// the drift check: POST /v1/reservations, GET/DELETE
 		// /v1/reservations/{id}, PATCH /v1/reservations/{id}/activate.
 		ReservationQueries: gen.New(nil),
+		// Wire PromoQueries so the promo-code CRUD + validation routes
+		// (feature #128 / documented under feature #268) are mounted for
+		// the drift check: GET/POST /v1/organizations/{org_id}/promo-codes,
+		// GET/PATCH/DELETE /v1/organizations/{org_id}/promo-codes/{id},
+		// POST /v1/checkout/promo-validate.
+		PromoQueries: gen.New(nil),
 	})
 }
 

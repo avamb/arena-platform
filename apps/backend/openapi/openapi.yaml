@@ -3658,6 +3658,350 @@ components:
             Number of capacity units to hold; must be strictly positive
             (`reservation.invalid_quantity` is returned otherwise).
 
+    PromoCodeItem:
+      type: object
+      description: |
+        A promo code is a discount voucher scoped to one organization. It
+        applies either a fixed amount or percentage discount to an order,
+        with optional restrictions on which ticket tiers it applies to,
+        total usage limits, per-customer usage limits, a validity date
+        window, and a minimum order amount.
+      required:
+        - id
+        - org_id
+        - code
+        - discount_type
+        - discount_value
+        - applies_to_tier_ids
+        - max_uses
+        - max_uses_per_customer
+        - valid_from
+        - valid_until
+        - min_order_amount
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the promo code.
+        org_id:
+          type: string
+          format: uuid
+          description: Organization that owns the promo code.
+        code:
+          type: string
+          minLength: 1
+          description: |
+            The redeemable code string (e.g. `SUMMER25`). Unique per
+            organization; duplicate inserts return 409 `promo.duplicate`.
+        discount_type:
+          type: string
+          enum: [percent, fixed_amount]
+          description: |
+            Either `percent` (1-100) or `fixed_amount`. Other values are
+            rejected with 400 `promo.invalid_discount_type`.
+        discount_value:
+          type: integer
+          format: int64
+          minimum: 1
+          description: |
+            For `percent`: integer percentage in [1, 100]. For
+            `fixed_amount`: minor units (e.g. cents/kopecks). Zero or
+            negative is rejected with 400 `promo.invalid_discount_value`.
+        applies_to_tier_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: |
+            Optional whitelist of ticket-tier UUIDs the code applies to.
+            Empty array means the code applies order-wide.
+        max_uses:
+          type: integer
+          format: int32
+          nullable: true
+          description: |
+            Total redemption cap across all customers. `null` means
+            unlimited. When the cap is reached, `promo-validate` returns
+            409 `promo.exhausted`.
+        max_uses_per_customer:
+          type: integer
+          format: int32
+          nullable: true
+          description: |
+            Per-customer redemption cap. `null` means unlimited. Enforced
+            in `promo-validate` only when a `user_id` is supplied;
+            anonymous validations bypass the per-customer counter.
+        valid_from:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            RFC3339 start of the validity window. `null` means no lower
+            bound. Validation returns 422 `promo.not_yet_valid` for
+            requests before this instant.
+        valid_until:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            RFC3339 end of the validity window. `null` means no upper
+            bound. Validation returns 422 `promo.expired` for requests
+            after this instant.
+        min_order_amount:
+          type: integer
+          format: int64
+          minimum: 0
+          description: |
+            Minor-units minimum order subtotal required for the code to
+            apply. Validation returns 422 `promo.invalid_order_amount`
+            when the order is below the threshold.
+        status:
+          type: string
+          enum: [active, paused]
+          description: |
+            Lifecycle status. `paused` codes return 422
+            `promo.not_active` from `promo-validate`. Defaults to
+            `active` on create when omitted.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    PromoCodeEnvelope:
+      type: object
+      required: [promo_code]
+      description: Single-promo-code response envelope.
+      properties:
+        promo_code:
+          $ref: "#/components/schemas/PromoCodeItem"
+
+    PromoCodeListResponse:
+      type: object
+      required: [promo_codes]
+      description: |
+        Envelope returned by `GET /v1/organizations/{org_id}/promo-codes`.
+        The `promo_codes` array is empty when the organization has no
+        promo codes.
+      properties:
+        promo_codes:
+          type: array
+          items:
+            $ref: "#/components/schemas/PromoCodeItem"
+
+    PromoCodeDeleteResponse:
+      type: object
+      required: [promo_code, deleted]
+      description: |
+        Envelope returned by
+        `DELETE /v1/organizations/{org_id}/promo-codes/{id}`. The
+        delete is a soft-delete (sets `deleted_at`); the wrapped row
+        reflects state immediately before the soft-delete marker was
+        applied.
+      properties:
+        promo_code:
+          $ref: "#/components/schemas/PromoCodeItem"
+        deleted:
+          type: boolean
+          enum: [true]
+          description: Always `true` on a successful delete response.
+
+    CreatePromoCodeRequest:
+      type: object
+      required: [code, discount_type, discount_value]
+      description: |
+        Body for `POST /v1/organizations/{org_id}/promo-codes`. Validates
+        `code` (trimmed, non-empty), `discount_type`
+        (`percent` | `fixed_amount`), `discount_value` (> 0; 1-100 when
+        type is `percent`), and the optional RFC3339 date window.
+      properties:
+        code:
+          type: string
+          minLength: 1
+          description: |
+            The redeemable code string. Trimmed and required; empty
+            after trim returns 400 `promo.invalid_code`.
+        discount_type:
+          type: string
+          enum: [percent, fixed_amount]
+          description: |
+            Either `percent` or `fixed_amount`. Other values are
+            rejected with 400 `promo.invalid_discount_type`.
+        discount_value:
+          type: integer
+          format: int64
+          minimum: 1
+          description: |
+            Must be > 0; for `percent` must be in [1, 100]. Otherwise
+            the handler returns 400 `promo.invalid_discount_value`.
+        applies_to_tier_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: |
+            Optional ticket-tier UUID whitelist. Omitted/null is
+            normalised to an empty array server-side.
+        max_uses:
+          type: integer
+          format: int32
+          nullable: true
+          description: Total redemption cap; null = unlimited.
+        max_uses_per_customer:
+          type: integer
+          format: int32
+          nullable: true
+          description: Per-customer redemption cap; null = unlimited.
+        valid_from:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            RFC3339 start of the validity window. Non-RFC3339 values are
+            rejected with 400 `promo.invalid_valid_from`.
+        valid_until:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            RFC3339 end of the validity window. Non-RFC3339 values are
+            rejected with 400 `promo.invalid_valid_until`.
+        min_order_amount:
+          type: integer
+          format: int64
+          minimum: 0
+          description: |
+            Minor-units minimum order subtotal required for the code to
+            apply. Defaults to 0 when omitted.
+        status:
+          type: string
+          enum: [active, paused]
+          description: |
+            Lifecycle status; defaults to `active` when omitted or
+            empty.
+
+    UpdatePromoCodeRequest:
+      type: object
+      description: |
+        Body for `PATCH /v1/organizations/{org_id}/promo-codes/{id}`.
+        All fields are optional; omitted fields leave the corresponding
+        column unchanged. Validation rules mirror create.
+      properties:
+        discount_type:
+          type: string
+          enum: [percent, fixed_amount]
+          description: |
+            Optional new discount type. Values outside the enum are
+            rejected with 400 `promo.invalid_discount_type`.
+        discount_value:
+          type: integer
+          format: int64
+          minimum: 1
+          nullable: true
+        applies_to_tier_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        max_uses:
+          type: integer
+          format: int32
+          nullable: true
+        max_uses_per_customer:
+          type: integer
+          format: int32
+          nullable: true
+        valid_from:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            RFC3339 instant. Non-RFC3339 values return 400
+            `promo.invalid_valid_from`.
+        valid_until:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            RFC3339 instant. Non-RFC3339 values return 400
+            `promo.invalid_valid_until`.
+        min_order_amount:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+        status:
+          type: string
+          enum: [active, paused]
+
+    ValidatePromoCodeRequest:
+      type: object
+      required: [org_id, code, order_amount]
+      description: |
+        Body for `POST /v1/checkout/promo-validate`. The handler looks
+        up the code by `(org_id, code)`, runs the state/date/min-amount
+        gates, then enforces the global and per-customer redemption
+        caps before returning the computed discount.
+      properties:
+        org_id:
+          type: string
+          format: uuid
+          description: |
+            Organization that owns the promo code. Non-UUID values are
+            rejected with 400 `promo.invalid_org_id`.
+        code:
+          type: string
+          minLength: 1
+          description: |
+            The redeemable code string. Trimmed and required; empty
+            after trim returns 400 `promo.invalid_code`.
+        order_amount:
+          type: integer
+          format: int64
+          minimum: 0
+          description: |
+            Order subtotal in minor units used to compute the discount
+            and enforce `min_order_amount`.
+        user_id:
+          type: string
+          format: uuid
+          description: |
+            Optional buyer UUID. When present, the handler enforces
+            `max_uses_per_customer` against this user's previous
+            redemptions. Anonymous (empty or non-UUID) callers bypass
+            the per-customer counter.
+
+    ValidatePromoCodeResponse:
+      type: object
+      required: [valid, discount_amount, final_amount, promo_code]
+      description: |
+        Successful validation result. `discount_amount` is the absolute
+        minor-units discount and `final_amount = order_amount -
+        discount_amount`. The original promo-code row is echoed back.
+      properties:
+        valid:
+          type: boolean
+          enum: [true]
+          description: Always `true` on a 200 response.
+        discount_amount:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Computed discount in minor units.
+        final_amount:
+          type: integer
+          format: int64
+          description: |
+            `order_amount - discount_amount`. May be negative for
+            mis-specified fixed-amount codes; the checkout pipeline
+            clamps at zero.
+        promo_code:
+          $ref: "#/components/schemas/PromoCodeItem"
+
 paths:
   /healthz:
     get:
@@ -10247,6 +10591,503 @@ paths:
         "503":
           description: |
             Database pool or reservation queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/promo-codes:
+    post:
+      operationId: createPromoCode
+      summary: Create a promo code for an organization
+      description: |
+        Creates a promo code scoped to `org_id`. The `code` string is
+        trimmed and must be unique within the organization; duplicates
+        return 409 `promo.duplicate`. `discount_type` must be `percent`
+        (1-100) or `fixed_amount`; `discount_value` must be > 0.
+
+        Requires JWT + the `promo.create` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization that owns the promo code.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePromoCodeRequest"
+            examples:
+              createPercentCode:
+                summary: 25%-off code valid for the summer window
+                value:
+                  code: "SUMMER25"
+                  discount_type: "percent"
+                  discount_value: 25
+                  applies_to_tier_ids: []
+                  max_uses: 100
+                  max_uses_per_customer: 1
+                  valid_from: "2026-06-01T00:00:00Z"
+                  valid_until: "2026-08-31T23:59:59Z"
+                  min_order_amount: 5000
+                  status: "active"
+              createFixedAmountCode:
+                summary: 1000 minor-units off, no usage caps
+                value:
+                  code: "WELCOME10"
+                  discount_type: "fixed_amount"
+                  discount_value: 1000
+                  applies_to_tier_ids: []
+                  min_order_amount: 0
+      responses:
+        "201":
+          description: Promo code created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromoCodeEnvelope"
+        "400":
+          description: |
+            Invalid body or field. Possible error codes:
+            `promo.invalid_body`, `promo.empty_body`,
+            `promo.invalid_json`, `promo.invalid_code`,
+            `promo.invalid_discount_type`,
+            `promo.invalid_discount_value`,
+            `promo.invalid_valid_from`, `promo.invalid_valid_until`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `promo.create` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            A promo code with the same `code` already exists in this
+            organization (`promo.duplicate`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`promo.insert_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Database pool or promo queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    get:
+      operationId: listPromoCodes
+      summary: List promo codes for an organization
+      description: |
+        Returns all promo codes for `org_id` ordered by the underlying
+        query (typically `created_at DESC`). Soft-deleted rows are
+        excluded.
+
+        Requires JWT + the `promo.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Promo-code list envelope (may be empty).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromoCodeListResponse"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `promo.read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`promo.list_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Promo queries unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/promo-codes/{id}:
+    get:
+      operationId: getPromoCode
+      summary: Get a single promo code
+      description: |
+        Returns a promo code by `(org_id, id)`. Soft-deleted rows are
+        treated as `promo.not_found`.
+
+        Requires JWT + the `promo.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the promo code.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Promo-code envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromoCodeEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `promo.read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Promo code not found (`promo.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`promo.get_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Promo queries unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      operationId: updatePromoCode
+      summary: Update a promo code
+      description: |
+        Partial update; only fields present in the body are applied.
+        Validation rules mirror create: `discount_type` (when set) must
+        be in the enum, and date fields (when set) must be RFC3339.
+
+        Requires JWT + the `promo.update` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the promo code.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePromoCodeRequest"
+            examples:
+              pauseCode:
+                summary: Pause the code without other changes
+                value:
+                  status: "paused"
+              extendWindow:
+                summary: Extend the validity window
+                value:
+                  valid_until: "2026-12-31T23:59:59Z"
+              bumpDiscount:
+                summary: Bump a percent-off code from 25% to 30%
+                value:
+                  discount_type: "percent"
+                  discount_value: 30
+      responses:
+        "200":
+          description: Updated promo-code envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromoCodeEnvelope"
+        "400":
+          description: |
+            Invalid body or field. Possible error codes:
+            `promo.invalid_body`, `promo.empty_body`,
+            `promo.invalid_json`, `promo.invalid_discount_type`,
+            `promo.invalid_valid_from`, `promo.invalid_valid_until`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `promo.update` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Promo code not found (`promo.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`promo.update_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Database pool or promo queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      operationId: deletePromoCode
+      summary: Soft-delete a promo code
+      description: |
+        Soft-deletes the promo code (sets `deleted_at = now()`). The
+        wrapped row in the response reflects state immediately before
+        the delete marker was applied.
+
+        Requires JWT + the `promo.delete` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the promo code.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Promo code soft-deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromoCodeDeleteResponse"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `promo.delete` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Promo code not found (`promo.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`promo.delete_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Database pool or promo queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/checkout/promo-validate:
+    post:
+      operationId: validatePromoCode
+      summary: Validate a promo code and compute its discount
+      description: |
+        Validates a promo code against a candidate order and returns
+        the computed discount when applicable. Validation steps:
+
+          1. Look up the code by `(org_id, code)` -- missing returns 404
+             `promo.not_found`.
+          2. Check status, validity window and `min_order_amount` --
+             returns 422 with one of `promo.not_active`,
+             `promo.not_yet_valid`, `promo.expired`,
+             `promo.invalid_order_amount`.
+          3. Enforce `max_uses` globally -- exhausted returns 409
+             `promo.exhausted`.
+          4. When `user_id` is a valid UUID, enforce
+             `max_uses_per_customer` -- exceeded returns 409
+             `promo.per_customer_limit`.
+
+        Requires JWT + the `promo.validate` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidatePromoCodeRequest"
+            examples:
+              validateAnonymous:
+                summary: Validate without an authenticated buyer
+                value:
+                  org_id: "018f4f00-0000-7000-8000-000000000003"
+                  code: "SUMMER25"
+                  order_amount: 10000
+              validateForUser:
+                summary: Validate enforcing the per-customer cap
+                value:
+                  org_id: "018f4f00-0000-7000-8000-000000000003"
+                  code: "WELCOME10"
+                  order_amount: 5000
+                  user_id: "018f4f00-0000-7000-8000-000000000099"
+      responses:
+        "200":
+          description: Promo code is valid for the order; discount returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidatePromoCodeResponse"
+        "400":
+          description: |
+            Invalid body or field. Possible error codes:
+            `promo.invalid_body`, `promo.empty_body`,
+            `promo.invalid_json`, `promo.invalid_code`,
+            `promo.invalid_org_id`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `promo.validate` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Promo code not found (`promo.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            Redemption cap reached. Possible codes:
+            `promo.exhausted`, `promo.per_customer_limit`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: |
+            Promo cannot be applied to this order. Possible codes:
+            `promo.not_active`, `promo.not_yet_valid`, `promo.expired`,
+            `promo.invalid_order_amount`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error. Possible codes:
+            `promo.lookup_failed`, `promo.count_failed`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Promo queries unavailable
             (`dependency.database_unavailable`).
           content:
             application/json:
