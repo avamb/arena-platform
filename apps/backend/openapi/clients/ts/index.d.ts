@@ -2117,6 +2117,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/checkout/{id}/tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Checkout session UUID whose tickets to list. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List tickets issued for a checkout session
+         * @description Returns every ticket issued for the given checkout session in
+         *     issuance order. Issuance is internal — tickets are created by
+         *     the payment-intent webhook handler on `payment.succeeded` or by
+         *     the free-checkout completion path, not via this endpoint. This
+         *     route is purely a read.
+         *
+         *     If the checkout session has no tickets (not yet completed, or
+         *     issuance not yet performed) the response is an empty list.
+         *
+         *     Requires JWT + the `ticket.read` permission.
+         */
+        get: operations["listCheckoutTickets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/payment-intents": {
         parameters: {
             query?: never;
@@ -5184,6 +5216,92 @@ export interface components {
             tier: components["schemas"]["TicketTierItem"];
             /** @example true */
             deleted: boolean;
+        };
+        /**
+         * @description A single ticket (atomic entitlement) issued after payment.succeeded
+         *     or free-checkout completion. One row per unit in the underlying
+         *     reservation quantity. Issuance is idempotent per
+         *     `checkout_session_id`: replaying issuance for a session that already
+         *     has tickets returns the existing rows.
+         *
+         *     State machine (from migration 0026_tickets.sql):
+         *
+         *       active
+         *         │ (cancelled by org or buyer)  → cancelled   (terminal)
+         *         │ (transferred to new holder)  → transferred (terminal)
+         */
+        TicketItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the ticket row.
+             * @example 01929d0e-0e47-7000-8000-000000000801
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description FK to the checkout session that triggered issuance. Also acts as
+             *     the application-level idempotency key: re-issuing for a session
+             *     with existing tickets returns the existing rows.
+             * @example 018f4f00-0000-7000-8000-000000000020
+             */
+            checkout_session_id: string;
+            /**
+             * Format: uuid
+             * @description FK to the event session this ticket grants access to.
+             * @example 01929d0e-0e47-7000-8000-000000000501
+             */
+            session_id: string;
+            /**
+             * Format: uuid
+             * @description Optional FK to the ticket_tiers row associated with this ticket.
+             *     `null` for GA / untiered sessions.
+             * @example 01929d0e-0e47-7000-8000-000000000701
+             */
+            tier_id?: string | null;
+            /**
+             * @description Optional delivery email for the ticket holder. `null` for
+             *     anonymous purchases or when email is not yet collected at
+             *     issuance time.
+             * @example buyer@example.com
+             */
+            holder_email?: string | null;
+            /**
+             * @description Ticket state machine status. `active` is the issuance default;
+             *     `cancelled` and `transferred` are terminal. Pinned to the
+             *     `tickets_status_check` constraint in 0026_tickets.sql.
+             * @example active
+             * @enum {string}
+             */
+            status: "active" | "cancelled" | "transferred";
+            /**
+             * Format: date-time
+             * @description Issuance timestamp (RFC 3339, UTC). Set when the payment is
+             *     confirmed or a free checkout is completed.
+             * @example 2026-06-30T12:00:00Z
+             */
+            issued_at: string;
+            /**
+             * Format: date-time
+             * @description Row creation timestamp (RFC 3339, UTC).
+             * @example 2026-06-30T12:00:00Z
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description Row last-update timestamp (RFC 3339, UTC).
+             * @example 2026-06-30T12:00:00Z
+             */
+            updated_at: string;
+        };
+        /**
+         * @description Response envelope returned by `GET /v1/checkout/{id}/tickets`.
+         *     Lists every ticket issued for the given checkout session in
+         *     issuance order. The envelope is non-paginated; a single checkout
+         *     session is bounded by its reservation quantity.
+         */
+        TicketListResponse: {
+            /** @description Tickets issued for the checkout session (possibly empty). */
+            tickets: components["schemas"]["TicketItem"][];
         };
         /**
          * @description A single inventory_ledger row. Tracks real-time capacity state for a
@@ -14360,6 +14478,80 @@ export interface operations {
             };
             /**
              * @description Database pool or checkout queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listCheckoutTickets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Checkout session UUID whose tickets to list. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tickets for the checkout session (possibly empty). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketListResponse"];
+                };
+            };
+            /** @description Path id is not a valid UUID (`ticket.invalid_checkout_id`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `ticket.read` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error while reading tickets
+             *     (`ticket.list_failed`).
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Ticket queries unavailable
              *     (`dependency.database_unavailable`).
              */
             503: {

@@ -338,6 +338,10 @@ func buildDriftTestServer(t *testing.T) *Server {
 		// POST /v1/payment-intents/{id}/transition,
 		// POST /v1/payment-intents/webhook.
 		PaymentIntentQueries: gen.New(nil),
+		// Wire TicketQueries so the GET /v1/checkout/{id}/tickets read
+		// endpoint (feature #139 / documented under feature #272) is
+		// mounted for the drift check.
+		TicketQueries: gen.New(nil),
 	})
 }
 

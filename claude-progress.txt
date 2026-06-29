@@ -17126,3 +17126,56 @@ Verification:
   npm --prefix apps/admin-web run type-check                   OK.
 
 Marked #271 passing. Backlog: 271/301.
+
+=== 2026-06-30: Feature #272 - A-11 Document tickets endpoints in OpenAPI ===
+apps/backend/openapi/openapi.yaml:
+  - Added 2 component schemas: TicketItem (status enum pinned to the
+    three values from the tickets_status_check constraint in
+    0026_tickets.sql: active|cancelled|transferred) and
+    TicketListResponse envelope.
+  - Added 1 path entry covering the sole tickets.go handler:
+      GET /v1/checkout/{id}/tickets -> listCheckoutTickets
+    Carries bearerAuth + tags:[v1] + permission name in description
+    (ticket.read). Full error catalogue from tickets.go documented
+    across status codes: ticket.invalid_checkout_id (400),
+    ticket.list_failed (500), dependency.database_unavailable (503).
+  - 200 response carries three inline examples (empty, twoTickets,
+    gaTicketNoTier) consumed by the contract test, exercising both the
+    tier_id=null and holder_email=null nullable paths.
+
+apps/backend/internal/platform/httpserver/openapi_tickets_272_test.go (NEW):
+  9 contract tests pinning spec for #272: PathsPresent (1),
+  OperationIDsPresent (1), SchemasPresent (2), PermissionsDocumented,
+  BearerAuthAndTags, ErrorEnvelopeUsed, TicketErrorCodesDocumented (3),
+  StatusEnumPinned (3 literals from tickets_status_check),
+  SpecExamplesValidate -- "minimal contract test" walking the three 200
+  response examples and asserting UUID-shaped id/checkout_session_id/
+  session_id, tier_id null-or-UUID, holder_email null-or-non-empty,
+  status in tickets_status_check, and RFC 3339 issued_at/created_at/
+  updated_at. Uses local extractResponseExamples helper (GET endpoint
+  has no requestBody), reuses mustOperation / findOpenAPISpecPath /
+  looksLikeRFC3339 helpers.
+
+apps/backend/internal/platform/httpserver/openapi_drift_test.go:
+  buildDriftTestServer now wires TicketQueries: gen.New(nil) so the
+  new /v1/checkout/{id}/tickets path is mounted on the drift-test chi
+  router.
+
+apps/backend/internal/adapters/http/openapi/types_gen.go:
+  Regenerated via oapi-codegen v2.4.1 (golang:1.24 docker). 12
+  occurrences of the new type names / op id verified. Known OpenAPI
+  3.1 warning unchanged.
+apps/backend/openapi/clients/ts/index.d.ts:
+  Regenerated via scripts/gen-ts-client.mjs (openapi-typescript 7.13.0).
+  6 occurrences of the new type names / op id verified.
+
+Verification:
+  docker golang:1.24 go test -run TestOpenAPI272 -count=1 -v   PASS (9/9)
+  docker golang:1.24 go build ./...                            OK
+  docker golang:1.24 go test -run TestOpenAPIDriftCheck_SpecCoversAllCodeRoutes
+                                                                PASS
+                (no newly-introduced phantom entries; pre-existing
+                 phantom entries documented under #263 unchanged.)
+  npm --prefix apps/admin-web run type-check                   OK.
+
+Marked #272 passing. Backlog: 272/301.
