@@ -1282,8 +1282,13 @@ components:
 
     OrganizationItem:
       type: object
-      required: [id, name, slug, country, default_locale, reservation_ttl_seconds, created_at, updated_at]
-      description: A single active organization (primary tenant boundary).
+      required: [id, name, slug, country, default_locale, reservation_ttl_seconds, kyb_status, created_at, updated_at]
+      description: |
+        A single active organization (primary tenant boundary).
+        Includes legal & contact attributes added in migration
+        0049_organizations_legal_fields (Wave O / feature #253). All
+        legal & contact attributes are nullable to preserve backward
+        compatibility with organizations created before that wave.
       properties:
         id:
           type: string
@@ -1310,6 +1315,106 @@ components:
           type: integer
           description: Seat-hold expiry window in seconds (default 1200 = 20 minutes)
           example: 1200
+        legal_name:
+          type: string
+          nullable: true
+          description: |
+            Registered juridical name of the tenant entity (distinct from
+            the public display name). Used on invoices, contracts, and
+            tax forms. NULL until the organization completes its legal
+            self-service profile.
+          example: "ACME Tickets GmbH"
+        tax_id:
+          type: string
+          nullable: true
+          description: |
+            Tax registration identifier (VAT, EIN, etc.). Format is
+            validated application-side based on `tax_id_scheme`.
+          example: "DE123456789"
+        tax_id_scheme:
+          type: string
+          nullable: true
+          enum: [eu_vat, gb_vat, il_vat, us_ein, other]
+          description: |
+            Identifies the tax-id scheme. NULL when the organization has
+            not registered a tax id yet.
+          example: "eu_vat"
+        registration_number:
+          type: string
+          nullable: true
+          description: |
+            Company-registry number in the home country (e.g. HRB for
+            Germany, OGRN-equivalents elsewhere).
+          example: "HRB 12345"
+        legal_address_line1:
+          type: string
+          nullable: true
+          description: Street address line 1 of the registered office.
+          example: "Friedrichstr. 1"
+        legal_address_line2:
+          type: string
+          nullable: true
+          description: Street address line 2 of the registered office.
+          example: "Suite 200"
+        legal_address_postal_code:
+          type: string
+          nullable: true
+          description: Postal / ZIP code of the registered office.
+          example: "10117"
+        legal_address_city:
+          type: string
+          nullable: true
+          description: City of the registered office.
+          example: "Berlin"
+        legal_address_country:
+          type: string
+          nullable: true
+          pattern: "^[A-Z]{2}$"
+          description: |
+            ISO 3166-1 alpha-2 country code of the registered office.
+            App layer validates membership in an allowlist.
+          example: "DE"
+        contact_email:
+          type: string
+          format: email
+          nullable: true
+          description: Public operations / billing contact email.
+          example: "ops@acme.example"
+        contact_phone:
+          type: string
+          nullable: true
+          description: Public operations / billing contact phone (E.164 recommended).
+          example: "+49 30 1234567"
+        website_url:
+          type: string
+          format: uri
+          nullable: true
+          description: Public marketing or info URL.
+          example: "https://acme.example"
+        logo_media_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            Optional forward reference to a media row that ships in
+            Wave G. The DB FK is intentionally deferred — currently a
+            free-form UUID.
+        kyb_status:
+          type: string
+          enum: [unverified, pending, verified, rejected]
+          description: |
+            KYB (Know Your Business) verification status. State machine:
+            `unverified` → `pending` → `verified` | `rejected`. Server
+            defaults new organizations to `unverified`.
+          example: "unverified"
+        kyb_verified_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            Timestamp when KYB verification last reached the `verified`
+            state. NULL until the first successful verification.
+          example: "2024-01-15T10:23:00Z"
         created_at:
           type: string
           format: date-time
@@ -1320,6 +1425,17 @@ components:
           format: date-time
           description: ISO 8601 / RFC 3339 timestamp of last update
           example: "2024-01-01T00:00:00Z"
+
+    OrganizationDetail:
+      description: |
+        Detailed organization view returned by the SuperAdmin/org-admin
+        legal & billing surfaces. Currently a structural alias of
+        `OrganizationItem` — the two are kept distinct in the contract
+        so that future detail-only fields (e.g. embedded bank-account
+        list, recent invoice summary) can be added without widening the
+        list-row schema.
+      allOf:
+        - $ref: "#/components/schemas/OrganizationItem"
 
     CreateOrganizationRequest:
       type: object
@@ -1349,14 +1465,73 @@ components:
           type: integer
           description: Seat-hold expiry window in seconds (optional; defaults to 1200)
           example: 1200
+        legal_name:
+          type: string
+          description: Registered juridical name (optional on create).
+          example: "ACME Tickets GmbH"
+        tax_id:
+          type: string
+          description: Tax registration identifier (optional on create).
+          example: "DE123456789"
+        tax_id_scheme:
+          type: string
+          enum: [eu_vat, gb_vat, il_vat, us_ein, other]
+          description: Tax-id scheme (optional on create).
+          example: "eu_vat"
+        registration_number:
+          type: string
+          description: Company-registry number (optional on create).
+          example: "HRB 12345"
+        legal_address_line1:
+          type: string
+          description: Registered office street line 1 (optional on create).
+        legal_address_line2:
+          type: string
+          description: Registered office street line 2 (optional on create).
+        legal_address_postal_code:
+          type: string
+          description: Registered office postal code (optional on create).
+        legal_address_city:
+          type: string
+          description: Registered office city (optional on create).
+        legal_address_country:
+          type: string
+          pattern: "^[A-Z]{2}$"
+          description: Registered office country ISO 3166-1 alpha-2 (optional on create).
+          example: "DE"
+        contact_email:
+          type: string
+          format: email
+          description: Public contact email (optional on create).
+        contact_phone:
+          type: string
+          description: Public contact phone (optional on create).
+        website_url:
+          type: string
+          format: uri
+          description: Public marketing / info URL (optional on create).
+        logo_media_id:
+          type: string
+          format: uuid
+          description: Optional media-row FK (forward reference, Wave G).
 
     UpdateOrganizationRequest:
       type: object
       additionalProperties: false
       description: |
-        Request body for PATCH /v1/organizations/{id}.
-        All fields are optional — omitted or empty-string fields leave the
-        existing value unchanged.
+        Request body for PATCH /v1/organizations/{id} and the admin
+        counterpart PATCH /v1/admin/organizations/{id}. All fields are
+        optional — omitted or empty-string fields leave the existing
+        value unchanged.
+
+        Conditional requirement: if `kyb_status` is being transitioned
+        to `pending` or `verified` (i.e. the body sets `kyb_status` to
+        one of those two values), then `legal_name` MUST also be
+        present and non-empty in the same request — an organization
+        cannot enter or hold a KYB-pending/verified state without a
+        registered juridical name on file. This rule is expressed in
+        the JSON Schema `if`/`then` clause below and enforced by the
+        server on PATCH.
       properties:
         name:
           type: string
@@ -1378,6 +1553,281 @@ components:
           type: integer
           description: New TTL in seconds (optional; 0 leaves existing value)
           example: 900
+        legal_name:
+          type: string
+          description: |
+            New registered juridical name. Empty string leaves existing
+            value. Required (non-empty) when this same body sets
+            `kyb_status` to `pending` or `verified`.
+          example: "ACME Tickets GmbH"
+        tax_id:
+          type: string
+          description: New tax registration identifier (empty string clears).
+          example: "DE123456789"
+        tax_id_scheme:
+          type: string
+          nullable: true
+          enum: [eu_vat, gb_vat, il_vat, us_ein, other]
+          description: |
+            New tax-id scheme. Pass `null` to clear the field (sets to
+            NULL in the database). Allowed enum values mirror the DB
+            CHECK constraint.
+          example: "eu_vat"
+        registration_number:
+          type: string
+          description: New company-registry number (empty string clears).
+        legal_address_line1:
+          type: string
+          description: New registered-office street line 1 (empty string clears).
+        legal_address_line2:
+          type: string
+          description: New registered-office street line 2 (empty string clears).
+        legal_address_postal_code:
+          type: string
+          description: New registered-office postal code (empty string clears).
+        legal_address_city:
+          type: string
+          description: New registered-office city (empty string clears).
+        legal_address_country:
+          type: string
+          description: |
+            New registered-office ISO 3166-1 alpha-2 country code. When
+            non-empty must match `^[A-Z]{2}$`. Empty string clears.
+          example: "DE"
+        contact_email:
+          type: string
+          description: New public contact email (empty string clears). Validated as email when non-empty.
+        contact_phone:
+          type: string
+          description: New public contact phone (empty string clears).
+        website_url:
+          type: string
+          description: New public marketing / info URL (empty string clears). Validated as URI when non-empty.
+        logo_media_id:
+          type: string
+          nullable: true
+          format: uuid
+          description: |
+            New media-row FK (forward reference, Wave G). `null`
+            clears the existing logo.
+        kyb_status:
+          type: string
+          enum: [unverified, pending, verified, rejected]
+          description: |
+            New KYB verification status. Allowed transitions are
+            enforced server-side. Setting to `pending` or `verified`
+            requires `legal_name` to also be set in the same request
+            (see schema-level `if`/`then` clause).
+          example: "pending"
+      if:
+        properties:
+          kyb_status:
+            enum: [pending, verified]
+        required: [kyb_status]
+      then:
+        properties:
+          legal_name:
+            type: string
+            minLength: 1
+        required: [legal_name]
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Bank-account schemas — Wave O / feature #255
+    # ─────────────────────────────────────────────────────────────────────
+    # An organization may register one or more bank accounts used for
+    # payouts, refunds, and tax-form rendering. These are non-secret
+    # banking-coordinate rows (IBAN, BIC, account number, holder name) —
+    # full bank-API credentials live on payment_provider_configs.
+    BankAccountItem:
+      type: object
+      required:
+        - id
+        - org_id
+        - holder_name
+        - currency
+        - country
+        - is_primary
+        - created_at
+        - updated_at
+      description: |
+        A single active bank-account row owned by one organization.
+        Sensitive numbers (IBAN / account_number) are returned verbatim
+        to actors holding `org.update` on the owning organization;
+        `payment_provider_configs` secrets remain segregated from this
+        table.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the bank-account row.
+          example: "01929d0e-0e47-7000-8000-000000000301"
+        org_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the owning organization (tenant boundary).
+        holder_name:
+          type: string
+          minLength: 1
+          description: Legal name of the account holder (typically the org's legal_name).
+          example: "ACME Tickets GmbH"
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          pattern: "^[A-Z]{3}$"
+          description: ISO 4217 three-letter currency code of the account.
+          example: "EUR"
+        country:
+          type: string
+          minLength: 2
+          maxLength: 2
+          pattern: "^[A-Z]{2}$"
+          description: ISO 3166-1 alpha-2 country code where the account is held.
+          example: "DE"
+        bank_name:
+          type: string
+          nullable: true
+          description: Free-form bank name for operator display.
+          example: "Commerzbank AG"
+        iban:
+          type: string
+          nullable: true
+          description: |
+            IBAN (International Bank Account Number). Optional — North
+            American accounts use `account_number` + `routing_number`
+            instead. Format validated app-side.
+          example: "DE89370400440532013000"
+        bic:
+          type: string
+          nullable: true
+          description: BIC / SWIFT code (8 or 11 chars). Optional.
+          example: "COBADEFFXXX"
+        account_number:
+          type: string
+          nullable: true
+          description: |
+            Domestic account number (non-IBAN markets). Mutually
+            populated with `routing_number` for US ACH-style accounts.
+          example: "000123456789"
+        routing_number:
+          type: string
+          nullable: true
+          description: |
+            Domestic routing/sort/ABA code that pairs with
+            `account_number`. Optional.
+          example: "021000021"
+        is_primary:
+          type: boolean
+          description: |
+            Exactly one active bank account per organization may be
+            marked primary at any time; the server enforces this
+            invariant by atomically demoting peers on PATCH/POST.
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    CreateBankAccountRequest:
+      type: object
+      required: [holder_name, currency, country]
+      additionalProperties: false
+      description: |
+        Request body for POST /v1/organizations/{org_id}/bank-accounts.
+        At least one of (`iban`) or (`account_number` + `routing_number`)
+        MUST be supplied — pure metadata-only accounts are rejected
+        with 400 `bank_account.identifier_required`.
+      properties:
+        holder_name:
+          type: string
+          minLength: 1
+          example: "ACME Tickets GmbH"
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          pattern: "^[A-Z]{3}$"
+          example: "EUR"
+        country:
+          type: string
+          minLength: 2
+          maxLength: 2
+          pattern: "^[A-Z]{2}$"
+          example: "DE"
+        bank_name:
+          type: string
+        iban:
+          type: string
+          description: IBAN (mutually exclusive with account_number+routing_number).
+          example: "DE89370400440532013000"
+        bic:
+          type: string
+          description: BIC / SWIFT code (optional).
+          example: "COBADEFFXXX"
+        account_number:
+          type: string
+          description: Domestic account number (pairs with routing_number).
+        routing_number:
+          type: string
+          description: Domestic routing/sort/ABA code (pairs with account_number).
+        is_primary:
+          type: boolean
+          default: false
+          description: |
+            When true, this row becomes the org's primary account and
+            any previously primary account is atomically demoted in
+            the same transaction.
+
+    UpdateBankAccountRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Request body for PATCH /v1/organizations/{org_id}/bank-accounts/{id}.
+        Omitted fields are left unchanged. Sending `is_primary: true`
+        atomically demotes any previously primary account in the same
+        transaction. Sending `is_primary: false` while no other primary
+        exists is rejected with 409 `bank_account.primary_required`
+        (an org with any active account must have exactly one primary).
+      properties:
+        holder_name:
+          type: string
+          minLength: 1
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          pattern: "^[A-Z]{3}$"
+        country:
+          type: string
+          minLength: 2
+          maxLength: 2
+          pattern: "^[A-Z]{2}$"
+        bank_name:
+          type: string
+          nullable: true
+          description: Empty string or null clears the field.
+        iban:
+          type: string
+          nullable: true
+          description: Empty string or null clears the field.
+        bic:
+          type: string
+          nullable: true
+          description: Empty string or null clears the field.
+        account_number:
+          type: string
+          nullable: true
+          description: Empty string or null clears the field.
+        routing_number:
+          type: string
+          nullable: true
+          description: Empty string or null clears the field.
+        is_primary:
+          type: boolean
 
     # Venue schemas — feature #124 / extended for admin UI consumption (#235)
     VenueItem:
@@ -3305,6 +3755,317 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database pool or org queries not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Organization bank-accounts (Wave O / feature #255)
+  # ─────────────────────────────────────────────────────────────────────────
+  # Banking coordinates used for payouts, refunds, and tax-form rendering.
+  # All four operations require the `org.update` permission on the parent
+  # organization — these rows are sensitive financial data and are not
+  # surfaced to actors with only `org.read`.
+
+  /v1/organizations/{org_id}/bank-accounts:
+    get:
+      operationId: listOrganizationBankAccounts
+      summary: List bank accounts for an organization
+      description: |
+        Returns every active bank-account row belonging to the org in
+        the path, ordered by `is_primary DESC, created_at ASC`. Requires
+        the `org.update` permission on the parent organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the owning organization.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of active bank accounts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [bank_accounts]
+                properties:
+                  bank_accounts:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/BankAccountItem"
+        "400":
+          description: org_id path parameter is not a valid UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `org.update` on the parent organization
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Organization not found or has been archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not wired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: createOrganizationBankAccount
+      summary: Create a new bank account for an organization
+      description: |
+        Inserts a new bank-account row. At least one of `iban` or
+        (`account_number` + `routing_number`) MUST be supplied. When
+        `is_primary` is true, any previously primary bank account on
+        the same organization is atomically demoted in the same
+        transaction. Requires `org.update`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the owning organization.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBankAccountRequest"
+      responses:
+        "201":
+          description: Bank account created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [bank_account]
+                properties:
+                  bank_account:
+                    $ref: "#/components/schemas/BankAccountItem"
+        "400":
+          description: |
+            Invalid body, missing identifier (neither IBAN nor
+            account_number+routing_number supplied), invalid currency
+            or country code.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `org.update` on the parent organization
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Organization not found or archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            Duplicate identifier (IBAN or account_number+routing_number
+            already exists on an active row for this organization).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not wired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/bank-accounts/{id}:
+    patch:
+      operationId: updateOrganizationBankAccount
+      summary: Partially update a bank account
+      description: |
+        Patches the bank-account row in place. Omitted fields are left
+        unchanged. Setting `is_primary` to true atomically demotes any
+        previously primary account on the same organization. Setting
+        `is_primary` to false while no other primary exists is
+        rejected with 409 `bank_account.primary_required`. Requires
+        `org.update`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateBankAccountRequest"
+      responses:
+        "200":
+          description: Bank account updated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [bank_account]
+                properties:
+                  bank_account:
+                    $ref: "#/components/schemas/BankAccountItem"
+        "400":
+          description: Invalid body or invalid path parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `org.update`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Bank account not found, soft-deleted, or owned by another org
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            Conflict — duplicate identifier on the same org, or attempt
+            to demote the only primary account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not wired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      operationId: deleteOrganizationBankAccount
+      summary: Soft-delete a bank account
+      description: |
+        Marks the bank account as deleted (sets `deleted_at = now()`)
+        and writes an audit event in the same transaction. Soft-
+        deleting the primary account on an organization that still has
+        other active accounts requires the caller to designate a new
+        primary in the same PATCH first; otherwise the request is
+        rejected with 409 `bank_account.primary_required`. Requires
+        `org.update`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Bank account soft-deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [bank_account, deleted]
+                properties:
+                  bank_account:
+                    $ref: "#/components/schemas/BankAccountItem"
+                  deleted:
+                    type: boolean
+                    example: true
+        "400":
+          description: Invalid path parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `org.update`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Bank account not found, soft-deleted, or owned by another org
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            Attempt to delete the only primary account without
+            designating a replacement primary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not wired
           content:
             application/json:
               schema:

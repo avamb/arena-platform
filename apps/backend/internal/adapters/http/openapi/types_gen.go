@@ -13,9 +13,77 @@ const (
 	BearerAuthScopes = "bearerAuth.Scopes"
 )
 
+// Defines values for AdminAddMemberRequestRole.
+const (
+	AdminAddMemberRequestRoleAgent                     AdminAddMemberRequestRole = "agent"
+	AdminAddMemberRequestRoleExternalTicketingOperator AdminAddMemberRequestRole = "external_ticketing_operator"
+	AdminAddMemberRequestRoleNetworkOperator           AdminAddMemberRequestRole = "network_operator"
+	AdminAddMemberRequestRoleOrganizer                 AdminAddMemberRequestRole = "organizer"
+	AdminAddMemberRequestRolePlatformOperator          AdminAddMemberRequestRole = "platform_operator"
+	AdminAddMemberRequestRolePlatformSuperadmin        AdminAddMemberRequestRole = "platform_superadmin"
+)
+
+// Defines values for AdminChangeMemberRoleRequestRole.
+const (
+	AdminChangeMemberRoleRequestRoleAgent                     AdminChangeMemberRoleRequestRole = "agent"
+	AdminChangeMemberRoleRequestRoleExternalTicketingOperator AdminChangeMemberRoleRequestRole = "external_ticketing_operator"
+	AdminChangeMemberRoleRequestRoleNetworkOperator           AdminChangeMemberRoleRequestRole = "network_operator"
+	AdminChangeMemberRoleRequestRoleOrganizer                 AdminChangeMemberRoleRequestRole = "organizer"
+	AdminChangeMemberRoleRequestRolePlatformOperator          AdminChangeMemberRoleRequestRole = "platform_operator"
+	AdminChangeMemberRoleRequestRolePlatformSuperadmin        AdminChangeMemberRoleRequestRole = "platform_superadmin"
+)
+
+// Defines values for AdminCreateUserRequestRole.
+const (
+	AdminCreateUserRequestRoleAgent                     AdminCreateUserRequestRole = "agent"
+	AdminCreateUserRequestRoleExternalTicketingOperator AdminCreateUserRequestRole = "external_ticketing_operator"
+	AdminCreateUserRequestRoleNetworkOperator           AdminCreateUserRequestRole = "network_operator"
+	AdminCreateUserRequestRoleOrganizer                 AdminCreateUserRequestRole = "organizer"
+	AdminCreateUserRequestRolePlatformOperator          AdminCreateUserRequestRole = "platform_operator"
+	AdminCreateUserRequestRolePlatformSuperadmin        AdminCreateUserRequestRole = "platform_superadmin"
+)
+
+// Defines values for AdminCreatedUserScope.
+const (
+	Global       AdminCreatedUserScope = "global"
+	Organization AdminCreatedUserScope = "organization"
+)
+
+// Defines values for CreateOrganizationRequestTaxIdScheme.
+const (
+	CreateOrganizationRequestTaxIdSchemeEuVat CreateOrganizationRequestTaxIdScheme = "eu_vat"
+	CreateOrganizationRequestTaxIdSchemeGbVat CreateOrganizationRequestTaxIdScheme = "gb_vat"
+	CreateOrganizationRequestTaxIdSchemeIlVat CreateOrganizationRequestTaxIdScheme = "il_vat"
+	CreateOrganizationRequestTaxIdSchemeOther CreateOrganizationRequestTaxIdScheme = "other"
+	CreateOrganizationRequestTaxIdSchemeUsEin CreateOrganizationRequestTaxIdScheme = "us_ein"
+)
+
+// Defines values for CreatePaymentProviderConfigRequestMode.
+const (
+	CreatePaymentProviderConfigRequestModeLive CreatePaymentProviderConfigRequestMode = "live"
+	CreatePaymentProviderConfigRequestModeTest CreatePaymentProviderConfigRequestMode = "test"
+)
+
 // Defines values for HealthzResponseStatus.
 const (
 	Ok HealthzResponseStatus = "ok"
+)
+
+// Defines values for MembershipItemRole.
+const (
+	MembershipItemRoleAgent                     MembershipItemRole = "agent"
+	MembershipItemRoleExternalTicketingOperator MembershipItemRole = "external_ticketing_operator"
+	MembershipItemRoleNetworkOperator           MembershipItemRole = "network_operator"
+	MembershipItemRoleOrganizer                 MembershipItemRole = "organizer"
+	MembershipItemRolePlatformOperator          MembershipItemRole = "platform_operator"
+	MembershipItemRolePlatformSuperadmin        MembershipItemRole = "platform_superadmin"
+)
+
+// Defines values for MembershipItemStatus.
+const (
+	MembershipItemStatusActive    MembershipItemStatus = "active"
+	MembershipItemStatusRevoked   MembershipItemStatus = "revoked"
+	MembershipItemStatusSuspended MembershipItemStatus = "suspended"
 )
 
 // Defines values for NetworkAgentsListResponseAssignmentKind.
@@ -48,8 +116,37 @@ const (
 
 // Defines values for OperatorNetworkStatus.
 const (
-	Active   OperatorNetworkStatus = "active"
-	Archived OperatorNetworkStatus = "archived"
+	OperatorNetworkStatusActive   OperatorNetworkStatus = "active"
+	OperatorNetworkStatusArchived OperatorNetworkStatus = "archived"
+)
+
+// Defines values for OrganizationItemKybStatus.
+const (
+	OrganizationItemKybStatusPending    OrganizationItemKybStatus = "pending"
+	OrganizationItemKybStatusRejected   OrganizationItemKybStatus = "rejected"
+	OrganizationItemKybStatusUnverified OrganizationItemKybStatus = "unverified"
+	OrganizationItemKybStatusVerified   OrganizationItemKybStatus = "verified"
+)
+
+// Defines values for OrganizationItemTaxIdScheme.
+const (
+	OrganizationItemTaxIdSchemeEuVat OrganizationItemTaxIdScheme = "eu_vat"
+	OrganizationItemTaxIdSchemeGbVat OrganizationItemTaxIdScheme = "gb_vat"
+	OrganizationItemTaxIdSchemeIlVat OrganizationItemTaxIdScheme = "il_vat"
+	OrganizationItemTaxIdSchemeOther OrganizationItemTaxIdScheme = "other"
+	OrganizationItemTaxIdSchemeUsEin OrganizationItemTaxIdScheme = "us_ein"
+)
+
+// Defines values for PaymentProviderConfigItemMode.
+const (
+	PaymentProviderConfigItemModeLive PaymentProviderConfigItemMode = "live"
+	PaymentProviderConfigItemModeTest PaymentProviderConfigItemMode = "test"
+)
+
+// Defines values for PaymentProviderConfigItemStatus.
+const (
+	Configured            PaymentProviderConfigItemStatus = "configured"
+	MissingRequiredFields PaymentProviderConfigItemStatus = "missing_required_fields"
 )
 
 // Defines values for ReadyzResponseStatus.
@@ -57,6 +154,114 @@ const (
 	NotReady ReadyzResponseStatus = "not_ready"
 	Ready    ReadyzResponseStatus = "ready"
 )
+
+// Defines values for UpdateOrganizationRequestKybStatus.
+const (
+	UpdateOrganizationRequestKybStatusPending    UpdateOrganizationRequestKybStatus = "pending"
+	UpdateOrganizationRequestKybStatusRejected   UpdateOrganizationRequestKybStatus = "rejected"
+	UpdateOrganizationRequestKybStatusUnverified UpdateOrganizationRequestKybStatus = "unverified"
+	UpdateOrganizationRequestKybStatusVerified   UpdateOrganizationRequestKybStatus = "verified"
+)
+
+// Defines values for UpdateOrganizationRequestTaxIdScheme.
+const (
+	EuVat UpdateOrganizationRequestTaxIdScheme = "eu_vat"
+	GbVat UpdateOrganizationRequestTaxIdScheme = "gb_vat"
+	IlVat UpdateOrganizationRequestTaxIdScheme = "il_vat"
+	Other UpdateOrganizationRequestTaxIdScheme = "other"
+	UsEin UpdateOrganizationRequestTaxIdScheme = "us_ein"
+)
+
+// AdminAddMemberRequest Request body for POST /v1/admin/organizations/{org_id}/members
+// (feature #234). Exactly one of user_id and email must be supplied.
+type AdminAddMemberRequest struct {
+	// Email Email of the existing user to add (case-insensitive lookup). Mutually exclusive with user_id.
+	Email *openapi_types.Email `json:"email,omitempty"`
+
+	// Role Role to grant. Must satisfy the memberships_role_check CHECK constraint.
+	Role AdminAddMemberRequestRole `json:"role"`
+
+	// UserId UUIDv7 primary key of the existing user to add. Mutually exclusive with email.
+	UserId *openapi_types.UUID `json:"user_id,omitempty"`
+}
+
+// AdminAddMemberRequestRole Role to grant. Must satisfy the memberships_role_check CHECK constraint.
+type AdminAddMemberRequestRole string
+
+// AdminChangeMemberRoleRequest Request body for PATCH /v1/admin/organizations/{org_id}/members/{membership_id}
+// (feature #234). Only the role field is mutable; identity is fixed by the path.
+type AdminChangeMemberRoleRequest struct {
+	// Role New role to assign to the membership.
+	Role AdminChangeMemberRoleRequestRole `json:"role"`
+}
+
+// AdminChangeMemberRoleRequestRole New role to assign to the membership.
+type AdminChangeMemberRoleRequestRole string
+
+// AdminCreateUserRequest SuperAdmin provisioning request. Global platform roles
+// (`platform_operator`, `platform_superadmin`) must omit org_id.
+// Organization-scoped roles (`organizer`, `agent`, `network_operator`,
+// `external_ticketing_operator`) must supply org_id and are created as
+// active organization memberships.
+type AdminCreateUserRequest struct {
+	// Email New user's email address, normalised to lowercase before storage.
+	Email openapi_types.Email `json:"email"`
+
+	// Locale Preferred locale. Defaults to "en" when omitted.
+	Locale *string `json:"locale,omitempty"`
+
+	// OrgId Required for organization-scoped roles; forbidden for global platform roles.
+	OrgId *openapi_types.UUID `json:"org_id,omitempty"`
+
+	// Role Role to assign at creation time.
+	Role AdminCreateUserRequestRole `json:"role"`
+}
+
+// AdminCreateUserRequestRole Role to assign at creation time.
+type AdminCreateUserRequestRole string
+
+// AdminCreateUserResponse defines model for AdminCreateUserResponse.
+type AdminCreateUserResponse struct {
+	Message    string                     `json:"message"`
+	Onboarding AdminCreatedUserOnboarding `json:"onboarding"`
+	User       AdminCreatedUser           `json:"user"`
+}
+
+// AdminCreatedUser defines model for AdminCreatedUser.
+type AdminCreatedUser struct {
+	// CreatedAt Account creation timestamp.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Email Normalised email address stored in the DB.
+	Email openapi_types.Email `json:"email"`
+
+	// Id UUIDv7 of the newly created user.
+	Id openapi_types.UUID `json:"id"`
+
+	// OrgId Organization UUID when scope is organization.
+	OrgId *openapi_types.UUID `json:"org_id,omitempty"`
+
+	// Role Role assigned at creation time.
+	Role string `json:"role"`
+
+	// Scope Assignment scope used for this role.
+	Scope AdminCreatedUserScope `json:"scope"`
+}
+
+// AdminCreatedUserScope Assignment scope used for this role.
+type AdminCreatedUserScope string
+
+// AdminCreatedUserOnboarding defines model for AdminCreatedUserOnboarding.
+type AdminCreatedUserOnboarding struct {
+	// Delivery Delivery channel for the password setup link.
+	Delivery string `json:"delivery"`
+
+	// ExpiresAt Password setup token expiry.
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// PasswordResetIssued Whether a one-time password setup token was issued.
+	PasswordResetIssued bool `json:"password_reset_issued"`
+}
 
 // AssignNetworkUserRequest defines model for AssignNetworkUserRequest.
 type AssignNetworkUserRequest struct {
@@ -163,6 +368,81 @@ type AuthVerifyResponse struct {
 	UserId openapi_types.UUID `json:"user_id"`
 }
 
+// BankAccountItem A single active bank-account row owned by one organization.
+// Sensitive numbers (IBAN / account_number) are returned verbatim
+// to actors holding `org.update` on the owning organization;
+// `payment_provider_configs` secrets remain segregated from this
+// table.
+type BankAccountItem struct {
+	// AccountNumber Domestic account number (non-IBAN markets). Mutually
+	// populated with `routing_number` for US ACH-style accounts.
+	AccountNumber *string `json:"account_number"`
+
+	// BankName Free-form bank name for operator display.
+	BankName *string `json:"bank_name"`
+
+	// Bic BIC / SWIFT code (8 or 11 chars). Optional.
+	Bic *string `json:"bic"`
+
+	// Country ISO 3166-1 alpha-2 country code where the account is held.
+	Country   string    `json:"country"`
+	CreatedAt time.Time `json:"created_at"`
+
+	// Currency ISO 4217 three-letter currency code of the account.
+	Currency string `json:"currency"`
+
+	// HolderName Legal name of the account holder (typically the org's legal_name).
+	HolderName string `json:"holder_name"`
+
+	// Iban IBAN (International Bank Account Number). Optional — North
+	// American accounts use `account_number` + `routing_number`
+	// instead. Format validated app-side.
+	Iban *string `json:"iban"`
+
+	// Id UUIDv7 primary key of the bank-account row.
+	Id openapi_types.UUID `json:"id"`
+
+	// IsPrimary Exactly one active bank account per organization may be
+	// marked primary at any time; the server enforces this
+	// invariant by atomically demoting peers on PATCH/POST.
+	IsPrimary bool `json:"is_primary"`
+
+	// OrgId UUIDv7 of the owning organization (tenant boundary).
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// RoutingNumber Domestic routing/sort/ABA code that pairs with
+	// `account_number`. Optional.
+	RoutingNumber *string   `json:"routing_number"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+// CreateBankAccountRequest Request body for POST /v1/organizations/{org_id}/bank-accounts.
+// At least one of (`iban`) or (`account_number` + `routing_number`)
+// MUST be supplied — pure metadata-only accounts are rejected
+// with 400 `bank_account.identifier_required`.
+type CreateBankAccountRequest struct {
+	// AccountNumber Domestic account number (pairs with routing_number).
+	AccountNumber *string `json:"account_number,omitempty"`
+	BankName      *string `json:"bank_name,omitempty"`
+
+	// Bic BIC / SWIFT code (optional).
+	Bic        *string `json:"bic,omitempty"`
+	Country    string  `json:"country"`
+	Currency   string  `json:"currency"`
+	HolderName string  `json:"holder_name"`
+
+	// Iban IBAN (mutually exclusive with account_number+routing_number).
+	Iban *string `json:"iban,omitempty"`
+
+	// IsPrimary When true, this row becomes the org's primary account and
+	// any previously primary account is atomically demoted in
+	// the same transaction.
+	IsPrimary *bool `json:"is_primary,omitempty"`
+
+	// RoutingNumber Domestic routing/sort/ABA code (pairs with account_number).
+	RoutingNumber *string `json:"routing_number,omitempty"`
+}
+
 // CreateOperatorNetworkRequest defines model for CreateOperatorNetworkRequest.
 type CreateOperatorNetworkRequest struct {
 	// Name Human-readable network name (trimmed server-side)
@@ -176,20 +456,107 @@ type CreateOperatorNetworkRequest struct {
 
 // CreateOrganizationRequest Request body for POST /v1/organizations.
 type CreateOrganizationRequest struct {
+	// ContactEmail Public contact email (optional on create).
+	ContactEmail *openapi_types.Email `json:"contact_email,omitempty"`
+
+	// ContactPhone Public contact phone (optional on create).
+	ContactPhone *string `json:"contact_phone,omitempty"`
+
 	// Country ISO 3166-1 alpha-2 country code (optional)
 	Country *string `json:"country,omitempty"`
 
 	// DefaultLocale BCP 47 locale tag (optional; defaults to "en")
 	DefaultLocale *string `json:"default_locale,omitempty"`
 
+	// LegalAddressCity Registered office city (optional on create).
+	LegalAddressCity *string `json:"legal_address_city,omitempty"`
+
+	// LegalAddressCountry Registered office country ISO 3166-1 alpha-2 (optional on create).
+	LegalAddressCountry *string `json:"legal_address_country,omitempty"`
+
+	// LegalAddressLine1 Registered office street line 1 (optional on create).
+	LegalAddressLine1 *string `json:"legal_address_line1,omitempty"`
+
+	// LegalAddressLine2 Registered office street line 2 (optional on create).
+	LegalAddressLine2 *string `json:"legal_address_line2,omitempty"`
+
+	// LegalAddressPostalCode Registered office postal code (optional on create).
+	LegalAddressPostalCode *string `json:"legal_address_postal_code,omitempty"`
+
+	// LegalName Registered juridical name (optional on create).
+	LegalName *string `json:"legal_name,omitempty"`
+
+	// LogoMediaId Optional media-row FK (forward reference, Wave G).
+	LogoMediaId *openapi_types.UUID `json:"logo_media_id,omitempty"`
+
 	// Name Human-readable display name (must be unique among active organizations)
 	Name string `json:"name"`
+
+	// RegistrationNumber Company-registry number (optional on create).
+	RegistrationNumber *string `json:"registration_number,omitempty"`
 
 	// ReservationTtlSeconds Seat-hold expiry window in seconds (optional; defaults to 1200)
 	ReservationTtlSeconds *int `json:"reservation_ttl_seconds,omitempty"`
 
 	// Slug URL-safe identifier (lowercase; must be unique among active organizations)
 	Slug string `json:"slug"`
+
+	// TaxId Tax registration identifier (optional on create).
+	TaxId *string `json:"tax_id,omitempty"`
+
+	// TaxIdScheme Tax-id scheme (optional on create).
+	TaxIdScheme *CreateOrganizationRequestTaxIdScheme `json:"tax_id_scheme,omitempty"`
+
+	// WebsiteUrl Public marketing / info URL (optional on create).
+	WebsiteUrl *string `json:"website_url,omitempty"`
+}
+
+// CreateOrganizationRequestTaxIdScheme Tax-id scheme (optional on create).
+type CreateOrganizationRequestTaxIdScheme string
+
+// CreatePaymentProviderConfigRequest Request body for POST /v1/organizations/{org_id}/payment-configs.
+// `secrets` is a map[string]string of credential fields; non-empty values
+// are stored, empty-string values are ignored on create. Use PATCH with
+// an empty-string value to clear a previously stored secret.
+type CreatePaymentProviderConfigRequest struct {
+	// IsActive Whether the config is enabled for use by checkout.
+	IsActive *bool `json:"is_active,omitempty"`
+
+	// Mode Operating mode for the credential set.
+	Mode *CreatePaymentProviderConfigRequestMode `json:"mode,omitempty"`
+
+	// Provider Provider slug (one of stripe, allpay, cloudpayments, yookassa, manual).
+	Provider string `json:"provider"`
+
+	// ProviderAccountId Optional public account identifier.
+	ProviderAccountId *string `json:"provider_account_id"`
+
+	// PublicConfig Free-form non-secret provider knobs.
+	PublicConfig *map[string]interface{} `json:"public_config,omitempty"`
+
+	// Secrets Map of secret credential fields to values. Stripe expects
+	// api_key + webhook_secret; AllPay expects merchant_id +
+	// secret_key; etc. Values are never returned.
+	Secrets *map[string]string `json:"secrets,omitempty"`
+}
+
+// CreatePaymentProviderConfigRequestMode Operating mode for the credential set.
+type CreatePaymentProviderConfigRequestMode string
+
+// CreateVenueRequest Request body for POST /v1/organizations/{org_id}/venues. Only `name`
+// is required; the optional fields default to NULL.
+type CreateVenueRequest struct {
+	// Address Optional free-form street address.
+	Address *string `json:"address,omitempty"`
+
+	// CapacityDefault Optional default capacity (positive integer).
+	CapacityDefault *int `json:"capacity_default"`
+
+	// CityId Optional UUID of a row in the geo.cities reference table.
+	CityId *openapi_types.UUID `json:"city_id,omitempty"`
+
+	// Name Display name (unique among active venues within the org).
+	Name string `json:"name"`
 }
 
 // DevAuthTokenRequest defines model for DevAuthTokenRequest.
@@ -635,6 +1002,35 @@ type MeUser struct {
 	Type string `json:"type"`
 }
 
+// MembershipItem A single user → organization → role binding (feature #120). The
+// admin memberships endpoints (feature #234) use this shape on every
+// list / add / patch / delete response.
+type MembershipItem struct {
+	// Id UUIDv7 primary key of the memberships row.
+	Id openapi_types.UUID `json:"id"`
+
+	// JoinedAt ISO 8601 / RFC 3339 timestamp of when the membership was first granted.
+	JoinedAt time.Time `json:"joined_at"`
+
+	// OrgId UUIDv7 primary key of the organization the role is scoped to.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// Role Named role bound to (user_id, org_id). One of organizer, agent, platform_operator, external_ticketing_operator, platform_superadmin, network_operator.
+	Role MembershipItemRole `json:"role"`
+
+	// Status Lifecycle state of the membership. active = in force, revoked = soft-removed by an admin, suspended = paused.
+	Status MembershipItemStatus `json:"status"`
+
+	// UserId UUIDv7 primary key of the user holding this role.
+	UserId openapi_types.UUID `json:"user_id"`
+}
+
+// MembershipItemRole Named role bound to (user_id, org_id). One of organizer, agent, platform_operator, external_ticketing_operator, platform_superadmin, network_operator.
+type MembershipItemRole string
+
+// MembershipItemStatus Lifecycle state of the membership. active = in force, revoked = soft-removed by an admin, suspended = paused.
+type MembershipItemStatus string
+
 // NetworkAgentsListResponse defines model for NetworkAgentsListResponse.
 type NetworkAgentsListResponse struct {
 	// Agents Active agent attachments for the given operator network
@@ -858,7 +1254,17 @@ type OperatorNetworkListResponse struct {
 }
 
 // OrganizationItem A single active organization (primary tenant boundary).
+// Includes legal & contact attributes added in migration
+// 0049_organizations_legal_fields (Wave O / feature #253). All
+// legal & contact attributes are nullable to preserve backward
+// compatibility with organizations created before that wave.
 type OrganizationItem struct {
+	// ContactEmail Public operations / billing contact email.
+	ContactEmail *openapi_types.Email `json:"contact_email"`
+
+	// ContactPhone Public operations / billing contact phone (E.164 recommended).
+	ContactPhone *string `json:"contact_phone"`
+
 	// Country ISO 3166-1 alpha-2 country code or empty string
 	Country string `json:"country"`
 
@@ -871,8 +1277,48 @@ type OrganizationItem struct {
 	// Id UUIDv7 primary key of the organization row
 	Id openapi_types.UUID `json:"id"`
 
+	// KybStatus KYB (Know Your Business) verification status. State machine:
+	// `unverified` → `pending` → `verified` | `rejected`. Server
+	// defaults new organizations to `unverified`.
+	KybStatus OrganizationItemKybStatus `json:"kyb_status"`
+
+	// KybVerifiedAt Timestamp when KYB verification last reached the `verified`
+	// state. NULL until the first successful verification.
+	KybVerifiedAt *time.Time `json:"kyb_verified_at"`
+
+	// LegalAddressCity City of the registered office.
+	LegalAddressCity *string `json:"legal_address_city"`
+
+	// LegalAddressCountry ISO 3166-1 alpha-2 country code of the registered office.
+	// App layer validates membership in an allowlist.
+	LegalAddressCountry *string `json:"legal_address_country"`
+
+	// LegalAddressLine1 Street address line 1 of the registered office.
+	LegalAddressLine1 *string `json:"legal_address_line1"`
+
+	// LegalAddressLine2 Street address line 2 of the registered office.
+	LegalAddressLine2 *string `json:"legal_address_line2"`
+
+	// LegalAddressPostalCode Postal / ZIP code of the registered office.
+	LegalAddressPostalCode *string `json:"legal_address_postal_code"`
+
+	// LegalName Registered juridical name of the tenant entity (distinct from
+	// the public display name). Used on invoices, contracts, and
+	// tax forms. NULL until the organization completes its legal
+	// self-service profile.
+	LegalName *string `json:"legal_name"`
+
+	// LogoMediaId Optional forward reference to a media row that ships in
+	// Wave G. The DB FK is intentionally deferred — currently a
+	// free-form UUID.
+	LogoMediaId *openapi_types.UUID `json:"logo_media_id"`
+
 	// Name Human-readable display name (unique among active organizations)
 	Name string `json:"name"`
+
+	// RegistrationNumber Company-registry number in the home country (e.g. HRB for
+	// Germany, OGRN-equivalents elsewhere).
+	RegistrationNumber *string `json:"registration_number"`
 
 	// ReservationTtlSeconds Seat-hold expiry window in seconds (default 1200 = 20 minutes)
 	ReservationTtlSeconds int `json:"reservation_ttl_seconds"`
@@ -880,9 +1326,29 @@ type OrganizationItem struct {
 	// Slug URL-safe identifier (unique among active organizations, lowercase)
 	Slug string `json:"slug"`
 
+	// TaxId Tax registration identifier (VAT, EIN, etc.). Format is
+	// validated application-side based on `tax_id_scheme`.
+	TaxId *string `json:"tax_id"`
+
+	// TaxIdScheme Identifies the tax-id scheme. NULL when the organization has
+	// not registered a tax id yet.
+	TaxIdScheme *OrganizationItemTaxIdScheme `json:"tax_id_scheme"`
+
 	// UpdatedAt ISO 8601 / RFC 3339 timestamp of last update
 	UpdatedAt time.Time `json:"updated_at"`
+
+	// WebsiteUrl Public marketing or info URL.
+	WebsiteUrl *string `json:"website_url"`
 }
+
+// OrganizationItemKybStatus KYB (Know Your Business) verification status. State machine:
+// `unverified` → `pending` → `verified` | `rejected`. Server
+// defaults new organizations to `unverified`.
+type OrganizationItemKybStatus string
+
+// OrganizationItemTaxIdScheme Identifies the tax-id scheme. NULL when the organization has
+// not registered a tax id yet.
+type OrganizationItemTaxIdScheme string
 
 // PaginationMeta Standard pagination metadata returned by list endpoints.
 // Clients use this object to implement "load more" buttons or
@@ -931,6 +1397,62 @@ type PasswordResetRequestResponse struct {
 	Message string `json:"message"`
 }
 
+// PaymentProviderConfigItem A single payment provider config row for the owning organization.
+//
+// Secret values are NEVER returned. `secret_fields_set` lists the
+// secret-jsonb keys currently populated (no values). The status field is
+// derived from the stored secrets vs. the provider's required-secret
+// catalogue (see internal/platform/httpserver/payment_configs.go).
+type PaymentProviderConfigItem struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id UUIDv7 primary key of the config row
+	Id openapi_types.UUID `json:"id"`
+
+	// IsActive Whether the config is enabled for use by checkout. Soft-disabled
+	// configs remain in the database but are skipped by the payment
+	// router.
+	IsActive bool `json:"is_active"`
+
+	// MissingRequiredFields Names of the required-secret keys still expected for this
+	// provider. Empty when status = configured.
+	MissingRequiredFields []string `json:"missing_required_fields"`
+
+	// Mode Operating mode for the credential set.
+	Mode PaymentProviderConfigItemMode `json:"mode"`
+
+	// OrgId Owning organization. Immutable after creation.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// Provider Provider slug. Must be one of: stripe, allpay, cloudpayments,
+	// yookassa, manual.
+	Provider string `json:"provider"`
+
+	// ProviderAccountId Optional public account identifier (e.g. Stripe acct_..., AllPay
+	// merchant id). Safe to return; never a secret.
+	ProviderAccountId *string `json:"provider_account_id"`
+
+	// PublicConfig Free-form non-secret provider knobs (e.g. statement_descriptor,
+	// terminal_id, redirect_url). Always present (default `{}`).
+	PublicConfig map[string]interface{} `json:"public_config"`
+
+	// SecretFieldsSet Names of the secret-jsonb keys currently stored (no values).
+	// Empty array when no secrets are configured yet.
+	SecretFieldsSet []string `json:"secret_fields_set"`
+
+	// Status `configured` when every required secret for the provider is
+	// populated; otherwise `missing_required_fields`.
+	Status    PaymentProviderConfigItemStatus `json:"status"`
+	UpdatedAt time.Time                       `json:"updated_at"`
+}
+
+// PaymentProviderConfigItemMode Operating mode for the credential set.
+type PaymentProviderConfigItemMode string
+
+// PaymentProviderConfigItemStatus `configured` when every required secret for the provider is
+// populated; otherwise `missing_required_fields`.
+type PaymentProviderConfigItemStatus string
+
 // ReadyzResponse defines model for ReadyzResponse.
 type ReadyzResponse struct {
 	// Checks Map of probe name to status string ("ok" or error message)
@@ -964,6 +1486,33 @@ type ServerInfoResponse struct {
 	WelcomeMessage string `json:"welcome_message"`
 }
 
+// UpdateBankAccountRequest Request body for PATCH /v1/organizations/{org_id}/bank-accounts/{id}.
+// Omitted fields are left unchanged. Sending `is_primary: true`
+// atomically demotes any previously primary account in the same
+// transaction. Sending `is_primary: false` while no other primary
+// exists is rejected with 409 `bank_account.primary_required`
+// (an org with any active account must have exactly one primary).
+type UpdateBankAccountRequest struct {
+	// AccountNumber Empty string or null clears the field.
+	AccountNumber *string `json:"account_number"`
+
+	// BankName Empty string or null clears the field.
+	BankName *string `json:"bank_name"`
+
+	// Bic Empty string or null clears the field.
+	Bic        *string `json:"bic"`
+	Country    *string `json:"country,omitempty"`
+	Currency   *string `json:"currency,omitempty"`
+	HolderName *string `json:"holder_name,omitempty"`
+
+	// Iban Empty string or null clears the field.
+	Iban      *string `json:"iban"`
+	IsPrimary *bool   `json:"is_primary,omitempty"`
+
+	// RoutingNumber Empty string or null clears the field.
+	RoutingNumber *string `json:"routing_number"`
+}
+
 // UpdateOperatorNetworkRequest At least one of `name` or `slug` must be supplied. Empty strings are
 // treated as "do not change". Slug is validated against the same regex
 // as on create.
@@ -975,24 +1524,275 @@ type UpdateOperatorNetworkRequest struct {
 	Slug *string `json:"slug,omitempty"`
 }
 
-// UpdateOrganizationRequest Request body for PATCH /v1/organizations/{id}.
-// All fields are optional — omitted or empty-string fields leave the
-// existing value unchanged.
+// UpdateOrganizationRequest Request body for PATCH /v1/organizations/{id} and the admin
+// counterpart PATCH /v1/admin/organizations/{id}. All fields are
+// optional — omitted or empty-string fields leave the existing
+// value unchanged.
+//
+// Conditional requirement: if `kyb_status` is being transitioned
+// to `pending` or `verified` (i.e. the body sets `kyb_status` to
+// one of those two values), then `legal_name` MUST also be
+// present and non-empty in the same request — an organization
+// cannot enter or hold a KYB-pending/verified state without a
+// registered juridical name on file. This rule is expressed in
+// the JSON Schema `if`/`then` clause below and enforced by the
+// server on PATCH.
 type UpdateOrganizationRequest struct {
+	// ContactEmail New public contact email (empty string clears). Validated as email when non-empty.
+	ContactEmail *string `json:"contact_email,omitempty"`
+
+	// ContactPhone New public contact phone (empty string clears).
+	ContactPhone *string `json:"contact_phone,omitempty"`
+
 	// Country New country code (optional; empty string leaves existing value)
 	Country *string `json:"country,omitempty"`
 
 	// DefaultLocale New default locale (optional; empty string leaves existing value)
 	DefaultLocale *string `json:"default_locale,omitempty"`
 
+	// KybStatus New KYB verification status. Allowed transitions are
+	// enforced server-side. Setting to `pending` or `verified`
+	// requires `legal_name` to also be set in the same request
+	// (see schema-level `if`/`then` clause).
+	KybStatus *UpdateOrganizationRequestKybStatus `json:"kyb_status,omitempty"`
+
+	// LegalAddressCity New registered-office city (empty string clears).
+	LegalAddressCity *string `json:"legal_address_city,omitempty"`
+
+	// LegalAddressCountry New registered-office ISO 3166-1 alpha-2 country code. When
+	// non-empty must match `^[A-Z]{2}$`. Empty string clears.
+	LegalAddressCountry *string `json:"legal_address_country,omitempty"`
+
+	// LegalAddressLine1 New registered-office street line 1 (empty string clears).
+	LegalAddressLine1 *string `json:"legal_address_line1,omitempty"`
+
+	// LegalAddressLine2 New registered-office street line 2 (empty string clears).
+	LegalAddressLine2 *string `json:"legal_address_line2,omitempty"`
+
+	// LegalAddressPostalCode New registered-office postal code (empty string clears).
+	LegalAddressPostalCode *string `json:"legal_address_postal_code,omitempty"`
+
+	// LegalName New registered juridical name. Empty string leaves existing
+	// value. Required (non-empty) when this same body sets
+	// `kyb_status` to `pending` or `verified`.
+	LegalName *string `json:"legal_name,omitempty"`
+
+	// LogoMediaId New media-row FK (forward reference, Wave G). `null`
+	// clears the existing logo.
+	LogoMediaId *openapi_types.UUID `json:"logo_media_id"`
+
 	// Name New display name (optional; empty string leaves existing value)
 	Name *string `json:"name,omitempty"`
+
+	// RegistrationNumber New company-registry number (empty string clears).
+	RegistrationNumber *string `json:"registration_number,omitempty"`
 
 	// ReservationTtlSeconds New TTL in seconds (optional; 0 leaves existing value)
 	ReservationTtlSeconds *int `json:"reservation_ttl_seconds,omitempty"`
 
 	// Slug New URL-safe slug (optional; empty string leaves existing value)
 	Slug *string `json:"slug,omitempty"`
+
+	// TaxId New tax registration identifier (empty string clears).
+	TaxId *string `json:"tax_id,omitempty"`
+
+	// TaxIdScheme New tax-id scheme. Pass `null` to clear the field (sets to
+	// NULL in the database). Allowed enum values mirror the DB
+	// CHECK constraint.
+	TaxIdScheme *UpdateOrganizationRequestTaxIdScheme `json:"tax_id_scheme"`
+
+	// WebsiteUrl New public marketing / info URL (empty string clears). Validated as URI when non-empty.
+	WebsiteUrl *string `json:"website_url,omitempty"`
+}
+
+// UpdateOrganizationRequestKybStatus New KYB verification status. Allowed transitions are
+// enforced server-side. Setting to `pending` or `verified`
+// requires `legal_name` to also be set in the same request
+// (see schema-level `if`/`then` clause).
+type UpdateOrganizationRequestKybStatus string
+
+// UpdateOrganizationRequestTaxIdScheme New tax-id scheme. Pass `null` to clear the field (sets to
+// NULL in the database). Allowed enum values mirror the DB
+// CHECK constraint.
+type UpdateOrganizationRequestTaxIdScheme string
+
+// UpdatePaymentProviderConfigRequest Request body for PATCH /v1/organizations/{org_id}/payment-configs/{id}.
+// Omitted fields leave the existing value unchanged. The `secrets`
+// field is a PATCH map: non-empty values overwrite, empty-string
+// values delete the corresponding key.
+type UpdatePaymentProviderConfigRequest struct {
+	// IsActive Replacement is_active flag.
+	IsActive *bool `json:"is_active,omitempty"`
+
+	// ProviderAccountId Replacement account identifier (empty string clears it).
+	ProviderAccountId *string `json:"provider_account_id"`
+
+	// PublicConfig Replacement public_config jsonb (entire object replaces existing).
+	PublicConfig *map[string]interface{} `json:"public_config,omitempty"`
+
+	// Secrets Patch map of secret keys. Non-empty value sets the secret,
+	// empty string deletes the secret, omitted keys are untouched.
+	Secrets *map[string]string `json:"secrets,omitempty"`
+}
+
+// UpdateVenueRequest Request body for PATCH /v1/organizations/{org_id}/venues/{id}.
+// All fields are optional — omitted (or empty-string) `name` leaves the
+// existing value unchanged. `city_id`, `address`, and `capacity_default`
+// are tri-state: omitted leaves the existing value; provided replaces it.
+type UpdateVenueRequest struct {
+	// Address Replacement address (optional).
+	Address *string `json:"address,omitempty"`
+
+	// CapacityDefault Replacement default capacity (optional).
+	CapacityDefault *int `json:"capacity_default"`
+
+	// CityId Replacement city reference (optional).
+	CityId *openapi_types.UUID `json:"city_id,omitempty"`
+
+	// Name New display name (optional; empty string leaves existing value).
+	Name *string `json:"name,omitempty"`
+}
+
+// VenueItem A single active venue (physical event location owned by one organization).
+// Any authenticated org may read venue data, but only the owning org may
+// create, update, or soft-delete a venue.
+type VenueItem struct {
+	// Address Optional free-form street address.
+	Address *string `json:"address"`
+
+	// CapacityDefault Optional default total capacity of the venue. NULL means
+	// unspecified. Individual events may override this with their own
+	// capacity.
+	CapacityDefault *int `json:"capacity_default"`
+
+	// CityId Optional FK to the geo.cities reference table. NULL means the city
+	// is not specified.
+	CityId *openapi_types.UUID `json:"city_id"`
+
+	// CreatedAt ISO 8601 / RFC 3339 timestamp of row creation
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id UUIDv7 primary key of the venue row
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Human-readable venue name. Unique among active venues within the
+	// owning organization.
+	Name string `json:"name"`
+
+	// OrgId Owning organization. Immutable after creation. Only this org may
+	// mutate the venue.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// UpdatedAt ISO 8601 / RFC 3339 timestamp of last update
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// AttachNetworkAgentParams defines parameters for AttachNetworkAgent.
+type AttachNetworkAgentParams struct {
+	// XAdminReason SAUI-09 audit-reason header. The trimmed value is stamped
+	// into the audit_events metadata under `reason` so the
+	// immutable audit trail records why each network mutation
+	// was performed. A missing or empty header is rejected with
+	// HTTP 400 `superadmin.missing_reason`.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// DetachNetworkAgentParams defines parameters for DetachNetworkAgent.
+type DetachNetworkAgentParams struct {
+	// XAdminReason SAUI-09 audit-reason header. The trimmed value is stamped
+	// into the audit_events metadata under `reason` so the
+	// immutable audit trail records why each network mutation
+	// was performed. A missing or empty header is rejected with
+	// HTTP 400 `superadmin.missing_reason`.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// AttachNetworkOrganizerParams defines parameters for AttachNetworkOrganizer.
+type AttachNetworkOrganizerParams struct {
+	// XAdminReason SAUI-09 audit-reason header. The trimmed value is stamped
+	// into the audit_events metadata under `reason` so the
+	// immutable audit trail records why each network mutation
+	// was performed. A missing or empty header is rejected with
+	// HTTP 400 `superadmin.missing_reason`.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// DetachNetworkOrganizerParams defines parameters for DetachNetworkOrganizer.
+type DetachNetworkOrganizerParams struct {
+	// XAdminReason SAUI-09 audit-reason header. The trimmed value is stamped
+	// into the audit_events metadata under `reason` so the
+	// immutable audit trail records why each network mutation
+	// was performed. A missing or empty header is rejected with
+	// HTTP 400 `superadmin.missing_reason`.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// AssignNetworkUserParams defines parameters for AssignNetworkUser.
+type AssignNetworkUserParams struct {
+	// XAdminReason SAUI-09 audit-reason header. The trimmed value is stamped
+	// into the audit_events metadata under `reason` so the
+	// immutable audit trail records why each network mutation
+	// was performed. A missing or empty header is rejected with
+	// HTTP 400 `superadmin.missing_reason`.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// RemoveNetworkUserParams defines parameters for RemoveNetworkUser.
+type RemoveNetworkUserParams struct {
+	// XAdminReason SAUI-09 audit-reason header. The trimmed value is stamped
+	// into the audit_events metadata under `reason` so the
+	// immutable audit trail records why each network mutation
+	// was performed. A missing or empty header is rejected with
+	// HTTP 400 `superadmin.missing_reason`.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PostV1AdminOrganizationsParams defines parameters for PostV1AdminOrganizations.
+type PostV1AdminOrganizationsParams struct {
+	// XAdminReason Human-readable business reason for the admin write (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PatchV1AdminOrganizationsIdParams defines parameters for PatchV1AdminOrganizationsId.
+type PatchV1AdminOrganizationsIdParams struct {
+	// XAdminReason Human-readable business reason for the admin write (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PostV1AdminOrganizationsIdArchiveParams defines parameters for PostV1AdminOrganizationsIdArchive.
+type PostV1AdminOrganizationsIdArchiveParams struct {
+	// XAdminReason Human-readable business reason for the admin write (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// GetV1AdminOrganizationsOrgIdMembersParams defines parameters for GetV1AdminOrganizationsOrgIdMembers.
+type GetV1AdminOrganizationsOrgIdMembersParams struct {
+	// XAdminReason Human-readable business reason for the admin read (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PostV1AdminOrganizationsOrgIdMembersParams defines parameters for PostV1AdminOrganizationsOrgIdMembers.
+type PostV1AdminOrganizationsOrgIdMembersParams struct {
+	// XAdminReason Human-readable business reason for the admin write (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// DeleteV1AdminOrganizationsOrgIdMembersMembershipIdParams defines parameters for DeleteV1AdminOrganizationsOrgIdMembersMembershipId.
+type DeleteV1AdminOrganizationsOrgIdMembersMembershipIdParams struct {
+	// XAdminReason Human-readable business reason for the admin write (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PatchV1AdminOrganizationsOrgIdMembersMembershipIdParams defines parameters for PatchV1AdminOrganizationsOrgIdMembersMembershipId.
+type PatchV1AdminOrganizationsOrgIdMembersMembershipIdParams struct {
+	// XAdminReason Human-readable business reason for the admin write (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PostV1AdminUsersParams defines parameters for PostV1AdminUsers.
+type PostV1AdminUsersParams struct {
+	// XAdminReason Human-readable business reason for the admin write (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
 }
 
 // GetV1AuthVerifyParams defines parameters for GetV1AuthVerify.
@@ -1024,6 +1824,36 @@ type GetV1GeoCountriesParams struct {
 	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
 }
 
+// CreateOperatorNetworkParams defines parameters for CreateOperatorNetwork.
+type CreateOperatorNetworkParams struct {
+	// XAdminReason SAUI-09 audit-reason header. The trimmed value is stamped
+	// into the audit_events metadata under `reason` so the
+	// immutable audit trail records why each network mutation
+	// was performed. A missing or empty header is rejected with
+	// HTTP 400 `superadmin.missing_reason`.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// UpdateOperatorNetworkParams defines parameters for UpdateOperatorNetwork.
+type UpdateOperatorNetworkParams struct {
+	// XAdminReason SAUI-09 audit-reason header. The trimmed value is stamped
+	// into the audit_events metadata under `reason` so the
+	// immutable audit trail records why each network mutation
+	// was performed. A missing or empty header is rejected with
+	// HTTP 400 `superadmin.missing_reason`.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// ArchiveOperatorNetworkParams defines parameters for ArchiveOperatorNetwork.
+type ArchiveOperatorNetworkParams struct {
+	// XAdminReason SAUI-09 audit-reason header. The trimmed value is stamped
+	// into the audit_events metadata under `reason` so the
+	// immutable audit trail records why each network mutation
+	// was performed. A missing or empty header is rejected with
+	// HTTP 400 `superadmin.missing_reason`.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
 // PostV1AdminGeoCitiesJSONRequestBody defines body for PostV1AdminGeoCities for application/json ContentType.
 type PostV1AdminGeoCitiesJSONRequestBody = GeoCreateCityRequest
 
@@ -1047,6 +1877,21 @@ type AttachNetworkOrganizerJSONRequestBody = AttachNetworkOrganizationRequest
 
 // AssignNetworkUserJSONRequestBody defines body for AssignNetworkUser for application/json ContentType.
 type AssignNetworkUserJSONRequestBody = AssignNetworkUserRequest
+
+// PostV1AdminOrganizationsJSONRequestBody defines body for PostV1AdminOrganizations for application/json ContentType.
+type PostV1AdminOrganizationsJSONRequestBody = CreateOrganizationRequest
+
+// PatchV1AdminOrganizationsIdJSONRequestBody defines body for PatchV1AdminOrganizationsId for application/json ContentType.
+type PatchV1AdminOrganizationsIdJSONRequestBody = UpdateOrganizationRequest
+
+// PostV1AdminOrganizationsOrgIdMembersJSONRequestBody defines body for PostV1AdminOrganizationsOrgIdMembers for application/json ContentType.
+type PostV1AdminOrganizationsOrgIdMembersJSONRequestBody = AdminAddMemberRequest
+
+// PatchV1AdminOrganizationsOrgIdMembersMembershipIdJSONRequestBody defines body for PatchV1AdminOrganizationsOrgIdMembersMembershipId for application/json ContentType.
+type PatchV1AdminOrganizationsOrgIdMembersMembershipIdJSONRequestBody = AdminChangeMemberRoleRequest
+
+// PostV1AdminUsersJSONRequestBody defines body for PostV1AdminUsers for application/json ContentType.
+type PostV1AdminUsersJSONRequestBody = AdminCreateUserRequest
 
 // PostV1AuthLoginJSONRequestBody defines body for PostV1AuthLogin for application/json ContentType.
 type PostV1AuthLoginJSONRequestBody = AuthLoginRequest
@@ -1086,3 +1931,21 @@ type PostV1OrganizationsJSONRequestBody = CreateOrganizationRequest
 
 // PatchV1OrganizationsIdJSONRequestBody defines body for PatchV1OrganizationsId for application/json ContentType.
 type PatchV1OrganizationsIdJSONRequestBody = UpdateOrganizationRequest
+
+// CreateOrganizationBankAccountJSONRequestBody defines body for CreateOrganizationBankAccount for application/json ContentType.
+type CreateOrganizationBankAccountJSONRequestBody = CreateBankAccountRequest
+
+// UpdateOrganizationBankAccountJSONRequestBody defines body for UpdateOrganizationBankAccount for application/json ContentType.
+type UpdateOrganizationBankAccountJSONRequestBody = UpdateBankAccountRequest
+
+// CreatePaymentProviderConfigJSONRequestBody defines body for CreatePaymentProviderConfig for application/json ContentType.
+type CreatePaymentProviderConfigJSONRequestBody = CreatePaymentProviderConfigRequest
+
+// UpdatePaymentProviderConfigJSONRequestBody defines body for UpdatePaymentProviderConfig for application/json ContentType.
+type UpdatePaymentProviderConfigJSONRequestBody = UpdatePaymentProviderConfigRequest
+
+// PostV1OrganizationsOrgIdVenuesJSONRequestBody defines body for PostV1OrganizationsOrgIdVenues for application/json ContentType.
+type PostV1OrganizationsOrgIdVenuesJSONRequestBody = CreateVenueRequest
+
+// PatchV1OrganizationsOrgIdVenuesIdJSONRequestBody defines body for PatchV1OrganizationsOrgIdVenuesId for application/json ContentType.
+type PatchV1OrganizationsOrgIdVenuesIdJSONRequestBody = UpdateVenueRequest

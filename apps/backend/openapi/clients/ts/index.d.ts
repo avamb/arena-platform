@@ -642,6 +642,71 @@ export interface paths {
         patch: operations["patchV1OrganizationsId"];
         trace?: never;
     };
+    "/v1/organizations/{org_id}/bank-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List bank accounts for an organization
+         * @description Returns every active bank-account row belonging to the org in
+         *     the path, ordered by `is_primary DESC, created_at ASC`. Requires
+         *     the `org.update` permission on the parent organization.
+         */
+        get: operations["listOrganizationBankAccounts"];
+        put?: never;
+        /**
+         * Create a new bank account for an organization
+         * @description Inserts a new bank-account row. At least one of `iban` or
+         *     (`account_number` + `routing_number`) MUST be supplied. When
+         *     `is_primary` is true, any previously primary bank account on
+         *     the same organization is atomically demoted in the same
+         *     transaction. Requires `org.update`.
+         */
+        post: operations["createOrganizationBankAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/bank-accounts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Soft-delete a bank account
+         * @description Marks the bank account as deleted (sets `deleted_at = now()`)
+         *     and writes an audit event in the same transaction. Soft-
+         *     deleting the primary account on an organization that still has
+         *     other active accounts requires the caller to designate a new
+         *     primary in the same PATCH first; otherwise the request is
+         *     rejected with 409 `bank_account.primary_required`. Requires
+         *     `org.update`.
+         */
+        delete: operations["deleteOrganizationBankAccount"];
+        options?: never;
+        head?: never;
+        /**
+         * Partially update a bank account
+         * @description Patches the bank-account row in place. Omitted fields are left
+         *     unchanged. Setting `is_primary` to true atomically demotes any
+         *     previously primary account on the same organization. Setting
+         *     `is_primary` to false while no other primary exists is
+         *     rejected with 409 `bank_account.primary_required`. Requires
+         *     `org.update`.
+         */
+        patch: operations["updateOrganizationBankAccount"];
+        trace?: never;
+    };
     "/v1/admin/organizations": {
         parameters: {
             query?: never;
@@ -2355,7 +2420,13 @@ export interface components {
              */
             role: "organizer" | "agent" | "platform_operator" | "external_ticketing_operator" | "platform_superadmin" | "network_operator";
         };
-        /** @description A single active organization (primary tenant boundary). */
+        /**
+         * @description A single active organization (primary tenant boundary).
+         *     Includes legal & contact attributes added in migration
+         *     0049_organizations_legal_fields (Wave O / feature #253). All
+         *     legal & contact attributes are nullable to preserve backward
+         *     compatibility with organizations created before that wave.
+         */
         OrganizationItem: {
             /**
              * Format: uuid
@@ -2389,6 +2460,98 @@ export interface components {
              */
             reservation_ttl_seconds: number;
             /**
+             * @description Registered juridical name of the tenant entity (distinct from
+             *     the public display name). Used on invoices, contracts, and
+             *     tax forms. NULL until the organization completes its legal
+             *     self-service profile.
+             * @example ACME Tickets GmbH
+             */
+            legal_name?: string | null;
+            /**
+             * @description Tax registration identifier (VAT, EIN, etc.). Format is
+             *     validated application-side based on `tax_id_scheme`.
+             * @example DE123456789
+             */
+            tax_id?: string | null;
+            /**
+             * @description Identifies the tax-id scheme. NULL when the organization has
+             *     not registered a tax id yet.
+             * @example eu_vat
+             * @enum {string|null}
+             */
+            tax_id_scheme?: "eu_vat" | "gb_vat" | "il_vat" | "us_ein" | "other" | null;
+            /**
+             * @description Company-registry number in the home country (e.g. HRB for
+             *     Germany, OGRN-equivalents elsewhere).
+             * @example HRB 12345
+             */
+            registration_number?: string | null;
+            /**
+             * @description Street address line 1 of the registered office.
+             * @example Friedrichstr. 1
+             */
+            legal_address_line1?: string | null;
+            /**
+             * @description Street address line 2 of the registered office.
+             * @example Suite 200
+             */
+            legal_address_line2?: string | null;
+            /**
+             * @description Postal / ZIP code of the registered office.
+             * @example 10117
+             */
+            legal_address_postal_code?: string | null;
+            /**
+             * @description City of the registered office.
+             * @example Berlin
+             */
+            legal_address_city?: string | null;
+            /**
+             * @description ISO 3166-1 alpha-2 country code of the registered office.
+             *     App layer validates membership in an allowlist.
+             * @example DE
+             */
+            legal_address_country?: string | null;
+            /**
+             * Format: email
+             * @description Public operations / billing contact email.
+             * @example ops@acme.example
+             */
+            contact_email?: string | null;
+            /**
+             * @description Public operations / billing contact phone (E.164 recommended).
+             * @example +49 30 1234567
+             */
+            contact_phone?: string | null;
+            /**
+             * Format: uri
+             * @description Public marketing or info URL.
+             * @example https://acme.example
+             */
+            website_url?: string | null;
+            /**
+             * Format: uuid
+             * @description Optional forward reference to a media row that ships in
+             *     Wave G. The DB FK is intentionally deferred — currently a
+             *     free-form UUID.
+             */
+            logo_media_id?: string | null;
+            /**
+             * @description KYB (Know Your Business) verification status. State machine:
+             *     `unverified` → `pending` → `verified` | `rejected`. Server
+             *     defaults new organizations to `unverified`.
+             * @example unverified
+             * @enum {string}
+             */
+            kyb_status: "unverified" | "pending" | "verified" | "rejected";
+            /**
+             * Format: date-time
+             * @description Timestamp when KYB verification last reached the `verified`
+             *     state. NULL until the first successful verification.
+             * @example 2024-01-15T10:23:00Z
+             */
+            kyb_verified_at?: string | null;
+            /**
              * Format: date-time
              * @description ISO 8601 / RFC 3339 timestamp of row creation
              * @example 2024-01-01T00:00:00Z
@@ -2401,6 +2564,15 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * @description Detailed organization view returned by the SuperAdmin/org-admin
+         *     legal & billing surfaces. Currently a structural alias of
+         *     `OrganizationItem` — the two are kept distinct in the contract
+         *     so that future detail-only fields (e.g. embedded bank-account
+         *     list, recent invoice summary) can be added without widening the
+         *     list-row schema.
+         */
+        OrganizationDetail: components["schemas"]["OrganizationItem"];
         /** @description Request body for POST /v1/organizations. */
         CreateOrganizationRequest: {
             /**
@@ -2428,11 +2600,72 @@ export interface components {
              * @example 1200
              */
             reservation_ttl_seconds?: number;
+            /**
+             * @description Registered juridical name (optional on create).
+             * @example ACME Tickets GmbH
+             */
+            legal_name?: string;
+            /**
+             * @description Tax registration identifier (optional on create).
+             * @example DE123456789
+             */
+            tax_id?: string;
+            /**
+             * @description Tax-id scheme (optional on create).
+             * @example eu_vat
+             * @enum {string}
+             */
+            tax_id_scheme?: "eu_vat" | "gb_vat" | "il_vat" | "us_ein" | "other";
+            /**
+             * @description Company-registry number (optional on create).
+             * @example HRB 12345
+             */
+            registration_number?: string;
+            /** @description Registered office street line 1 (optional on create). */
+            legal_address_line1?: string;
+            /** @description Registered office street line 2 (optional on create). */
+            legal_address_line2?: string;
+            /** @description Registered office postal code (optional on create). */
+            legal_address_postal_code?: string;
+            /** @description Registered office city (optional on create). */
+            legal_address_city?: string;
+            /**
+             * @description Registered office country ISO 3166-1 alpha-2 (optional on create).
+             * @example DE
+             */
+            legal_address_country?: string;
+            /**
+             * Format: email
+             * @description Public contact email (optional on create).
+             */
+            contact_email?: string;
+            /** @description Public contact phone (optional on create). */
+            contact_phone?: string;
+            /**
+             * Format: uri
+             * @description Public marketing / info URL (optional on create).
+             */
+            website_url?: string;
+            /**
+             * Format: uuid
+             * @description Optional media-row FK (forward reference, Wave G).
+             */
+            logo_media_id?: string;
         };
         /**
-         * @description Request body for PATCH /v1/organizations/{id}.
-         *     All fields are optional — omitted or empty-string fields leave the
-         *     existing value unchanged.
+         * @description Request body for PATCH /v1/organizations/{id} and the admin
+         *     counterpart PATCH /v1/admin/organizations/{id}. All fields are
+         *     optional — omitted or empty-string fields leave the existing
+         *     value unchanged.
+         *
+         *     Conditional requirement: if `kyb_status` is being transitioned
+         *     to `pending` or `verified` (i.e. the body sets `kyb_status` to
+         *     one of those two values), then `legal_name` MUST also be
+         *     present and non-empty in the same request — an organization
+         *     cannot enter or hold a KYB-pending/verified state without a
+         *     registered juridical name on file. This rule is expressed in
+         *     the JSON Schema `if`/`then` clause below and enforced by the
+         *     server on PATCH.
          */
         UpdateOrganizationRequest: {
             /**
@@ -2460,6 +2693,204 @@ export interface components {
              * @example 900
              */
             reservation_ttl_seconds?: number;
+            /**
+             * @description New registered juridical name. Empty string leaves existing
+             *     value. Required (non-empty) when this same body sets
+             *     `kyb_status` to `pending` or `verified`.
+             * @example ACME Tickets GmbH
+             */
+            legal_name?: string;
+            /**
+             * @description New tax registration identifier (empty string clears).
+             * @example DE123456789
+             */
+            tax_id?: string;
+            /**
+             * @description New tax-id scheme. Pass `null` to clear the field (sets to
+             *     NULL in the database). Allowed enum values mirror the DB
+             *     CHECK constraint.
+             * @example eu_vat
+             * @enum {string|null}
+             */
+            tax_id_scheme?: "eu_vat" | "gb_vat" | "il_vat" | "us_ein" | "other" | null;
+            /** @description New company-registry number (empty string clears). */
+            registration_number?: string;
+            /** @description New registered-office street line 1 (empty string clears). */
+            legal_address_line1?: string;
+            /** @description New registered-office street line 2 (empty string clears). */
+            legal_address_line2?: string;
+            /** @description New registered-office postal code (empty string clears). */
+            legal_address_postal_code?: string;
+            /** @description New registered-office city (empty string clears). */
+            legal_address_city?: string;
+            /**
+             * @description New registered-office ISO 3166-1 alpha-2 country code. When
+             *     non-empty must match `^[A-Z]{2}$`. Empty string clears.
+             * @example DE
+             */
+            legal_address_country?: string;
+            /** @description New public contact email (empty string clears). Validated as email when non-empty. */
+            contact_email?: string;
+            /** @description New public contact phone (empty string clears). */
+            contact_phone?: string;
+            /** @description New public marketing / info URL (empty string clears). Validated as URI when non-empty. */
+            website_url?: string;
+            /**
+             * Format: uuid
+             * @description New media-row FK (forward reference, Wave G). `null`
+             *     clears the existing logo.
+             */
+            logo_media_id?: string | null;
+            /**
+             * @description New KYB verification status. Allowed transitions are
+             *     enforced server-side. Setting to `pending` or `verified`
+             *     requires `legal_name` to also be set in the same request
+             *     (see schema-level `if`/`then` clause).
+             * @example pending
+             * @enum {string}
+             */
+            kyb_status?: "unverified" | "pending" | "verified" | "rejected";
+        };
+        /**
+         * @description A single active bank-account row owned by one organization.
+         *     Sensitive numbers (IBAN / account_number) are returned verbatim
+         *     to actors holding `org.update` on the owning organization;
+         *     `payment_provider_configs` secrets remain segregated from this
+         *     table.
+         */
+        BankAccountItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the bank-account row.
+             * @example 01929d0e-0e47-7000-8000-000000000301
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the owning organization (tenant boundary).
+             */
+            org_id: string;
+            /**
+             * @description Legal name of the account holder (typically the org's legal_name).
+             * @example ACME Tickets GmbH
+             */
+            holder_name: string;
+            /**
+             * @description ISO 4217 three-letter currency code of the account.
+             * @example EUR
+             */
+            currency: string;
+            /**
+             * @description ISO 3166-1 alpha-2 country code where the account is held.
+             * @example DE
+             */
+            country: string;
+            /**
+             * @description Free-form bank name for operator display.
+             * @example Commerzbank AG
+             */
+            bank_name?: string | null;
+            /**
+             * @description IBAN (International Bank Account Number). Optional — North
+             *     American accounts use `account_number` + `routing_number`
+             *     instead. Format validated app-side.
+             * @example DE89370400440532013000
+             */
+            iban?: string | null;
+            /**
+             * @description BIC / SWIFT code (8 or 11 chars). Optional.
+             * @example COBADEFFXXX
+             */
+            bic?: string | null;
+            /**
+             * @description Domestic account number (non-IBAN markets). Mutually
+             *     populated with `routing_number` for US ACH-style accounts.
+             * @example 000123456789
+             */
+            account_number?: string | null;
+            /**
+             * @description Domestic routing/sort/ABA code that pairs with
+             *     `account_number`. Optional.
+             * @example 021000021
+             */
+            routing_number?: string | null;
+            /**
+             * @description Exactly one active bank account per organization may be
+             *     marked primary at any time; the server enforces this
+             *     invariant by atomically demoting peers on PATCH/POST.
+             * @example true
+             */
+            is_primary: boolean;
+            /**
+             * Format: date-time
+             * @example 2024-01-01T00:00:00Z
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @example 2024-01-01T00:00:00Z
+             */
+            updated_at: string;
+        };
+        /**
+         * @description Request body for POST /v1/organizations/{org_id}/bank-accounts.
+         *     At least one of (`iban`) or (`account_number` + `routing_number`)
+         *     MUST be supplied — pure metadata-only accounts are rejected
+         *     with 400 `bank_account.identifier_required`.
+         */
+        CreateBankAccountRequest: {
+            /** @example ACME Tickets GmbH */
+            holder_name: string;
+            /** @example EUR */
+            currency: string;
+            /** @example DE */
+            country: string;
+            bank_name?: string;
+            /**
+             * @description IBAN (mutually exclusive with account_number+routing_number).
+             * @example DE89370400440532013000
+             */
+            iban?: string;
+            /**
+             * @description BIC / SWIFT code (optional).
+             * @example COBADEFFXXX
+             */
+            bic?: string;
+            /** @description Domestic account number (pairs with routing_number). */
+            account_number?: string;
+            /** @description Domestic routing/sort/ABA code (pairs with account_number). */
+            routing_number?: string;
+            /**
+             * @description When true, this row becomes the org's primary account and
+             *     any previously primary account is atomically demoted in
+             *     the same transaction.
+             * @default false
+             */
+            is_primary: boolean;
+        };
+        /**
+         * @description Request body for PATCH /v1/organizations/{org_id}/bank-accounts/{id}.
+         *     Omitted fields are left unchanged. Sending `is_primary: true`
+         *     atomically demotes any previously primary account in the same
+         *     transaction. Sending `is_primary: false` while no other primary
+         *     exists is rejected with 409 `bank_account.primary_required`
+         *     (an org with any active account must have exactly one primary).
+         */
+        UpdateBankAccountRequest: {
+            holder_name?: string;
+            currency?: string;
+            country?: string;
+            /** @description Empty string or null clears the field. */
+            bank_name?: string | null;
+            /** @description Empty string or null clears the field. */
+            iban?: string | null;
+            /** @description Empty string or null clears the field. */
+            bic?: string | null;
+            /** @description Empty string or null clears the field. */
+            account_number?: string | null;
+            /** @description Empty string or null clears the field. */
+            routing_number?: string | null;
+            is_primary?: boolean;
         };
         /**
          * @description A single active venue (physical event location owned by one organization).
@@ -4606,6 +5037,336 @@ export interface operations {
                 };
             };
             /** @description Database pool or org queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listOrganizationBankAccounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 primary key of the owning organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of active bank accounts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        bank_accounts: components["schemas"]["BankAccountItem"][];
+                    };
+                };
+            };
+            /** @description org_id path parameter is not a valid UUID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `org.update` on the parent organization */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Organization not found or has been archived */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createOrganizationBankAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 primary key of the owning organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateBankAccountRequest"];
+            };
+        };
+        responses: {
+            /** @description Bank account created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        bank_account: components["schemas"]["BankAccountItem"];
+                    };
+                };
+            };
+            /**
+             * @description Invalid body, missing identifier (neither IBAN nor
+             *     account_number+routing_number supplied), invalid currency
+             *     or country code.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `org.update` on the parent organization */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Organization not found or archived */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Duplicate identifier (IBAN or account_number+routing_number
+             *     already exists on an active row for this organization).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteOrganizationBankAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bank account soft-deleted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        bank_account: components["schemas"]["BankAccountItem"];
+                        /** @example true */
+                        deleted: boolean;
+                    };
+                };
+            };
+            /** @description Invalid path parameter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `org.update` */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Bank account not found, soft-deleted, or owned by another org */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Attempt to delete the only primary account without
+             *     designating a replacement primary.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateOrganizationBankAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateBankAccountRequest"];
+            };
+        };
+        responses: {
+            /** @description Bank account updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        bank_account: components["schemas"]["BankAccountItem"];
+                    };
+                };
+            };
+            /** @description Invalid body or invalid path parameter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `org.update` */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Bank account not found, soft-deleted, or owned by another org */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Conflict — duplicate identifier on the same org, or attempt
+             *     to demote the only primary account.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
             503: {
                 headers: {
                     [name: string]: unknown;

@@ -16156,3 +16156,46 @@ Verification:
   arena_postgres `\d organization_bank_accounts`        OK (all columns, indexes, FK)
   arena_api status                                      Up (healthy) after auto-migrate
 Marked #254 passing. Commit: 95299c59
+
+=== 2026-06-29: Feature #255 — Extend Organization OpenAPI with legal & banking schemas ===
+apps/backend/openapi/openapi.yaml:
+  - OrganizationItem: added 15 O-1 fields (legal_name, tax_id, tax_id_scheme
+    enum eu_vat|gb_vat|il_vat|us_ein|other, registration_number, legal
+    address line1/line2/postal_code/city/country (ISO-3166-1 alpha-2
+    pattern ^[A-Z]{2}$), contact_email/contact_phone, website_url,
+    logo_media_id (forward FK to Wave G media), kyb_status enum
+    unverified|pending|verified|rejected (required), kyb_verified_at).
+    kyb_status added to required[].
+  - OrganizationDetail: new schema, allOf alias of OrganizationItem so
+    future detail-only fields can be added without widening list rows.
+  - CreateOrganizationRequest: 14 optional create-time legal/contact
+    fields (kyb_status not settable -- server defaults to unverified).
+  - UpdateOrganizationRequest: same fields plus kyb_status. Encoded
+    conditional legal_name requirement via JSON-Schema if/then --
+    when body sets kyb_status to pending|verified, legal_name MUST
+    be present and non-empty. tax_id_scheme nullable for clear.
+  - BankAccountItem / CreateBankAccountRequest / UpdateBankAccountRequest
+    new nested schemas (id/org_id/holder_name/currency ISO-4217/
+    country ISO-3166-1/bank_name/iban/bic + domestic number pair
+    /is_primary/timestamps). Create requires at least IBAN or the
+    domestic-number pair; primary-uniqueness invariant documented
+    (atomic demote on POST/PATCH; 409 on demote-only).
+  - New path group /v1/organizations/{org_id}/(banking ledger rows)
+    (GET list, POST create) and .../{id} (PATCH, DELETE). All four
+    ops require org.update. 400/401/403/404/409/503 envelopes per
+    existing style. Inserted before /v1/admin/organizations.
+apps/backend/internal/adapters/http/openapi/types_gen.go: regenerated
+  via oapi-codegen v2.4.1 (golang:1.24 docker).
+apps/backend/openapi/clients/ts/index.d.ts: regenerated via
+  scripts/gen-ts-client.mjs (openapi-typescript 7.13.0).
+Verification:
+  docker run golang:1.24 go build ./...               OK
+  npm --prefix apps/admin-web run type-check          OK
+  npm --prefix apps/admin-web test -- --run           OK (445/445)
+  curl http://localhost:8080/healthz                  {"status":"ok"}
+Note: contract-only ticket. Go handlers and SQL queries for the new
+  path group and the new O-1 PATCH fields are NOT implemented in
+  this session -- that work belongs to follow-up Wave O tickets.
+  DB migration 0049 (feature #253) already added the storage
+  columns; migration 0050 (feature #254) added the storage table.
+Marked #255 passing. Backlog: 254/301.
