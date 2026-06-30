@@ -18,7 +18,7 @@
 //	POST   /v1/events/{event_id}/publications                         — publish (publication.create)
 //	DELETE /v1/events/{event_id}/publications/{feed_token_id}         — unpublish (publication.delete)
 //	GET    /v1/events/{event_id}/publications                         — list (publication.read)
-package httpserver
+package hcatalog
 
 import (
 	"encoding/json"
@@ -31,6 +31,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 )
 
@@ -38,8 +39,10 @@ import (
 // Response type
 // ─────────────────────────────────────────────────────────────────────────────
 
-// publicationResponse is the JSON representation of a single event publication.
-type publicationResponse struct {
+// PublicationResponse is the exported JSON representation of a single event
+// publication, for use by the httpserver shim layer (publications_test.go
+// references publicationResponse from package httpserver via catalog_shims.go).
+type PublicationResponse struct {
 	ID          string  `json:"id"`
 	EventID     string  `json:"event_id"`
 	FeedTokenID string  `json:"feed_token_id"`
@@ -47,9 +50,14 @@ type publicationResponse struct {
 	PublishedAt string  `json:"published_at"`
 }
 
-// publicationFromRow converts an EventPublicationRow to a publicationResponse.
-func publicationFromRow(ep gen.EventPublicationRow) publicationResponse {
-	resp := publicationResponse{
+// publicationResponse is a package-level alias for PublicationResponse so
+// existing handler code continues to compile unchanged.
+type publicationResponse = PublicationResponse
+
+// PublicationFromRow converts a gen.EventPublicationRow to PublicationResponse.
+// publicationFromRow is the package-internal alias for backward compatibility.
+func PublicationFromRow(ep gen.EventPublicationRow) PublicationResponse {
+	resp := PublicationResponse{
 		ID:          ep.ID.String(),
 		EventID:     ep.EventID.String(),
 		FeedTokenID: ep.FeedTokenID.String(),
@@ -62,37 +70,35 @@ func publicationFromRow(ep gen.EventPublicationRow) publicationResponse {
 	return resp
 }
 
+func publicationFromRow(ep gen.EventPublicationRow) publicationResponse {
+	return PublicationFromRow(ep)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /v1/events/{event_id}/publications
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handlePublishEvent publishes an event to an agent feed token.
-// Body: {"feed_token_id": "<uuid>", "city_id": "<uuid|null>"}
-// Idempotent: re-publishing the same pair returns 200 with the existing row.
-func (s *Server) handlePublishEvent(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandlePublishEvent(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Parse and validate event_id from path.
 	rawEventID := chi.URLParam(r, "event_id")
 	eventID, err := uuid.Parse(rawEventID)
 	if err != nil {
 		msg := i18n.Localize(ctx, "error.invalid_uuid", "invalid event_id: must be a UUID", nil)
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("publication.invalid_event_id", msg, r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("publication.invalid_event_id", msg, r))
 		return
 	}
 
-	// Require Content-Type: application/json.
 	if ct := r.Header.Get("Content-Type"); ct != "application/json" {
 		msg := i18n.Localize(ctx, "error.content_type", "Content-Type must be application/json", nil)
-		writeJSON(w, http.StatusUnsupportedMediaType, errorEnvelope("publication.content_type_required", msg, r))
+		httputil.WriteJSON(w, http.StatusUnsupportedMediaType, httputil.ErrorEnvelope("publication.content_type_required", msg, r))
 		return
 	}
 
-	// Parse request body.
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil || len(body) == 0 {
 		msg := i18n.Localize(ctx, "error.body_required", "request body is required", nil)
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("publication.body_required", msg, r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("publication.body_required", msg, r))
 		return
 	}
 
@@ -102,81 +108,73 @@ func (s *Server) handlePublishEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
 		msg := i18n.Localize(ctx, "error.invalid_json", "invalid JSON body", nil)
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("publication.invalid_json", msg, r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("publication.invalid_json", msg, r))
 		return
 	}
 
-	// Validate feed_token_id.
 	if req.FeedTokenID == "" {
 		msg := i18n.Localize(ctx, "error.missing_field", "feed_token_id is required", nil)
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("publication.feed_token_id_required", msg, r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("publication.feed_token_id_required", msg, r))
 		return
 	}
 	feedTokenID, err := uuid.Parse(req.FeedTokenID)
 	if err != nil {
 		msg := i18n.Localize(ctx, "error.invalid_uuid", "invalid feed_token_id: must be a UUID", nil)
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("publication.invalid_feed_token_id", msg, r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("publication.invalid_feed_token_id", msg, r))
 		return
 	}
 
-	// Parse optional city_id.
 	var cityID *uuid.UUID
 	if req.CityID != nil && *req.CityID != "" {
 		parsed, err := uuid.Parse(*req.CityID)
 		if err != nil {
 			msg := i18n.Localize(ctx, "error.invalid_uuid", "invalid city_id: must be a UUID", nil)
-			writeJSON(w, http.StatusBadRequest, errorEnvelope("publication.invalid_city_id", msg, r))
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("publication.invalid_city_id", msg, r))
 			return
 		}
 		cityID = &parsed
 	}
 
-	// Insert (or return existing) publication row.
-	pub, err := s.publicationQueries.PublishEvent(ctx, eventID, feedTokenID, cityID)
+	pub, err := h.publicationQueries.PublishEvent(ctx, eventID, feedTokenID, cityID)
 	if err != nil {
-		s.logger.Error("handlePublishEvent: PublishEvent failed",
+		h.logger.Error("handlePublishEvent: PublishEvent failed",
 			"event_id", eventID, "feed_token_id", feedTokenID, "err", err)
 		msg := i18n.Localize(ctx, "error.internal", "internal server error", nil)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("publication.internal", msg, r))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("publication.internal", msg, r))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, publicationFromRow(pub))
+	httputil.WriteJSON(w, http.StatusOK, publicationFromRow(pub))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DELETE /v1/events/{event_id}/publications/{feed_token_id}
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleUnpublishEvent removes a publication entry (unpublishes an event from a feed).
-// Idempotent: deleting a non-existent entry returns 204 without error.
-func (s *Server) handleUnpublishEvent(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleUnpublishEvent(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Parse event_id from path.
 	rawEventID := chi.URLParam(r, "event_id")
 	eventID, err := uuid.Parse(rawEventID)
 	if err != nil {
 		msg := i18n.Localize(ctx, "error.invalid_uuid", "invalid event_id: must be a UUID", nil)
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("publication.invalid_event_id", msg, r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("publication.invalid_event_id", msg, r))
 		return
 	}
 
-	// Parse feed_token_id from path.
 	rawFeedTokenID := chi.URLParam(r, "feed_token_id")
 	feedTokenID, err := uuid.Parse(rawFeedTokenID)
 	if err != nil {
 		msg := i18n.Localize(ctx, "error.invalid_uuid", "invalid feed_token_id: must be a UUID", nil)
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("publication.invalid_feed_token_id", msg, r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("publication.invalid_feed_token_id", msg, r))
 		return
 	}
 
-	// Delete the publication entry (idempotent — no error if already absent).
-	if err := s.publicationQueries.UnpublishEvent(ctx, eventID, feedTokenID); err != nil {
-		s.logger.Error("handleUnpublishEvent: UnpublishEvent failed",
+	if err := h.publicationQueries.UnpublishEvent(ctx, eventID, feedTokenID); err != nil {
+		h.logger.Error("handleUnpublishEvent: UnpublishEvent failed",
 			"event_id", eventID, "feed_token_id", feedTokenID, "err", err)
 		msg := i18n.Localize(ctx, "error.internal", "internal server error", nil)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("publication.internal", msg, r))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("publication.internal", msg, r))
 		return
 	}
 
@@ -187,25 +185,23 @@ func (s *Server) handleUnpublishEvent(w http.ResponseWriter, r *http.Request) {
 // GET /v1/events/{event_id}/publications
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleListPublications returns all feed tokens an event is currently published to.
-func (s *Server) handleListPublications(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleListPublications(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Parse event_id from path.
 	rawEventID := chi.URLParam(r, "event_id")
 	eventID, err := uuid.Parse(rawEventID)
 	if err != nil {
 		msg := i18n.Localize(ctx, "error.invalid_uuid", "invalid event_id: must be a UUID", nil)
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("publication.invalid_event_id", msg, r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("publication.invalid_event_id", msg, r))
 		return
 	}
 
-	pubs, err := s.publicationQueries.ListPublicationsByEvent(ctx, eventID)
+	pubs, err := h.publicationQueries.ListPublicationsByEvent(ctx, eventID)
 	if err != nil && err != pgx.ErrNoRows {
-		s.logger.Error("handleListPublications: ListPublicationsByEvent failed",
+		h.logger.Error("handleListPublications: ListPublicationsByEvent failed",
 			"event_id", eventID, "err", err)
 		msg := i18n.Localize(ctx, "error.internal", "internal server error", nil)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("publication.internal", msg, r))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("publication.internal", msg, r))
 		return
 	}
 
@@ -213,5 +209,5 @@ func (s *Server) handleListPublications(w http.ResponseWriter, r *http.Request) 
 	for _, ep := range pubs {
 		resp = append(resp, publicationFromRow(ep))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"publications": resp})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"publications": resp})
 }
