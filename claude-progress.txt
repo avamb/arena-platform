@@ -18044,3 +18044,46 @@ Verification (docker golang:1.24, repo root):
       /v1/admin/tickets pattern).
 Marked #291 passing.
 
+## 2026-06-30 — Feature #292 (S-1) Emit scanner-relevant outbox events
+- Added three new outbox event types in scanner_events.go alongside the
+  existing Bil24-shaped v1.scanner.ticket.* family:
+    v1.ticket.refunded    (aggregate_type "ticket", aggregate_id ticket UUID)
+    v1.ticket.revoked     (aggregate_type "ticket", aggregate_id ticket UUID)
+    v1.session.cancelled  (aggregate_type "session", aggregate_id session UUID)
+- New payload builders buildTicketRefundedV1Payload,
+  buildTicketRevokedV1Payload (omits complimentary_issuance_id when blank),
+  buildSessionCancelledPayload (omits event_id and previous_status when
+  blank). All timestamps RFC3339-UTC.
+- New publish helpers publishTicketRefundedV1Events (per-ticket loop),
+  publishTicketRevokedV1Events (per-ticket loop), publishSessionCancelledEvent
+  (single). All reuse publishScannerEvent so they no-op safely when
+  s.pool or s.outboxWriter is nil (unit-test paths).
+- Wired emitters:
+    refunds.go handleRefundWebhook: after the existing per-refund
+      v1.scanner.ticket.refunded emit and CancelTicketsByCheckoutSession,
+      enumerate tickets via ListTicketsByCheckoutSession and emit one
+      v1.ticket.refunded per ticket. Best-effort.
+    complimentary.go handleRevokeComplimentaryIssuance: after the
+      successful tx commit and audit log, emit one v1.ticket.revoked per
+      revokedTicket with reason "complimentary_revocation".
+    sessions.go handleUpdateSession: after UPDATE succeeds, emit one
+      v1.session.cancelled when req.Status == "cancelled" AND
+      current.Status != "cancelled" AND updated.Status == "cancelled".
+- New 08_architecture/15_webhook_event_catalog.md reference doc with
+  one table per event family (generic catalog vs Bil24 scanner) and
+  payload schema snippets plus delivery semantics (at-least-once,
+  per-aggregate FIFO, best-effort emission).
+- Tests: scanner_events_catalog_test.go (5 cases) covers constants,
+  refunded payload field presence + RFC3339 format, revoked payload
+  with/without issuance id, session cancelled full + minimal forms,
+  and publish-helpers no-op safety when outbox is unwired.
+Verification (docker golang:1.24, repo root):
+  go build ./apps/backend/...                                 OK
+  go vet ./apps/backend/...                                   OK
+  go test (filtered to new cases) ./apps/backend/...          PASS 5/5
+  go test ./apps/backend/internal/platform/httpserver/...     PASS except
+    pre-existing baseline TestTimestamp_StaticScan_RFC3339NanoWithUTC
+    (4 baseline hits in s3.go, delivery/handler.go, delivery/pdf/pdf.go)
+    documented in #291 progress notes — unrelated to this feature.
+Marked #292 passing.
+

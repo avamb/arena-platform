@@ -668,6 +668,17 @@ func (s *Server) handleRevokeComplimentaryIssuance(w http.ResponseWriter, r *htt
 		slog.String("event", "complimentary.revoked"),
 	)
 
+	// Publish generic per-ticket v1.ticket.revoked events for the webhook
+	// event catalog (feature S-1).  Best-effort: errors are logged inside
+	// publishScannerEvent and never propagate to the HTTP caller.
+	if len(revokedTickets) > 0 {
+		ticketIDs := make([]string, 0, len(revokedTickets))
+		for _, t := range revokedTickets {
+			ticketIDs = append(ticketIDs, t.ID.String())
+		}
+		s.publishTicketRevokedV1Events(r.Context(), ticketIDs, id.String(), "complimentary_revocation")
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"issuance":        complimentaryIssuanceFromRow(issuance),
 		"tickets_revoked": len(revokedTickets),

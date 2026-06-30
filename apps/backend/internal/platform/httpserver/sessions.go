@@ -553,6 +553,13 @@ func (s *Server) handleUpdateSession(w http.ResponseWriter, r *http.Request) {
 		s.onCapacityChange(ctx, updated.ID, current.CapacityTotal, updated.CapacityTotal)
 	}
 
+	// Webhook event catalog (feature S-1): emit v1.session.cancelled exactly
+	// once when the status transitions into "cancelled".  Best-effort: errors
+	// are logged inside publishScannerEvent.
+	if req.Status == "cancelled" && current.Status != "cancelled" && updated.Status == "cancelled" {
+		s.publishSessionCancelledEvent(ctx, updated.ID.String(), eventID.String(), current.Status)
+	}
+
 	// Check overlap with siblings (excluding this session itself).
 	effectiveStart := updated.StartAt
 	effectiveEnd := updated.EndAt

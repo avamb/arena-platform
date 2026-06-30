@@ -755,6 +755,35 @@ func (s *Server) handleRefundWebhook(w http.ResponseWriter, r *http.Request) {
 					updated.Currency,
 					updated.Amount,
 				)
+
+				// Publish generic per-ticket v1.ticket.refunded events for the
+				// webhook event catalog (feature S-1).  Best-effort: errors are
+				// logged inside publishScannerEvent.  Listing tickets here is
+				// fine because CancelTicketsByCheckoutSession has just updated
+				// them to "cancelled"; the listed rows therefore reflect the
+				// post-cancel state and carry the canonical ticket UUIDs that
+				// scanner subscribers need to identify the revoked entries.
+				if s.ticketQueries != nil && cancelled > 0 {
+					tickets, listErr := s.ticketQueries.ListTicketsByCheckoutSession(ctx, *pi.CheckoutSessionID)
+					if listErr != nil {
+						s.logger.Warn("refund_webhook: list tickets for v1.ticket.refunded events failed",
+							slog.String("checkout_session_id", pi.CheckoutSessionID.String()),
+							slog.String("error", listErr.Error()),
+						)
+					} else {
+						ticketIDs := make([]string, 0, len(tickets))
+						for _, t := range tickets {
+							ticketIDs = append(ticketIDs, t.ID.String())
+						}
+						s.publishTicketRefundedV1Events(ctx,
+							ticketIDs,
+							pi.CheckoutSessionID.String(),
+							updated.ID.String(),
+							updated.Currency,
+							updated.Amount,
+						)
+					}
+				}
 			}
 		}
 	}

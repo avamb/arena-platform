@@ -1,0 +1,21 @@
+feat(delivery/pdf): T-1 pure PDF e-ticket renderer (#288)
+
+New package apps/backend/internal/platform/delivery/pdf exposes
+Render(ctx, Ticket) ([]byte, error) -- a pure, IO-free function that
+lays out a single-page US-Letter e-ticket with the event name, venue-
+local session time, venue+city, tier, holder, org logo, QR of
+ticket_credentials.code, printable ticket id, and a non-fiscal fine
+print disclaimer.
+
+Library choice: github.com/jung-kurt/gofpdf (pinned in go.mod). gofpdf
+ships PDF Core 14 fonts (Helvetica) built in, so the no-IO requirement
+is satisfied without embedding TTF data; the signintech alternative
+would force a ~250KiB TTF embed for any text. QR rasterisation:
+github.com/skip2/go-qrcode (pure-Go, no IO).
+
+Render is deterministic (creation/mod timestamps pinned), gracefully
+skips a corrupt logo, validates required fields, and honours ctx
+cancellation. 10 unit tests cover the happy path, determinism,
+missing-field rejection, bad-logo handling, venue TZ formatting
+(Europe/Moscow shift + UTC fallback for invalid zone), and a guardrail
+that the default fine print contains no fiscal-receipt language.
