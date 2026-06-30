@@ -17484,3 +17484,43 @@ Verification:
   npm --prefix apps/admin-web run type-check                   OK.
 
 Marked #277 passing. Backlog: 276/301.
+
+=== 2026-06-30: Feature #278 - A-17 Document scan_events endpoints in OpenAPI (SKIPPED) ===
+SKIPPED with external blocker (same pattern as #276 delivery_jobs).
+
+Blocker: Feature description references
+`apps/backend/internal/platform/httpserver/scan_events.go`, which does
+not exist. The closest file is `scanner_events.go` (feature #143), but
+it defines ZERO HTTP handlers — it contains only:
+  - Event type constants (ScannerEventTicketIssued / Revoked / Refunded)
+  - Payload builders (buildTicketIssuedPayload,
+    buildTicketRevokedPayload, buildTicketRefundedPayload)
+  - publishScannerEvent / publishTicketIssuedEvents /
+    publishTicketRefundedEvents — internal best-effort outbox helpers
+    called by tickets.go (after ticket issuance) and refunds.go (after
+    the refund webhook "succeeded" transition).
+
+Verification:
+  - ls apps/backend/internal/platform/httpserver/scan_events*.go -> none.
+  - grep -i "scan.*event|scan_event|/v1/.*scan[-_]?event" across
+    apps/backend -> only the helper file, its #143 test, and unrelated
+    types_gen.go entries; no HTTP routes.
+  - mount_scanning.go mounts `/scanner/snapshot`, `/scanner/validate`
+    (feature #144), and `/scan` (barcode redemption, feature #142) —
+    no "scan_events" route group.
+  - openapi.yaml has no /v1/.*scan[-_]?event paths.
+
+The A-* OpenAPI Sync wave documents EXISTING httpserver/<group>.go
+endpoint groups (270 checkout_sessions, 271 payment_intents,
+272 tickets, 273 ticket_credentials, 274 refunds,
+275 barcode_authorities, 277 webhook_subscribers). Like #276, this
+feature's premise is invalid: scanner_events.go is an internal helper
+module, not an HTTP endpoint group, so there is nothing to add to
+openapi.yaml.
+
+Building brand-new scan_events HTTP endpoints (handlers, mount wiring,
+schemas, contract test) is materially outside "OpenAPI Sync" scope
+and belongs in a dedicated feature.
+
+Backlog: 276/301 (unchanged).
+
