@@ -1,0 +1,40 @@
+{{define "subject"}}Tu entrada — {{.EventName}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="es" dir="ltr">
+<head><meta charset="UTF-8"><title>Tu entrada</title></head>
+<body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e">
+  <h1 style="color:#1a1a2e">Tu entrada está lista</h1>
+  <p>Hola{{with .HolderName}} {{.}}{{end}},</p>
+  <p>Tu entrada para <strong>{{.EventName}}</strong> ha sido emitida.
+     Encontrarás el PDF adjunto a este correo.</p>
+  <table cellpadding="4" style="border-collapse:collapse;font-size:14px">
+    <tr><td><strong>Evento</strong></td><td>{{.EventName}}</td></tr>
+    {{with .SessionStart}}<tr><td><strong>Sesión</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .VenueName}}<tr><td><strong>Recinto</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .TierName}}<tr><td><strong>Categoría</strong></td><td>{{.}}</td></tr>{{end}}
+  </table>
+  <p style="font-size:12px;color:#666">ID de entrada: {{.TicketID}}</p>
+  <p style="font-size:12px;color:#666">Enviado a: {{.RecipientEmail}}</p>
+  <hr>
+  <p style="font-size:11px;color:#999">Arena Platform — entrega automática</p>
+</body>
+</html>{{end}}
+
+{{define "text"}}Tu entrada está lista
+
+Hola{{with .HolderName}} {{.}}{{end}},
+
+Tu entrada para {{.EventName}} ha sido emitida.
+Encontrarás el PDF adjunto a este correo.
+
+Evento: {{.EventName}}
+{{with .SessionStart}}Sesión: {{.}}
+{{end}}{{with .VenueName}}Recinto: {{.}}
+{{end}}{{with .TierName}}Categoría: {{.}}
+{{end}}
+ID de entrada: {{.TicketID}}
+Enviado a: {{.RecipientEmail}}
+
+Arena Platform — entrega automática
+{{end}}

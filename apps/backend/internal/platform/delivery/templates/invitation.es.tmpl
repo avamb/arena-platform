@@ -1,0 +1,32 @@
+{{define "subject"}}Estás invitado — {{.EventName}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="es" dir="ltr">
+<head><meta charset="UTF-8"><title>Estás invitado</title></head>
+<body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e">
+  <h1 style="color:#1a1a2e">¡Estás invitado!</h1>
+  <p>Hola{{with .HolderName}} {{.}}{{end}},</p>
+  <p>Has recibido una entrada de cortesía para
+     <strong>{{.EventName}}</strong>. El PDF está adjunto a este correo.</p>
+  <p>Esta entrada es una invitación gratuita — no se requiere pago.</p>
+  <p style="font-size:12px;color:#666">ID de entrada: {{.TicketID}}</p>
+  <p style="font-size:12px;color:#666">Enviado a: {{.RecipientEmail}}</p>
+  <hr>
+  <p style="font-size:11px;color:#999">Arena Platform — entrega automática de invitaciones</p>
+</body>
+</html>{{end}}
+
+{{define "text"}}¡Estás invitado!
+
+Hola{{with .HolderName}} {{.}}{{end}},
+
+Has recibido una entrada de cortesía para {{.EventName}}.
+El PDF está adjunto a este correo.
+
+Esta entrada es una invitación gratuita — no se requiere pago.
+
+ID de entrada: {{.TicketID}}
+Enviado a: {{.RecipientEmail}}
+
+Arena Platform — entrega automática de invitaciones
+{{end}}

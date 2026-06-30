@@ -1,0 +1,40 @@
+{{define "subject"}}Ihr Ticket — {{.EventName}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="de" dir="ltr">
+<head><meta charset="UTF-8"><title>Ihr Ticket</title></head>
+<body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e">
+  <h1 style="color:#1a1a2e">Ihr Ticket ist bereit</h1>
+  <p>Hallo{{with .HolderName}} {{.}}{{end}},</p>
+  <p>Ihr Ticket für <strong>{{.EventName}}</strong> wurde ausgestellt.
+     Das PDF finden Sie im Anhang dieser E-Mail.</p>
+  <table cellpadding="4" style="border-collapse:collapse;font-size:14px">
+    <tr><td><strong>Veranstaltung</strong></td><td>{{.EventName}}</td></tr>
+    {{with .SessionStart}}<tr><td><strong>Termin</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .VenueName}}<tr><td><strong>Veranstaltungsort</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .TierName}}<tr><td><strong>Kategorie</strong></td><td>{{.}}</td></tr>{{end}}
+  </table>
+  <p style="font-size:12px;color:#666">Ticket-ID: {{.TicketID}}</p>
+  <p style="font-size:12px;color:#666">Zugestellt an: {{.RecipientEmail}}</p>
+  <hr>
+  <p style="font-size:11px;color:#999">Arena Platform — automatischer Versand</p>
+</body>
+</html>{{end}}
+
+{{define "text"}}Ihr Ticket ist bereit
+
+Hallo{{with .HolderName}} {{.}}{{end}},
+
+Ihr Ticket für {{.EventName}} wurde ausgestellt.
+Das PDF finden Sie im Anhang dieser E-Mail.
+
+Veranstaltung: {{.EventName}}
+{{with .SessionStart}}Termin: {{.}}
+{{end}}{{with .VenueName}}Veranstaltungsort: {{.}}
+{{end}}{{with .TierName}}Kategorie: {{.}}
+{{end}}
+Ticket-ID: {{.TicketID}}
+Zugestellt an: {{.RecipientEmail}}
+
+Arena Platform — automatischer Versand
+{{end}}

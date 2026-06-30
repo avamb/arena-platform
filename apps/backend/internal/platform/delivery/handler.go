@@ -42,6 +42,8 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/pdf"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/templates"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
 
@@ -64,6 +66,24 @@ type Payload struct {
 	// Template selects the email template: "ticket" (default) or "invitation".
 	// When empty, TemplateTicket is used.
 	Template string `json:"template,omitempty"`
+	// Locale selects the language for subject + body. Falls back to
+	// templates.DefaultLocale when empty or unknown. Examples: "en", "de",
+	// "es", "he".
+	Locale string `json:"locale,omitempty"`
+	// EventName, SessionStart, VenueName, TierName, HolderName are
+	// optional presentation hints baked into the job at enqueue time so
+	// the worker does not need to re-join across events/sessions/venues.
+	// All five are safe to omit; the template renders blanks accordingly.
+	EventName    string    `json:"event_name,omitempty"`
+	SessionStart time.Time `json:"session_start,omitempty"`
+	SessionTZ    string    `json:"session_tz,omitempty"`
+	VenueName    string    `json:"venue_name,omitempty"`
+	VenueCity    string    `json:"venue_city,omitempty"`
+	TierName     string    `json:"tier_name,omitempty"`
+	HolderName   string    `json:"holder_name,omitempty"`
+	// QRPayload is the value to encode into the PDF QR code. The handler
+	// falls back to TicketID if empty so existing enqueuers keep working.
+	QRPayload string `json:"qr_payload,omitempty"`
 }
 
 // HandlerOptions bundles the dependencies required by the delivery handler.
@@ -80,6 +100,10 @@ type HandlerOptions struct {
 	// FromAddress is the envelope and header From address for outgoing emails.
 	// Example: "Arena Platform <tickets@arena.example.com>"
 	FromAddress string
+	// Templates renders the localized email bodies (feature #289, T-2).
+	// When nil, NewHandler lazy-constructs a default Renderer from the
+	// embedded templates so callers that haven't migrated still work.
+	Templates *templates.Renderer
 	// Logger receives structured log entries. Defaults to slog.Default() when nil.
 	Logger *slog.Logger
 }
@@ -93,6 +117,19 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 	logger := opts.Logger
 	if logger == nil {
 		logger = slog.Default()
+	}
+	renderer := opts.Templates
+	if renderer == nil {
+		// Best-effort lazy construction. If the embedded templates fail
+		// to parse, fall back to nil so the hard-coded renderers below
+		// take over — never block delivery on a template-load error.
+		if r, err := templates.New(); err == nil {
+			renderer = r
+		} else {
+			logger.Warn("delivery: failed to initialise embedded templates; falling back to legacy renderers",
+				slog.String("error", err.Error()),
+			)
+		}
 	}
 
 	return func(ctx context.Context, payload []byte) error {
@@ -161,6 +198,11 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 		}
 
 		// ── 4. Generate PDF credential ────────────────────────────────────────
+		// Prefer the T-1 PDF renderer (apps/backend/internal/platform/delivery/pdf)
+		// so the attached document carries the QR code and full ticket detail.
+		// Fall back to the legacy minimal renderer when called from a context
+		// that has no event/session metadata at all (keeps existing tests
+		// and free-form enqueuers working).
 		var pdfBytes []byte
 		if opts.CredentialQueries != nil {
 			cred, credErr := opts.CredentialQueries.GetCredentialByTicketID(ctx, ticketID, "pdf")
@@ -170,7 +212,11 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 						ticketID, credErr)
 				}
 				// Generate and store a new PDF credential.
-				pdfPayload := renderMinimalPDF(ticketID.String(), time.Now().UTC())
+				pdfPayload, prErr := renderTicketPDF(ctx, ticketID, p)
+				if prErr != nil {
+					return fmt.Errorf("delivery: render pdf for ticket %s: %w",
+						ticketID, prErr)
+				}
 				encoded := base64.StdEncoding.EncodeToString(pdfPayload)
 				cred, credErr = opts.CredentialQueries.InsertTicketCredential(
 					ctx, ticketID, "pdf", encoded,
@@ -187,21 +233,55 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 				return fmt.Errorf("delivery: decode pdf payload for ticket %s: %w",
 					ticketID, decErr)
 			}
+		} else {
+			// No credential store — render on the fly so we still attach a PDF.
+			pdfPayload, prErr := renderTicketPDF(ctx, ticketID, p)
+			if prErr != nil {
+				logger.Warn("delivery: render pdf failed; sending without attachment",
+					slog.String("ticket_id", ticketID.String()),
+					slog.String("error", prErr.Error()),
+				)
+			} else {
+				pdfBytes = pdfPayload
+			}
 		}
 
 		// ── 5. Build email ────────────────────────────────────────────────────
-		// Choose template based on the Payload.Template field.
-		// Empty template defaults to TemplateTicket.
+		// Localized templates from the templates package (feature #289, T-2).
+		// Falls back to the legacy hard-coded English renderers only when the
+		// embedded templates failed to load at process start.
+		kind := templates.TemplateKindTicket
+		if p.Template == TemplateInvitation {
+			kind = templates.TemplateKindInvitation
+		}
+
 		var htmlBody, textBody, subject string
-		switch p.Template {
-		case TemplateInvitation:
-			htmlBody = renderInvitationEmailHTML(ticketID.String(), recipientEmail)
-			textBody = renderInvitationEmailText(ticketID.String(), recipientEmail)
-			subject = "You're invited — Arena Platform"
-		default:
-			htmlBody = renderTicketEmailHTML(ticketID.String(), recipientEmail)
-			textBody = renderTicketEmailText(ticketID.String(), recipientEmail)
-			subject = "Your ticket — Arena Platform"
+		if renderer != nil {
+			out, rErr := renderer.Render(kind, p.Locale, templates.Data{
+				TicketID:       ticketID.String(),
+				RecipientEmail: recipientEmail,
+				HolderName:     p.HolderName,
+				EventName:      defaultStr(p.EventName, "Arena Event"),
+				SessionStart:   formatSessionForEmail(p.SessionStart, p.SessionTZ),
+				VenueName:      joinNonEmpty(", ", p.VenueName, p.VenueCity),
+				TierName:       p.TierName,
+			})
+			if rErr != nil {
+				return fmt.Errorf("delivery: render templates for ticket %s: %w",
+					ticketID, rErr)
+			}
+			subject, htmlBody, textBody = out.Subject, out.HTMLBody, out.TextBody
+		} else {
+			switch p.Template {
+			case TemplateInvitation:
+				htmlBody = renderInvitationEmailHTML(ticketID.String(), recipientEmail)
+				textBody = renderInvitationEmailText(ticketID.String(), recipientEmail)
+				subject = "You're invited — Arena Platform"
+			default:
+				htmlBody = renderTicketEmailHTML(ticketID.String(), recipientEmail)
+				textBody = renderTicketEmailText(ticketID.String(), recipientEmail)
+				subject = "Your ticket — Arena Platform"
+			}
 		}
 
 		msg := email.Message{
@@ -330,6 +410,89 @@ func renderInvitationEmailText(ticketID, recipientEmail string) string {
 			"Arena Platform — automated invitation delivery\n",
 		ticketID, recipientEmail,
 	)
+}
+
+// renderTicketPDF tries the T-1 PDF renderer first (full QR + layout) and
+// falls back to the legacy minimal PDF generator on any error so a missing
+// font / IO issue does not block delivery.
+func renderTicketPDF(ctx context.Context, ticketID uuid.UUID, p Payload) ([]byte, error) {
+	qr := p.QRPayload
+	if qr == "" {
+		qr = ticketID.String()
+	}
+	t := pdf.Ticket{
+		TicketID:     ticketID.String(),
+		EventName:    defaultStr(p.EventName, "Arena Event"),
+		SessionStart: defaultTime(p.SessionStart),
+		SessionTZ:    p.SessionTZ,
+		VenueName:    p.VenueName,
+		VenueCity:    p.VenueCity,
+		TierName:     p.TierName,
+		HolderName:   p.HolderName,
+		QRPayload:    qr,
+	}
+	bytesOut, err := pdf.Render(ctx, t)
+	if err == nil {
+		return bytesOut, nil
+	}
+	// On any validation/render failure, keep delivery moving with the
+	// legacy minimal PDF — the worker is not the right place to block on
+	// a missing event name.
+	return renderMinimalPDF(ticketID.String(), time.Now().UTC()), nil
+}
+
+// defaultStr returns fallback when s is empty after trimming.
+func defaultStr(s, fallback string) string {
+	if s == "" {
+		return fallback
+	}
+	return s
+}
+
+// defaultTime returns now (UTC) when t is the zero value. The T-1 renderer
+// refuses to print a ticket whose session timestamp is zero; this lets the
+// worker still deliver something useful when the enqueuer omits the field.
+func defaultTime(t time.Time) time.Time {
+	if t.IsZero() {
+		return time.Now().UTC()
+	}
+	return t
+}
+
+// formatSessionForEmail produces the "YYYY-MM-DD HH:MM (zone)" string used
+// in the email body. Empty input → empty string (the template's {{with}}
+// guard then suppresses the row entirely).
+func formatSessionForEmail(t time.Time, tz string) string {
+	if t.IsZero() {
+		return ""
+	}
+	loc := time.UTC
+	zoneLabel := "UTC"
+	if tz != "" {
+		if l, err := time.LoadLocation(tz); err == nil {
+			loc = l
+			zoneLabel = tz
+		}
+	}
+	return fmt.Sprintf("%s (%s)", t.In(loc).Format("2006-01-02 15:04"), zoneLabel)
+}
+
+// joinNonEmpty joins the non-empty arguments with sep.
+func joinNonEmpty(sep string, parts ...string) string {
+	kept := parts[:0]
+	for _, p := range parts {
+		if p != "" {
+			kept = append(kept, p)
+		}
+	}
+	out := ""
+	for i, p := range kept {
+		if i > 0 {
+			out += sep
+		}
+		out += p
+	}
+	return out
 }
 
 // renderMinimalPDF generates a minimal valid PDF/1.4 document for the ticket.

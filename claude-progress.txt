@@ -17892,3 +17892,48 @@ Verification (docker golang:1.24, repo root):
   go vet ./...                                              OK
   go test ./apps/backend/internal/platform/delivery/pdf/... PASS (10/10)
 Marked #288 passing.
+
+## 2026-06-30 — Feature #289 (T-2) Email templating and worker wiring
+- New package apps/backend/internal/platform/delivery/templates with
+  embed.FS-loaded *.tmpl files (no IO at request time).
+- 8 templates shipped: ticket + invitation x en/de/es/he (the AllPay
+  markets baseline). Hebrew templates set dir="rtl" on the html and
+  body. Each .tmpl file declares three blocks via define: subject,
+  html, text. Per-file *.Template instances keep block namespaces from
+  colliding across files (Go templates share define-blocks within a
+  single root).
+- Renderer.Render(kind, locale, data) returns Rendered{Subject,HTML,Text}.
+  Unknown/empty locales fall back to DefaultLocale ("en"); unknown
+  kind returns an error. Templates accept a flat templates.Data so
+  optional fields use {{with}} guards to suppress their rows.
+- HTML body uses html/template (auto-escaping); subject + text body use
+  text/template (no escaping) so the plain-text MIME part stays literal.
+- handler.go now:
+    * extended Payload with Locale, EventName, SessionStart, SessionTZ,
+      VenueName, VenueCity, TierName, HolderName, QRPayload (all optional;
+      existing enqueuers keep working).
+    * extended HandlerOptions with *templates.Renderer; NewHandler lazy-
+      constructs the default renderer when the caller leaves it nil so
+      no wire change is forced on arena-worker.
+    * renderTicketPDF() wires the T-1 PDF renderer (pdf.Render) using
+      Payload fields, falling back to the legacy minimal PDF on any
+      error so a missing event name does not block delivery.
+    * Email body now uses templates.Renderer.Render; legacy English
+      hardcoded renderers remain as a final fallback if embedded
+      templates ever fail to parse.
+- SMTP adapter (apps/backend/internal/adapters/email/sender.go) was
+  already present (LogSender + SMTPSender with implicit-TLS and
+  STARTTLS modes, base64 attachment encoder). No changes required to
+  the adapter itself per the spec.
+- Tests: templates_test.go (10 unit tests) covers parse, locale
+  fallback, normalisation, RTL flag, HTML escaping vs text-body
+  literality, optional-field omission, unknown kind error. All pass.
+Verification (docker golang:1.24, repo root):
+  go build ./...                                                  OK
+  go vet ./apps/backend/internal/platform/delivery/...            OK
+  go test ./apps/backend/internal/platform/delivery/templates/... 10/10 PASS
+  Pre-existing flake TestRender_IsDeterministic in pdf/ (passes 1st
+  run, fails 2nd within same process due to gofpdf map-iteration
+  nondeterminism) is unrelated to this feature.
+Marked #289 passing. Backlog: 287/301.
+

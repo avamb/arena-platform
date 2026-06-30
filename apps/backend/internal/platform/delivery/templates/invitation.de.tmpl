@@ -1,0 +1,32 @@
+{{define "subject"}}Sie sind eingeladen — {{.EventName}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="de" dir="ltr">
+<head><meta charset="UTF-8"><title>Sie sind eingeladen</title></head>
+<body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e">
+  <h1 style="color:#1a1a2e">Sie sind eingeladen!</h1>
+  <p>Hallo{{with .HolderName}} {{.}}{{end}},</p>
+  <p>Sie haben eine kostenlose Einladungs-Karte für
+     <strong>{{.EventName}}</strong> erhalten. Das PDF finden Sie im Anhang.</p>
+  <p>Diese Karte ist eine kostenlose Einladung — es ist keine Zahlung erforderlich.</p>
+  <p style="font-size:12px;color:#666">Ticket-ID: {{.TicketID}}</p>
+  <p style="font-size:12px;color:#666">Zugestellt an: {{.RecipientEmail}}</p>
+  <hr>
+  <p style="font-size:11px;color:#999">Arena Platform — automatischer Einladungs-Versand</p>
+</body>
+</html>{{end}}
+
+{{define "text"}}Sie sind eingeladen!
+
+Hallo{{with .HolderName}} {{.}}{{end}},
+
+Sie haben eine kostenlose Einladungs-Karte für {{.EventName}} erhalten.
+Das PDF finden Sie im Anhang.
+
+Diese Karte ist eine kostenlose Einladung — es ist keine Zahlung erforderlich.
+
+Ticket-ID: {{.TicketID}}
+Zugestellt an: {{.RecipientEmail}}
+
+Arena Platform — automatischer Einladungs-Versand
+{{end}}
