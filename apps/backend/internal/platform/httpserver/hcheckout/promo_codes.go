@@ -16,7 +16,7 @@
 //	POST   /v1/checkout/promo-validate                   — validate (promo.validate)
 //
 // All endpoints are gated by JWT auth + a named permission.
-package httpserver
+package hcheckout
 
 import (
 	"encoding/json"
@@ -33,6 +33,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	ticketsdomain "github.com/abhteam/arena_new/apps/backend/internal/domain/tickets"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -139,41 +140,41 @@ type createPromoCodeRequest struct {
 	Status             string   `json:"status"`
 }
 
-// handleCreatePromoCode serves POST /v1/organizations/{org_id}/promo-codes.
+// HandleCreatePromoCode serves POST /v1/organizations/{org_id}/promo-codes.
 // Requires JWT + "promo.create" permission.
-func (s *Server) handleCreatePromoCode(w http.ResponseWriter, r *http.Request) {
-	if s.promoQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleCreatePromoCode(w http.ResponseWriter, r *http.Request) {
+	if h.promoQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
 	}
 	ctx := r.Context()
 
-	orgID, ok := uuidPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("promo.invalid_body", "cannot read request body: "+err.Error(), r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("promo.invalid_body", "cannot read request body: "+err.Error(), r))
 		return
 	}
 	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("promo.empty_body", "request body is required", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("promo.empty_body", "request body is required", r))
 		return
 	}
 
 	var req createPromoCodeRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("promo.invalid_json", "request body is not valid JSON", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("promo.invalid_json", "request body is not valid JSON", r))
 		return
 	}
 
 	req.Code = strings.TrimSpace(req.Code)
 	if req.Code == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"promo.invalid_code", "code is required", r,
 			map[string]any{"field": "code"},
 		))
@@ -181,21 +182,21 @@ func (s *Server) handleCreatePromoCode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.DiscountType != "percent" && req.DiscountType != "fixed_amount" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"promo.invalid_discount_type", "discount_type must be 'percent' or 'fixed_amount'", r,
 			map[string]any{"field": "discount_type"},
 		))
 		return
 	}
 	if req.DiscountValue <= 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"promo.invalid_discount_value", "discount_value must be greater than 0", r,
 			map[string]any{"field": "discount_value"},
 		))
 		return
 	}
 	if req.DiscountType == "percent" && (req.DiscountValue < 1 || req.DiscountValue > 100) {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"promo.invalid_discount_value", "discount_value for percent type must be between 1 and 100", r,
 			map[string]any{"field": "discount_value"},
 		))
@@ -213,7 +214,7 @@ func (s *Server) handleCreatePromoCode(w http.ResponseWriter, r *http.Request) {
 	if req.ValidFrom != nil {
 		t, err := time.Parse(time.RFC3339, *req.ValidFrom)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 				"promo.invalid_valid_from", "valid_from must be RFC3339 format", r,
 				map[string]any{"field": "valid_from"},
 			))
@@ -224,7 +225,7 @@ func (s *Server) handleCreatePromoCode(w http.ResponseWriter, r *http.Request) {
 	if req.ValidUntil != nil {
 		t, err := time.Parse(time.RFC3339, *req.ValidUntil)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 				"promo.invalid_valid_until", "valid_until must be RFC3339 format", r,
 				map[string]any{"field": "valid_until"},
 			))
@@ -233,7 +234,7 @@ func (s *Server) handleCreatePromoCode(w http.ResponseWriter, r *http.Request) {
 		validUntil = &t
 	}
 
-	pc, err := s.promoQueries.InsertPromoCode(ctx,
+	pc, err := h.promoQueries.InsertPromoCode(ctx,
 		orgID, req.Code, req.DiscountType, req.DiscountValue,
 		req.AppliesToTierIDs, req.MaxUses, req.MaxUsesPerCustomer,
 		validFrom, validUntil, req.MinOrderAmount, req.Status,
@@ -241,21 +242,21 @@ func (s *Server) handleCreatePromoCode(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
-			writeJSON(w, http.StatusConflict, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 				"promo.duplicate",
 				"a promo code with that code already exists in this organization",
 				r,
 			))
 			return
 		}
-		s.logger.Error("promo: insert failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("promo: insert failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"promo.insert_failed", "failed to create promo code", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]any{
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
 		"promo_code": promoCodeFromRow(pc),
 	})
 }
@@ -264,26 +265,26 @@ func (s *Server) handleCreatePromoCode(w http.ResponseWriter, r *http.Request) {
 // GET /v1/organizations/{org_id}/promo-codes
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleListPromoCodes serves GET /v1/organizations/{org_id}/promo-codes.
+// HandleListPromoCodes serves GET /v1/organizations/{org_id}/promo-codes.
 // Requires JWT + "promo.read" permission.
-func (s *Server) handleListPromoCodes(w http.ResponseWriter, r *http.Request) {
-	if s.promoQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleListPromoCodes(w http.ResponseWriter, r *http.Request) {
+	if h.promoQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
 	}
 	ctx := r.Context()
 
-	orgID, ok := uuidPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
 
-	rows, err := s.promoQueries.ListPromoCodesByOrg(ctx, orgID)
+	rows, err := h.promoQueries.ListPromoCodesByOrg(ctx, orgID)
 	if err != nil {
-		s.logger.Error("promo: list failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("promo: list failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"promo.list_failed", "failed to list promo codes", r,
 		))
 		return
@@ -293,47 +294,47 @@ func (s *Server) handleListPromoCodes(w http.ResponseWriter, r *http.Request) {
 	for _, pc := range rows {
 		result = append(result, promoCodeFromRow(pc))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"promo_codes": result})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"promo_codes": result})
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /v1/organizations/{org_id}/promo-codes/{id}
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleGetPromoCode serves GET /v1/organizations/{org_id}/promo-codes/{id}.
+// HandleGetPromoCode serves GET /v1/organizations/{org_id}/promo-codes/{id}.
 // Requires JWT + "promo.read" permission.
-func (s *Server) handleGetPromoCode(w http.ResponseWriter, r *http.Request) {
-	if s.promoQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleGetPromoCode(w http.ResponseWriter, r *http.Request) {
+	if h.promoQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
 	}
 	ctx := r.Context()
 
-	orgID, ok := uuidPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
-	pcID, ok := uuidPathParam(w, r, "id")
+	pcID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
 		return
 	}
 
-	pc, err := s.promoQueries.GetPromoCodeByID(ctx, pcID, orgID)
+	pc, err := h.promoQueries.GetPromoCodeByID(ctx, pcID, orgID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("promo.not_found", "promo code not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("promo.not_found", "promo code not found", r))
 			return
 		}
-		s.logger.Error("promo: get failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("promo: get failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"promo.get_failed", "failed to get promo code", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"promo_code": promoCodeFromRow(pc),
 	})
 }
@@ -356,45 +357,45 @@ type updatePromoCodeRequest struct {
 	Status             string   `json:"status"`
 }
 
-// handleUpdatePromoCode serves PATCH /v1/organizations/{org_id}/promo-codes/{id}.
+// HandleUpdatePromoCode serves PATCH /v1/organizations/{org_id}/promo-codes/{id}.
 // Requires JWT + "promo.update" permission.
-func (s *Server) handleUpdatePromoCode(w http.ResponseWriter, r *http.Request) {
-	if s.promoQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleUpdatePromoCode(w http.ResponseWriter, r *http.Request) {
+	if h.promoQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
 	}
 	ctx := r.Context()
 
-	orgID, ok := uuidPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
-	pcID, ok := uuidPathParam(w, r, "id")
+	pcID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
 		return
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("promo.invalid_body", "cannot read request body: "+err.Error(), r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("promo.invalid_body", "cannot read request body: "+err.Error(), r))
 		return
 	}
 	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("promo.empty_body", "request body is required", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("promo.empty_body", "request body is required", r))
 		return
 	}
 
 	var req updatePromoCodeRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("promo.invalid_json", "request body is not valid JSON", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("promo.invalid_json", "request body is not valid JSON", r))
 		return
 	}
 
 	req.DiscountType = strings.TrimSpace(req.DiscountType)
 	if req.DiscountType != "" && req.DiscountType != "percent" && req.DiscountType != "fixed_amount" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"promo.invalid_discount_type", "discount_type must be 'percent' or 'fixed_amount'", r,
 			map[string]any{"field": "discount_type"},
 		))
@@ -405,7 +406,7 @@ func (s *Server) handleUpdatePromoCode(w http.ResponseWriter, r *http.Request) {
 	if req.ValidFrom != nil {
 		t, err := time.Parse(time.RFC3339, *req.ValidFrom)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 				"promo.invalid_valid_from", "valid_from must be RFC3339 format", r,
 				map[string]any{"field": "valid_from"},
 			))
@@ -416,7 +417,7 @@ func (s *Server) handleUpdatePromoCode(w http.ResponseWriter, r *http.Request) {
 	if req.ValidUntil != nil {
 		t, err := time.Parse(time.RFC3339, *req.ValidUntil)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 				"promo.invalid_valid_until", "valid_until must be RFC3339 format", r,
 				map[string]any{"field": "valid_until"},
 			))
@@ -425,7 +426,7 @@ func (s *Server) handleUpdatePromoCode(w http.ResponseWriter, r *http.Request) {
 		validUntil = &t
 	}
 
-	updated, err := s.promoQueries.UpdatePromoCode(ctx,
+	updated, err := h.promoQueries.UpdatePromoCode(ctx,
 		pcID, orgID,
 		req.DiscountType, req.DiscountValue, req.AppliesToTierIDs,
 		req.MaxUses, req.MaxUsesPerCustomer,
@@ -434,17 +435,17 @@ func (s *Server) handleUpdatePromoCode(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("promo.not_found", "promo code not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("promo.not_found", "promo code not found", r))
 			return
 		}
-		s.logger.Error("promo: update failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("promo: update failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"promo.update_failed", "failed to update promo code", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"promo_code": promoCodeFromRow(updated),
 	})
 }
@@ -453,41 +454,41 @@ func (s *Server) handleUpdatePromoCode(w http.ResponseWriter, r *http.Request) {
 // DELETE /v1/organizations/{org_id}/promo-codes/{id}
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleDeletePromoCode serves DELETE /v1/organizations/{org_id}/promo-codes/{id}.
+// HandleDeletePromoCode serves DELETE /v1/organizations/{org_id}/promo-codes/{id}.
 // Performs a soft-delete (sets deleted_at = now()).
 // Requires JWT + "promo.delete" permission.
-func (s *Server) handleDeletePromoCode(w http.ResponseWriter, r *http.Request) {
-	if s.promoQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleDeletePromoCode(w http.ResponseWriter, r *http.Request) {
+	if h.promoQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
 	}
 	ctx := r.Context()
 
-	orgID, ok := uuidPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
-	pcID, ok := uuidPathParam(w, r, "id")
+	pcID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
 		return
 	}
 
-	deleted, err := s.promoQueries.SoftDeletePromoCode(ctx, pcID, orgID)
+	deleted, err := h.promoQueries.SoftDeletePromoCode(ctx, pcID, orgID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("promo.not_found", "promo code not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("promo.not_found", "promo code not found", r))
 			return
 		}
-		s.logger.Error("promo: soft-delete failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("promo: soft-delete failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"promo.delete_failed", "failed to delete promo code", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"promo_code": promoCodeFromRow(deleted),
 		"deleted":    true,
 	})
@@ -505,7 +506,7 @@ type validatePromoCodeRequest struct {
 	UserID      string `json:"user_id"`
 }
 
-// handleValidatePromoCode serves POST /v1/checkout/promo-validate.
+// HandleValidatePromoCode serves POST /v1/checkout/promo-validate.
 // Validates a promo code against the given order and computes the discount.
 // Requires JWT + "promo.validate" permission.
 //
@@ -515,9 +516,9 @@ type validatePromoCodeRequest struct {
 //  3. Count total redemptions — if max_uses set and exhausted → 409
 //  4. Count user redemptions if user_id provided — if per-customer limit exceeded → 409
 //  5. Return discount computation result
-func (s *Server) handleValidatePromoCode(w http.ResponseWriter, r *http.Request) {
-	if s.promoQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleValidatePromoCode(w http.ResponseWriter, r *http.Request) {
+	if h.promoQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -526,23 +527,23 @@ func (s *Server) handleValidatePromoCode(w http.ResponseWriter, r *http.Request)
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("promo.invalid_body", "cannot read request body: "+err.Error(), r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("promo.invalid_body", "cannot read request body: "+err.Error(), r))
 		return
 	}
 	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("promo.empty_body", "request body is required", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("promo.empty_body", "request body is required", r))
 		return
 	}
 
 	var req validatePromoCodeRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("promo.invalid_json", "request body is not valid JSON", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("promo.invalid_json", "request body is not valid JSON", r))
 		return
 	}
 
 	req.Code = strings.TrimSpace(req.Code)
 	if req.Code == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"promo.invalid_code", "code is required", r,
 			map[string]any{"field": "code"},
 		))
@@ -551,7 +552,7 @@ func (s *Server) handleValidatePromoCode(w http.ResponseWriter, r *http.Request)
 
 	orgID, err := uuid.Parse(req.OrgID)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"promo.invalid_org_id", "org_id must be a valid UUID", r,
 			map[string]any{"field": "org_id"},
 		))
@@ -559,14 +560,14 @@ func (s *Server) handleValidatePromoCode(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Step 1: look up the promo code.
-	pc, err := s.promoQueries.GetPromoCodeByCode(ctx, orgID, req.Code)
+	pc, err := h.promoQueries.GetPromoCodeByCode(ctx, orgID, req.Code)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("promo.not_found", "promo code not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("promo.not_found", "promo code not found", r))
 			return
 		}
-		s.logger.Error("promo: validate lookup failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("promo: validate lookup failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"promo.lookup_failed", "failed to look up promo code", r,
 		))
 		return
@@ -588,22 +589,22 @@ func (s *Server) handleValidatePromoCode(w http.ResponseWriter, r *http.Request)
 		default:
 			msg = "promo code cannot be applied to this order"
 		}
-		writeJSON(w, http.StatusUnprocessableEntity, errorEnvelope(errCode, msg, r))
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(errCode, msg, r))
 		return
 	}
 
 	// Step 3: check total redemption limit.
 	if pc.MaxUses != nil {
-		count, err := s.promoQueries.CountPromoCodeRedemptions(ctx, pc.ID)
+		count, err := h.promoQueries.CountPromoCodeRedemptions(ctx, pc.ID)
 		if err != nil {
-			s.logger.Error("promo: count redemptions failed", slog.String("error", err.Error()))
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+			h.logger.Error("promo: count redemptions failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"promo.count_failed", "failed to count redemptions", r,
 			))
 			return
 		}
 		if count >= *pc.MaxUses {
-			writeJSON(w, http.StatusConflict, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 				"promo.exhausted", "this promo code has reached its maximum number of uses", r,
 			))
 			return
@@ -615,16 +616,16 @@ func (s *Server) handleValidatePromoCode(w http.ResponseWriter, r *http.Request)
 		userID, err := uuid.Parse(req.UserID)
 		if err == nil {
 			// Only enforce if the user_id parses — anonymous users get a pass.
-			userCount, err := s.promoQueries.CountUserRedemptions(ctx, pc.ID, userID)
+			userCount, err := h.promoQueries.CountUserRedemptions(ctx, pc.ID, userID)
 			if err != nil {
-				s.logger.Error("promo: count user redemptions failed", slog.String("error", err.Error()))
-				writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+				h.logger.Error("promo: count user redemptions failed", slog.String("error", err.Error()))
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 					"promo.count_failed", "failed to count user redemptions", r,
 				))
 				return
 			}
 			if userCount >= *pc.MaxUsesPerCustomer {
-				writeJSON(w, http.StatusConflict, errorEnvelope(
+				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 					"promo.per_customer_limit",
 					"you have already used this promo code the maximum number of times",
 					r,
@@ -637,7 +638,7 @@ func (s *Server) handleValidatePromoCode(w http.ResponseWriter, r *http.Request)
 	// Step 5: return the validated discount.
 	finalAmount := req.OrderAmount - discountAmount
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"valid":           true,
 		"discount_amount": discountAmount,
 		"final_amount":    finalAmount,

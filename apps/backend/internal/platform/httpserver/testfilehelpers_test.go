@@ -331,11 +331,11 @@ func resolveFileInRepo(repoRoot, name string) string {
 		}
 	case "reservations.go":
 		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "reservations.go"),
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hcheckout", "reservations.go"),
 		}
 	case "reservation_processor.go":
 		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "reservation_processor.go"),
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hcheckout", "reservation_processor.go"),
 		}
 	// Promo codes (feature #128)
 	case "0022_promo_codes.sql":
@@ -352,7 +352,7 @@ func resolveFileInRepo(repoRoot, name string) string {
 		}
 	case "promo_codes.go":
 		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "promo_codes.go"),
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hcheckout", "promo_codes.go"),
 		}
 	// Pricing calculator (feature #129)
 	case "0023_pricing_calculator.sql":
@@ -374,12 +374,12 @@ func resolveFileInRepo(repoRoot, name string) string {
 		}
 	case "checkout.go":
 		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "checkout.go"),
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hcheckout", "checkout.go"),
 		}
 	// Price breakdown — all-in display endpoint (feature #163)
 	case "price_breakdown.go":
 		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "price_breakdown.go"),
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hcheckout", "price_breakdown.go"),
 		}
 	// Payment intents — SCA-aware state machine (feature #137)
 	case "0025_payment_intents.sql":
@@ -396,7 +396,7 @@ func resolveFileInRepo(repoRoot, name string) string {
 		}
 	case "payment_intents.go":
 		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "payment_intents.go"),
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hcheckout", "payment_intents.go"),
 		}
 	// Tickets — issued entitlements (feature #139)
 	case "0026_tickets.sql":
@@ -447,7 +447,7 @@ func resolveFileInRepo(repoRoot, name string) string {
 		}
 	case "refunds.go":
 		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "refunds.go"),
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hcheckout", "refunds.go"),
 		}
 	// Barcode authority federation (feature #142)
 	case "0029_barcode_authorities.sql":

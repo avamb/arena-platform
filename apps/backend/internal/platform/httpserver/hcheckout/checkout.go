@@ -16,7 +16,7 @@
 //	POST /v1/checkout/{id}/confirm      — lock in pricing (checkout.confirm)
 //	POST /v1/checkout/{id}/complete     — mark paid       (checkout.complete)
 //	POST /v1/checkout/{id}/abandon      — abandon session (checkout.abandon)
-package httpserver
+package hcheckout
 
 import (
 	"encoding/json"
@@ -31,6 +31,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -38,7 +39,12 @@ import (
 // ─────────────────────────────────────────────────────────────────────────────
 
 // checkoutSessionResponse is the JSON representation of a checkout_session row.
-type checkoutSessionResponse struct {
+type checkoutSessionResponse = CheckoutSessionResponse
+
+// CheckoutSessionResponse is the exported form of checkoutSessionResponse.
+// checkout_132_test.go (package httpserver) references the type via a type alias
+// in checkout_shims.go and accesses struct fields directly.
+type CheckoutSessionResponse struct {
 	ID              string  `json:"id"`
 	OrgID           string  `json:"org_id"`
 	ChannelID       string  `json:"channel_id"`
@@ -105,6 +111,14 @@ func checkoutSessionFromRow(cs gen.CheckoutSessionRow) checkoutSessionResponse {
 	return resp
 }
 
+// CheckoutSessionFromRow is the exported form of checkoutSessionFromRow, for use
+// by the httpserver shim layer. Returns the concrete CheckoutSessionResponse type
+// so that checkout_132_test.go can access struct fields directly via the type alias
+// in checkout_shims.go.
+func CheckoutSessionFromRow(cs gen.CheckoutSessionRow) CheckoutSessionResponse {
+	return checkoutSessionFromRow(cs)
+}
+
 // validCheckoutTransitions defines the valid state transitions for the
 // checkout session state machine.  Terminal states map to empty sets.
 var validCheckoutTransitions = map[string]map[string]bool{
@@ -116,6 +130,11 @@ var validCheckoutTransitions = map[string]map[string]bool{
 	"expired":           {},
 	"manual_review":     {"completed": true, "abandoned": true},
 }
+
+// ValidCheckoutTransitions is the exported form of validCheckoutTransitions,
+// for use by the httpserver shim layer (checkout_132_test.go references
+// validCheckoutTransitions from package httpserver via checkout_shims.go).
+var ValidCheckoutTransitions = validCheckoutTransitions
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /v1/checkout/start
@@ -129,12 +148,12 @@ type startCheckoutRequest struct {
 	UserID        *string `json:"user_id"` // optional; nil for anonymous
 }
 
-// handleStartCheckout serves POST /v1/checkout/start.
+// HandleStartCheckout serves POST /v1/checkout/start.
 // Creates a new checkout session in state 'created' linked to a reservation.
 // Requires JWT + "checkout.start" permission.
-func (s *Server) handleStartCheckout(w http.ResponseWriter, r *http.Request) {
-	if s.checkoutQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleStartCheckout(w http.ResponseWriter, r *http.Request) {
+	if h.checkoutQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -143,23 +162,23 @@ func (s *Server) handleStartCheckout(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("checkout.invalid_body", "cannot read request body: "+err.Error(), r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("checkout.invalid_body", "cannot read request body: "+err.Error(), r))
 		return
 	}
 	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("checkout.empty_body", "request body is required", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("checkout.empty_body", "request body is required", r))
 		return
 	}
 
 	var req startCheckoutRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("checkout.invalid_json", "request body is not valid JSON", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("checkout.invalid_json", "request body is not valid JSON", r))
 		return
 	}
 
 	orgID, err := uuid.Parse(req.OrgID)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"checkout.invalid_org_id", "org_id must be a valid UUID", r,
 			map[string]any{"field": "org_id"},
 		))
@@ -167,7 +186,7 @@ func (s *Server) handleStartCheckout(w http.ResponseWriter, r *http.Request) {
 	}
 	channelID, err := uuid.Parse(req.ChannelID)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"checkout.invalid_channel_id", "channel_id must be a valid UUID", r,
 			map[string]any{"field": "channel_id"},
 		))
@@ -175,7 +194,7 @@ func (s *Server) handleStartCheckout(w http.ResponseWriter, r *http.Request) {
 	}
 	reservationID, err := uuid.Parse(req.ReservationID)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"checkout.invalid_reservation_id", "reservation_id must be a valid UUID", r,
 			map[string]any{"field": "reservation_id"},
 		))
@@ -186,7 +205,7 @@ func (s *Server) handleStartCheckout(w http.ResponseWriter, r *http.Request) {
 	if req.UserID != nil {
 		parsed, err := uuid.Parse(*req.UserID)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 				"checkout.invalid_user_id", "user_id must be a valid UUID when provided", r,
 				map[string]any{"field": "user_id"},
 			))
@@ -195,19 +214,19 @@ func (s *Server) handleStartCheckout(w http.ResponseWriter, r *http.Request) {
 		userID = &parsed
 	}
 
-	cs, err := s.checkoutQueries.InsertCheckoutSession(ctx, orgID, channelID, reservationID, userID)
+	cs, err := h.checkoutQueries.InsertCheckoutSession(ctx, orgID, channelID, reservationID, userID)
 	if err != nil {
-		s.logger.Error("checkout: start failed",
+		h.logger.Error("checkout: start failed",
 			slog.String("reservation_id", reservationID.String()),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"checkout.start_failed", "failed to create checkout session", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]any{
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
 		"checkout_session": checkoutSessionFromRow(cs),
 	})
 }
@@ -216,12 +235,12 @@ func (s *Server) handleStartCheckout(w http.ResponseWriter, r *http.Request) {
 // GET /v1/checkout/{id}
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleGetCheckoutSession serves GET /v1/checkout/{id}.
+// HandleGetCheckoutSession serves GET /v1/checkout/{id}.
 // Returns the current state of a checkout session.
 // Requires JWT + "checkout.read" permission.
-func (s *Server) handleGetCheckoutSession(w http.ResponseWriter, r *http.Request) {
-	if s.checkoutQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleGetCheckoutSession(w http.ResponseWriter, r *http.Request) {
+	if h.checkoutQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -230,25 +249,25 @@ func (s *Server) handleGetCheckoutSession(w http.ResponseWriter, r *http.Request
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("checkout.invalid_id", "checkout session id must be a valid UUID", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("checkout.invalid_id", "checkout session id must be a valid UUID", r))
 		return
 	}
 
-	cs, err := s.checkoutQueries.GetCheckoutSessionByID(ctx, id)
+	cs, err := h.checkoutQueries.GetCheckoutSessionByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("checkout.not_found", "checkout session not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("checkout.not_found", "checkout session not found", r))
 			return
 		}
-		s.logger.Error("checkout: get failed",
+		h.logger.Error("checkout: get failed",
 			slog.String("id", id.String()),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("checkout.get_failed", "failed to retrieve checkout session", r))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("checkout.get_failed", "failed to retrieve checkout session", r))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"checkout_session": checkoutSessionFromRow(cs),
 	})
 }
@@ -269,19 +288,19 @@ type confirmCheckoutRequest struct {
 	ChosenPrice *int64  `json:"chosen_price"` // required for pwyw tiers
 }
 
-// handleConfirmCheckout serves POST /v1/checkout/{id}/confirm.
+// HandleConfirmCheckout serves POST /v1/checkout/{id}/confirm.
 // Re-quotes the pricing, stores the snapshot, and transitions created →
 // pricing_confirmed.  Returns 409 if the session is not in 'created' state.
 // Requires JWT + "checkout.confirm" permission.
-func (s *Server) handleConfirmCheckout(w http.ResponseWriter, r *http.Request) {
-	if s.checkoutQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleConfirmCheckout(w http.ResponseWriter, r *http.Request) {
+	if h.checkoutQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
 	}
-	if s.tierQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+	if h.tierQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.tier_unavailable", "tier service is not available", r,
 		))
 		return
@@ -290,29 +309,29 @@ func (s *Server) handleConfirmCheckout(w http.ResponseWriter, r *http.Request) {
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("checkout.invalid_id", "checkout session id must be a valid UUID", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("checkout.invalid_id", "checkout session id must be a valid UUID", r))
 		return
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("checkout.invalid_body", "cannot read request body: "+err.Error(), r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("checkout.invalid_body", "cannot read request body: "+err.Error(), r))
 		return
 	}
 	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("checkout.empty_body", "request body is required", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("checkout.empty_body", "request body is required", r))
 		return
 	}
 
 	var req confirmCheckoutRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("checkout.invalid_json", "request body is not valid JSON", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("checkout.invalid_json", "request body is not valid JSON", r))
 		return
 	}
 
 	tierID, err := uuid.Parse(req.TierID)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"checkout.invalid_tier_id", "tier_id must be a valid UUID", r,
 			map[string]any{"field": "tier_id"},
 		))
@@ -320,7 +339,7 @@ func (s *Server) handleConfirmCheckout(w http.ResponseWriter, r *http.Request) {
 	}
 	eventSessionID, err := uuid.Parse(req.SessionID)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"checkout.invalid_session_id", "session_id must be a valid UUID", r,
 			map[string]any{"field": "session_id"},
 		))
@@ -328,7 +347,7 @@ func (s *Server) handleConfirmCheckout(w http.ResponseWriter, r *http.Request) {
 	}
 	orgID, err := uuid.Parse(req.OrgID)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"checkout.invalid_org_id", "org_id must be a valid UUID", r,
 			map[string]any{"field": "org_id"},
 		))
@@ -336,7 +355,7 @@ func (s *Server) handleConfirmCheckout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Quantity <= 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"checkout.invalid_quantity", "quantity must be greater than 0", r,
 			map[string]any{"field": "quantity"},
 		))
@@ -345,17 +364,17 @@ func (s *Server) handleConfirmCheckout(w http.ResponseWriter, r *http.Request) {
 
 	// ── Look up ticket tier ──────────────────────────────────────────────────
 
-	tier, err := s.tierQueries.GetTicketTierByID(ctx, tierID, eventSessionID)
+	tier, err := h.tierQueries.GetTicketTierByID(ctx, tierID, eventSessionID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("checkout.tier_not_found", "ticket tier not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("checkout.tier_not_found", "ticket tier not found", r))
 			return
 		}
-		s.logger.Error("checkout: tier lookup failed",
+		h.logger.Error("checkout: tier lookup failed",
 			slog.String("tier_id", tierID.String()),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("checkout.tier_lookup_failed", "failed to retrieve ticket tier", r))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("checkout.tier_lookup_failed", "failed to retrieve ticket tier", r))
 		return
 	}
 
@@ -369,7 +388,7 @@ func (s *Server) handleConfirmCheckout(w http.ResponseWriter, r *http.Request) {
 		unitPrice = tier.PriceAmount
 	case "pwyw":
 		if req.ChosenPrice == nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 				"checkout.chosen_price_required",
 				"chosen_price is required for pay-what-you-want tiers",
 				r,
@@ -378,20 +397,20 @@ func (s *Server) handleConfirmCheckout(w http.ResponseWriter, r *http.Request) {
 		}
 		chosen := *req.ChosenPrice
 		if chosen < 0 {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope("checkout.invalid_chosen_price", "chosen_price must be a non-negative integer", r))
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("checkout.invalid_chosen_price", "chosen_price must be a non-negative integer", r))
 			return
 		}
 		if tier.PwywMin != nil && chosen < *tier.PwywMin {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope("checkout.chosen_price_below_min", "chosen_price is below the minimum allowed price for this tier", r))
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("checkout.chosen_price_below_min", "chosen_price is below the minimum allowed price for this tier", r))
 			return
 		}
 		if tier.PwywMax != nil && chosen > *tier.PwywMax {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope("checkout.chosen_price_above_max", "chosen_price is above the maximum allowed price for this tier", r))
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("checkout.chosen_price_above_max", "chosen_price is above the maximum allowed price for this tier", r))
 			return
 		}
 		unitPrice = chosen
 	default:
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("checkout.unknown_pricing_mode", "ticket tier has an unsupported pricing mode", r))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("checkout.unknown_pricing_mode", "ticket tier has an unsupported pricing mode", r))
 		return
 	}
 
@@ -402,24 +421,24 @@ func (s *Server) handleConfirmCheckout(w http.ResponseWriter, r *http.Request) {
 	var discount int64
 	var promoCodeID *uuid.UUID
 
-	if req.PromoCode != nil && *req.PromoCode != "" && s.promoQueries != nil {
-		promoRow, err := s.promoQueries.GetPromoCodeByCode(ctx, orgID, *req.PromoCode)
+	if req.PromoCode != nil && *req.PromoCode != "" && h.promoQueries != nil {
+		promoRow, err := h.promoQueries.GetPromoCodeByCode(ctx, orgID, *req.PromoCode)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				writeJSON(w, http.StatusUnprocessableEntity, errorEnvelope("promo.not_found", "promo code not found", r))
+				httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope("promo.not_found", "promo code not found", r))
 				return
 			}
-			s.logger.Error("checkout: promo lookup failed",
+			h.logger.Error("checkout: promo lookup failed",
 				slog.String("promo_code", *req.PromoCode),
 				slog.String("error", err.Error()),
 			)
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope("checkout.promo_lookup_failed", "failed to retrieve promo code", r))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("checkout.promo_lookup_failed", "failed to retrieve promo code", r))
 			return
 		}
 
 		d, errCode := validatePromoCode(promoRow, subtotal, time.Now().UTC())
 		if errCode != "" {
-			writeJSON(w, http.StatusUnprocessableEntity, errorEnvelope(errCode, "promo code is not applicable", r))
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(errCode, "promo code is not applicable", r))
 			return
 		}
 		discount = d
@@ -428,38 +447,38 @@ func (s *Server) handleConfirmCheckout(w http.ResponseWriter, r *http.Request) {
 
 	// ── Run pricing pipeline ─────────────────────────────────────────────────
 
-	bd := ComputePricing(unitPrice, req.Quantity, discount, tier.Currency, s.pricingRules)
+	bd := ComputePricing(unitPrice, req.Quantity, discount, tier.Currency, h.pricingRules)
 
 	// ── Persist pricing_confirmed transition ─────────────────────────────────
 
-	cs, err := s.checkoutQueries.ConfirmCheckoutSession(ctx, id,
+	cs, err := h.checkoutQueries.ConfirmCheckoutSession(ctx, id,
 		bd.Subtotal, bd.Discount, bd.PlatformFee, bd.ProviderFee, bd.Tax, bd.Total,
 		bd.Currency, promoCodeID,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusConflict, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 				"checkout.invalid_transition",
 				"checkout session is not in 'created' state",
 				r,
 			))
 			return
 		}
-		s.logger.Error("checkout: confirm failed",
+		h.logger.Error("checkout: confirm failed",
 			slog.String("id", id.String()),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("checkout.confirm_failed", "failed to confirm checkout session", r))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("checkout.confirm_failed", "failed to confirm checkout session", r))
 		return
 	}
 
-	s.logger.Info("checkout: pricing confirmed",
+	h.logger.Info("checkout: pricing confirmed",
 		slog.String("id", id.String()),
 		slog.Int64("total", bd.Total),
 		slog.String("currency", bd.Currency),
 	)
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"checkout_session": checkoutSessionFromRow(cs),
 	})
 }
@@ -474,7 +493,7 @@ type completeCheckoutRequest struct {
 	PaymentProvider string `json:"payment_provider"`
 }
 
-// handleCompleteCheckout serves POST /v1/checkout/{id}/complete.
+// HandleCompleteCheckout serves POST /v1/checkout/{id}/complete.
 //
 // For paid checkouts (total > 0): body must include payment_intent_id and
 // payment_provider.  Transitions pricing_confirmed → completed.
@@ -486,9 +505,9 @@ type completeCheckoutRequest struct {
 // Returns 409 if the session is not in 'pricing_confirmed' state or (for
 // free path) if the session's total is not zero.
 // Requires JWT + "checkout.complete" permission.
-func (s *Server) handleCompleteCheckout(w http.ResponseWriter, r *http.Request) {
-	if s.checkoutQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleCompleteCheckout(w http.ResponseWriter, r *http.Request) {
+	if h.checkoutQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -497,26 +516,26 @@ func (s *Server) handleCompleteCheckout(w http.ResponseWriter, r *http.Request) 
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("checkout.invalid_id", "checkout session id must be a valid UUID", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("checkout.invalid_id", "checkout session id must be a valid UUID", r))
 		return
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("checkout.invalid_body", "cannot read request body: "+err.Error(), r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("checkout.invalid_body", "cannot read request body: "+err.Error(), r))
 		return
 	}
 
 	var req completeCheckoutRequest
 	if len(body) > 0 {
 		if err := json.Unmarshal(body, &req); err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope("checkout.invalid_json", "request body is not valid JSON", r))
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("checkout.invalid_json", "request body is not valid JSON", r))
 			return
 		}
 	}
 
 	if req.PaymentIntentID == "" && req.PaymentProvider != "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"checkout.missing_payment_intent", "payment_intent_id is required when payment_provider is supplied", r,
 			map[string]any{"field": "payment_intent_id"},
 		))
@@ -527,51 +546,53 @@ func (s *Server) handleCompleteCheckout(w http.ResponseWriter, r *http.Request) 
 	// When no payment_intent_id is supplied, attempt the free-checkout
 	// completion path.  The DB query only succeeds if the session's total = 0.
 	if req.PaymentIntentID == "" {
-		cs, err := s.checkoutQueries.CompleteFreeCheckoutSession(ctx, id)
+		cs, err := h.checkoutQueries.CompleteFreeCheckoutSession(ctx, id)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				// Session not found, not pricing_confirmed, or total != 0.
-				writeJSON(w, http.StatusConflict, errorEnvelope(
+				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 					"checkout.payment_required",
 					"this checkout session requires payment (total > 0); provide payment_intent_id",
 					r,
 				))
 				return
 			}
-			s.logger.Error("checkout: free complete failed",
+			h.logger.Error("checkout: free complete failed",
 				slog.String("id", id.String()),
 				slog.String("error", err.Error()),
 			)
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope("checkout.complete_failed", "failed to complete checkout session", r))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("checkout.complete_failed", "failed to complete checkout session", r))
 			return
 		}
 
-		s.logger.Info("checkout: free issuance completed",
+		h.logger.Info("checkout: free issuance completed",
 			slog.String("id", id.String()),
 			slog.String("reservation_id", cs.ReservationID.String()),
 			slog.String("org_id", cs.OrgID.String()),
 		)
 
 		// Issue tickets for the free checkout (idempotent).
-		if s.ticketQueries != nil && s.reservationQueries != nil {
-			tickets, ticketErr := s.issueTicketsForCheckout(ctx, cs)
+		if h.ticketQueries != nil && h.reservationQueries != nil && h.issueTickets != nil {
+			tickets, ticketErr := h.issueTickets(ctx, cs)
 			if ticketErr != nil {
 				// Non-fatal: checkout is complete; tickets can be re-issued on retry.
-				s.logger.Error("checkout: ticket issuance failed after free checkout",
+				h.logger.Error("checkout: ticket issuance failed after free checkout",
 					slog.String("checkout_session_id", id.String()),
 					slog.String("error", ticketErr.Error()),
 				)
 			} else {
-				s.logger.Info("checkout: free tickets issued",
+				h.logger.Info("checkout: free tickets issued",
 					slog.String("checkout_session_id", id.String()),
 					slog.Int("count", len(tickets)),
 				)
 				// Enqueue email delivery jobs (feature #141). Best-effort.
-				s.enqueueDeliveryJobs(ctx, tickets)
+				if h.enqueueDelivery != nil {
+					h.enqueueDelivery(ctx, tickets)
+				}
 			}
 		}
 
-		writeJSON(w, http.StatusOK, map[string]any{
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{
 			"checkout_session": checkoutSessionFromRow(cs),
 		})
 		return
@@ -579,37 +600,37 @@ func (s *Server) handleCompleteCheckout(w http.ResponseWriter, r *http.Request) 
 
 	// ── Paid checkout branch ──────────────────────────────────────────────────
 	if req.PaymentProvider == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"checkout.missing_payment_provider", "payment_provider is required", r,
 			map[string]any{"field": "payment_provider"},
 		))
 		return
 	}
 
-	cs, err := s.checkoutQueries.CompleteCheckoutSession(ctx, id, req.PaymentIntentID, req.PaymentProvider)
+	cs, err := h.checkoutQueries.CompleteCheckoutSession(ctx, id, req.PaymentIntentID, req.PaymentProvider)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusConflict, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 				"checkout.invalid_transition",
 				"checkout session is not in 'pricing_confirmed' state",
 				r,
 			))
 			return
 		}
-		s.logger.Error("checkout: complete failed",
+		h.logger.Error("checkout: complete failed",
 			slog.String("id", id.String()),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("checkout.complete_failed", "failed to complete checkout session", r))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("checkout.complete_failed", "failed to complete checkout session", r))
 		return
 	}
 
-	s.logger.Info("checkout: completed",
+	h.logger.Info("checkout: completed",
 		slog.String("id", id.String()),
 		slog.String("payment_provider", req.PaymentProvider),
 	)
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"checkout_session": checkoutSessionFromRow(cs),
 	})
 }
@@ -618,13 +639,13 @@ func (s *Server) handleCompleteCheckout(w http.ResponseWriter, r *http.Request) 
 // POST /v1/checkout/{id}/abandon
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleAbandonCheckout serves POST /v1/checkout/{id}/abandon.
+// HandleAbandonCheckout serves POST /v1/checkout/{id}/abandon.
 // Transitions any non-terminal state → abandoned.
 // Returns 409 when the session is already terminal.
 // Requires JWT + "checkout.abandon" permission.
-func (s *Server) handleAbandonCheckout(w http.ResponseWriter, r *http.Request) {
-	if s.checkoutQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleAbandonCheckout(w http.ResponseWriter, r *http.Request) {
+	if h.checkoutQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -633,29 +654,29 @@ func (s *Server) handleAbandonCheckout(w http.ResponseWriter, r *http.Request) {
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("checkout.invalid_id", "checkout session id must be a valid UUID", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("checkout.invalid_id", "checkout session id must be a valid UUID", r))
 		return
 	}
 
-	cs, err := s.checkoutQueries.AbandonCheckoutSession(ctx, id)
+	cs, err := h.checkoutQueries.AbandonCheckoutSession(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusConflict, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 				"checkout.already_terminal",
 				"checkout session is already in a terminal state",
 				r,
 			))
 			return
 		}
-		s.logger.Error("checkout: abandon failed",
+		h.logger.Error("checkout: abandon failed",
 			slog.String("id", id.String()),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("checkout.abandon_failed", "failed to abandon checkout session", r))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("checkout.abandon_failed", "failed to abandon checkout session", r))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"checkout_session": checkoutSessionFromRow(cs),
 	})
 }

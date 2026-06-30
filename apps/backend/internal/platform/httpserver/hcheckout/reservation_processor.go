@@ -20,7 +20,7 @@
 //	capacity_held on the inventory_ledger row by the reservation quantity.
 //	A failure here is logged but does not abort the batch — the reservation is
 //	still transitioned to 'expired'.
-package httpserver
+package hcheckout
 
 import (
 	"context"
@@ -34,16 +34,16 @@ import (
 
 // ReservationProcessor handles background TTL expiration of reservations.
 type ReservationProcessor struct {
-	pool            PoolDB
+	pool            TxStarter
 	queries         *gen.Queries
 	checkoutQueries *gen.Queries // optional; when non-nil, cascades expiry to checkout_sessions
 	logger          *slog.Logger
 }
 
 // NewReservationProcessor constructs a ReservationProcessor.
-// pool must be a *pgxpool.Pool (or any PoolDB implementation) for transaction support.
+// pool must be a *pgxpool.Pool (or any TxStarter implementation) for transaction support.
 // queries must be constructed from the same pool for read-only queries outside a tx.
-func NewReservationProcessor(pool PoolDB, queries *gen.Queries, logger *slog.Logger) *ReservationProcessor {
+func NewReservationProcessor(pool TxStarter, queries *gen.Queries, logger *slog.Logger) *ReservationProcessor {
 	if logger == nil {
 		logger = slog.Default()
 	}

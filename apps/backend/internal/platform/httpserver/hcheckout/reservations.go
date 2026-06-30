@@ -23,7 +23,7 @@
 //	GET    /v1/reservations/{id}         — get by ID (reservation.read)
 //	PATCH  /v1/reservations/{id}/activate — draft → active (reservation.activate)
 //	DELETE /v1/reservations/{id}         — cancel (reservation.cancel)
-package httpserver
+package hcheckout
 
 import (
 	"context"
@@ -41,6 +41,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	inventorydomain "github.com/abhteam/arena_new/apps/backend/internal/domain/inventory"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -52,6 +53,10 @@ import (
 // 1200 seconds = 20 minutes (matches the DEFAULT in
 // organizations.reservation_ttl_seconds — migration 0009_organizations.sql).
 const defaultReservationTTL = 1200 * time.Second
+
+// DefaultReservationTTL is the exported alias of defaultReservationTTL for use
+// by httpserver.checkout_shims.go (public_feed_checkout.go needs this constant).
+const DefaultReservationTTL = defaultReservationTTL
 
 // channelTTLLookup is the narrow surface of *gen.Queries that
 // resolveReservationTTL needs to fetch a sales channel row. Declaring it as
@@ -66,6 +71,14 @@ type channelTTLLookup interface {
 type orgTTLLookup interface {
 	GetOrganizationByID(ctx context.Context, id uuid.UUID) (gen.OrganizationRow, error)
 }
+
+// ChannelTTLLookup and OrgTTLLookup are exported aliases of the unexported
+// lookup interfaces, for use by the httpserver shim layer (the test
+// reservation_ttl_177_test.go in package httpserver defines its own fakes
+// satisfying these interfaces and calls resolveReservationTTL via a forwarder
+// in checkout_shims.go).
+type ChannelTTLLookup = channelTTLLookup
+type OrgTTLLookup = orgTTLLookup
 
 // resolveReservationTTL resolves the seat-hold expiry window for a reservation
 // using the documented precedence:
@@ -102,6 +115,18 @@ func resolveReservationTTL(
 	return defaultReservationTTL
 }
 
+// ResolveReservationTTL is the exported alias of resolveReservationTTL for use
+// by the httpserver shim layer (reservation_ttl_177_test.go in package
+// httpserver calls resolveReservationTTL via a forwarder in checkout_shims.go).
+func ResolveReservationTTL(
+	ctx context.Context,
+	channelQ ChannelTTLLookup,
+	orgQ OrgTTLLookup,
+	channelID, orgID uuid.UUID,
+) time.Duration {
+	return resolveReservationTTL(ctx, channelQ, orgQ, channelID, orgID)
+}
+
 // validReservationTransitions mirrors the pure-domain transition table from
 // internal/domain/inventory.ValidReservationTransitions (feature #184),
 // projected back to a string-keyed map so the in-package state-machine
@@ -131,6 +156,18 @@ var validReservationTransitions = func() map[string]map[string]bool {
 func isValidReservationTransition(from, to string) bool {
 	return inventorydomain.IsValidReservationTransition(from, to)
 }
+
+// IsValidReservationTransition is the exported alias of isValidReservationTransition
+// for use by the httpserver shim layer (checkout_shims.go) so that
+// reservation_131_test.go (package httpserver) continues to compile without
+// importing this package directly.
+func IsValidReservationTransition(from, to string) bool {
+	return isValidReservationTransition(from, to)
+}
+
+// ValidReservationTransitions is the exported alias of validReservationTransitions
+// for use by the httpserver shim layer (checkout_shims.go).
+var ValidReservationTransitions = validReservationTransitions
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Response types
@@ -203,7 +240,7 @@ type createReservationRequest struct {
 	Quantity  int32  `json:"quantity"` // must be >= 1
 }
 
-// handleCreateReservation serves POST /v1/reservations.
+// HandleCreateReservation serves POST /v1/reservations.
 // Requires JWT + "reservation.create" permission.
 //
 // Flow (atomic):
@@ -215,9 +252,9 @@ type createReservationRequest struct {
 //  5. Call InsertReservation — records the draft reservation.
 //  6. Commit.
 //  7. Return 201 with the created reservation.
-func (s *Server) handleCreateReservation(w http.ResponseWriter, r *http.Request) {
-	if s.reservationQueries == nil || s.inventoryQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleCreateReservation(w http.ResponseWriter, r *http.Request) {
+	if h.reservationQueries == nil || h.inventoryQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -226,29 +263,29 @@ func (s *Server) handleCreateReservation(w http.ResponseWriter, r *http.Request)
 
 	actor, ok := auth.ActorFromContext(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, errorEnvelope("auth.missing", "authentication required", r))
+		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope("auth.missing", "authentication required", r))
 		return
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("reservation.invalid_body", "cannot read request body: "+err.Error(), r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("reservation.invalid_body", "cannot read request body: "+err.Error(), r))
 		return
 	}
 	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("reservation.empty_body", "request body is required", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("reservation.empty_body", "request body is required", r))
 		return
 	}
 
 	var req createReservationRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("reservation.invalid_json", "request body is not valid JSON", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("reservation.invalid_json", "request body is not valid JSON", r))
 		return
 	}
 
 	// Validate required fields.
 	if req.SessionID == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"reservation.missing_session_id", "session_id is required", r,
 			map[string]any{"field": "session_id"},
 		))
@@ -256,7 +293,7 @@ func (s *Server) handleCreateReservation(w http.ResponseWriter, r *http.Request)
 	}
 	sessionID, err := uuid.Parse(req.SessionID)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"reservation.invalid_session_id", "session_id must be a valid UUID", r,
 			map[string]any{"field": "session_id"},
 		))
@@ -264,7 +301,7 @@ func (s *Server) handleCreateReservation(w http.ResponseWriter, r *http.Request)
 	}
 
 	if req.ChannelID == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"reservation.missing_channel_id", "channel_id is required", r,
 			map[string]any{"field": "channel_id"},
 		))
@@ -272,7 +309,7 @@ func (s *Server) handleCreateReservation(w http.ResponseWriter, r *http.Request)
 	}
 	channelID, err := uuid.Parse(req.ChannelID)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"reservation.invalid_channel_id", "channel_id must be a valid UUID", r,
 			map[string]any{"field": "channel_id"},
 		))
@@ -280,7 +317,7 @@ func (s *Server) handleCreateReservation(w http.ResponseWriter, r *http.Request)
 	}
 
 	if req.OrgID == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"reservation.missing_org_id", "org_id is required", r,
 			map[string]any{"field": "org_id"},
 		))
@@ -288,7 +325,7 @@ func (s *Server) handleCreateReservation(w http.ResponseWriter, r *http.Request)
 	}
 	orgID, err := uuid.Parse(req.OrgID)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"reservation.invalid_org_id", "org_id must be a valid UUID", r,
 			map[string]any{"field": "org_id"},
 		))
@@ -296,7 +333,7 @@ func (s *Server) handleCreateReservation(w http.ResponseWriter, r *http.Request)
 	}
 
 	if req.Quantity <= 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"reservation.invalid_quantity", "quantity must be greater than 0", r,
 			map[string]any{"field": "quantity"},
 		))
@@ -308,7 +345,7 @@ func (s *Server) handleCreateReservation(w http.ResponseWriter, r *http.Request)
 	if req.TierID != "" {
 		tid, err := uuid.Parse(req.TierID)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 				"reservation.invalid_tier_id", "tier_id must be a valid UUID", r,
 				map[string]any{"field": "tier_id"},
 			))
@@ -328,39 +365,39 @@ func (s *Server) handleCreateReservation(w http.ResponseWriter, r *http.Request)
 	// the next tier and ultimately to defaultReservationTTL; see
 	// resolveReservationTTL for the precedence contract.
 	var channelQ channelTTLLookup
-	if s.channelQueries != nil {
-		channelQ = s.channelQueries
+	if h.channelQueries != nil {
+		channelQ = h.channelQueries
 	}
 	var orgQ orgTTLLookup
-	if s.orgQueries != nil {
-		orgQ = s.orgQueries
+	if h.orgQueries != nil {
+		orgQ = h.orgQueries
 	}
 	ttl := resolveReservationTTL(ctx, channelQ, orgQ, channelID, orgID)
 	expiresAt := time.Now().UTC().Add(ttl)
 
 	// Begin transaction: ReserveCapacity + InsertReservation atomically.
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "failed to begin transaction", r,
 		))
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	invQ := s.inventoryQueries.WithTx(tx)
-	resQ := s.reservationQueries.WithTx(tx)
+	invQ := h.inventoryQueries.WithTx(tx)
+	resQ := h.reservationQueries.WithTx(tx)
 
 	// Reserve capacity — returns pgx.ErrNoRows when over-capacity.
 	if _, err := invQ.ReserveCapacity(ctx, sessionID, tierID, req.Quantity); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusConflict, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 				"reservation.over_capacity", "insufficient capacity for this reservation", r,
 			))
 			return
 		}
-		s.logger.Error("reservation: reserve capacity failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("reservation: reserve capacity failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"reservation.capacity_failed", "failed to reserve capacity", r,
 		))
 		return
@@ -369,21 +406,21 @@ func (s *Server) handleCreateReservation(w http.ResponseWriter, r *http.Request)
 	// Insert the reservation record.
 	res, err := resQ.InsertReservation(ctx, orgID, channelID, sessionID, tierID, userID, req.Quantity, expiresAt)
 	if err != nil {
-		s.logger.Error("reservation: insert failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("reservation: insert failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"reservation.insert_failed", "failed to create reservation", r,
 		))
 		return
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"reservation.commit_failed", "failed to commit transaction", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]any{
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
 		"reservation": reservationFromRow(res),
 	})
 }
@@ -392,11 +429,11 @@ func (s *Server) handleCreateReservation(w http.ResponseWriter, r *http.Request)
 // GET /v1/reservations/{id}
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleGetReservation serves GET /v1/reservations/{id}.
+// HandleGetReservation serves GET /v1/reservations/{id}.
 // Requires JWT + "reservation.read" permission.
-func (s *Server) handleGetReservation(w http.ResponseWriter, r *http.Request) {
-	if s.reservationQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleGetReservation(w http.ResponseWriter, r *http.Request) {
+	if h.reservationQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -406,24 +443,24 @@ func (s *Server) handleGetReservation(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("reservation.invalid_id", "id must be a valid UUID", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("reservation.invalid_id", "id must be a valid UUID", r))
 		return
 	}
 
-	res, err := s.reservationQueries.GetReservationByID(ctx, id)
+	res, err := h.reservationQueries.GetReservationByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("reservation.not_found", "reservation not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("reservation.not_found", "reservation not found", r))
 			return
 		}
-		s.logger.Error("reservation: get failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("reservation: get failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"reservation.get_failed", "failed to get reservation", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"reservation": reservationFromRow(res),
 	})
 }
@@ -432,12 +469,12 @@ func (s *Server) handleGetReservation(w http.ResponseWriter, r *http.Request) {
 // PATCH /v1/reservations/{id}/activate
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleActivateReservation serves PATCH /v1/reservations/{id}/activate.
+// HandleActivateReservation serves PATCH /v1/reservations/{id}/activate.
 // Transitions the reservation from draft → active.
 // Requires JWT + "reservation.activate" permission.
-func (s *Server) handleActivateReservation(w http.ResponseWriter, r *http.Request) {
-	if s.reservationQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleActivateReservation(w http.ResponseWriter, r *http.Request) {
+	if h.reservationQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -447,19 +484,19 @@ func (s *Server) handleActivateReservation(w http.ResponseWriter, r *http.Reques
 	idStr := chi.URLParam(r, "id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("reservation.invalid_id", "id must be a valid UUID", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("reservation.invalid_id", "id must be a valid UUID", r))
 		return
 	}
 
 	// Fetch current state.
-	current, err := s.reservationQueries.GetReservationByID(ctx, id)
+	current, err := h.reservationQueries.GetReservationByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("reservation.not_found", "reservation not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("reservation.not_found", "reservation not found", r))
 			return
 		}
-		s.logger.Error("reservation: get for activate failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("reservation: get for activate failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"reservation.get_failed", "failed to get reservation", r,
 		))
 		return
@@ -467,7 +504,7 @@ func (s *Server) handleActivateReservation(w http.ResponseWriter, r *http.Reques
 
 	// Validate state transition: must be draft → active.
 	if !isValidReservationTransition(current.State, "active") {
-		writeJSON(w, http.StatusUnprocessableEntity, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
 			"reservation.invalid_transition",
 			"reservation cannot be activated from state '"+current.State+"'",
 			r,
@@ -481,26 +518,26 @@ func (s *Server) handleActivateReservation(w http.ResponseWriter, r *http.Reques
 
 	// Check the reservation has not already expired.
 	if time.Now().UTC().After(current.ExpiresAt) {
-		writeJSON(w, http.StatusConflict, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 			"reservation.expired", "reservation has expired and cannot be activated", r,
 		))
 		return
 	}
 
-	updated, err := s.reservationQueries.UpdateReservationState(ctx, id, "active")
+	updated, err := h.reservationQueries.UpdateReservationState(ctx, id, "active")
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("reservation.not_found", "reservation not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("reservation.not_found", "reservation not found", r))
 			return
 		}
-		s.logger.Error("reservation: activate failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("reservation: activate failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"reservation.activate_failed", "failed to activate reservation", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"reservation": reservationFromRow(updated),
 	})
 }
@@ -509,12 +546,12 @@ func (s *Server) handleActivateReservation(w http.ResponseWriter, r *http.Reques
 // DELETE /v1/reservations/{id}
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleCancelReservation serves DELETE /v1/reservations/{id}.
+// HandleCancelReservation serves DELETE /v1/reservations/{id}.
 // Transitions the reservation from draft|active → cancelled and releases inventory.
 // Requires JWT + "reservation.cancel" permission.
-func (s *Server) handleCancelReservation(w http.ResponseWriter, r *http.Request) {
-	if s.reservationQueries == nil || s.inventoryQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleCancelReservation(w http.ResponseWriter, r *http.Request) {
+	if h.reservationQueries == nil || h.inventoryQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -524,19 +561,19 @@ func (s *Server) handleCancelReservation(w http.ResponseWriter, r *http.Request)
 	idStr := chi.URLParam(r, "id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("reservation.invalid_id", "id must be a valid UUID", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("reservation.invalid_id", "id must be a valid UUID", r))
 		return
 	}
 
 	// Fetch current state.
-	current, err := s.reservationQueries.GetReservationByID(ctx, id)
+	current, err := h.reservationQueries.GetReservationByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("reservation.not_found", "reservation not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("reservation.not_found", "reservation not found", r))
 			return
 		}
-		s.logger.Error("reservation: get for cancel failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("reservation: get for cancel failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"reservation.get_failed", "failed to get reservation", r,
 		))
 		return
@@ -544,7 +581,7 @@ func (s *Server) handleCancelReservation(w http.ResponseWriter, r *http.Request)
 
 	// Validate that the transition to cancelled is allowed.
 	if !isValidReservationTransition(current.State, "cancelled") {
-		writeJSON(w, http.StatusUnprocessableEntity, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
 			"reservation.invalid_transition",
 			"reservation cannot be cancelled from state '"+current.State+"'",
 			r,
@@ -557,26 +594,26 @@ func (s *Server) handleCancelReservation(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Begin transaction: UpdateReservationState + ReleaseCapacity atomically.
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "failed to begin transaction", r,
 		))
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	resQ := s.reservationQueries.WithTx(tx)
-	invQ := s.inventoryQueries.WithTx(tx)
+	resQ := h.reservationQueries.WithTx(tx)
+	invQ := h.inventoryQueries.WithTx(tx)
 
 	cancelled, err := resQ.UpdateReservationState(ctx, id, "cancelled")
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("reservation.not_found", "reservation not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("reservation.not_found", "reservation not found", r))
 			return
 		}
-		s.logger.Error("reservation: cancel state update failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("reservation: cancel state update failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"reservation.cancel_failed", "failed to cancel reservation", r,
 		))
 		return
@@ -584,7 +621,7 @@ func (s *Server) handleCancelReservation(w http.ResponseWriter, r *http.Request)
 
 	// Release held capacity back to available.
 	if _, err := invQ.ReleaseCapacity(ctx, current.SessionID, current.TierID, current.Quantity); err != nil {
-		s.logger.Error("reservation: release capacity failed",
+		h.logger.Error("reservation: release capacity failed",
 			slog.String("reservation_id", id.String()),
 			slog.String("error", err.Error()),
 		)
@@ -593,13 +630,13 @@ func (s *Server) handleCancelReservation(w http.ResponseWriter, r *http.Request)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"reservation.commit_failed", "failed to commit transaction", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"reservation": reservationFromRow(cancelled),
 		"cancelled":   true,
 	})

@@ -28,7 +28,7 @@
 //
 // Sum invariant enforced: Subtotal + sum(Discounts) + sum(Fees) + sum(Taxes) == Total.
 // Discount amounts are expressed as negative numbers (they reduce the total).
-package httpserver
+package hcheckout
 
 import (
 	"context"
@@ -41,6 +41,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 )
 
@@ -51,7 +52,10 @@ import (
 // breakdownLineItem is a single named line in the price breakdown.
 // Amount is always in the smallest currency unit (integer cents/agorot).
 // Discount amounts are negative (they reduce the amount the buyer pays).
-type breakdownLineItem struct {
+type breakdownLineItem = BreakdownLineItem
+
+// BreakdownLineItem is the exported form of breakdownLineItem.
+type BreakdownLineItem struct {
 	Label  string `json:"label"`
 	Amount int64  `json:"amount"`
 }
@@ -61,11 +65,14 @@ type breakdownLineItem struct {
 // The sum invariant holds by construction:
 //
 //	Subtotal + sum(Discounts[i].Amount) + sum(Fees[i].Amount) + sum(Taxes[i].Amount) == Total
-type priceBreakdownResponse struct {
+type priceBreakdownResponse = PriceBreakdownResponse
+
+// PriceBreakdownResponse is the exported form of priceBreakdownResponse.
+type PriceBreakdownResponse struct {
 	Subtotal  int64               `json:"subtotal"`
-	Discounts []breakdownLineItem `json:"discounts"`
-	Fees      []breakdownLineItem `json:"fees"`
-	Taxes     []breakdownLineItem `json:"taxes"`
+	Discounts []BreakdownLineItem `json:"discounts"`
+	Fees      []BreakdownLineItem `json:"fees"`
+	Taxes     []BreakdownLineItem `json:"taxes"`
 	Total     int64               `json:"total"`
 	Currency  string              `json:"currency"`
 }
@@ -84,6 +91,13 @@ type priceBreakdownResponse struct {
 // The ctx parameter is used only for i18n label localisation — passing
 // context.Background() in tests is valid and results in English labels.
 func buildPriceBreakdown(ctx context.Context, cs gen.CheckoutSessionRow) (priceBreakdownResponse, bool) {
+	return BuildPriceBreakdown(ctx, cs)
+}
+
+// BuildPriceBreakdown is the exported form of buildPriceBreakdown, for use by
+// the httpserver shim layer (price_breakdown_163_test.go calls buildPriceBreakdown
+// directly from package httpserver).
+func BuildPriceBreakdown(ctx context.Context, cs gen.CheckoutSessionRow) (PriceBreakdownResponse, bool) {
 	// Pricing snapshot columns are nil until pricing_confirmed has been applied.
 	if cs.Subtotal == nil || cs.Total == nil || cs.Currency == nil {
 		return priceBreakdownResponse{}, false
@@ -139,7 +153,7 @@ func buildPriceBreakdown(ctx context.Context, cs gen.CheckoutSessionRow) (priceB
 // GET /v1/checkout/{id}/price-breakdown
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handlePriceBreakdown serves GET /v1/checkout/{id}/price-breakdown.
+// HandlePriceBreakdown serves GET /v1/checkout/{id}/price-breakdown.
 //
 // Returns an itemised price breakdown for a checkout session that has
 // completed the pricing_confirmed transition.  If the session is still in
@@ -148,9 +162,9 @@ func buildPriceBreakdown(ctx context.Context, cs gen.CheckoutSessionRow) (priceB
 // POST /v1/checkout/{id}/confirm first.
 //
 // Requires JWT + "checkout.read" permission.
-func (s *Server) handlePriceBreakdown(w http.ResponseWriter, r *http.Request) {
-	if s.checkoutQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandlePriceBreakdown(w http.ResponseWriter, r *http.Request) {
+	if h.checkoutQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -159,25 +173,25 @@ func (s *Server) handlePriceBreakdown(w http.ResponseWriter, r *http.Request) {
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"checkout.invalid_id", "checkout session id must be a valid UUID", r,
 		))
 		return
 	}
 
-	cs, err := s.checkoutQueries.GetCheckoutSessionByID(ctx, id)
+	cs, err := h.checkoutQueries.GetCheckoutSessionByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 				"checkout.not_found", "checkout session not found", r,
 			))
 			return
 		}
-		s.logger.Error("checkout: price_breakdown fetch failed",
+		h.logger.Error("checkout: price_breakdown fetch failed",
 			slog.String("id", id.String()),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"checkout.get_failed", "failed to retrieve checkout session", r,
 		))
 		return
@@ -185,7 +199,7 @@ func (s *Server) handlePriceBreakdown(w http.ResponseWriter, r *http.Request) {
 
 	bd, ok := buildPriceBreakdown(ctx, cs)
 	if !ok {
-		writeJSON(w, http.StatusConflict, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 			"checkout.pricing_not_confirmed",
 			"pricing has not been confirmed for this checkout session yet",
 			r,
@@ -193,7 +207,7 @@ func (s *Server) handlePriceBreakdown(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"price_breakdown": bd,
 	})
 }

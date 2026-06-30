@@ -22,7 +22,7 @@
 // Webhook idempotency: the webhook endpoint records each (provider_payment_id,
 // event_type) pair in payment_intent_events. Duplicate deliveries from the
 // provider return 204 without reprocessing.
-package httpserver
+package hcheckout
 
 import (
 	"encoding/json"
@@ -37,6 +37,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -73,11 +74,24 @@ var validPaymentIntentTransitions = map[string]map[string]bool{
 	"failed":    {},
 }
 
+// ValidPaymentIntentTransitions is the exported form of validPaymentIntentTransitions,
+// for use by the httpserver shim layer (payment_intents_137_test.go and
+// openapi_payment_intents_271_test.go reference validPaymentIntentTransitions from
+// package httpserver via checkout_shims.go).
+var ValidPaymentIntentTransitions = validPaymentIntentTransitions
+
 // isTerminalPaymentIntentState returns true for states that admit no further
 // transitions (succeeded and failed).
 func isTerminalPaymentIntentState(state string) bool {
 	_, exists := validPaymentIntentTransitions[state]
 	return exists && len(validPaymentIntentTransitions[state]) == 0
+}
+
+// IsTerminalPaymentIntentState is the exported form of isTerminalPaymentIntentState,
+// for use by the httpserver shim layer (payment_intents_137_test.go references
+// isTerminalPaymentIntentState from package httpserver via checkout_shims.go).
+func IsTerminalPaymentIntentState(state string) bool {
+	return isTerminalPaymentIntentState(state)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -160,12 +174,12 @@ type createPaymentIntentRequest struct {
 	ClientSecret   *string `json:"client_secret"`    // optional; for SDK-based SCA
 }
 
-// handleCreatePaymentIntent serves POST /v1/payment-intents.
+// HandleCreatePaymentIntent serves POST /v1/payment-intents.
 // Creates a new payment intent linked to an optional checkout session.
 // Requires JWT + "payment_intent.create" permission.
-func (s *Server) handleCreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
-	if s.paymentIntentQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleCreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
+	if h.paymentIntentQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -174,45 +188,45 @@ func (s *Server) handleCreatePaymentIntent(w http.ResponseWriter, r *http.Reques
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("payment_intent.invalid_body", "cannot read request body: "+err.Error(), r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("payment_intent.invalid_body", "cannot read request body: "+err.Error(), r))
 		return
 	}
 	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("payment_intent.empty_body", "request body is required", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("payment_intent.empty_body", "request body is required", r))
 		return
 	}
 
 	var req createPaymentIntentRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("payment_intent.invalid_json", "request body is not valid JSON", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("payment_intent.invalid_json", "request body is not valid JSON", r))
 		return
 	}
 
 	// Validate required fields.
 	orgID, err := uuid.Parse(req.OrgID)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"payment_intent.invalid_org_id", "org_id must be a valid UUID", r,
 			map[string]any{"field": "org_id"},
 		))
 		return
 	}
 	if req.Provider == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"payment_intent.missing_provider", "provider is required", r,
 			map[string]any{"field": "provider"},
 		))
 		return
 	}
 	if req.Amount < 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"payment_intent.invalid_amount", "amount must be a non-negative integer", r,
 			map[string]any{"field": "amount"},
 		))
 		return
 	}
 	if req.Currency == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"payment_intent.missing_currency", "currency is required", r,
 			map[string]any{"field": "currency"},
 		))
@@ -222,7 +236,7 @@ func (s *Server) handleCreatePaymentIntent(w http.ResponseWriter, r *http.Reques
 	// Validate initial state when provided.
 	if req.InitialState != "" {
 		if _, ok := validPaymentIntentTransitions[req.InitialState]; !ok {
-			writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 				"payment_intent.invalid_initial_state",
 				"initial_state must be one of: created, requires_action, processing",
 				r,
@@ -232,7 +246,7 @@ func (s *Server) handleCreatePaymentIntent(w http.ResponseWriter, r *http.Reques
 		}
 		// Only non-terminal initial states are valid for creation.
 		if isTerminalPaymentIntentState(req.InitialState) {
-			writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 				"payment_intent.invalid_initial_state",
 				"cannot create a payment intent in a terminal state",
 				r,
@@ -247,7 +261,7 @@ func (s *Server) handleCreatePaymentIntent(w http.ResponseWriter, r *http.Reques
 	if req.CheckoutSessionID != nil {
 		parsed, err := uuid.Parse(*req.CheckoutSessionID)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 				"payment_intent.invalid_checkout_session_id",
 				"checkout_session_id must be a valid UUID when provided", r,
 				map[string]any{"field": "checkout_session_id"},
@@ -257,31 +271,31 @@ func (s *Server) handleCreatePaymentIntent(w http.ResponseWriter, r *http.Reques
 		checkoutSessionID = &parsed
 	}
 
-	pi, err := s.paymentIntentQueries.InsertPaymentIntent(ctx,
+	pi, err := h.paymentIntentQueries.InsertPaymentIntent(ctx,
 		checkoutSessionID, orgID, req.Provider, req.ProviderPaymentID,
 		req.Amount, req.Currency, req.InitialState,
 		req.ScaRedirectURL, req.ClientSecret,
 	)
 	if err != nil {
-		s.logger.Error("payment_intent: create failed",
+		h.logger.Error("payment_intent: create failed",
 			slog.String("org_id", orgID.String()),
 			slog.String("provider", req.Provider),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"payment_intent.create_failed", "failed to create payment intent", r,
 		))
 		return
 	}
 
-	s.logger.Info("payment_intent: created",
+	h.logger.Info("payment_intent: created",
 		slog.String("id", pi.ID.String()),
 		slog.String("provider", pi.Provider),
 		slog.String("state", pi.State),
 		slog.Int64("amount", pi.Amount),
 	)
 
-	writeJSON(w, http.StatusCreated, map[string]any{
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
 		"payment_intent": paymentIntentFromRow(pi),
 	})
 }
@@ -290,12 +304,12 @@ func (s *Server) handleCreatePaymentIntent(w http.ResponseWriter, r *http.Reques
 // GET /v1/payment-intents/{id}
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleGetPaymentIntent serves GET /v1/payment-intents/{id}.
+// HandleGetPaymentIntent serves GET /v1/payment-intents/{id}.
 // Returns the current state of a payment intent.
 // Requires JWT + "payment_intent.read" permission.
-func (s *Server) handleGetPaymentIntent(w http.ResponseWriter, r *http.Request) {
-	if s.paymentIntentQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleGetPaymentIntent(w http.ResponseWriter, r *http.Request) {
+	if h.paymentIntentQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -304,25 +318,25 @@ func (s *Server) handleGetPaymentIntent(w http.ResponseWriter, r *http.Request) 
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("payment_intent.invalid_id", "payment intent id must be a valid UUID", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("payment_intent.invalid_id", "payment intent id must be a valid UUID", r))
 		return
 	}
 
-	pi, err := s.paymentIntentQueries.GetPaymentIntentByID(ctx, id)
+	pi, err := h.paymentIntentQueries.GetPaymentIntentByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("payment_intent.not_found", "payment intent not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("payment_intent.not_found", "payment intent not found", r))
 			return
 		}
-		s.logger.Error("payment_intent: get failed",
+		h.logger.Error("payment_intent: get failed",
 			slog.String("id", id.String()),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("payment_intent.get_failed", "failed to retrieve payment intent", r))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("payment_intent.get_failed", "failed to retrieve payment intent", r))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"payment_intent": paymentIntentFromRow(pi),
 	})
 }
@@ -347,15 +361,15 @@ type transitionPaymentIntentRequest struct {
 	ProviderPaymentID *string `json:"provider_payment_id"`
 }
 
-// handleTransitionPaymentIntent serves POST /v1/payment-intents/{id}/transition.
+// HandleTransitionPaymentIntent serves POST /v1/payment-intents/{id}/transition.
 // Validates the requested state transition against the state machine, then
 // persists the new state.
 // Returns 409 when the transition is not valid from the current state.
 // Returns 409 when the intent is already in a terminal state.
 // Requires JWT + "payment_intent.update" permission.
-func (s *Server) handleTransitionPaymentIntent(w http.ResponseWriter, r *http.Request) {
-	if s.paymentIntentQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleTransitionPaymentIntent(w http.ResponseWriter, r *http.Request) {
+	if h.paymentIntentQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -364,28 +378,28 @@ func (s *Server) handleTransitionPaymentIntent(w http.ResponseWriter, r *http.Re
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("payment_intent.invalid_id", "payment intent id must be a valid UUID", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("payment_intent.invalid_id", "payment intent id must be a valid UUID", r))
 		return
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("payment_intent.invalid_body", "cannot read request body: "+err.Error(), r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("payment_intent.invalid_body", "cannot read request body: "+err.Error(), r))
 		return
 	}
 	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("payment_intent.empty_body", "request body is required", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("payment_intent.empty_body", "request body is required", r))
 		return
 	}
 
 	var req transitionPaymentIntentRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("payment_intent.invalid_json", "request body is not valid JSON", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("payment_intent.invalid_json", "request body is not valid JSON", r))
 		return
 	}
 
 	if req.State == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"payment_intent.missing_state", "state is required", r,
 			map[string]any{"field": "state"},
 		))
@@ -393,23 +407,23 @@ func (s *Server) handleTransitionPaymentIntent(w http.ResponseWriter, r *http.Re
 	}
 
 	// Fetch current state to validate the transition.
-	current, err := s.paymentIntentQueries.GetPaymentIntentByID(ctx, id)
+	current, err := h.paymentIntentQueries.GetPaymentIntentByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("payment_intent.not_found", "payment intent not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("payment_intent.not_found", "payment intent not found", r))
 			return
 		}
-		s.logger.Error("payment_intent: transition fetch failed",
+		h.logger.Error("payment_intent: transition fetch failed",
 			slog.String("id", id.String()),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("payment_intent.fetch_failed", "failed to retrieve payment intent", r))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("payment_intent.fetch_failed", "failed to retrieve payment intent", r))
 		return
 	}
 
 	// Guard: reject transitions from terminal states.
 	if isTerminalPaymentIntentState(current.State) {
-		writeJSON(w, http.StatusConflict, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
 			"payment_intent.terminal_state",
 			"payment intent is in a terminal state and cannot be transitioned",
 			r,
@@ -424,7 +438,7 @@ func (s *Server) handleTransitionPaymentIntent(w http.ResponseWriter, r *http.Re
 	// Guard: validate the transition.
 	validTargets, ok := validPaymentIntentTransitions[current.State]
 	if !ok || !validTargets[req.State] {
-		writeJSON(w, http.StatusConflict, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
 			"payment_intent.invalid_transition",
 			"requested state transition is not valid from the current state",
 			r,
@@ -438,7 +452,7 @@ func (s *Server) handleTransitionPaymentIntent(w http.ResponseWriter, r *http.Re
 
 	// Validate SCA fields when transitioning to requires_action.
 	if req.State == "requires_action" && req.ScaRedirectURL == nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"payment_intent.missing_sca_redirect_url",
 			"sca_redirect_url is required when transitioning to requires_action",
 			r,
@@ -448,7 +462,7 @@ func (s *Server) handleTransitionPaymentIntent(w http.ResponseWriter, r *http.Re
 	}
 
 	// Persist the transition.
-	updated, err := s.paymentIntentQueries.UpdatePaymentIntentState(ctx,
+	updated, err := h.paymentIntentQueries.UpdatePaymentIntentState(ctx,
 		id, req.State,
 		req.ScaRedirectURL, req.ClientSecret,
 		req.FailureCode, req.FailureMessage,
@@ -456,25 +470,25 @@ func (s *Server) handleTransitionPaymentIntent(w http.ResponseWriter, r *http.Re
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("payment_intent.not_found", "payment intent not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("payment_intent.not_found", "payment intent not found", r))
 			return
 		}
-		s.logger.Error("payment_intent: transition failed",
+		h.logger.Error("payment_intent: transition failed",
 			slog.String("id", id.String()),
 			slog.String("target_state", req.State),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("payment_intent.transition_failed", "failed to transition payment intent", r))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("payment_intent.transition_failed", "failed to transition payment intent", r))
 		return
 	}
 
-	s.logger.Info("payment_intent: state transitioned",
+	h.logger.Info("payment_intent: state transitioned",
 		slog.String("id", id.String()),
 		slog.String("from", current.State),
 		slog.String("to", updated.State),
 	)
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"payment_intent": paymentIntentFromRow(updated),
 	})
 }
@@ -523,7 +537,12 @@ var webhookEventTypeToState = map[string]string{
 	"mock.manual_review":   "manual_review",
 }
 
-// handlePaymentIntentWebhook serves POST /v1/payment-intents/webhook.
+// WebhookEventTypeToState is the exported form of webhookEventTypeToState, for
+// use by the httpserver shim layer (payment_intents_137_test.go references
+// webhookEventTypeToState from package httpserver via checkout_shims.go).
+var WebhookEventTypeToState = webhookEventTypeToState
+
+// HandlePaymentIntentWebhook serves POST /v1/payment-intents/webhook.
 //
 // This endpoint is intentionally unauthenticated — payment providers deliver
 // webhooks from their own infrastructure and authenticate via HMAC signatures
@@ -533,9 +552,9 @@ var webhookEventTypeToState = map[string]string{
 // Idempotency: each (provider_payment_id, event_type) is recorded in
 // payment_intent_events with a UNIQUE constraint. Duplicate deliveries return
 // 204 without reprocessing.
-func (s *Server) handlePaymentIntentWebhook(w http.ResponseWriter, r *http.Request) {
-	if s.paymentIntentQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Request) {
+	if h.paymentIntentQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -544,26 +563,26 @@ func (s *Server) handlePaymentIntentWebhook(w http.ResponseWriter, r *http.Reque
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 512*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("webhook.invalid_body", "cannot read request body: "+err.Error(), r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("webhook.invalid_body", "cannot read request body: "+err.Error(), r))
 		return
 	}
 	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("webhook.empty_body", "request body is required", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("webhook.empty_body", "request body is required", r))
 		return
 	}
 
 	var req webhookPaymentIntentRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("webhook.invalid_json", "request body is not valid JSON", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("webhook.invalid_json", "request body is not valid JSON", r))
 		return
 	}
 
 	if req.ProviderPaymentID == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("webhook.missing_provider_payment_id", "provider_payment_id is required", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("webhook.missing_provider_payment_id", "provider_payment_id is required", r))
 		return
 	}
 	if req.EventType == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("webhook.missing_event_type", "event_type is required", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("webhook.missing_event_type", "event_type is required", r))
 		return
 	}
 
@@ -574,7 +593,7 @@ func (s *Server) handlePaymentIntentWebhook(w http.ResponseWriter, r *http.Reque
 		if !ok {
 			// Unknown event type — acknowledge without processing (common for
 			// provider events we don't handle, e.g. "payment_intent.created").
-			writeJSON(w, http.StatusOK, map[string]any{
+			httputil.WriteJSON(w, http.StatusOK, map[string]any{
 				"acknowledged": true,
 				"event_type":   req.EventType,
 				"processed":    false,
@@ -586,17 +605,17 @@ func (s *Server) handlePaymentIntentWebhook(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Look up the payment intent by provider ID.
-	pi, err := s.paymentIntentQueries.GetPaymentIntentByProviderID(ctx, req.ProviderPaymentID)
+	pi, err := h.paymentIntentQueries.GetPaymentIntentByProviderID(ctx, req.ProviderPaymentID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("webhook.intent_not_found", "no payment intent found for provider_payment_id", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("webhook.intent_not_found", "no payment intent found for provider_payment_id", r))
 			return
 		}
-		s.logger.Error("webhook: intent lookup failed",
+		h.logger.Error("webhook: intent lookup failed",
 			slog.String("provider_payment_id", req.ProviderPaymentID),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("webhook.lookup_failed", "failed to locate payment intent", r))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("webhook.lookup_failed", "failed to locate payment intent", r))
 		return
 	}
 
@@ -606,12 +625,12 @@ func (s *Server) handlePaymentIntentWebhook(w http.ResponseWriter, r *http.Reque
 	if req.EventPayload != nil {
 		eventPayload, _ = json.Marshal(req.EventPayload)
 	}
-	_, evtErr := s.paymentIntentQueries.InsertPaymentIntentEvent(ctx,
+	_, evtErr := h.paymentIntentQueries.InsertPaymentIntentEvent(ctx,
 		pi.ID, req.ProviderPaymentID, req.EventType, eventPayload, &targetState,
 	)
 	if errors.Is(evtErr, pgx.ErrNoRows) {
 		// Duplicate event delivery — already processed, return 204.
-		s.logger.Info("webhook: duplicate event; skipping",
+		h.logger.Info("webhook: duplicate event; skipping",
 			slog.String("provider_payment_id", req.ProviderPaymentID),
 			slog.String("event_type", req.EventType),
 		)
@@ -619,12 +638,12 @@ func (s *Server) handlePaymentIntentWebhook(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if evtErr != nil {
-		s.logger.Error("webhook: event record failed",
+		h.logger.Error("webhook: event record failed",
 			slog.String("provider_payment_id", req.ProviderPaymentID),
 			slog.String("event_type", req.EventType),
 			slog.String("error", evtErr.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("webhook.event_record_failed", "failed to record webhook event", r))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("webhook.event_record_failed", "failed to record webhook event", r))
 		return
 	}
 
@@ -632,7 +651,7 @@ func (s *Server) handlePaymentIntentWebhook(w http.ResponseWriter, r *http.Reque
 	currentState := pi.State
 	if isTerminalPaymentIntentState(currentState) {
 		// Already terminal — acknowledge without transitioning.
-		writeJSON(w, http.StatusOK, map[string]any{
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{
 			"acknowledged": true,
 			"event_type":   req.EventType,
 			"processed":    false,
@@ -644,7 +663,7 @@ func (s *Server) handlePaymentIntentWebhook(w http.ResponseWriter, r *http.Reque
 	validTargets := validPaymentIntentTransitions[currentState]
 	if !validTargets[targetState] {
 		// Transition not valid — acknowledge without transitioning (event recorded).
-		writeJSON(w, http.StatusOK, map[string]any{
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{
 			"acknowledged": true,
 			"event_type":   req.EventType,
 			"processed":    false,
@@ -653,23 +672,23 @@ func (s *Server) handlePaymentIntentWebhook(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	updated, err := s.paymentIntentQueries.UpdatePaymentIntentState(ctx,
+	updated, err := h.paymentIntentQueries.UpdatePaymentIntentState(ctx,
 		pi.ID, targetState,
 		req.ScaRedirectURL, req.ClientSecret,
 		req.FailureCode, req.FailureMessage,
 		nil, // provider_payment_id already set
 	)
 	if err != nil {
-		s.logger.Error("webhook: state update failed",
+		h.logger.Error("webhook: state update failed",
 			slog.String("id", pi.ID.String()),
 			slog.String("target_state", targetState),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("webhook.state_update_failed", "failed to update payment intent state", r))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("webhook.state_update_failed", "failed to update payment intent state", r))
 		return
 	}
 
-	s.logger.Info("webhook: state transitioned",
+	h.logger.Info("webhook: state transitioned",
 		slog.String("id", pi.ID.String()),
 		slog.String("provider_payment_id", req.ProviderPaymentID),
 		slog.String("event_type", req.EventType),
@@ -678,38 +697,40 @@ func (s *Server) handlePaymentIntentWebhook(w http.ResponseWriter, r *http.Reque
 	)
 
 	// Issue tickets when payment reaches succeeded state and a checkout session is linked.
-	// Idempotent: issueTicketsForCheckout returns existing tickets if already issued.
+	// Idempotent: issueTickets returns existing tickets if already issued.
 	if updated.State == "succeeded" && updated.CheckoutSessionID != nil &&
-		s.ticketQueries != nil && s.checkoutQueries != nil && s.reservationQueries != nil {
-		cs, csErr := s.checkoutQueries.GetCheckoutSessionByID(ctx, *updated.CheckoutSessionID)
+		h.ticketQueries != nil && h.checkoutQueries != nil && h.reservationQueries != nil && h.issueTickets != nil {
+		cs, csErr := h.checkoutQueries.GetCheckoutSessionByID(ctx, *updated.CheckoutSessionID)
 		if csErr != nil {
 			// Log but do not fail the webhook — payment state is already persisted.
-			s.logger.Error("webhook: checkout lookup failed for ticket issuance",
+			h.logger.Error("webhook: checkout lookup failed for ticket issuance",
 				slog.String("payment_intent_id", pi.ID.String()),
 				slog.String("checkout_session_id", updated.CheckoutSessionID.String()),
 				slog.String("error", csErr.Error()),
 			)
 		} else {
-			tickets, ticketErr := s.issueTicketsForCheckout(ctx, cs)
+			tickets, ticketErr := h.issueTickets(ctx, cs)
 			if ticketErr != nil {
-				s.logger.Error("webhook: ticket issuance failed",
+				h.logger.Error("webhook: ticket issuance failed",
 					slog.String("payment_intent_id", pi.ID.String()),
 					slog.String("checkout_session_id", cs.ID.String()),
 					slog.String("error", ticketErr.Error()),
 				)
 			} else {
-				s.logger.Info("webhook: tickets issued on payment success",
+				h.logger.Info("webhook: tickets issued on payment success",
 					slog.String("payment_intent_id", pi.ID.String()),
 					slog.String("checkout_session_id", cs.ID.String()),
 					slog.Int("count", len(tickets)),
 				)
 				// Enqueue email delivery jobs (feature #141). Best-effort.
-				s.enqueueDeliveryJobs(ctx, tickets)
+				if h.enqueueDelivery != nil {
+					h.enqueueDelivery(ctx, tickets)
+				}
 			}
 		}
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"acknowledged":   true,
 		"event_type":     req.EventType,
 		"processed":      true,

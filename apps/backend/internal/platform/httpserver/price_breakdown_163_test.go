@@ -109,9 +109,11 @@ func TestPriceBreakdown163_Step1_FileExists(t *testing.T) {
 	if !filepath.IsAbs(thisFile) {
 		t.Skip("non-absolute path (trimpath build)")
 	}
-	target := filepath.Join(filepath.Dir(thisFile), "price_breakdown.go")
+	// price_breakdown.go was moved into the hcheckout/ sub-package as part of
+	// the httpserver refactor; the structural existence check now points there.
+	target := filepath.Join(filepath.Dir(thisFile), "hcheckout", "price_breakdown.go")
 	if _, err := os.Stat(target); err != nil {
-		t.Errorf("price_breakdown.go not found: %v", err)
+		t.Errorf("hcheckout/price_breakdown.go not found: %v", err)
 	}
 }
 
