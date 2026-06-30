@@ -476,6 +476,23 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "scanner_snapshot.go"),
 		}
+	// External scanner callback ingest (feature #293, S-2)
+	case "scanner_callback.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "scanner_callback.go"),
+		}
+	case "0055_scan_events.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0055_scan_events.sql"),
+		}
+	case "mount_scanning.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "mount_scanning.go"),
+		}
+	case "mount_v1.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "mount_v1.go"),
+		}
 	// Bil24 command gateway (feature #157)
 	case "bil24_compat.go":
 		candidates = []string{

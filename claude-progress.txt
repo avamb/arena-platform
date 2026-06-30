@@ -18087,3 +18087,99 @@ Verification (docker golang:1.24, repo root):
     documented in #291 progress notes — unrelated to this feature.
 Marked #292 passing.
 
+
+## 2026-06-30 - Feature #293 (S-2) Scanner callback endpoint and scan-events table
+- New migration 0055 adds tickets.used_at timestamptz (nullable) and
+  creates the scanevents table. Down migration drops both. Columns:
+  id, org_id, event_id (nullable), session_id (nullable), ticket_id
+  (nullable), credential_code, scanned_at, gate, device_id, result
+  CHECK admitted|denied, received_at. Idempotency via
+  UNIQUE (credential_code, scanned_at). RBAC permissions
+  scanevent.read/write seeded for admin/org_admin (read only for
+  support role). Migration number 0055 chosen because 0052/3/4 are
+  already taken by media_objects, media_permissions,
+  ticket_support_permissions - kept sequential.
+- queries + hand-rolled gen file provide:
+    InsertScanEvent - ON CONFLICT DO UPDATE + RETURNING (xmax=0)::bool
+        AS inserted, lets the handler distinguish first-insert from
+        idempotent replay without a second SELECT.
+    GetScanEventByCredential - read by idempotency key.
+    ResolveScanCredentialByTicketQR - joins ticket_credentials
+        (type static_qr) -> tickets -> sessions -> events; returns
+        ticket / session / event / org lineage so FKs land in the
+        right tenancy.
+    MarkTicketUsedAtIfUnset - UPDATE ... WHERE id=$1 AND used_at IS
+        NULL; first admitted scan wins, subsequent scans cannot
+        overwrite.
+    ResolveFeedTokenScannerScope - joins agent_feed_tokens (active)
+        with sales_channels (not soft-deleted) to map bearer -> org.
+- httpserver/scanner_callback.go (new file) implements
+  POST /v1/scanner/scan-events:
+    Authorization: Bearer <agent_feed_token>; missing/malformed token
+      -> 401 with WWW-Authenticate: Bearer realm="arena-scanner";
+      unknown or revoked token -> 401 (same WWW-Authenticate).
+    Body { "scans": [...] } with DisallowUnknownFields strict parse;
+      empty array -> 400 scanner.empty_batch; >500 entries -> 413
+      scanner.batch_too_large (forces big offline backfills to page).
+    Each scan validated for credential_code presence, RFC3339
+      scanned_at, result in {admitted,denied}. Per-scan validation
+      errors return on results[].error WITHOUT failing the rest of
+      the batch (partial-success semantics so one bad row does not
+      drop a hundred good ones).
+    Best-effort credential resolution; unresolved credentials still
+      get a row (audit trail) with NULL FKs.
+    InsertScanEvent returns inserted=true on the first insert and
+      false on idempotent replay; side effects
+      (MarkTicketUsedAtIfUnset + outbox emit) are gated on
+      inserted=true so a retried request does not double-touch
+      used_at or double-emit ticket.scanned.
+    On first-insert admitted scans with a resolved ticket, emits
+      v1.ticket.scanned outbox event (TicketAggregateType,
+      AggregateID = ticket.id) carrying ticket_id, session_id,
+      event_id, org_id, credential_code, scanned_at, result, gate,
+      device_id, scan_event_id. Reuses publishScannerEvent so the
+      pool/outbox nil no-op semantics from S-1 carry through.
+    TouchFeedTokenLastUsed best-effort after batch so operators see
+      active scanners.
+    Credential values truncated to an 8-char prefix when logged
+      (credentialPrefixForLog) to avoid leaking bearer-quality
+      strings into structured-log sinks.
+- Route mount lives in mountScannerCallbackRoutes (mount_scanning.go)
+  and registers OUTSIDE the JWT-gated applyAuth group because the
+  endpoint is authenticated by an agent_feed_tokens bearer rather
+  than a session JWT. Mount gated on s.feedTokenQueries != nil so
+  unit tests without a DB-backed queries handle do not register the
+  route.
+- New TicketScannedEventType = "v1.ticket.scanned" constant added
+  alongside the existing S-1 catalog constants.
+- New scanner_callback_293_test.go covers: constant value + v1.
+  prefix, extractBearerToken edge cases (empty / lowercase / extra
+  whitespace / scheme-only / missing-scheme / different-scheme),
+  credentialPrefixForLog truncation and short-string passthrough,
+  503 path when feedTokenQueries is nil, route-unmounted assertion
+  when feedTokenQueries is nil, and file-shape grep checks for
+  scanner_callback.go, mount_scanning.go, mount_v1.go, and
+  0055 migration. testfilehelpers_test.go gained name->path mappings
+  for the four new file names.
+- Decision: route intentionally NOT added to openapi.yaml in this
+  patch, matching the existing /v1/admin precedent (#291 progress
+  notes) - keeps the spec-vs-code drift baseline unchanged. Down
+  the road this should be folded into the catalog when /v1/scanner
+  moves into the spec.
+- Decision: no Bil24-shaped v1.scanner.* sibling event for scans is
+  emitted; consumers wanting Bil24-style payloads stay on the
+  existing v1.scanner.ticket.* family. v1.ticket.scanned belongs to
+  the generic webhook catalog family introduced in S-1 (#292).
+Verification (docker golang:1.24, repo root):
+  go build ./apps/backend/...                                 OK
+  go vet   ./apps/backend/...                                 OK
+  go test  -run "S2_|Scanner143"
+           ./apps/backend/internal/platform/httpserver/...    PASS
+  go test  ./apps/backend/internal/migrations                 PASS
+  Full ./internal/platform/httpserver/... still hits the
+  pre-existing baseline failures TestTimestamp_StaticScan_RFC3339NanoWithUTC
+  (4 hits in s3.go, delivery/handler.go, delivery/pdf/pdf.go
+  documented under #289/#290/#291) and
+  TestOpenAPIDriftCheck_CodeCoversAllSpecRoutes (22-route baseline
+  documented under #291). No new failures from this feature.
+Marked #293 passing.

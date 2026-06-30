@@ -41,6 +41,19 @@ func (s *Server) mountScannerRoutes(r chi.Router) {
 	})
 }
 
+// mountScannerCallbackRoutes mounts the external-scanner ingest endpoint
+// (feature #293 / S-2).  The route is intentionally OUTSIDE the JWT-gated
+// applyAuth group above because it is authenticated via an agent_feed_tokens
+// bearer presented in the Authorization header rather than a session JWT.
+// Mount condition: a feed-token queries handle must be wired so the bearer
+// can be validated against agent_feed_tokens at request time.
+func (s *Server) mountScannerCallbackRoutes(r chi.Router) {
+	if s.feedTokenQueries == nil {
+		return
+	}
+	r.Post("/scanner/scan-events", s.handleScannerScanEvents)
+}
+
 // mountBarcodeBatchRoutes mounts external barcode batch import endpoints
 // (feature #146).
 func (s *Server) mountBarcodeBatchRoutes(r chi.Router) {

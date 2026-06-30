@@ -46,6 +46,7 @@ func (s *Server) mountV1Routes() {
 		s.mountRefundRoutes(r)
 		s.mountBarcodeRoutes(r)
 		s.mountScannerRoutes(r)
+		s.mountScannerCallbackRoutes(r)
 		s.mountReportRoutes(r)
 		s.mountPublicFeedRoutes(r)
 		s.mountBillingRoutes(r)
