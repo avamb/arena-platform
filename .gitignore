@@ -75,3 +75,4 @@ ops/loadtest/results/*.gz
 *\;*
 Projectsarena_new/
 /Projects*/
+.gomodcache/
