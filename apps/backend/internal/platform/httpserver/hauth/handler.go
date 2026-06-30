@@ -19,6 +19,20 @@ const (
 	loginRateLimitWindow   = 15 * time.Minute
 )
 
+// Exported constants for use by the httpserver shim layer (auth_shims.go).
+const (
+	LoginRateLimitAttempts = loginRateLimitAttempts
+	LoginRateLimitWindow   = loginRateLimitWindow
+)
+
+// Exported TTL constants for use by the httpserver shim layer (auth_login_test.go).
+// These are defined in login.go but re-exported here so the shim file can forward
+// them as package-level constants without importing login.go symbols directly.
+const (
+	AccessTokenTTL  = accessTokenTTL
+	RefreshTokenTTL = refreshTokenTTL
+)
+
 // DB is the minimal database interface required by auth handlers.
 type DB interface {
 	BeginTx(ctx context.Context, opts pgx.TxOptions) (pgx.Tx, error)
@@ -58,5 +72,29 @@ func New(
 			MaxAttempts: loginRateLimitAttempts,
 			Window:      loginRateLimitWindow,
 		}),
+	}
+}
+
+// NewWithLimiter is like New but accepts an external ratelimit.Limiter instead of
+// constructing the default sliding-window limiter. Used by the httpserver shim layer
+// (auth_shims.go) so that auth_login_test.go can substitute a test-controlled limiter
+// via the package-level loginRateLimiter variable.
+func NewWithLimiter(
+	db DB,
+	auditW audit.Writer,
+	store redissession.Store,
+	jwtSecret, issuer, audience string,
+	maxSessions int,
+	limiter ratelimit.Limiter,
+) *Handler {
+	return &Handler{
+		db:                    db,
+		audit:                 auditW,
+		sessionStore:          store,
+		jwtSecret:             jwtSecret,
+		jwtIssuer:             issuer,
+		jwtAudience:           audience,
+		maxConcurrentSessions: maxSessions,
+		rateLimiter:           limiter,
 	}
 }

@@ -30,6 +30,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	ticketsdomain "github.com/abhteam/arena_new/apps/backend/internal/domain/tickets"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -358,4 +359,37 @@ func (s *Server) handleQuote(w http.ResponseWriter, r *http.Request) {
 			PromoCode:        appliedPromoCode,
 		},
 	})
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Promo validation helpers — kept here so handleQuote can call validatePromoCode
+// without importing hcheckout (which would create a circular dependency).
+// These are identical to the copies in hcheckout/promo_codes.go.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// computeDiscount is a thin forwarder to ticketsdomain.ComputeDiscount.
+// Retained in this package so handleQuote (above) and any test that imports
+// httpserver directly continue to compile after promo_codes.go was moved to
+// the hcheckout sub-package.
+func computeDiscount(discountType string, discountValue, orderAmount int64) int64 {
+	return ticketsdomain.ComputeDiscount(discountType, discountValue, orderAmount)
+}
+
+// validatePromoCode checks whether a promo code is applicable for a given order.
+// Returns (discountAmount, errorCode); errorCode is empty when the code is valid.
+// Retained here alongside computeDiscount for use by handleQuote.
+func validatePromoCode(pc gen.PromoCodeRow, orderAmount int64, now time.Time) (int64, string) {
+	if pc.Status != "active" {
+		return 0, "promo.not_active"
+	}
+	if pc.ValidFrom != nil && now.Before(*pc.ValidFrom) {
+		return 0, "promo.not_yet_valid"
+	}
+	if pc.ValidUntil != nil && now.After(*pc.ValidUntil) {
+		return 0, "promo.expired"
+	}
+	if orderAmount < pc.MinOrderAmount {
+		return 0, "promo.invalid_order_amount"
+	}
+	return computeDiscount(pc.DiscountType, pc.DiscountValue, orderAmount), ""
 }

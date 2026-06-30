@@ -52,6 +52,13 @@ func loginRateLimiterKey(r *http.Request, email string) string {
 	return httputil.ClientIP(r) + ":" + email
 }
 
+// LoginRateLimiterKey is the exported form of loginRateLimiterKey, for use by
+// the httpserver shim layer (auth_login_test.go calls loginRateLimiterKey directly
+// from package httpserver via the shim forwarder in auth_shims.go).
+func LoginRateLimiterKey(r *http.Request, email string) string {
+	return loginRateLimiterKey(r, email)
+}
+
 // Login serves POST /v1/auth/login.
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
