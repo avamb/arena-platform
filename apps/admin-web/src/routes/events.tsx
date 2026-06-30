@@ -1,5 +1,15 @@
 /**
- * Events admin module (feature #281 / E-3).
+ * Events admin module (feature #281 / E-3, #282 / E-4).
+ *
+ * Sessions sub-table CRUD (feature #282) lives in SessionsTab below and
+ * wires the full lifecycle of the session API:
+ *   POST   /v1/organizations/{org_id}/events/{event_id}/sessions
+ *   PATCH  /v1/organizations/{org_id}/events/{event_id}/sessions/{id}
+ *   DELETE /v1/organizations/{org_id}/events/{event_id}/sessions/{id}
+ * Client-side guards mirror the backend: end_at > start_at and
+ * capacity_total > 0 are enforced before submit; sibling-overlap is
+ * detected on the loaded list and surfaced as a non-blocking warning
+ * (the backend also reports has_overlapping_sessions on the envelope).
  *
  * Replaces the SAUI-12 /events placeholder shell with a real list +
  * detail screen backed by the events API in
@@ -56,6 +66,7 @@
 import { createRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Fragment,
   useEffect,
   useMemo,
   useState,
@@ -293,6 +304,199 @@ export function posterInitial(name: string): string {
 export const PAGE_SIZE = 25;
 
 // ---------------------------------------------------------------------------
+// Session form helpers (exported for unit tests)
+// ---------------------------------------------------------------------------
+
+export const SESSION_STATUSES = [
+  "draft",
+  "scheduled",
+  "cancelled",
+  "completed",
+] as const;
+export type SessionStatus = (typeof SESSION_STATUSES)[number];
+
+export interface SessionFormValues {
+  readonly start_at: string;
+  readonly end_at: string;
+  readonly capacity_total: string;
+  readonly status: SessionStatus;
+}
+
+export interface SessionFormErrors {
+  readonly start_at?: string;
+  readonly end_at?: string;
+  readonly capacity_total?: string;
+  readonly status?: string;
+}
+
+/**
+ * Parse an `<input type="datetime-local">` value (YYYY-MM-DDTHH:MM, no
+ * timezone) into a Date interpreted in the operator's local time. Returns
+ * null on a blank or unparseable input.
+ */
+export function parseLocalDatetime(value: string): Date | null {
+  const trimmed = value.trim();
+  if (trimmed === "") {
+    return null;
+  }
+  // datetime-local strings are tz-naive. The rest of the module renders
+  // and round-trips them through UTC (toLocalDatetimeValue → toRFC3339),
+  // so we interpret the value as UTC by appending Z; passing the raw
+  // string to `new Date()` would otherwise apply the operator's local
+  // timezone shift and silently break overlap comparisons against the
+  // UTC ISO timestamps returned by the API.
+  const iso = /Z$|[+-]\d{2}:?\d{2}$/.test(trimmed) ? trimmed : `${trimmed}Z`;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) {
+    return null;
+  }
+  return d;
+}
+
+/**
+ * Convert an RFC3339 timestamp into the YYYY-MM-DDTHH:MM string accepted
+ * by `<input type="datetime-local">`. We render in UTC to keep the round
+ * trip lossless when the operator is comparing against the table column,
+ * which is also rendered in UTC.
+ */
+export function toLocalDatetimeValue(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) {
+    return "";
+  }
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}` +
+    `T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`
+  );
+}
+
+/**
+ * Convert a datetime-local value back to RFC3339 (UTC). The value is
+ * assumed to represent a UTC wall-clock (matches toLocalDatetimeValue),
+ * so we append :00Z without applying a timezone shift.
+ */
+export function toRFC3339(value: string): string {
+  return `${value}:00Z`;
+}
+
+/** Empty form values suitable for the "Add session" form. */
+export function emptySessionForm(): SessionFormValues {
+  return {
+    start_at: "",
+    end_at: "",
+    capacity_total: "",
+    status: "draft",
+  };
+}
+
+/** Populate a form from an existing session for editing. */
+export function sessionToForm(s: {
+  start_at: string;
+  end_at: string;
+  capacity_total: number;
+  status: string;
+}): SessionFormValues {
+  return {
+    start_at: toLocalDatetimeValue(s.start_at),
+    end_at: toLocalDatetimeValue(s.end_at),
+    capacity_total: String(s.capacity_total),
+    status: isSessionStatus(s.status) ? s.status : "draft",
+  };
+}
+
+export function isSessionStatus(value: string): value is SessionStatus {
+  return (SESSION_STATUSES as readonly string[]).includes(value);
+}
+
+/**
+ * Client-side validation mirroring the server-side guards from
+ * sessions.go: start_at and end_at are required RFC3339 timestamps,
+ * end_at must be strictly after start_at, capacity_total must be a
+ * positive integer, and status must belong to the catalog state
+ * machine. Returns an errors map keyed by field; empty map means valid.
+ */
+export function validateSessionForm(
+  values: SessionFormValues,
+): SessionFormErrors {
+  const errors: { -readonly [K in keyof SessionFormErrors]?: string } = {};
+
+  const start = parseLocalDatetime(values.start_at);
+  if (start === null) {
+    errors.start_at = "Start is required.";
+  }
+  const end = parseLocalDatetime(values.end_at);
+  if (end === null) {
+    errors.end_at = "End is required.";
+  }
+  if (start !== null && end !== null && end.getTime() <= start.getTime()) {
+    errors.end_at = "End must be after start.";
+  }
+
+  const capStr = values.capacity_total.trim();
+  if (capStr === "") {
+    errors.capacity_total = "Capacity is required.";
+  } else if (!/^\d+$/.test(capStr)) {
+    errors.capacity_total = "Capacity must be a whole number.";
+  } else {
+    const cap = Number(capStr);
+    if (cap <= 0) {
+      errors.capacity_total = "Capacity must be greater than zero.";
+    } else if (cap > 2_000_000_000) {
+      // The backend stores capacity_total as int32; refuse anything that
+      // would overflow before we hit the wire.
+      errors.capacity_total = "Capacity is too large.";
+    }
+  }
+
+  if (!isSessionStatus(values.status)) {
+    errors.status = "Status is invalid.";
+  }
+
+  return errors;
+}
+
+/**
+ * Find sibling sessions in `siblings` whose time range overlaps the
+ * supplied [start, end) window. Two ranges overlap iff
+ * start < otherEnd AND end > otherStart. The candidate session (when
+ * editing) can be excluded by id. Returns the overlapping sessions in
+ * input order; an empty array means no overlap.
+ *
+ * The backend exposes an authoritative `has_overlapping_sessions` flag
+ * on each list/get response; this helper exists so the form can warn
+ * the operator BEFORE the round-trip and so the warning can identify
+ * which siblings will conflict.
+ */
+export function findOverlappingSessions<
+  T extends { id: string; start_at: string; end_at: string },
+>(
+  siblings: readonly T[],
+  start_at: string,
+  end_at: string,
+  excludeID: string | null,
+): readonly T[] {
+  const start = parseLocalDatetime(start_at);
+  const end = parseLocalDatetime(end_at);
+  if (start === null || end === null || end.getTime() <= start.getTime()) {
+    return [];
+  }
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+  return siblings.filter((s) => {
+    if (excludeID !== null && s.id === excludeID) {
+      return false;
+    }
+    const otherStart = new Date(s.start_at).getTime();
+    const otherEnd = new Date(s.end_at).getTime();
+    if (Number.isNaN(otherStart) || Number.isNaN(otherEnd)) {
+      return false;
+    }
+    return startMs < otherEnd && endMs > otherStart;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Nav entry binding
 // ---------------------------------------------------------------------------
 
@@ -317,6 +521,9 @@ function EventsModule() {
   const { permissions } = useAuth();
   const canPublish = permissions.has("event.publish");
   const canReadPublications = permissions.has("publication.read");
+  const canCreateSession = permissions.has("session.create");
+  const canUpdateSession = permissions.has("session.update");
+  const canDeleteSession = permissions.has("session.delete");
 
   const [visibilityFilter, setVisibilityFilter] =
     useState<EventVisibilityFilter>("all");
@@ -467,6 +674,9 @@ function EventsModule() {
           event={selectedEvent}
           canPublish={canPublish}
           canReadPublications={canReadPublications}
+          canCreateSession={canCreateSession}
+          canUpdateSession={canUpdateSession}
+          canDeleteSession={canDeleteSession}
           onClose={() => setSelectedID(null)}
         />
       ) : null}
@@ -824,6 +1034,9 @@ interface DrawerProps {
   event: EventItem;
   canPublish: boolean;
   canReadPublications: boolean;
+  canCreateSession: boolean;
+  canUpdateSession: boolean;
+  canDeleteSession: boolean;
   onClose: () => void;
 }
 
@@ -831,6 +1044,9 @@ function EventDrawer({
   event,
   canPublish,
   canReadPublications,
+  canCreateSession,
+  canUpdateSession,
+  canDeleteSession,
   onClose,
 }: DrawerProps) {
   const [tab, setTab] = useState<DrawerTab>("overview");
@@ -881,7 +1097,14 @@ function EventDrawer({
           {tab === "overview" ? (
             <OverviewTab event={event} canPublish={canPublish} />
           ) : null}
-          {tab === "sessions" ? <SessionsTab event={event} /> : null}
+          {tab === "sessions" ? (
+            <SessionsTab
+              event={event}
+              canCreate={canCreateSession}
+              canUpdate={canUpdateSession}
+              canDelete={canDeleteSession}
+            />
+          ) : null}
           {tab === "tiers" ? <TiersTab event={event} /> : null}
           {tab === "publications" ? (
             <PublicationsTab event={event} canRead={canReadPublications} />
@@ -1009,9 +1232,30 @@ function OverviewTab({
   );
 }
 
-function SessionsTab({ event }: { event: EventItem }) {
+interface SessionEnvelope {
+  readonly session: SessionItem;
+}
+
+type SessionEditorMode =
+  | { kind: "closed" }
+  | { kind: "create" }
+  | { kind: "edit"; session: SessionItem };
+
+function SessionsTab({
+  event,
+  canCreate,
+  canUpdate,
+  canDelete,
+}: {
+  event: EventItem;
+  canCreate: boolean;
+  canUpdate: boolean;
+  canDelete: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const queryKey = ["events", "detail", event.id, "sessions"] as const;
   const query = useQuery<SessionListEnvelope, ApiError>({
-    queryKey: ["events", "detail", event.id, "sessions"],
+    queryKey,
     queryFn: () =>
       authedFetch<SessionListEnvelope>({
         method: "GET",
@@ -1020,6 +1264,30 @@ function SessionsTab({ event }: { event: EventItem }) {
     retry: false,
     refetchOnWindowFocus: false,
   });
+
+  const [editor, setEditor] = useState<SessionEditorMode>({ kind: "closed" });
+  const [confirmDeleteID, setConfirmDeleteID] = useState<string | null>(null);
+  const [actionErr, setActionErr] = useState<string | null>(null);
+  const [actionOk, setActionOk] = useState<string | null>(null);
+
+  const deleteMutation = useMutation<void, ApiError, string>({
+    mutationFn: (id) =>
+      authedFetch<void>({
+        method: "DELETE",
+        path: `/v1/organizations/${event.org_id}/events/${event.id}/sessions/${id}`,
+      }),
+    onSuccess: (_data, id) => {
+      setActionErr(null);
+      setActionOk(`Deleted session ${shortenUUID(id)}.`);
+      setConfirmDeleteID(null);
+      void queryClient.invalidateQueries({ queryKey });
+    },
+    onError: (err) => {
+      setActionOk(null);
+      setActionErr(mapSessionError(err));
+    },
+  });
+
   if (query.isPending) {
     return <div style={statusBoxStyle}>Loading sessions…</div>;
   }
@@ -1032,37 +1300,454 @@ function SessionsTab({ event }: { event: EventItem }) {
     );
   }
   const sessions = query.data?.sessions ?? [];
-  if (sessions.length === 0) {
-    return (
-      <div style={statusBoxStyle} data-testid="events-sessions-empty">
-        No sessions have been scheduled for this event.
-      </div>
-    );
-  }
+  const serverFlagsOverlap = Boolean(query.data?.has_overlapping_sessions);
+
   return (
-    <div style={tableWrapStyle}>
-      <table style={tableStyle} data-testid="events-sessions-table">
-        <thead>
-          <tr>
-            <th scope="col" style={thStyle}>Starts</th>
-            <th scope="col" style={thStyle}>Ends</th>
-            <th scope="col" style={thStyle}>Capacity</th>
-            <th scope="col" style={thStyle}>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sessions.map((s) => (
-            <tr key={s.id} data-testid={`events-session-${s.id}`}>
-              <td style={tdStyle}>{formatDateTime(s.start_at)}</td>
-              <td style={tdStyle}>{formatDateTime(s.end_at)}</td>
-              <td style={tdStyle}>{s.capacity_total.toLocaleString()}</td>
-              <td style={tdStyle}>{s.status}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div style={tabBodyStyle} data-testid="events-sessions-tab">
+      <div style={sessionsHeaderStyle}>
+        <div>
+          <div style={detailLabelStyle}>Sessions</div>
+          <div style={mutedHintStyle}>
+            {sessions.length} session{sessions.length === 1 ? "" : "s"} for this
+            event.
+            {serverFlagsOverlap
+              ? " Server reports overlapping sessions exist."
+              : ""}
+          </div>
+        </div>
+        {canCreate ? (
+          <button
+            type="button"
+            style={primaryButtonStyle}
+            onClick={() => {
+              setActionErr(null);
+              setActionOk(null);
+              setEditor({ kind: "create" });
+            }}
+            data-testid="events-session-add"
+            disabled={editor.kind !== "closed"}
+          >
+            Add session
+          </button>
+        ) : (
+          <span style={mutedHintStyle}>
+            Adding a session requires <code style={monoStyle}>session.create</code>.
+          </span>
+        )}
+      </div>
+
+      {actionErr !== null ? (
+        <div style={formErrorStyle} role="alert" data-testid="events-session-action-error">
+          {actionErr}
+        </div>
+      ) : null}
+      {actionOk !== null ? (
+        <div style={successBoxStyle} role="status" data-testid="events-session-action-ok">
+          {actionOk}
+        </div>
+      ) : null}
+
+      {editor.kind === "create" ? (
+        <SessionEditor
+          event={event}
+          mode={editor}
+          siblings={sessions}
+          onClose={() => setEditor({ kind: "closed" })}
+          onSaved={(label) => {
+            setActionErr(null);
+            setActionOk(label);
+            setEditor({ kind: "closed" });
+            void queryClient.invalidateQueries({ queryKey });
+          }}
+          onError={(msg) => {
+            setActionErr(msg);
+            setActionOk(null);
+          }}
+        />
+      ) : null}
+
+      {sessions.length === 0 && editor.kind !== "create" ? (
+        <div style={statusBoxStyle} data-testid="events-sessions-empty">
+          No sessions have been scheduled for this event.
+        </div>
+      ) : null}
+
+      {sessions.length > 0 ? (
+        <div style={tableWrapStyle}>
+          <table style={tableStyle} data-testid="events-sessions-table">
+            <thead>
+              <tr>
+                <th scope="col" style={thStyle}>Starts</th>
+                <th scope="col" style={thStyle}>Ends</th>
+                <th scope="col" style={thStyle}>Capacity</th>
+                <th scope="col" style={thStyle}>Status</th>
+                <th scope="col" style={thStyle}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sessions.map((s) => {
+                const isEditing = editor.kind === "edit" && editor.session.id === s.id;
+                return (
+                  <Fragment key={s.id}>
+                    <tr data-testid={`events-session-${s.id}`}>
+                      <td style={tdStyle}>{formatDateTime(s.start_at)}</td>
+                      <td style={tdStyle}>{formatDateTime(s.end_at)}</td>
+                      <td style={tdStyle}>{s.capacity_total.toLocaleString()}</td>
+                      <td style={tdStyle}>{s.status}</td>
+                      <td style={tdStyle}>
+                        <div style={rowActionsStyle}>
+                          {canUpdate ? (
+                            <button
+                              type="button"
+                              style={refreshButtonStyle}
+                              onClick={() => {
+                                setActionErr(null);
+                                setActionOk(null);
+                                setEditor({ kind: "edit", session: s });
+                              }}
+                              data-testid={`events-session-edit-${s.id}`}
+                              disabled={isEditing}
+                            >
+                              Edit
+                            </button>
+                          ) : null}
+                          {canDelete ? (
+                            <button
+                              type="button"
+                              style={dangerButtonStyle}
+                              onClick={() => {
+                                setActionErr(null);
+                                setActionOk(null);
+                                setConfirmDeleteID(s.id);
+                              }}
+                              data-testid={`events-session-delete-${s.id}`}
+                              disabled={deleteMutation.isPending}
+                            >
+                              Delete
+                            </button>
+                          ) : null}
+                          {!canUpdate && !canDelete ? (
+                            <span style={mutedHintStyle}>read-only</span>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                    {confirmDeleteID === s.id ? (
+                      <tr>
+                        <td colSpan={5} style={tdStyle}>
+                          <div
+                            style={confirmDeleteStyle}
+                            data-testid={`events-session-confirm-${s.id}`}
+                          >
+                            <span>
+                              Delete session {formatDateTime(s.start_at)}? This
+                              cannot be undone.
+                            </span>
+                            <div style={rowActionsStyle}>
+                              <button
+                                type="button"
+                                style={dangerButtonStyle}
+                                onClick={() => deleteMutation.mutate(s.id)}
+                                disabled={deleteMutation.isPending}
+                                data-testid={`events-session-confirm-yes-${s.id}`}
+                              >
+                                {deleteMutation.isPending ? "Deleting…" : "Yes, delete"}
+                              </button>
+                              <button
+                                type="button"
+                                style={refreshButtonStyle}
+                                onClick={() => setConfirmDeleteID(null)}
+                                disabled={deleteMutation.isPending}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
+                    {isEditing ? (
+                      <tr>
+                        <td colSpan={5} style={tdStyle}>
+                          <SessionEditor
+                            event={event}
+                            mode={editor}
+                            siblings={sessions}
+                            onClose={() => setEditor({ kind: "closed" })}
+                            onSaved={(label) => {
+                              setActionErr(null);
+                              setActionOk(label);
+                              setEditor({ kind: "closed" });
+                              void queryClient.invalidateQueries({ queryKey });
+                            }}
+                            onError={(msg) => {
+                              setActionErr(msg);
+                              setActionOk(null);
+                            }}
+                          />
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
     </div>
   );
+}
+
+interface SessionEditorProps {
+  event: EventItem;
+  mode: Exclude<SessionEditorMode, { kind: "closed" }>;
+  siblings: readonly SessionItem[];
+  onClose: () => void;
+  onSaved: (successLabel: string) => void;
+  onError: (msg: string) => void;
+}
+
+function SessionEditor({
+  event,
+  mode,
+  siblings,
+  onClose,
+  onSaved,
+  onError,
+}: SessionEditorProps) {
+  const initialValues =
+    mode.kind === "edit" ? sessionToForm(mode.session) : emptySessionForm();
+  const [values, setValues] = useState<SessionFormValues>(initialValues);
+  const errors = useMemo(() => validateSessionForm(values), [values]);
+  const editingID = mode.kind === "edit" ? mode.session.id : null;
+  const overlaps = useMemo(
+    () =>
+      Object.keys(errors).length === 0
+        ? findOverlappingSessions(
+            siblings,
+            values.start_at,
+            values.end_at,
+            editingID,
+          )
+        : [],
+    [siblings, values.start_at, values.end_at, errors, editingID],
+  );
+
+  const mutation = useMutation<SessionEnvelope, ApiError, SessionFormValues>({
+    mutationFn: (v) => {
+      const body = {
+        start_at: toRFC3339(v.start_at),
+        end_at: toRFC3339(v.end_at),
+        capacity_total: Number(v.capacity_total),
+        status: v.status,
+      };
+      if (mode.kind === "create") {
+        return authedFetch<SessionEnvelope>({
+          method: "POST",
+          path: `/v1/organizations/${event.org_id}/events/${event.id}/sessions`,
+          body,
+        });
+      }
+      return authedFetch<SessionEnvelope>({
+        method: "PATCH",
+        path: `/v1/organizations/${event.org_id}/events/${event.id}/sessions/${mode.session.id}`,
+        body,
+      });
+    },
+    onSuccess: (data) => {
+      onSaved(
+        mode.kind === "create"
+          ? `Created session ${formatDateTime(data.session.start_at)}.`
+          : `Updated session ${shortenUUID(data.session.id)}.`,
+      );
+    },
+    onError: (err) => {
+      onError(mapSessionError(err));
+    },
+  });
+
+  const submit = () => {
+    if (Object.keys(errors).length > 0) {
+      return;
+    }
+    mutation.mutate(values);
+  };
+
+  return (
+    <form
+      style={editorFormStyle}
+      data-testid={
+        mode.kind === "create"
+          ? "events-session-form-create"
+          : `events-session-form-edit-${mode.session.id}`
+      }
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit();
+      }}
+    >
+      <div style={detailLabelStyle}>
+        {mode.kind === "create" ? "Add session" : "Edit session"}
+      </div>
+      <div style={editorGridStyle}>
+        <label style={editorFieldStyle}>
+          <span style={editorLabelStyle}>Start (UTC)</span>
+          <input
+            type="datetime-local"
+            value={values.start_at}
+            onChange={(e) => setValues({ ...values, start_at: e.target.value })}
+            style={editorInputStyle}
+            required
+            data-testid="events-session-input-start"
+          />
+          {errors.start_at !== undefined ? (
+            <span style={fieldErrorStyle}>{errors.start_at}</span>
+          ) : null}
+        </label>
+        <label style={editorFieldStyle}>
+          <span style={editorLabelStyle}>End (UTC)</span>
+          <input
+            type="datetime-local"
+            value={values.end_at}
+            onChange={(e) => setValues({ ...values, end_at: e.target.value })}
+            style={editorInputStyle}
+            required
+            data-testid="events-session-input-end"
+          />
+          {errors.end_at !== undefined ? (
+            <span style={fieldErrorStyle}>{errors.end_at}</span>
+          ) : null}
+        </label>
+        <label style={editorFieldStyle}>
+          <span style={editorLabelStyle}>Capacity</span>
+          <input
+            type="number"
+            min={1}
+            step={1}
+            value={values.capacity_total}
+            onChange={(e) =>
+              setValues({ ...values, capacity_total: e.target.value })
+            }
+            style={editorInputStyle}
+            required
+            data-testid="events-session-input-capacity"
+          />
+          {errors.capacity_total !== undefined ? (
+            <span style={fieldErrorStyle}>{errors.capacity_total}</span>
+          ) : null}
+        </label>
+        <label style={editorFieldStyle}>
+          <span style={editorLabelStyle}>Status</span>
+          <select
+            value={values.status}
+            onChange={(e) =>
+              setValues({
+                ...values,
+                status: isSessionStatus(e.target.value)
+                  ? e.target.value
+                  : "draft",
+              })
+            }
+            style={editorInputStyle}
+            data-testid="events-session-input-status"
+          >
+            {SESSION_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+          {errors.status !== undefined ? (
+            <span style={fieldErrorStyle}>{errors.status}</span>
+          ) : null}
+        </label>
+      </div>
+
+      {overlaps.length > 0 ? (
+        <div
+          style={overlapWarningStyle}
+          role="status"
+          data-testid="events-session-overlap-warning"
+        >
+          <strong>Overlap warning:</strong> this time range overlaps{" "}
+          {overlaps.length} existing session
+          {overlaps.length === 1 ? "" : "s"} on this event. The server will
+          accept the change but the list will be flagged as overlapping.
+          <ul style={overlapListStyle}>
+            {overlaps.map((o) => (
+              <li key={o.id}>
+                {formatDateTime(o.start_at)} → {formatDateTime(o.end_at)} (
+                <code style={monoStyle}>{shortenUUID(o.id)}</code>)
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <div style={rowActionsStyle}>
+        <button
+          type="submit"
+          style={primaryButtonStyle}
+          disabled={mutation.isPending || Object.keys(errors).length > 0}
+          data-testid="events-session-submit"
+        >
+          {mutation.isPending
+            ? "Saving…"
+            : mode.kind === "create"
+              ? "Create session"
+              : "Save changes"}
+        </button>
+        <button
+          type="button"
+          style={refreshButtonStyle}
+          onClick={onClose}
+          disabled={mutation.isPending}
+          data-testid="events-session-cancel"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * Translate an ApiError from a session endpoint into a human-readable
+ * sentence. Mirrors the error catalogue documented in sessions.go so the
+ * operator sees the same message regardless of whether the violation was
+ * detected client-side or rejected by the server.
+ */
+export function mapSessionError(err: ApiError): string {
+  switch (err.code) {
+    case "session.invalid_date_range":
+      return "End must be after start.";
+    case "session.invalid_capacity":
+      return "Capacity must be greater than zero.";
+    case "session.invalid_status":
+      return "Status must be one of draft, scheduled, cancelled, or completed.";
+    case "session.invalid_transition":
+      return err.message || "Status transition is not allowed.";
+    case "session.not_found":
+      return "Session no longer exists. The list will be refreshed.";
+    case "session.missing_start_at":
+      return "Start is required.";
+    case "session.missing_end_at":
+      return "End is required.";
+    case "session.invalid_start_at":
+    case "session.invalid_end_at":
+      return "Start and end must be valid timestamps.";
+    case "permissions.denied":
+      return "Your account is missing the permission required for this action.";
+    default:
+      if (err.status === 401) {
+        return "Session expired. Please sign in again.";
+      }
+      if (err.status === 403) {
+        return "Forbidden — missing required session permission.";
+      }
+      return `${err.message} (${err.code})`;
+  }
 }
 
 function TiersTab({ event }: { event: EventItem }) {
@@ -1720,4 +2405,89 @@ const scopedBadgeStyle: CSSProperties = {
 const monoStyle: CSSProperties = {
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
   fontSize: 12,
+};
+
+const sessionsHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: 12,
+};
+
+const rowActionsStyle: CSSProperties = {
+  display: "flex",
+  gap: 6,
+  flexWrap: "wrap",
+  alignItems: "center",
+};
+
+const editorFormStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 10,
+  padding: 12,
+  border: "1px solid #cbd5e1",
+  borderRadius: 6,
+  background: "#f8fafc",
+};
+
+const editorGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+  gap: 10,
+};
+
+const editorFieldStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+};
+
+const editorLabelStyle: CSSProperties = {
+  fontSize: 11,
+  fontWeight: 600,
+  color: "#475569",
+  textTransform: "uppercase",
+  letterSpacing: 0.4,
+};
+
+const editorInputStyle: CSSProperties = {
+  fontSize: 13,
+  padding: "6px 8px",
+  border: "1px solid #cbd5e1",
+  borderRadius: 4,
+  background: "#ffffff",
+  color: "#0f172a",
+};
+
+const fieldErrorStyle: CSSProperties = {
+  fontSize: 11,
+  color: "#b91c1c",
+};
+
+const overlapWarningStyle: CSSProperties = {
+  padding: 10,
+  border: "1px solid #fcd34d",
+  borderRadius: 4,
+  background: "#fffbeb",
+  color: "#92400e",
+  fontSize: 12,
+};
+
+const overlapListStyle: CSSProperties = {
+  margin: "4px 0 0 16px",
+  padding: 0,
+};
+
+const confirmDeleteStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  padding: 8,
+  border: "1px solid #fca5a5",
+  background: "#fef2f2",
+  borderRadius: 4,
+  fontSize: 12,
+  color: "#7f1d1d",
 };

@@ -12,18 +12,30 @@ import {
   EVENT_STATUSES,
   EVENT_VISIBILITIES,
   PAGE_SIZE,
+  SESSION_STATUSES,
   allowedTransitions,
+  emptySessionForm,
   filterEventsByDateRange,
   filterEventsByOrg,
   filterEventsByStatus,
+  findOverlappingSessions,
   formatDateOnly,
   formatDateTime,
   isEventStatus,
   isEventVisibility,
+  isSessionStatus,
+  mapSessionError,
   paginate,
+  parseLocalDatetime,
   posterInitial,
+  sessionToForm,
+  toLocalDatetimeValue,
+  toRFC3339,
+  validateSessionForm,
   type EventItem,
+  type SessionFormValues,
 } from "@/routes/events";
+import { ApiError } from "@/lib/api/client";
 
 function ev(overrides: Partial<EventItem>): EventItem {
   return {
@@ -216,6 +228,227 @@ describe("formatDateTime / formatDateOnly", () => {
   it("formatDateOnly extracts the YYYY-MM-DD prefix", () => {
     expect(formatDateOnly("2026-08-15T18:00:00Z")).toBe("2026-08-15");
     expect(formatDateOnly("")).toBe("");
+  });
+});
+
+describe("SESSION_STATUSES / isSessionStatus", () => {
+  it("enumerates the four backend lifecycle statuses in canonical order", () => {
+    expect(SESSION_STATUSES).toEqual([
+      "draft",
+      "scheduled",
+      "cancelled",
+      "completed",
+    ]);
+  });
+  it("isSessionStatus accepts canonical values only", () => {
+    expect(isSessionStatus("draft")).toBe(true);
+    expect(isSessionStatus("scheduled")).toBe(true);
+    expect(isSessionStatus("Completed")).toBe(false);
+    expect(isSessionStatus("")).toBe(false);
+    expect(isSessionStatus("archived")).toBe(false);
+  });
+});
+
+describe("parseLocalDatetime / toLocalDatetimeValue / toRFC3339", () => {
+  it("parseLocalDatetime returns null on blank or unparseable input", () => {
+    expect(parseLocalDatetime("")).toBeNull();
+    expect(parseLocalDatetime("   ")).toBeNull();
+    expect(parseLocalDatetime("not-a-date")).toBeNull();
+  });
+  it("parseLocalDatetime parses a datetime-local string into a Date", () => {
+    const d = parseLocalDatetime("2026-08-15T18:00");
+    expect(d).not.toBeNull();
+    expect(d!.getTime()).toBeGreaterThan(0);
+  });
+  it("toLocalDatetimeValue formats an ISO timestamp as UTC datetime-local", () => {
+    expect(toLocalDatetimeValue("2026-08-15T18:00:00Z")).toBe("2026-08-15T18:00");
+    expect(toLocalDatetimeValue("2026-01-02T03:04:05Z")).toBe("2026-01-02T03:04");
+  });
+  it("toLocalDatetimeValue returns empty string on invalid input", () => {
+    expect(toLocalDatetimeValue("nope")).toBe("");
+  });
+  it("toRFC3339 round-trips through toLocalDatetimeValue losslessly to the minute", () => {
+    const original = "2026-08-15T18:00:00Z";
+    const local = toLocalDatetimeValue(original);
+    expect(toRFC3339(local)).toBe(original);
+  });
+});
+
+describe("emptySessionForm / sessionToForm", () => {
+  it("emptySessionForm starts with blank times and capacity, draft status", () => {
+    const f = emptySessionForm();
+    expect(f.start_at).toBe("");
+    expect(f.end_at).toBe("");
+    expect(f.capacity_total).toBe("");
+    expect(f.status).toBe("draft");
+  });
+  it("sessionToForm hydrates fields from an existing session row", () => {
+    const f = sessionToForm({
+      start_at: "2026-08-15T18:00:00Z",
+      end_at: "2026-08-15T23:00:00Z",
+      capacity_total: 250,
+      status: "scheduled",
+    });
+    expect(f).toEqual({
+      start_at: "2026-08-15T18:00",
+      end_at: "2026-08-15T23:00",
+      capacity_total: "250",
+      status: "scheduled",
+    });
+  });
+  it("sessionToForm falls back to draft when the status is unknown", () => {
+    const f = sessionToForm({
+      start_at: "2026-08-15T18:00:00Z",
+      end_at: "2026-08-15T23:00:00Z",
+      capacity_total: 1,
+      status: "garbage",
+    });
+    expect(f.status).toBe("draft");
+  });
+});
+
+describe("validateSessionForm", () => {
+  function form(o: Partial<SessionFormValues>): SessionFormValues {
+    return {
+      start_at: "2026-08-15T18:00",
+      end_at: "2026-08-15T23:00",
+      capacity_total: "100",
+      status: "draft",
+      ...o,
+    };
+  }
+
+  it("accepts a fully valid form", () => {
+    expect(validateSessionForm(form({}))).toEqual({});
+  });
+  it("requires both start and end", () => {
+    expect(validateSessionForm(form({ start_at: "" })).start_at).toBeDefined();
+    expect(validateSessionForm(form({ end_at: "" })).end_at).toBeDefined();
+  });
+  it("rejects end_at <= start_at (mirroring server CHECK)", () => {
+    expect(
+      validateSessionForm(form({ end_at: "2026-08-15T18:00" })).end_at,
+    ).toBeDefined();
+    expect(
+      validateSessionForm(form({ end_at: "2026-08-15T17:00" })).end_at,
+    ).toBeDefined();
+  });
+  it("requires capacity_total to be a positive integer", () => {
+    expect(validateSessionForm(form({ capacity_total: "" })).capacity_total).toBeDefined();
+    expect(validateSessionForm(form({ capacity_total: "0" })).capacity_total).toBeDefined();
+    expect(validateSessionForm(form({ capacity_total: "-5" })).capacity_total).toBeDefined();
+    expect(validateSessionForm(form({ capacity_total: "1.5" })).capacity_total).toBeDefined();
+    expect(validateSessionForm(form({ capacity_total: "abc" })).capacity_total).toBeDefined();
+  });
+  it("rejects capacity_total that would overflow int32", () => {
+    expect(
+      validateSessionForm(form({ capacity_total: "9999999999" })).capacity_total,
+    ).toBeDefined();
+  });
+  it("rejects an invalid status value", () => {
+    expect(
+      validateSessionForm(form({ status: "archived" as never })).status,
+    ).toBeDefined();
+  });
+});
+
+describe("findOverlappingSessions", () => {
+  const siblings = [
+    {
+      id: "s1",
+      start_at: "2026-08-15T18:00:00Z",
+      end_at: "2026-08-15T20:00:00Z",
+    },
+    {
+      id: "s2",
+      start_at: "2026-08-15T22:00:00Z",
+      end_at: "2026-08-16T00:00:00Z",
+    },
+  ];
+
+  it("returns empty when the range is invalid", () => {
+    expect(findOverlappingSessions(siblings, "", "", null)).toEqual([]);
+    expect(
+      findOverlappingSessions(
+        siblings,
+        "2026-08-15T20:00",
+        "2026-08-15T19:00",
+        null,
+      ),
+    ).toEqual([]);
+  });
+  it("detects an exact-overlap range", () => {
+    const out = findOverlappingSessions(
+      siblings,
+      "2026-08-15T19:00",
+      "2026-08-15T21:00",
+      null,
+    );
+    expect(out.map((s) => s.id)).toEqual(["s1"]);
+  });
+  it("treats abutting ranges (end == start) as non-overlapping", () => {
+    const out = findOverlappingSessions(
+      siblings,
+      "2026-08-15T20:00",
+      "2026-08-15T22:00",
+      null,
+    );
+    expect(out).toEqual([]);
+  });
+  it("excludes the session being edited", () => {
+    const out = findOverlappingSessions(
+      siblings,
+      "2026-08-15T18:00",
+      "2026-08-15T20:00",
+      "s1",
+    );
+    expect(out).toEqual([]);
+  });
+  it("returns all conflicting siblings", () => {
+    const out = findOverlappingSessions(
+      siblings,
+      "2026-08-15T19:00",
+      "2026-08-15T23:00",
+      null,
+    );
+    expect(out.map((s) => s.id)).toEqual(["s1", "s2"]);
+  });
+});
+
+describe("mapSessionError", () => {
+  it("maps known session error codes to human-readable strings", () => {
+    expect(
+      mapSessionError(
+        new ApiError(400, { code: "session.invalid_date_range", message: "x" }),
+      ),
+    ).toMatch(/end must be after start/i);
+    expect(
+      mapSessionError(
+        new ApiError(400, { code: "session.invalid_capacity", message: "x" }),
+      ),
+    ).toMatch(/greater than zero/i);
+    expect(
+      mapSessionError(
+        new ApiError(404, { code: "session.not_found", message: "x" }),
+      ),
+    ).toMatch(/no longer exists/i);
+  });
+  it("falls back to a status-aware message for 401/403", () => {
+    expect(
+      mapSessionError(new ApiError(401, { code: "auth.expired", message: "x" })),
+    ).toMatch(/sign in again/i);
+    expect(
+      mapSessionError(
+        new ApiError(403, { code: "permissions.denied", message: "x" }),
+      ),
+    ).toMatch(/missing the permission/i);
+  });
+  it("uses the message + code on unrecognised codes", () => {
+    expect(
+      mapSessionError(
+        new ApiError(500, { code: "boom.weird", message: "bang" }),
+      ),
+    ).toBe("bang (boom.weird)");
   });
 });
 

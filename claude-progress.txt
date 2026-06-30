@@ -17652,3 +17652,47 @@ Verification:
   npm --prefix apps/admin-web test -- --run legacyPlaceholders     24/24 PASS
 
 Marked #281 passing. Backlog: 278/301.
+
+=== 2026-06-30: Feature #282 - E-4 Session sub-table admin UI ===
+Wired full Sessions CRUD inside the events drawer Sessions tab.
+
+apps/admin-web/src/routes/events.tsx:
+  - SessionsTab now renders a real CRUD over the session API:
+      POST   /v1/organizations/{org_id}/events/{event_id}/sessions
+      PATCH  /v1/organizations/{org_id}/events/{event_id}/sessions/{id}
+      DELETE /v1/organizations/{org_id}/events/{event_id}/sessions/{id}
+  - "Add session" button (gated on session.create), per-row Edit
+    (session.update) and Delete (session.delete) with an inline confirm row.
+  - SessionEditor form: start_at, end_at (both datetime-local rendered in
+    UTC), capacity_total, status (draft/scheduled/cancelled/completed).
+  - Client-side guards mirror sessions.go: end_at > start_at,
+    capacity_total positive int, status enum, int32 overflow guard.
+  - findOverlappingSessions warns the operator before submit (inline
+    yellow callout listing conflicting siblings); query envelope's
+    has_overlapping_sessions flag is also surfaced in the tab header.
+  - mapSessionError translates server codes (session.invalid_date_range,
+    invalid_capacity, invalid_status, invalid_transition, not_found,
+    etc.) to operator-readable sentences; falls back on 401/403 / unknown.
+  - parseLocalDatetime interprets datetime-local strings as UTC (matching
+    toLocalDatetimeValue / toRFC3339) so the operator's local TZ doesn't
+    silently shift overlap comparisons against the API's UTC ISO timestamps.
+  - New exported helpers (for tests): SESSION_STATUSES, isSessionStatus,
+    parseLocalDatetime, toLocalDatetimeValue, toRFC3339, emptySessionForm,
+    sessionToForm, validateSessionForm, findOverlappingSessions,
+    mapSessionError.
+
+apps/admin-web/src/routes/events.test.ts:
+  +24 tests (51 total, was 27) covering SESSION_STATUSES enum,
+  parseLocalDatetime / toLocalDatetimeValue / toRFC3339 round-trip,
+  emptySessionForm, sessionToForm hydration + invalid-status fallback,
+  validateSessionForm (required / order / capacity-shape / int32 overflow
+  / invalid status), findOverlappingSessions (invalid range, exact overlap,
+  abutting non-overlap, exclude-edited, multi-sibling), mapSessionError
+  (known codes, 401/403 fallback, unknown-code passthrough).
+
+Verification:
+  npm --prefix apps/admin-web run type-check          OK
+  npm --prefix apps/admin-web test -- --run events    51/51 PASS
+  npm --prefix apps/admin-web test -- --run           626/626 PASS
+
+Marked #282 passing. Backlog: 279/301.
