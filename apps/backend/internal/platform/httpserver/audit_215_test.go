@@ -416,14 +416,14 @@ func TestAudit215_NetworkOrg_ReactivateBothKinds(t *testing.T) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 func TestAudit215_NetworksGoEmitsAuditOnAllMutations(t *testing.T) {
-	src := readSourceFile(t, "networks.go")
+	src := readSourceFile(t, "hnetworks/networks.go")
 	for _, want := range []string{
-		`writeOperatorNetworkAudit(r, "v1.operator_network.create"`,
-		`writeOperatorNetworkAudit(r, "v1.operator_network.update"`,
-		`writeOperatorNetworkAudit(r, "v1.operator_network.archive"`,
+		`WriteOperatorNetworkAudit(r, "v1.operator_network.create"`,
+		`WriteOperatorNetworkAudit(r, "v1.operator_network.update"`,
+		`WriteOperatorNetworkAudit(r, "v1.operator_network.archive"`,
 	} {
 		if !strings.Contains(src, want) {
-			t.Errorf("networks.go missing audit call %q", want)
+			t.Errorf("hnetworks/networks.go missing audit call %q", want)
 		}
 	}
 	// The helper itself must stamp network_id + target into metadata.
@@ -432,20 +432,20 @@ func TestAudit215_NetworksGoEmitsAuditOnAllMutations(t *testing.T) {
 		`metadata["target"] = networkID`,
 	} {
 		if !strings.Contains(src, want) {
-			t.Errorf("networks.go: writeOperatorNetworkAudit missing %q", want)
+			t.Errorf("hnetworks/networks.go: WriteOperatorNetworkAudit missing %q", want)
 		}
 	}
 }
 
 func TestAudit215_NetworkUsersGoEmitsAuditOnAllMutations(t *testing.T) {
-	src := readSourceFile(t, "network_users.go")
+	src := readSourceFile(t, "hnetworks/network_users.go")
 	for _, want := range []string{
-		`writeNetworkUserAudit(r, "v1.network.users.assign"`,
-		`writeNetworkUserAudit(r, "v1.network.users.reactivate"`,
-		`writeNetworkUserAudit(r, "v1.network.users.remove"`,
+		`WriteNetworkUserAudit(r, "v1.network.users.assign"`,
+		`WriteNetworkUserAudit(r, "v1.network.users.reactivate"`,
+		`WriteNetworkUserAudit(r, "v1.network.users.remove"`,
 	} {
 		if !strings.Contains(src, want) {
-			t.Errorf("network_users.go missing audit call %q", want)
+			t.Errorf("hnetworks/network_users.go missing audit call %q", want)
 		}
 	}
 	for _, want := range []string{
@@ -454,20 +454,20 @@ func TestAudit215_NetworkUsersGoEmitsAuditOnAllMutations(t *testing.T) {
 		`metadata["target"] = userID`,
 	} {
 		if !strings.Contains(src, want) {
-			t.Errorf("network_users.go: writeNetworkUserAudit missing %q", want)
+			t.Errorf("hnetworks/network_users.go: WriteNetworkUserAudit missing %q", want)
 		}
 	}
 }
 
 func TestAudit215_NetworkOrgsGoEmitsAuditOnAllMutations(t *testing.T) {
-	src := readSourceFile(t, "network_orgs.go")
+	src := readSourceFile(t, "hnetworks/network_orgs.go")
 	for _, want := range []string{
 		`"v1.network."+kind+"s.attach"`,
 		`"v1.network."+kind+"s.reactivate"`,
 		`"v1.network."+kind+"s.detach"`,
 	} {
 		if !strings.Contains(src, want) {
-			t.Errorf("network_orgs.go missing audit call template %q", want)
+			t.Errorf("hnetworks/network_orgs.go missing audit call template %q", want)
 		}
 	}
 	for _, want := range []string{
@@ -477,7 +477,7 @@ func TestAudit215_NetworkOrgsGoEmitsAuditOnAllMutations(t *testing.T) {
 		`metadata["target"] = orgID`,
 	} {
 		if !strings.Contains(src, want) {
-			t.Errorf("network_orgs.go: writeNetworkOrgAudit missing %q", want)
+			t.Errorf("hnetworks/network_orgs.go: WriteNetworkOrgAudit missing %q", want)
 		}
 	}
 }

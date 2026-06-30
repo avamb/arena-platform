@@ -1,29 +1,5 @@
-// network_users.go implements the network-user assignment endpoints
-// (feature #209). These let a platform_superadmin (the only role bound to the
-// `network.manage_users` permission per 0044_network_permissions.sql) attach,
-// list, and detach `network_operator` users on an operator_network.
-//
-// Endpoints:
-//
-//	POST   /v1/admin/networks/{id}/users               — assign user (network.manage_users)
-//	DELETE /v1/admin/networks/{id}/users/{userId}      — remove user (network.manage_users)
-//	GET    /v1/admin/networks/{id}/users               — list active users (network.manage_users)
-//
-// Implementation notes:
-//
-//   - Backed by the operator_networks / network_users sqlc helpers landed in
-//     feature #205: InsertNetworkUser, SetNetworkUserStatus,
-//     ListNetworkUsersByNetwork.
-//   - DELETE is implemented as a soft-revoke
-//     (SetNetworkUserStatus(..., "revoked")) rather than DeleteNetworkUser so
-//     the lifecycle remains auditable.
-//   - All three handlers verify the parent operator_network exists (and is
-//     not archived) before touching network_users, so the API returns a typed
-//     404 instead of leaking a 23503 foreign-key violation on assignment.
-//   - Each mutation writes a v1.network.users.* audit_events row carrying the
-//     network id, user id, and resulting status. Fire-and-forget like the
-//     other handlers in this package.
-package httpserver
+// network_users.go implements the network-user assignment endpoints (feature #209).
+package hnetworks
 
 import (
 	"encoding/json"
@@ -41,8 +17,11 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
+
+const pgForeignKeyViolation = "23503"
 
 // networkUserResponse is the JSON projection of a network_users row.
 type networkUserResponse struct {
@@ -67,9 +46,9 @@ func networkUserFromRow(row gen.NetworkUserRow) networkUserResponse {
 	}
 }
 
-// writeNetworkUserAudit emits a v1.network.users.<verb> audit_events row.
-func (s *Server) writeNetworkUserAudit(r *http.Request, action, networkID, userID string, metadata map[string]any) {
-	if s.audit == nil {
+// WriteNetworkUserAudit emits a v1.network.users.<verb> audit_events row.
+func (h *Handler) WriteNetworkUserAudit(r *http.Request, action, networkID, userID string, metadata map[string]any) {
+	if h.audit == nil {
 		return
 	}
 	actorID := ""
@@ -83,9 +62,6 @@ func (s *Server) writeNetworkUserAudit(r *http.Request, action, networkID, userI
 	}
 	metadata["network_id"] = networkID
 	metadata["target_user_id"] = userID
-	// target mirrors the cross-handler audit contract (feature #215): every
-	// network/platform mutation tags its primary subject under "target" so
-	// audit consumers can index without knowing the resource_type.
 	metadata["target"] = userID
 
 	ev := audit.Event{
@@ -97,11 +73,11 @@ func (s *Server) writeNetworkUserAudit(r *http.Request, action, networkID, userI
 		ResourceID:   networkID + ":" + userID,
 		RequestID:    logging.RequestID(r.Context()),
 		TraceID:      logging.TraceID(r.Context()),
-		IP:           extractClientIP(r),
+		IP:           httputil.ExtractClientIP(r),
 		Metadata:     metadata,
 	}
-	if err := s.audit.Write(r.Context(), ev); err != nil {
-		s.logger.Warn("network_user: audit write failed",
+	if err := h.audit.Write(r.Context(), ev); err != nil {
+		h.logger.Warn("network_user: audit write failed",
 			slog.String("action", action),
 			slog.String("network_id", networkID),
 			slog.String("user_id", userID),
@@ -111,23 +87,23 @@ func (s *Server) writeNetworkUserAudit(r *http.Request, action, networkID, userI
 }
 
 // assertNetworkExists verifies the parent network is present and non-archived.
-// Returns (true, _) only when the caller may proceed. On any failure it has
-// already written the response.
-func (s *Server) assertNetworkExists(w http.ResponseWriter, r *http.Request, networkID uuid.UUID) bool {
-	row, err := s.networkQueries.GetOperatorNetworkByID(r.Context(), networkID)
+// Returns true only when the caller may proceed. On any failure it has already
+// written the response.
+func (h *Handler) assertNetworkExists(w http.ResponseWriter, r *http.Request, networkID uuid.UUID) bool {
+	row, err := h.queries.GetOperatorNetworkByID(r.Context(), networkID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 				"operator_network.not_found", "operator network not found", r))
 			return false
 		}
-		s.logger.Error("network_user: lookup parent failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("network_user: lookup parent failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"network_user.lookup_failed", "failed to look up operator network", r))
 		return false
 	}
 	if row.ArchivedAt != nil {
-		writeJSON(w, http.StatusConflict, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 			"operator_network.archived",
 			"operator network is archived; user roster is read-only", r))
 		return false
@@ -143,43 +119,42 @@ type assignNetworkUserRequest struct {
 	UserID string `json:"user_id"`
 }
 
-func (s *Server) handleAssignNetworkUser(w http.ResponseWriter, r *http.Request) {
-	if s.networkQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleAssignNetworkUser(w http.ResponseWriter, r *http.Request) {
+	if h.queries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
 	}
-	networkID, ok := uuidPathParam(w, r, "id")
+	networkID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
 		return
 	}
-	// SAUI-09: roster mutations require an X-Admin-Reason audit string.
-	reason, ok := requireAdminReason(w, r)
+	reason, ok := httputil.RequireAdminReason(w, r)
 	if !ok {
 		return
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"network_user.invalid_body", "cannot read request body: "+err.Error(), r))
 		return
 	}
 	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"network_user.empty_body", "request body is required", r))
 		return
 	}
 	var req assignNetworkUserRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"network_user.invalid_json", "request body is not valid JSON", r))
 		return
 	}
 	req.UserID = strings.TrimSpace(req.UserID)
 	if req.UserID == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"network_user.invalid_user_id", "user_id is required", r,
 			map[string]any{"field": "user_id"},
 		))
@@ -187,68 +162,64 @@ func (s *Server) handleAssignNetworkUser(w http.ResponseWriter, r *http.Request)
 	}
 	userID, err := uuid.Parse(req.UserID)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"network_user.invalid_user_id", "user_id must be a valid UUID", r,
 			map[string]any{"field": "user_id"},
 		))
 		return
 	}
 
-	if !s.assertNetworkExists(w, r, networkID) {
+	if !h.assertNetworkExists(w, r, networkID) {
 		return
 	}
 
-	// Re-activation path: if a row already exists for (network, user) the
-	// 23505 unique-violation surfaces; re-bring it to 'active' so the API is
-	// idempotent and the operator does not have to delete-then-readd to
-	// restore a revoked user.
-	row, err := s.networkQueries.InsertNetworkUser(r.Context(), networkID, userID)
+	row, err := h.queries.InsertNetworkUser(r.Context(), networkID, userID)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
-			existing, sErr := s.networkQueries.SetNetworkUserStatus(
+			existing, sErr := h.queries.SetNetworkUserStatus(
 				r.Context(), networkID, userID, "active")
 			if sErr != nil {
 				if errors.Is(sErr, pgx.ErrNoRows) {
-					writeJSON(w, http.StatusConflict, errorEnvelope(
+					httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 						"network_user.duplicate",
 						"user is already assigned to this network", r))
 					return
 				}
-				s.logger.Error("network_user: re-activate failed",
+				h.logger.Error("network_user: re-activate failed",
 					slog.String("error", sErr.Error()))
-				writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 					"network_user.assign_failed",
 					"failed to re-activate network user assignment", r))
 				return
 			}
-			s.writeNetworkUserAudit(r, "v1.network.users.reactivate",
+			h.WriteNetworkUserAudit(r, "v1.network.users.reactivate",
 				networkID.String(), userID.String(),
 				map[string]any{"status": existing.Status, "reason": reason})
-			writeJSON(w, http.StatusOK, map[string]any{
+			httputil.WriteJSON(w, http.StatusOK, map[string]any{
 				"network_user": networkUserFromRow(existing),
 				"reactivated":  true,
 			})
 			return
 		}
 		if errors.As(err, &pgErr) && pgErr.Code == pgForeignKeyViolation {
-			writeJSON(w, http.StatusNotFound, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 				"network_user.user_not_found",
 				"target user does not exist", r))
 			return
 		}
-		s.logger.Error("network_user: insert failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("network_user: insert failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"network_user.assign_failed",
 			"failed to assign user to network", r))
 		return
 	}
 
-	s.writeNetworkUserAudit(r, "v1.network.users.assign",
+	h.WriteNetworkUserAudit(r, "v1.network.users.assign",
 		networkID.String(), userID.String(),
 		map[string]any{"role": row.Role, "status": row.Status, "reason": reason})
 
-	writeJSON(w, http.StatusCreated, map[string]any{
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
 		"network_user": networkUserFromRow(row),
 	})
 }
@@ -257,52 +228,51 @@ func (s *Server) handleAssignNetworkUser(w http.ResponseWriter, r *http.Request)
 // DELETE /v1/admin/networks/{id}/users/{userId}
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (s *Server) handleRemoveNetworkUser(w http.ResponseWriter, r *http.Request) {
-	if s.networkQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleRemoveNetworkUser(w http.ResponseWriter, r *http.Request) {
+	if h.queries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
 	}
-	networkID, ok := uuidPathParam(w, r, "id")
+	networkID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
 		return
 	}
-	userID, ok := uuidPathParam(w, r, "userId")
+	userID, ok := httputil.UUIDPathParam(w, r, "userId")
 	if !ok {
 		return
 	}
-	// SAUI-09: roster mutations require an audit reason.
-	reason, ok := requireAdminReason(w, r)
+	reason, ok := httputil.RequireAdminReason(w, r)
 	if !ok {
 		return
 	}
 
-	if !s.assertNetworkExists(w, r, networkID) {
+	if !h.assertNetworkExists(w, r, networkID) {
 		return
 	}
 
-	row, err := s.networkQueries.SetNetworkUserStatus(
+	row, err := h.queries.SetNetworkUserStatus(
 		r.Context(), networkID, userID, "revoked")
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 				"network_user.not_found",
 				"user is not assigned to this network", r))
 			return
 		}
-		s.logger.Error("network_user: revoke failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("network_user: revoke failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"network_user.remove_failed",
 			"failed to remove user from network", r))
 		return
 	}
 
-	s.writeNetworkUserAudit(r, "v1.network.users.remove",
+	h.WriteNetworkUserAudit(r, "v1.network.users.remove",
 		networkID.String(), userID.String(),
 		map[string]any{"status": row.Status, "reason": reason})
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"network_user": networkUserFromRow(row),
 		"removed":      true,
 	})
@@ -312,26 +282,26 @@ func (s *Server) handleRemoveNetworkUser(w http.ResponseWriter, r *http.Request)
 // GET /v1/admin/networks/{id}/users
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (s *Server) handleListNetworkUsers(w http.ResponseWriter, r *http.Request) {
-	if s.networkQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleListNetworkUsers(w http.ResponseWriter, r *http.Request) {
+	if h.queries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
 	}
-	networkID, ok := uuidPathParam(w, r, "id")
+	networkID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
 		return
 	}
 
-	if !s.assertNetworkExists(w, r, networkID) {
+	if !h.assertNetworkExists(w, r, networkID) {
 		return
 	}
 
-	rows, err := s.networkQueries.ListNetworkUsersByNetwork(r.Context(), networkID)
+	rows, err := h.queries.ListNetworkUsersByNetwork(r.Context(), networkID)
 	if err != nil {
-		s.logger.Error("network_user: list failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("network_user: list failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"network_user.list_failed",
 			"failed to list network users", r))
 		return
@@ -340,7 +310,7 @@ func (s *Server) handleListNetworkUsers(w http.ResponseWriter, r *http.Request) 
 	for _, row := range rows {
 		out = append(out, networkUserFromRow(row))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"network_id":    networkID.String(),
 		"network_users": out,
 		"total":         len(out),

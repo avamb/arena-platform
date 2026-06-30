@@ -1,45 +1,5 @@
-// network_orgs.go implements the network-organization assignment endpoints
-// (feature #210). These let an operator attach / detach / list the
-// organizations that participate in an operator_network as either an
-// `organizer` (event-organizer that the network coordinates) or an `agent`
-// (reseller acting on behalf of those organizers).
-//
-// Endpoints (mounted in mount_networks.go):
-//
-//	POST   /v1/admin/networks/{id}/organizers              — attach organizer
-//	DELETE /v1/admin/networks/{id}/organizers/{orgId}      — detach organizer
-//	GET    /v1/admin/networks/{id}/organizers              — list organizers
-//	POST   /v1/admin/networks/{id}/agents                  — attach agent
-//	DELETE /v1/admin/networks/{id}/agents/{orgId}          — detach agent
-//	GET    /v1/admin/networks/{id}/agents                  — list agents
-//
-// Permission gating uses the existing applyAuth middleware:
-//
-//   - network.manage_organizers  — bound to platform_superadmin,
-//                                  network_operator, and admin
-//                                  (per 0044_network_permissions.sql).
-//   - network.manage_agents      — same binding set as above.
-//
-// Implementation notes:
-//
-//   - Backed by the network_organizations sqlc helpers landed in feature #205:
-//     InsertNetworkOrganization, GetNetworkOrganization,
-//     SetNetworkOrganizationStatus, ListOrganizersByNetwork,
-//     ListAgentsByNetwork.
-//   - Attach is idempotent: a 23505 on the
-//     (network_id, organization_id, assignment_kind) unique constraint
-//     triggers SetNetworkOrganizationStatus(..., 'active') so a previously
-//     revoked attachment can be reactivated without manual SQL.
-//   - Detach is a soft-revoke (SetNetworkOrganizationStatus(..., 'revoked'))
-//     so the lifecycle remains audit-visible.
-//   - The parent operator_network is pre-flighted via GetOperatorNetworkByID
-//     (same helper that network_users uses) so a missing or archived parent
-//     returns a typed 404/409 rather than leaking a 23503 FK violation.
-//   - 23503 on the organization_id FK is translated to a typed 404
-//     network_org.organization_not_found so callers can distinguish a
-//     missing organization from a missing network.
-//   - Each mutation writes a v1.network.<kind>s.<verb> audit_events row.
-package httpserver
+// network_orgs.go implements the network-organization assignment endpoints (feature #210).
+package hnetworks
 
 import (
 	"encoding/json"
@@ -57,14 +17,8 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
-)
-
-// Canonical assignment-kind values matching the
-// network_organizations.assignment_kind CHECK constraint in 0043_operator_networks.sql.
-const (
-	networkAssignmentKindOrganizer = "organizer"
-	networkAssignmentKindAgent     = "agent"
 )
 
 // networkOrgResponse is the JSON projection of a network_organizations row.
@@ -92,11 +46,9 @@ func networkOrgFromRow(row gen.NetworkOrganizationRow) networkOrgResponse {
 	}
 }
 
-// writeNetworkOrgAudit emits a v1.network.<kind>s.<verb> audit_events row
-// (kind is the singular assignment_kind, the action verb spells out the
-// plural — matches the network.users.* style used by network_users.go).
-func (s *Server) writeNetworkOrgAudit(r *http.Request, action, networkID, orgID, kind string, metadata map[string]any) {
-	if s.audit == nil {
+// WriteNetworkOrgAudit emits a v1.network.<kind>s.<verb> audit_events row.
+func (h *Handler) WriteNetworkOrgAudit(r *http.Request, action, networkID, orgID, kind string, metadata map[string]any) {
+	if h.audit == nil {
 		return
 	}
 	actorID := ""
@@ -111,9 +63,6 @@ func (s *Server) writeNetworkOrgAudit(r *http.Request, action, networkID, orgID,
 	metadata["network_id"] = networkID
 	metadata["organization_id"] = orgID
 	metadata["assignment_kind"] = kind
-	// target mirrors the cross-handler audit contract (feature #215): every
-	// network/platform mutation tags its primary subject under "target" so
-	// audit consumers can index without knowing the resource_type.
 	metadata["target"] = orgID
 
 	ev := audit.Event{
@@ -125,11 +74,11 @@ func (s *Server) writeNetworkOrgAudit(r *http.Request, action, networkID, orgID,
 		ResourceID:   networkID + ":" + orgID + ":" + kind,
 		RequestID:    logging.RequestID(r.Context()),
 		TraceID:      logging.TraceID(r.Context()),
-		IP:           extractClientIP(r),
+		IP:           httputil.ExtractClientIP(r),
 		Metadata:     metadata,
 	}
-	if err := s.audit.Write(r.Context(), ev); err != nil {
-		s.logger.Warn("network_org: audit write failed",
+	if err := h.audit.Write(r.Context(), ev); err != nil {
+		h.logger.Warn("network_org: audit write failed",
 			slog.String("action", action),
 			slog.String("network_id", networkID),
 			slog.String("organization_id", orgID),
@@ -147,47 +96,45 @@ type attachNetworkOrgRequest struct {
 	OrganizationID string `json:"organization_id"`
 }
 
-// handleAttachNetworkOrganization is closed over the assignment kind so a
+// HandleAttachNetworkOrganization is closed over the assignment kind so a
 // single implementation backs both POST /organizers and POST /agents.
-func (s *Server) handleAttachNetworkOrganization(kind string) http.HandlerFunc {
+func (h *Handler) HandleAttachNetworkOrganization(kind string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if s.networkQueries == nil || s.pool == nil {
-			writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+		if h.queries == nil {
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 				"dependency.database_unavailable", "database is not available", r,
 			))
 			return
 		}
-		networkID, ok := uuidPathParam(w, r, "id")
+		networkID, ok := httputil.UUIDPathParam(w, r, "id")
 		if !ok {
 			return
 		}
-		// SAUI-09: attaching an organization to a network is an
-		// auditable mutation; require X-Admin-Reason.
-		reason, ok := requireAdminReason(w, r)
+		reason, ok := httputil.RequireAdminReason(w, r)
 		if !ok {
 			return
 		}
 
 		body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 				"network_org.invalid_body", "cannot read request body: "+err.Error(), r))
 			return
 		}
 		if len(body) == 0 {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 				"network_org.empty_body", "request body is required", r))
 			return
 		}
 		var req attachNetworkOrgRequest
 		if err := json.Unmarshal(body, &req); err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 				"network_org.invalid_json", "request body is not valid JSON", r))
 			return
 		}
 		req.OrganizationID = strings.TrimSpace(req.OrganizationID)
 		if req.OrganizationID == "" {
-			writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 				"network_org.invalid_organization_id", "organization_id is required", r,
 				map[string]any{"field": "organization_id"},
 			))
@@ -195,67 +142,67 @@ func (s *Server) handleAttachNetworkOrganization(kind string) http.HandlerFunc {
 		}
 		orgID, err := uuid.Parse(req.OrganizationID)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 				"network_org.invalid_organization_id", "organization_id must be a valid UUID", r,
 				map[string]any{"field": "organization_id"},
 			))
 			return
 		}
 
-		if !s.assertNetworkExists(w, r, networkID) {
+		if !h.assertNetworkExists(w, r, networkID) {
 			return
 		}
 
-		row, err := s.networkQueries.InsertNetworkOrganization(r.Context(), networkID, orgID, kind)
+		row, err := h.queries.InsertNetworkOrganization(r.Context(), networkID, orgID, kind)
 		if err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
-				existing, sErr := s.networkQueries.SetNetworkOrganizationStatus(
+				existing, sErr := h.queries.SetNetworkOrganizationStatus(
 					r.Context(), networkID, orgID, kind, "active")
 				if sErr != nil {
 					if errors.Is(sErr, pgx.ErrNoRows) {
-						writeJSON(w, http.StatusConflict, errorEnvelope(
+						httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 							"network_org.duplicate",
 							"organization is already attached to this network", r))
 						return
 					}
-					s.logger.Error("network_org: re-activate failed",
+					h.logger.Error("network_org: re-activate failed",
 						slog.String("assignment_kind", kind),
 						slog.String("error", sErr.Error()))
-					writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+					httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 						"network_org.attach_failed",
 						"failed to re-activate network organization attachment", r))
 					return
 				}
-				s.writeNetworkOrgAudit(r, "v1.network."+kind+"s.reactivate",
+				h.WriteNetworkOrgAudit(r, "v1.network."+kind+"s.reactivate",
 					networkID.String(), orgID.String(), kind,
 					map[string]any{"status": existing.Status, "reason": reason})
-				writeJSON(w, http.StatusOK, map[string]any{
+				httputil.WriteJSON(w, http.StatusOK, map[string]any{
 					"network_organization": networkOrgFromRow(existing),
 					"reactivated":          true,
 				})
 				return
 			}
 			if errors.As(err, &pgErr) && pgErr.Code == pgForeignKeyViolation {
-				writeJSON(w, http.StatusNotFound, errorEnvelope(
+				httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 					"network_org.organization_not_found",
 					"target organization does not exist", r))
 				return
 			}
-			s.logger.Error("network_org: insert failed",
+			h.logger.Error("network_org: insert failed",
 				slog.String("assignment_kind", kind),
 				slog.String("error", err.Error()))
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"network_org.attach_failed",
 				"failed to attach organization to network", r))
 			return
 		}
 
-		s.writeNetworkOrgAudit(r, "v1.network."+kind+"s.attach",
+		h.WriteNetworkOrgAudit(r, "v1.network."+kind+"s.attach",
 			networkID.String(), orgID.String(), kind,
 			map[string]any{"status": row.Status, "reason": reason})
 
-		writeJSON(w, http.StatusCreated, map[string]any{
+		httputil.WriteJSON(w, http.StatusCreated, map[string]any{
 			"network_organization": networkOrgFromRow(row),
 		})
 	}
@@ -265,55 +212,54 @@ func (s *Server) handleAttachNetworkOrganization(kind string) http.HandlerFunc {
 // Detach: DELETE /v1/admin/networks/{id}/{organizers|agents}/{orgId}
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (s *Server) handleDetachNetworkOrganization(kind string) http.HandlerFunc {
+func (h *Handler) HandleDetachNetworkOrganization(kind string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if s.networkQueries == nil || s.pool == nil {
-			writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+		if h.queries == nil {
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 				"dependency.database_unavailable", "database is not available", r,
 			))
 			return
 		}
-		networkID, ok := uuidPathParam(w, r, "id")
+		networkID, ok := httputil.UUIDPathParam(w, r, "id")
 		if !ok {
 			return
 		}
-		orgID, ok := uuidPathParam(w, r, "orgId")
+		orgID, ok := httputil.UUIDPathParam(w, r, "orgId")
 		if !ok {
 			return
 		}
-		// SAUI-09: detach is a destructive roster mutation; require reason.
-		reason, ok := requireAdminReason(w, r)
+		reason, ok := httputil.RequireAdminReason(w, r)
 		if !ok {
 			return
 		}
 
-		if !s.assertNetworkExists(w, r, networkID) {
+		if !h.assertNetworkExists(w, r, networkID) {
 			return
 		}
 
-		row, err := s.networkQueries.SetNetworkOrganizationStatus(
+		row, err := h.queries.SetNetworkOrganizationStatus(
 			r.Context(), networkID, orgID, kind, "revoked")
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				writeJSON(w, http.StatusNotFound, errorEnvelope(
+				httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 					"network_org.not_found",
 					"organization is not attached to this network", r))
 				return
 			}
-			s.logger.Error("network_org: revoke failed",
+			h.logger.Error("network_org: revoke failed",
 				slog.String("assignment_kind", kind),
 				slog.String("error", err.Error()))
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"network_org.detach_failed",
 				"failed to detach organization from network", r))
 			return
 		}
 
-		s.writeNetworkOrgAudit(r, "v1.network."+kind+"s.detach",
+		h.WriteNetworkOrgAudit(r, "v1.network."+kind+"s.detach",
 			networkID.String(), orgID.String(), kind,
 			map[string]any{"status": row.Status, "reason": reason})
 
-		writeJSON(w, http.StatusOK, map[string]any{
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{
 			"network_organization": networkOrgFromRow(row),
 			"detached":             true,
 		})
@@ -324,20 +270,20 @@ func (s *Server) handleDetachNetworkOrganization(kind string) http.HandlerFunc {
 // List: GET /v1/admin/networks/{id}/{organizers|agents}
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (s *Server) handleListNetworkOrganizations(kind string) http.HandlerFunc {
+func (h *Handler) HandleListNetworkOrganizations(kind string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if s.networkQueries == nil {
-			writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+		if h.queries == nil {
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 				"dependency.database_unavailable", "database is not available", r,
 			))
 			return
 		}
-		networkID, ok := uuidPathParam(w, r, "id")
+		networkID, ok := httputil.UUIDPathParam(w, r, "id")
 		if !ok {
 			return
 		}
 
-		if !s.assertNetworkExists(w, r, networkID) {
+		if !h.assertNetworkExists(w, r, networkID) {
 			return
 		}
 
@@ -346,22 +292,21 @@ func (s *Server) handleListNetworkOrganizations(kind string) http.HandlerFunc {
 			err  error
 		)
 		switch kind {
-		case networkAssignmentKindOrganizer:
-			rows, err = s.networkQueries.ListOrganizersByNetwork(r.Context(), networkID)
-		case networkAssignmentKindAgent:
-			rows, err = s.networkQueries.ListAgentsByNetwork(r.Context(), networkID)
+		case NetworkAssignmentKindOrganizer:
+			rows, err = h.queries.ListOrganizersByNetwork(r.Context(), networkID)
+		case NetworkAssignmentKindAgent:
+			rows, err = h.queries.ListAgentsByNetwork(r.Context(), networkID)
 		default:
-			// Defensive: the router only mounts these two kinds.
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"network_org.invalid_kind",
 				"unsupported assignment kind: "+kind, r))
 			return
 		}
 		if err != nil {
-			s.logger.Error("network_org: list failed",
+			h.logger.Error("network_org: list failed",
 				slog.String("assignment_kind", kind),
 				slog.String("error", err.Error()))
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"network_org.list_failed",
 				"failed to list network organizations", r))
 			return
@@ -370,9 +315,7 @@ func (s *Server) handleListNetworkOrganizations(kind string) http.HandlerFunc {
 		for _, row := range rows {
 			out = append(out, networkOrgFromRow(row))
 		}
-		// Response key matches the plural kind (organizers / agents) so the
-		// JSON shape reads naturally from the route URL.
-		writeJSON(w, http.StatusOK, map[string]any{
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{
 			"network_id":      networkID.String(),
 			"assignment_kind": kind,
 			kind + "s":        out,

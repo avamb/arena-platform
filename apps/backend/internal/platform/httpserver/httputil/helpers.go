@@ -85,6 +85,22 @@ func ClientIP(r *http.Request) string {
 	return r.RemoteAddr
 }
 
+// RequireAdminReason validates the X-Admin-Reason header used by superadmin and
+// network-mutation endpoints. Returns the non-empty trimmed reason on success, or
+// writes a 400 error envelope and returns ("", false) so callers can return
+// immediately.
+func RequireAdminReason(w http.ResponseWriter, r *http.Request) (string, bool) {
+	reason := strings.TrimSpace(r.Header.Get("X-Admin-Reason"))
+	if reason == "" {
+		WriteJSON(w, http.StatusBadRequest, ErrorEnvelope(
+			"superadmin.missing_reason",
+			"X-Admin-Reason header is required for superadmin operations", r,
+		))
+		return "", false
+	}
+	return reason, true
+}
+
 // ExtractClientIP returns a validated IP string from the request, checking
 // X-Forwarded-For, X-Real-IP, and RemoteAddr in order. Returns "" when no
 // valid IP is found so callers can store NULL in the DB rather than fail.
