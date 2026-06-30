@@ -14,7 +14,7 @@
 // GET /v1/admin/tickets and the companion /v1/admin/tickets/{id}/delivery
 // surface.  RBAC: scan_event.read (seeded for admin / org_admin / support
 // in 0055_scan_events.sql).
-package httpserver
+package htickets
 
 import (
 	"log/slog"
@@ -25,20 +25,21 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
-// adminTicketScansDefaultLimit is the page size used when the client does
+// AdminTicketScansDefaultLimit is the page size used when the client does
 // not specify ?limit. Matches the support console's "show last 50 scans"
 // default and keeps the response body bounded for pathological replays.
-const adminTicketScansDefaultLimit = 50
+const AdminTicketScansDefaultLimit = 50
 
-// adminTicketScansMaxLimit caps the user-overridable ?limit query parameter.
+// AdminTicketScansMaxLimit caps the user-overridable ?limit query parameter.
 // A higher cap is allowed than the default so an operator investigating an
 // abusive scanner can pull the full history without paging.
-const adminTicketScansMaxLimit = 500
+const AdminTicketScansMaxLimit = 500
 
-// handleAdminListTicketScanEvents returns the scan_events rows that match
+// HandleAdminListTicketScanEvents returns the scan_events rows that match
 // the given ticket id, newest scan first.  Each row exposes gate, device_id
 // and result (the columns the spec calls out) plus scanned_at, the canonical
 // row id, and received_at so the UI can tell scanner-clock from server-clock.
@@ -49,44 +50,44 @@ const adminTicketScansMaxLimit = 500
 // a top-N list, not an infinitely scrolling table, so we deliberately do
 // not surface an offset cursor here — operators wanting older history can
 // raise the limit.
-func (s *Server) handleAdminListTicketScanEvents(w http.ResponseWriter, r *http.Request) {
-	if s.feedTokenQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleAdminListTicketScanEvents(w http.ResponseWriter, r *http.Request) {
+	if h.feedTokenQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "scan_events store is not available", r,
 		))
 		return
 	}
-	reason, ok := requireAdminReason(w, r)
+	reason, ok := httputil.RequireAdminReason(w, r)
 	if !ok {
 		return
 	}
-	ticketID, ok := uuidPathParam(w, r, "id")
+	ticketID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
 		return
 	}
 
-	limit := adminTicketScansDefaultLimit
+	limit := AdminTicketScansDefaultLimit
 	if raw := r.URL.Query().Get("limit"); raw != "" {
 		parsed, parseErr := strconv.Atoi(raw)
 		if parseErr != nil || parsed <= 0 {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 				"scan_events.invalid_limit", "limit must be a positive integer", r,
 			))
 			return
 		}
-		if parsed > adminTicketScansMaxLimit {
-			parsed = adminTicketScansMaxLimit
+		if parsed > AdminTicketScansMaxLimit {
+			parsed = AdminTicketScansMaxLimit
 		}
 		limit = parsed
 	}
 
-	rows, err := s.feedTokenQueries.ListScanEventsByTicketID(r.Context(), ticketID, int32(limit))
+	rows, err := h.feedTokenQueries.ListScanEventsByTicketID(r.Context(), ticketID, int32(limit))
 	if err != nil {
-		s.logger.Error("admin_ticket_scans: list query failed",
+		h.logger.Error("admin_ticket_scans: list query failed",
 			slog.String("ticket_id", ticketID.String()),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"scan_events.internal", "failed to load scan events", r,
 		))
 		return
@@ -94,22 +95,22 @@ func (s *Server) handleAdminListTicketScanEvents(w http.ResponseWriter, r *http.
 
 	out := make([]map[string]any, 0, len(rows))
 	for _, sc := range rows {
-		out = append(out, scanEventToMap(sc))
+		out = append(out, ScanEventToMap(sc))
 	}
 
-	s.logTicketScansAudit(r, ticketID.String(), reason, len(out), limit)
+	h.logTicketScansAudit(r, ticketID.String(), reason, len(out), limit)
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"scans": out,
 		"total": len(out),
 		"limit": limit,
 	})
 }
 
-// scanEventToMap renders a ScanEventRow as the JSON object expected by the
+// ScanEventToMap renders a ScanEventRow as the JSON object expected by the
 // admin UI.  Nullable FKs surface as explicit JSON nulls so the frontend
 // can render an em-dash without type narrowing on optional fields.
-func scanEventToMap(sc gen.ScanEventRow) map[string]any {
+func ScanEventToMap(sc gen.ScanEventRow) map[string]any {
 	m := map[string]any{
 		"id":              sc.ID.String(),
 		"org_id":          sc.OrgID.String(),
@@ -141,12 +142,12 @@ func scanEventToMap(sc gen.ScanEventRow) map[string]any {
 // logTicketScansAudit emits a fire-and-forget audit event for the read.
 // Mirrors the shape used by logTicketDeliveryAudit so reviewers grepping
 // for "v1.admin.ticket." find every drawer-side admin action in one go.
-func (s *Server) logTicketScansAudit(
+func (h *Handler) logTicketScansAudit(
 	r *http.Request,
 	ticketID, reason string,
 	returned, limit int,
 ) {
-	if s.audit == nil {
+	if h.audit == nil {
 		return
 	}
 	actor, _ := auth.ActorFromContext(r.Context())
@@ -159,15 +160,15 @@ func (s *Server) logTicketScansAudit(
 		ResourceID:   ticketID,
 		RequestID:    logging.RequestID(r.Context()),
 		TraceID:      logging.TraceID(r.Context()),
-		IP:           extractClientIP(r),
+		IP:           httputil.ExtractClientIP(r),
 		Metadata: map[string]any{
 			"reason":   reason,
 			"returned": returned,
 			"limit":    limit,
 		},
 	}
-	if err := s.audit.Write(r.Context(), ev); err != nil {
-		s.logger.Warn("admin_ticket_scans: audit write failed",
+	if err := h.audit.Write(r.Context(), ev); err != nil {
+		h.logger.Warn("admin_ticket_scans: audit write failed",
 			slog.String("action", ev.Action),
 			slog.Any("error", err),
 		)

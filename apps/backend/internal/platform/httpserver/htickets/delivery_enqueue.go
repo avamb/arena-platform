@@ -1,19 +1,19 @@
 // delivery_enqueue.go — post-issuance delivery job enqueueing (feature #141, #149).
 //
-// enqueueDeliveryJobs is called after issueTicketsForCheckout returns a
+// EnqueueDeliveryJobs is called after IssueTicketsForCheckout returns a
 // non-empty ticket slice. It inserts a delivery_jobs row and a worker_jobs
 // row (type "ticket.deliver") for each issued ticket that has not yet been
 // enqueued. The method is best-effort: individual errors are logged and
 // skipped so delivery infrastructure issues never block ticket issuance.
 //
-// enqueueComplimentaryDeliveryJobs (feature #149) works the same way but for
+// EnqueueComplimentaryDeliveryJobs (feature #149) works the same way but for
 // complimentary (invitation) tickets. It sets Template="invitation" in the
 // worker job payload so the delivery handler uses the invitation email template.
 //
 // Dependencies (no-op when absent):
-//   - s.deliveryJobQueries — delivery_jobs DB access
-//   - s.workerPool         — worker_jobs INSERT
-package httpserver
+//   - h.deliveryJobQueries — delivery_jobs DB access
+//   - h.workerPool         — worker_jobs INSERT
+package htickets
 
 import (
 	"context"
@@ -24,15 +24,15 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery"
 )
 
-// enqueueDeliveryJobs creates one delivery_jobs row and one ticket.deliver
+// EnqueueDeliveryJobs creates one delivery_jobs row and one ticket.deliver
 // worker_jobs row for each ticket in the slice.
 //
 // Idempotent per ticket: the delivery_jobs INSERT will be skipped or
 // produce a duplicate row if the caller retries — the idempotency of the
 // delivery pipeline is enforced at the worker handler level
 // (see delivery.NewHandler).
-func (s *Server) enqueueDeliveryJobs(ctx context.Context, tickets []gen.TicketRow) {
-	if s.deliveryJobQueries == nil || s.workerPool == nil {
+func (h *Handler) EnqueueDeliveryJobs(ctx context.Context, tickets []gen.TicketRow) {
+	if h.deliveryJobQueries == nil || h.workerPool == nil {
 		return
 	}
 
@@ -40,9 +40,9 @@ func (s *Server) enqueueDeliveryJobs(ctx context.Context, tickets []gen.TicketRo
 		ticketID := t.ID
 
 		// Insert delivery_jobs row (recipient_email = ticket.holder_email or nil).
-		dj, err := s.deliveryJobQueries.InsertDeliveryJob(ctx, ticketID, t.HolderEmail)
+		dj, err := h.deliveryJobQueries.InsertDeliveryJob(ctx, ticketID, t.HolderEmail)
 		if err != nil {
-			s.logger.Warn("delivery: insert delivery_job failed",
+			h.logger.Warn("delivery: insert delivery_job failed",
 				slog.String("ticket_id", ticketID.String()),
 				slog.String("error", err.Error()),
 			)
@@ -53,7 +53,7 @@ func (s *Server) enqueueDeliveryJobs(ctx context.Context, tickets []gen.TicketRo
 		p := delivery.Payload{TicketID: ticketID.String()}
 		body, jsonErr := json.Marshal(p)
 		if jsonErr != nil {
-			s.logger.Warn("delivery: marshal payload failed",
+			h.logger.Warn("delivery: marshal payload failed",
 				slog.String("ticket_id", ticketID.String()),
 				slog.String("error", jsonErr.Error()),
 			)
@@ -66,17 +66,17 @@ func (s *Server) enqueueDeliveryJobs(ctx context.Context, tickets []gen.TicketRo
 			VALUES ($1, $2::jsonb, $3, 'pending', now())
 			RETURNING id::text`
 		var jobID string
-		if qErr := s.workerPool.QueryRow(ctx, insertJobSQL,
+		if qErr := h.workerPool.QueryRow(ctx, insertJobSQL,
 			delivery.JobType, body, 5,
 		).Scan(&jobID); qErr != nil {
-			s.logger.Warn("delivery: enqueue worker_job failed",
+			h.logger.Warn("delivery: enqueue worker_job failed",
 				slog.String("ticket_id", ticketID.String()),
 				slog.String("error", qErr.Error()),
 			)
 			continue
 		}
 
-		s.logger.Info("delivery: job enqueued",
+		h.logger.Info("delivery: job enqueued",
 			slog.String("ticket_id", ticketID.String()),
 			slog.String("delivery_job_id", dj.ID.String()),
 			slog.String("worker_job_id", jobID),
@@ -84,7 +84,7 @@ func (s *Server) enqueueDeliveryJobs(ctx context.Context, tickets []gen.TicketRo
 	}
 }
 
-// enqueueComplimentaryDeliveryJobs creates one delivery_jobs row and one
+// EnqueueComplimentaryDeliveryJobs creates one delivery_jobs row and one
 // ticket.deliver worker_jobs row (with template="invitation") for each
 // complimentary ticket in the slice. (feature #149)
 //
@@ -93,8 +93,8 @@ func (s *Server) enqueueDeliveryJobs(ctx context.Context, tickets []gen.TicketRo
 //
 // Best-effort: individual errors are logged and skipped so delivery issues
 // never roll back a committed complimentary issuance.
-func (s *Server) enqueueComplimentaryDeliveryJobs(ctx context.Context, tickets []gen.ComplimentaryTicketRow) {
-	if s.deliveryJobQueries == nil || s.workerPool == nil {
+func (h *Handler) EnqueueComplimentaryDeliveryJobs(ctx context.Context, tickets []gen.ComplimentaryTicketRow) {
+	if h.deliveryJobQueries == nil || h.workerPool == nil {
 		return
 	}
 
@@ -102,9 +102,9 @@ func (s *Server) enqueueComplimentaryDeliveryJobs(ctx context.Context, tickets [
 		ticketID := t.ID
 
 		// Insert delivery_jobs row.
-		dj, err := s.deliveryJobQueries.InsertDeliveryJob(ctx, ticketID, t.HolderEmail)
+		dj, err := h.deliveryJobQueries.InsertDeliveryJob(ctx, ticketID, t.HolderEmail)
 		if err != nil {
-			s.logger.Warn("complimentary delivery: insert delivery_job failed",
+			h.logger.Warn("complimentary delivery: insert delivery_job failed",
 				slog.String("ticket_id", ticketID.String()),
 				slog.String("error", err.Error()),
 			)
@@ -118,7 +118,7 @@ func (s *Server) enqueueComplimentaryDeliveryJobs(ctx context.Context, tickets [
 		}
 		body, jsonErr := json.Marshal(p)
 		if jsonErr != nil {
-			s.logger.Warn("complimentary delivery: marshal payload failed",
+			h.logger.Warn("complimentary delivery: marshal payload failed",
 				slog.String("ticket_id", ticketID.String()),
 				slog.String("error", jsonErr.Error()),
 			)
@@ -131,17 +131,17 @@ func (s *Server) enqueueComplimentaryDeliveryJobs(ctx context.Context, tickets [
 			VALUES ($1, $2::jsonb, $3, 'pending', now())
 			RETURNING id::text`
 		var jobID string
-		if qErr := s.workerPool.QueryRow(ctx, insertJobSQL,
+		if qErr := h.workerPool.QueryRow(ctx, insertJobSQL,
 			delivery.JobType, body, 5,
 		).Scan(&jobID); qErr != nil {
-			s.logger.Warn("complimentary delivery: enqueue worker_job failed",
+			h.logger.Warn("complimentary delivery: enqueue worker_job failed",
 				slog.String("ticket_id", ticketID.String()),
 				slog.String("error", qErr.Error()),
 			)
 			continue
 		}
 
-		s.logger.Info("complimentary delivery: invitation job enqueued",
+		h.logger.Info("complimentary delivery: invitation job enqueued",
 			slog.String("ticket_id", ticketID.String()),
 			slog.String("delivery_job_id", dj.ID.String()),
 			slog.String("worker_job_id", jobID),

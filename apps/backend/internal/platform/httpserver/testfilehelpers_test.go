@@ -413,7 +413,7 @@ func resolveFileInRepo(repoRoot, name string) string {
 		}
 	case "tickets.go":
 		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "tickets.go"),
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "htickets", "tickets.go"),
 		}
 	// Ticket credentials — QR and PDF bearer artifacts (feature #140)
 	case "0027_ticket_credentials.sql":
@@ -430,7 +430,7 @@ func resolveFileInRepo(repoRoot, name string) string {
 		}
 	case "credentials.go":
 		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "credentials.go"),
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "htickets", "credentials.go"),
 		}
 	// Refund state machine (feature #138)
 	case "0028_refunds.sql":
@@ -479,7 +479,12 @@ func resolveFileInRepo(repoRoot, name string) string {
 	// Admin ticket scan-events read view (feature #295, S-4)
 	case "admin_ticket_scans.go":
 		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "admin_ticket_scans.go"),
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "htickets", "admin_ticket_scans.go"),
+		}
+	// Admin ticket delivery resend (feature #291, T-4)
+	case "admin_ticket_delivery.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "htickets", "admin_ticket_delivery.go"),
 		}
 	case "mount_admin.go":
 		candidates = []string{
@@ -543,7 +548,7 @@ func resolveFileInRepo(repoRoot, name string) string {
 		}
 	case "delivery_enqueue.go":
 		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "delivery_enqueue.go"),
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "htickets", "delivery_enqueue.go"),
 		}
 	// Public feed events API (feature #152)
 	case "public_feed.sql":
@@ -650,7 +655,7 @@ func resolveFileInRepo(repoRoot, name string) string {
 		}
 	case "complimentary.go":
 		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "complimentary.go"),
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "htickets", "complimentary.go"),
 		}
 	// Complimentary revocation flow (feature #150)
 	case "0038_complimentary_revocation.sql":
@@ -963,6 +968,9 @@ func domainSubPackageFor(name string) (string, string) {
 	case "orgs.go", "memberships.go", "superadmin.go", "impersonation.go",
 		"admin_memberships.go", "admin_orgs.go", "admin_users.go":
 		return "hiam", "iam_shims.go"
+	case "tickets.go", "credentials.go", "complimentary.go", "delivery_enqueue.go",
+		"admin_ticket_delivery.go", "admin_ticket_scans.go":
+		return "htickets", "tickets_shims.go"
 	}
 	return "", ""
 }

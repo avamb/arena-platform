@@ -11,7 +11,7 @@
 // Endpoints:
 //
 //	GET /v1/checkout/{id}/tickets — list tickets for a checkout session (ticket.read)
-package httpserver
+package htickets
 
 import (
 	"context"
@@ -26,14 +26,15 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Response type
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ticketResponse is the JSON representation of a single tickets row.
-type ticketResponse struct {
+// TicketResponse is the JSON representation of a single tickets row.
+type TicketResponse struct {
 	ID                string  `json:"id"`
 	CheckoutSessionID string  `json:"checkout_session_id"`
 	SessionID         string  `json:"session_id"`
@@ -45,9 +46,9 @@ type ticketResponse struct {
 	UpdatedAt         string  `json:"updated_at"`
 }
 
-// ticketFromRow converts a gen.TicketRow to a ticketResponse.
-func ticketFromRow(t gen.TicketRow) ticketResponse {
-	resp := ticketResponse{
+// TicketFromRow converts a gen.TicketRow to a TicketResponse.
+func TicketFromRow(t gen.TicketRow) TicketResponse {
+	resp := TicketResponse{
 		ID:                t.ID.String(),
 		CheckoutSessionID: t.CheckoutSessionID.String(),
 		SessionID:         t.SessionID.String(),
@@ -65,10 +66,10 @@ func ticketFromRow(t gen.TicketRow) ticketResponse {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// issueTicketsForCheckout — internal issuance helper (idempotent)
+// IssueTicketsForCheckout — internal issuance helper (idempotent)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// issueTicketsForCheckout issues tickets for the given completed checkout session.
+// IssueTicketsForCheckout issues tickets for the given completed checkout session.
 //
 // The function is idempotent per checkout_session_id:
 //   - If tickets already exist for this session (detected via
@@ -80,22 +81,22 @@ func ticketFromRow(t gen.TicketRow) ticketResponse {
 // Returns an error if ticketQueries or reservationQueries are nil, or if any
 // DB operation fails. Callers should log but not hard-fail when the checkout is
 // already terminal (the customer got their goods; ticket retry is safe).
-func (s *Server) issueTicketsForCheckout(ctx context.Context, cs gen.CheckoutSessionRow) ([]gen.TicketRow, error) {
-	if s.ticketQueries == nil {
-		return nil, fmt.Errorf("issueTicketsForCheckout: ticketQueries not wired")
+func (h *Handler) IssueTicketsForCheckout(ctx context.Context, cs gen.CheckoutSessionRow) ([]gen.TicketRow, error) {
+	if h.ticketQueries == nil {
+		return nil, fmt.Errorf("IssueTicketsForCheckout: ticketQueries not wired")
 	}
-	if s.reservationQueries == nil {
-		return nil, fmt.Errorf("issueTicketsForCheckout: reservationQueries not wired")
+	if h.reservationQueries == nil {
+		return nil, fmt.Errorf("IssueTicketsForCheckout: reservationQueries not wired")
 	}
 
 	// ── Idempotency check ────────────────────────────────────────────────────
 	// If tickets were already issued for this checkout session, return them.
-	existing, err := s.ticketQueries.ListTicketsByCheckoutSession(ctx, cs.ID)
+	existing, err := h.ticketQueries.ListTicketsByCheckoutSession(ctx, cs.ID)
 	if err != nil {
-		return nil, fmt.Errorf("issueTicketsForCheckout: list existing tickets: %w", err)
+		return nil, fmt.Errorf("IssueTicketsForCheckout: list existing tickets: %w", err)
 	}
 	if len(existing) > 0 {
-		s.logger.Info("tickets: idempotent replay — returning existing tickets",
+		h.logger.Info("tickets: idempotent replay — returning existing tickets",
 			slog.String("checkout_session_id", cs.ID.String()),
 			slog.Int("existing_count", len(existing)),
 		)
@@ -104,29 +105,29 @@ func (s *Server) issueTicketsForCheckout(ctx context.Context, cs gen.CheckoutSes
 
 	// ── Load reservation ─────────────────────────────────────────────────────
 	// The reservation holds the quantity, session_id, and optional tier_id.
-	reservation, err := s.reservationQueries.GetReservationByID(ctx, cs.ReservationID)
+	reservation, err := h.reservationQueries.GetReservationByID(ctx, cs.ReservationID)
 	if err != nil {
-		return nil, fmt.Errorf("issueTicketsForCheckout: get reservation %s: %w",
+		return nil, fmt.Errorf("IssueTicketsForCheckout: get reservation %s: %w",
 			cs.ReservationID.String(), err)
 	}
 
 	// ── Issue one ticket per unit ────────────────────────────────────────────
 	tickets := make([]gen.TicketRow, 0, reservation.Quantity)
 	for i := int32(0); i < reservation.Quantity; i++ {
-		t, err := s.ticketQueries.InsertTicket(ctx,
+		t, err := h.ticketQueries.InsertTicket(ctx,
 			cs.ID,
 			reservation.SessionID,
 			reservation.TierID,
 			nil, // holderEmail — not yet known at issuance time
 		)
 		if err != nil {
-			return nil, fmt.Errorf("issueTicketsForCheckout: insert ticket %d of %d: %w",
+			return nil, fmt.Errorf("IssueTicketsForCheckout: insert ticket %d of %d: %w",
 				i+1, reservation.Quantity, err)
 		}
 		tickets = append(tickets, t)
 	}
 
-	s.logger.Info("tickets: issued",
+	h.logger.Info("tickets: issued",
 		slog.String("checkout_session_id", cs.ID.String()),
 		slog.String("reservation_id", cs.ReservationID.String()),
 		slog.String("session_id", reservation.SessionID.String()),
@@ -136,11 +137,13 @@ func (s *Server) issueTicketsForCheckout(ctx context.Context, cs gen.CheckoutSes
 
 	// Publish Bil24-compatible scanner events for each newly issued ticket
 	// (feature #143). Best-effort: errors are logged internally, not returned.
-	s.publishTicketIssuedEvents(ctx, tickets)
+	if h.publishTicketIssuedEvents != nil {
+		h.publishTicketIssuedEvents(ctx, tickets)
+	}
 
 	// Enqueue email delivery jobs for each issued ticket (feature #141).
 	// Best-effort: errors are logged internally, not returned.
-	s.enqueueDeliveryJobs(ctx, tickets)
+	h.EnqueueDeliveryJobs(ctx, tickets)
 
 	return tickets, nil
 }
@@ -149,12 +152,12 @@ func (s *Server) issueTicketsForCheckout(ctx context.Context, cs gen.CheckoutSes
 // GET /v1/checkout/{id}/tickets
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleListTickets serves GET /v1/checkout/{id}/tickets.
+// HandleListTickets serves GET /v1/checkout/{id}/tickets.
 // Returns all tickets issued for the given checkout session.
 // Requires JWT + "ticket.read" permission.
-func (s *Server) handleListTickets(w http.ResponseWriter, r *http.Request) {
-	if s.ticketQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleListTickets(w http.ResponseWriter, r *http.Request) {
+	if h.ticketQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -163,34 +166,34 @@ func (s *Server) handleListTickets(w http.ResponseWriter, r *http.Request) {
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"ticket.invalid_checkout_id", "checkout session id must be a valid UUID", r,
 		))
 		return
 	}
 
-	tickets, err := s.ticketQueries.ListTicketsByCheckoutSession(ctx, id)
+	tickets, err := h.ticketQueries.ListTicketsByCheckoutSession(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusOK, map[string]any{"tickets": []any{}})
+			httputil.WriteJSON(w, http.StatusOK, map[string]any{"tickets": []any{}})
 			return
 		}
-		s.logger.Error("tickets: list failed",
+		h.logger.Error("tickets: list failed",
 			slog.String("checkout_session_id", id.String()),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"ticket.list_failed", "failed to retrieve tickets", r,
 		))
 		return
 	}
 
-	respTickets := make([]ticketResponse, 0, len(tickets))
+	respTickets := make([]TicketResponse, 0, len(tickets))
 	for _, t := range tickets {
-		respTickets = append(respTickets, ticketFromRow(t))
+		respTickets = append(respTickets, TicketFromRow(t))
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"tickets": respTickets,
 	})
 }

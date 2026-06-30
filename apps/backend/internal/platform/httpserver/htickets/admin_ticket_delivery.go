@@ -19,7 +19,7 @@
 // existing worker handler picks the job up on its normal poll cycle.
 // Both writes are best-effort and individually logged so a partial
 // failure is observable but does not panic the request.
-package httpserver
+package htickets
 
 import (
 	"encoding/json"
@@ -34,6 +34,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
@@ -41,56 +42,56 @@ import (
 // GET /v1/admin/tickets/{id}/delivery
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleAdminGetTicketDelivery returns the most recent delivery_jobs row for
+// HandleAdminGetTicketDelivery returns the most recent delivery_jobs row for
 // the given ticket id. Returns 404 when no delivery has ever been attempted.
 //
 // Requires JWT + ticket.update + X-Admin-Reason (mounted via applyAuth).
-func (s *Server) handleAdminGetTicketDelivery(w http.ResponseWriter, r *http.Request) {
-	if s.deliveryJobQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleAdminGetTicketDelivery(w http.ResponseWriter, r *http.Request) {
+	if h.deliveryJobQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "delivery store is not available", r,
 		))
 		return
 	}
-	reason, ok := requireAdminReason(w, r)
+	reason, ok := httputil.RequireAdminReason(w, r)
 	if !ok {
 		return
 	}
-	ticketID, ok := uuidPathParam(w, r, "id")
+	ticketID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
 		return
 	}
 
-	dj, err := s.deliveryJobQueries.GetDeliveryJobByTicketID(r.Context(), ticketID)
+	dj, err := h.deliveryJobQueries.GetDeliveryJobByTicketID(r.Context(), ticketID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			s.logTicketDeliveryAudit(r, "v1.admin.ticket.delivery.read",
+			h.logTicketDeliveryAudit(r, "v1.admin.ticket.delivery.read",
 				ticketID.String(), reason, map[string]any{"found": false})
-			writeJSON(w, http.StatusNotFound, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 				"ticket_delivery.not_found",
 				"no delivery has been attempted for this ticket",
 				r,
 			))
 			return
 		}
-		s.logger.Error("admin_ticket_delivery: query failed",
+		h.logger.Error("admin_ticket_delivery: query failed",
 			slog.String("ticket_id", ticketID.String()),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"ticket_delivery.internal", "failed to load delivery status", r,
 		))
 		return
 	}
 
-	s.logTicketDeliveryAudit(r, "v1.admin.ticket.delivery.read",
+	h.logTicketDeliveryAudit(r, "v1.admin.ticket.delivery.read",
 		ticketID.String(), reason, map[string]any{
-			"found":            true,
-			"delivery_status":  dj.Status,
-			"attempts":         dj.Attempts,
+			"found":           true,
+			"delivery_status": dj.Status,
+			"attempts":        dj.Attempts,
 		})
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"delivery": deliveryJobToMap(dj),
 	})
 }
@@ -99,24 +100,24 @@ func (s *Server) handleAdminGetTicketDelivery(w http.ResponseWriter, r *http.Req
 // POST /v1/admin/tickets/{id}/delivery/resend
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleAdminResendTicketDelivery enqueues a new delivery attempt for the
+// HandleAdminResendTicketDelivery enqueues a new delivery attempt for the
 // given ticket id. Inserts a fresh `delivery_jobs` row (status='pending')
 // and a companion `worker_jobs` row that the existing ticket.deliver worker
 // will pick up. Returns the newly inserted delivery_jobs row.
 //
 // Requires JWT + ticket.update + X-Admin-Reason (mounted via applyAuth).
-func (s *Server) handleAdminResendTicketDelivery(w http.ResponseWriter, r *http.Request) {
-	if s.deliveryJobQueries == nil || s.workerPool == nil || s.ticketQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleAdminResendTicketDelivery(w http.ResponseWriter, r *http.Request) {
+	if h.deliveryJobQueries == nil || h.workerPool == nil || h.ticketQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "delivery store is not available", r,
 		))
 		return
 	}
-	reason, ok := requireAdminReason(w, r)
+	reason, ok := httputil.RequireAdminReason(w, r)
 	if !ok {
 		return
 	}
-	ticketID, ok := uuidPathParam(w, r, "id")
+	ticketID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
 		return
 	}
@@ -124,34 +125,34 @@ func (s *Server) handleAdminResendTicketDelivery(w http.ResponseWriter, r *http.
 
 	// Confirm the ticket exists before enqueuing a job so we return a
 	// clean 404 rather than a deferred worker-side failure.
-	t, err := s.ticketQueries.GetTicketByID(ctx, ticketID)
+	t, err := h.ticketQueries.GetTicketByID(ctx, ticketID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 				"ticket_delivery.ticket_not_found",
 				"ticket not found",
 				r,
 			))
 			return
 		}
-		s.logger.Error("admin_ticket_delivery: load ticket failed",
+		h.logger.Error("admin_ticket_delivery: load ticket failed",
 			slog.String("ticket_id", ticketID.String()),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"ticket_delivery.internal", "failed to load ticket", r,
 		))
 		return
 	}
 
 	// Insert a fresh delivery_jobs row with the latest known recipient email.
-	dj, err := s.deliveryJobQueries.InsertDeliveryJob(ctx, ticketID, t.HolderEmail)
+	dj, err := h.deliveryJobQueries.InsertDeliveryJob(ctx, ticketID, t.HolderEmail)
 	if err != nil {
-		s.logger.Error("admin_ticket_delivery: insert delivery_job failed",
+		h.logger.Error("admin_ticket_delivery: insert delivery_job failed",
 			slog.String("ticket_id", ticketID.String()),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"ticket_delivery.enqueue_failed", "failed to enqueue delivery job", r,
 		))
 		return
@@ -162,11 +163,11 @@ func (s *Server) handleAdminResendTicketDelivery(w http.ResponseWriter, r *http.
 	p := delivery.Payload{TicketID: ticketID.String()}
 	body, jsonErr := json.Marshal(p)
 	if jsonErr != nil {
-		s.logger.Error("admin_ticket_delivery: marshal payload failed",
+		h.logger.Error("admin_ticket_delivery: marshal payload failed",
 			slog.String("ticket_id", ticketID.String()),
 			slog.String("error", jsonErr.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"ticket_delivery.enqueue_failed", "failed to build worker payload", r,
 		))
 		return
@@ -176,32 +177,32 @@ func (s *Server) handleAdminResendTicketDelivery(w http.ResponseWriter, r *http.
 		VALUES ($1, $2::jsonb, $3, 'pending', now())
 		RETURNING id::text`
 	var workerJobID string
-	if qErr := s.workerPool.QueryRow(ctx, insertJobSQL,
+	if qErr := h.workerPool.QueryRow(ctx, insertJobSQL,
 		delivery.JobType, body, 5,
 	).Scan(&workerJobID); qErr != nil {
-		s.logger.Error("admin_ticket_delivery: enqueue worker_job failed",
+		h.logger.Error("admin_ticket_delivery: enqueue worker_job failed",
 			slog.String("ticket_id", ticketID.String()),
 			slog.String("delivery_job_id", dj.ID.String()),
 			slog.String("error", qErr.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"ticket_delivery.enqueue_failed", "failed to enqueue worker job", r,
 		))
 		return
 	}
 
-	s.logger.Info("admin_ticket_delivery: resend enqueued",
+	h.logger.Info("admin_ticket_delivery: resend enqueued",
 		slog.String("ticket_id", ticketID.String()),
 		slog.String("delivery_job_id", dj.ID.String()),
 		slog.String("worker_job_id", workerJobID),
 	)
-	s.logTicketDeliveryAudit(r, "v1.admin.ticket.delivery.resend",
+	h.logTicketDeliveryAudit(r, "v1.admin.ticket.delivery.resend",
 		ticketID.String(), reason, map[string]any{
 			"delivery_job_id": dj.ID.String(),
 			"worker_job_id":   workerJobID,
 		})
 
-	writeJSON(w, http.StatusAccepted, map[string]any{
+	httputil.WriteJSON(w, http.StatusAccepted, map[string]any{
 		"delivery":      deliveryJobToMap(dj),
 		"worker_job_id": workerJobID,
 	})
@@ -244,12 +245,12 @@ func deliveryJobToMap(dj gen.DeliveryJobRow) map[string]any {
 // logTicketDeliveryAudit emits a fire-and-forget audit event for the
 // support-console delivery endpoints. Failures are logged but do not abort
 // the response.
-func (s *Server) logTicketDeliveryAudit(
+func (h *Handler) logTicketDeliveryAudit(
 	r *http.Request,
 	action, ticketID, reason string,
 	extra map[string]any,
 ) {
-	if s.audit == nil {
+	if h.audit == nil {
 		return
 	}
 	actor, _ := auth.ActorFromContext(r.Context())
@@ -266,11 +267,11 @@ func (s *Server) logTicketDeliveryAudit(
 		ResourceID:   ticketID,
 		RequestID:    logging.RequestID(r.Context()),
 		TraceID:      logging.TraceID(r.Context()),
-		IP:           extractClientIP(r),
+		IP:           httputil.ExtractClientIP(r),
 		Metadata:     metadata,
 	}
-	if err := s.audit.Write(r.Context(), ev); err != nil {
-		s.logger.Warn("admin_ticket_delivery: audit write failed",
+	if err := h.audit.Write(r.Context(), ev); err != nil {
+		h.logger.Warn("admin_ticket_delivery: audit write failed",
 			slog.String("action", action),
 			slog.Any("error", err),
 		)

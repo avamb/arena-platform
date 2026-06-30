@@ -25,7 +25,7 @@
 //
 //	GET /v1/tickets/{id}/credential?type=static_qr   (default)
 //	GET /v1/tickets/{id}/credential?type=pdf
-package httpserver
+package htickets
 
 import (
 	"bytes"
@@ -43,18 +43,19 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Response type
 // ─────────────────────────────────────────────────────────────────────────────
 
-// credentialResponse is the JSON representation of a single ticket_credentials row.
+// CredentialResponse is the JSON representation of a single ticket_credentials row.
 //
 // For type=static_qr, payload is the 64-char hex QR token.
 // For type=pdf, payload is the standard base64-encoded PDF bytes.
 // RevokedAt is null for active credentials.
-type credentialResponse struct {
+type CredentialResponse struct {
 	ID        string  `json:"id"`
 	TicketID  string  `json:"ticket_id"`
 	Type      string  `json:"type"`
@@ -63,9 +64,9 @@ type credentialResponse struct {
 	RevokedAt *string `json:"revoked_at"`
 }
 
-// credentialFromRow converts a gen.TicketCredentialRow to a credentialResponse.
-func credentialFromRow(r gen.TicketCredentialRow) credentialResponse {
-	resp := credentialResponse{
+// CredentialFromRow converts a gen.TicketCredentialRow to a CredentialResponse.
+func CredentialFromRow(r gen.TicketCredentialRow) CredentialResponse {
+	resp := CredentialResponse{
 		ID:       r.ID.String(),
 		TicketID: r.TicketID.String(),
 		Type:     r.Type,
@@ -83,16 +84,16 @@ func credentialFromRow(r gen.TicketCredentialRow) credentialResponse {
 // QR token generator
 // ─────────────────────────────────────────────────────────────────────────────
 
-// generateQRToken generates a cryptographically random opaque token suitable
+// GenerateQRToken generates a cryptographically random opaque token suitable
 // for embedding in a QR code. The token is 32 bytes read from crypto/rand,
 // encoded as 64 lowercase hexadecimal characters.
 //
 // The token is NOT the ticket UUID — the server-side binding of token ↔ ticket
 // is stored in ticket_credentials. This prevents enumeration attacks.
-func generateQRToken() (string, error) {
+func GenerateQRToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		return "", fmt.Errorf("generateQRToken: read random bytes: %w", err)
+		return "", fmt.Errorf("GenerateQRToken: read random bytes: %w", err)
 	}
 	return hex.EncodeToString(b), nil
 }
@@ -101,7 +102,7 @@ func generateQRToken() (string, error) {
 // PDF renderer
 // ─────────────────────────────────────────────────────────────────────────────
 
-// renderTicketPDF generates a minimal valid PDF/1.4 document for a ticket
+// RenderTicketPDF generates a minimal valid PDF/1.4 document for a ticket
 // credential. Returns the raw PDF bytes. Uses no external dependencies —
 // pure Go standard library only.
 //
@@ -117,7 +118,7 @@ func generateQRToken() (string, error) {
 //
 // The xref table offsets are calculated dynamically, making the output a
 // standards-conformant PDF that can be opened by any PDF reader.
-func renderTicketPDF(ticketID, qrToken string, issuedAt time.Time) []byte {
+func RenderTicketPDF(ticketID, qrToken string, issuedAt time.Time) []byte {
 	// ── Content stream (PDF page content operators) ───────────────────────────
 	// Display first 32 chars of the QR token so the PDF is readable without
 	// being too long. Scanners always use the full token from the DB.
@@ -208,7 +209,7 @@ func renderTicketPDF(ticketID, qrToken string, issuedAt time.Time) []byte {
 // GET /v1/tickets/{id}/credential
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleGetCredential serves GET /v1/tickets/{id}/credential.
+// HandleGetCredential serves GET /v1/tickets/{id}/credential.
 //
 // Query parameters:
 //
@@ -218,9 +219,9 @@ func renderTicketPDF(ticketID, qrToken string, issuedAt time.Time) []byte {
 // The credential is generated lazily on first access and stored in
 // ticket_credentials. Subsequent requests return the stored credential.
 // Requires JWT + "credential.read" permission.
-func (s *Server) handleGetCredential(w http.ResponseWriter, r *http.Request) {
-	if s.credentialQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleGetCredential(w http.ResponseWriter, r *http.Request) {
+	if h.credentialQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -230,7 +231,7 @@ func (s *Server) handleGetCredential(w http.ResponseWriter, r *http.Request) {
 	// ── Parse and validate ticket UUID ────────────────────────────────────────
 	ticketID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"credential.invalid_ticket_id", "ticket id must be a valid UUID", r,
 		))
 		return
@@ -242,86 +243,86 @@ func (s *Server) handleGetCredential(w http.ResponseWriter, r *http.Request) {
 		credType = "static_qr" // sensible default
 	}
 	if credType != "static_qr" && credType != "pdf" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"credential.invalid_type", "type must be 'static_qr' or 'pdf'", r,
 		))
 		return
 	}
 
 	// ── Try to fetch existing credential (lazy-generate if absent) ────────────
-	cred, err := s.credentialQueries.GetCredentialByTicketID(ctx, ticketID, credType)
+	cred, err := h.credentialQueries.GetCredentialByTicketID(ctx, ticketID, credType)
 	if err != nil {
 		if !errors.Is(err, pgx.ErrNoRows) {
 			// Unexpected DB error.
-			s.logger.Error("credential: get credential failed",
+			h.logger.Error("credential: get credential failed",
 				slog.String("ticket_id", ticketID.String()),
 				slog.String("type", credType),
 				slog.String("error", err.Error()),
 			)
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"credential.fetch_failed", "failed to fetch credential", r,
 			))
 			return
 		}
 
 		// Credential not yet generated — create it now.
-		payload, genErr := s.generateCredentialPayload(ticketID, credType)
+		payload, genErr := GenerateCredentialPayload(ticketID, credType)
 		if genErr != nil {
-			s.logger.Error("credential: generation failed",
+			h.logger.Error("credential: generation failed",
 				slog.String("ticket_id", ticketID.String()),
 				slog.String("type", credType),
 				slog.String("error", genErr.Error()),
 			)
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"credential.generation_failed", "failed to generate credential", r,
 			))
 			return
 		}
 
-		cred, err = s.credentialQueries.InsertTicketCredential(ctx, ticketID, credType, payload)
+		cred, err = h.credentialQueries.InsertTicketCredential(ctx, ticketID, credType, payload)
 		if err != nil {
-			s.logger.Error("credential: insert failed",
+			h.logger.Error("credential: insert failed",
 				slog.String("ticket_id", ticketID.String()),
 				slog.String("type", credType),
 				slog.String("error", err.Error()),
 			)
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"credential.store_failed", "failed to store credential", r,
 			))
 			return
 		}
 
-		s.logger.Info("credential: issued",
+		h.logger.Info("credential: issued",
 			slog.String("ticket_id", ticketID.String()),
 			slog.String("type", credType),
 			slog.String("credential_id", cred.ID.String()),
 		)
 	}
 
-	writeJSON(w, http.StatusOK, credentialFromRow(cred))
+	httputil.WriteJSON(w, http.StatusOK, CredentialFromRow(cred))
 }
 
-// generateCredentialPayload builds the payload string for a new credential.
+// GenerateCredentialPayload builds the payload string for a new credential.
 //
-//   - static_qr: 64-char hex token via generateQRToken().
-//   - pdf: base64(renderTicketPDF(ticketID, freshQRToken, now)).
+//   - static_qr: 64-char hex token via GenerateQRToken().
+//   - pdf: base64(RenderTicketPDF(ticketID, freshQRToken, now)).
 //     A fresh QR token is generated for the PDF; the PDF payload stores the
 //     full token so the scanner can still look it up. If both static_qr and
 //     pdf credentials are needed, issue static_qr first so both share the
 //     same token.
-func (s *Server) generateCredentialPayload(ticketID uuid.UUID, credType string) (string, error) {
+func GenerateCredentialPayload(ticketID uuid.UUID, credType string) (string, error) {
 	switch credType {
 	case "static_qr":
-		return generateQRToken()
+		return GenerateQRToken()
 	case "pdf":
 		// Generate a QR token to embed in the PDF.
-		token, err := generateQRToken()
+		token, err := GenerateQRToken()
 		if err != nil {
-			return "", fmt.Errorf("generateCredentialPayload: generate QR token for PDF: %w", err)
+			return "", fmt.Errorf("GenerateCredentialPayload: generate QR token for PDF: %w", err)
 		}
-		pdfBytes := renderTicketPDF(ticketID.String(), token, time.Now().UTC())
+		pdfBytes := RenderTicketPDF(ticketID.String(), token, time.Now().UTC())
 		return base64.StdEncoding.EncodeToString(pdfBytes), nil
 	default:
-		return "", fmt.Errorf("generateCredentialPayload: unsupported type %q", credType)
+		return "", fmt.Errorf("GenerateCredentialPayload: unsupported type %q", credType)
 	}
 }
