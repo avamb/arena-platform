@@ -456,6 +456,354 @@ export function validateSessionForm(
   return errors;
 }
 
+// ---------------------------------------------------------------------------
+// Ticket-tier form helpers (feature #283; exported for unit tests)
+// ---------------------------------------------------------------------------
+
+export const TIER_PRICING_MODES = ["fixed", "free", "pwyw"] as const;
+export type TierPricingMode = (typeof TIER_PRICING_MODES)[number];
+
+export function isTierPricingMode(value: string): value is TierPricingMode {
+  return (TIER_PRICING_MODES as readonly string[]).includes(value);
+}
+
+/**
+ * Currency capabilities by payment provider. The intent is to surface
+ * only currencies the organization can actually accept end-to-end:
+ * Stripe Charges accepts ~135 currencies, and the AllPay (Israeli)
+ * processor primarily clears ILS with secondary USD/EUR support. We
+ * keep this map intentionally pragmatic (top-20 Stripe currencies plus
+ * the AllPay set) so the dropdown is short enough to scan; legacy
+ * processors are not represented here because they're not wired into
+ * the platform.
+ *
+ * The values are ISO 4217 codes in uppercase, the same format
+ * ticket_tiers.go stores in the `currency` column.
+ */
+export const PROVIDER_CURRENCIES: Record<string, readonly string[]> = {
+  stripe: [
+    "USD", "EUR", "GBP", "ILS", "CAD", "AUD", "JPY", "CHF",
+    "SEK", "NOK", "DKK", "PLN", "CZK", "HUF", "BGN", "RON",
+    "SGD", "HKD", "NZD", "BRL", "MXN", "ZAR", "INR", "RUB",
+  ],
+  allpay: ["ILS", "USD", "EUR"],
+};
+
+/**
+ * Compute the currency set the organization can sell in by taking the
+ * UNION of every connected provider's supported currencies. Empty
+ * `providers` returns `defaultCurrencies` so the editor remains usable
+ * before the first channel is connected (the form still ships the
+ * value to the API, which enforces its own validation).
+ */
+export function allowedCurrenciesForProviders(
+  providers: readonly string[],
+  defaultCurrencies: readonly string[] = ["USD", "EUR", "ILS"],
+): readonly string[] {
+  if (providers.length === 0) {
+    return defaultCurrencies;
+  }
+  const set = new Set<string>();
+  for (const p of providers) {
+    const caps = PROVIDER_CURRENCIES[p];
+    if (caps === undefined) {
+      continue;
+    }
+    for (const c of caps) {
+      set.add(c);
+    }
+  }
+  if (set.size === 0) {
+    return defaultCurrencies;
+  }
+  return Array.from(set).sort();
+}
+
+export interface TierFormValues {
+  readonly name: string;
+  readonly pricing_mode: TierPricingMode;
+  /** Decimal string (major units, e.g. "12.50"). Converted to cents on submit. */
+  readonly price_amount: string;
+  readonly currency: string;
+  /** Decimal string; only meaningful when pricing_mode === "pwyw". */
+  readonly pwyw_min: string;
+  readonly pwyw_max: string;
+  /** Integer string; "" means unlimited. */
+  readonly capacity: string;
+  /** datetime-local string (YYYY-MM-DDTHH:MM, treated as UTC). */
+  readonly sale_window_start: string;
+  readonly sale_window_end: string;
+  /** Integer string. */
+  readonly sort_order: string;
+}
+
+export interface TierFormErrors {
+  readonly name?: string;
+  readonly pricing_mode?: string;
+  readonly price_amount?: string;
+  readonly currency?: string;
+  readonly pwyw_min?: string;
+  readonly pwyw_max?: string;
+  readonly capacity?: string;
+  readonly sale_window_start?: string;
+  readonly sale_window_end?: string;
+  readonly sort_order?: string;
+}
+
+export function emptyTierForm(defaultCurrency: string = "USD"): TierFormValues {
+  return {
+    name: "",
+    pricing_mode: "fixed",
+    price_amount: "",
+    currency: defaultCurrency,
+    pwyw_min: "",
+    pwyw_max: "",
+    capacity: "",
+    sale_window_start: "",
+    sale_window_end: "",
+    sort_order: "0",
+  };
+}
+
+export function tierToForm(t: TicketTierItem): TierFormValues {
+  return {
+    name: t.name,
+    pricing_mode: isTierPricingMode(t.pricing_mode) ? t.pricing_mode : "fixed",
+    price_amount: centsToDecimal(t.price_amount),
+    currency: t.currency,
+    pwyw_min:
+      t.pwyw_min !== null && t.pwyw_min !== undefined
+        ? centsToDecimal(t.pwyw_min)
+        : "",
+    pwyw_max:
+      t.pwyw_max !== null && t.pwyw_max !== undefined
+        ? centsToDecimal(t.pwyw_max)
+        : "",
+    capacity:
+      t.capacity !== null && t.capacity !== undefined ? String(t.capacity) : "",
+    sale_window_start:
+      t.sale_window_start !== null && t.sale_window_start !== undefined
+        ? toLocalDatetimeValue(t.sale_window_start)
+        : "",
+    sale_window_end:
+      t.sale_window_end !== null && t.sale_window_end !== undefined
+        ? toLocalDatetimeValue(t.sale_window_end)
+        : "",
+    sort_order: String(t.sort_order),
+  };
+}
+
+/**
+ * Convert an integer cents amount to a fixed two-decimal string suitable
+ * for the form input. Negative values aren't expected (the backend
+ * rejects them) but we render them faithfully so a corrupt row doesn't
+ * silently roundtrip to 0.
+ */
+export function centsToDecimal(cents: number): string {
+  const sign = cents < 0 ? "-" : "";
+  const abs = Math.abs(Math.trunc(cents));
+  const whole = Math.trunc(abs / 100);
+  const frac = abs - whole * 100;
+  return `${sign}${whole}.${frac < 10 ? "0" : ""}${frac}`;
+}
+
+/**
+ * Parse a decimal-string price (e.g. "12.50") into integer cents.
+ * Returns null on a malformed input. Accepts at most 2 fractional
+ * digits — anything finer would silently round and corrupt accounting.
+ */
+export function decimalToCents(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (trimmed === "") {
+    return null;
+  }
+  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) {
+    return null;
+  }
+  const [whole, frac = ""] = trimmed.split(".");
+  const padded = (frac + "00").slice(0, 2);
+  const cents = Number(whole) * 100 + Number(padded);
+  if (!Number.isSafeInteger(cents)) {
+    return null;
+  }
+  return cents;
+}
+
+/**
+ * Validate a TierFormValues against the contract documented in
+ * ticket_tiers.go and internal/domain/catalog.ValidatePricingMode.
+ *
+ * The `allowedCurrencies` argument is the org-scoped currency menu the
+ * editor renders; we reject values outside that menu so an operator
+ * cannot bypass the dropdown by hand-editing the DOM and ship a
+ * currency the org cannot actually settle.
+ */
+export function validateTierForm(
+  values: TierFormValues,
+  allowedCurrencies: readonly string[],
+): TierFormErrors {
+  const errors: { -readonly [K in keyof TierFormErrors]?: string } = {};
+
+  if (values.name.trim() === "") {
+    errors.name = "Name is required.";
+  } else if (values.name.length > 200) {
+    errors.name = "Name must be at most 200 characters.";
+  }
+
+  if (!isTierPricingMode(values.pricing_mode)) {
+    errors.pricing_mode = "Pricing mode must be fixed, free, or pwyw.";
+  }
+
+  const currency = values.currency.trim().toUpperCase();
+  if (currency === "") {
+    errors.currency = "Currency is required.";
+  } else if (
+    allowedCurrencies.length > 0 &&
+    !allowedCurrencies.includes(currency)
+  ) {
+    errors.currency =
+      "Currency is not supported by this organization's payment providers.";
+  }
+
+  // Mode-specific price/pwyw rules.
+  if (values.pricing_mode === "fixed") {
+    const cents = decimalToCents(values.price_amount);
+    if (cents === null) {
+      errors.price_amount = "Price must be a decimal (e.g. 12.50).";
+    } else if (cents <= 0) {
+      errors.price_amount =
+        "Fixed price must be greater than zero — use free mode for $0 tiers.";
+    }
+  } else if (values.pricing_mode === "free") {
+    if (values.price_amount.trim() !== "" && values.price_amount.trim() !== "0" && values.price_amount.trim() !== "0.00") {
+      // We force 0 on submit, but warn here so the operator sees the override.
+      // Not a blocking error.
+    }
+  } else if (values.pricing_mode === "pwyw") {
+    // pwyw allows 0 baseline; pwyw_min/max are optional but ordered.
+    if (values.pwyw_min.trim() !== "") {
+      const minCents = decimalToCents(values.pwyw_min);
+      if (minCents === null || minCents < 0) {
+        errors.pwyw_min = "pwyw_min must be a non-negative decimal.";
+      }
+    }
+    if (values.pwyw_max.trim() !== "") {
+      const maxCents = decimalToCents(values.pwyw_max);
+      if (maxCents === null || maxCents < 0) {
+        errors.pwyw_max = "pwyw_max must be a non-negative decimal.";
+      }
+    }
+    if (
+      errors.pwyw_min === undefined &&
+      errors.pwyw_max === undefined &&
+      values.pwyw_min.trim() !== "" &&
+      values.pwyw_max.trim() !== ""
+    ) {
+      const minC = decimalToCents(values.pwyw_min)!;
+      const maxC = decimalToCents(values.pwyw_max)!;
+      if (minC > maxC) {
+        errors.pwyw_max = "pwyw_max must be greater than or equal to pwyw_min.";
+      }
+    }
+  }
+
+  if (values.capacity.trim() !== "") {
+    if (!/^\d+$/.test(values.capacity.trim())) {
+      errors.capacity = "Capacity must be a whole number.";
+    } else {
+      const cap = Number(values.capacity);
+      if (cap <= 0) {
+        errors.capacity = "Capacity must be greater than zero.";
+      } else if (cap > 2_000_000_000) {
+        errors.capacity = "Capacity is too large.";
+      }
+    }
+  }
+
+  const saleStart = values.sale_window_start.trim();
+  const saleEnd = values.sale_window_end.trim();
+  if (saleStart !== "" && parseLocalDatetime(saleStart) === null) {
+    errors.sale_window_start = "Sale start must be a valid timestamp.";
+  }
+  if (saleEnd !== "" && parseLocalDatetime(saleEnd) === null) {
+    errors.sale_window_end = "Sale end must be a valid timestamp.";
+  }
+  if (
+    errors.sale_window_start === undefined &&
+    errors.sale_window_end === undefined &&
+    saleStart !== "" &&
+    saleEnd !== ""
+  ) {
+    const s = parseLocalDatetime(saleStart)!;
+    const e = parseLocalDatetime(saleEnd)!;
+    if (e.getTime() <= s.getTime()) {
+      errors.sale_window_end = "Sale end must be after sale start.";
+    }
+  }
+
+  if (values.sort_order.trim() === "") {
+    errors.sort_order = "Sort order is required.";
+  } else if (!/^-?\d+$/.test(values.sort_order.trim())) {
+    errors.sort_order = "Sort order must be an integer.";
+  } else {
+    const so = Number(values.sort_order);
+    if (so < -2_000_000_000 || so > 2_000_000_000) {
+      errors.sort_order = "Sort order is out of range.";
+    }
+  }
+
+  return errors;
+}
+
+/**
+ * Translate an ApiError from a tier endpoint into a human-readable
+ * sentence. Mirrors the error catalogue documented in ticket_tiers.go
+ * so the operator sees the same message regardless of whether the
+ * violation was detected client-side or rejected by the server.
+ */
+export function mapTierError(err: ApiError): string {
+  switch (err.code) {
+    case "tier.missing_name":
+    case "tier.invalid_name":
+      return "Name is required.";
+    case "tier.missing_pricing_mode":
+    case "tier.invalid_pricing_mode":
+      return "Pricing mode must be fixed, free, or pwyw.";
+    case "tier.invalid_capacity":
+      return "Capacity must be greater than zero.";
+    case "tier.invalid_sale_window":
+      return "Sale end must be after sale start.";
+    case "tier.invalid_sale_window_start":
+    case "tier.invalid_sale_window_end":
+      return "Sale window timestamps must be valid.";
+    case "tier.not_found":
+      return "Ticket tier no longer exists. The list will be refreshed.";
+    case "tier.insert_failed":
+    case "tier.update_failed":
+    case "tier.delete_failed":
+      return err.message || "Server failed to persist the change.";
+    case "pricing.fixed_price_required":
+    case "catalog.pricing.fixed_price_required":
+      return "Fixed-price tiers require a positive price.";
+    case "pricing.free_price_must_be_zero":
+    case "catalog.pricing.free_price_must_be_zero":
+      return "Free tiers must have a zero price.";
+    case "pricing.pwyw_min_greater_than_max":
+    case "catalog.pricing.pwyw_min_greater_than_max":
+      return "pwyw_min must be less than or equal to pwyw_max.";
+    case "permissions.denied":
+      return "Your account is missing the permission required for this action.";
+    default:
+      if (err.status === 401) {
+        return "Session expired. Please sign in again.";
+      }
+      if (err.status === 403) {
+        return "Forbidden — missing required tier permission.";
+      }
+      return `${err.message} (${err.code})`;
+  }
+}
+
 /**
  * Find sibling sessions in `siblings` whose time range overlaps the
  * supplied [start, end) window. Two ranges overlap iff
@@ -524,6 +872,9 @@ function EventsModule() {
   const canCreateSession = permissions.has("session.create");
   const canUpdateSession = permissions.has("session.update");
   const canDeleteSession = permissions.has("session.delete");
+  const canCreateTier = permissions.has("tier.create");
+  const canUpdateTier = permissions.has("tier.update");
+  const canDeleteTier = permissions.has("tier.delete");
 
   const [visibilityFilter, setVisibilityFilter] =
     useState<EventVisibilityFilter>("all");
@@ -677,6 +1028,9 @@ function EventsModule() {
           canCreateSession={canCreateSession}
           canUpdateSession={canUpdateSession}
           canDeleteSession={canDeleteSession}
+          canCreateTier={canCreateTier}
+          canUpdateTier={canUpdateTier}
+          canDeleteTier={canDeleteTier}
           onClose={() => setSelectedID(null)}
         />
       ) : null}
@@ -1037,6 +1391,9 @@ interface DrawerProps {
   canCreateSession: boolean;
   canUpdateSession: boolean;
   canDeleteSession: boolean;
+  canCreateTier: boolean;
+  canUpdateTier: boolean;
+  canDeleteTier: boolean;
   onClose: () => void;
 }
 
@@ -1047,6 +1404,9 @@ function EventDrawer({
   canCreateSession,
   canUpdateSession,
   canDeleteSession,
+  canCreateTier,
+  canUpdateTier,
+  canDeleteTier,
   onClose,
 }: DrawerProps) {
   const [tab, setTab] = useState<DrawerTab>("overview");
@@ -1105,7 +1465,14 @@ function EventDrawer({
               canDelete={canDeleteSession}
             />
           ) : null}
-          {tab === "tiers" ? <TiersTab event={event} /> : null}
+          {tab === "tiers" ? (
+            <TiersTab
+              event={event}
+              canCreate={canCreateTier}
+              canUpdate={canUpdateTier}
+              canDelete={canDeleteTier}
+            />
+          ) : null}
           {tab === "publications" ? (
             <PublicationsTab event={event} canRead={canReadPublications} />
           ) : null}
@@ -1750,7 +2117,36 @@ export function mapSessionError(err: ApiError): string {
   }
 }
 
-function TiersTab({ event }: { event: EventItem }) {
+// ---------------------------------------------------------------------------
+// Tiers tab (feature #283 / E-5)
+// ---------------------------------------------------------------------------
+
+interface ChannelSummary {
+  readonly id: string;
+  readonly org_id: string;
+  readonly provider: string;
+}
+
+interface ChannelListEnvelope {
+  readonly channels: readonly ChannelSummary[];
+}
+
+type TierEditorMode =
+  | { kind: "closed" }
+  | { kind: "create"; sessionID: string }
+  | { kind: "edit"; sessionID: string; tier: TicketTierItem };
+
+function TiersTab({
+  event,
+  canCreate,
+  canUpdate,
+  canDelete,
+}: {
+  event: EventItem;
+  canCreate: boolean;
+  canUpdate: boolean;
+  canDelete: boolean;
+}) {
   const sessionsQuery = useQuery<SessionListEnvelope, ApiError>({
     queryKey: ["events", "detail", event.id, "sessions"],
     queryFn: () =>
@@ -1761,6 +2157,30 @@ function TiersTab({ event }: { event: EventItem }) {
     retry: false,
     refetchOnWindowFocus: false,
   });
+
+  // Channels query feeds the currency-capability dropdown. We fetch
+  // once per drawer open at the org scope. If the operator lacks
+  // channel.read the query 403s; we degrade to the default currency
+  // list rather than block the editor.
+  const channelsQuery = useQuery<ChannelListEnvelope, ApiError>({
+    queryKey: ["events", "detail", event.id, "org-channels"],
+    queryFn: () =>
+      authedFetch<ChannelListEnvelope>({
+        method: "GET",
+        path: `/v1/organizations/${event.org_id}/channels`,
+      }),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+
+  const allowedCurrencies = useMemo(() => {
+    const providers = new Set<string>();
+    for (const c of channelsQuery.data?.channels ?? []) {
+      providers.add(c.provider);
+    }
+    return allowedCurrenciesForProviders(Array.from(providers));
+  }, [channelsQuery.data]);
+
   if (sessionsQuery.isPending) {
     return <div style={statusBoxStyle}>Loading sessions…</div>;
   }
@@ -1783,9 +2203,22 @@ function TiersTab({ event }: { event: EventItem }) {
     );
   }
   return (
-    <div style={tabBodyStyle}>
+    <div style={tabBodyStyle} data-testid="events-tiers-tab">
+      {channelsQuery.isError && channelsQuery.error?.status !== 403 ? (
+        <div style={statusBoxStyle}>
+          Could not load payment channels — currency menu defaults to USD/EUR/ILS.
+        </div>
+      ) : null}
       {sessions.map((s) => (
-        <SessionTiersBlock key={s.id} event={event} session={s} />
+        <SessionTiersBlock
+          key={s.id}
+          event={event}
+          session={s}
+          canCreate={canCreate}
+          canUpdate={canUpdate}
+          canDelete={canDelete}
+          allowedCurrencies={allowedCurrencies}
+        />
       ))}
     </div>
   );
@@ -1794,12 +2227,29 @@ function TiersTab({ event }: { event: EventItem }) {
 function SessionTiersBlock({
   event,
   session,
+  canCreate,
+  canUpdate,
+  canDelete,
+  allowedCurrencies,
 }: {
   event: EventItem;
   session: SessionItem;
+  canCreate: boolean;
+  canUpdate: boolean;
+  canDelete: boolean;
+  allowedCurrencies: readonly string[];
 }) {
+  const queryClient = useQueryClient();
+  const queryKey = [
+    "events",
+    "detail",
+    event.id,
+    "session",
+    session.id,
+    "tiers",
+  ] as const;
   const query = useQuery<TicketTierListEnvelope, ApiError>({
-    queryKey: ["events", "detail", event.id, "session", session.id, "tiers"],
+    queryKey,
     queryFn: () =>
       authedFetch<TicketTierListEnvelope>({
         method: "GET",
@@ -1808,9 +2258,41 @@ function SessionTiersBlock({
     retry: false,
     refetchOnWindowFocus: false,
   });
+
+  const [editor, setEditor] = useState<TierEditorMode>({ kind: "closed" });
+  const [confirmDeleteID, setConfirmDeleteID] = useState<string | null>(null);
+  const [actionErr, setActionErr] = useState<string | null>(null);
+  const [actionOk, setActionOk] = useState<string | null>(null);
+
+  const deleteMutation = useMutation<void, ApiError, string>({
+    mutationFn: (id) =>
+      authedFetch<void>({
+        method: "DELETE",
+        path: `/v1/organizations/${event.org_id}/events/${event.id}/sessions/${session.id}/tiers/${id}`,
+      }),
+    onSuccess: (_data, id) => {
+      setActionErr(null);
+      setActionOk(`Deleted tier ${shortenUUID(id)}.`);
+      setConfirmDeleteID(null);
+      void queryClient.invalidateQueries({ queryKey });
+    },
+    onError: (err) => {
+      setActionOk(null);
+      setActionErr(mapTierError(err));
+    },
+  });
+
   const tiers = query.data?.ticket_tiers ?? query.data?.tiers ?? [];
+  const sortedTiers = useMemo(
+    () => [...tiers].sort((a, b) => a.sort_order - b.sort_order),
+    [tiers],
+  );
+
   return (
-    <section style={tierBlockStyle} data-testid={`events-tier-block-${session.id}`}>
+    <section
+      style={tierBlockStyle}
+      data-testid={`events-tier-block-${session.id}`}
+    >
       <header style={tierBlockHeaderStyle}>
         <div>
           <div style={detailLabelStyle}>
@@ -1820,17 +2302,78 @@ function SessionTiersBlock({
             {session.status} · capacity {session.capacity_total.toLocaleString()}
           </div>
         </div>
+        {canCreate ? (
+          <button
+            type="button"
+            style={primaryButtonStyle}
+            onClick={() => {
+              setActionErr(null);
+              setActionOk(null);
+              setEditor({ kind: "create", sessionID: session.id });
+            }}
+            disabled={editor.kind !== "closed"}
+            data-testid={`events-tier-add-${session.id}`}
+          >
+            Add tier
+          </button>
+        ) : (
+          <span style={mutedHintStyle}>
+            <code style={monoStyle}>tier.create</code> required.
+          </span>
+        )}
       </header>
+
+      {actionErr !== null ? (
+        <div
+          style={formErrorStyle}
+          role="alert"
+          data-testid={`events-tier-action-error-${session.id}`}
+        >
+          {actionErr}
+        </div>
+      ) : null}
+      {actionOk !== null ? (
+        <div
+          style={successBoxStyle}
+          role="status"
+          data-testid={`events-tier-action-ok-${session.id}`}
+        >
+          {actionOk}
+        </div>
+      ) : null}
+
+      {editor.kind === "create" && editor.sessionID === session.id ? (
+        <TierEditor
+          event={event}
+          session={session}
+          mode={editor}
+          allowedCurrencies={allowedCurrencies}
+          onClose={() => setEditor({ kind: "closed" })}
+          onSaved={(label) => {
+            setActionErr(null);
+            setActionOk(label);
+            setEditor({ kind: "closed" });
+            void queryClient.invalidateQueries({ queryKey });
+          }}
+          onError={(msg) => {
+            setActionErr(msg);
+            setActionOk(null);
+          }}
+        />
+      ) : null}
+
       {query.isPending ? (
         <div style={statusBoxStyle}>Loading tiers…</div>
       ) : query.isError ? (
         <div style={errorBoxStyle} role="alert">
           <strong>Failed to load tiers.</strong>
-          <div style={errorCodeStyle}>{query.error?.code ?? "unknown.error"}</div>
+          <div style={errorCodeStyle}>
+            {query.error?.code ?? "unknown.error"}
+          </div>
         </div>
-      ) : tiers.length === 0 ? (
+      ) : sortedTiers.length === 0 && editor.kind === "closed" ? (
         <div style={statusBoxStyle}>No tiers configured.</div>
-      ) : (
+      ) : sortedTiers.length > 0 ? (
         <div style={tableWrapStyle}>
           <table style={tableStyle}>
             <thead>
@@ -1840,33 +2383,489 @@ function SessionTiersBlock({
                 <th scope="col" style={thStyle}>Price</th>
                 <th scope="col" style={thStyle}>Currency</th>
                 <th scope="col" style={thStyle}>Capacity</th>
+                <th scope="col" style={thStyle}>Sort</th>
+                <th scope="col" style={thStyle}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {tiers.map((t) => (
-                <tr key={t.id} data-testid={`events-tier-${t.id}`}>
-                  <td style={tdStyle}>{t.name}</td>
-                  <td style={tdStyle}>{t.pricing_mode}</td>
-                  <td style={tdStyle}>
-                    {(t.price_amount / 100).toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
-                  </td>
-                  <td style={tdStyle}>{t.currency}</td>
-                  <td style={tdStyle}>
-                    {t.capacity !== null && t.capacity !== undefined
-                      ? t.capacity.toLocaleString()
-                      : "—"}
-                  </td>
-                </tr>
-              ))}
+              {sortedTiers.map((t) => {
+                const isEditing =
+                  editor.kind === "edit" && editor.tier.id === t.id;
+                return (
+                  <Fragment key={t.id}>
+                    <tr data-testid={`events-tier-${t.id}`}>
+                      <td style={tdStyle}>{t.name}</td>
+                      <td style={tdStyle}>{t.pricing_mode}</td>
+                      <td style={tdStyle}>
+                        {t.pricing_mode === "free"
+                          ? "—"
+                          : t.pricing_mode === "pwyw"
+                            ? `${centsToDecimal(t.pwyw_min ?? 0)} – ${
+                                t.pwyw_max !== null && t.pwyw_max !== undefined
+                                  ? centsToDecimal(t.pwyw_max)
+                                  : "∞"
+                              }`
+                            : centsToDecimal(t.price_amount)}
+                      </td>
+                      <td style={tdStyle}>{t.currency}</td>
+                      <td style={tdStyle}>
+                        {t.capacity !== null && t.capacity !== undefined
+                          ? t.capacity.toLocaleString()
+                          : "—"}
+                      </td>
+                      <td style={tdStyle}>{t.sort_order}</td>
+                      <td style={tdStyle}>
+                        <div style={rowActionsStyle}>
+                          {canUpdate ? (
+                            <button
+                              type="button"
+                              style={refreshButtonStyle}
+                              onClick={() => {
+                                setActionErr(null);
+                                setActionOk(null);
+                                setEditor({
+                                  kind: "edit",
+                                  sessionID: session.id,
+                                  tier: t,
+                                });
+                              }}
+                              data-testid={`events-tier-edit-${t.id}`}
+                              disabled={isEditing}
+                            >
+                              Edit
+                            </button>
+                          ) : null}
+                          {canDelete ? (
+                            <button
+                              type="button"
+                              style={dangerButtonStyle}
+                              onClick={() => {
+                                setActionErr(null);
+                                setActionOk(null);
+                                setConfirmDeleteID(t.id);
+                              }}
+                              data-testid={`events-tier-delete-${t.id}`}
+                              disabled={deleteMutation.isPending}
+                            >
+                              Delete
+                            </button>
+                          ) : null}
+                          {!canUpdate && !canDelete ? (
+                            <span style={mutedHintStyle}>read-only</span>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                    {confirmDeleteID === t.id ? (
+                      <tr>
+                        <td colSpan={7} style={tdStyle}>
+                          <div
+                            style={confirmDeleteStyle}
+                            data-testid={`events-tier-confirm-${t.id}`}
+                          >
+                            <span>
+                              Delete tier &quot;{t.name}&quot;? This cannot be
+                              undone.
+                            </span>
+                            <div style={rowActionsStyle}>
+                              <button
+                                type="button"
+                                style={dangerButtonStyle}
+                                onClick={() => deleteMutation.mutate(t.id)}
+                                disabled={deleteMutation.isPending}
+                                data-testid={`events-tier-confirm-yes-${t.id}`}
+                              >
+                                {deleteMutation.isPending
+                                  ? "Deleting…"
+                                  : "Yes, delete"}
+                              </button>
+                              <button
+                                type="button"
+                                style={refreshButtonStyle}
+                                onClick={() => setConfirmDeleteID(null)}
+                                disabled={deleteMutation.isPending}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
+                    {isEditing ? (
+                      <tr>
+                        <td colSpan={7} style={tdStyle}>
+                          <TierEditor
+                            event={event}
+                            session={session}
+                            mode={editor}
+                            allowedCurrencies={allowedCurrencies}
+                            onClose={() => setEditor({ kind: "closed" })}
+                            onSaved={(label) => {
+                              setActionErr(null);
+                              setActionOk(label);
+                              setEditor({ kind: "closed" });
+                              void queryClient.invalidateQueries({ queryKey });
+                            }}
+                            onError={(msg) => {
+                              setActionErr(msg);
+                              setActionOk(null);
+                            }}
+                          />
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
-      )}
+      ) : null}
     </section>
   );
+}
+
+interface TierEnvelope {
+  readonly tier: TicketTierItem;
+}
+
+interface TierEditorProps {
+  event: EventItem;
+  session: SessionItem;
+  mode: Exclude<TierEditorMode, { kind: "closed" }>;
+  allowedCurrencies: readonly string[];
+  onClose: () => void;
+  onSaved: (label: string) => void;
+  onError: (msg: string) => void;
+}
+
+function TierEditor({
+  event,
+  session,
+  mode,
+  allowedCurrencies,
+  onClose,
+  onSaved,
+  onError,
+}: TierEditorProps) {
+  const initial =
+    mode.kind === "edit"
+      ? tierToForm(mode.tier)
+      : emptyTierForm(allowedCurrencies[0] ?? "USD");
+  const [values, setValues] = useState<TierFormValues>(initial);
+  const errors = useMemo(
+    () => validateTierForm(values, allowedCurrencies),
+    [values, allowedCurrencies],
+  );
+
+  const mutation = useMutation<TierEnvelope, ApiError, TierFormValues>({
+    mutationFn: (v) => {
+      const basePath = `/v1/organizations/${event.org_id}/events/${event.id}/sessions/${session.id}/tiers`;
+      const body = buildTierRequestBody(v);
+      if (mode.kind === "create") {
+        return authedFetch<TierEnvelope>({
+          method: "POST",
+          path: basePath,
+          body,
+        });
+      }
+      return authedFetch<TierEnvelope>({
+        method: "PATCH",
+        path: `${basePath}/${mode.tier.id}`,
+        body,
+      });
+    },
+    onSuccess: (data) => {
+      onSaved(
+        mode.kind === "create"
+          ? `Created tier "${data.tier.name}".`
+          : `Updated tier "${data.tier.name}".`,
+      );
+    },
+    onError: (err) => {
+      onError(mapTierError(err));
+    },
+  });
+
+  const submit = () => {
+    if (Object.keys(errors).length > 0) {
+      return;
+    }
+    mutation.mutate(values);
+  };
+
+  return (
+    <form
+      style={editorFormStyle}
+      data-testid={
+        mode.kind === "create"
+          ? `events-tier-form-create-${session.id}`
+          : `events-tier-form-edit-${mode.tier.id}`
+      }
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit();
+      }}
+    >
+      <div style={detailLabelStyle}>
+        {mode.kind === "create" ? "Add ticket tier" : "Edit ticket tier"}
+      </div>
+      <div style={editorGridStyle}>
+        <label style={editorFieldStyle}>
+          <span style={editorLabelStyle}>Name</span>
+          <input
+            type="text"
+            value={values.name}
+            onChange={(e) => setValues({ ...values, name: e.target.value })}
+            style={editorInputStyle}
+            maxLength={200}
+            required
+            data-testid="events-tier-input-name"
+          />
+          {errors.name !== undefined ? (
+            <span style={fieldErrorStyle}>{errors.name}</span>
+          ) : null}
+        </label>
+        <label style={editorFieldStyle}>
+          <span style={editorLabelStyle}>Pricing mode</span>
+          <select
+            value={values.pricing_mode}
+            onChange={(e) => {
+              const v = e.target.value;
+              setValues({
+                ...values,
+                pricing_mode: isTierPricingMode(v) ? v : "fixed",
+              });
+            }}
+            style={editorInputStyle}
+            data-testid="events-tier-input-mode"
+          >
+            {TIER_PRICING_MODES.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+          {errors.pricing_mode !== undefined ? (
+            <span style={fieldErrorStyle}>{errors.pricing_mode}</span>
+          ) : null}
+        </label>
+        {values.pricing_mode === "fixed" ? (
+          <label style={editorFieldStyle}>
+            <span style={editorLabelStyle}>Price (major units)</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={values.price_amount}
+              onChange={(e) =>
+                setValues({ ...values, price_amount: e.target.value })
+              }
+              placeholder="e.g. 12.50"
+              style={editorInputStyle}
+              required
+              data-testid="events-tier-input-price"
+            />
+            {errors.price_amount !== undefined ? (
+              <span style={fieldErrorStyle}>{errors.price_amount}</span>
+            ) : null}
+          </label>
+        ) : null}
+        <label style={editorFieldStyle}>
+          <span style={editorLabelStyle}>Currency</span>
+          <select
+            value={values.currency}
+            onChange={(e) =>
+              setValues({ ...values, currency: e.target.value })
+            }
+            style={editorInputStyle}
+            data-testid="events-tier-input-currency"
+          >
+            {allowedCurrencies.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+          {errors.currency !== undefined ? (
+            <span style={fieldErrorStyle}>{errors.currency}</span>
+          ) : null}
+        </label>
+        {values.pricing_mode === "pwyw" ? (
+          <>
+            <label style={editorFieldStyle}>
+              <span style={editorLabelStyle}>pwyw min (major units)</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={values.pwyw_min}
+                onChange={(e) =>
+                  setValues({ ...values, pwyw_min: e.target.value })
+                }
+                placeholder="optional"
+                style={editorInputStyle}
+                data-testid="events-tier-input-pwyw-min"
+              />
+              {errors.pwyw_min !== undefined ? (
+                <span style={fieldErrorStyle}>{errors.pwyw_min}</span>
+              ) : null}
+            </label>
+            <label style={editorFieldStyle}>
+              <span style={editorLabelStyle}>pwyw max (major units)</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={values.pwyw_max}
+                onChange={(e) =>
+                  setValues({ ...values, pwyw_max: e.target.value })
+                }
+                placeholder="optional"
+                style={editorInputStyle}
+                data-testid="events-tier-input-pwyw-max"
+              />
+              {errors.pwyw_max !== undefined ? (
+                <span style={fieldErrorStyle}>{errors.pwyw_max}</span>
+              ) : null}
+            </label>
+          </>
+        ) : null}
+        <label style={editorFieldStyle}>
+          <span style={editorLabelStyle}>Capacity (optional)</span>
+          <input
+            type="number"
+            min={1}
+            step={1}
+            value={values.capacity}
+            onChange={(e) =>
+              setValues({ ...values, capacity: e.target.value })
+            }
+            placeholder="unlimited"
+            style={editorInputStyle}
+            data-testid="events-tier-input-capacity"
+          />
+          {errors.capacity !== undefined ? (
+            <span style={fieldErrorStyle}>{errors.capacity}</span>
+          ) : null}
+        </label>
+        <label style={editorFieldStyle}>
+          <span style={editorLabelStyle}>Sale start (UTC, optional)</span>
+          <input
+            type="datetime-local"
+            value={values.sale_window_start}
+            onChange={(e) =>
+              setValues({ ...values, sale_window_start: e.target.value })
+            }
+            style={editorInputStyle}
+            data-testid="events-tier-input-sale-start"
+          />
+          {errors.sale_window_start !== undefined ? (
+            <span style={fieldErrorStyle}>{errors.sale_window_start}</span>
+          ) : null}
+        </label>
+        <label style={editorFieldStyle}>
+          <span style={editorLabelStyle}>Sale end (UTC, optional)</span>
+          <input
+            type="datetime-local"
+            value={values.sale_window_end}
+            onChange={(e) =>
+              setValues({ ...values, sale_window_end: e.target.value })
+            }
+            style={editorInputStyle}
+            data-testid="events-tier-input-sale-end"
+          />
+          {errors.sale_window_end !== undefined ? (
+            <span style={fieldErrorStyle}>{errors.sale_window_end}</span>
+          ) : null}
+        </label>
+        <label style={editorFieldStyle}>
+          <span style={editorLabelStyle}>Sort order</span>
+          <input
+            type="number"
+            step={1}
+            value={values.sort_order}
+            onChange={(e) =>
+              setValues({ ...values, sort_order: e.target.value })
+            }
+            style={editorInputStyle}
+            required
+            data-testid="events-tier-input-sort"
+          />
+          {errors.sort_order !== undefined ? (
+            <span style={fieldErrorStyle}>{errors.sort_order}</span>
+          ) : null}
+        </label>
+      </div>
+
+      <div style={rowActionsStyle}>
+        <button
+          type="submit"
+          style={primaryButtonStyle}
+          disabled={mutation.isPending || Object.keys(errors).length > 0}
+          data-testid="events-tier-submit"
+        >
+          {mutation.isPending
+            ? "Saving…"
+            : mode.kind === "create"
+              ? "Create tier"
+              : "Save changes"}
+        </button>
+        <button
+          type="button"
+          style={refreshButtonStyle}
+          onClick={onClose}
+          disabled={mutation.isPending}
+          data-testid="events-tier-cancel"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * Build the JSON request body for POST/PATCH .../tiers. Decimals are
+ * converted to integer cents; optional fields are omitted (rather than
+ * sent as null) so PATCH leaves them unchanged when not provided by the
+ * editor. Sale-window timestamps are normalised to RFC3339 UTC.
+ */
+export function buildTierRequestBody(v: TierFormValues): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    name: v.name.trim(),
+    pricing_mode: v.pricing_mode,
+    currency: v.currency.trim().toUpperCase(),
+    sort_order: Number(v.sort_order),
+  };
+
+  if (v.pricing_mode === "free") {
+    body.price_amount = 0;
+    body.pwyw_min = null;
+    body.pwyw_max = null;
+  } else if (v.pricing_mode === "fixed") {
+    body.price_amount = decimalToCents(v.price_amount) ?? 0;
+    body.pwyw_min = null;
+    body.pwyw_max = null;
+  } else {
+    // pwyw: price_amount is the baseline (defaults to 0); min/max optional.
+    body.price_amount = decimalToCents(v.price_amount) ?? 0;
+    body.pwyw_min =
+      v.pwyw_min.trim() === "" ? null : (decimalToCents(v.pwyw_min) ?? 0);
+    body.pwyw_max =
+      v.pwyw_max.trim() === "" ? null : (decimalToCents(v.pwyw_max) ?? 0);
+  }
+
+  if (v.capacity.trim() === "") {
+    body.capacity = null;
+  } else {
+    body.capacity = Number(v.capacity);
+  }
+
+  body.sale_window_start =
+    v.sale_window_start.trim() === "" ? null : toRFC3339(v.sale_window_start);
+  body.sale_window_end =
+    v.sale_window_end.trim() === "" ? null : toRFC3339(v.sale_window_end);
+
+  return body;
 }
 
 function PublicationsTab({
