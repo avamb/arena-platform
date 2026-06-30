@@ -4,6 +4,17 @@
 <html lang="es" dir="ltr">
 <head><meta charset="UTF-8"><title>Estás invitado</title></head>
 <body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e">
+  <table cellpadding="0" cellspacing="0" style="width:100%;border-bottom:1px solid #eee;padding-bottom:12px;margin-bottom:16px">
+    <tr>
+      <td style="vertical-align:middle">
+        {{with .Branding.LogoURL}}<img src="{{.}}" alt="{{$.Branding.LogoAlt}}" style="max-height:48px;max-width:240px">{{end}}
+      </td>
+      <td style="vertical-align:middle;text-align:right;font-size:13px;color:#555">
+        <strong>{{.Branding.OrgName}}</strong>
+        {{with .Branding.WebsiteURL}}<br><a href="{{.}}" style="color:#1a73e8;text-decoration:none">{{.}}</a>{{end}}
+      </td>
+    </tr>
+  </table>
   <h1 style="color:#1a1a2e">¡Estás invitado!</h1>
   <p>Hola{{with .HolderName}} {{.}}{{end}},</p>
   <p>Has recibido una entrada de cortesía para
@@ -12,11 +23,21 @@
   <p style="font-size:12px;color:#666">ID de entrada: {{.TicketID}}</p>
   <p style="font-size:12px;color:#666">Enviado a: {{.RecipientEmail}}</p>
   <hr>
+  <p style="font-size:11px;color:#666;line-height:1.5">
+    <strong>{{.Branding.LegalName}}</strong>
+    {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
+    {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Contacto: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}
+  </p>
   <p style="font-size:11px;color:#999">Arena Platform — entrega automática de invitaciones</p>
 </body>
 </html>{{end}}
 
-{{define "text"}}¡Estás invitado!
+{{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
+
+¡Estás invitado!
 
 Hola{{with .HolderName}} {{.}}{{end}},
 
@@ -28,5 +49,14 @@ Esta entrada es una invitación gratuita — no se requiere pago.
 ID de entrada: {{.TicketID}}
 Enviado a: {{.RecipientEmail}}
 
+--
+{{.Branding.LegalName}}
+{{with .Branding.LegalAddressLine1}}{{.}}
+{{end}}{{with .Branding.LegalAddressLine2}}{{.}}
+{{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
+{{else}}{{with .Branding.LegalAddressCity}}{{.}}
+{{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.ContactEmail}}Contacto: {{.}}
+{{end}}
 Arena Platform — entrega automática de invitaciones
 {{end}}

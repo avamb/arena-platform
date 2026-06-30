@@ -76,6 +76,144 @@ func TestRender_IsDeterministic(t *testing.T) {
 	}
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// Feature #290 (T-3) Branding hooks on PDF e-tickets
+// ──────────────────────────────────────────────────────────────────────────────
+
+func TestRender_Branding_FooterLegalBlockEmittedWhenLegalNameSet(t *testing.T) {
+	tk := validTicket(t)
+	tk.OrgName = "Globe Theatre"
+	tk.OrgWebsiteURL = "https://globe.example.com"
+	tk.LegalName = "Globe Theatre Ltd"
+	tk.LegalAddressLine1 = "21 New Globe Walk"
+	tk.LegalAddressCity = "London"
+	tk.LegalAddressCountry = "GB"
+	tk.ContactEmail = "hello@globe.example.com"
+	out, err := Render(context.Background(), tk)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if len(out) < 200 {
+		t.Fatalf("PDF suspiciously small: %d bytes", len(out))
+	}
+	// The PDF text-content stream is uncompressed (SetCompression(false))
+	// so the legal-block lines must appear verbatim in the bytes.
+	for _, want := range []string{
+		"Globe Theatre", "Globe Theatre Ltd", "21 New Globe Walk",
+		"London", "GB", "Contact: hello@globe.example.com",
+	} {
+		if !bytes.Contains(out, []byte(want)) {
+			t.Errorf("PDF missing branding text %q", want)
+		}
+	}
+}
+
+func TestRender_Branding_NoLegalNameOmitsFooterBlock(t *testing.T) {
+	tk := validTicket(t)
+	// No branding fields set. Expectation: PDF still renders (fine-print
+	// disclaimer prints) but no legal block.
+	out, err := Render(context.Background(), tk)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if bytes.Contains(out, []byte("Contact:")) {
+		t.Errorf("PDF should not contain Contact: line when ContactEmail is empty")
+	}
+}
+
+func TestRender_Branding_OrgNameOverridesDefaultWordmark(t *testing.T) {
+	tk := validTicket(t)
+	tk.OrgName = "Acme Productions"
+	out, err := Render(context.Background(), tk)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !bytes.Contains(out, []byte("Acme Productions")) {
+		t.Error("PDF missing OrgName wordmark")
+	}
+	if bytes.Contains(out, []byte("Arena E-Ticket")) {
+		t.Error("PDF should not contain default wordmark when OrgName is set")
+	}
+}
+
+func TestRender_Branding_NoOrgNameFallsBackToDefaultWordmark(t *testing.T) {
+	tk := validTicket(t)
+	out, err := Render(context.Background(), tk)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !bytes.Contains(out, []byte("Arena E-Ticket")) {
+		t.Error("PDF missing default wordmark when OrgName empty")
+	}
+}
+
+func TestBuildLegalLines_AssemblesAddressBlock(t *testing.T) {
+	cases := []struct {
+		name string
+		in   Ticket
+		want []string
+	}{
+		{
+			name: "empty input",
+			in:   Ticket{},
+			want: []string{},
+		},
+		{
+			name: "legal name only",
+			in:   Ticket{LegalName: "X Ltd"},
+			want: []string{"X Ltd"},
+		},
+		{
+			name: "postal + city combined",
+			in: Ticket{
+				LegalName:              "X Ltd",
+				LegalAddressPostalCode: "SE1 9DT",
+				LegalAddressCity:       "London",
+			},
+			want: []string{"X Ltd", "SE1 9DT London"},
+		},
+		{
+			name: "postal only",
+			in:   Ticket{LegalAddressPostalCode: "10115"},
+			want: []string{"10115"},
+		},
+		{
+			name: "city only",
+			in:   Ticket{LegalAddressCity: "Berlin"},
+			want: []string{"Berlin"},
+		},
+		{
+			name: "all fields",
+			in: Ticket{
+				LegalName:              "X Ltd",
+				LegalAddressLine1:      "1 Road",
+				LegalAddressLine2:      "Floor 2",
+				LegalAddressPostalCode: "10115",
+				LegalAddressCity:       "Berlin",
+				LegalAddressCountry:    "DE",
+				ContactEmail:           "hi@x.example",
+			},
+			want: []string{
+				"X Ltd", "1 Road", "Floor 2", "10115 Berlin", "DE",
+				"Contact: hi@x.example",
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := buildLegalLines(tc.in)
+			if len(got) != len(tc.want) {
+				t.Fatalf("len=%d want %d (%v)", len(got), len(tc.want), got)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Errorf("line %d = %q want %q", i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
+}
+
 func TestRender_NoLogoOK(t *testing.T) {
 	tk := validTicket(t)
 	tk.OrgLogo = nil

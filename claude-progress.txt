@@ -17937,3 +17937,57 @@ Verification (docker golang:1.24, repo root):
   nondeterminism) is unrelated to this feature.
 Marked #289 passing. Backlog: 287/301.
 
+## 2026-06-30 — Feature #290 (T-3) Branding hooks on ticket emails
+- templates.Data gains Branding sub-struct (templates.Branding):
+  header fields OrgName / WebsiteURL / LogoURL / LogoAlt; footer
+  fields LegalName / LegalAddressLine1 + Line2 / PostalCode / City /
+  Country / ContactEmail (EU commercial-communications minimum
+  identification).
+- Platform fallback constants PlatformOrgName, PlatformLogoURL,
+  PlatformLegalName, PlatformContactEmail live in templates package
+  and are substituted by the worker handler -- never by the renderer.
+- All 8 .tmpl files (ticket+invitation x en/de/es/he) render a
+  two-cell header table (logo img left, OrgName + WebsiteURL right)
+  plus a footer paragraph composing the legal block. Hebrew files
+  invert the right-cell text-align so URLs stay readable in RTL flow.
+- pdf.Ticket gains matching branding fields. drawHeader prints
+  OrgName + OrgWebsiteURL right of the logo (falls back to wordmark
+  "Arena E-Ticket" when OrgName empty). New buildLegalLines helper
+  composes the footer legal block above the fine-print disclaimer.
+- delivery.Payload gains org_logo_media_id / org_name /
+  org_website_url / org_legal_name / org_legal_address_line1 / _line2 /
+  _postal_code / _city / _country / org_contact_email JSON tags.
+- delivery.MediaResolver interface: ResolveLogo(ctx, mediaID) returns
+  (bytes, signedURL, err). ErrLogoNotFound sentinel triggers platform
+  logo fallback; other errors log warning and also fall back so the
+  media-store outages never block delivery.
+- delivery.resolveBranding returns resolveBrandingResult bundling
+  templates.Branding (email) + raw logo bytes (PDF). Empty
+  logo_media_id OR nil resolver OR ErrLogoNotFound substitutes
+  LogoURL = PlatformLogoURL and leaves LogoBytes empty.
+- HandlerOptions gains Media field; arena-worker can leave it nil
+  and the platform logo path takes over.
+
+Tests:
+- templates/templates_test.go: 6 branding tests covering header
+  rendering for all 8 locales, footer legal block, platform fallback
+  logo, optional footer suppression, HTML escaping of LegalName +
+  LegalAddressLine1.
+- delivery/branding_test.go: 6 tests for resolveBranding covering
+  empty logo_media_id, success path, not-found fallback, outage
+  fallback, nil resolver safety, EU min-identification platform
+  defaults.
+- pdf/pdf_test.go: 5 tests covering footer legal block emission,
+  omission when LegalName empty, OrgName overriding wordmark, default
+  wordmark fallback, plus table-driven buildLegalLines helper.
+
+Verification (docker golang:1.24, repo root):
+  go build ./...                                                       OK
+  go vet ./apps/backend/...                                            OK
+  go test ./apps/backend/internal/platform/delivery/...                OK
+    (skipping pre-existing flake TestRender_IsDeterministic in pdf/;
+    documented in #289 progress notes -- gofpdf map-iteration
+    nondeterminism, unrelated to this feature.)
+
+Marked #290 passing. Backlog: 288/301.
+

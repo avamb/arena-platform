@@ -35,6 +35,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -84,6 +85,30 @@ type Payload struct {
 	// QRPayload is the value to encode into the PDF QR code. The handler
 	// falls back to TicketID if empty so existing enqueuers keep working.
 	QRPayload string `json:"qr_payload,omitempty"`
+
+	// ── Organisation branding (feature #290, T-3) ─────────────────────
+	// These mirror the organizations table columns the email header and
+	// footer surface (logo_media_id, name, website_url, legal_name,
+	// legal_address_*, contact_email). All are optional; the handler
+	// substitutes platform defaults when a field is empty so the email
+	// header always carries a logo and the footer always identifies a
+	// legal entity (EU "commercial communications" rule).
+	//
+	// OrgLogoMediaID is the UUID of the organisation logo in the media
+	// table. When non-empty the handler resolves the bytes (for the PDF
+	// embed) and a signed URL (for the email <img src>) via the
+	// MediaResolver. When empty the platform fallback logo URL is used
+	// and the PDF header simply omits the logo image slot.
+	OrgLogoMediaID         string `json:"org_logo_media_id,omitempty"`
+	OrgName                string `json:"org_name,omitempty"`
+	OrgWebsiteURL          string `json:"org_website_url,omitempty"`
+	OrgLegalName           string `json:"org_legal_name,omitempty"`
+	OrgLegalAddressLine1   string `json:"org_legal_address_line1,omitempty"`
+	OrgLegalAddressLine2   string `json:"org_legal_address_line2,omitempty"`
+	OrgLegalAddressPostal  string `json:"org_legal_address_postal_code,omitempty"`
+	OrgLegalAddressCity    string `json:"org_legal_address_city,omitempty"`
+	OrgLegalAddressCountry string `json:"org_legal_address_country,omitempty"`
+	OrgContactEmail        string `json:"org_contact_email,omitempty"`
 }
 
 // HandlerOptions bundles the dependencies required by the delivery handler.
@@ -104,9 +129,39 @@ type HandlerOptions struct {
 	// When nil, NewHandler lazy-constructs a default Renderer from the
 	// embedded templates so callers that haven't migrated still work.
 	Templates *templates.Renderer
+	// Media resolves an organisation logo_media_id to (bytes, signed URL)
+	// for both PDF embedding and the email <img src> (feature #290, T-3).
+	// When nil, every email/PDF falls back to the platform logo.
+	Media MediaResolver
 	// Logger receives structured log entries. Defaults to slog.Default() when nil.
 	Logger *slog.Logger
 }
+
+// MediaResolver is the narrow interface the delivery handler uses to
+// resolve an organisation logo_media_id (a UUID string) into the bytes
+// that go into the PDF and the signed URL used by the email
+// <img src> tag.
+//
+// Implementations are expected to:
+//   - Return an error wrapping ErrLogoNotFound when the media id does
+//     not exist or has been soft-deleted, so the handler can fall back
+//     to the platform logo without retrying.
+//   - Never block the delivery pipeline on a media-store outage: a
+//     transient error logs a warning and the handler falls back to the
+//     platform logo for that email only.
+type MediaResolver interface {
+	// ResolveLogo returns the logo image bytes and a fully-qualified
+	// download URL (typically a signed media URL valid for several
+	// minutes — long enough that the recipient's MUA can fetch the
+	// inline <img> on display).
+	ResolveLogo(ctx context.Context, mediaID string) (bytes []byte, signedURL string, err error)
+}
+
+// ErrLogoNotFound is the canonical error a MediaResolver returns when
+// the requested logo_media_id does not exist. Wrap with %w so the
+// handler can use errors.Is to distinguish "fall back to platform
+// logo" (not-found) from "real outage" (everything else).
+var ErrLogoNotFound = errors.New("delivery: org logo not found")
 
 // NewHandler constructs a worker.HandlerFunc for ticket.deliver jobs.
 //
@@ -197,6 +252,17 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 			return nil
 		}
 
+		// ── 3b. Resolve organisation branding ─────────────────────────────────
+		// Feature #290 (T-3). Pulls the org logo bytes + signed URL via
+		// the media adapter (when configured and OrgLogoMediaID is set),
+		// falling back to the platform logo otherwise. Also assembles
+		// the EU "commercial communications" minimum-identification
+		// block from the legal_name + legal_address_* + contact_email
+		// fields carried on the payload, substituting platform defaults
+		// for any blank fields.
+		brand := resolveBranding(ctx, opts.Media, p, logger)
+		branding := brand.Branding
+
 		// ── 4. Generate PDF credential ────────────────────────────────────────
 		// Prefer the T-1 PDF renderer (apps/backend/internal/platform/delivery/pdf)
 		// so the attached document carries the QR code and full ticket detail.
@@ -212,7 +278,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 						ticketID, credErr)
 				}
 				// Generate and store a new PDF credential.
-				pdfPayload, prErr := renderTicketPDF(ctx, ticketID, p)
+				pdfPayload, prErr := renderTicketPDF(ctx, ticketID, p, branding, brand.LogoBytes)
 				if prErr != nil {
 					return fmt.Errorf("delivery: render pdf for ticket %s: %w",
 						ticketID, prErr)
@@ -235,7 +301,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 			}
 		} else {
 			// No credential store — render on the fly so we still attach a PDF.
-			pdfPayload, prErr := renderTicketPDF(ctx, ticketID, p)
+			pdfPayload, prErr := renderTicketPDF(ctx, ticketID, p, branding, brand.LogoBytes)
 			if prErr != nil {
 				logger.Warn("delivery: render pdf failed; sending without attachment",
 					slog.String("ticket_id", ticketID.String()),
@@ -265,6 +331,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 				SessionStart:   formatSessionForEmail(p.SessionStart, p.SessionTZ),
 				VenueName:      joinNonEmpty(", ", p.VenueName, p.VenueCity),
 				TierName:       p.TierName,
+				Branding:       branding,
 			})
 			if rErr != nil {
 				return fmt.Errorf("delivery: render templates for ticket %s: %w",
@@ -415,21 +482,37 @@ func renderInvitationEmailText(ticketID, recipientEmail string) string {
 // renderTicketPDF tries the T-1 PDF renderer first (full QR + layout) and
 // falls back to the legacy minimal PDF generator on any error so a missing
 // font / IO issue does not block delivery.
-func renderTicketPDF(ctx context.Context, ticketID uuid.UUID, p Payload) ([]byte, error) {
+//
+// branding carries the EU-required header/footer text; logoBytes is the
+// optional resolved org-logo image. It is the caller's responsibility
+// (the worker handler) to apply the platform-logo fallback when the
+// organisation has no logo_media_id. When logoBytes is empty the PDF
+// header simply omits the image slot and prints the OrgName wordmark.
+func renderTicketPDF(ctx context.Context, ticketID uuid.UUID, p Payload, branding templates.Branding, logoBytes []byte) ([]byte, error) {
 	qr := p.QRPayload
 	if qr == "" {
 		qr = ticketID.String()
 	}
 	t := pdf.Ticket{
-		TicketID:     ticketID.String(),
-		EventName:    defaultStr(p.EventName, "Arena Event"),
-		SessionStart: defaultTime(p.SessionStart),
-		SessionTZ:    p.SessionTZ,
-		VenueName:    p.VenueName,
-		VenueCity:    p.VenueCity,
-		TierName:     p.TierName,
-		HolderName:   p.HolderName,
-		QRPayload:    qr,
+		TicketID:               ticketID.String(),
+		EventName:              defaultStr(p.EventName, "Arena Event"),
+		SessionStart:           defaultTime(p.SessionStart),
+		SessionTZ:              p.SessionTZ,
+		VenueName:              p.VenueName,
+		VenueCity:              p.VenueCity,
+		TierName:               p.TierName,
+		HolderName:             p.HolderName,
+		QRPayload:              qr,
+		OrgLogo:                logoBytes,
+		OrgName:                branding.OrgName,
+		OrgWebsiteURL:          branding.WebsiteURL,
+		LegalName:              branding.LegalName,
+		LegalAddressLine1:      branding.LegalAddressLine1,
+		LegalAddressLine2:      branding.LegalAddressLine2,
+		LegalAddressPostalCode: branding.LegalAddressPostalCode,
+		LegalAddressCity:       branding.LegalAddressCity,
+		LegalAddressCountry:    branding.LegalAddressCountry,
+		ContactEmail:           branding.ContactEmail,
 	}
 	bytesOut, err := pdf.Render(ctx, t)
 	if err == nil {
@@ -439,6 +522,81 @@ func renderTicketPDF(ctx context.Context, ticketID uuid.UUID, p Payload) ([]byte
 	// legacy minimal PDF — the worker is not the right place to block on
 	// a missing event name.
 	return renderMinimalPDF(ticketID.String(), time.Now().UTC()), nil
+}
+
+// resolveBrandingResult bundles the branding fields and the optional
+// org-logo bytes resolved from the media adapter. The bytes are kept
+// separate from templates.Branding because that struct is intentionally
+// strings-only (every field is rendered verbatim into HTML / text
+// bodies).
+type resolveBrandingResult struct {
+	Branding  templates.Branding
+	LogoBytes []byte
+}
+
+// resolveBranding builds the templates.Branding value used to render
+// both the email body and the PDF e-ticket for a single ticket.deliver
+// job. Behaviour:
+//
+//   - When OrgLogoMediaID is set and the MediaResolver returns bytes +
+//     URL, the email header uses the signed URL and the PDF embeds the
+//     bytes.
+//   - When OrgLogoMediaID is unset, OR the resolver returns
+//     ErrLogoNotFound, the email header substitutes the platform logo
+//     URL and the PDF simply skips the logo image slot (the wordmark
+//     in drawHeader still prints the OrgName / "Arena E-Ticket").
+//   - On a non-not-found resolver error (e.g. media-store outage), the
+//     handler logs a warning and falls back to the platform logo URL
+//     too — never blocks delivery on a media failure.
+//   - Empty text fields fall back to platform defaults so the email
+//     footer always identifies a legal entity (EU rule).
+//
+// Returns a resolveBrandingResult carrying the branding strings and
+// the optional org-logo bytes for PDF embedding.
+func resolveBranding(ctx context.Context, m MediaResolver, p Payload, logger *slog.Logger) resolveBrandingResult {
+	b := templates.Branding{
+		OrgName:                defaultStr(p.OrgName, templates.PlatformOrgName),
+		WebsiteURL:             p.OrgWebsiteURL,
+		LegalName:              defaultStr(p.OrgLegalName, templates.PlatformLegalName),
+		LegalAddressLine1:      p.OrgLegalAddressLine1,
+		LegalAddressLine2:      p.OrgLegalAddressLine2,
+		LegalAddressPostalCode: p.OrgLegalAddressPostal,
+		LegalAddressCity:       p.OrgLegalAddressCity,
+		LegalAddressCountry:    p.OrgLegalAddressCountry,
+		ContactEmail:           defaultStr(p.OrgContactEmail, templates.PlatformContactEmail),
+	}
+	b.LogoAlt = b.OrgName
+
+	logoID := strings.TrimSpace(p.OrgLogoMediaID)
+	if logoID == "" || m == nil {
+		// No org logo configured — substitute platform logo URL.
+		b.LogoURL = templates.PlatformLogoURL
+		return resolveBrandingResult{Branding: b}
+	}
+
+	logoBytes, signedURL, err := m.ResolveLogo(ctx, logoID)
+	switch {
+	case err == nil:
+		b.LogoURL = signedURL
+		return resolveBrandingResult{Branding: b, LogoBytes: logoBytes}
+	case errors.Is(err, ErrLogoNotFound):
+		// Org has a logo_media_id but the row vanished — fall back.
+		if logger != nil {
+			logger.Warn("delivery: org logo_media_id not found; using platform fallback",
+				slog.String("logo_media_id", logoID),
+			)
+		}
+		b.LogoURL = templates.PlatformLogoURL
+	default:
+		if logger != nil {
+			logger.Warn("delivery: media resolver failed; using platform fallback",
+				slog.String("logo_media_id", logoID),
+				slog.String("error", err.Error()),
+			)
+		}
+		b.LogoURL = templates.PlatformLogoURL
+	}
+	return resolveBrandingResult{Branding: b}
 }
 
 // defaultStr returns fallback when s is empty after trimming.

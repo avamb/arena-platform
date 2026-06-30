@@ -69,7 +69,71 @@ type Data struct {
 	VenueName string
 	// TierName may be empty for GA / untiered tickets.
 	TierName string
+
+	// Branding is the organisation branding block applied to the header
+	// (logo + display name + website) and footer (legal identification).
+	// Required for EU "commercial communications" minimum identification.
+	// Callers must populate this with resolved values; the worker handler
+	// is responsible for the org-logo / platform-logo fallback.
+	Branding Branding
 }
+
+// Branding carries the organisation branding fields rendered into the
+// header and footer of every transactional email and PDF e-ticket
+// (feature #290, T-3).
+//
+// All fields are pre-resolved strings: the templates and pdf renderers
+// perform no media or organisation lookups. The worker handler resolves
+// LogoURL via the media adapter (or substitutes the platform fallback
+// when the organisation has no logo_media_id).
+//
+// Legal-identification fields back the EU minimum-identification rule
+// for commercial communications and unsubscribe/contact footers.
+type Branding struct {
+	// OrgName is the public display name printed in the header next to
+	// the logo. Empty falls back to PlatformOrgName.
+	OrgName string
+	// WebsiteURL is the organisation website rendered as a footer link.
+	// Empty means "omit the link"; the {{with}} guards collapse the row.
+	WebsiteURL string
+	// LogoURL is a fully-qualified URL (signed media URL or platform
+	// fallback) used as the <img src> in the email header. Empty means
+	// "render the wordmark only" — the {{with}} guard suppresses the
+	// <img>. When LogoURL is empty the worker handler MUST set this to
+	// PlatformLogoURL so the header always carries a logo.
+	LogoURL string
+	// LogoAlt is the accessible alt text for LogoURL. Defaults to OrgName
+	// (or PlatformOrgName) when empty.
+	LogoAlt string
+
+	// Footer / EU minimum-identification fields.
+
+	// LegalName is the registered juridical name of the organisation.
+	// Required for the footer's commercial-communications block; empty
+	// falls back to PlatformLegalName so the footer still identifies a
+	// real legal entity.
+	LegalName              string
+	LegalAddressLine1      string
+	LegalAddressLine2      string
+	LegalAddressPostalCode string
+	LegalAddressCity       string
+	// LegalAddressCountry is ISO-3166-1 alpha-2 (e.g. "DE", "IL").
+	LegalAddressCountry string
+	// ContactEmail is the public contact address printed in the footer.
+	// Empty falls back to PlatformContactEmail.
+	ContactEmail string
+}
+
+// Platform defaults used by the worker handler when the organisation
+// itself has no branding fields (logo_media_id IS NULL, legal_name IS
+// NULL, etc.). The templates themselves never substitute these
+// values — the renderer prints exactly what it is given.
+const (
+	PlatformOrgName      = "Arena Platform"
+	PlatformLogoURL      = "https://assets.arena.example.com/branding/platform-logo.png"
+	PlatformLegalName    = "Arena Platform"
+	PlatformContactEmail = "support@arena.example.com"
+)
 
 // Rendered is the output of a single Render call: the three pieces of the
 // email body that the SMTP adapter needs.

@@ -4,6 +4,17 @@
 <html lang="he" dir="rtl">
 <head><meta charset="UTF-8"><title>הכרטיס שלך</title></head>
 <body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e;direction:rtl;text-align:right">
+  <table cellpadding="0" cellspacing="0" style="width:100%;border-bottom:1px solid #eee;padding-bottom:12px;margin-bottom:16px;direction:rtl">
+    <tr>
+      <td style="vertical-align:middle">
+        {{with .Branding.LogoURL}}<img src="{{.}}" alt="{{$.Branding.LogoAlt}}" style="max-height:48px;max-width:240px">{{end}}
+      </td>
+      <td style="vertical-align:middle;text-align:left;font-size:13px;color:#555">
+        <strong>{{.Branding.OrgName}}</strong>
+        {{with .Branding.WebsiteURL}}<br><a href="{{.}}" style="color:#1a73e8;text-decoration:none">{{.}}</a>{{end}}
+      </td>
+    </tr>
+  </table>
   <h1 style="color:#1a1a2e">הכרטיס שלך מוכן</h1>
   <p>שלום{{with .HolderName}} {{.}}{{end}},</p>
   <p>הכרטיס שלך עבור <strong>{{.EventName}}</strong> הונפק.
@@ -17,11 +28,21 @@
   <p style="font-size:12px;color:#666">מזהה כרטיס: {{.TicketID}}</p>
   <p style="font-size:12px;color:#666">נשלח אל: {{.RecipientEmail}}</p>
   <hr>
+  <p style="font-size:11px;color:#666;line-height:1.5">
+    <strong>{{.Branding.LegalName}}</strong>
+    {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
+    {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>יצירת קשר: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}
+  </p>
   <p style="font-size:11px;color:#999">Arena Platform — שליחה אוטומטית</p>
 </body>
 </html>{{end}}
 
-{{define "text"}}הכרטיס שלך מוכן
+{{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
+
+הכרטיס שלך מוכן
 
 שלום{{with .HolderName}} {{.}}{{end}},
 
@@ -36,5 +57,14 @@
 מזהה כרטיס: {{.TicketID}}
 נשלח אל: {{.RecipientEmail}}
 
+--
+{{.Branding.LegalName}}
+{{with .Branding.LegalAddressLine1}}{{.}}
+{{end}}{{with .Branding.LegalAddressLine2}}{{.}}
+{{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
+{{else}}{{with .Branding.LegalAddressCity}}{{.}}
+{{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.ContactEmail}}יצירת קשר: {{.}}
+{{end}}
 Arena Platform — שליחה אוטומטית
 {{end}}

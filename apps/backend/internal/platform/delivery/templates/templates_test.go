@@ -70,6 +70,13 @@ func TestRender_AllLocalesEmitNonEmptyOutput(t *testing.T) {
 		SessionStart:   "2026-09-12 20:00 (Europe/Berlin)",
 		VenueName:      "Philharmonie Berlin",
 		TierName:       "Parkett A",
+		Branding: Branding{
+			OrgName:      PlatformOrgName,
+			LogoURL:      PlatformLogoURL,
+			LogoAlt:      PlatformOrgName,
+			LegalName:    PlatformLegalName,
+			ContactEmail: PlatformContactEmail,
+		},
 	}
 	for _, kind := range []string{TemplateKindTicket, TemplateKindInvitation} {
 		for _, loc := range SupportedLocales {
@@ -171,6 +178,175 @@ func TestRender_LocaleFallbackProducesEnglish(t *testing.T) {
 	}
 	if !strings.Contains(out.HTMLBody, `lang="en"`) {
 		t.Errorf("fallback did not produce English: %q", out.HTMLBody)
+	}
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Feature #290 (T-3) Branding hooks on ticket emails
+// ──────────────────────────────────────────────────────────────────────────────
+
+func TestRender_Branding_HeaderUsesOrgFields(t *testing.T) {
+	r, _ := New()
+	data := Data{
+		TicketID: "id", EventName: "E", RecipientEmail: "x@y.z",
+		Branding: Branding{
+			OrgName:    "Globe Theatre",
+			WebsiteURL: "https://globe.example.com",
+			LogoURL:    "https://media.example.com/o/abc/logo.png?sig=xyz",
+			LogoAlt:    "Globe Theatre",
+			LegalName:  "Globe Theatre Ltd",
+		},
+	}
+	for _, kind := range []string{TemplateKindTicket, TemplateKindInvitation} {
+		for _, loc := range SupportedLocales {
+			out, err := r.Render(kind, loc, data)
+			if err != nil {
+				t.Fatalf("%s/%s: %v", kind, loc, err)
+			}
+			if !strings.Contains(out.HTMLBody, "Globe Theatre") {
+				t.Errorf("%s/%s: header missing OrgName", kind, loc)
+			}
+			if !strings.Contains(out.HTMLBody, "https://globe.example.com") {
+				t.Errorf("%s/%s: header missing WebsiteURL", kind, loc)
+			}
+			if !strings.Contains(out.HTMLBody, `src="https://media.example.com/o/abc/logo.png?sig=xyz"`) {
+				t.Errorf("%s/%s: header missing logo <img src>", kind, loc)
+			}
+			if !strings.Contains(out.TextBody, "Globe Theatre") {
+				t.Errorf("%s/%s: text body missing OrgName", kind, loc)
+			}
+		}
+	}
+}
+
+func TestRender_Branding_FooterCarriesLegalIdentification(t *testing.T) {
+	r, _ := New()
+	data := Data{
+		TicketID: "id", EventName: "E", RecipientEmail: "x@y.z",
+		Branding: Branding{
+			OrgName:                "Globe Theatre",
+			LogoURL:                PlatformLogoURL,
+			LogoAlt:                "Globe Theatre",
+			LegalName:              "Globe Theatre Ltd",
+			LegalAddressLine1:      "21 New Globe Walk",
+			LegalAddressLine2:      "Suite 4",
+			LegalAddressPostalCode: "SE1 9DT",
+			LegalAddressCity:       "London",
+			LegalAddressCountry:    "GB",
+			ContactEmail:           "hello@globe.example.com",
+		},
+	}
+	for _, kind := range []string{TemplateKindTicket, TemplateKindInvitation} {
+		for _, loc := range SupportedLocales {
+			out, err := r.Render(kind, loc, data)
+			if err != nil {
+				t.Fatalf("%s/%s: %v", kind, loc, err)
+			}
+			for _, want := range []string{
+				"Globe Theatre Ltd",
+				"21 New Globe Walk",
+				"Suite 4",
+				"SE1 9DT",
+				"London",
+				"GB",
+				"hello@globe.example.com",
+			} {
+				if !strings.Contains(out.HTMLBody, want) {
+					t.Errorf("%s/%s: footer HTML missing %q", kind, loc, want)
+				}
+				if !strings.Contains(out.TextBody, want) {
+					t.Errorf("%s/%s: footer text missing %q", kind, loc, want)
+				}
+			}
+		}
+	}
+}
+
+func TestRender_Branding_PlatformFallbackLogo(t *testing.T) {
+	r, _ := New()
+	// When the org has no logo_media_id the worker substitutes the
+	// platform logo URL. The header <img src> must point at it.
+	out, err := r.Render(TemplateKindTicket, "en", Data{
+		TicketID: "id", EventName: "E", RecipientEmail: "x@y.z",
+		Branding: Branding{
+			OrgName:      PlatformOrgName,
+			LogoURL:      PlatformLogoURL,
+			LegalName:    PlatformLegalName,
+			ContactEmail: PlatformContactEmail,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.HTMLBody, `src="`+PlatformLogoURL+`"`) {
+		t.Errorf("header missing platform fallback logo src: %q", out.HTMLBody)
+	}
+	if !strings.Contains(out.HTMLBody, PlatformLegalName) {
+		t.Errorf("footer missing platform legal name: %q", out.HTMLBody)
+	}
+}
+
+func TestRender_Branding_LogoOmittedWhenURLEmpty(t *testing.T) {
+	// Defensive: when LogoURL is empty (worker bug — should never happen
+	// in production) the <img> tag is suppressed by the {{with}} guard
+	// rather than emitting src="".
+	r, _ := New()
+	out, err := r.Render(TemplateKindTicket, "en", Data{
+		TicketID: "id", EventName: "E", RecipientEmail: "x@y.z",
+		Branding: Branding{OrgName: "X", LegalName: "X Ltd"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.HTMLBody, `src=""`) {
+		t.Errorf("emitted empty <img src=''>: %q", out.HTMLBody)
+	}
+}
+
+func TestRender_Branding_OptionalFooterFieldsOmitted(t *testing.T) {
+	// When only LegalName is set, the address lines and contact email
+	// must not leak as empty lines or dangling labels.
+	r, _ := New()
+	out, err := r.Render(TemplateKindTicket, "en", Data{
+		TicketID: "id", EventName: "E", RecipientEmail: "x@y.z",
+		Branding: Branding{
+			OrgName:   PlatformOrgName,
+			LogoURL:   PlatformLogoURL,
+			LegalName: "Solo Ltd",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.HTMLBody, "Contact:") {
+		t.Errorf("HTML leaked Contact label with no email: %q", out.HTMLBody)
+	}
+	if strings.Contains(out.TextBody, "Contact:") {
+		t.Errorf("text leaked Contact label with no email: %q", out.TextBody)
+	}
+}
+
+func TestRender_Branding_HTMLEscapingAppliesToFooter(t *testing.T) {
+	// Legal-name and address fields are user-controlled; they must be
+	// auto-escaped in the HTML body.
+	r, _ := New()
+	out, err := r.Render(TemplateKindTicket, "en", Data{
+		TicketID: "id", EventName: "E", RecipientEmail: "x@y.z",
+		Branding: Branding{
+			OrgName:           PlatformOrgName,
+			LogoURL:           PlatformLogoURL,
+			LegalName:         "<script>x</script>",
+			LegalAddressLine1: "Evil & Co.",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.HTMLBody, "<script>x</script>") {
+		t.Errorf("LegalName not escaped: %q", out.HTMLBody)
+	}
+	if !strings.Contains(out.HTMLBody, "Evil &amp; Co.") {
+		t.Errorf("LegalAddressLine1 not HTML-escaped: %q", out.HTMLBody)
 	}
 }
 

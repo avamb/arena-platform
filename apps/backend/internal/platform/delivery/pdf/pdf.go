@@ -127,6 +127,35 @@ type Ticket struct {
 	// FinePrint is the small disclaimer printed at the bottom of the
 	// ticket. Empty string falls back to DefaultFinePrint.
 	FinePrint string
+
+	// ── Organisation branding (feature #290, T-3) ─────────────────────
+	// These are the same branding fields that appear in the email
+	// header/footer. They are rendered into the PDF header (org name
+	// and website right of the logo) and footer (legal identification
+	// block above the FinePrint). All are optional; empty fields are
+	// silently skipped so the renderer never refuses to print a ticket
+	// because branding metadata is missing.
+
+	// OrgName is the public organisation display name printed in the
+	// header next to the logo. Empty omits the wordmark.
+	OrgName string
+	// OrgWebsiteURL is rendered as a small line under OrgName in the
+	// header. Empty omits the URL.
+	OrgWebsiteURL string
+
+	// LegalName is the registered juridical name printed in the footer
+	// legal block. Empty omits the entire footer block.
+	LegalName string
+	// LegalAddressLine1/2, PostalCode/City, Country compose the footer
+	// address. Each is rendered on its own line; empty values are
+	// suppressed.
+	LegalAddressLine1      string
+	LegalAddressLine2      string
+	LegalAddressPostalCode string
+	LegalAddressCity       string
+	LegalAddressCountry    string
+	// ContactEmail is the public contact rendered in the footer.
+	ContactEmail string
 }
 
 // DefaultFinePrint is the disclaimer printed when Ticket.FinePrint is empty.
@@ -213,13 +242,32 @@ func Render(ctx context.Context, ticket Ticket) ([]byte, error) {
 	pdf.CellFormat(pageW-2*margin, 14,
 		"Ticket ID: "+ticket.TicketID, "", 0, "C", false, 0, "")
 
+	// ── Footer: legal-identification block ────────────────────────────
+	// EU "commercial communications" minimum identification: the
+	// organisation's legal name + registered address + a contact
+	// channel. Drawn above the fine-print disclaimer.
+	footerY := pageH - margin - 44
+	legalLines := buildLegalLines(ticket)
+	if len(legalLines) > 0 {
+		// Reserve ~10pt per legal line above the fine print.
+		legalHeight := float64(len(legalLines)) * 10
+		legalTop := footerY - legalHeight - 6
+		pdf.SetFont("Helvetica", "", 8)
+		pdf.SetTextColor(102, 102, 102)
+		pdf.SetXY(margin, legalTop)
+		for _, ln := range legalLines {
+			pdf.CellFormat(pageW-2*margin, 10, ln, "", 2, "C", false, 0, "")
+		}
+		pdf.SetTextColor(0, 0, 0)
+	}
+
 	// ── Fine print ────────────────────────────────────────────────────
 	fine := ticket.FinePrint
 	if strings.TrimSpace(fine) == "" {
 		fine = DefaultFinePrint
 	}
 	pdf.SetFont("Helvetica", "I", 8)
-	pdf.SetXY(margin, pageH-margin-44)
+	pdf.SetXY(margin, footerY)
 	pdf.MultiCell(pageW-2*margin, 10, fine, "", "C", false)
 
 	var buf bytes.Buffer
@@ -272,14 +320,66 @@ func drawHeader(pdf *gofpdf.Fpdf, t Ticket, margin, pageW float64) {
 		}
 	}
 
+	// Right-aligned org branding wordmark stack. When OrgName is empty
+	// we fall back to the generic "Arena E-Ticket" label so the header
+	// always carries an identifier.
+	orgName := strings.TrimSpace(t.OrgName)
+	if orgName == "" {
+		orgName = "Arena E-Ticket"
+	}
 	pdf.SetFont("Helvetica", "B", 18)
-	pdf.SetXY(margin, margin+24)
-	pdf.CellFormat(pageW-2*margin, 24, "Arena E-Ticket", "", 0, "R", false, 0, "")
+	pdf.SetXY(margin, margin+18)
+	pdf.CellFormat(pageW-2*margin, 22, orgName, "", 0, "R", false, 0, "")
+
+	if site := strings.TrimSpace(t.OrgWebsiteURL); site != "" {
+		pdf.SetFont("Helvetica", "", 10)
+		pdf.SetTextColor(85, 85, 85)
+		pdf.SetXY(margin, margin+42)
+		pdf.CellFormat(pageW-2*margin, 12, site, "", 0, "R", false, 0, "")
+		pdf.SetTextColor(0, 0, 0)
+	}
 
 	// Divider underneath the header band.
 	y := margin + headerHeight + 8
 	pdf.SetLineWidth(0.5)
 	pdf.Line(margin, y, pageW-margin, y)
+}
+
+// buildLegalLines composes the footer legal-identification block from
+// the branding fields on the Ticket. Returns an empty slice when none
+// of the legal fields are populated, in which case the renderer omits
+// the block entirely (the FinePrint disclaimer still prints).
+//
+// Lines: LegalName, address-line1, address-line2, "<postal> <city>",
+// country, "Contact: <email>".
+func buildLegalLines(t Ticket) []string {
+	out := []string{}
+	if name := strings.TrimSpace(t.LegalName); name != "" {
+		out = append(out, name)
+	}
+	if v := strings.TrimSpace(t.LegalAddressLine1); v != "" {
+		out = append(out, v)
+	}
+	if v := strings.TrimSpace(t.LegalAddressLine2); v != "" {
+		out = append(out, v)
+	}
+	postal := strings.TrimSpace(t.LegalAddressPostalCode)
+	city := strings.TrimSpace(t.LegalAddressCity)
+	switch {
+	case postal != "" && city != "":
+		out = append(out, postal+" "+city)
+	case postal != "":
+		out = append(out, postal)
+	case city != "":
+		out = append(out, city)
+	}
+	if v := strings.TrimSpace(t.LegalAddressCountry); v != "" {
+		out = append(out, v)
+	}
+	if v := strings.TrimSpace(t.ContactEmail); v != "" {
+		out = append(out, "Contact: "+v)
+	}
+	return out
 }
 
 // drawDetails renders the labelled detail block.
