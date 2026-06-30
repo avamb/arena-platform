@@ -71,6 +71,7 @@ import {
   useMemo,
   useState,
   type CSSProperties,
+  type FormEvent,
   type ReactNode,
 } from "react";
 import { Route as RootRoute } from "./__root";
@@ -182,6 +183,28 @@ export interface EventPublication {
 
 interface EventPublicationListEnvelope {
   readonly publications: readonly EventPublication[];
+}
+
+export interface CityItem {
+  readonly id: string;
+  readonly country_id: string;
+  readonly country_iso2: string;
+  readonly slug: string;
+  readonly name: string;
+}
+
+interface CityListEnvelope {
+  readonly cities: readonly CityItem[];
+}
+
+export interface PublicationFormValues {
+  feed_token_id: string;
+  city_id: string;
+}
+
+export interface PublicationRequestBody {
+  feed_token_id: string;
+  city_id?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -869,6 +892,8 @@ function EventsModule() {
   const { permissions } = useAuth();
   const canPublish = permissions.has("event.publish");
   const canReadPublications = permissions.has("publication.read");
+  const canCreatePublication = permissions.has("publication.create");
+  const canDeletePublication = permissions.has("publication.delete");
   const canCreateSession = permissions.has("session.create");
   const canUpdateSession = permissions.has("session.update");
   const canDeleteSession = permissions.has("session.delete");
@@ -1025,6 +1050,8 @@ function EventsModule() {
           event={selectedEvent}
           canPublish={canPublish}
           canReadPublications={canReadPublications}
+          canCreatePublication={canCreatePublication}
+          canDeletePublication={canDeletePublication}
           canCreateSession={canCreateSession}
           canUpdateSession={canUpdateSession}
           canDeleteSession={canDeleteSession}
@@ -1388,6 +1415,8 @@ interface DrawerProps {
   event: EventItem;
   canPublish: boolean;
   canReadPublications: boolean;
+  canCreatePublication: boolean;
+  canDeletePublication: boolean;
   canCreateSession: boolean;
   canUpdateSession: boolean;
   canDeleteSession: boolean;
@@ -1401,6 +1430,8 @@ function EventDrawer({
   event,
   canPublish,
   canReadPublications,
+  canCreatePublication,
+  canDeletePublication,
   canCreateSession,
   canUpdateSession,
   canDeleteSession,
@@ -1474,7 +1505,12 @@ function EventDrawer({
             />
           ) : null}
           {tab === "publications" ? (
-            <PublicationsTab event={event} canRead={canReadPublications} />
+            <PublicationsTab
+              event={event}
+              canRead={canReadPublications}
+              canCreate={canCreatePublication}
+              canDelete={canDeletePublication}
+            />
           ) : null}
           {tab === "activity" ? <ActivityTab /> : null}
         </div>
@@ -2868,13 +2904,114 @@ export function buildTierRequestBody(v: TierFormValues): Record<string, unknown>
   return body;
 }
 
+// ---------------------------------------------------------------------------
+// Publications tab (feature #284 / E-6)
+//
+// Manages event_publications via the existing endpoints:
+//   GET    /v1/events/{event_id}/publications                        publication.read
+//   POST   /v1/events/{event_id}/publications                        publication.create
+//   DELETE /v1/events/{event_id}/publications/{feed_token_id}        publication.delete
+//
+// City list is sourced from GET /v1/geo/cities (no country_id filter applied;
+// the operator can scope a publication to any city or leave it global).
+// ---------------------------------------------------------------------------
+
+// UUIDv4/v7 string shape; same loose regex used by uuid.Validate in Go.
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isUUID(value: string): boolean {
+  return UUID_RE.test(value.trim());
+}
+
+export function emptyPublicationForm(): PublicationFormValues {
+  return { feed_token_id: "", city_id: "" };
+}
+
+export interface PublicationFormErrors {
+  feed_token_id?: string;
+  city_id?: string;
+}
+
+export function validatePublicationForm(
+  v: PublicationFormValues,
+): PublicationFormErrors {
+  const errors: PublicationFormErrors = {};
+  const feed = v.feed_token_id.trim();
+  if (feed === "") {
+    errors.feed_token_id = "Feed token ID is required.";
+  } else if (!isUUID(feed)) {
+    errors.feed_token_id = "Feed token ID must be a UUID.";
+  }
+  const city = v.city_id.trim();
+  if (city !== "" && !isUUID(city)) {
+    errors.city_id = "City ID must be a UUID.";
+  }
+  return errors;
+}
+
+export function buildPublicationRequestBody(
+  v: PublicationFormValues,
+): PublicationRequestBody {
+  const body: PublicationRequestBody = {
+    feed_token_id: v.feed_token_id.trim(),
+  };
+  const city = v.city_id.trim();
+  if (city !== "") {
+    body.city_id = city;
+  }
+  return body;
+}
+
+export function mapPublicationError(err: ApiError): string {
+  switch (err.code) {
+    case "publication.invalid_event_id":
+      return "Event ID is not a valid UUID.";
+    case "publication.invalid_feed_token_id":
+      return "Feed token ID is not a valid UUID.";
+    case "publication.invalid_city_id":
+      return "City ID is not a valid UUID.";
+    case "publication.feed_token_id_required":
+      return "Feed token ID is required.";
+    case "publication.body_required":
+      return "Request body is required.";
+    case "publication.content_type_required":
+      return "Request must be sent as JSON.";
+    case "publication.invalid_json":
+      return "Request body is not valid JSON.";
+    case "publication.internal":
+      return "The server failed to apply the publication change. Try again.";
+    case "permissions.denied":
+      return "Your account is missing the permission required for this action.";
+    default:
+      if (err.status === 401) {
+        return "Session expired. Please sign in again.";
+      }
+      if (err.status === 403) {
+        return "Forbidden — missing required publication permission.";
+      }
+      return `${err.message} (${err.code})`;
+  }
+}
+
 function PublicationsTab({
   event,
   canRead,
+  canCreate,
+  canDelete,
 }: {
   event: EventItem;
   canRead: boolean;
+  canCreate: boolean;
+  canDelete: boolean;
 }) {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState<PublicationFormValues>(emptyPublicationForm);
+  const [formErrors, setFormErrors] = useState<PublicationFormErrors>({});
+  const [actionErr, setActionErr] = useState<string | null>(null);
+  const [okMsg, setOkMsg] = useState<string | null>(null);
+  const [confirmDeleteID, setConfirmDeleteID] = useState<string | null>(null);
+
   const query = useQuery<EventPublicationListEnvelope, ApiError>({
     queryKey: ["events", "detail", event.id, "publications"],
     queryFn: () =>
@@ -2886,6 +3023,66 @@ function PublicationsTab({
     retry: false,
     refetchOnWindowFocus: false,
   });
+
+  const citiesQuery = useQuery<CityListEnvelope, ApiError>({
+    queryKey: ["geo", "cities"],
+    queryFn: () =>
+      authedFetch<CityListEnvelope>({
+        method: "GET",
+        path: "/v1/geo/cities",
+      }),
+    enabled: canRead && canCreate,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+
+  const invalidate = () =>
+    queryClient.invalidateQueries({
+      queryKey: ["events", "detail", event.id, "publications"],
+    });
+
+  const publishMutation = useMutation<
+    EventPublication,
+    ApiError,
+    PublicationRequestBody
+  >({
+    mutationFn: (body) =>
+      authedFetch<EventPublication>({
+        method: "POST",
+        path: `/v1/events/${event.id}/publications`,
+        body,
+      }),
+    onSuccess: () => {
+      setForm(emptyPublicationForm());
+      setFormErrors({});
+      setActionErr(null);
+      setOkMsg("Published to feed.");
+      void invalidate();
+    },
+    onError: (err) => {
+      setOkMsg(null);
+      setActionErr(mapPublicationError(err));
+    },
+  });
+
+  const unpublishMutation = useMutation<void, ApiError, string>({
+    mutationFn: (feedTokenID) =>
+      authedFetch<void>({
+        method: "DELETE",
+        path: `/v1/events/${event.id}/publications/${feedTokenID}`,
+      }),
+    onSuccess: () => {
+      setConfirmDeleteID(null);
+      setActionErr(null);
+      setOkMsg("Unpublished from feed.");
+      void invalidate();
+    },
+    onError: (err) => {
+      setOkMsg(null);
+      setActionErr(mapPublicationError(err));
+    },
+  });
+
   if (!canRead) {
     return (
       <div style={statusBoxStyle} data-testid="events-publications-forbidden">
@@ -2906,43 +3103,209 @@ function PublicationsTab({
     );
   }
   const pubs = query.data?.publications ?? [];
-  if (pubs.length === 0) {
-    return (
-      <div style={statusBoxStyle} data-testid="events-publications-empty">
-        This event has not been published to any feed yet.
-      </div>
-    );
-  }
+  const cities = citiesQuery.data?.cities ?? [];
+
+  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const errs = validatePublicationForm(form);
+    setFormErrors(errs);
+    if (Object.keys(errs).length > 0) {
+      return;
+    }
+    setActionErr(null);
+    setOkMsg(null);
+    publishMutation.mutate(buildPublicationRequestBody(form));
+  };
+
   return (
-    <div style={tableWrapStyle}>
-      <table style={tableStyle} data-testid="events-publications-table">
-        <thead>
-          <tr>
-            <th scope="col" style={thStyle}>Feed token</th>
-            <th scope="col" style={thStyle}>Scope</th>
-            <th scope="col" style={thStyle}>Published</th>
-          </tr>
-        </thead>
-        <tbody>
-          {pubs.map((p) => (
-            <tr key={p.id} data-testid={`events-publication-${p.id}`}>
-              <td style={tdMonoStyle} title={p.feed_token_id}>
-                {shortenUUID(p.feed_token_id)}
-              </td>
-              <td style={tdStyle}>
-                {p.city_id === null ? (
-                  <span style={globalScopeBadgeStyle}>global</span>
-                ) : (
-                  <span style={scopedBadgeStyle} title={p.city_id}>
-                    city {shortenUUID(p.city_id)}
-                  </span>
-                )}
-              </td>
-              <td style={tdStyle}>{formatDateTime(p.published_at)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div style={tabBodyStyle}>
+      {okMsg !== null ? (
+        <div style={successBoxStyle} data-testid="events-publications-ok">
+          {okMsg}
+        </div>
+      ) : null}
+      {actionErr !== null ? (
+        <div style={formErrorStyle} role="alert" data-testid="events-publications-error">
+          {actionErr}
+        </div>
+      ) : null}
+
+      {canCreate ? (
+        <form
+          style={editorFormStyle}
+          onSubmit={onSubmit}
+          data-testid="events-publications-form"
+        >
+          <div style={editorGridStyle}>
+            <label style={editorFieldStyle}>
+              <span style={editorLabelStyle}>Feed token ID</span>
+              <input
+                type="text"
+                value={form.feed_token_id}
+                onChange={(e) => {
+                  setForm({ ...form, feed_token_id: e.target.value });
+                  if (formErrors.feed_token_id !== undefined) {
+                    setFormErrors({ ...formErrors, feed_token_id: undefined });
+                  }
+                }}
+                style={editorInputStyle}
+                placeholder="00000000-0000-0000-0000-000000000000"
+                data-testid="events-publications-feed-token-id"
+                spellCheck={false}
+                autoComplete="off"
+              />
+              {formErrors.feed_token_id !== undefined ? (
+                <span style={fieldErrorStyle}>{formErrors.feed_token_id}</span>
+              ) : null}
+            </label>
+            <label style={editorFieldStyle}>
+              <span style={editorLabelStyle}>City scope (optional)</span>
+              <select
+                value={form.city_id}
+                onChange={(e) => {
+                  setForm({ ...form, city_id: e.target.value });
+                  if (formErrors.city_id !== undefined) {
+                    setFormErrors({ ...formErrors, city_id: undefined });
+                  }
+                }}
+                style={editorInputStyle}
+                data-testid="events-publications-city-id"
+                disabled={citiesQuery.isPending}
+              >
+                <option value="">Global (no geo filter)</option>
+                {[...cities]
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.country_iso2})
+                    </option>
+                  ))}
+              </select>
+              {formErrors.city_id !== undefined ? (
+                <span style={fieldErrorStyle}>{formErrors.city_id}</span>
+              ) : null}
+            </label>
+          </div>
+          <div style={rowActionsStyle}>
+            <button
+              type="submit"
+              style={primaryButtonStyle}
+              disabled={publishMutation.isPending}
+              data-testid="events-publications-submit"
+            >
+              {publishMutation.isPending ? "Publishing…" : "Publish to feed"}
+            </button>
+            {citiesQuery.isError ? (
+              <span style={mutedHintStyle}>
+                Cities failed to load — you can still publish without a city
+                scope.
+              </span>
+            ) : null}
+          </div>
+        </form>
+      ) : (
+        <div style={statusBoxStyle} data-testid="events-publications-noperm-create">
+          Publishing requires the{" "}
+          <code style={monoStyle}>publication.create</code> permission.
+        </div>
+      )}
+
+      {pubs.length === 0 ? (
+        <div style={statusBoxStyle} data-testid="events-publications-empty">
+          This event has not been published to any feed yet.
+        </div>
+      ) : (
+        <div style={tableWrapStyle}>
+          <table style={tableStyle} data-testid="events-publications-table">
+            <thead>
+              <tr>
+                <th scope="col" style={thStyle}>Feed token</th>
+                <th scope="col" style={thStyle}>Scope</th>
+                <th scope="col" style={thStyle}>Published</th>
+                <th scope="col" style={thStyle}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pubs.map((p) => (
+                <Fragment key={p.id}>
+                  <tr data-testid={`events-publication-${p.id}`}>
+                    <td style={tdMonoStyle} title={p.feed_token_id}>
+                      {shortenUUID(p.feed_token_id)}
+                    </td>
+                    <td style={tdStyle}>
+                      {p.city_id === null ? (
+                        <span style={globalScopeBadgeStyle}>global</span>
+                      ) : (
+                        <span style={scopedBadgeStyle} title={p.city_id}>
+                          city {shortenUUID(p.city_id)}
+                        </span>
+                      )}
+                    </td>
+                    <td style={tdStyle}>{formatDateTime(p.published_at)}</td>
+                    <td style={tdStyle}>
+                      {canDelete ? (
+                        <button
+                          type="button"
+                          style={linkButtonStyle}
+                          onClick={() => {
+                            setConfirmDeleteID(p.feed_token_id);
+                            setActionErr(null);
+                            setOkMsg(null);
+                          }}
+                          data-testid={`events-publication-unpublish-${p.id}`}
+                          disabled={unpublishMutation.isPending}
+                        >
+                          Unpublish
+                        </button>
+                      ) : (
+                        <span style={mutedHintStyle}>—</span>
+                      )}
+                    </td>
+                  </tr>
+                  {confirmDeleteID === p.feed_token_id ? (
+                    <tr>
+                      <td colSpan={4} style={tdStyle}>
+                        <div style={confirmDeleteStyle}>
+                          <span>
+                            Unpublish from feed{" "}
+                            <code style={monoStyle}>
+                              {shortenUUID(p.feed_token_id)}
+                            </code>
+                            ?
+                          </span>
+                          <div style={rowActionsStyle}>
+                            <button
+                              type="button"
+                              style={dangerButtonStyle}
+                              onClick={() =>
+                                unpublishMutation.mutate(p.feed_token_id)
+                              }
+                              disabled={unpublishMutation.isPending}
+                              data-testid={`events-publication-confirm-${p.id}`}
+                            >
+                              {unpublishMutation.isPending
+                                ? "Unpublishing…"
+                                : "Confirm"}
+                            </button>
+                            <button
+                              type="button"
+                              style={refreshButtonStyle}
+                              onClick={() => setConfirmDeleteID(null)}
+                              disabled={unpublishMutation.isPending}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

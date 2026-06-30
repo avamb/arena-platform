@@ -43,6 +43,11 @@ import {
   mapTierError,
   tierToForm,
   validateTierForm,
+  buildPublicationRequestBody,
+  emptyPublicationForm,
+  isUUID,
+  mapPublicationError,
+  validatePublicationForm,
   type EventItem,
   type SessionFormValues,
   type TicketTierItem,
@@ -820,5 +825,157 @@ describe("mapTierError", () => {
     expect(
       mapTierError(new ApiError(403, { code: "x.y", message: "" })),
     ).toMatch(/forbidden/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Publications tab helpers (feature #284 / E-6)
+// ---------------------------------------------------------------------------
+
+const FEED_TOKEN_ID = "01929d0e-0e47-7000-8000-000000000901";
+const CITY_ID = "01929d0e-0e47-7000-8000-000000000c01";
+
+describe("isUUID", () => {
+  it("accepts canonical UUID strings (any version)", () => {
+    expect(isUUID(FEED_TOKEN_ID)).toBe(true);
+    expect(isUUID("550e8400-e29b-41d4-a716-446655440000")).toBe(true);
+  });
+  it("rejects empty strings and garbage", () => {
+    expect(isUUID("")).toBe(false);
+    expect(isUUID("not-a-uuid")).toBe(false);
+    expect(isUUID("12345")).toBe(false);
+  });
+  it("trims whitespace", () => {
+    expect(isUUID(`  ${FEED_TOKEN_ID}  `)).toBe(true);
+  });
+});
+
+describe("emptyPublicationForm", () => {
+  it("returns blank values for both fields", () => {
+    expect(emptyPublicationForm()).toEqual({ feed_token_id: "", city_id: "" });
+  });
+  it("returns a fresh object each call (state-safe)", () => {
+    const a = emptyPublicationForm();
+    const b = emptyPublicationForm();
+    expect(a).not.toBe(b);
+  });
+});
+
+describe("validatePublicationForm", () => {
+  it("requires feed_token_id", () => {
+    const errs = validatePublicationForm({ feed_token_id: "", city_id: "" });
+    expect(errs.feed_token_id).toBeDefined();
+    expect(errs.city_id).toBeUndefined();
+  });
+  it("requires feed_token_id to be a UUID", () => {
+    const errs = validatePublicationForm({
+      feed_token_id: "not-a-uuid",
+      city_id: "",
+    });
+    expect(errs.feed_token_id).toMatch(/UUID/);
+  });
+  it("accepts a valid feed_token_id with empty city_id (global scope)", () => {
+    const errs = validatePublicationForm({
+      feed_token_id: FEED_TOKEN_ID,
+      city_id: "",
+    });
+    expect(errs).toEqual({});
+  });
+  it("accepts a valid feed_token_id with a valid city_id", () => {
+    const errs = validatePublicationForm({
+      feed_token_id: FEED_TOKEN_ID,
+      city_id: CITY_ID,
+    });
+    expect(errs).toEqual({});
+  });
+  it("rejects a non-UUID city_id even when feed_token_id is valid", () => {
+    const errs = validatePublicationForm({
+      feed_token_id: FEED_TOKEN_ID,
+      city_id: "not-a-uuid",
+    });
+    expect(errs.city_id).toMatch(/UUID/);
+    expect(errs.feed_token_id).toBeUndefined();
+  });
+  it("trims whitespace before validating", () => {
+    const errs = validatePublicationForm({
+      feed_token_id: `   ${FEED_TOKEN_ID}   `,
+      city_id: `   ${CITY_ID}   `,
+    });
+    expect(errs).toEqual({});
+  });
+});
+
+describe("buildPublicationRequestBody", () => {
+  it("omits city_id when blank (global scope)", () => {
+    const body = buildPublicationRequestBody({
+      feed_token_id: FEED_TOKEN_ID,
+      city_id: "",
+    });
+    expect(body).toEqual({ feed_token_id: FEED_TOKEN_ID });
+    expect("city_id" in body).toBe(false);
+  });
+  it("includes city_id when set (scoped publication)", () => {
+    const body = buildPublicationRequestBody({
+      feed_token_id: FEED_TOKEN_ID,
+      city_id: CITY_ID,
+    });
+    expect(body).toEqual({ feed_token_id: FEED_TOKEN_ID, city_id: CITY_ID });
+  });
+  it("trims both fields", () => {
+    const body = buildPublicationRequestBody({
+      feed_token_id: `  ${FEED_TOKEN_ID}  `,
+      city_id: `  ${CITY_ID}  `,
+    });
+    expect(body).toEqual({ feed_token_id: FEED_TOKEN_ID, city_id: CITY_ID });
+  });
+  it("treats whitespace-only city_id as global", () => {
+    const body = buildPublicationRequestBody({
+      feed_token_id: FEED_TOKEN_ID,
+      city_id: "   ",
+    });
+    expect("city_id" in body).toBe(false);
+  });
+});
+
+describe("mapPublicationError", () => {
+  it.each([
+    ["publication.invalid_event_id", /event id/i],
+    ["publication.invalid_feed_token_id", /feed token id/i],
+    ["publication.invalid_city_id", /city id/i],
+    ["publication.feed_token_id_required", /required/i],
+    ["publication.body_required", /body/i],
+    ["publication.content_type_required", /json/i],
+    ["publication.invalid_json", /json/i],
+    ["publication.internal", /server/i],
+  ])("maps %s to an operator-readable message", (code, pattern) => {
+    expect(
+      mapPublicationError(
+        new ApiError(400, { code, message: "raw backend message" }),
+      ),
+    ).toMatch(pattern);
+  });
+  it("maps permissions.denied", () => {
+    expect(
+      mapPublicationError(
+        new ApiError(403, { code: "permissions.denied", message: "" }),
+      ),
+    ).toMatch(/permission/i);
+  });
+  it("handles 401 with a sign-in hint", () => {
+    expect(
+      mapPublicationError(new ApiError(401, { code: "auth.expired", message: "" })),
+    ).toMatch(/sign in again/i);
+  });
+  it("handles 403 fallback", () => {
+    expect(
+      mapPublicationError(new ApiError(403, { code: "x.y", message: "" })),
+    ).toMatch(/forbidden/i);
+  });
+  it("falls back to message + code on unknown codes", () => {
+    expect(
+      mapPublicationError(
+        new ApiError(500, { code: "boom.something", message: "kaboom" }),
+      ),
+    ).toBe("kaboom (boom.something)");
   });
 });
