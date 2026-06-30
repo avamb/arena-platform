@@ -69,6 +69,25 @@ func (s *Server) mountSuperadminRoutes(r chi.Router) {
 	})
 }
 
+// mountAdminTicketDeliveryRoutes mounts the support-console ticket-delivery
+// inspect + resend endpoints (feature #291, T-4) under /v1/admin/tickets/{id}.
+// RBAC: ticket.update (or support.act fallback in the future RBAC engine).
+// All three writes carry the same X-Admin-Reason gate as the rest of /v1/admin.
+func (s *Server) mountAdminTicketDeliveryRoutes(r chi.Router) {
+	if s.stub == nil || !s.stub.Enabled() || s.deliveryJobQueries == nil || s.ticketQueries == nil {
+		return
+	}
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "ticket.update", "tickets")
+		pr.Get("/admin/tickets/{id}/delivery", s.handleAdminGetTicketDelivery)
+		// Resend gate also accepted via support.act; future RBAC engine
+		// can grant either permission. AllowAll() passes both today.
+		if s.workerPool != nil {
+			pr.Post("/admin/tickets/{id}/delivery/resend", s.handleAdminResendTicketDelivery)
+		}
+	})
+}
+
 // mountAdminOrgRoutes mounts admin-namespace Organizations CRUD endpoints
 // (feature #233): POST/PATCH/archive under /v1/admin/organizations. These are
 // the admin-console-facing counterparts to /v1/organizations and require

@@ -52,6 +52,7 @@ func (s *Server) mountV1Routes() {
 		s.mountStripeBillingRoutes(r)
 		s.mountSuperadminRoutes(r)
 		s.mountAdminOrgRoutes(r)
+		s.mountAdminTicketDeliveryRoutes(r)
 		s.mountAdminMembershipRoutes(r)
 		s.mountAdminUserRoutes(r)
 		s.mountImpersonationRoutes(r)

@@ -13,7 +13,7 @@
  * Mock data: NONE. The page renders only what the backend returns.
  */
 import { createRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useEffect,
   useMemo,
@@ -482,6 +482,8 @@ function TicketDrawer({
         </dl>
       </section>
 
+      <TicketDeliverySection ticketId={ticket.id} />
+
       <section style={S.drawerSectionStyle} aria-labelledby="tickets-drawer-related">
         <h3 id="tickets-drawer-related" style={S.drawerSectionTitleStyle}>
           Related data
@@ -526,6 +528,221 @@ function MetaRow({ k, v }: { k: string; v: ReactNode }) {
       <dt style={S.metaKeyStyle}>{k}</dt>
       <dd style={S.metaValStyle}>{v}</dd>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Delivery section (feature #291, T-4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Shape of GET /v1/admin/tickets/{id}/delivery.
+ * Mirrors apps/backend/internal/platform/httpserver/admin_ticket_delivery.go.
+ */
+export interface AdminTicketDelivery {
+  readonly id: string;
+  readonly ticket_id: string;
+  readonly status: "pending" | "sent" | "failed" | string;
+  readonly attempts: number;
+  readonly recipient_email: string | null;
+  readonly last_error: string | null;
+  readonly queued_at: string;
+  readonly sent_at: string | null;
+  readonly created_at: string;
+  readonly updated_at: string;
+}
+
+interface TicketDeliveryEnvelope {
+  readonly delivery: AdminTicketDelivery;
+}
+
+interface TicketDeliveryResendEnvelope {
+  readonly delivery: AdminTicketDelivery;
+  readonly worker_job_id: string;
+}
+
+export function badgeForDeliveryStatus(status: string): CSSProperties {
+  if (status === "sent") {
+    return S.successBadgeStyle;
+  }
+  if (status === "failed") {
+    return S.errorBadgeStyle;
+  }
+  // pending and unknown
+  return S.warnBadgeStyle;
+}
+
+function TicketDeliverySection({ ticketId }: { ticketId: string }) {
+  const queryClient = useQueryClient();
+  const queryKey = ["admin", "ticket", ticketId, "delivery"] as const;
+
+  const query = useQuery<TicketDeliveryEnvelope, ApiError>({
+    queryKey,
+    queryFn: () =>
+      authedFetch<TicketDeliveryEnvelope>({
+        method: "GET",
+        path: `/v1/admin/tickets/${ticketId}/delivery`,
+      }),
+    retry: (failureCount, err) => {
+      if (err instanceof ApiError) {
+        if (
+          err.status === 401 ||
+          err.status === 403 ||
+          err.status === 404 ||
+          err.status === 0
+        ) {
+          return false;
+        }
+        if (
+          err.code === "superadmin.reason_required" ||
+          err.code === "superadmin.missing_reason" ||
+          err.code === "permissions.denied"
+        ) {
+          return false;
+        }
+      }
+      return failureCount < 2;
+    },
+    refetchOnWindowFocus: false,
+  });
+
+  const resend = useMutation<TicketDeliveryResendEnvelope, ApiError, void>({
+    mutationFn: () =>
+      authedFetch<TicketDeliveryResendEnvelope>({
+        method: "POST",
+        path: `/v1/admin/tickets/${ticketId}/delivery/resend`,
+      }),
+    onSuccess: (data) => {
+      // Seed the GET cache with the freshly enqueued row so the section
+      // updates immediately without a round-trip.
+      queryClient.setQueryData<TicketDeliveryEnvelope>(queryKey, {
+        delivery: data.delivery,
+      });
+    },
+  });
+
+  const isNotFound =
+    query.isError && query.error instanceof ApiError && query.error.status === 404;
+  const delivery = query.data?.delivery ?? null;
+
+  return (
+    <section
+      style={S.drawerSectionStyle}
+      aria-labelledby="tickets-drawer-delivery"
+      data-testid="tickets-drawer-delivery"
+    >
+      <h3 id="tickets-drawer-delivery" style={S.drawerSectionTitleStyle}>
+        Delivery
+      </h3>
+
+      {query.isPending ? (
+        <div style={S.statusBoxStyle} role="status" aria-live="polite">
+          Loading delivery status…
+        </div>
+      ) : query.isError && !isNotFound ? (
+        <SupportErrorState
+          testIdPrefix="tickets-delivery"
+          error={query.error}
+          onRetry={() => query.refetch()}
+        />
+      ) : delivery === null ? (
+        <p
+          style={S.gapNoteStyle}
+          data-testid="tickets-delivery-empty"
+        >
+          No delivery has been attempted for this ticket yet.
+        </p>
+      ) : (
+        <dl style={S.metaListStyle} data-testid="tickets-delivery-detail">
+          <MetaRow
+            k="Status"
+            v={
+              <span style={badgeForDeliveryStatus(delivery.status)}>
+                {delivery.status}
+              </span>
+            }
+          />
+          <MetaRow k="Attempts" v={String(delivery.attempts)} />
+          <MetaRow
+            k="Recipient"
+            v={
+              delivery.recipient_email === null ? (
+                <span style={S.mutedStyle}>—</span>
+              ) : (
+                delivery.recipient_email
+              )
+            }
+          />
+          <MetaRow k="Queued" v={formatDateTime(delivery.queued_at)} />
+          <MetaRow
+            k="Last sent"
+            v={
+              delivery.sent_at === null ? (
+                <span style={S.mutedStyle}>—</span>
+              ) : (
+                formatDateTime(delivery.sent_at)
+              )
+            }
+          />
+          {delivery.last_error === null ? null : (
+            <MetaRow
+              k="Last error"
+              v={
+                <span
+                  style={{ color: "#7f1d1d", whiteSpace: "pre-wrap" }}
+                  data-testid="tickets-delivery-last-error"
+                >
+                  {delivery.last_error}
+                </span>
+              }
+            />
+          )}
+        </dl>
+      )}
+
+      <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center" }}>
+        <button
+          type="button"
+          style={S.buttonStyle}
+          onClick={() => resend.mutate()}
+          disabled={resend.isPending}
+          data-testid="tickets-delivery-resend"
+          aria-describedby="tickets-delivery-resend-hint"
+        >
+          {resend.isPending ? "Resending…" : "Resend"}
+        </button>
+        <span
+          id="tickets-delivery-resend-hint"
+          style={{ fontSize: 11, color: "#475569" }}
+        >
+          Enqueues a fresh delivery_jobs row. Requires{" "}
+          <code>ticket.update</code> or <code>support.act</code>.
+        </span>
+      </div>
+
+      {resend.isError ? (
+        <p
+          style={{ color: "#7f1d1d", marginTop: 8, fontSize: 12 }}
+          role="alert"
+          data-testid="tickets-delivery-resend-error"
+        >
+          Resend failed:{" "}
+          {resend.error instanceof ApiError
+            ? `${resend.error.code} — ${resend.error.message}`
+            : "Unknown error"}
+        </p>
+      ) : null}
+      {resend.isSuccess ? (
+        <p
+          style={{ color: "#065f46", marginTop: 8, fontSize: 12 }}
+          role="status"
+          data-testid="tickets-delivery-resend-success"
+        >
+          Resend enqueued (worker_job_id={" "}
+          <code style={S.monoStyle}>{resend.data.worker_job_id}</code>).
+        </p>
+      ) : null}
+    </section>
   );
 }
 

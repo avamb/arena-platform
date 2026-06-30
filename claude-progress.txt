@@ -17991,3 +17991,56 @@ Verification (docker golang:1.24, repo root):
 
 Marked #290 passing. Backlog: 288/301.
 
+## 2026-06-30 — Feature #291 (T-4) Ticket delivery admin panel
+- New migration 0054_ticket_support_permissions.sql seeds two RBAC
+  permissions called out by the T-4 spec (ticket.update, support.act),
+  creates the support role if missing, and grants both to admin and
+  org_admin, plus support.act to support. AllowAll() means runtime
+  enforcement is a no-op until the real RBAC engine lands; the seeds
+  ensure that eventual checker has rows to look up.
+- New apps/backend/internal/platform/httpserver/admin_ticket_delivery.go:
+    GET  /v1/admin/tickets/{id}/delivery        -- returns most recent
+         delivery_jobs row (404 when none). Calls
+         deliveryJobQueries.GetDeliveryJobByTicketID; serialises a
+         null-aware JSON map including recipient_email, status,
+         attempts, last_error, queued_at, sent_at.
+    POST /v1/admin/tickets/{id}/delivery/resend -- validates ticket
+         exists, inserts a fresh delivery_jobs row with that ticket's
+         current holder_email, then enqueues a ticket.deliver worker_job
+         using identical SQL as post-issuance enqueuer in
+         delivery_enqueue.go. Returns 202 + new row + worker_job_id.
+  Both routes carry standard /v1/admin gate: JWT + ticket.update
+  permission + X-Admin-Reason header. Audit events
+  "v1.admin.ticket.delivery.read" and ".resend" are written with
+  reason and ticket_id metadata. Route mount lives in
+  mountAdminTicketDeliveryRoutes() in mount_admin.go and wires from
+  mount_v1.go; resend POST is omitted when workerPool is nil so test
+  servers without a real DB pool still mount cleanly.
+- apps/admin-web/src/routes/tickets.tsx gains a new TicketDeliverySection
+  rendered inside existing TicketDrawer between "Fields" and
+  "Related data" sections. Shows last delivery's status (colour-coded
+  via badgeForDeliveryStatus: sent=success, failed=error, pending=warn),
+  attempt count, recipient, queued_at, sent_at, and last_error (when
+  present). A Resend button issues POST /v1/admin/tickets/{id}/delivery/resend
+  via authedFetch (which auto-injects X-Admin-Reason because path
+  prefix /v1/admin/tickets is already in REASON_REQUIRED_PREFIXES).
+  Success seeds GET cache with fresh delivery row so panel updates
+  without a round-trip; errors render an inline alert.
+- Empty-delivery 404 is treated as data-not-yet rather than an error
+  (renders "No delivery has been attempted for this ticket yet").
+Verification (docker golang:1.24, repo root):
+  go build ./apps/backend/...                                 OK
+  go vet ./apps/backend/...                                   OK
+  npm --prefix apps/admin-web run type-check                  OK
+  npm --prefix apps/admin-web test -- --run tickets           6/6 PASS
+  go test ./apps/backend/internal/platform/httpserver/...     PASS except
+  pre-existing flakes/baselines documented in #289 and #290:
+    TestTimestamp_StaticScan_RFC3339NanoWithUTC (4 baseline hits in
+      s3.go, delivery/handler.go, delivery/pdf/pdf.go)
+    TestOpenAPIDriftCheck_CodeCoversAllSpecRoutes (22-route baseline --
+      none added by this feature; inverse SpecCoversAllCodeRoutes test
+      still passes because new admin routes are intentionally
+      unspecified in openapi.yaml today, matching existing
+      /v1/admin/tickets pattern).
+Marked #291 passing.
+
