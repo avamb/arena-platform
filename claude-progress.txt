@@ -17371,3 +17371,39 @@ Verification:
   npm --prefix apps/admin-web run type-check                   OK.
 
 Marked #275 passing. Backlog: 275/301.
+
+=== 2026-06-30: Feature #276 - A-15 Document delivery_jobs endpoints in OpenAPI (SKIPPED) ===
+SKIPPED with external blocker.
+
+Blocker: Feature description references the file
+`apps/backend/internal/platform/httpserver/delivery_jobs.go`, but that file
+does not exist in the codebase. Exhaustive search of the httpserver package
+confirms there is no `delivery_jobs` HTTP endpoint group:
+
+  - Glob **/delivery_jobs*.go returns only the sqlc-generated
+    apps/backend/internal/adapters/postgres/gen/delivery_jobs.sql.go
+    (DB-layer queries, not HTTP handlers).
+  - apps/backend/internal/platform/httpserver/delivery_enqueue.go contains
+    only internal best-effort enqueue helpers
+    (enqueueDeliveryJobs, enqueueComplimentaryDeliveryJobs) called after
+    ticket issuance — no HTTP handlers, no exported routes.
+  - grep "/v1/.*deliv" in openapi.yaml: no matches.
+  - grep "deliv" across all mount_*.go files: no matches.
+  - The sqlc queries (InsertDeliveryJob, GetDeliveryJobByTicketID,
+    UpdateDeliveryJobStatus, ListPendingDeliveryJobs) are consumed only by
+    the worker pool and the checkout/complimentary issuance paths.
+
+The "A-*" OpenAPI Sync wave is by design documenting EXISTING endpoint
+groups (see #270 checkout_sessions, #271 payment_intents, #272 tickets,
+#273 ticket_credentials, #274 refunds, #275 barcode_authorities — each
+documented endpoints that were already wired in a corresponding .go file
+inside httpserver/). Feature #276's premise is invalid: there are no
+delivery_jobs HTTP endpoints to document.
+
+Building a brand-new delivery_jobs HTTP endpoint group (handler file,
+auth + permission name, mount wiring, drift-test wiring, OpenAPI schemas,
+TS client) is materially outside the "OpenAPI Sync" scope of the A-*
+wave and belongs in a dedicated feature. Skipping so the orchestrator
+can reassign or revise the spec.
+
+Backlog: 275/301 (unchanged).
