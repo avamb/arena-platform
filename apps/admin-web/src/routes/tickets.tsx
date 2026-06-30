@@ -918,46 +918,57 @@ function TicketScansSection({ ticketId }: { ticketId: string }) {
           role="region"
           aria-label="Ticket scan history"
         >
-          <table style={S.tableStyle} data-testid="tickets-scans-table">
-            <thead>
-              <tr>
-                <th scope="col" style={S.thStyle}>Scanned at</th>
-                <th scope="col" style={S.thStyle}>Gate</th>
-                <th scope="col" style={S.thStyle}>Device</th>
-                <th scope="col" style={S.thStyle}>Result</th>
-              </tr>
-            </thead>
-            <tbody>
-              {scans.map((sc) => (
-                <tr
-                  key={sc.id}
-                  style={S.trStyle}
-                  data-testid={`tickets-scans-row-${sc.id}`}
-                >
-                  <td style={S.tdStyle}>{formatDateTime(sc.scanned_at)}</td>
-                  <td style={S.tdStyle}>
-                    {sc.gate === "" ? (
-                      <span style={S.mutedStyle}>—</span>
-                    ) : (
-                      sc.gate
-                    )}
-                  </td>
-                  <td style={S.tdMonoStyle}>
-                    {sc.device_id === "" ? (
-                      <span style={S.mutedStyle}>—</span>
-                    ) : (
-                      sc.device_id
-                    )}
-                  </td>
-                  <td style={S.tdStyle}>
-                    <span style={badgeForScanResult(sc.result)}>
-                      {sc.result}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <ResponsiveTable<AdminScanEvent>
+            id="tickets-scans-table"
+            caption="Ticket scan history"
+            rows={scans}
+            rowKey={(sc) => sc.id}
+            columns={[
+              {
+                id: "scanned_at",
+                header: "Scanned at",
+                primary: true,
+                renderCell: (sc) => formatDateTime(sc.scanned_at),
+              },
+              {
+                id: "gate",
+                header: "Gate",
+                renderCell: (sc) =>
+                  sc.gate === "" ? (
+                    <span style={S.mutedStyle}>—</span>
+                  ) : (
+                    sc.gate
+                  ),
+              },
+              {
+                id: "device",
+                header: "Device",
+                renderCell: (sc) =>
+                  sc.device_id === "" ? (
+                    <span style={S.mutedStyle}>—</span>
+                  ) : (
+                    <code
+                      style={{
+                        fontFamily:
+                          "ui-monospace, SFMono-Regular, Menlo, monospace",
+                        fontSize: 12,
+                      }}
+                    >
+                      {sc.device_id}
+                    </code>
+                  ),
+              },
+              {
+                id: "result",
+                header: "Result",
+                renderCell: (sc) => (
+                  <span style={badgeForScanResult(sc.result)}>
+                    {sc.result}
+                  </span>
+                ),
+              },
+            ]}
+          />
         </div>
       )}
     </section>

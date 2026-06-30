@@ -50,6 +50,16 @@ import { Route as RootRoute } from "./__root";
 import { ApiError, authedFetch } from "@/lib/api/client";
 import { RequirePermission } from "@/components/RequirePermission";
 import { NAV_BY_PATH } from "@/lib/auth/navConfig";
+import {
+  ResponsiveTable,
+  type ResponsiveTableColumn,
+} from "@/components/layout";
+
+/**
+ * Wave M-7 (#300) tap-target floor. iOS HIG / WCAG 2.5.5 ask for 44 CSS px.
+ * Exported so tests can pin the constant without re-parsing inline styles.
+ */
+export const M7_TAP_TARGET_PX = 44;
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -365,63 +375,82 @@ function SubscribersTable({
   readonly onSelect: (id: string) => void;
   readonly onDelete: (id: string) => void;
 }) {
-  return (
-    <table style={tableStyle} data-testid="webhooks-table">
-      <thead>
-        <tr>
-          <th style={thStyle}>Site</th>
-          <th style={thStyle}>Callback URL</th>
-          <th style={thStyle}>Event types</th>
-          <th style={thStyle}>Active</th>
-          <th style={thStyle}>Created</th>
-          <th style={thStyle} />
-        </tr>
-      </thead>
-      <tbody>
-        {subscribers.map((s) => {
-          const isSelected = s.subscriber_id === selectedId;
-          return (
-            <tr
-              key={s.subscriber_id}
-              style={isSelected ? trSelectedStyle : trStyle}
-              data-testid={`webhooks-row-${s.subscriber_id}`}
+  const columns: readonly ResponsiveTableColumn<WebhookSubscriberSummary>[] = [
+    {
+      id: "site",
+      header: "Site",
+      primary: true,
+      renderCell: (s) => s.site_url,
+    },
+    {
+      id: "callback",
+      header: "Callback URL",
+      renderCell: (s) => (
+        <code style={callbackCodeStyle}>{s.callback_url}</code>
+      ),
+    },
+    {
+      id: "events",
+      header: "Event types",
+      renderCell: (s) =>
+        s.event_types.length === 0 ? (
+          <em style={{ color: "#64748b" }}>wildcard</em>
+        ) : (
+          s.event_types.join(", ")
+        ),
+    },
+    {
+      id: "active",
+      header: "Active",
+      renderCell: (s) => (
+        <span style={s.active ? activeBadgeStyle : inactiveBadgeStyle}>
+          {s.active ? "active" : "inactive"}
+        </span>
+      ),
+    },
+    {
+      id: "created",
+      header: "Created",
+      renderCell: (s) => formatDateTime(s.created_at),
+    },
+    {
+      id: "actions",
+      header: "",
+      align: "right",
+      renderCell: (s) => {
+        const isSelected = s.subscriber_id === selectedId;
+        return (
+          <div style={rowActionsStyle}>
+            <button
+              type="button"
+              style={rowActionButtonStyle}
+              onClick={() => onSelect(s.subscriber_id)}
+              data-testid={`webhooks-edit-${s.subscriber_id}`}
             >
-              <td style={tdStyle}>{s.site_url}</td>
-              <td style={tdMonoStyle}>{s.callback_url}</td>
-              <td style={tdStyle}>
-                {s.event_types.length === 0
-                  ? <em style={{ color: "#64748b" }}>wildcard</em>
-                  : s.event_types.join(", ")}
-              </td>
-              <td style={tdStyle}>
-                <span style={s.active ? activeBadgeStyle : inactiveBadgeStyle}>
-                  {s.active ? "active" : "inactive"}
-                </span>
-              </td>
-              <td style={tdStyle}>{formatDateTime(s.created_at)}</td>
-              <td style={tdActionsStyle}>
-                <button
-                  type="button"
-                  style={linkButtonStyle}
-                  onClick={() => onSelect(s.subscriber_id)}
-                  data-testid={`webhooks-edit-${s.subscriber_id}`}
-                >
-                  {isSelected ? "Close" : "Edit"}
-                </button>
-                <button
-                  type="button"
-                  style={dangerLinkButtonStyle}
-                  onClick={() => onDelete(s.subscriber_id)}
-                  data-testid={`webhooks-delete-${s.subscriber_id}`}
-                >
-                  Delete
-                </button>
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+              {isSelected ? "Close" : "Edit"}
+            </button>
+            <button
+              type="button"
+              style={rowDangerButtonStyle}
+              onClick={() => onDelete(s.subscriber_id)}
+              data-testid={`webhooks-delete-${s.subscriber_id}`}
+            >
+              Delete
+            </button>
+          </div>
+        );
+      },
+    },
+  ];
+
+  return (
+    <ResponsiveTable<WebhookSubscriberSummary>
+      id="webhooks-table"
+      caption="Webhook subscribers"
+      columns={columns}
+      rows={subscribers}
+      rowKey={(s) => s.subscriber_id}
+    />
   );
 }
 
@@ -745,6 +774,43 @@ function DeliveriesTable({
 // Secret banner — shown ONCE after a successful create
 // ---------------------------------------------------------------------------
 
+/**
+ * Best-effort clipboard helper used by the M-7 copy button. Returns
+ * true on success. Exported for tests.
+ *
+ * navigator.clipboard.writeText is only available in secure contexts
+ * (https / localhost); on older / insecure setups we fall back to a
+ * detached <textarea> + document.execCommand("copy") so the operator
+ * still gets some copy affordance during incidents.
+ */
+export async function copyToClipboard(value: string): Promise<boolean> {
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch {
+      // fall through to execCommand fallback
+    }
+  }
+  if (typeof document === "undefined") {
+    return false;
+  }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = value;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "absolute";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 function SecretBanner({
   response,
   onDismiss,
@@ -752,6 +818,18 @@ function SecretBanner({
   readonly response: RegisterSubscriberResponse;
   readonly onDismiss: () => void;
 }) {
+  const [revealed, setRevealed] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  async function onCopy() {
+    const ok = await copyToClipboard(response.signing_secret);
+    setCopied(ok);
+    if (ok) {
+      // Auto-clear the "Copied" badge so the next click is also discoverable.
+      window.setTimeout(() => setCopied(false), 2000);
+    }
+  }
+
   return (
     <div style={secretBannerStyle} role="status" data-testid="webhooks-secret-banner">
       <div style={secretBannerTitleStyle}>
@@ -760,13 +838,46 @@ function SecretBanner({
       <div style={secretBannerMetaStyle}>
         Subscriber <code>{response.subscriber_id}</code>
       </div>
-      <code style={secretCodeStyle} data-testid="webhooks-secret-value">
-        {response.signing_secret}
-      </code>
+      <label htmlFor="webhooks-secret-input" style={labelStyle}>
+        Signing secret
+      </label>
+      <div style={secretInputRowStyle}>
+        <input
+          id="webhooks-secret-input"
+          type={revealed ? "text" : "password"}
+          value={response.signing_secret}
+          readOnly
+          aria-label="Signing secret"
+          style={secretInputStyle}
+          data-testid="webhooks-secret-value"
+          onFocus={(e) => e.currentTarget.select()}
+        />
+        <button
+          type="button"
+          style={tapTargetIconButtonStyle}
+          onClick={() => setRevealed((v) => !v)}
+          aria-label={revealed ? "Hide signing secret" : "Reveal signing secret"}
+          aria-pressed={revealed}
+          data-testid="webhooks-secret-reveal"
+        >
+          {revealed ? "Hide" : "Reveal"}
+        </button>
+        <button
+          type="button"
+          style={tapTargetIconButtonStyle}
+          onClick={() => {
+            void onCopy();
+          }}
+          aria-label="Copy signing secret to clipboard"
+          data-testid="webhooks-secret-copy"
+        >
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
       <div style={formActionsStyle}>
         <button
           type="button"
-          style={linkButtonStyle}
+          style={tapTargetSecondaryButtonStyle}
           onClick={onDismiss}
           data-testid="webhooks-secret-dismiss"
         >
@@ -971,11 +1082,6 @@ const trStyle: CSSProperties = {
   borderBottom: "1px solid #f1f5f9",
 };
 
-const trSelectedStyle: CSSProperties = {
-  ...trStyle,
-  background: "#eff6ff",
-};
-
 const tdStyle: CSSProperties = {
   padding: "8px 10px",
   verticalAlign: "top",
@@ -987,10 +1093,39 @@ const tdMonoStyle: CSSProperties = {
   fontSize: 12,
 };
 
-const tdActionsStyle: CSSProperties = {
-  ...tdStyle,
-  whiteSpace: "nowrap",
-  textAlign: "right",
+const callbackCodeStyle: CSSProperties = {
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+  fontSize: 12,
+  wordBreak: "break-all",
+};
+
+// M-7 row-action affordances. Buttons sit inside the ResponsiveTable cell on
+// desktop AND inside the stacked mobile card; either way the M-7 spec demands
+// a 44 px tap target so we use M7_TAP_TARGET_PX for both minHeight + minWidth.
+const rowActionsStyle: CSSProperties = {
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+  justifyContent: "flex-end",
+};
+
+const rowActionButtonStyle: CSSProperties = {
+  minHeight: M7_TAP_TARGET_PX,
+  minWidth: M7_TAP_TARGET_PX,
+  padding: "8px 12px",
+  fontSize: 13,
+  background: "#ffffff",
+  border: "1px solid #cbd5e1",
+  borderRadius: 4,
+  color: "#1d4ed8",
+  cursor: "pointer",
+  fontWeight: 600,
+};
+
+const rowDangerButtonStyle: CSSProperties = {
+  ...rowActionButtonStyle,
+  color: "#b91c1c",
+  borderColor: "#fecaca",
 };
 
 const activeBadgeStyle: CSSProperties = {
@@ -1016,11 +1151,6 @@ const linkButtonStyle: CSSProperties = {
   color: "#1d4ed8",
   cursor: "pointer",
   textDecoration: "underline",
-};
-
-const dangerLinkButtonStyle: CSSProperties = {
-  ...linkButtonStyle,
-  color: "#b91c1c",
 };
 
 const primaryButtonStyle: CSSProperties = {
@@ -1194,14 +1324,54 @@ const secretBannerMetaStyle: CSSProperties = {
   color: "#78350f",
 };
 
-const secretCodeStyle: CSSProperties = {
-  padding: 10,
+const secretInputRowStyle: CSSProperties = {
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+  alignItems: "stretch",
+};
+
+const secretInputStyle: CSSProperties = {
+  flex: "1 1 240px",
+  minHeight: M7_TAP_TARGET_PX,
+  padding: "8px 10px",
   background: "#ffffff",
   border: "1px solid #fbbf24",
   borderRadius: 4,
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-  fontSize: 12,
-  wordBreak: "break-all",
+  // 16 px keeps iOS Safari from auto-zooming when the field receives focus.
+  fontSize: 16,
+  color: "#0f172a",
+};
+
+// Both the Reveal toggle and the Copy button sit on the same row as the
+// secret input; the M-7 contract pins them at >= 44 CSS px on every axis
+// so an operator on a phone can tap them without overshooting.
+const tapTargetIconButtonStyle: CSSProperties = {
+  minHeight: M7_TAP_TARGET_PX,
+  minWidth: M7_TAP_TARGET_PX,
+  padding: "8px 14px",
+  fontSize: 13,
+  fontWeight: 600,
+  background: "#ffffff",
+  border: "1px solid #fbbf24",
+  borderRadius: 4,
+  color: "#78350f",
+  cursor: "pointer",
+};
+
+const tapTargetSecondaryButtonStyle: CSSProperties = {
+  minHeight: M7_TAP_TARGET_PX,
+  minWidth: M7_TAP_TARGET_PX,
+  padding: "8px 14px",
+  fontSize: 13,
+  fontWeight: 600,
+  background: "transparent",
+  border: "1px solid transparent",
+  borderRadius: 4,
+  color: "#78350f",
+  cursor: "pointer",
+  textDecoration: "underline",
 };
 
 const savedBadgeStyle: CSSProperties = {

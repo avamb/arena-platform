@@ -18464,3 +18464,46 @@ Verification (npm --prefix apps/admin-web):
   npm run type-check                                          OK
   npm test --run                                              749/749 PASS
 Marked #299 passing.
+
+
+## 2026-06-30 - Feature #300 (M-7) Webhook + scanner panels on mobile
+- webhooks.tsx: SubscribersTable now renders via
+  <ResponsiveTable<WebhookSubscriberSummary>> from @/components/layout
+  (stacked cards <md, real <table> >=md). data-testid="webhooks-table"
+  preserved; Edit / Delete moved into a per-row actions cell whose
+  buttons inherit the M-7 44 px tap-target via rowActionButtonStyle /
+  rowDangerButtonStyle.
+- webhooks.tsx: SecretBanner replaces the bare <code> block with an
+  <input type={revealed?"text":"password"}> + Reveal / Copy / Dismiss
+  buttons. Each button is >=44 CSS px on both axes via the exported
+  M7_TAP_TARGET_PX constant and tapTargetIconButtonStyle. Copy uses a
+  new exported copyToClipboard helper that prefers
+  navigator.clipboard.writeText and falls back to a detached
+  textarea+execCommand("copy") for non-secure contexts. Reveal toggle
+  exposes aria-pressed; Copy exposes aria-label "Copy signing secret
+  to clipboard" and flips its label to "Copied" for 2s after a
+  successful copy.
+- tickets.tsx: TicketScansSection now renders the scan history through
+  <ResponsiveTable<AdminScanEvent>> (id="tickets-scans-table"
+  preserved). The empty / pending / error states stay on the existing
+  S.statusBoxStyle + SupportErrorState path; only the populated table
+  swapped to the responsive primitive.
+- Dead style cleanup in webhooks.tsx: trSelectedStyle, tdActionsStyle,
+  dangerLinkButtonStyle, secretCodeStyle removed (TS noUnusedLocals
+  would otherwise fail). linkButtonStyle stays - still used by drawer
+  close + secret dismiss button.
+- New apps/admin-web/src/routes/m7MobilePanels.test.ts (8 cases) is
+  the executable M-7 gate: asserts M7_TAP_TARGET_PX===44; asserts
+  webhooks.tsx renders ResponsiveTable<WebhookSubscriberSummary> and
+  tickets.tsx renders ResponsiveTable<AdminScanEvent>; pins the
+  type={revealed?"text":"password"} pattern, readOnly attr, reveal/
+  copy testids+aria; pins minHeight/minWidth:M7_TAP_TARGET_PX on the
+  icon buttons; exercises copyToClipboard prefers navigator.clipboard
+  and reports false when neither clipboard nor document is available;
+  greps both routes for globalThis.devStore/mockDb/mockData/fakeData.
+- 360x640 / 1280x800 screenshots are the Wave M-8 gate; the
+  executable contract above is what M-7 enforces.
+Verification (npm --prefix apps/admin-web):
+  npm run type-check                                          OK
+  npm test --run                                              757/757 PASS
+Marked #300 passing.
