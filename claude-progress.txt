@@ -18306,3 +18306,24 @@ Frontend verification (npm --prefix apps/admin-web):
   npm run type-check                                          OK
   npm test --run                                              715/715 PASS
 Marked #295 passing.
+
+
+## 2026-06-30 - Feature #296 (M-3) Auth & onboarding flows on mobile
+- Verified login.tsx, passwordReset.tsx, acceptInvite.tsx already
+  carry the M-3 mobile contract: minHeight 44 inputs/submit/links,
+  fontSize 16 to prevent iOS auto-zoom, width 100% / maxWidth 360 /
+  box-sizing border-box layout, inputMode + autoComplete hints, and
+  a position: sticky top: 0 error alert that the on-screen keyboard
+  cannot hide. /password-reset and /accept-invite reuse
+  mobileFormStyles exported from login.tsx so the three flows stay
+  in lock-step.
+- Added apps/admin-web/src/routes/authMobile.test.ts (4 cases)
+  asserting the mobileFormStyles touch-target / fontSize / 360 px
+  contract and the password-reset request/confirm + accept-invite
+  zod schemas (email trim+lowercase, 8..72 password bounds).
+  Schemas exported via the existing __test handles on
+  passwordReset.tsx / acceptInvite.tsx.
+Verification (npm --prefix apps/admin-web):
+  npm run type-check                                          OK
+  npm test --run                                              719/719 PASS
+Marked #296 passing.

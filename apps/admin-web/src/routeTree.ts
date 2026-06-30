@@ -21,6 +21,8 @@ import {
 } from "@/routes/legacyPlaceholders";
 import { GeoRoute } from "@/routes/guarded";
 import { Route as WebhooksRoute } from "@/routes/webhooks";
+import { Route as PasswordResetRoute } from "@/routes/passwordReset";
+import { Route as AcceptInviteRoute } from "@/routes/acceptInvite";
 
 /**
  * Manually-assembled route tree.
@@ -55,4 +57,6 @@ export const routeTree = RootRoute.addChildren([
   ObservabilityRoute,
   GeoRoute,
   WebhooksRoute,
+  PasswordResetRoute,
+  AcceptInviteRoute,
 ]);

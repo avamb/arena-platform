@@ -230,6 +230,10 @@ const NON_NAV_ROUTE_IDS: ReadonlySet<string> = new Set([
   "IndexRoute",
   "LoginRoute",
   "NetworkDetailRoute",
+  // Wave M-3, feature #296: public auth flows (no permission gate; the
+  // backend endpoints enforce token validity).
+  "PasswordResetRoute",
+  "AcceptInviteRoute",
 ]);
 
 /**
