@@ -17719,3 +17719,57 @@ Verification:
   npm --prefix apps/admin-web test -- --run           664/664 PASS
 
 Marked #283 passing. Backlog: 280/301.
+
+=== 2026-06-30: Feature #284 - E-6 Publications tab admin UI ===
+Replaced the read-only PublicationsTab inside
+apps/admin-web/src/routes/events.tsx with a publish/unpublish surface
+backed by the existing publications.go endpoints
+(publication.create / publication.read / publication.delete):
+  GET    /v1/events/{event_id}/publications
+  POST   /v1/events/{event_id}/publications
+  DELETE /v1/events/{event_id}/publications/{feed_token_id}
+
+apps/admin-web/src/routes/events.tsx:
+  - New types: CityItem, CityListEnvelope, PublicationFormValues,
+    PublicationRequestBody, PublicationFormErrors.
+  - New exported pure helpers (used by tests): isUUID,
+    emptyPublicationForm, validatePublicationForm,
+    buildPublicationRequestBody, mapPublicationError.
+  - EventsModule reads publication.create and publication.delete from
+    useAuth and threads them through DrawerProps to PublicationsTab.
+  - PublicationsTab now renders:
+      Publish form (when canCreate): feed_token_id text input plus an
+        optional city_id dropdown sourced from GET /v1/geo/cities,
+        sorted by city name with the country ISO2 suffix. Submit is
+        gated on client-side UUID validation mirroring the backend
+        regex; buildPublicationRequestBody omits city_id when blank so
+        the server stores a global-scope publication.
+      Publications table: same Feed token / Scope / Published columns
+        plus a new Actions column with a per-row Unpublish action
+        (gated on canDelete) backed by an inline confirmation row that
+        DELETEs by feed_token_id.
+      Success and error banners surfacing okMsg / actionErr.
+      Falls back to a noperm message when canCreate is false and to a
+      muted dash when canDelete is false.
+  - mapPublicationError covers every error code emitted by
+    publications.go (invalid_event_id, invalid_feed_token_id,
+    invalid_city_id, feed_token_id_required, body_required,
+    content_type_required, invalid_json, internal) plus
+    permissions.denied and 401 / 403 fallbacks.
+  - No mock data: cities load from /v1/geo/cities, publications from
+    /v1/events/{id}/publications. No globalThis / devStore / mockDb.
+
+apps/admin-web/src/routes/events.test.ts:
+  +27 tests covering isUUID, emptyPublicationForm,
+  validatePublicationForm (required / non-UUID / valid / scoped /
+  trimming), buildPublicationRequestBody (omits / includes / trims /
+  whitespace-only city_id), and mapPublicationError (eight backend
+  codes plus permissions.denied / 401 / 403 / unknown fallback).
+  Events suite went 89 -> 116.
+
+Verification:
+  npm --prefix apps/admin-web run type-check        OK
+  npm --prefix apps/admin-web test -- --run events  116 / 116 PASS
+  npm --prefix apps/admin-web test -- --run         691 / 691 PASS
+
+Marked #284 passing. Backlog: 282 / 301.
