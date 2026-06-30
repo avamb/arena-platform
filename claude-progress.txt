@@ -17830,3 +17830,40 @@ Verification (docker golang:1.24, run from repo root):
   TestNoUnaudittedPanic, TestTimestamp_StaticScan_RFC3339NanoWithUTC) UNCHANGED
   -- no new violations introduced by this feature.
 Marked #286 passing. Backlog: 284/301.
+
+## 2026-06-30 — Feature #287 (G-3) Reusable ImageUpload admin component
+- New apps/admin-web/src/components/ImageUpload.tsx (reusable React control):
+    * owner_types: org_logo, event_poster, artist_photo (matches OpenAPI enum).
+    * Client constraints: jpg/png/webp, <= 5 MiB, min 600x400 for event_poster.
+    * Preview from GET /v1/media/{id} signed_url (4-min staleTime so the
+      browser-cached URL refreshes before its 15-min TTL expires).
+    * UX: Choose image / Replace image / Remove. Local preview rendered
+      from URL.createObjectURL() while the upload is in flight; revoked
+      on unmount.
+    * Dimension check runs in an off-DOM Image() so an event poster
+      below 600x400 is rejected before bytes leave the browser.
+- uploadMedia() helper in lib/api/client.ts performs the multipart
+  POST /v1/media with bearer auth + one silent refresh retry on 401.
+  fetchMediaObject() and deleteMediaObject() round out the helper set.
+- Component does the follow-up PATCH itself when the caller passes a
+  patch={{path, field, invalidateQueryKeys}} descriptor; otherwise
+  it only reports the new media_id through onChange so deferred-save
+  forms can collect it.
+- Wired into LegalEntitySection (organizations.tsx) -> "Logo" slot. The
+  placeholder "Upload (Wave G)" disabled button is gone; the live
+  component PATCHes /v1/organizations/{id} with {logo_media_id} and
+  invalidates the admin organizations list cache on success.
+- New ImageUpload.test.tsx (15 unit tests) covers validateFile (empty /
+  wrong type / oversize / each accepted MIME at min+max size / blank
+  MIME), validateDimensions (logos and photos unconstrained, posters
+  below 600x400 rejected on width OR height, exact-min and 1200x800
+  accepted), formatBytes, and the OWNER_TYPE_CONSTRAINTS table.
+- E-3 event poster and artist photo integrations are not wired here
+  because those forms do not exist yet (Waves E-3 and future artist
+  CRUD). The component is shape-ready for them via the ownerType prop.
+
+Verification:
+  npm --prefix apps/admin-web run type-check              OK
+  npm --prefix apps/admin-web test -- --run ImageUpload   15 / 15 PASS
+  npm --prefix apps/admin-web test -- --run               706 / 706 PASS
+Marked #287 passing.

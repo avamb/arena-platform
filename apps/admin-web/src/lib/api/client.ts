@@ -359,3 +359,166 @@ export async function authedFetch<T>(req: AuthedRequest): Promise<T> {
     throw err;
   }
 }
+
+// -- Multipart upload (Wave G media) ---------------------------------------
+
+/**
+ * Owner-type discriminator for `POST /v1/media`. Matches the OpenAPI
+ * enum (apps/backend/openapi/openapi.yaml `/v1/media` request body).
+ * The string literal is duplicated here intentionally so this client
+ * does not need to import the generated OpenAPI types at runtime.
+ */
+export type MediaOwnerType = "org_logo" | "event_poster" | "artist_photo";
+
+export interface UploadMediaParams {
+  readonly file: File;
+  readonly ownerType: MediaOwnerType;
+  readonly orgId?: string | null;
+  readonly ownerId?: string | null;
+}
+
+export interface UploadedMedia {
+  readonly id: string;
+  readonly owner_type: MediaOwnerType;
+  readonly owner_id?: string;
+  readonly org_id?: string;
+  readonly content_type: string;
+  readonly byte_size: number;
+  readonly width?: number;
+  readonly height?: number;
+  readonly created_at: string;
+}
+
+interface UploadEnvelope {
+  readonly media_object: UploadedMedia;
+}
+
+/**
+ * Streams a single multipart upload to `POST /v1/media`. Returns the
+ * created media object (without a signed download URL; callers that
+ * need the URL must hit `GET /v1/media/{id}` afterwards).
+ *
+ * Auth handling: the request carries the current bearer token and a
+ * single silent refresh-on-401 retry, mirroring `authedFetch`. Unlike
+ * the JSON path the multipart body cannot be replayed across a refresh
+ * boundary if `file` is a streaming-only File handle; in practice
+ * `File` is replayable in every browser we target, so the retry is safe.
+ */
+export async function uploadMedia(
+  params: UploadMediaParams,
+): Promise<UploadedMedia> {
+  const send = async (): Promise<UploadEnvelope> => {
+    const form = new FormData();
+    form.append("file", params.file, params.file.name);
+    form.append("owner_type", params.ownerType);
+    if (params.orgId !== undefined && params.orgId !== null && params.orgId !== "") {
+      form.append("org_id", params.orgId);
+    }
+    if (
+      params.ownerId !== undefined &&
+      params.ownerId !== null &&
+      params.ownerId !== ""
+    ) {
+      form.append("owner_id", params.ownerId);
+    }
+    if (params.file.type !== "") {
+      form.append("content_type", params.file.type);
+    }
+    const headers: Record<string, string> = { Accept: "application/json" };
+    const token = getAccessToken();
+    if (token !== null) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    let response: Response;
+    const controller = new AbortController();
+    let timedOut = false;
+    // Uploads can take longer than a JSON RPC; use 2x the standard
+    // timeout so a 5 MB file over a slow connection still completes.
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, REQUEST_TIMEOUT_MS * 2);
+    try {
+      response = await fetch(`${config.apiBaseUrl}/v1/media`, {
+        method: "POST",
+        headers,
+        body: form,
+        signal: controller.signal,
+        credentials: "omit",
+      });
+    } catch (cause) {
+      if (timedOut || (cause instanceof Error && cause.name === "AbortError")) {
+        throw new ApiError(0, {
+          code: "network.timeout",
+          message: `Upload timed out after ${(REQUEST_TIMEOUT_MS * 2) / 1000}s`,
+        });
+      }
+      throw new ApiError(0, {
+        code: "network.failure",
+        message: cause instanceof Error ? cause.message : "Network request failed",
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    const text = await response.text();
+    let parsed: unknown = null;
+    if (text.length > 0) {
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        throw new ApiError(response.status, {
+          code: "http.invalid_json",
+          message: "Server returned a non-JSON response",
+        });
+      }
+    }
+    if (!response.ok) {
+      throw parseErrorEnvelope(response.status, parsed);
+    }
+    return parsed as UploadEnvelope;
+  };
+
+  try {
+    const env = await send();
+    return env.media_object;
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) {
+      try {
+        await refresh();
+      } catch {
+        clearSession();
+        throw err;
+      }
+      const env = await send();
+      return env.media_object;
+    }
+    throw err;
+  }
+}
+
+export interface MediaObjectWithUrl extends UploadedMedia {
+  readonly storage_backend: "s3" | "local";
+  readonly storage_key: string;
+  readonly checksum_sha256: string;
+  readonly signed_url?: string;
+  readonly signed_url_ttl_seconds?: number;
+}
+
+/** Fetch a media object plus its short-lived signed download URL. */
+export async function fetchMediaObject(
+  id: string,
+): Promise<MediaObjectWithUrl> {
+  const res = await authedFetch<{ media_object: MediaObjectWithUrl }>({
+    method: "GET",
+    path: `/v1/media/${encodeURIComponent(id)}`,
+  });
+  return res.media_object;
+}
+
+/** Soft-delete a media object. */
+export async function deleteMediaObject(id: string): Promise<void> {
+  await authedFetch<unknown>({
+    method: "DELETE",
+    path: `/v1/media/${encodeURIComponent(id)}`,
+  });
+}

@@ -69,6 +69,7 @@ import {
 import { Route as RootRoute } from "./__root";
 import { ApiError, authedFetch } from "@/lib/api/client";
 import { RequirePermission } from "@/components/RequirePermission";
+import { ImageUpload } from "@/components/ImageUpload";
 import { NAV_BY_PATH } from "@/lib/auth/navConfig";
 import { useAuth } from "@/lib/auth/useAuth";
 import {
@@ -1437,23 +1438,19 @@ function LegalEntitySection({ org }: { org: AdminOrganization }) {
         </FieldRow>
 
         <h4 style={subSectionTitleStyle}>Logo</h4>
-        <div style={tabStatusStyle} data-testid="logo-upload-placeholder">
-          Logo upload delegates to the Wave G media-upload component when
-          shipped. The current logo media reference (
-          <code>logo_media_id</code>) is{" "}
-          <code style={monoStyle}>
-            {org.logo_media_id ?? "—"}
-          </code>
-          .{" "}
-          <button
-            type="button"
-            disabled
-            style={secondaryButtonStyle}
-            aria-disabled
-            data-testid="logo-upload-button"
-          >
-            Upload (Wave G)
-          </button>
+        <div data-testid="logo-upload">
+          <ImageUpload
+            ownerType="org_logo"
+            orgId={org.id}
+            ownerId={org.id}
+            currentMediaId={org.logo_media_id ?? null}
+            patch={{
+              path: `/v1/organizations/${encodeURIComponent(org.id)}`,
+              field: "logo_media_id",
+              invalidateQueryKeys: [["admin", "organizations"]],
+            }}
+            testIdPrefix="org-logo-upload"
+          />
         </div>
 
         <h4 style={subSectionTitleStyle}>KYB</h4>
