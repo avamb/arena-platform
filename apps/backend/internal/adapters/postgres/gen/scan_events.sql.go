@@ -223,6 +223,44 @@ func (q *Queries) ResolveScanCredentialByTicketQR(ctx context.Context, credentia
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ListScanEventsByTicketID
+// ─────────────────────────────────────────────────────────────────────────────
+
+const listScanEventsByTicketID = `-- name: ListScanEventsByTicketID :many
+SELECT id, org_id, event_id, session_id, ticket_id,
+       credential_code, scanned_at, gate, device_id, result, received_at
+FROM   scan_events
+WHERE  ticket_id = $1
+ORDER  BY scanned_at DESC, id DESC
+LIMIT  $2`
+
+// ListScanEventsByTicketID returns scan_events rows for a single ticket,
+// newest scan first.  Used by the support console drawer (feature #295,
+// S-4).  limit caps the returned rows so the support drawer cannot
+// accidentally pull a multi-megabyte payload for pathological replays.
+func (q *Queries) ListScanEventsByTicketID(
+	ctx context.Context,
+	ticketID uuid.UUID,
+	limit int32,
+) ([]ScanEventRow, error) {
+	rows, err := q.db.Query(ctx, listScanEventsByTicketID, ticketID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []ScanEventRow
+	for rows.Next() {
+		r, scanErr := scanScanEventRow(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		results = append(results, r)
+	}
+	return results, rows.Err()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MarkTicketUsedAtIfUnset
 // ─────────────────────────────────────────────────────────────────────────────
 

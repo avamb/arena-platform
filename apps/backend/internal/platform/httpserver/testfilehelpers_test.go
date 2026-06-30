@@ -476,6 +476,23 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "scanner_snapshot.go"),
 		}
+	// Admin ticket scan-events read view (feature #295, S-4)
+	case "admin_ticket_scans.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "admin_ticket_scans.go"),
+		}
+	case "mount_admin.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "mount_admin.go"),
+		}
+	case "scan_events.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "scan_events.sql"),
+		}
+	case "scan_events.sql.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "scan_events.sql.go"),
+		}
 	// External scanner callback ingest (feature #293, S-2)
 	case "scanner_callback.go":
 		candidates = []string{

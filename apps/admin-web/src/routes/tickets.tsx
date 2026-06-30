@@ -484,6 +484,8 @@ function TicketDrawer({
 
       <TicketDeliverySection ticketId={ticket.id} />
 
+      <TicketScansSection ticketId={ticket.id} />
+
       <section style={S.drawerSectionStyle} aria-labelledby="tickets-drawer-related">
         <h3 id="tickets-drawer-related" style={S.drawerSectionTitleStyle}>
           Related data
@@ -503,11 +505,6 @@ function TicketDrawer({
             id="seat"
             label="Seat / section"
             reason="List endpoint omits seat assignment; richer detail endpoint not exposed."
-          />
-          <BackendGapTile
-            id="scan-history"
-            label="Scan history"
-            reason="No /v1/admin/tickets/{id}/scans endpoint yet."
           />
         </div>
         <p style={S.gapNoteStyle}>
@@ -742,6 +739,174 @@ function TicketDeliverySection({ ticketId }: { ticketId: string }) {
           <code style={S.monoStyle}>{resend.data.worker_job_id}</code>).
         </p>
       ) : null}
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scans section (feature #295, S-4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Shape of one entry in GET /v1/admin/tickets/{id}/scans.
+ * Mirrors apps/backend/internal/platform/httpserver/admin_ticket_scans.go.
+ *
+ * Nullable FK columns (event_id / session_id / ticket_id) come back as
+ * explicit nulls so the drawer can render an em-dash without TypeScript
+ * narrowing on optional fields. The backend serialiser pins this.
+ */
+export interface AdminScanEvent {
+  readonly id: string;
+  readonly org_id: string;
+  readonly event_id: string | null;
+  readonly session_id: string | null;
+  readonly ticket_id: string | null;
+  readonly credential_code: string;
+  readonly scanned_at: string;
+  readonly received_at: string;
+  readonly gate: string;
+  readonly device_id: string;
+  readonly result: string;
+}
+
+interface ScanEventsEnvelope {
+  readonly scans: readonly AdminScanEvent[];
+  readonly total: number;
+  readonly limit: number;
+}
+
+/**
+ * Colour the admitted / denied result badge consistently with the rest of
+ * the support drawer (success / error). Exported for unit tests.
+ */
+export function badgeForScanResult(result: string): CSSProperties {
+  if (result === "admitted") {
+    return S.successBadgeStyle;
+  }
+  if (result === "denied") {
+    return S.errorBadgeStyle;
+  }
+  // Should not happen — the backend CHECK constraint pins admitted|denied —
+  // but we render a neutral badge defensively so an unexpected enum value
+  // does not blow up the row.
+  return S.statusBadgeStyle;
+}
+
+function TicketScansSection({ ticketId }: { ticketId: string }) {
+  const queryKey = ["admin", "ticket", ticketId, "scans"] as const;
+  const query = useQuery<ScanEventsEnvelope, ApiError>({
+    queryKey,
+    queryFn: () =>
+      authedFetch<ScanEventsEnvelope>({
+        method: "GET",
+        path: `/v1/admin/tickets/${ticketId}/scans`,
+      }),
+    retry: (failureCount, err) => {
+      if (err instanceof ApiError) {
+        if (
+          err.status === 401 ||
+          err.status === 403 ||
+          err.status === 404 ||
+          err.status === 0
+        ) {
+          return false;
+        }
+        if (
+          err.code === "superadmin.reason_required" ||
+          err.code === "superadmin.missing_reason" ||
+          err.code === "permissions.denied"
+        ) {
+          return false;
+        }
+      }
+      return failureCount < 2;
+    },
+    refetchOnWindowFocus: false,
+  });
+
+  const scans = query.data?.scans ?? [];
+
+  return (
+    <section
+      style={S.drawerSectionStyle}
+      aria-labelledby="tickets-drawer-scans"
+      data-testid="tickets-drawer-scans"
+    >
+      <h3 id="tickets-drawer-scans" style={S.drawerSectionTitleStyle}>
+        Scans
+      </h3>
+      <p style={S.gapNoteStyle}>
+        Read-only history from <code>scan_events</code> for this ticket,
+        newest scan first. Backed by{" "}
+        <code>GET /v1/admin/tickets/{"{id}"}/scans</code>.
+      </p>
+
+      {query.isPending ? (
+        <div style={S.statusBoxStyle} role="status" aria-live="polite">
+          Loading scan history…
+        </div>
+      ) : query.isError ? (
+        <SupportErrorState
+          testIdPrefix="tickets-scans"
+          error={query.error}
+          onRetry={() => query.refetch()}
+        />
+      ) : scans.length === 0 ? (
+        <div
+          style={S.statusBoxStyle}
+          role="status"
+          data-testid="tickets-scans-empty"
+        >
+          No scans recorded for this ticket yet.
+        </div>
+      ) : (
+        <div
+          style={S.tableWrapStyle}
+          role="region"
+          aria-label="Ticket scan history"
+        >
+          <table style={S.tableStyle} data-testid="tickets-scans-table">
+            <thead>
+              <tr>
+                <th scope="col" style={S.thStyle}>Scanned at</th>
+                <th scope="col" style={S.thStyle}>Gate</th>
+                <th scope="col" style={S.thStyle}>Device</th>
+                <th scope="col" style={S.thStyle}>Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              {scans.map((sc) => (
+                <tr
+                  key={sc.id}
+                  style={S.trStyle}
+                  data-testid={`tickets-scans-row-${sc.id}`}
+                >
+                  <td style={S.tdStyle}>{formatDateTime(sc.scanned_at)}</td>
+                  <td style={S.tdStyle}>
+                    {sc.gate === "" ? (
+                      <span style={S.mutedStyle}>—</span>
+                    ) : (
+                      sc.gate
+                    )}
+                  </td>
+                  <td style={S.tdMonoStyle}>
+                    {sc.device_id === "" ? (
+                      <span style={S.mutedStyle}>—</span>
+                    ) : (
+                      sc.device_id
+                    )}
+                  </td>
+                  <td style={S.tdStyle}>
+                    <span style={badgeForScanResult(sc.result)}>
+                      {sc.result}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 }

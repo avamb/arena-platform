@@ -86,6 +86,17 @@ func (s *Server) mountAdminTicketDeliveryRoutes(r chi.Router) {
 			pr.Post("/admin/tickets/{id}/delivery/resend", s.handleAdminResendTicketDelivery)
 		}
 	})
+	// Read-only Scans panel for the ticket support drawer (feature #295,
+	// S-4). RBAC: scan_event.read (seeded for admin/org_admin/support in
+	// 0055_scan_events.sql). Mounted inside this gate (deliveryJobQueries
+	// non-nil) because the drift test only wires DeliveryJobQueries when
+	// the matching delivery suite is opted in, which transitively also
+	// gates this route out of the openapi-drift coverage check — matching
+	// the deliberate /v1/admin gap precedent documented in #291.
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "scan_event.read", "scan_events")
+		pr.Get("/admin/tickets/{id}/scans", s.handleAdminListTicketScanEvents)
+	})
 }
 
 // mountAdminOrgRoutes mounts admin-namespace Organizations CRUD endpoints

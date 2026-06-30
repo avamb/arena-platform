@@ -5,7 +5,11 @@
  * backend additions cannot silently drift away from the dropdown.
  */
 import { describe, it, expect } from "vitest";
-import { badgeForTicketStatus, TICKET_STATUSES } from "./tickets";
+import {
+  badgeForTicketStatus,
+  badgeForScanResult,
+  TICKET_STATUSES,
+} from "./tickets";
 
 describe("badgeForTicketStatus", () => {
   it("renders active / issued as success", () => {
@@ -28,6 +32,20 @@ describe("badgeForTicketStatus", () => {
 
   it("falls back to neutral badge for unknown values", () => {
     expect(badgeForTicketStatus("totally-unknown")).toMatchObject({
+      color: "#3730a3",
+    });
+  });
+});
+
+describe("badgeForScanResult", () => {
+  it("renders admitted scans as success (green)", () => {
+    expect(badgeForScanResult("admitted")).toMatchObject({ color: "#166534" });
+  });
+  it("renders denied scans as error (red)", () => {
+    expect(badgeForScanResult("denied")).toMatchObject({ color: "#7f1d1d" });
+  });
+  it("falls back to neutral for unknown values (defensive)", () => {
+    expect(badgeForScanResult("totally-unknown")).toMatchObject({
       color: "#3730a3",
     });
   });

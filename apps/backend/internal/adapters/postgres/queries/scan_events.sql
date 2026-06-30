@@ -58,6 +58,20 @@ JOIN   events   e ON e.id = s.event_id
 WHERE  tc.type    = 'static_qr'
   AND  tc.payload = $1;
 
+-- name: ListScanEventsByTicketID :many
+-- Read-only list of scan events for a single ticket. Used by the support
+-- console drawer (feature #295, S-4). Ordered newest-first so the drawer
+-- can show the most recent admission attempt at the top. The limit guards
+-- against runaway result sets on pathological replays / DOS-shaped scans
+-- (e.g. a single ticket scanned thousands of times in an offline-backfill
+-- window).
+SELECT id, org_id, event_id, session_id, ticket_id,
+       credential_code, scanned_at, gate, device_id, result, received_at
+FROM   scan_events
+WHERE  ticket_id = $1
+ORDER  BY scanned_at DESC, id DESC
+LIMIT  $2;
+
 -- name: MarkTicketUsedAtIfUnset :exec
 -- Idempotent: only sets used_at when the column is currently NULL.  The
 -- first admitted scan wins; subsequent scans (even with earlier scanned_at)
