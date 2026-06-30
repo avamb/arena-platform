@@ -2578,6 +2578,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/events/{event_id}/publications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List feed tokens an event is published to
+         * @description Returns every `event_publications` row attached to the given
+         *     event, regardless of city scope. Requires JWT + the
+         *     `publication.read` permission.
+         *
+         *     Implemented by `handleListPublications` in
+         *     `apps/backend/internal/platform/httpserver/publications.go`.
+         *     The response envelope wraps the rows in a `publications`
+         *     array — the field name is stable across schema evolution so
+         *     future pagination metadata can be added alongside without
+         *     breaking clients.
+         */
+        get: operations["listEventPublications"];
+        put?: never;
+        /**
+         * Publish an event to an agent feed token
+         * @description Idempotently creates an `event_publications` row linking
+         *     the event to a feed token. Re-publishing the same
+         *     `{event_id, feed_token_id}` pair returns 200 with the
+         *     existing row (the underlying SQL uses
+         *     `ON CONFLICT DO NOTHING` + a follow-up select). Requires
+         *     JWT + the `publication.create` permission.
+         *
+         *     Implemented by `handlePublishEvent` in
+         *     `apps/backend/internal/platform/httpserver/publications.go`.
+         *     `city_id` in the request body is optional — omit it (or
+         *     pass `null`) for a global publication visible in every
+         *     geography.
+         */
+        post: operations["publishEvent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/events/{event_id}/publications/{feed_token_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Unpublish an event from a feed token
+         * @description Removes the `event_publications` row linking the event to
+         *     the feed token. Idempotent — when no matching row exists
+         *     the handler still returns 204 No Content, since the
+         *     desired state (the event is not published to this feed)
+         *     is already achieved. Requires JWT + the
+         *     `publication.delete` permission.
+         *
+         *     Implemented by `handleUnpublishEvent` in
+         *     `apps/backend/internal/platform/httpserver/publications.go`.
+         */
+        delete: operations["unpublishEvent"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -7273,6 +7345,76 @@ export interface components {
              *     `"subscriber deactivated"` today.
              */
             message: string;
+        };
+        /**
+         * @description Single event-publication row connecting an event to an agent
+         *     feed token. Materialises the legacy Bil24 Subscriptions panel
+         *     — "publish event E to feed F" means external consumers of
+         *     feed F will see event E. Implemented by
+         *     `apps/backend/internal/platform/httpserver/publications.go`
+         *     (feature #151).
+         */
+        EventPublication: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the `event_publications` row.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the published event.
+             */
+            event_id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the agent feed token the event is published to.
+             */
+            feed_token_id: string;
+            /**
+             * Format: uuid
+             * @description Optional city scope. `null` means the publication is
+             *     visible in all geographies; a non-null UUID restricts
+             *     visibility to consumers querying that city.
+             */
+            city_id?: string | null;
+            /**
+             * Format: date-time
+             * @description RFC 3339 timestamp the row was first created.
+             */
+            published_at: string;
+        };
+        /**
+         * @description Request body for `POST /v1/events/{event_id}/publications`.
+         *     `feed_token_id` is required; `city_id` is optional and
+         *     defaults to `null` (= visible in all geographies).
+         */
+        PublishEventRequest: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the agent feed token to publish the event to.
+             *     Must reference an existing row in `agent_feed_tokens`.
+             */
+            feed_token_id: string;
+            /**
+             * Format: uuid
+             * @description Optional city scope. Omit or set to `null` for a global
+             *     publication. When set, only consumers querying for that
+             *     city will see the event.
+             */
+            city_id?: string | null;
+        };
+        /**
+         * @description Non-paginated list envelope returned by
+         *     `GET /v1/events/{event_id}/publications`. Backed by
+         *     `ListPublicationsByEvent` — returns every publication row
+         *     attached to the event regardless of city scope.
+         */
+        EventPublicationListResponse: {
+            /**
+             * @description Zero or more publication rows for the event. May be
+             *     empty when the event has not yet been published.
+             */
+            publications: components["schemas"]["EventPublication"][];
         };
     };
     responses: never;
@@ -16779,6 +16921,231 @@ export interface operations {
              *     (`service_unavailable`).
              */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listEventPublications: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the event to list publications for. */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Zero or more publication rows for the event. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventPublicationListResponse"];
+                };
+            };
+            /**
+             * @description `event_id` is not a valid UUID
+             *     (`publication.invalid_event_id`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `publication.read` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error while listing publications
+             *     (`publication.internal`).
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    publishEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the event being published. */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishEventRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description Publication row created (or, when the
+             *     `{event_id, feed_token_id}` pair already existed, the
+             *     pre-existing row is returned with the same envelope
+             *     shape — `POST` is idempotent).
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventPublication"];
+                };
+            };
+            /**
+             * @description Validation failed. Possible codes:
+             *     `publication.invalid_event_id`,
+             *     `publication.body_required`,
+             *     `publication.invalid_json`,
+             *     `publication.feed_token_id_required`,
+             *     `publication.invalid_feed_token_id`,
+             *     `publication.invalid_city_id`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `publication.create` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `Content-Type` header is not `application/json`
+             *     (`publication.content_type_required`).
+             */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error while inserting the publication
+             *     row (`publication.internal`).
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    unpublishEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the event being unpublished. */
+                event_id: string;
+                /** @description UUIDv7 of the feed token to unpublish from. */
+                feed_token_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description Publication row deleted (or already absent — DELETE is
+             *     idempotent). The response body is empty.
+             */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description `event_id` or `feed_token_id` is not a valid UUID
+             *     (`publication.invalid_event_id`,
+             *     `publication.invalid_feed_token_id`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `publication.delete` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error while deleting the row
+             *     (`publication.internal`).
+             */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

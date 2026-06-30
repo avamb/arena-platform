@@ -1611,6 +1611,41 @@ type EventListResponse struct {
 	Events []EventItem `json:"events"`
 }
 
+// EventPublication Single event-publication row connecting an event to an agent
+// feed token. Materialises the legacy Bil24 Subscriptions panel
+// — "publish event E to feed F" means external consumers of
+// feed F will see event E. Implemented by
+// `apps/backend/internal/platform/httpserver/publications.go`
+// (feature #151).
+type EventPublication struct {
+	// CityId Optional city scope. `null` means the publication is
+	// visible in all geographies; a non-null UUID restricts
+	// visibility to consumers querying that city.
+	CityId *openapi_types.UUID `json:"city_id"`
+
+	// EventId UUIDv7 of the published event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// FeedTokenId UUIDv7 of the agent feed token the event is published to.
+	FeedTokenId openapi_types.UUID `json:"feed_token_id"`
+
+	// Id UUIDv7 primary key of the `event_publications` row.
+	Id openapi_types.UUID `json:"id"`
+
+	// PublishedAt RFC 3339 timestamp the row was first created.
+	PublishedAt time.Time `json:"published_at"`
+}
+
+// EventPublicationListResponse Non-paginated list envelope returned by
+// `GET /v1/events/{event_id}/publications`. Backed by
+// `ListPublicationsByEvent` — returns every publication row
+// attached to the event regardless of city scope.
+type EventPublicationListResponse struct {
+	// Publications Zero or more publication rows for the event. May be
+	// empty when the event has not yet been published.
+	Publications []EventPublication `json:"publications"`
+}
+
 // EventTranslations Optional map of locale code → translated event name and description.
 // Keys are BCP-47 locale tags (e.g. "ru", "en", "he"). When provided
 // on create or update, each non-empty entry is upserted into the
@@ -2824,6 +2859,20 @@ type PromoCodeItemStatus string
 // promo codes.
 type PromoCodeListResponse struct {
 	PromoCodes []PromoCodeItem `json:"promo_codes"`
+}
+
+// PublishEventRequest Request body for `POST /v1/events/{event_id}/publications`.
+// `feed_token_id` is required; `city_id` is optional and
+// defaults to `null` (= visible in all geographies).
+type PublishEventRequest struct {
+	// CityId Optional city scope. Omit or set to `null` for a global
+	// publication. When set, only consumers querying for that
+	// city will see the event.
+	CityId *openapi_types.UUID `json:"city_id"`
+
+	// FeedTokenId UUIDv7 of the agent feed token to publish the event to.
+	// Must reference an existing row in `agent_feed_tokens`.
+	FeedTokenId openapi_types.UUID `json:"feed_token_id"`
 }
 
 // QuoteResponseEnvelope Top-level response envelope for `GET /v1/checkout/quote`.
@@ -4478,6 +4527,9 @@ type PostV1DevTokenJSONRequestBody = DevTokenRequest
 
 // PostV1EchoJSONRequestBody defines body for PostV1Echo for application/json ContentType.
 type PostV1EchoJSONRequestBody = EchoRequest
+
+// PublishEventJSONRequestBody defines body for PublishEvent for application/json ContentType.
+type PublishEventJSONRequestBody = PublishEventRequest
 
 // CreateOperatorNetworkJSONRequestBody defines body for CreateOperatorNetwork for application/json ContentType.
 type CreateOperatorNetworkJSONRequestBody = CreateOperatorNetworkRequest

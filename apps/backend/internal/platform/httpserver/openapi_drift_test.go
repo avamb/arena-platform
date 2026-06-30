@@ -360,6 +360,13 @@ func buildDriftTestServer(t *testing.T) *Server {
 		// GET  /v1/webhooks/subscribers/{id},
 		// DELETE /v1/webhooks/subscribers/{id}.
 		WebhookSubQueries: gen.New(nil),
+		// Wire PublicationQueries so the event-publications routes
+		// (feature #151 / documented under feature #280) are mounted
+		// for the drift check:
+		// GET    /v1/events/{event_id}/publications,
+		// POST   /v1/events/{event_id}/publications,
+		// DELETE /v1/events/{event_id}/publications/{feed_token_id}.
+		PublicationQueries: gen.New(nil),
 		// NOTE: BarcodeQueries is intentionally NOT wired here for the
 		// drift check. The barcode federation surfaces seven routes
 		// (POST/GET /v1/barcodes/authorities, POST /v1/barcodes,

@@ -5577,6 +5577,82 @@ components:
             Human-readable confirmation string. Always literal
             `"subscriber deactivated"` today.
 
+    EventPublication:
+      type: object
+      required: [id, event_id, feed_token_id, published_at]
+      description: |
+        Single event-publication row connecting an event to an agent
+        feed token. Materialises the legacy Bil24 Subscriptions panel
+        — "publish event E to feed F" means external consumers of
+        feed F will see event E. Implemented by
+        `apps/backend/internal/platform/httpserver/publications.go`
+        (feature #151).
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the `event_publications` row.
+        event_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the published event.
+        feed_token_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the agent feed token the event is published to.
+        city_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            Optional city scope. `null` means the publication is
+            visible in all geographies; a non-null UUID restricts
+            visibility to consumers querying that city.
+        published_at:
+          type: string
+          format: date-time
+          description: RFC 3339 timestamp the row was first created.
+
+    PublishEventRequest:
+      type: object
+      required: [feed_token_id]
+      description: |
+        Request body for `POST /v1/events/{event_id}/publications`.
+        `feed_token_id` is required; `city_id` is optional and
+        defaults to `null` (= visible in all geographies).
+      properties:
+        feed_token_id:
+          type: string
+          format: uuid
+          description: |
+            UUIDv7 of the agent feed token to publish the event to.
+            Must reference an existing row in `agent_feed_tokens`.
+        city_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            Optional city scope. Omit or set to `null` for a global
+            publication. When set, only consumers querying for that
+            city will see the event.
+
+    EventPublicationListResponse:
+      type: object
+      required: [publications]
+      description: |
+        Non-paginated list envelope returned by
+        `GET /v1/events/{event_id}/publications`. Backed by
+        `ListPublicationsByEvent` — returns every publication row
+        attached to the event regardless of city scope.
+      properties:
+        publications:
+          type: array
+          description: |
+            Zero or more publication rows for the event. May be
+            empty when the event has not yet been published.
+          items:
+            $ref: "#/components/schemas/EventPublication"
+
 paths:
   /healthz:
     get:
@@ -14864,6 +14940,290 @@ paths:
           description: |
             Webhook subscriber queries or pool unavailable
             (`service_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ───────────────────────────────────────────────────────────────────
+  # Event publications (feature #151, mounted by mountPublicationRoutes
+  # in apps/backend/internal/platform/httpserver/mount_catalog.go and
+  # implemented in apps/backend/internal/platform/httpserver/publications.go).
+  #
+  # Endpoint matrix:
+  #   GET    /v1/events/{event_id}/publications                       publication.read
+  #   POST   /v1/events/{event_id}/publications                       publication.create
+  #   DELETE /v1/events/{event_id}/publications/{feed_token_id}       publication.delete
+  #
+  # POST is idempotent (ON CONFLICT DO NOTHING — re-publishing the
+  # same {event,feed} pair returns 200 with the existing row).
+  # DELETE is idempotent (unpublishing a non-existent entry returns
+  # 204 No Content — the desired state is already achieved).
+  # ───────────────────────────────────────────────────────────────────
+  /v1/events/{event_id}/publications:
+    get:
+      operationId: listEventPublications
+      summary: List feed tokens an event is published to
+      description: |
+        Returns every `event_publications` row attached to the given
+        event, regardless of city scope. Requires JWT + the
+        `publication.read` permission.
+
+        Implemented by `handleListPublications` in
+        `apps/backend/internal/platform/httpserver/publications.go`.
+        The response envelope wraps the rows in a `publications`
+        array — the field name is stable across schema evolution so
+        future pagination metadata can be added alongside without
+        breaking clients.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event to list publications for.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Zero or more publication rows for the event.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventPublicationListResponse"
+              examples:
+                empty:
+                  summary: Event has not yet been published anywhere
+                  value:
+                    publications: []
+                global:
+                  summary: Event published to one global feed
+                  value:
+                    publications:
+                      - id: "01929d0e-0e47-7000-8000-000000000c01"
+                        event_id: "01929d0e-0e47-7000-8000-0000000000e1"
+                        feed_token_id: "01929d0e-0e47-7000-8000-0000000000f1"
+                        city_id: null
+                        published_at: "2026-06-30T12:00:00Z"
+                scoped:
+                  summary: Event published to two feeds, one city-scoped
+                  value:
+                    publications:
+                      - id: "01929d0e-0e47-7000-8000-000000000c02"
+                        event_id: "01929d0e-0e47-7000-8000-0000000000e2"
+                        feed_token_id: "01929d0e-0e47-7000-8000-0000000000f2"
+                        city_id: null
+                        published_at: "2026-06-30T12:01:00Z"
+                      - id: "01929d0e-0e47-7000-8000-000000000c03"
+                        event_id: "01929d0e-0e47-7000-8000-0000000000e2"
+                        feed_token_id: "01929d0e-0e47-7000-8000-0000000000f3"
+                        city_id: "01929d0e-0e47-7000-8000-0000000000d1"
+                        published_at: "2026-06-30T12:02:00Z"
+        "400":
+          description: |
+            `event_id` is not a valid UUID
+            (`publication.invalid_event_id`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `publication.read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error while listing publications
+            (`publication.internal`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: publishEvent
+      summary: Publish an event to an agent feed token
+      description: |
+        Idempotently creates an `event_publications` row linking
+        the event to a feed token. Re-publishing the same
+        `{event_id, feed_token_id}` pair returns 200 with the
+        existing row (the underlying SQL uses
+        `ON CONFLICT DO NOTHING` + a follow-up select). Requires
+        JWT + the `publication.create` permission.
+
+        Implemented by `handlePublishEvent` in
+        `apps/backend/internal/platform/httpserver/publications.go`.
+        `city_id` in the request body is optional — omit it (or
+        pass `null`) for a global publication visible in every
+        geography.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event being published.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishEventRequest"
+            examples:
+              global:
+                summary: Publish to a single feed, no city scope
+                value:
+                  feed_token_id: "01929d0e-0e47-7000-8000-0000000000f1"
+              scoped:
+                summary: Publish to a feed and scope to one city
+                value:
+                  feed_token_id: "01929d0e-0e47-7000-8000-0000000000f3"
+                  city_id: "01929d0e-0e47-7000-8000-0000000000d1"
+      responses:
+        "200":
+          description: |
+            Publication row created (or, when the
+            `{event_id, feed_token_id}` pair already existed, the
+            pre-existing row is returned with the same envelope
+            shape — `POST` is idempotent).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventPublication"
+              examples:
+                created:
+                  summary: New global publication
+                  value:
+                    id: "01929d0e-0e47-7000-8000-000000000c01"
+                    event_id: "01929d0e-0e47-7000-8000-0000000000e1"
+                    feed_token_id: "01929d0e-0e47-7000-8000-0000000000f1"
+                    city_id: null
+                    published_at: "2026-06-30T12:00:00Z"
+                scopedCreated:
+                  summary: New city-scoped publication
+                  value:
+                    id: "01929d0e-0e47-7000-8000-000000000c03"
+                    event_id: "01929d0e-0e47-7000-8000-0000000000e2"
+                    feed_token_id: "01929d0e-0e47-7000-8000-0000000000f3"
+                    city_id: "01929d0e-0e47-7000-8000-0000000000d1"
+                    published_at: "2026-06-30T12:02:00Z"
+        "400":
+          description: |
+            Validation failed. Possible codes:
+            `publication.invalid_event_id`,
+            `publication.body_required`,
+            `publication.invalid_json`,
+            `publication.feed_token_id_required`,
+            `publication.invalid_feed_token_id`,
+            `publication.invalid_city_id`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `publication.create` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "415":
+          description: |
+            `Content-Type` header is not `application/json`
+            (`publication.content_type_required`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error while inserting the publication
+            row (`publication.internal`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/events/{event_id}/publications/{feed_token_id}:
+    delete:
+      operationId: unpublishEvent
+      summary: Unpublish an event from a feed token
+      description: |
+        Removes the `event_publications` row linking the event to
+        the feed token. Idempotent — when no matching row exists
+        the handler still returns 204 No Content, since the
+        desired state (the event is not published to this feed)
+        is already achieved. Requires JWT + the
+        `publication.delete` permission.
+
+        Implemented by `handleUnpublishEvent` in
+        `apps/backend/internal/platform/httpserver/publications.go`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event being unpublished.
+          schema:
+            type: string
+            format: uuid
+        - name: feed_token_id
+          in: path
+          required: true
+          description: UUIDv7 of the feed token to unpublish from.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: |
+            Publication row deleted (or already absent — DELETE is
+            idempotent). The response body is empty.
+        "400":
+          description: |
+            `event_id` or `feed_token_id` is not a valid UUID
+            (`publication.invalid_event_id`,
+            `publication.invalid_feed_token_id`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `publication.delete` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error while deleting the row
+            (`publication.internal`).
           content:
             application/json:
               schema:

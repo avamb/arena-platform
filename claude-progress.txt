@@ -17524,3 +17524,69 @@ and belongs in a dedicated feature.
 
 Backlog: 276/301 (unchanged).
 
+=== 2026-06-30: Feature #280 - E-2 Document events/sessions/tiers/publications in OpenAPI ===
+Events/sessions/tiers were already documented under prior A-* waves (#263,
+#264, #265). The remaining group from the E-2 description -- event
+publications (publications.go, feature #151) -- was undocumented and is
+now added.
+
+apps/backend/openapi/openapi.yaml:
+  - Added 3 component schemas: EventPublication (id, event_id,
+    feed_token_id, nullable city_id, published_at), PublishEventRequest
+    (required feed_token_id + optional nullable city_id),
+    EventPublicationListResponse (publications envelope).
+  - Added 2 path entries covering all publications.go handlers:
+      GET    /v1/events/{event_id}/publications                 listEventPublications  (publication.read)
+      POST   /v1/events/{event_id}/publications                 publishEvent           (publication.create)
+      DELETE /v1/events/{event_id}/publications/{feed_token_id} unpublishEvent         (publication.delete)
+    All three carry bearerAuth + tags:[v1] + the permission name in the
+    description block. Full error catalogue from publications.go covered:
+    400 (publication.invalid_event_id, publication.invalid_feed_token_id,
+    publication.invalid_city_id, publication.invalid_json,
+    publication.body_required, publication.feed_token_id_required),
+    415 (publication.content_type_required), 500 (publication.internal),
+    plus 401/403 envelope responses.
+  - Examples: list (empty / global / scoped), post request (global /
+    scoped), post 200 (created / scopedCreated). DELETE returns 204
+    with no response body (matches publications.go).
+
+apps/backend/internal/platform/httpserver/openapi_event_publications_280_test.go (NEW):
+  9 contract tests pinning the spec: PathsPresent (2),
+  OperationIDsPresent (3), SchemasPresent (3), PermissionsDocumented
+  (3 ops x matching permission), BearerAuthAndTags (3), ErrorEnvelopeUsed
+  (3), PublicationErrorCodesDocumented (8 codes from publications.go),
+  EventPublicationCityIDIsNullable (asserts nullable: true on both
+  EventPublication.city_id and PublishEventRequest.city_id matching the
+  *string Go field type), SpecExamplesValidate -- minimal contract test
+  walking list 200, post requestBody, post 200 examples and asserting
+  UUID-shaped ids, nullable-or-UUID city_id, and RFC 3339 published_at.
+  Reuses mustOperation / findOpenAPISpecPath / looksLikeRFC3339 helpers.
+  Local itoaSmall280 avoids strconv import.
+
+apps/backend/internal/platform/httpserver/openapi_drift_test.go:
+  buildDriftTestServer now wires PublicationQueries: gen.New(nil) so the
+  publication routes are mounted on the drift-test chi router (read-only
+  group requiring only publicationQueries and the write groups
+  additionally requiring s.pool -- already wired via fakePoolDB).
+
+apps/backend/internal/adapters/http/openapi/types_gen.go:
+  Regenerated via oapi-codegen v2.4.1 (golang:1.24 docker). Known
+  OpenAPI 3.1 warning unchanged.
+apps/backend/openapi/clients/ts/index.d.ts:
+  Regenerated via scripts/gen-ts-client.mjs (openapi-typescript 7.13.0).
+
+Verification:
+  docker golang:1.24 go test -run TestOpenAPI280 -count=1 -v   PASS (9/9)
+  docker golang:1.24 go build ./...                            OK
+  docker golang:1.24 go test -run TestOpenAPIDriftCheck_SpecCoversAllCodeRoutes
+                                                                PASS
+                (PublicationQueries wired; publications routes
+                 mounted and matched by spec -- no newly-introduced
+                 "code routes missing from spec" entries.)
+  docker golang:1.24 go test -run TestOpenAPIDriftCheck_CodeCoversAllSpecRoutes
+                                                                FAIL
+                (22 phantom entries -- unchanged from #275/#277 baseline.
+                 No new phantoms introduced by #280.)
+  npm --prefix apps/admin-web run type-check                   OK.
+
+Marked #280 passing. Backlog: 277/301.
