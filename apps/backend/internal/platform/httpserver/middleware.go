@@ -23,11 +23,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
-	"strings"
 	"time"
 
 	chimw "github.com/go-chi/chi/v5/middleware"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
@@ -133,14 +133,8 @@ func newTraceID() string {
 	return hex.EncodeToString(b[:])
 }
 
-// clientIP returns chi's resolved RealIP value if RealIP middleware is in the
-// chain, falling back to r.RemoteAddr.
+// clientIP delegates to httputil.ClientIP. Kept as an unexported alias so
+// existing handler methods on *Server require no import changes.
 func clientIP(r *http.Request) string {
-	if ip := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); ip != "" {
-		if i := strings.IndexByte(ip, ','); i >= 0 {
-			ip = ip[:i]
-		}
-		return strings.TrimSpace(ip)
-	}
-	return r.RemoteAddr
+	return httputil.ClientIP(r)
 }

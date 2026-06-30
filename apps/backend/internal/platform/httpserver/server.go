@@ -27,7 +27,6 @@ package httpserver
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -36,6 +35,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 )
 
@@ -244,9 +244,8 @@ func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
 // helpers
 // -----------------------------------------------------------------------------
 
-// writeJSON writes a JSON payload with the standard Content-Type header.
+// writeJSON delegates to httputil.WriteJSON. Kept as an unexported alias so
+// that existing handler methods on *Server require no import changes.
 func writeJSON(w http.ResponseWriter, status int, payload any) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
+	httputil.WriteJSON(w, status, payload)
 }

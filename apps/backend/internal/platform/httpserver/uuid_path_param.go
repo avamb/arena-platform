@@ -24,39 +24,19 @@ package httpserver
 import (
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
-// uuidPathParam extracts the chi URL parameter named paramName and parses it
-// as a UUID. On success it returns (id, true). On failure it writes a 400
-// JSON error envelope (code='http.invalid_path_param', details.param=paramName)
-// and returns (uuid.UUID{}, false). The caller MUST return immediately when
-// ok==false.
+// uuidPathParam delegates to httputil.UUIDPathParam. Kept as an unexported
+// alias so existing handler methods on *Server require no import changes.
 func uuidPathParam(w http.ResponseWriter, r *http.Request, paramName string) (uuid.UUID, bool) {
-	raw := chi.URLParam(r, paramName)
-	id, err := uuid.Parse(raw)
-	if err != nil {
-		env := errorEnvelopeWithDetails(
-			"http.invalid_path_param",
-			"path parameter '"+paramName+"' must be a valid UUID, got: '"+raw+"'",
-			r,
-			map[string]any{"param": paramName},
-		)
-		writeJSON(w, http.StatusBadRequest, env)
-		return uuid.UUID{}, false
-	}
-	return id, true
+	return httputil.UUIDPathParam(w, r, paramName)
 }
 
-// errorEnvelopeWithDetails is identical to errorEnvelope but additionally
-// sets the optional error.details field to the provided map. Use this when
-// the error context (e.g. which path parameter was malformed) must be
-// machine-readable by clients.
+// errorEnvelopeWithDetails delegates to httputil.ErrorEnvelopeWithDetails.
+// Kept as an unexported alias so existing handler methods require no changes.
 func errorEnvelopeWithDetails(code, message string, r *http.Request, details map[string]any) map[string]any {
-	env := errorEnvelope(code, message, r)
-	if details != nil {
-		env["error"].(map[string]any)["details"] = details
-	}
-	return env
+	return httputil.ErrorEnvelopeWithDetails(code, message, r, details)
 }
