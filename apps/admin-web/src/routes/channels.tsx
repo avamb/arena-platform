@@ -52,6 +52,12 @@ import { RequirePermission } from "@/components/RequirePermission";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useScope } from "@/lib/auth/ScopeContext";
 import { NAV_BY_PATH } from "@/lib/auth/navConfig";
+import {
+  ResponsiveTable,
+  ResponsiveDrawer,
+  useIsDesktop,
+  type ResponsiveTableColumn,
+} from "@/components/layout";
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -258,6 +264,8 @@ function ChannelsModule() {
 
   const [form, setForm] = useState<FormMode>({ kind: "closed" });
   const [pendingDelete, setPendingDelete] = useState<Channel | null>(null);
+  const isDesktop = useIsDesktop(true);
+  const [filtersOpen, setFiltersOpen] = useState<boolean>(false);
 
   const query = useQuery<ChannelListEnvelope, ApiError>({
     queryKey: ["channels", "list", trimmedOrgID],
@@ -331,35 +339,66 @@ function ChannelsModule() {
         </div>
       </header>
 
-      <div style={orgPickerStyle}>
-        <label htmlFor="channels-org-id" style={fieldLabelStyle}>
-          Organization ID
-        </label>
-        <input
-          id="channels-org-id"
-          type="text"
-          value={orgID}
-          onChange={(e) => setOrgID(e.target.value)}
-          style={inputMonoStyle}
-          placeholder="00000000-0000-0000-0000-000000000000"
-          maxLength={36}
-          autoCapitalize="off"
-          autoCorrect="off"
-          spellCheck={false}
-          data-testid="channels-org-id"
-        />
-        {orgIDError !== null ? (
-          <div style={fieldErrorStyle} role="alert" data-testid="channels-org-id-error">
-            {orgIDError}
+      {(() => {
+        const toolbar = (
+          <div style={orgPickerStyle}>
+            <label htmlFor="channels-org-id" style={fieldLabelStyle}>
+              Organization ID
+            </label>
+            <input
+              id="channels-org-id"
+              type="text"
+              value={orgID}
+              onChange={(e) => setOrgID(e.target.value)}
+              style={inputMonoStyle}
+              placeholder="00000000-0000-0000-0000-000000000000"
+              maxLength={36}
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              data-testid="channels-org-id"
+            />
+            {orgIDError !== null ? (
+              <div
+                style={fieldErrorStyle}
+                role="alert"
+                data-testid="channels-org-id-error"
+              >
+                {orgIDError}
+              </div>
+            ) : (
+              <div style={fieldHintStyle}>
+                {scopeOrgID !== ""
+                  ? "Prefilled from the active organization scope. Paste a different UUID to switch."
+                  : "Paste the UUID of the organization to manage. Activate an organization scope to prefill."}
+              </div>
+            )}
           </div>
-        ) : (
-          <div style={fieldHintStyle}>
-            {scopeOrgID !== ""
-              ? "Prefilled from the active organization scope. Paste a different UUID to switch."
-              : "Paste the UUID of the organization to manage. Activate an organization scope to prefill."}
-          </div>
-        )}
-      </div>
+        );
+        if (isDesktop) {
+          return toolbar;
+        }
+        return (
+          <>
+            <button
+              type="button"
+              style={secondaryButtonStyle}
+              onClick={() => setFiltersOpen(true)}
+              data-testid="channels-filters-open"
+            >
+              Filters
+            </button>
+            <ResponsiveDrawer
+              id="channels-filters-drawer"
+              open={filtersOpen}
+              onClose={() => setFiltersOpen(false)}
+              title="Filters"
+            >
+              {toolbar}
+            </ResponsiveDrawer>
+          </>
+        );
+      })()}
 
       <ChannelsBody
         query={query}
@@ -442,72 +481,96 @@ function ChannelsBody({
       </div>
     );
   }
+  const columns: ResponsiveTableColumn<Channel>[] = [
+    {
+      id: "name",
+      header: "Name",
+      primary: true,
+      renderCell: (c) => <span data-testid={`channels-row-${c.id}`}>{c.name}</span>,
+    },
+    {
+      id: "payment_mode",
+      header: "Payment mode",
+      renderCell: (c) => c.payment_mode,
+    },
+    {
+      id: "provider",
+      header: "Provider",
+      renderCell: (c) => c.provider,
+    },
+    {
+      id: "account",
+      header: "Merchant account",
+      renderCell: (c) => (
+        <span
+          title={c.provider_account_id ?? ""}
+          data-testid={`channels-account-${c.id}`}
+        >
+          {c.provider_account_id !== null && c.provider_account_id !== ""
+            ? c.provider_account_id
+            : "—"}
+        </span>
+      ),
+    },
+    {
+      id: "fee",
+      header: "Fee %",
+      renderCell: (c) => c.fee_percent,
+    },
+    {
+      id: "ttl",
+      header: "Reservation TTL",
+      renderCell: (c) =>
+        c.reservation_ttl_override !== null
+          ? `${c.reservation_ttl_override.toLocaleString()} s`
+          : "—",
+    },
+    {
+      id: "updated",
+      header: "Updated",
+      renderCell: (c) => formatDate(c.updated_at),
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      hideOnMobile: true,
+      renderCell: (c) => (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {canUpdate ? (
+            <button
+              type="button"
+              style={rowActionButtonStyle}
+              onClick={() => onEdit(c)}
+              data-testid={`channels-edit-${c.id}`}
+            >
+              Edit
+            </button>
+          ) : null}
+          {canDelete ? (
+            <button
+              type="button"
+              style={rowDangerButtonStyle}
+              onClick={() => onDelete(c)}
+              data-testid={`channels-delete-${c.id}`}
+            >
+              Archive
+            </button>
+          ) : null}
+          {!canUpdate && !canDelete ? (
+            <span style={mutedHintStyle}>read-only</span>
+          ) : null}
+        </div>
+      ),
+    },
+  ];
   return (
     <div style={tableWrapStyle} role="region" aria-label="Channels">
-      <table style={tableStyle} data-testid="channels-table">
-        <thead>
-          <tr>
-            <th scope="col" style={thStyle}>Name</th>
-            <th scope="col" style={thStyle}>Payment mode</th>
-            <th scope="col" style={thStyle}>Provider</th>
-            <th scope="col" style={thStyle}>Merchant account</th>
-            <th scope="col" style={thStyle}>Fee %</th>
-            <th scope="col" style={thStyle}>Reservation TTL</th>
-            <th scope="col" style={thStyle}>Updated</th>
-            <th scope="col" style={thStyle} aria-label="Actions" />
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((c) => (
-            <tr key={c.id} data-testid={`channels-row-${c.id}`}>
-              <td style={tdStyle}>{c.name}</td>
-              <td style={tdStyle}>{c.payment_mode}</td>
-              <td style={tdStyle}>{c.provider}</td>
-              <td
-                style={tdMonoStyle}
-                title={c.provider_account_id ?? ""}
-                data-testid={`channels-account-${c.id}`}
-              >
-                {c.provider_account_id !== null && c.provider_account_id !== ""
-                  ? c.provider_account_id
-                  : "—"}
-              </td>
-              <td style={tdStyle}>{c.fee_percent}</td>
-              <td style={tdStyle}>
-                {c.reservation_ttl_override !== null
-                  ? `${c.reservation_ttl_override.toLocaleString()} s`
-                  : "—"}
-              </td>
-              <td style={tdStyle}>{formatDate(c.updated_at)}</td>
-              <td style={tdActionsStyle}>
-                {canUpdate ? (
-                  <button
-                    type="button"
-                    style={rowActionButtonStyle}
-                    onClick={() => onEdit(c)}
-                    data-testid={`channels-edit-${c.id}`}
-                  >
-                    Edit
-                  </button>
-                ) : null}
-                {canDelete ? (
-                  <button
-                    type="button"
-                    style={rowDangerButtonStyle}
-                    onClick={() => onDelete(c)}
-                    data-testid={`channels-delete-${c.id}`}
-                  >
-                    Archive
-                  </button>
-                ) : null}
-                {!canUpdate && !canDelete ? (
-                  <span style={mutedHintStyle}>read-only</span>
-                ) : null}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <ResponsiveTable<Channel>
+        id="channels-table"
+        columns={columns}
+        rows={rows}
+        rowKey={(c) => c.id}
+      />
     </div>
   );
 }
@@ -1336,45 +1399,6 @@ const tableWrapStyle: CSSProperties = {
   border: "1px solid #e2e8f0",
   borderRadius: 6,
   background: "#ffffff",
-};
-
-const tableStyle: CSSProperties = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: 13,
-};
-
-const thStyle: CSSProperties = {
-  textAlign: "left",
-  padding: "10px 12px",
-  borderBottom: "1px solid #e2e8f0",
-  background: "#f8fafc",
-  fontSize: 11,
-  fontWeight: 600,
-  color: "#475569",
-  textTransform: "uppercase",
-  letterSpacing: 0.4,
-};
-
-const tdStyle: CSSProperties = {
-  padding: "10px 12px",
-  borderBottom: "1px solid #f1f5f9",
-  color: "#0f172a",
-  verticalAlign: "middle",
-};
-
-const tdMonoStyle: CSSProperties = {
-  ...tdStyle,
-  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-  fontSize: 12,
-  color: "#334155",
-};
-
-const tdActionsStyle: CSSProperties = {
-  ...tdStyle,
-  display: "flex",
-  gap: 6,
-  flexWrap: "wrap",
 };
 
 const statusBoxStyle: CSSProperties = {

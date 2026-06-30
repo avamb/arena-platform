@@ -57,6 +57,12 @@ import { RequirePermission } from "@/components/RequirePermission";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useScope } from "@/lib/auth/ScopeContext";
 import { NAV_BY_PATH } from "@/lib/auth/navConfig";
+import {
+  ResponsiveTable,
+  ResponsiveDrawer,
+  useIsDesktop,
+  type ResponsiveTableColumn,
+} from "@/components/layout";
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -224,6 +230,8 @@ function PaymentsModule() {
   const [form, setForm] = useState<FormMode>({ kind: "closed" });
   const [pendingDelete, setPendingDelete] =
     useState<PaymentConfig | null>(null);
+  const isDesktop = useIsDesktop(true);
+  const [filtersOpen, setFiltersOpen] = useState<boolean>(false);
 
   const query = useQuery<PaymentConfigListEnvelope, ApiError>({
     queryKey: ["payment_configs", "list", trimmedOrgID],
@@ -306,39 +314,66 @@ function PaymentsModule() {
         </div>
       </header>
 
-      <div style={orgPickerStyle}>
-        <label htmlFor="payments-org-id" style={fieldLabelStyle}>
-          Organization ID
-        </label>
-        <input
-          id="payments-org-id"
-          type="text"
-          value={orgID}
-          onChange={(e) => setOrgID(e.target.value)}
-          style={inputMonoStyle}
-          placeholder="00000000-0000-0000-0000-000000000000"
-          maxLength={36}
-          autoCapitalize="off"
-          autoCorrect="off"
-          spellCheck={false}
-          data-testid="payments-org-id"
-        />
-        {orgIDError !== null ? (
-          <div
-            style={fieldErrorStyle}
-            role="alert"
-            data-testid="payments-org-id-error"
-          >
-            {orgIDError}
+      {(() => {
+        const toolbar = (
+          <div style={orgPickerStyle}>
+            <label htmlFor="payments-org-id" style={fieldLabelStyle}>
+              Organization ID
+            </label>
+            <input
+              id="payments-org-id"
+              type="text"
+              value={orgID}
+              onChange={(e) => setOrgID(e.target.value)}
+              style={inputMonoStyle}
+              placeholder="00000000-0000-0000-0000-000000000000"
+              maxLength={36}
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              data-testid="payments-org-id"
+            />
+            {orgIDError !== null ? (
+              <div
+                style={fieldErrorStyle}
+                role="alert"
+                data-testid="payments-org-id-error"
+              >
+                {orgIDError}
+              </div>
+            ) : (
+              <div style={fieldHintStyle}>
+                {scopeOrgID !== ""
+                  ? "Prefilled from the active organization scope. Paste a different UUID to switch."
+                  : "Paste the UUID of the organization to manage. Activate an organization scope to prefill."}
+              </div>
+            )}
           </div>
-        ) : (
-          <div style={fieldHintStyle}>
-            {scopeOrgID !== ""
-              ? "Prefilled from the active organization scope. Paste a different UUID to switch."
-              : "Paste the UUID of the organization to manage. Activate an organization scope to prefill."}
-          </div>
-        )}
-      </div>
+        );
+        if (isDesktop) {
+          return toolbar;
+        }
+        return (
+          <>
+            <button
+              type="button"
+              style={secondaryButtonStyle}
+              onClick={() => setFiltersOpen(true)}
+              data-testid="payments-filters-open"
+            >
+              Filters
+            </button>
+            <ResponsiveDrawer
+              id="payments-filters-drawer"
+              open={filtersOpen}
+              onClose={() => setFiltersOpen(false)}
+              title="Filters"
+            >
+              {toolbar}
+            </ResponsiveDrawer>
+          </>
+        );
+      })()}
 
       <PaymentsBody
         query={query}
@@ -419,74 +454,93 @@ function PaymentsBody({
       </div>
     );
   }
+  const columns: ResponsiveTableColumn<PaymentConfig>[] = [
+    {
+      id: "provider",
+      header: "Provider",
+      primary: true,
+      renderCell: (c) => (
+        <span data-testid={`payments-row-${c.id}`}>{c.provider}</span>
+      ),
+    },
+    {
+      id: "mode",
+      header: "Mode",
+      renderCell: (c) => <ModeBadge mode={c.mode} />,
+    },
+    {
+      id: "account",
+      header: "Account ID",
+      renderCell: (c) => c.provider_account_id ?? "—",
+    },
+    {
+      id: "status",
+      header: "Status",
+      renderCell: (c) => (
+        <StatusBadge status={c.status} missing={c.missing_required_fields} />
+      ),
+    },
+    {
+      id: "secrets",
+      header: "Secrets",
+      renderCell: (c) => (
+        <SecretsSummary
+          set={c.secret_fields_set}
+          missing={c.missing_required_fields}
+        />
+      ),
+    },
+    {
+      id: "active",
+      header: "Active",
+      renderCell: (c) => (c.is_active ? "yes" : "no"),
+    },
+    {
+      id: "updated",
+      header: "Updated",
+      renderCell: (c) => formatDate(c.updated_at),
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      hideOnMobile: true,
+      renderCell: (c) => (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {canWrite ? (
+            <button
+              type="button"
+              style={rowActionButtonStyle}
+              onClick={() => onEdit(c)}
+              data-testid={`payments-edit-${c.id}`}
+            >
+              Edit
+            </button>
+          ) : null}
+          {canWrite ? (
+            <button
+              type="button"
+              style={rowDangerButtonStyle}
+              onClick={() => onDelete(c)}
+              data-testid={`payments-delete-${c.id}`}
+            >
+              Archive
+            </button>
+          ) : null}
+          {!canWrite ? (
+            <span style={mutedHintStyle}>read-only</span>
+          ) : null}
+        </div>
+      ),
+    },
+  ];
   return (
     <div style={tableWrapStyle} role="region" aria-label="Payment configs">
-      <table style={tableStyle} data-testid="payments-table">
-        <thead>
-          <tr>
-            <th scope="col" style={thStyle}>Provider</th>
-            <th scope="col" style={thStyle}>Mode</th>
-            <th scope="col" style={thStyle}>Account ID</th>
-            <th scope="col" style={thStyle}>Status</th>
-            <th scope="col" style={thStyle}>Secrets</th>
-            <th scope="col" style={thStyle}>Active</th>
-            <th scope="col" style={thStyle}>Updated</th>
-            <th scope="col" style={thStyle} aria-label="Actions" />
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((c) => (
-            <tr key={c.id} data-testid={`payments-row-${c.id}`}>
-              <td style={tdStyle}>{c.provider}</td>
-              <td style={tdStyle}>
-                <ModeBadge mode={c.mode} />
-              </td>
-              <td style={tdMonoStyle}>
-                {c.provider_account_id ?? "—"}
-              </td>
-              <td style={tdStyle}>
-                <StatusBadge
-                  status={c.status}
-                  missing={c.missing_required_fields}
-                />
-              </td>
-              <td style={tdStyle}>
-                <SecretsSummary
-                  set={c.secret_fields_set}
-                  missing={c.missing_required_fields}
-                />
-              </td>
-              <td style={tdStyle}>{c.is_active ? "yes" : "no"}</td>
-              <td style={tdStyle}>{formatDate(c.updated_at)}</td>
-              <td style={tdActionsStyle}>
-                {canWrite ? (
-                  <button
-                    type="button"
-                    style={rowActionButtonStyle}
-                    onClick={() => onEdit(c)}
-                    data-testid={`payments-edit-${c.id}`}
-                  >
-                    Edit
-                  </button>
-                ) : null}
-                {canWrite ? (
-                  <button
-                    type="button"
-                    style={rowDangerButtonStyle}
-                    onClick={() => onDelete(c)}
-                    data-testid={`payments-delete-${c.id}`}
-                  >
-                    Archive
-                  </button>
-                ) : null}
-                {!canWrite ? (
-                  <span style={mutedHintStyle}>read-only</span>
-                ) : null}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <ResponsiveTable<PaymentConfig>
+        id="payments-table"
+        columns={columns}
+        rows={rows}
+        rowKey={(c) => c.id}
+      />
     </div>
   );
 }
@@ -1389,45 +1443,6 @@ const tableWrapStyle: CSSProperties = {
   border: "1px solid #e2e8f0",
   borderRadius: 6,
   background: "#ffffff",
-};
-
-const tableStyle: CSSProperties = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: 13,
-};
-
-const thStyle: CSSProperties = {
-  textAlign: "left",
-  padding: "10px 12px",
-  borderBottom: "1px solid #e2e8f0",
-  background: "#f8fafc",
-  fontSize: 11,
-  fontWeight: 600,
-  color: "#475569",
-  textTransform: "uppercase",
-  letterSpacing: 0.4,
-};
-
-const tdStyle: CSSProperties = {
-  padding: "10px 12px",
-  borderBottom: "1px solid #f1f5f9",
-  color: "#0f172a",
-  verticalAlign: "middle",
-};
-
-const tdMonoStyle: CSSProperties = {
-  ...tdStyle,
-  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-  fontSize: 12,
-  color: "#334155",
-};
-
-const tdActionsStyle: CSSProperties = {
-  ...tdStyle,
-  display: "flex",
-  gap: 6,
-  flexWrap: "wrap",
 };
 
 const statusBoxStyle: CSSProperties = {

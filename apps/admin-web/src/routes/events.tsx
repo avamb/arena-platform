@@ -79,6 +79,10 @@ import { ApiError, authedFetch } from "@/lib/api/client";
 import { RequirePermission } from "@/components/RequirePermission";
 import { useAuth } from "@/lib/auth/useAuth";
 import { NAV_BY_PATH } from "@/lib/auth/navConfig";
+import {
+  ResponsiveTable,
+  type ResponsiveTableColumn,
+} from "@/components/layout";
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -1211,63 +1215,78 @@ function EventsBody({
       </div>
     );
   }
+  const columns: ResponsiveTableColumn<EventItem>[] = [
+    {
+      id: "poster",
+      header: "Poster",
+      hideOnMobile: true,
+      renderCell: (ev) => <PosterThumb event={ev} />,
+    },
+    {
+      id: "name",
+      header: "Name",
+      primary: true,
+      renderCell: (ev) => (
+        <span data-testid={`events-row-${ev.id}`}>
+          <button
+            type="button"
+            style={linkButtonStyle}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(ev.id);
+            }}
+            data-testid={`events-open-${ev.id}`}
+          >
+            {ev.name}
+          </button>
+          <div style={mutedHintStyle}>
+            {orgsByID.get(ev.org_id)?.name ?? shortenUUID(ev.org_id)}
+          </div>
+        </span>
+      ),
+    },
+    {
+      id: "venue",
+      header: "Venue",
+      renderCell: (ev) => (
+        <span title={ev.venue_id ?? ""}>
+          {ev.venue_id !== null ? shortenUUID(ev.venue_id) : "—"}
+        </span>
+      ),
+    },
+    {
+      id: "next_session",
+      header: "Next session",
+      renderCell: (ev) => formatDateTime(ev.start_at),
+    },
+    {
+      id: "status",
+      header: "Status",
+      renderCell: (ev) => <EventStatusBadge status={ev.status} />,
+    },
+    {
+      id: "channels",
+      header: "Channels",
+      renderCell: () => (
+        <span
+          style={mutedHintStyle}
+          title="Open the drawer's Publications tab to view channels."
+        >
+          —
+        </span>
+      ),
+    },
+  ];
   return (
     <>
       <div style={tableWrapStyle} role="region" aria-label="Events">
-        <table style={tableStyle} data-testid="events-table">
-          <thead>
-            <tr>
-              <th scope="col" style={thStyle} aria-label="Poster" />
-              <th scope="col" style={thStyle}>Name</th>
-              <th scope="col" style={thStyle}>Venue</th>
-              <th scope="col" style={thStyle}>Next session</th>
-              <th scope="col" style={thStyle}>Status</th>
-              <th scope="col" style={thStyle}>Channels</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((ev) => (
-              <tr
-                key={ev.id}
-                data-testid={`events-row-${ev.id}`}
-                onClick={() => onSelect(ev.id)}
-                style={tableRowStyle}
-              >
-                <td style={tdStyle}>
-                  <PosterThumb event={ev} />
-                </td>
-                <td style={tdStyle}>
-                  <button
-                    type="button"
-                    style={linkButtonStyle}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onSelect(ev.id);
-                    }}
-                    data-testid={`events-open-${ev.id}`}
-                  >
-                    {ev.name}
-                  </button>
-                  <div style={mutedHintStyle}>
-                    {orgsByID.get(ev.org_id)?.name ?? shortenUUID(ev.org_id)}
-                  </div>
-                </td>
-                <td style={tdMonoStyle} title={ev.venue_id ?? ""}>
-                  {ev.venue_id !== null ? shortenUUID(ev.venue_id) : "—"}
-                </td>
-                <td style={tdStyle}>{formatDateTime(ev.start_at)}</td>
-                <td style={tdStyle}>
-                  <EventStatusBadge status={ev.status} />
-                </td>
-                <td style={tdStyle}>
-                  <span style={mutedHintStyle} title="Open the drawer's Publications tab to view channels.">
-                    —
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <ResponsiveTable<EventItem>
+          id="events-table"
+          columns={columns}
+          rows={rows}
+          rowKey={(ev) => ev.id}
+          onRowClick={(ev) => onSelect(ev.id)}
+        />
       </div>
       <Pagination
         page={page}
@@ -3425,10 +3444,6 @@ const tableStyle: CSSProperties = {
   width: "100%",
   borderCollapse: "collapse",
   fontSize: 13,
-};
-
-const tableRowStyle: CSSProperties = {
-  cursor: "pointer",
 };
 
 const thStyle: CSSProperties = {

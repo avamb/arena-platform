@@ -33,6 +33,12 @@ import { RequirePermission } from "@/components/RequirePermission";
 import { NAV_BY_PATH } from "@/lib/auth/navConfig";
 import { SupportErrorState } from "@/components/admin/SupportErrorState";
 import {
+  ResponsiveTable,
+  ResponsiveDrawer,
+  useIsDesktop,
+  type ResponsiveTableColumn,
+} from "@/components/layout";
+import {
   SUPPORT_LIMIT_CHOICES,
   buildSupportQuery,
   canGoNext,
@@ -111,6 +117,8 @@ function TicketsConsole() {
   const [limit, setLimit] = useState<number>(initial.limit);
   const [offset, setOffset] = useState<number>(initial.offset);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const isDesktop = useIsDesktop(true);
+  const [filtersOpen, setFiltersOpen] = useState<boolean>(false);
 
   const orgIdInvalid =
     orgIdInput.trim() !== "" && !isValidUuid(orgIdInput.trim());
@@ -186,84 +194,111 @@ function TicketsConsole() {
         </div>
       </header>
 
-      <div style={S.toolbarStyle}>
-        <label style={S.fieldGroupStyle}>
-          <span style={S.fieldLabelStyle}>Organization ID</span>
-          <input
-            type="text"
-            placeholder="UUID (optional)"
-            value={orgIdInput}
-            onChange={(e) => setOrgIdInput(e.target.value)}
-            style={orgIdInvalid ? S.inputInvalidStyle : S.inputStyle}
-            data-testid="tickets-org-id"
-            aria-invalid={orgIdInvalid}
-            aria-describedby={orgIdInvalid ? "tickets-org-id-err" : undefined}
-          />
-          {orgIdInvalid ? (
-            <span
-              id="tickets-org-id-err"
-              style={{ color: "#7f1d1d", fontSize: 11 }}
-              data-testid="tickets-org-id-error"
+      {(() => {
+        const toolbar = (
+          <div style={S.toolbarStyle}>
+            <label style={S.fieldGroupStyle}>
+              <span style={S.fieldLabelStyle}>Organization ID</span>
+              <input
+                type="text"
+                placeholder="UUID (optional)"
+                value={orgIdInput}
+                onChange={(e) => setOrgIdInput(e.target.value)}
+                style={orgIdInvalid ? S.inputInvalidStyle : S.inputStyle}
+                data-testid="tickets-org-id"
+                aria-invalid={orgIdInvalid}
+                aria-describedby={orgIdInvalid ? "tickets-org-id-err" : undefined}
+              />
+              {orgIdInvalid ? (
+                <span
+                  id="tickets-org-id-err"
+                  style={{ color: "#7f1d1d", fontSize: 11 }}
+                  data-testid="tickets-org-id-error"
+                >
+                  Must be a valid UUID — filter not applied.
+                </span>
+              ) : null}
+            </label>
+            <label style={S.fieldGroupStyle}>
+              <span style={S.fieldLabelStyle}>Status</span>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                style={S.selectStyle}
+                data-testid="tickets-status"
+              >
+                <option value="">Any status</option>
+                {TICKET_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={S.fieldGroupStyle}>
+              <span style={S.fieldLabelStyle}>Page size</span>
+              <select
+                value={String(limit)}
+                onChange={(e) => setLimit(clampLimit(Number(e.target.value)))}
+                style={S.selectStyle}
+                data-testid="tickets-limit"
+              >
+                {SUPPORT_LIMIT_CHOICES.map((n) => (
+                  <option key={n} value={String(n)}>
+                    {n} / page
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div style={S.pageNavStyle} aria-live="polite">
+              <button
+                type="button"
+                style={S.buttonStyle}
+                disabled={!canGoPrev(offset) || query.isFetching}
+                onClick={() => setOffset(clampOffset(offset - limit))}
+                data-testid="tickets-prev"
+              >
+                Prev
+              </button>
+              <span data-testid="tickets-page-caption">
+                Page {currentPage(offset, limit)} · rows {rows.length}
+              </span>
+              <button
+                type="button"
+                style={S.buttonStyle}
+                disabled={!canGoNext(rows.length, limit) || query.isFetching}
+                onClick={() => setOffset(offset + limit)}
+                data-testid="tickets-next"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        );
+        if (isDesktop) {
+          return toolbar;
+        }
+        return (
+          <>
+            <button
+              type="button"
+              style={S.buttonStyle}
+              onClick={() => setFiltersOpen(true)}
+              data-testid="tickets-filters-open"
             >
-              Must be a valid UUID — filter not applied.
-            </span>
-          ) : null}
-        </label>
-        <label style={S.fieldGroupStyle}>
-          <span style={S.fieldLabelStyle}>Status</span>
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            style={S.selectStyle}
-            data-testid="tickets-status"
-          >
-            <option value="">Any status</option>
-            {TICKET_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label style={S.fieldGroupStyle}>
-          <span style={S.fieldLabelStyle}>Page size</span>
-          <select
-            value={String(limit)}
-            onChange={(e) => setLimit(clampLimit(Number(e.target.value)))}
-            style={S.selectStyle}
-            data-testid="tickets-limit"
-          >
-            {SUPPORT_LIMIT_CHOICES.map((n) => (
-              <option key={n} value={String(n)}>
-                {n} / page
-              </option>
-            ))}
-          </select>
-        </label>
-        <div style={S.pageNavStyle} aria-live="polite">
-          <button
-            type="button"
-            style={S.buttonStyle}
-            disabled={!canGoPrev(offset) || query.isFetching}
-            onClick={() => setOffset(clampOffset(offset - limit))}
-            data-testid="tickets-prev"
-          >
-            Prev
-          </button>
-          <span data-testid="tickets-page-caption">
-            Page {currentPage(offset, limit)} · rows {rows.length}
-          </span>
-          <button
-            type="button"
-            style={S.buttonStyle}
-            disabled={!canGoNext(rows.length, limit) || query.isFetching}
-            onClick={() => setOffset(offset + limit)}
-            data-testid="tickets-next"
-          >
-            Next
-          </button>
-        </div>
-      </div>
+              Filters
+            </button>
+            <ResponsiveDrawer
+              id="tickets-filters-drawer"
+              open={filtersOpen}
+              onClose={() => setFiltersOpen(false)}
+              title="Filters"
+            >
+              {toolbar}
+            </ResponsiveDrawer>
+          </>
+        );
+      })()}
 
       <Body
         query={query}
@@ -310,72 +345,90 @@ function Body({ query, rows, activeId, onOpen }: BodyProps) {
       </div>
     );
   }
+  const columns: ResponsiveTableColumn<AdminTicket>[] = [
+    {
+      id: "id",
+      header: "ID",
+      primary: true,
+      renderCell: (t) => (
+        <span data-testid={`tickets-row-${t.id}`}>
+          <button
+            type="button"
+            style={S.rowNameButtonStyle}
+            onClick={() => onOpen(t.id)}
+            aria-label={`Open details for ticket ${t.id}`}
+            title={t.id}
+          >
+            {shortUuid(t.id)}
+          </button>
+        </span>
+      ),
+    },
+    {
+      id: "order",
+      header: "Order (checkout session)",
+      renderCell: (t) => (
+        <span title={t.checkout_session_id}>
+          {shortUuid(t.checkout_session_id)}
+        </span>
+      ),
+    },
+    {
+      id: "status",
+      header: "Status",
+      renderCell: (t) => (
+        <span style={badgeForTicketStatus(t.status)}>{t.status}</span>
+      ),
+    },
+    {
+      id: "tier",
+      header: "Tier",
+      renderCell: (t) => (
+        <span title={t.tier_id ?? ""}>
+          {t.tier_id === null ? "—" : shortUuid(t.tier_id)}
+        </span>
+      ),
+    },
+    {
+      id: "holder",
+      header: "Holder",
+      renderCell: (t) =>
+        t.holder_email === null ? (
+          <span style={S.mutedStyle}>—</span>
+        ) : (
+          t.holder_email
+        ),
+    },
+    {
+      id: "issued",
+      header: "Issued",
+      renderCell: (t) => formatDateTime(t.issued_at),
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      hideOnMobile: true,
+      renderCell: (t) => (
+        <button
+          type="button"
+          style={S.rowActionButtonStyle}
+          onClick={() => onOpen(t.id)}
+          data-testid={`tickets-open-${t.id}`}
+        >
+          Details
+        </button>
+      ),
+    },
+  ];
+  void activeId;
   return (
     <div style={S.tableWrapStyle} role="region" aria-label="Tickets table">
-      <table style={S.tableStyle} data-testid="tickets-table">
-        <thead>
-          <tr>
-            <th scope="col" style={S.thStyle}>ID</th>
-            <th scope="col" style={S.thStyle}>Order (checkout session)</th>
-            <th scope="col" style={S.thStyle}>Status</th>
-            <th scope="col" style={S.thStyle}>Tier</th>
-            <th scope="col" style={S.thStyle}>Holder</th>
-            <th scope="col" style={S.thStyle}>Issued</th>
-            <th scope="col" style={S.thStyle} aria-label="Actions" />
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((t) => {
-            const isActive = t.id === activeId;
-            return (
-              <tr
-                key={t.id}
-                style={isActive ? S.trActiveStyle : S.trStyle}
-                data-testid={`tickets-row-${t.id}`}
-              >
-                <td style={S.tdMonoStyle}>
-                  <button
-                    type="button"
-                    style={S.rowNameButtonStyle}
-                    onClick={() => onOpen(t.id)}
-                    aria-label={`Open details for ticket ${t.id}`}
-                    title={t.id}
-                  >
-                    {shortUuid(t.id)}
-                  </button>
-                </td>
-                <td style={S.tdMonoStyle} title={t.checkout_session_id}>
-                  {shortUuid(t.checkout_session_id)}
-                </td>
-                <td style={S.tdStyle}>
-                  <span style={badgeForTicketStatus(t.status)}>{t.status}</span>
-                </td>
-                <td style={S.tdMonoStyle} title={t.tier_id ?? ""}>
-                  {t.tier_id === null ? "—" : shortUuid(t.tier_id)}
-                </td>
-                <td style={S.tdStyle}>
-                  {t.holder_email === null ? (
-                    <span style={S.mutedStyle}>—</span>
-                  ) : (
-                    t.holder_email
-                  )}
-                </td>
-                <td style={S.tdStyle}>{formatDateTime(t.issued_at)}</td>
-                <td style={S.tdStyle}>
-                  <button
-                    type="button"
-                    style={S.rowActionButtonStyle}
-                    onClick={() => onOpen(t.id)}
-                    data-testid={`tickets-open-${t.id}`}
-                  >
-                    Details
-                  </button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <ResponsiveTable<AdminTicket>
+        id="tickets-table"
+        columns={columns}
+        rows={rows}
+        rowKey={(t) => t.id}
+      />
     </div>
   );
 }

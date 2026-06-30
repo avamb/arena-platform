@@ -31,6 +31,12 @@ import { RequirePermission } from "@/components/RequirePermission";
 import { NAV_BY_PATH } from "@/lib/auth/navConfig";
 import { SupportErrorState } from "@/components/admin/SupportErrorState";
 import {
+  ResponsiveTable,
+  ResponsiveDrawer,
+  useIsDesktop,
+  type ResponsiveTableColumn,
+} from "@/components/layout";
+import {
   SUPPORT_LIMIT_CHOICES,
   buildSupportQuery,
   canGoNext,
@@ -115,6 +121,8 @@ function RefundsConsole() {
   const [limit, setLimit] = useState<number>(initial.limit);
   const [offset, setOffset] = useState<number>(initial.offset);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const isDesktop = useIsDesktop(true);
+  const [filtersOpen, setFiltersOpen] = useState<boolean>(false);
 
   const orgIdInvalid =
     orgIdInput.trim() !== "" && !isValidUuid(orgIdInput.trim());
@@ -190,84 +198,111 @@ function RefundsConsole() {
         </div>
       </header>
 
-      <div style={S.toolbarStyle}>
-        <label style={S.fieldGroupStyle}>
-          <span style={S.fieldLabelStyle}>Organization ID</span>
-          <input
-            type="text"
-            placeholder="UUID (optional)"
-            value={orgIdInput}
-            onChange={(e) => setOrgIdInput(e.target.value)}
-            style={orgIdInvalid ? S.inputInvalidStyle : S.inputStyle}
-            data-testid="refunds-org-id"
-            aria-invalid={orgIdInvalid}
-            aria-describedby={orgIdInvalid ? "refunds-org-id-err" : undefined}
-          />
-          {orgIdInvalid ? (
-            <span
-              id="refunds-org-id-err"
-              style={{ color: "#7f1d1d", fontSize: 11 }}
-              data-testid="refunds-org-id-error"
+      {(() => {
+        const toolbar = (
+          <div style={S.toolbarStyle}>
+            <label style={S.fieldGroupStyle}>
+              <span style={S.fieldLabelStyle}>Organization ID</span>
+              <input
+                type="text"
+                placeholder="UUID (optional)"
+                value={orgIdInput}
+                onChange={(e) => setOrgIdInput(e.target.value)}
+                style={orgIdInvalid ? S.inputInvalidStyle : S.inputStyle}
+                data-testid="refunds-org-id"
+                aria-invalid={orgIdInvalid}
+                aria-describedby={orgIdInvalid ? "refunds-org-id-err" : undefined}
+              />
+              {orgIdInvalid ? (
+                <span
+                  id="refunds-org-id-err"
+                  style={{ color: "#7f1d1d", fontSize: 11 }}
+                  data-testid="refunds-org-id-error"
+                >
+                  Must be a valid UUID — filter not applied.
+                </span>
+              ) : null}
+            </label>
+            <label style={S.fieldGroupStyle}>
+              <span style={S.fieldLabelStyle}>State</span>
+              <select
+                value={state}
+                onChange={(e) => setState(e.target.value)}
+                style={S.selectStyle}
+                data-testid="refunds-state"
+              >
+                <option value="">Any state</option>
+                {REFUND_STATES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={S.fieldGroupStyle}>
+              <span style={S.fieldLabelStyle}>Page size</span>
+              <select
+                value={String(limit)}
+                onChange={(e) => setLimit(clampLimit(Number(e.target.value)))}
+                style={S.selectStyle}
+                data-testid="refunds-limit"
+              >
+                {SUPPORT_LIMIT_CHOICES.map((n) => (
+                  <option key={n} value={String(n)}>
+                    {n} / page
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div style={S.pageNavStyle} aria-live="polite">
+              <button
+                type="button"
+                style={S.buttonStyle}
+                disabled={!canGoPrev(offset) || query.isFetching}
+                onClick={() => setOffset(clampOffset(offset - limit))}
+                data-testid="refunds-prev"
+              >
+                Prev
+              </button>
+              <span data-testid="refunds-page-caption">
+                Page {currentPage(offset, limit)} · rows {rows.length}
+              </span>
+              <button
+                type="button"
+                style={S.buttonStyle}
+                disabled={!canGoNext(rows.length, limit) || query.isFetching}
+                onClick={() => setOffset(offset + limit)}
+                data-testid="refunds-next"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        );
+        if (isDesktop) {
+          return toolbar;
+        }
+        return (
+          <>
+            <button
+              type="button"
+              style={S.buttonStyle}
+              onClick={() => setFiltersOpen(true)}
+              data-testid="refunds-filters-open"
             >
-              Must be a valid UUID — filter not applied.
-            </span>
-          ) : null}
-        </label>
-        <label style={S.fieldGroupStyle}>
-          <span style={S.fieldLabelStyle}>State</span>
-          <select
-            value={state}
-            onChange={(e) => setState(e.target.value)}
-            style={S.selectStyle}
-            data-testid="refunds-state"
-          >
-            <option value="">Any state</option>
-            {REFUND_STATES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label style={S.fieldGroupStyle}>
-          <span style={S.fieldLabelStyle}>Page size</span>
-          <select
-            value={String(limit)}
-            onChange={(e) => setLimit(clampLimit(Number(e.target.value)))}
-            style={S.selectStyle}
-            data-testid="refunds-limit"
-          >
-            {SUPPORT_LIMIT_CHOICES.map((n) => (
-              <option key={n} value={String(n)}>
-                {n} / page
-              </option>
-            ))}
-          </select>
-        </label>
-        <div style={S.pageNavStyle} aria-live="polite">
-          <button
-            type="button"
-            style={S.buttonStyle}
-            disabled={!canGoPrev(offset) || query.isFetching}
-            onClick={() => setOffset(clampOffset(offset - limit))}
-            data-testid="refunds-prev"
-          >
-            Prev
-          </button>
-          <span data-testid="refunds-page-caption">
-            Page {currentPage(offset, limit)} · rows {rows.length}
-          </span>
-          <button
-            type="button"
-            style={S.buttonStyle}
-            disabled={!canGoNext(rows.length, limit) || query.isFetching}
-            onClick={() => setOffset(offset + limit)}
-            data-testid="refunds-next"
-          >
-            Next
-          </button>
-        </div>
-      </div>
+              Filters
+            </button>
+            <ResponsiveDrawer
+              id="refunds-filters-drawer"
+              open={filtersOpen}
+              onClose={() => setFiltersOpen(false)}
+              title="Filters"
+            >
+              {toolbar}
+            </ResponsiveDrawer>
+          </>
+        );
+      })()}
 
       <Body query={query} rows={rows} activeId={activeId} onOpen={setActiveId} />
 
@@ -309,62 +344,77 @@ function Body({ query, rows, activeId, onOpen }: BodyProps) {
       </div>
     );
   }
+  const columns: ResponsiveTableColumn<AdminRefund>[] = [
+    {
+      id: "id",
+      header: "ID",
+      primary: true,
+      renderCell: (r) => (
+        <span data-testid={`refunds-row-${r.id}`}>
+          <button
+            type="button"
+            style={S.rowNameButtonStyle}
+            onClick={() => onOpen(r.id)}
+            aria-label={`Open details for refund ${r.id}`}
+            title={r.id}
+          >
+            {shortUuid(r.id)}
+          </button>
+        </span>
+      ),
+    },
+    {
+      id: "org",
+      header: "Org",
+      renderCell: (r) => <span title={r.org_id}>{shortUuid(r.org_id)}</span>,
+    },
+    {
+      id: "state",
+      header: "State",
+      renderCell: (r) => (
+        <span style={badgeForRefundState(r.state)}>{r.state}</span>
+      ),
+    },
+    {
+      id: "amount",
+      header: "Amount",
+      renderCell: (r) => formatMoneyMinor(r.amount, r.currency),
+    },
+    {
+      id: "requested",
+      header: "Requested",
+      renderCell: (r) => formatDateTime(r.requested_at),
+    },
+    {
+      id: "succeeded",
+      header: "Succeeded",
+      renderCell: (r) => formatDateTime(r.succeeded_at),
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      hideOnMobile: true,
+      renderCell: (r) => (
+        <button
+          type="button"
+          style={S.rowActionButtonStyle}
+          onClick={() => onOpen(r.id)}
+          data-testid={`refunds-open-${r.id}`}
+        >
+          Details
+        </button>
+      ),
+    },
+  ];
+  void activeId;
   return (
     <div style={S.tableWrapStyle} role="region" aria-label="Refunds table">
-      <table style={S.tableStyle} data-testid="refunds-table">
-        <thead>
-          <tr>
-            <th scope="col" style={S.thStyle}>ID</th>
-            <th scope="col" style={S.thStyle}>Org</th>
-            <th scope="col" style={S.thStyle}>State</th>
-            <th scope="col" style={S.thStyle}>Amount</th>
-            <th scope="col" style={S.thStyle}>Requested</th>
-            <th scope="col" style={S.thStyle}>Succeeded</th>
-            <th scope="col" style={S.thStyle} aria-label="Actions" />
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => {
-            const isActive = r.id === activeId;
-            return (
-              <tr
-                key={r.id}
-                style={isActive ? S.trActiveStyle : S.trStyle}
-                data-testid={`refunds-row-${r.id}`}
-              >
-                <td style={S.tdMonoStyle}>
-                  <button
-                    type="button"
-                    style={S.rowNameButtonStyle}
-                    onClick={() => onOpen(r.id)}
-                    aria-label={`Open details for refund ${r.id}`}
-                    title={r.id}
-                  >
-                    {shortUuid(r.id)}
-                  </button>
-                </td>
-                <td style={S.tdMonoStyle} title={r.org_id}>{shortUuid(r.org_id)}</td>
-                <td style={S.tdStyle}>
-                  <span style={badgeForRefundState(r.state)}>{r.state}</span>
-                </td>
-                <td style={S.tdStyle}>{formatMoneyMinor(r.amount, r.currency)}</td>
-                <td style={S.tdStyle}>{formatDateTime(r.requested_at)}</td>
-                <td style={S.tdStyle}>{formatDateTime(r.succeeded_at)}</td>
-                <td style={S.tdStyle}>
-                  <button
-                    type="button"
-                    style={S.rowActionButtonStyle}
-                    onClick={() => onOpen(r.id)}
-                    data-testid={`refunds-open-${r.id}`}
-                  >
-                    Details
-                  </button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <ResponsiveTable<AdminRefund>
+        id="refunds-table"
+        columns={columns}
+        rows={rows}
+        rowKey={(r) => r.id}
+      />
     </div>
   );
 }

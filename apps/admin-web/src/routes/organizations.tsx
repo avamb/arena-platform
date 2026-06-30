@@ -70,6 +70,10 @@ import { Route as RootRoute } from "./__root";
 import { ApiError, authedFetch } from "@/lib/api/client";
 import { RequirePermission } from "@/components/RequirePermission";
 import { ImageUpload } from "@/components/ImageUpload";
+import {
+  ResponsiveTable,
+  type ResponsiveTableColumn,
+} from "@/components/layout";
 import { NAV_BY_PATH } from "@/lib/auth/navConfig";
 import { useAuth } from "@/lib/auth/useAuth";
 import {
@@ -431,103 +435,118 @@ function OrganizationsTable({
   onEdit: (id: string) => void;
   onArchive: (id: string) => void;
 }) {
+  const columns: ResponsiveTableColumn<AdminOrganization>[] = [
+    {
+      id: "name",
+      header: "Name",
+      primary: true,
+      renderCell: (o) => (
+        <span data-testid={`orgs-row-${o.slug}`}>
+          <button
+            type="button"
+            style={rowNameButtonStyle}
+            onClick={() => onOpen(o.id)}
+            aria-label={`Open details for ${o.name}`}
+          >
+            {o.name}
+          </button>
+        </span>
+      ),
+    },
+    {
+      id: "slug",
+      header: "Slug",
+      renderCell: (o) => o.slug,
+    },
+    {
+      id: "country",
+      header: "Country",
+      renderCell: (o) => o.country,
+    },
+    {
+      id: "locale",
+      header: "Locale",
+      renderCell: (o) => o.default_locale,
+    },
+    {
+      id: "ttl",
+      header: "Reservation TTL",
+      renderCell: (o) => formatDurationSeconds(o.reservation_ttl_seconds),
+    },
+    {
+      id: "created",
+      header: "Created",
+      renderCell: (o) => formatDate(o.created_at),
+    },
+    {
+      id: "status",
+      header: "Status",
+      renderCell: (o) =>
+        o.deleted_at === null ? (
+          <span style={badgeActiveStyle}>active</span>
+        ) : (
+          <span style={badgeDeletedStyle}>soft-deleted</span>
+        ),
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      hideOnMobile: true,
+      renderCell: (o) => (
+        <div style={rowActionsCellStyle}>
+          <button
+            type="button"
+            style={rowActionButtonStyle}
+            onClick={() => onOpen(o.id)}
+            data-testid={`orgs-open-${o.slug}`}
+          >
+            Details
+          </button>
+          {canUpdate ? (
+            <button
+              type="button"
+              style={rowActionButtonStyle}
+              onClick={() => onEdit(o.id)}
+              disabled={o.deleted_at !== null}
+              title={
+                o.deleted_at !== null
+                  ? "Soft-deleted organizations cannot be edited"
+                  : "Edit organization"
+              }
+              data-testid={`orgs-edit-${o.slug}`}
+            >
+              Edit
+            </button>
+          ) : null}
+          {canArchive ? (
+            <button
+              type="button"
+              style={rowActionDangerStyle}
+              onClick={() => onArchive(o.id)}
+              disabled={o.deleted_at !== null}
+              title={
+                o.deleted_at !== null
+                  ? "Organization is already archived"
+                  : "Archive organization (soft-delete)"
+              }
+              data-testid={`orgs-archive-${o.slug}`}
+            >
+              Archive
+            </button>
+          ) : null}
+        </div>
+      ),
+    },
+  ];
+  void activeOrgId;
   return (
     <div style={tableWrapStyle} role="region" aria-label="Organizations table">
-      <table style={tableStyle} data-testid="orgs-table">
-        <thead>
-          <tr>
-            <th scope="col" style={thStyle}>Name</th>
-            <th scope="col" style={thStyle}>Slug</th>
-            <th scope="col" style={thStyle}>Country</th>
-            <th scope="col" style={thStyle}>Locale</th>
-            <th scope="col" style={thStyle}>Reservation TTL</th>
-            <th scope="col" style={thStyle}>Created</th>
-            <th scope="col" style={thStyle}>Status</th>
-            <th scope="col" style={thStyle} aria-label="Actions" />
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((o) => {
-            const isActive = o.id === activeOrgId;
-            return (
-              <tr
-                key={o.id}
-                style={isActive ? trActiveStyle : trStyle}
-                data-testid={`orgs-row-${o.slug}`}
-              >
-                <td style={tdStyle}>
-                  <button
-                    type="button"
-                    style={rowNameButtonStyle}
-                    onClick={() => onOpen(o.id)}
-                    aria-label={`Open details for ${o.name}`}
-                  >
-                    {o.name}
-                  </button>
-                </td>
-                <td style={tdMonoStyle}>{o.slug}</td>
-                <td style={tdStyle}>{o.country}</td>
-                <td style={tdStyle}>{o.default_locale}</td>
-                <td style={tdStyle}>
-                  {formatDurationSeconds(o.reservation_ttl_seconds)}
-                </td>
-                <td style={tdStyle}>{formatDate(o.created_at)}</td>
-                <td style={tdStyle}>
-                  {o.deleted_at === null ? (
-                    <span style={badgeActiveStyle}>active</span>
-                  ) : (
-                    <span style={badgeDeletedStyle}>soft-deleted</span>
-                  )}
-                </td>
-                <td style={tdStyle}>
-                  <div style={rowActionsCellStyle}>
-                    <button
-                      type="button"
-                      style={rowActionButtonStyle}
-                      onClick={() => onOpen(o.id)}
-                      data-testid={`orgs-open-${o.slug}`}
-                    >
-                      Details
-                    </button>
-                    {canUpdate ? (
-                      <button
-                        type="button"
-                        style={rowActionButtonStyle}
-                        onClick={() => onEdit(o.id)}
-                        disabled={o.deleted_at !== null}
-                        title={
-                          o.deleted_at !== null
-                            ? "Soft-deleted organizations cannot be edited"
-                            : "Edit organization"
-                        }
-                        data-testid={`orgs-edit-${o.slug}`}
-                      >
-                        Edit
-                      </button>
-                    ) : null}
-                    {canArchive ? (
-                      <button
-                        type="button"
-                        style={rowActionDangerStyle}
-                        onClick={() => onArchive(o.id)}
-                        disabled={o.deleted_at !== null}
-                        title={
-                          o.deleted_at !== null
-                            ? "Organization is already archived"
-                            : "Archive organization (soft-delete)"
-                        }
-                        data-testid={`orgs-archive-${o.slug}`}
-                      >
-                        Archive
-                      </button>
-                    ) : null}
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <ResponsiveTable<AdminOrganization>
+        id="orgs-table"
+        columns={columns}
+        rows={rows}
+        rowKey={(o) => o.id}
+      />
     </div>
   );
 }
@@ -4208,40 +4227,6 @@ const tableWrapStyle: CSSProperties = {
   border: "1px solid #e2e8f0",
   borderRadius: 6,
   background: "#ffffff",
-};
-
-const tableStyle: CSSProperties = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: 13,
-};
-
-const thStyle: CSSProperties = {
-  textAlign: "left",
-  padding: "10px 12px",
-  borderBottom: "1px solid #e2e8f0",
-  background: "#f8fafc",
-  fontSize: 11,
-  fontWeight: 600,
-  color: "#475569",
-  textTransform: "uppercase",
-  letterSpacing: 0.4,
-};
-
-const trStyle: CSSProperties = {};
-const trActiveStyle: CSSProperties = { background: "#eff6ff" };
-
-const tdStyle: CSSProperties = {
-  padding: "10px 12px",
-  borderBottom: "1px solid #f1f5f9",
-  color: "#0f172a",
-  verticalAlign: "top",
-};
-const tdMonoStyle: CSSProperties = {
-  ...tdStyle,
-  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-  fontSize: 12,
-  color: "#334155",
 };
 
 const rowNameButtonStyle: CSSProperties = {

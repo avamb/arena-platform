@@ -52,6 +52,10 @@ import { RequirePermission } from "@/components/RequirePermission";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useScope } from "@/lib/auth/ScopeContext";
 import { NAV_BY_PATH } from "@/lib/auth/navConfig";
+import {
+  ResponsiveTable,
+  type ResponsiveTableColumn,
+} from "@/components/layout";
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -550,74 +554,94 @@ function VenuesBody({ query, rows, canUpdate, canDelete, onEdit, onDelete }: Bod
       </div>
     );
   }
+  const columns: ResponsiveTableColumn<Venue>[] = [
+    {
+      id: "name",
+      header: "Name",
+      primary: true,
+      renderCell: (v) => (
+        <span data-testid={`venues-row-${v.id}`}>{v.name}</span>
+      ),
+    },
+    {
+      id: "org",
+      header: "Organization",
+      renderCell: (v) => <span title={v.org_id}>{shortenUUID(v.org_id)}</span>,
+    },
+    {
+      id: "city",
+      header: "City",
+      renderCell: (v) => (
+        <span title={v.city_id ?? ""}>
+          {v.city_id !== null ? shortenUUID(v.city_id) : "—"}
+        </span>
+      ),
+    },
+    {
+      id: "country",
+      header: "Country",
+      renderCell: (v) =>
+        v.country !== null && v.country !== undefined && v.country !== ""
+          ? v.country
+          : "—",
+    },
+    {
+      id: "capacity",
+      header: "Capacity",
+      renderCell: (v) =>
+        v.capacity_default !== null ? v.capacity_default.toLocaleString() : "—",
+    },
+    {
+      id: "status",
+      header: "Status",
+      renderCell: (v) => <VenueStatusBadge status={v.status ?? "active"} />,
+    },
+    {
+      id: "updated",
+      header: "Updated",
+      renderCell: (v) => formatDate(v.updated_at),
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      hideOnMobile: true,
+      renderCell: (v) => (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {canUpdate ? (
+            <button
+              type="button"
+              style={rowActionButtonStyle}
+              onClick={() => onEdit(v)}
+              data-testid={`venues-edit-${v.id}`}
+            >
+              Edit
+            </button>
+          ) : null}
+          {canDelete ? (
+            <button
+              type="button"
+              style={rowDangerButtonStyle}
+              onClick={() => onDelete(v)}
+              data-testid={`venues-delete-${v.id}`}
+            >
+              Archive
+            </button>
+          ) : null}
+          {!canUpdate && !canDelete ? (
+            <span style={mutedHintStyle}>read-only</span>
+          ) : null}
+        </div>
+      ),
+    },
+  ];
   return (
     <div style={tableWrapStyle} role="region" aria-label="Venues">
-      <table style={tableStyle} data-testid="venues-table">
-        <thead>
-          <tr>
-            <th scope="col" style={thStyle}>Name</th>
-            <th scope="col" style={thStyle}>Organization</th>
-            <th scope="col" style={thStyle}>City</th>
-            <th scope="col" style={thStyle}>Country</th>
-            <th scope="col" style={thStyle}>Capacity</th>
-            <th scope="col" style={thStyle}>Status</th>
-            <th scope="col" style={thStyle}>Updated</th>
-            <th scope="col" style={thStyle} aria-label="Actions" />
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((v) => (
-            <tr key={v.id} data-testid={`venues-row-${v.id}`}>
-              <td style={tdStyle}>{v.name}</td>
-              <td style={tdMonoStyle} title={v.org_id}>
-                {shortenUUID(v.org_id)}
-              </td>
-              <td style={tdMonoStyle} title={v.city_id ?? ""}>
-                {v.city_id !== null ? shortenUUID(v.city_id) : "—"}
-              </td>
-              <td style={tdStyle}>
-                {v.country !== null && v.country !== undefined && v.country !== ""
-                  ? v.country
-                  : "—"}
-              </td>
-              <td style={tdStyle}>
-                {v.capacity_default !== null
-                  ? v.capacity_default.toLocaleString()
-                  : "—"}
-              </td>
-              <td style={tdStyle}>
-                <VenueStatusBadge status={v.status ?? "active"} />
-              </td>
-              <td style={tdStyle}>{formatDate(v.updated_at)}</td>
-              <td style={tdActionsStyle}>
-                {canUpdate ? (
-                  <button
-                    type="button"
-                    style={rowActionButtonStyle}
-                    onClick={() => onEdit(v)}
-                    data-testid={`venues-edit-${v.id}`}
-                  >
-                    Edit
-                  </button>
-                ) : null}
-                {canDelete ? (
-                  <button
-                    type="button"
-                    style={rowDangerButtonStyle}
-                    onClick={() => onDelete(v)}
-                    data-testid={`venues-delete-${v.id}`}
-                  >
-                    Archive
-                  </button>
-                ) : null}
-                {!canUpdate && !canDelete ? (
-                  <span style={mutedHintStyle}>read-only</span>
-                ) : null}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <ResponsiveTable<Venue>
+        id="venues-table"
+        columns={columns}
+        rows={rows}
+        rowKey={(v) => v.id}
+      />
     </div>
   );
 }
@@ -1893,45 +1917,6 @@ const tableWrapStyle: CSSProperties = {
   border: "1px solid #e2e8f0",
   borderRadius: 6,
   background: "#ffffff",
-};
-
-const tableStyle: CSSProperties = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: 13,
-};
-
-const thStyle: CSSProperties = {
-  textAlign: "left",
-  padding: "10px 12px",
-  borderBottom: "1px solid #e2e8f0",
-  background: "#f8fafc",
-  fontSize: 11,
-  fontWeight: 600,
-  color: "#475569",
-  textTransform: "uppercase",
-  letterSpacing: 0.4,
-};
-
-const tdStyle: CSSProperties = {
-  padding: "10px 12px",
-  borderBottom: "1px solid #f1f5f9",
-  color: "#0f172a",
-  verticalAlign: "middle",
-};
-
-const tdMonoStyle: CSSProperties = {
-  ...tdStyle,
-  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-  fontSize: 12,
-  color: "#334155",
-};
-
-const tdActionsStyle: CSSProperties = {
-  ...tdStyle,
-  display: "flex",
-  gap: 6,
-  flexWrap: "wrap",
 };
 
 const statusBoxStyle: CSSProperties = {

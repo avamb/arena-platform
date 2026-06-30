@@ -18327,3 +18327,41 @@ Verification (npm --prefix apps/admin-web):
   npm run type-check                                          OK
   npm test --run                                              719/719 PASS
 Marked #296 passing.
+
+
+## 2026-06-30 - Feature #297 (M-4) Lists used by organizer / agent on mobile
+- Converted 5 support consoles (orders, tickets, refunds, channels, payments)
+  primary listing tables to <ResponsiveTable> from @/components/layout, with
+  filter toolbars wrapped behind useIsDesktop: on desktop they render inline
+  as before; below md a "Filters" button opens a <ResponsiveDrawer>
+  (id=<route>-filters-drawer, title="Filters") containing the existing
+  toolbar inputs. All existing data-testid attributes (rows, table id,
+  filter inputs, pagination) preserved so support-console tests stay green.
+- Converted 3 admin lists (organizations.tsx, venues.tsx, events.tsx) main
+  listing table to <ResponsiveTable>. Sessions/tiers sub-tables in
+  events.tsx, edit forms and admin panels intentionally left untouched.
+- Dropped now-dead local table styling constants (tableStyle/thStyle/tdStyle
+  /tdMonoStyle/tdActionsStyle/trStyle/trActiveStyle/tableRowStyle) where
+  TS noUnusedLocals would have failed; sub-table styles in events.tsx
+  remain (still referenced by sessions/tiers blocks).
+- Tradeoff: ResponsiveTable does not expose a per-row style prop, so the
+  pre-existing isActive blue row-highlight on selected order/ticket/refund
+  rows is gone. Selection remains visible through the open drawer.
+- New apps/admin-web/src/routes/responsiveLists.test.ts (4 cases) asserts:
+    (1) every converted file exports Route;
+    (2) every converted file imports from @/components/layout and references
+        ResponsiveTable;
+    (3) the 5 support consoles also reference ResponsiveDrawer and
+        useIsDesktop;
+    (4) no globalThis.devStore / mockDb / mockData / fakeData patterns in
+        the executable code of any converted file.
+Follow-ups for a later wave (NOT this feature):
+  - Sessions/tiers sub-tables in events.tsx as expandable accordions on mobile.
+  - Org_admin vs superadmin scope split on organizations.tsx (superadmin tree
+    intentionally desktop-only per spec); current conversion uses
+    ResponsiveTable for both since the scope check is centralised at
+    nav level.
+Verification (npm --prefix apps/admin-web):
+  npm run type-check                                          OK
+  npm test --run                                              723/723 PASS
+Marked #297 passing.

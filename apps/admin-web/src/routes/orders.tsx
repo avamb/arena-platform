@@ -54,6 +54,12 @@ import { RequirePermission } from "@/components/RequirePermission";
 import { NAV_BY_PATH } from "@/lib/auth/navConfig";
 import { SupportErrorState } from "@/components/admin/SupportErrorState";
 import {
+  ResponsiveTable,
+  ResponsiveDrawer,
+  useIsDesktop,
+  type ResponsiveTableColumn,
+} from "@/components/layout";
+import {
   SUPPORT_LIMIT_CHOICES,
   buildSupportQuery,
   canGoNext,
@@ -141,6 +147,8 @@ function OrdersConsole() {
   const [limit, setLimit] = useState<number>(initial.limit);
   const [offset, setOffset] = useState<number>(initial.offset);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
+  const isDesktop = useIsDesktop(true);
+  const [filtersOpen, setFiltersOpen] = useState<boolean>(false);
 
   // Validity gate: empty org_id is fine (no filter); non-empty must be UUID.
   const orgIdInvalid =
@@ -221,85 +229,112 @@ function OrdersConsole() {
         </div>
       </header>
 
-      <div style={S.toolbarStyle}>
-        <label style={S.fieldGroupStyle}>
-          <span style={S.fieldLabelStyle}>Organization ID</span>
-          <input
-            type="text"
-            inputMode="text"
-            placeholder="UUID (optional)"
-            value={orgIdInput}
-            onChange={(e) => setOrgIdInput(e.target.value)}
-            style={orgIdInvalid ? S.inputInvalidStyle : S.inputStyle}
-            data-testid="orders-org-id"
-            aria-invalid={orgIdInvalid}
-            aria-describedby={orgIdInvalid ? "orders-org-id-err" : undefined}
-          />
-          {orgIdInvalid ? (
-            <span
-              id="orders-org-id-err"
-              style={{ color: "#7f1d1d", fontSize: 11 }}
-              data-testid="orders-org-id-error"
+      {(() => {
+        const toolbar = (
+          <div style={S.toolbarStyle}>
+            <label style={S.fieldGroupStyle}>
+              <span style={S.fieldLabelStyle}>Organization ID</span>
+              <input
+                type="text"
+                inputMode="text"
+                placeholder="UUID (optional)"
+                value={orgIdInput}
+                onChange={(e) => setOrgIdInput(e.target.value)}
+                style={orgIdInvalid ? S.inputInvalidStyle : S.inputStyle}
+                data-testid="orders-org-id"
+                aria-invalid={orgIdInvalid}
+                aria-describedby={orgIdInvalid ? "orders-org-id-err" : undefined}
+              />
+              {orgIdInvalid ? (
+                <span
+                  id="orders-org-id-err"
+                  style={{ color: "#7f1d1d", fontSize: 11 }}
+                  data-testid="orders-org-id-error"
+                >
+                  Must be a valid UUID — filter not applied.
+                </span>
+              ) : null}
+            </label>
+            <label style={S.fieldGroupStyle}>
+              <span style={S.fieldLabelStyle}>State</span>
+              <select
+                value={state}
+                onChange={(e) => setState(e.target.value)}
+                style={S.selectStyle}
+                data-testid="orders-state"
+              >
+                <option value="">Any state</option>
+                {ORDER_STATES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={S.fieldGroupStyle}>
+              <span style={S.fieldLabelStyle}>Page size</span>
+              <select
+                value={String(limit)}
+                onChange={(e) => setLimit(clampLimit(Number(e.target.value)))}
+                style={S.selectStyle}
+                data-testid="orders-limit"
+              >
+                {SUPPORT_LIMIT_CHOICES.map((n) => (
+                  <option key={n} value={String(n)}>
+                    {n} / page
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div style={S.pageNavStyle} aria-live="polite">
+              <button
+                type="button"
+                style={S.buttonStyle}
+                disabled={!canGoPrev(offset) || query.isFetching}
+                onClick={() => setOffset(clampOffset(offset - limit))}
+                data-testid="orders-prev"
+              >
+                Prev
+              </button>
+              <span data-testid="orders-page-caption">
+                Page {currentPage(offset, limit)} · rows {rows.length}
+              </span>
+              <button
+                type="button"
+                style={S.buttonStyle}
+                disabled={!canGoNext(rows.length, limit) || query.isFetching}
+                onClick={() => setOffset(offset + limit)}
+                data-testid="orders-next"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        );
+        if (isDesktop) {
+          return toolbar;
+        }
+        return (
+          <>
+            <button
+              type="button"
+              style={S.buttonStyle}
+              onClick={() => setFiltersOpen(true)}
+              data-testid="orders-filters-open"
             >
-              Must be a valid UUID — filter not applied.
-            </span>
-          ) : null}
-        </label>
-        <label style={S.fieldGroupStyle}>
-          <span style={S.fieldLabelStyle}>State</span>
-          <select
-            value={state}
-            onChange={(e) => setState(e.target.value)}
-            style={S.selectStyle}
-            data-testid="orders-state"
-          >
-            <option value="">Any state</option>
-            {ORDER_STATES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label style={S.fieldGroupStyle}>
-          <span style={S.fieldLabelStyle}>Page size</span>
-          <select
-            value={String(limit)}
-            onChange={(e) => setLimit(clampLimit(Number(e.target.value)))}
-            style={S.selectStyle}
-            data-testid="orders-limit"
-          >
-            {SUPPORT_LIMIT_CHOICES.map((n) => (
-              <option key={n} value={String(n)}>
-                {n} / page
-              </option>
-            ))}
-          </select>
-        </label>
-        <div style={S.pageNavStyle} aria-live="polite">
-          <button
-            type="button"
-            style={S.buttonStyle}
-            disabled={!canGoPrev(offset) || query.isFetching}
-            onClick={() => setOffset(clampOffset(offset - limit))}
-            data-testid="orders-prev"
-          >
-            Prev
-          </button>
-          <span data-testid="orders-page-caption">
-            Page {currentPage(offset, limit)} · rows {rows.length}
-          </span>
-          <button
-            type="button"
-            style={S.buttonStyle}
-            disabled={!canGoNext(rows.length, limit) || query.isFetching}
-            onClick={() => setOffset(offset + limit)}
-            data-testid="orders-next"
-          >
-            Next
-          </button>
-        </div>
-      </div>
+              Filters
+            </button>
+            <ResponsiveDrawer
+              id="orders-filters-drawer"
+              open={filtersOpen}
+              onClose={() => setFiltersOpen(false)}
+              title="Filters"
+            >
+              {toolbar}
+            </ResponsiveDrawer>
+          </>
+        );
+      })()}
 
       <Body
         query={query}
@@ -349,62 +384,77 @@ function Body({ query, rows, activeOrderId, onOpen }: BodyProps) {
       </div>
     );
   }
+  const columns: ResponsiveTableColumn<AdminOrder>[] = [
+    {
+      id: "id",
+      header: "ID",
+      primary: true,
+      renderCell: (o) => (
+        <span data-testid={`orders-row-${o.id}`}>
+          <button
+            type="button"
+            style={S.rowNameButtonStyle}
+            onClick={() => onOpen(o.id)}
+            aria-label={`Open details for order ${o.id}`}
+            title={o.id}
+          >
+            {shortUuid(o.id)}
+          </button>
+        </span>
+      ),
+    },
+    {
+      id: "org",
+      header: "Org",
+      renderCell: (o) => <span title={o.org_id}>{shortUuid(o.org_id)}</span>,
+    },
+    {
+      id: "state",
+      header: "State",
+      renderCell: (o) => <span style={badgeForState(o.state)}>{o.state}</span>,
+    },
+    {
+      id: "total",
+      header: "Total",
+      renderCell: (o) => formatMoneyMinor(o.total, o.currency),
+    },
+    {
+      id: "created",
+      header: "Created",
+      renderCell: (o) => formatDateTime(o.created_at),
+    },
+    {
+      id: "completed",
+      header: "Completed",
+      renderCell: (o) => formatDateTime(o.completed_at),
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      hideOnMobile: true,
+      renderCell: (o) => (
+        <button
+          type="button"
+          style={S.rowActionButtonStyle}
+          onClick={() => onOpen(o.id)}
+          data-testid={`orders-open-${o.id}`}
+        >
+          Details
+        </button>
+      ),
+    },
+  ];
+  // Suppress unused-var warning for activeOrderId in this scope; row
+  // highlighting is omitted from the responsive table primitive.
+  void activeOrderId;
   return (
     <div style={S.tableWrapStyle} role="region" aria-label="Orders table">
-      <table style={S.tableStyle} data-testid="orders-table">
-        <thead>
-          <tr>
-            <th scope="col" style={S.thStyle}>ID</th>
-            <th scope="col" style={S.thStyle}>Org</th>
-            <th scope="col" style={S.thStyle}>State</th>
-            <th scope="col" style={S.thStyle}>Total</th>
-            <th scope="col" style={S.thStyle}>Created</th>
-            <th scope="col" style={S.thStyle}>Completed</th>
-            <th scope="col" style={S.thStyle} aria-label="Actions" />
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((o) => {
-            const isActive = o.id === activeOrderId;
-            return (
-              <tr
-                key={o.id}
-                style={isActive ? S.trActiveStyle : S.trStyle}
-                data-testid={`orders-row-${o.id}`}
-              >
-                <td style={S.tdMonoStyle}>
-                  <button
-                    type="button"
-                    style={S.rowNameButtonStyle}
-                    onClick={() => onOpen(o.id)}
-                    aria-label={`Open details for order ${o.id}`}
-                    title={o.id}
-                  >
-                    {shortUuid(o.id)}
-                  </button>
-                </td>
-                <td style={S.tdMonoStyle} title={o.org_id}>{shortUuid(o.org_id)}</td>
-                <td style={S.tdStyle}>
-                  <span style={badgeForState(o.state)}>{o.state}</span>
-                </td>
-                <td style={S.tdStyle}>{formatMoneyMinor(o.total, o.currency)}</td>
-                <td style={S.tdStyle}>{formatDateTime(o.created_at)}</td>
-                <td style={S.tdStyle}>{formatDateTime(o.completed_at)}</td>
-                <td style={S.tdStyle}>
-                  <button
-                    type="button"
-                    style={S.rowActionButtonStyle}
-                    onClick={() => onOpen(o.id)}
-                    data-testid={`orders-open-${o.id}`}
-                  >
-                    Details
-                  </button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <ResponsiveTable<AdminOrder>
+        id="orders-table"
+        columns={columns}
+        rows={rows}
+        rowKey={(o) => o.id}
+      />
     </div>
   );
 }
