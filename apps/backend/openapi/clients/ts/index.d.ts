@@ -2495,6 +2495,89 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/webhooks/subscribers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List active WordPress webhook subscribers
+         * @description Returns every `active = TRUE` row from `webhook_subscribers`
+         *     (feature #156, see
+         *     `apps/backend/internal/adapters/postgres/queries/webhook_subscribers.sql`
+         *     and `apps/backend/internal/platform/httpserver/wp_webhooks.go`).
+         *     The response is non-paginated; the active-subscriber set is
+         *     small and bounded in practice.
+         *
+         *     The `signing_secret` is intentionally OMITTED — it is only
+         *     returned by `POST /v1/webhooks/subscribers` at registration
+         *     time.
+         *
+         *     Requires JWT + the `webhook.subscriber.manage` permission.
+         */
+        get: operations["listWebhookSubscribers"];
+        put?: never;
+        /**
+         * Register a new WordPress webhook subscriber
+         * @description Creates a new entry in `webhook_subscribers`, generates a
+         *     cryptographically-random 64-character lowercase hex
+         *     HMAC-SHA256 signing secret, persists it in
+         *     `webhook_subscribers.signing_secret`, and returns it in the
+         *     response body. The secret is returned EXACTLY ONCE and
+         *     cannot be recovered via any subsequent endpoint.
+         *
+         *     `callback_url` is unique across active subscribers — a
+         *     duplicate registration returns `409 conflict`. When
+         *     `site_url` is absent or empty, the server copies
+         *     `callback_url` into that field. When `event_types` is absent
+         *     or `null`, the server normalises it to the empty array
+         *     (wildcard — receive every event type).
+         *
+         *     Requires JWT + the `webhook.subscriber.manage` permission.
+         */
+        post: operations["registerWebhookSubscriber"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/webhooks/subscribers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a single WordPress webhook subscriber
+         * @description Returns the `WebhookSubscriberSummary` for the row identified
+         *     by `{id}`. The `signing_secret` is NOT included — it is only
+         *     emitted at registration time.
+         *
+         *     Requires JWT + the `webhook.subscriber.manage` permission.
+         */
+        get: operations["getWebhookSubscriber"];
+        put?: never;
+        post?: never;
+        /**
+         * Deactivate (soft-delete) a WordPress webhook subscriber
+         * @description Flips `active` to `false` on the row identified by `{id}`.
+         *     The row itself is RETAINED for audit purposes;
+         *     `ListActiveWebhookSubscribers` simply stops returning it
+         *     and the dispatcher stops sending events to its
+         *     `callback_url`.
+         *
+         *     Requires JWT + the `webhook.subscriber.manage` permission.
+         */
+        delete: operations["deactivateWebhookSubscriber"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -7042,6 +7125,154 @@ export interface components {
             reason?: string;
             /** @description Present when `processed: true`; carries the updated refund. */
             refund?: components["schemas"]["RefundItem"] | null;
+        };
+        /**
+         * @description Safe (no-secret) representation of a registered WordPress webhook
+         *     subscriber, returned by `GET /v1/webhooks/subscribers` and
+         *     `GET /v1/webhooks/subscribers/{id}`. The `signing_secret` is
+         *     intentionally OMITTED from this projection — it is only emitted
+         *     once at registration time
+         *     (see `RegisterWebhookSubscriberResponse`).
+         */
+        WebhookSubscriberSummary: {
+            /**
+             * Format: uuid
+             * @description Arena subscriber UUID (primary key).
+             */
+            subscriber_id: string;
+            /**
+             * @description Human-readable URL of the WordPress site being registered.
+             *     Example: `https://mywordpress.example.com`. Defaults to
+             *     `callback_url` when absent on registration.
+             */
+            site_url: string;
+            /**
+             * @description WP REST API webhook endpoint that arena will POST events to.
+             *     UNIQUE across active subscribers — re-registering the same
+             *     URL returns `409 conflict`.
+             */
+            callback_url: string;
+            /**
+             * @description List of `event_type` values this subscriber receives. An
+             *     empty array means wildcard — the subscriber receives every
+             *     event type. Documented platform values today:
+             *     `order_paid`, `ticket_issued`, `refund_succeeded`.
+             */
+            event_types: string[];
+            /**
+             * @description `true` for live subscribers; flipped to `false` by
+             *     `DELETE /v1/webhooks/subscribers/{id}` (soft delete).
+             *     `ListActiveWebhookSubscribers` only returns rows where this
+             *     is `true`.
+             */
+            active: boolean;
+            /**
+             * Format: date-time
+             * @description RFC 3339 timestamp of initial registration.
+             */
+            created_at: string;
+        };
+        /**
+         * @description Request body for `POST /v1/webhooks/subscribers`. Only
+         *     `callback_url` is strictly required; `site_url` defaults to
+         *     `callback_url` when absent, and `event_types` defaults to the
+         *     empty wildcard array.
+         */
+        RegisterWebhookSubscriberRequest: {
+            /**
+             * @description Human-readable URL of the WordPress site being registered.
+             *     Optional. When absent or empty, the server copies
+             *     `callback_url` into this field.
+             */
+            site_url?: string;
+            /**
+             * @description WP REST API webhook endpoint. Required and non-empty —
+             *     empty values are rejected with `validation_error`.
+             *     Duplicate `callback_url` values across active subscribers
+             *     return `409 conflict`.
+             */
+            callback_url: string;
+            /**
+             * @description List of `event_type` values this subscriber wants to
+             *     receive. Absent or `null` is normalised to `[]` (wildcard
+             *     = receive everything). Documented platform values today:
+             *     `order_paid`, `ticket_issued`, `refund_succeeded`.
+             */
+            event_types?: string[];
+        };
+        /**
+         * @description Response body for `POST /v1/webhooks/subscribers`. The
+         *     `signing_secret` is returned EXACTLY ONCE here and is not
+         *     recoverable via any subsequent endpoint — callers MUST persist
+         *     it immediately (e.g. into the WP plugin's
+         *     `arena_webhook_secret` option) for HMAC-SHA256 signature
+         *     verification on dispatched events.
+         */
+        RegisterWebhookSubscriberResponse: {
+            /**
+             * Format: uuid
+             * @description Newly assigned subscriber UUID.
+             */
+            subscriber_id: string;
+            /**
+             * @description Echo of the registered `site_url` (defaulted from
+             *     `callback_url` when the request omitted it).
+             */
+            site_url: string;
+            /** @description Echo of the registered `callback_url`. */
+            callback_url: string;
+            /**
+             * @description Echo of the registered `event_types` (always an array,
+             *     never `null`).
+             */
+            event_types: string[];
+            /**
+             * @description Always `true` on a successful registration — new
+             *     subscribers are activated immediately.
+             */
+            active: boolean;
+            /**
+             * @description 64-character lowercase hex string (32 random bytes hex
+             *     encoded) used as the HMAC-SHA256 signing key for events
+             *     dispatched to this subscriber. Returned ONLY by this
+             *     endpoint; treat as a credential.
+             */
+            signing_secret: string;
+        };
+        /**
+         * @description Non-paginated list envelope returned by
+         *     `GET /v1/webhooks/subscribers`. Backed by
+         *     `ListActiveWebhookSubscribers`, so only `active = TRUE`
+         *     rows are included.
+         */
+        WebhookSubscriberListResponse: {
+            /** @description Zero or more active subscriber summaries. */
+            subscribers: components["schemas"]["WebhookSubscriberSummary"][];
+            /** @description Length of `subscribers` (convenience field). */
+            total: number;
+        };
+        /**
+         * @description Acknowledgement envelope returned by
+         *     `DELETE /v1/webhooks/subscribers/{id}` on success. The
+         *     subscriber row is retained for audit; only the `active` flag
+         *     is flipped to `false`.
+         */
+        DeactivateWebhookSubscriberResponse: {
+            /**
+             * Format: uuid
+             * @description UUID of the subscriber that was deactivated.
+             */
+            subscriber_id: string;
+            /**
+             * @description Always `false` on a successful deactivation — the
+             *     handler returns the post-update row.
+             */
+            active: boolean;
+            /**
+             * @description Human-readable confirmation string. Always literal
+             *     `"subscriber deactivated"` today.
+             */
+            message: string;
         };
     };
     responses: never;
@@ -16222,6 +16453,330 @@ export interface operations {
             /**
              * @description Barcode queries unavailable
              *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listWebhookSubscribers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active webhook subscribers (possibly empty). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookSubscriberListResponse"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `webhook.subscriber.manage` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error while listing subscribers
+             *     (`internal_error`).
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Webhook subscriber queries unavailable
+             *     (`service_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    registerWebhookSubscriber: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterWebhookSubscriberRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description Subscriber registered. The response body contains the
+             *     `signing_secret` — store it immediately, it is NOT
+             *     recoverable.
+             */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegisterWebhookSubscriberResponse"];
+                };
+            };
+            /**
+             * @description Invalid body or missing required field. Possible error
+             *     codes: `bad_request` (invalid JSON), `validation_error`
+             *     (callback_url is required).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `webhook.subscriber.manage` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `callback_url` already registered against another active
+             *     subscriber row (`conflict`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error while registering the subscriber
+             *     (`internal_error` — secret generation failed or DB write
+             *     failed).
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Webhook subscriber queries or pool unavailable
+             *     (`service_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getWebhookSubscriber: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Subscriber UUID (primary key of `webhook_subscribers.id`). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Subscriber summary (no signing_secret). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookSubscriberSummary"];
+                };
+            };
+            /** @description `{id}` is not a valid UUID (`bad_request`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `webhook.subscriber.manage` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No subscriber row matches `{id}` (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error while looking the row up
+             *     (`internal_error`).
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Webhook subscriber queries unavailable
+             *     (`service_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deactivateWebhookSubscriber: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Subscriber UUID (primary key of `webhook_subscribers.id`). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Subscriber deactivated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeactivateWebhookSubscriberResponse"];
+                };
+            };
+            /** @description `{id}` is not a valid UUID (`bad_request`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `webhook.subscriber.manage` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No subscriber row matches `{id}` (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error while deactivating the row
+             *     (`internal_error`).
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Webhook subscriber queries or pool unavailable
+             *     (`service_unavailable`).
              */
             503: {
                 headers: {

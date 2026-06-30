@@ -5411,6 +5411,172 @@ components:
           description: |
             Present when `processed: true`; carries the updated refund.
 
+    WebhookSubscriberSummary:
+      type: object
+      required: [subscriber_id, site_url, callback_url, event_types, active, created_at]
+      description: |
+        Safe (no-secret) representation of a registered WordPress webhook
+        subscriber, returned by `GET /v1/webhooks/subscribers` and
+        `GET /v1/webhooks/subscribers/{id}`. The `signing_secret` is
+        intentionally OMITTED from this projection — it is only emitted
+        once at registration time
+        (see `RegisterWebhookSubscriberResponse`).
+      properties:
+        subscriber_id:
+          type: string
+          format: uuid
+          description: Arena subscriber UUID (primary key).
+        site_url:
+          type: string
+          description: |
+            Human-readable URL of the WordPress site being registered.
+            Example: `https://mywordpress.example.com`. Defaults to
+            `callback_url` when absent on registration.
+        callback_url:
+          type: string
+          description: |
+            WP REST API webhook endpoint that arena will POST events to.
+            UNIQUE across active subscribers — re-registering the same
+            URL returns `409 conflict`.
+        event_types:
+          type: array
+          description: |
+            List of `event_type` values this subscriber receives. An
+            empty array means wildcard — the subscriber receives every
+            event type. Documented platform values today:
+            `order_paid`, `ticket_issued`, `refund_succeeded`.
+          items:
+            type: string
+        active:
+          type: boolean
+          description: |
+            `true` for live subscribers; flipped to `false` by
+            `DELETE /v1/webhooks/subscribers/{id}` (soft delete).
+            `ListActiveWebhookSubscribers` only returns rows where this
+            is `true`.
+        created_at:
+          type: string
+          format: date-time
+          description: RFC 3339 timestamp of initial registration.
+
+    RegisterWebhookSubscriberRequest:
+      type: object
+      required: [callback_url]
+      description: |
+        Request body for `POST /v1/webhooks/subscribers`. Only
+        `callback_url` is strictly required; `site_url` defaults to
+        `callback_url` when absent, and `event_types` defaults to the
+        empty wildcard array.
+      properties:
+        site_url:
+          type: string
+          description: |
+            Human-readable URL of the WordPress site being registered.
+            Optional. When absent or empty, the server copies
+            `callback_url` into this field.
+        callback_url:
+          type: string
+          description: |
+            WP REST API webhook endpoint. Required and non-empty —
+            empty values are rejected with `validation_error`.
+            Duplicate `callback_url` values across active subscribers
+            return `409 conflict`.
+        event_types:
+          type: array
+          description: |
+            List of `event_type` values this subscriber wants to
+            receive. Absent or `null` is normalised to `[]` (wildcard
+            = receive everything). Documented platform values today:
+            `order_paid`, `ticket_issued`, `refund_succeeded`.
+          items:
+            type: string
+
+    RegisterWebhookSubscriberResponse:
+      type: object
+      required: [subscriber_id, site_url, callback_url, event_types, active, signing_secret]
+      description: |
+        Response body for `POST /v1/webhooks/subscribers`. The
+        `signing_secret` is returned EXACTLY ONCE here and is not
+        recoverable via any subsequent endpoint — callers MUST persist
+        it immediately (e.g. into the WP plugin's
+        `arena_webhook_secret` option) for HMAC-SHA256 signature
+        verification on dispatched events.
+      properties:
+        subscriber_id:
+          type: string
+          format: uuid
+          description: Newly assigned subscriber UUID.
+        site_url:
+          type: string
+          description: |
+            Echo of the registered `site_url` (defaulted from
+            `callback_url` when the request omitted it).
+        callback_url:
+          type: string
+          description: Echo of the registered `callback_url`.
+        event_types:
+          type: array
+          items:
+            type: string
+          description: |
+            Echo of the registered `event_types` (always an array,
+            never `null`).
+        active:
+          type: boolean
+          description: |
+            Always `true` on a successful registration — new
+            subscribers are activated immediately.
+        signing_secret:
+          type: string
+          description: |
+            64-character lowercase hex string (32 random bytes hex
+            encoded) used as the HMAC-SHA256 signing key for events
+            dispatched to this subscriber. Returned ONLY by this
+            endpoint; treat as a credential.
+
+    WebhookSubscriberListResponse:
+      type: object
+      required: [subscribers, total]
+      description: |
+        Non-paginated list envelope returned by
+        `GET /v1/webhooks/subscribers`. Backed by
+        `ListActiveWebhookSubscribers`, so only `active = TRUE`
+        rows are included.
+      properties:
+        subscribers:
+          type: array
+          description: Zero or more active subscriber summaries.
+          items:
+            $ref: "#/components/schemas/WebhookSubscriberSummary"
+        total:
+          type: integer
+          minimum: 0
+          description: Length of `subscribers` (convenience field).
+
+    DeactivateWebhookSubscriberResponse:
+      type: object
+      required: [subscriber_id, active, message]
+      description: |
+        Acknowledgement envelope returned by
+        `DELETE /v1/webhooks/subscribers/{id}` on success. The
+        subscriber row is retained for audit; only the `active` flag
+        is flipped to `false`.
+      properties:
+        subscriber_id:
+          type: string
+          format: uuid
+          description: UUID of the subscriber that was deactivated.
+        active:
+          type: boolean
+          description: |
+            Always `false` on a successful deactivation — the
+            handler returns the post-update row.
+        message:
+          type: string
+          description: |
+            Human-readable confirmation string. Always literal
+            `"subscriber deactivated"` today.
+
 paths:
   /healthz:
     get:
@@ -14322,6 +14488,382 @@ paths:
           description: |
             Barcode queries unavailable
             (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/webhooks/subscribers:
+    get:
+      operationId: listWebhookSubscribers
+      summary: List active WordPress webhook subscribers
+      description: |
+        Returns every `active = TRUE` row from `webhook_subscribers`
+        (feature #156, see
+        `apps/backend/internal/adapters/postgres/queries/webhook_subscribers.sql`
+        and `apps/backend/internal/platform/httpserver/wp_webhooks.go`).
+        The response is non-paginated; the active-subscriber set is
+        small and bounded in practice.
+
+        The `signing_secret` is intentionally OMITTED — it is only
+        returned by `POST /v1/webhooks/subscribers` at registration
+        time.
+
+        Requires JWT + the `webhook.subscriber.manage` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Active webhook subscribers (possibly empty).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSubscriberListResponse"
+              examples:
+                empty:
+                  summary: No subscribers registered yet
+                  value:
+                    subscribers: []
+                    total: 0
+                oneWildcard:
+                  summary: One subscriber receiving every event type
+                  value:
+                    subscribers:
+                      - subscriber_id: "01929d0e-0e47-7000-8000-000000000b01"
+                        site_url: "https://wp1.example.com"
+                        callback_url: "https://wp1.example.com/wp-json/arena-events/v1/webhook"
+                        event_types: []
+                        active: true
+                        created_at: "2026-06-30T12:00:00Z"
+                    total: 1
+                twoTyped:
+                  summary: Two subscribers with explicit event type filters
+                  value:
+                    subscribers:
+                      - subscriber_id: "01929d0e-0e47-7000-8000-000000000b01"
+                        site_url: "https://wp1.example.com"
+                        callback_url: "https://wp1.example.com/wp-json/arena-events/v1/webhook"
+                        event_types: ["order_paid", "ticket_issued"]
+                        active: true
+                        created_at: "2026-06-30T12:00:00Z"
+                      - subscriber_id: "01929d0e-0e47-7000-8000-000000000b02"
+                        site_url: "https://wp2.example.com"
+                        callback_url: "https://wp2.example.com/wp-json/arena-events/v1/webhook"
+                        event_types: ["refund_succeeded"]
+                        active: true
+                        created_at: "2026-06-30T12:01:00Z"
+                    total: 2
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `webhook.subscriber.manage` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error while listing subscribers
+            (`internal_error`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Webhook subscriber queries unavailable
+            (`service_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: registerWebhookSubscriber
+      summary: Register a new WordPress webhook subscriber
+      description: |
+        Creates a new entry in `webhook_subscribers`, generates a
+        cryptographically-random 64-character lowercase hex
+        HMAC-SHA256 signing secret, persists it in
+        `webhook_subscribers.signing_secret`, and returns it in the
+        response body. The secret is returned EXACTLY ONCE and
+        cannot be recovered via any subsequent endpoint.
+
+        `callback_url` is unique across active subscribers — a
+        duplicate registration returns `409 conflict`. When
+        `site_url` is absent or empty, the server copies
+        `callback_url` into that field. When `event_types` is absent
+        or `null`, the server normalises it to the empty array
+        (wildcard — receive every event type).
+
+        Requires JWT + the `webhook.subscriber.manage` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterWebhookSubscriberRequest"
+            examples:
+              wildcardMinimal:
+                summary: Minimal — only `callback_url`, wildcard event types
+                value:
+                  callback_url: "https://wp1.example.com/wp-json/arena-events/v1/webhook"
+              typedFull:
+                summary: Full registration with explicit event filters
+                value:
+                  site_url: "https://wp2.example.com"
+                  callback_url: "https://wp2.example.com/wp-json/arena-events/v1/webhook"
+                  event_types: ["order_paid", "ticket_issued", "refund_succeeded"]
+              singleEvent:
+                summary: Subscriber that only wants `refund_succeeded`
+                value:
+                  site_url: "https://wp3.example.com"
+                  callback_url: "https://wp3.example.com/wp-json/arena-events/v1/webhook"
+                  event_types: ["refund_succeeded"]
+      responses:
+        "201":
+          description: |
+            Subscriber registered. The response body contains the
+            `signing_secret` — store it immediately, it is NOT
+            recoverable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterWebhookSubscriberResponse"
+              examples:
+                wildcardCreated:
+                  summary: Wildcard subscriber created
+                  value:
+                    subscriber_id: "01929d0e-0e47-7000-8000-000000000b01"
+                    site_url: "https://wp1.example.com/wp-json/arena-events/v1/webhook"
+                    callback_url: "https://wp1.example.com/wp-json/arena-events/v1/webhook"
+                    event_types: []
+                    active: true
+                    signing_secret: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                typedCreated:
+                  summary: Typed subscriber created
+                  value:
+                    subscriber_id: "01929d0e-0e47-7000-8000-000000000b02"
+                    site_url: "https://wp2.example.com"
+                    callback_url: "https://wp2.example.com/wp-json/arena-events/v1/webhook"
+                    event_types: ["order_paid", "ticket_issued", "refund_succeeded"]
+                    active: true
+                    signing_secret: "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+        "400":
+          description: |
+            Invalid body or missing required field. Possible error
+            codes: `bad_request` (invalid JSON), `validation_error`
+            (callback_url is required).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `webhook.subscriber.manage` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            `callback_url` already registered against another active
+            subscriber row (`conflict`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error while registering the subscriber
+            (`internal_error` — secret generation failed or DB write
+            failed).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Webhook subscriber queries or pool unavailable
+            (`service_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/webhooks/subscribers/{id}:
+    get:
+      operationId: getWebhookSubscriber
+      summary: Get a single WordPress webhook subscriber
+      description: |
+        Returns the `WebhookSubscriberSummary` for the row identified
+        by `{id}`. The `signing_secret` is NOT included — it is only
+        emitted at registration time.
+
+        Requires JWT + the `webhook.subscriber.manage` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Subscriber UUID (primary key of `webhook_subscribers.id`).
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Subscriber summary (no signing_secret).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSubscriberSummary"
+              examples:
+                wildcard:
+                  summary: Wildcard subscriber (no event_type filter)
+                  value:
+                    subscriber_id: "01929d0e-0e47-7000-8000-000000000b01"
+                    site_url: "https://wp1.example.com"
+                    callback_url: "https://wp1.example.com/wp-json/arena-events/v1/webhook"
+                    event_types: []
+                    active: true
+                    created_at: "2026-06-30T12:00:00Z"
+                typed:
+                  summary: Subscriber filtering by three event types
+                  value:
+                    subscriber_id: "01929d0e-0e47-7000-8000-000000000b02"
+                    site_url: "https://wp2.example.com"
+                    callback_url: "https://wp2.example.com/wp-json/arena-events/v1/webhook"
+                    event_types: ["order_paid", "ticket_issued", "refund_succeeded"]
+                    active: true
+                    created_at: "2026-06-30T12:01:00Z"
+        "400":
+          description: |
+            `{id}` is not a valid UUID (`bad_request`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `webhook.subscriber.manage` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No subscriber row matches `{id}` (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error while looking the row up
+            (`internal_error`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Webhook subscriber queries unavailable
+            (`service_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      operationId: deactivateWebhookSubscriber
+      summary: Deactivate (soft-delete) a WordPress webhook subscriber
+      description: |
+        Flips `active` to `false` on the row identified by `{id}`.
+        The row itself is RETAINED for audit purposes;
+        `ListActiveWebhookSubscribers` simply stops returning it
+        and the dispatcher stops sending events to its
+        `callback_url`.
+
+        Requires JWT + the `webhook.subscriber.manage` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Subscriber UUID (primary key of `webhook_subscribers.id`).
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Subscriber deactivated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeactivateWebhookSubscriberResponse"
+              examples:
+                deactivated:
+                  summary: Subscriber soft-deleted
+                  value:
+                    subscriber_id: "01929d0e-0e47-7000-8000-000000000b01"
+                    active: false
+                    message: "subscriber deactivated"
+        "400":
+          description: |
+            `{id}` is not a valid UUID (`bad_request`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `webhook.subscriber.manage` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No subscriber row matches `{id}` (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error while deactivating the row
+            (`internal_error`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Webhook subscriber queries or pool unavailable
+            (`service_unavailable`).
           content:
             application/json:
               schema:

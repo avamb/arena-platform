@@ -352,6 +352,14 @@ func buildDriftTestServer(t *testing.T) *Server {
 		// GET /v1/refunds/{id}, POST /v1/refunds/{id}/approve,
 		// POST /v1/refunds/{id}/reject, POST /v1/refunds/webhook.
 		RefundQueries: gen.New(nil),
+		// Wire WebhookSubQueries so the WordPress webhook subscriber
+		// registry routes (feature #156 / documented under feature
+		// #277) are mounted for the drift check:
+		// GET  /v1/webhooks/subscribers,
+		// POST /v1/webhooks/subscribers,
+		// GET  /v1/webhooks/subscribers/{id},
+		// DELETE /v1/webhooks/subscribers/{id}.
+		WebhookSubQueries: gen.New(nil),
 		// NOTE: BarcodeQueries is intentionally NOT wired here for the
 		// drift check. The barcode federation surfaces seven routes
 		// (POST/GET /v1/barcodes/authorities, POST /v1/barcodes,

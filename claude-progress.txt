@@ -17407,3 +17407,80 @@ wave and belongs in a dedicated feature. Skipping so the orchestrator
 can reassign or revise the spec.
 
 Backlog: 275/301 (unchanged).
+
+=== 2026-06-30: Feature #277 - A-16 Document webhook_subscribers endpoints in OpenAPI ===
+apps/backend/openapi/openapi.yaml:
+  - Added 5 component schemas: WebhookSubscriberSummary (no
+    signing_secret), RegisterWebhookSubscriberRequest,
+    RegisterWebhookSubscriberResponse (with signing_secret),
+    WebhookSubscriberListResponse envelope,
+    DeactivateWebhookSubscriberResponse.
+  - Added 2 path entries covering all four wp_webhooks.go subscriber
+    handlers (feature description's "webhook_subscribers.go" is the
+    historical group name; actual file is wp_webhooks.go):
+      GET    /v1/webhooks/subscribers       -> listWebhookSubscribers
+      POST   /v1/webhooks/subscribers       -> registerWebhookSubscriber
+      GET    /v1/webhooks/subscribers/{id}  -> getWebhookSubscriber
+      DELETE /v1/webhooks/subscribers/{id}  -> deactivateWebhookSubscriber
+    All four carry bearerAuth + tags:[v1] + permission name
+    (webhook.subscriber.manage) in description. Full error catalogue
+    from wp_webhooks.go documented across status codes: 400
+    (bad_request, validation_error), 401, 403, 404 (not_found), 409
+    (conflict), 500 (internal_error), 503 (service_unavailable).
+  - GET list/get/delete examples avoid leaking signing_secret. POST
+    201 examples include 64-char-hex signing_secret matching the
+    crypto/rand.Read + hex.EncodeToString output of
+    handleRegisterWebhookSubscriber.
+
+apps/backend/internal/platform/httpserver/openapi_webhook_subscribers_277_test.go (NEW):
+  9 contract tests pinning spec for #277: PathsPresent (2),
+  OperationIDsPresent (4), SchemasPresent (5), PermissionsDocumented
+  (4 ops x webhook.subscriber.manage), BearerAuthAndTags (4),
+  ErrorEnvelopeUsed (4), WebhookSubscriberErrorCodesDocumented (6),
+  SummaryOmitsSigningSecret (slices WebhookSubscriberSummary block
+  and asserts property declaration line "\n        signing_secret:"
+  is absent — prose references in description blocks intentionally
+  allowed — and asserts same property line IS present inside
+  RegisterWebhookSubscriberResponse), SpecExamplesValidate —
+  minimal contract test walking GET list 200 (total == len, per-row
+  shape, no secret leak), POST register requestBody (required
+  callback_url non-empty, optional event_types is []string,
+  optional site_url non-empty when present), POST register 201
+  (all six required fields, signing_secret is 64-char lowercase hex,
+  active=true), GET 200 by id (summary row shape), DELETE 200
+  (active=false, message non-empty, UUID-shaped id). Reuses
+  mustOperation / findOpenAPISpecPath / looksLikeRFC3339 helpers.
+  Local itoaSmall277 avoids strconv import and collision with other
+  test files' itoaSmall.
+
+apps/backend/internal/platform/httpserver/openapi_drift_test.go:
+  buildDriftTestServer now wires WebhookSubQueries: gen.New(nil) so
+  the four new webhook subscriber paths are mounted on the
+  drift-test chi router (both the read group requiring only
+  webhookSubQueries and the write group additionally requiring
+  s.pool — already wired via fakePoolDB).
+
+apps/backend/internal/adapters/http/openapi/types_gen.go:
+  Regenerated via oapi-codegen v2.4.1 (golang:1.24 docker). 16
+  occurrences of new type names / op ids verified. Known OpenAPI 3.1
+  warning unchanged.
+apps/backend/openapi/clients/ts/index.d.ts:
+  Regenerated via scripts/gen-ts-client.mjs (openapi-typescript
+  7.13.0). 24 occurrences of new type names / op ids verified.
+
+Verification:
+  docker golang:1.24 go test -run TestOpenAPI277 -count=1 -v   PASS (9/9)
+  docker golang:1.24 go build ./...                            OK
+  docker golang:1.24 go test -run TestOpenAPIDriftCheck_SpecCoversAllCodeRoutes
+                                                                PASS
+                (WebhookSubQueries wired; four webhook subscriber
+                 routes mounted and matched by spec — no
+                 newly-introduced "code routes missing from spec"
+                 entries.)
+  docker golang:1.24 go test -run TestOpenAPIDriftCheck_CodeCoversAllSpecRoutes
+                                                                FAIL
+                (22 phantom entries — unchanged from #275 baseline.
+                 No new phantoms introduced by #277.)
+  npm --prefix apps/admin-web run type-check                   OK.
+
+Marked #277 passing. Backlog: 276/301.

@@ -1376,6 +1376,23 @@ type CreateVenueRequest struct {
 // `active` when omitted.
 type CreateVenueRequestStatus string
 
+// DeactivateWebhookSubscriberResponse Acknowledgement envelope returned by
+// `DELETE /v1/webhooks/subscribers/{id}` on success. The
+// subscriber row is retained for audit; only the `active` flag
+// is flipped to `false`.
+type DeactivateWebhookSubscriberResponse struct {
+	// Active Always `false` on a successful deactivation — the
+	// handler returns the post-update row.
+	Active bool `json:"active"`
+
+	// Message Human-readable confirmation string. Always literal
+	// `"subscriber deactivated"` today.
+	Message string `json:"message"`
+
+	// SubscriberId UUID of the subscriber that was deactivated.
+	SubscriberId openapi_types.UUID `json:"subscriber_id"`
+}
+
 // DevAuthTokenRequest defines model for DevAuthTokenRequest.
 type DevAuthTokenRequest struct {
 	// ActorId UUID to embed as the "sub" (subject) claim. Defaults to 00000000-0000-0000-0000-000000000001.
@@ -3061,6 +3078,61 @@ type RefundWebhookRequest struct {
 // `event_type` → state mapping.
 type RefundWebhookRequestTargetState string
 
+// RegisterWebhookSubscriberRequest Request body for `POST /v1/webhooks/subscribers`. Only
+// `callback_url` is strictly required; `site_url` defaults to
+// `callback_url` when absent, and `event_types` defaults to the
+// empty wildcard array.
+type RegisterWebhookSubscriberRequest struct {
+	// CallbackUrl WP REST API webhook endpoint. Required and non-empty —
+	// empty values are rejected with `validation_error`.
+	// Duplicate `callback_url` values across active subscribers
+	// return `409 conflict`.
+	CallbackUrl string `json:"callback_url"`
+
+	// EventTypes List of `event_type` values this subscriber wants to
+	// receive. Absent or `null` is normalised to `[]` (wildcard
+	// = receive everything). Documented platform values today:
+	// `order_paid`, `ticket_issued`, `refund_succeeded`.
+	EventTypes *[]string `json:"event_types,omitempty"`
+
+	// SiteUrl Human-readable URL of the WordPress site being registered.
+	// Optional. When absent or empty, the server copies
+	// `callback_url` into this field.
+	SiteUrl *string `json:"site_url,omitempty"`
+}
+
+// RegisterWebhookSubscriberResponse Response body for `POST /v1/webhooks/subscribers`. The
+// `signing_secret` is returned EXACTLY ONCE here and is not
+// recoverable via any subsequent endpoint — callers MUST persist
+// it immediately (e.g. into the WP plugin's
+// `arena_webhook_secret` option) for HMAC-SHA256 signature
+// verification on dispatched events.
+type RegisterWebhookSubscriberResponse struct {
+	// Active Always `true` on a successful registration — new
+	// subscribers are activated immediately.
+	Active bool `json:"active"`
+
+	// CallbackUrl Echo of the registered `callback_url`.
+	CallbackUrl string `json:"callback_url"`
+
+	// EventTypes Echo of the registered `event_types` (always an array,
+	// never `null`).
+	EventTypes []string `json:"event_types"`
+
+	// SigningSecret 64-character lowercase hex string (32 random bytes hex
+	// encoded) used as the HMAC-SHA256 signing key for events
+	// dispatched to this subscriber. Returned ONLY by this
+	// endpoint; treat as a credential.
+	SigningSecret string `json:"signing_secret"`
+
+	// SiteUrl Echo of the registered `site_url` (defaulted from
+	// `callback_url` when the request omitted it).
+	SiteUrl string `json:"site_url"`
+
+	// SubscriberId Newly assigned subscriber UUID.
+	SubscriberId openapi_types.UUID `json:"subscriber_id"`
+}
+
 // Reservation A reservation holds capacity for a buyer within a session (and
 // optionally a specific ticket tier). The state machine is:
 // `draft -> active -> converted | expired | cancelled`.
@@ -4048,6 +4120,54 @@ type VenueItem struct {
 // reports). Defaults to `active` when not set on create.
 type VenueItemStatus string
 
+// WebhookSubscriberListResponse Non-paginated list envelope returned by
+// `GET /v1/webhooks/subscribers`. Backed by
+// `ListActiveWebhookSubscribers`, so only `active = TRUE`
+// rows are included.
+type WebhookSubscriberListResponse struct {
+	// Subscribers Zero or more active subscriber summaries.
+	Subscribers []WebhookSubscriberSummary `json:"subscribers"`
+
+	// Total Length of `subscribers` (convenience field).
+	Total int `json:"total"`
+}
+
+// WebhookSubscriberSummary Safe (no-secret) representation of a registered WordPress webhook
+// subscriber, returned by `GET /v1/webhooks/subscribers` and
+// `GET /v1/webhooks/subscribers/{id}`. The `signing_secret` is
+// intentionally OMITTED from this projection — it is only emitted
+// once at registration time
+// (see `RegisterWebhookSubscriberResponse`).
+type WebhookSubscriberSummary struct {
+	// Active `true` for live subscribers; flipped to `false` by
+	// `DELETE /v1/webhooks/subscribers/{id}` (soft delete).
+	// `ListActiveWebhookSubscribers` only returns rows where this
+	// is `true`.
+	Active bool `json:"active"`
+
+	// CallbackUrl WP REST API webhook endpoint that arena will POST events to.
+	// UNIQUE across active subscribers — re-registering the same
+	// URL returns `409 conflict`.
+	CallbackUrl string `json:"callback_url"`
+
+	// CreatedAt RFC 3339 timestamp of initial registration.
+	CreatedAt time.Time `json:"created_at"`
+
+	// EventTypes List of `event_type` values this subscriber receives. An
+	// empty array means wildcard — the subscriber receives every
+	// event type. Documented platform values today:
+	// `order_paid`, `ticket_issued`, `refund_succeeded`.
+	EventTypes []string `json:"event_types"`
+
+	// SiteUrl Human-readable URL of the WordPress site being registered.
+	// Example: `https://mywordpress.example.com`. Defaults to
+	// `callback_url` when absent on registration.
+	SiteUrl string `json:"site_url"`
+
+	// SubscriberId Arena subscriber UUID (primary key).
+	SubscriberId openapi_types.UUID `json:"subscriber_id"`
+}
+
 // AttachNetworkAgentParams defines parameters for AttachNetworkAgent.
 type AttachNetworkAgentParams struct {
 	// XAdminReason SAUI-09 audit-reason header. The trimmed value is stamped
@@ -4451,3 +4571,6 @@ type RejectRefundJSONRequestBody = ApproveRefundRequest
 
 // CreateReservationJSONRequestBody defines body for CreateReservation for application/json ContentType.
 type CreateReservationJSONRequestBody = CreateReservationRequest
+
+// RegisterWebhookSubscriberJSONRequestBody defines body for RegisterWebhookSubscriber for application/json ContentType.
+type RegisterWebhookSubscriberJSONRequestBody = RegisterWebhookSubscriberRequest
