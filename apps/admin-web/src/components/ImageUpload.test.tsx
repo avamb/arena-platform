@@ -7,11 +7,14 @@
  * host pages that mount the component.
  */
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   ACCEPTED_MIME_TYPES,
   MAX_UPLOAD_BYTES,
   OWNER_TYPE_CONSTRAINTS,
   formatBytes,
+  formatUploadProgress,
   validateDimensions,
   validateFile,
 } from "@/components/ImageUpload";
@@ -100,5 +103,75 @@ describe("formatBytes", () => {
     expect(formatBytes(512)).toBe("512 B");
     expect(formatBytes(2048)).toBe("2.0 KiB");
     expect(formatBytes(MAX_UPLOAD_BYTES)).toBe("5.00 MiB");
+  });
+});
+
+describe("formatUploadProgress (M-6)", () => {
+  it("renders a Starting label when nothing has been measured yet", () => {
+    expect(formatUploadProgress(null)).toBe("Starting…");
+  });
+
+  it("renders an indeterminate label when total is unknown", () => {
+    expect(
+      formatUploadProgress({ loaded: 1024, total: 0, fraction: 0 }),
+    ).toBe("Uploading… 1.0 KiB");
+  });
+
+  it("renders a percentage when total is known", () => {
+    expect(
+      formatUploadProgress({
+        loaded: 512 * 1024,
+        total: 1024 * 1024,
+        fraction: 0.5,
+      }),
+    ).toBe("Uploading… 50% (512.0 KiB / 1.00 MiB)");
+  });
+
+  it("clamps the percentage to 0..100", () => {
+    expect(
+      formatUploadProgress({ loaded: -1, total: 1, fraction: -0.5 }),
+    ).toContain("0%");
+    expect(
+      formatUploadProgress({ loaded: 10, total: 1, fraction: 10 }),
+    ).toContain("100%");
+  });
+});
+
+describe("ImageUpload mobile contract (M-6)", () => {
+  const source = readFileSync(
+    resolve(__dirname, "ImageUpload.tsx"),
+    "utf8",
+  );
+
+  it("uses accept=image/* so mobile browsers offer the camera", () => {
+    // The narrower jpg/png/webp gate is enforced by validateFile, so
+    // the input attribute itself must be the wildcard form.
+    expect(source).toMatch(/accept="image\/\*"/);
+  });
+
+  it("sets capture=environment to hint the rear-facing camera", () => {
+    expect(source).toMatch(/capture="environment"/);
+  });
+
+  it("renders a cancel button while an upload is in flight", () => {
+    expect(source).toMatch(/data-testid=\{`\$\{testIdPrefix\}-cancel`\}/);
+    expect(source).toMatch(/aria-label="Cancel upload"/);
+  });
+
+  it("renders a progressbar with aria-valuenow during uploads", () => {
+    expect(source).toMatch(/role="progressbar"/);
+    expect(source).toMatch(/aria-valuemin=\{0\}/);
+    expect(source).toMatch(/aria-valuemax=\{100\}/);
+    expect(source).toMatch(/data-testid=\{`\$\{testIdPrefix\}-progress`\}/);
+  });
+
+  it("wires the upload mutation to the cancellable AbortController path", () => {
+    expect(source).toMatch(/abortRef\.current/);
+    expect(source).toMatch(/onProgress:/);
+    expect(source).toMatch(/signal:\s*controller\.signal/);
+  });
+
+  it("still enforces the 5 MiB client-side cap before POST", () => {
+    expect(source).toMatch(/validateFile\(file, ownerType\)/);
   });
 });

@@ -18421,3 +18421,46 @@ Verification (npm --prefix apps/admin-web):
   npm run type-check                                          OK
   npm test --run                                              739/739 PASS
 Marked #298 passing.
+
+
+## 2026-06-30 - Feature #299 (M-6) ImageUpload on mobile
+- apps/admin-web/src/components/ImageUpload.tsx file input now uses
+  accept="image/*" capture="environment" so iOS Safari / Android
+  Chrome offer the rear camera alongside the photo library. The
+  narrower jpg/png/webp gate is still enforced by validateFile.
+- Upload now runs through a new XHR-backed path in apps/admin-web/
+  src/lib/api/client.ts uploadViaXHR(): the existing fetch-based
+  uploadMedia entrypoint stays as the default, but when the caller
+  supplies onProgress and/or an external AbortSignal it switches to
+  XMLHttpRequest so the browser can emit upload-progress events
+  (Fetch still does not expose them in 2026) and abort() lands
+  promptly. New ApiError code network.aborted distinguishes user
+  cancels from network.failure / network.timeout.
+- ImageUpload uploadMutation now owns an AbortController in
+  abortRef, pipes onProgress into setUploadProgress, and exposes a
+  Cancel button (data-testid {prefix}-cancel, aria-label "Cancel
+  upload") that calls abortRef.current.abort(). Aborted uploads
+  surface as the inline notice "Upload cancelled." rather than the
+  raw error envelope.
+- A new progress widget renders only while the mutation is pending:
+  role=progressbar aria-valuemin/max/now with a determinate fill, a
+  formatted label via the new exported formatUploadProgress helper
+  ("Uploading... 50% (512.0 KiB / 1.00 MiB)" determinate, or
+  "Uploading... 512.0 KiB" indeterminate when total is unknown),
+  and an aria-live=polite container so screen readers announce the
+  percentage as it ticks.
+- 5 MiB client-side rejection was already in place via
+  validateFile() (MAX_UPLOAD_BYTES = 5 * 1024 * 1024); preserved.
+- Tests: ImageUpload.test.tsx gained 10 new cases - 4 covering
+  formatUploadProgress (null / unknown-total / determinate /
+  clamping) and 6 covering the M-6 mobile contract via source-text
+  asserts: accept=image/*, capture=environment, cancel button +
+  aria-label, progressbar role + aria-value bounds, mutation wired
+  to abortRef + onProgress + signal, validateFile still gates the
+  5 MiB cap.
+- 360x640 / 1280x800 screenshots are the Wave M-8 gate; the
+  executable contract above is what M-6 enforces.
+Verification (npm --prefix apps/admin-web):
+  npm run type-check                                          OK
+  npm test --run                                              749/749 PASS
+Marked #299 passing.

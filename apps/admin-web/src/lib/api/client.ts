@@ -370,11 +370,30 @@ export async function authedFetch<T>(req: AuthedRequest): Promise<T> {
  */
 export type MediaOwnerType = "org_logo" | "event_poster" | "artist_photo";
 
+export interface UploadProgress {
+  readonly loaded: number;
+  readonly total: number;
+  /** Fraction in [0,1]. Equal to loaded/total when total > 0, else 0. */
+  readonly fraction: number;
+}
+
 export interface UploadMediaParams {
   readonly file: File;
   readonly ownerType: MediaOwnerType;
   readonly orgId?: string | null;
   readonly ownerId?: string | null;
+  /**
+   * Optional upload-progress callback. When supplied, the upload uses
+   * XMLHttpRequest under the hood so the browser can emit progress
+   * events (the Fetch API has no upload-progress hook today).
+   */
+  readonly onProgress?: (p: UploadProgress) => void;
+  /**
+   * Optional external abort signal. Aborting cancels the in-flight
+   * request and rejects the returned promise with an ApiError whose
+   * code is `network.aborted`.
+   */
+  readonly signal?: AbortSignal;
 }
 
 export interface UploadedMedia {
@@ -407,7 +426,7 @@ interface UploadEnvelope {
 export async function uploadMedia(
   params: UploadMediaParams,
 ): Promise<UploadedMedia> {
-  const send = async (): Promise<UploadEnvelope> => {
+  const buildForm = (): FormData => {
     const form = new FormData();
     form.append("file", params.file, params.file.name);
     form.append("owner_type", params.ownerType);
@@ -424,10 +443,36 @@ export async function uploadMedia(
     if (params.file.type !== "") {
       form.append("content_type", params.file.type);
     }
+    return form;
+  };
+
+  const externalAlreadyAborted = (): boolean =>
+    params.signal !== undefined && params.signal.aborted === true;
+
+  const send = async (): Promise<UploadEnvelope> => {
+    if (externalAlreadyAborted()) {
+      throw new ApiError(0, {
+        code: "network.aborted",
+        message: "Upload cancelled",
+      });
+    }
     const headers: Record<string, string> = { Accept: "application/json" };
     const token = getAccessToken();
     if (token !== null) {
       headers.Authorization = `Bearer ${token}`;
+    }
+    // XHR path: required when the caller wants progress events or when
+    // they pass an external AbortSignal that must be honoured promptly.
+    // The Fetch API has no upload-progress hook in browsers as of 2026.
+    if (params.onProgress !== undefined || params.signal !== undefined) {
+      return uploadViaXHR({
+        url: `${config.apiBaseUrl}/v1/media`,
+        headers,
+        body: buildForm(),
+        onProgress: params.onProgress,
+        signal: params.signal,
+        timeoutMs: REQUEST_TIMEOUT_MS * 2,
+      });
     }
     let response: Response;
     const controller = new AbortController();
@@ -442,7 +487,7 @@ export async function uploadMedia(
       response = await fetch(`${config.apiBaseUrl}/v1/media`, {
         method: "POST",
         headers,
-        body: form,
+        body: buildForm(),
         signal: controller.signal,
         credentials: "omit",
       });
@@ -494,6 +539,135 @@ export async function uploadMedia(
     }
     throw err;
   }
+}
+
+interface XHRUploadArgs {
+  readonly url: string;
+  readonly headers: Record<string, string>;
+  readonly body: FormData;
+  readonly onProgress?: (p: UploadProgress) => void;
+  readonly signal?: AbortSignal;
+  readonly timeoutMs: number;
+}
+
+/**
+ * XMLHttpRequest-backed multipart upload. Exists because the Fetch API
+ * still does not expose upload-progress events in browsers; the M-6
+ * mobile contract requires both a progress indicator and a working
+ * cancel button on slow uploads.
+ *
+ * Exported for unit tests via a thin wrapper; not part of the public
+ * client API surface.
+ */
+export function uploadViaXHR(
+  args: XHRUploadArgs,
+): Promise<UploadEnvelope> {
+  return new Promise<UploadEnvelope>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    let timedOut = false;
+    const timeoutHandle = setTimeout(() => {
+      timedOut = true;
+      try {
+        xhr.abort();
+      } catch {
+        // ignore
+      }
+    }, args.timeoutMs);
+
+    const onSignalAbort = (): void => {
+      try {
+        xhr.abort();
+      } catch {
+        // ignore
+      }
+    };
+    if (args.signal !== undefined) {
+      args.signal.addEventListener("abort", onSignalAbort);
+    }
+
+    const cleanup = (): void => {
+      clearTimeout(timeoutHandle);
+      if (args.signal !== undefined) {
+        args.signal.removeEventListener("abort", onSignalAbort);
+      }
+    };
+
+    xhr.open("POST", args.url, true);
+    for (const [k, v] of Object.entries(args.headers)) {
+      try {
+        xhr.setRequestHeader(k, v);
+      } catch {
+        // setRequestHeader can throw for forbidden header names — ignore.
+      }
+    }
+    xhr.responseType = "text";
+
+    if (args.onProgress !== undefined && xhr.upload !== undefined) {
+      xhr.upload.onprogress = (evt: ProgressEvent): void => {
+        if (args.onProgress === undefined) return;
+        const total = evt.lengthComputable ? evt.total : 0;
+        const loaded = evt.loaded;
+        const fraction = total > 0 ? loaded / total : 0;
+        args.onProgress({ loaded, total, fraction });
+      };
+    }
+
+    xhr.onload = (): void => {
+      cleanup();
+      const text = typeof xhr.responseText === "string" ? xhr.responseText : "";
+      const status = xhr.status;
+      let parsed: unknown = null;
+      if (text.length > 0) {
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          reject(
+            new ApiError(status, {
+              code: "http.invalid_json",
+              message: "Server returned a non-JSON response",
+            }),
+          );
+          return;
+        }
+      }
+      if (status < 200 || status >= 300) {
+        reject(parseErrorEnvelope(status, parsed));
+        return;
+      }
+      resolve(parsed as UploadEnvelope);
+    };
+
+    xhr.onerror = (): void => {
+      cleanup();
+      reject(
+        new ApiError(0, {
+          code: "network.failure",
+          message: "Network request failed",
+        }),
+      );
+    };
+
+    xhr.onabort = (): void => {
+      cleanup();
+      if (timedOut) {
+        reject(
+          new ApiError(0, {
+            code: "network.timeout",
+            message: `Upload timed out after ${args.timeoutMs / 1000}s`,
+          }),
+        );
+        return;
+      }
+      reject(
+        new ApiError(0, {
+          code: "network.aborted",
+          message: "Upload cancelled",
+        }),
+      );
+    };
+
+    xhr.send(args.body);
+  });
 }
 
 export interface MediaObjectWithUrl extends UploadedMedia {

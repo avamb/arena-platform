@@ -54,6 +54,7 @@ import {
   uploadMedia,
   type MediaObjectWithUrl,
   type MediaOwnerType,
+  type UploadProgress,
 } from "@/lib/api/client";
 
 // ---------------------------------------------------------------------------
@@ -220,6 +221,10 @@ export function ImageUpload({
     null,
   );
   const [serverError, setServerError] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(
+    null,
+  );
+  const abortRef = useRef<AbortController | null>(null);
 
   // Sync external currentMediaId -> internal active id when the parent
   // refetches (e.g. after a parent-driven PATCH succeeds).
@@ -262,25 +267,35 @@ export function ImageUpload({
     { file: File }
   >({
     mutationFn: async ({ file }) => {
-      const obj = await uploadMedia({
-        file,
-        ownerType,
-        orgId: orgId ?? null,
-        ownerId: ownerId ?? null,
-      });
-      if (patch !== undefined) {
-        await authedFetch({
-          method: "PATCH",
-          path: patch.path,
-          body: { [patch.field]: obj.id },
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setUploadProgress({ loaded: 0, total: file.size, fraction: 0 });
+      try {
+        const obj = await uploadMedia({
+          file,
+          ownerType,
+          orgId: orgId ?? null,
+          ownerId: ownerId ?? null,
+          onProgress: (p) => setUploadProgress(p),
+          signal: controller.signal,
         });
+        if (patch !== undefined) {
+          await authedFetch({
+            method: "PATCH",
+            path: patch.path,
+            body: { [patch.field]: obj.id },
+          });
+        }
+        return obj.id;
+      } finally {
+        abortRef.current = null;
       }
-      return obj.id;
     },
     onSuccess: (newId) => {
       setActiveMediaId(newId);
       setPendingPreview(null);
       setServerError(null);
+      setUploadProgress(null);
       onChange?.(newId);
       if (patch?.invalidateQueryKeys !== undefined) {
         for (const key of patch.invalidateQueryKeys) {
@@ -289,9 +304,21 @@ export function ImageUpload({
       }
     },
     onError: (err) => {
+      setUploadProgress(null);
+      // Aborted uploads are an intentional user action; surface a
+      // gentle inline notice rather than the raw error envelope.
+      if (err instanceof ApiError && err.code === "network.aborted") {
+        setServerError("Upload cancelled.");
+        setPendingPreview(null);
+        return;
+      }
       setServerError(formatApiError(err));
     },
   });
+
+  const cancelUpload = useCallback((): void => {
+    abortRef.current?.abort();
+  }, []);
 
   const removeMutation = useMutation<void, ApiError | Error, void>({
     mutationFn: async () => {
@@ -439,10 +466,29 @@ export function ImageUpload({
             {removeMutation.isPending ? "Removing…" : "Remove"}
           </button>
         ) : null}
+        {uploadMutation.isPending ? (
+          <button
+            type="button"
+            onClick={cancelUpload}
+            style={secondaryBtnStyle}
+            aria-label="Cancel upload"
+            data-testid={`${testIdPrefix}-cancel`}
+          >
+            Cancel
+          </button>
+        ) : null}
         <input
           ref={inputRef}
           type="file"
-          accept={ACCEPTED_MIME_TYPES.join(",")}
+          // image/* is the M-6 mobile contract: iOS Safari and many
+          // Android browsers only surface the camera option when the
+          // wildcard image MIME type is present. The narrower
+          // jpg/png/webp gate is still enforced by validateFile().
+          accept="image/*"
+          // `capture="environment"` is a hint to mobile browsers that
+          // the rear-facing camera should be offered alongside the
+          // photo library. Desktop browsers ignore it.
+          capture="environment"
           onChange={onPick}
           disabled={disabledNow}
           style={hiddenInputStyle}
@@ -453,6 +499,44 @@ export function ImageUpload({
       <p style={hintStyle} data-testid={`${testIdPrefix}-hint`}>
         {hint}
       </p>
+
+      {uploadMutation.isPending ? (
+        <div
+          style={progressWrapStyle}
+          data-testid={`${testIdPrefix}-progress`}
+          aria-live="polite"
+        >
+          <div
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={
+              uploadProgress !== null
+                ? Math.round(uploadProgress.fraction * 100)
+                : undefined
+            }
+            aria-label="Upload progress"
+            style={progressTrackStyle}
+            data-testid={`${testIdPrefix}-progress-bar`}
+          >
+            <div
+              style={{
+                ...progressFillStyle,
+                width:
+                  uploadProgress !== null
+                    ? `${Math.min(100, Math.max(0, uploadProgress.fraction * 100))}%`
+                    : "10%",
+              }}
+            />
+          </div>
+          <span
+            style={progressLabelStyle}
+            data-testid={`${testIdPrefix}-progress-label`}
+          >
+            {formatUploadProgress(uploadProgress)}
+          </span>
+        </div>
+      ) : null}
 
       {validationError !== null ? (
         <div
@@ -483,6 +567,21 @@ export function ImageUpload({
       ) : null}
     </div>
   );
+}
+
+/**
+ * Renders the upload progress as a human-readable label. Exported for
+ * unit tests; consumed by the in-component progress widget. Returns
+ * an indeterminate label when the total is unknown (e.g. the browser
+ * could not compute the content length).
+ */
+export function formatUploadProgress(p: UploadProgress | null): string {
+  if (p === null) return "Starting…";
+  if (p.total <= 0) {
+    return `Uploading… ${formatBytes(p.loaded)}`;
+  }
+  const pct = Math.min(100, Math.max(0, Math.round(p.fraction * 100)));
+  return `Uploading… ${pct}% (${formatBytes(p.loaded)} / ${formatBytes(p.total)})`;
 }
 
 function formatApiError(err: unknown): string {
@@ -561,6 +660,28 @@ const hiddenInputStyle: CSSProperties = {
 };
 const hintStyle: CSSProperties = {
   margin: 0,
+  fontSize: 12,
+  color: "#52525b",
+};
+const progressWrapStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+  width: "100%",
+};
+const progressTrackStyle: CSSProperties = {
+  width: "100%",
+  height: 8,
+  background: "#e4e4e7",
+  borderRadius: 4,
+  overflow: "hidden",
+};
+const progressFillStyle: CSSProperties = {
+  height: "100%",
+  background: "#1f2937",
+  transition: "width 120ms linear",
+};
+const progressLabelStyle: CSSProperties = {
   fontSize: 12,
   color: "#52525b",
 };
