@@ -17696,3 +17696,26 @@ Verification:
   npm --prefix apps/admin-web test -- --run           626/626 PASS
 
 Marked #282 passing. Backlog: 279/301.
+
+=== 2026-06-30: Feature #283 - E-5 Ticket-tier sub-table admin UI ===
+The full Tiers CRUD inside SessionTiersBlock/TierEditor was already
+implemented in apps/admin-web/src/routes/events.tsx (expandable section
+per session row, POST/PATCH/DELETE wired to
+/v1/.../sessions/{session_id}/tiers, conditional pwyw_min/max visibility
+when pricing_mode=pwyw, currency selector limited to org
+allowedCurrencies via the PaymentChannels query; all form fields
+present: name, pricing_mode, price_amount+currency, pwyw_min/max,
+capacity, sale_window_start/end, sort_order).
+
+Found one failing spec: validateTierForm "accepts a minimal fixed-price
+tier" was failing because the form() helper produced an empty name.
+Fixed events.test.ts form() helper to default name to
+"General Admission"; the name-empty path still passes an explicit
+{ name: "" } override so the "requires name" case keeps working.
+
+Verification:
+  npm --prefix apps/admin-web run type-check          OK
+  npm --prefix apps/admin-web test -- --run events    89/89 PASS
+  npm --prefix apps/admin-web test -- --run           664/664 PASS
+
+Marked #283 passing. Backlog: 280/301.
