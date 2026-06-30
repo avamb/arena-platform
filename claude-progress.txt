@@ -18507,3 +18507,49 @@ Verification (npm --prefix apps/admin-web):
   npm run type-check                                          OK
   npm test --run                                              757/757 PASS
 Marked #300 passing.
+
+
+## 2026-06-30 - Feature #301 (M-8) Accessibility & touch quality gate
+- New apps/admin-web/tests/mobile/ folder containing the Playwright +
+  Lighthouse mobile quality gate:
+    gateThresholds.ts  single source of truth: M8_TAP_TARGET_MIN_PX=44,
+      M8_LIGHTHOUSE_ACCESSIBILITY_MIN=90, M8_VIEWPORTS (360x640 +
+      768x1024), M8_SMOKE_ROUTES (12 organizer/agent surfaces),
+      M8_LIGHTHOUSE_ROUTES (/orders /tickets /events).
+    playwright.config.ts  derives Playwright projects from M8_VIEWPORTS
+      (hasTouch:true, isMobile<768) so the smoke set runs at both
+      viewports. Reads thresholds from gateThresholds.ts so the gate
+      stays drift-free; no inline 360/640/768/1024 literals.
+    smoke.spec.ts  walks every (viewport x route) pair and asserts
+      (1) document.documentElement.scrollWidth <= window.innerWidth
+          (horizontal-scroll gate),
+      (2) primary action width/height >= M8_TAP_TARGET_MIN_PX via
+          [data-testid$="-primary-action"], button[type="submit"]
+          fallback selector chain.
+    lighthouse.config.json  Lighthouse CI config targeting /orders,
+      /tickets, /events at the 360 px form factor, asserting
+      categories:accessibility minScore>=0.9 as an error-level gate.
+    README.md  documents the runner, scope (responsive web only),
+      and how to invoke locally.
+- New apps/admin-web/src/routes/m8AccessibilityGate.test.ts (20 cases)
+  is the executable gate enforced on every push:
+    pins M8_TAP_TARGET_MIN_PX=44 AND equality with the M-7 constant
+      so a future raise propagates platform-wide;
+    pins the Lighthouse accessibility floor at 90;
+    pins the two-viewport list (360x640 + 768x1024);
+    asserts M8_SMOKE_ROUTES covers every M-2..M-7 surface;
+    asserts M8_LIGHTHOUSE_ROUTES = orders/tickets/events;
+    asserts playwright.config.ts imports from gateThresholds and
+      derives projects from M8_VIEWPORTS;
+    asserts smoke.spec.ts walks every (viewport x route) and runs
+      both gates;
+    asserts lighthouse.config.json is valid JSON, covers the three
+      routes, pins minScore>=0.9 at error level, emulates a 360 px
+      mobile form factor;
+    asserts no detox/appium/react-native/expo references in
+      tests/mobile/ OR in apps/admin-web/package.json (responsive-
+      web-only scope guard).
+Verification (npm --prefix apps/admin-web):
+  npm run type-check                                          OK
+  npm test --run                                              777/777 PASS
+Marked #301 passing.
