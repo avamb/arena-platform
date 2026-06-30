@@ -1,6 +1,10 @@
 package httpserver
 
-import "github.com/go-chi/chi/v5"
+import (
+	"github.com/go-chi/chi/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hmedia"
+)
 
 // mountMediaRoutes wires the /v1/media surface from feature #286 (G-2).
 //
@@ -19,21 +23,22 @@ func (s *Server) mountMediaRoutes(r chi.Router) {
 	// configured so the OpenAPI <-> code drift check stays accurate and
 	// so a deliberate misconfiguration surfaces as a structured
 	// `media.storage_unavailable` 503 response instead of a 404. The
-	// handlers guard `s.media == nil` internally.
+	// handlers guard media == nil internally.
+	h := hmedia.New(s.media, s.logger)
 	if s.stub != nil && s.stub.Enabled() {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "media.write", "media")
-			pr.Post("/media", s.handleCreateMedia)
+			pr.Post("/media", h.CreateMedia)
 		})
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "media.read", "media")
-			pr.Get("/media/{id}", s.handleGetMedia)
+			pr.Get("/media/{id}", h.GetMedia)
 		})
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "media.delete", "media")
-			pr.Delete("/media/{id}", s.handleDeleteMedia)
+			pr.Delete("/media/{id}", h.DeleteMedia)
 		})
 	}
 	// Public download endpoint — signature is the credential.
-	r.Get("/media-files/{id}", s.handleDownloadMedia)
+	r.Get("/media-files/{id}", h.DownloadMedia)
 }
