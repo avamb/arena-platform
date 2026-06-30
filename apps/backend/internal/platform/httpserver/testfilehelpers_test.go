@@ -847,8 +847,8 @@ func resolveFileInRepo(repoRoot, name string) string {
 }
 
 // readServerGoLike returns the concatenated source of a logical handler
-// "module" when its primary file has been split into siblings by an
-// httpserver refactor. Today this covers two cases:
+// "module" when its primary file has been split into siblings (and/or moved
+// into a sub-package) by an httpserver refactor. Cases covered:
 //
 //   - name == "server.go": returns server.go + server_struct.go + wire.go +
 //     every mount_*.go. Established by feature #174 when the original
@@ -860,8 +860,16 @@ func resolveFileInRepo(repoRoot, name string) string {
 //     reconciliation_submit.go + reconciliation_query.go +
 //     reconciliation_review.go. Established by feature #175 when the
 //     original 624-line reconciliation.go was split into one shared-types
-//     file plus three handler files; the union lets the reconciliation_147
-//     structural tests (handler-symbol greps) keep passing.
+//     file plus three handler files.
+//
+//   - name is a file moved into a domain sub-package (hcheckout/, hcatalog/,
+//     hiam/) — returns the sub-package file concatenated with the
+//     corresponding shim file in httpserver/ (checkout_shims.go,
+//     catalog_shims.go, iam_shims.go). The shim preserves the original
+//     unexported handler/callback identifiers, so existing structural tests
+//     that grep for symbols like handlePriceBreakdown or enqueueDeliveryJobs
+//     keep matching even though those identifiers now live in the shim
+//     while the handler bodies live in the sub-package.
 //
 // Returns "" for any other name so the caller falls through to the
 // original resolveFileInRepo path.
@@ -917,7 +925,46 @@ func readServerGoLike(repoRoot, name string) string {
 		}
 		return string(buf)
 	}
-	return ""
+
+	// Domain-sub-package aggregation: when a file has been moved into hcheckout/,
+	// hcatalog/, or hiam/, concatenate the sub-package file with its shim so that
+	// the test sees both the moved handler bodies and the unexported identifiers
+	// preserved in the shim layer.
+	subPkg, shim := domainSubPackageFor(name)
+	if subPkg == "" {
+		return ""
+	}
+	var buf []byte
+	subFile := filepath.Join(httpserverDir, subPkg, name)
+	if data, err := os.ReadFile(subFile); err == nil {
+		buf = append(buf, []byte("// === "+subPkg+"/"+name+" ===\n")...)
+		buf = append(buf, data...)
+		buf = append(buf, '\n')
+	}
+	shimFile := filepath.Join(httpserverDir, shim)
+	if data, err := os.ReadFile(shimFile); err == nil {
+		buf = append(buf, []byte("// === "+shim+" ===\n")...)
+		buf = append(buf, data...)
+		buf = append(buf, '\n')
+	}
+	return string(buf)
+}
+
+// domainSubPackageFor maps a filename to the (subPackage, shimFile) pair when
+// the file has been moved into a domain sub-package by the httpserver refactor.
+// Returns ("", "") when the name is not domain-mapped.
+func domainSubPackageFor(name string) (string, string) {
+	switch name {
+	case "checkout.go", "reservations.go", "reservation_processor.go",
+		"price_breakdown.go", "payment_intents.go", "refunds.go", "promo_codes.go":
+		return "hcheckout", "checkout_shims.go"
+	case "events.go", "channels.go", "publications.go", "ticket_tiers.go", "venues.go":
+		return "hcatalog", "catalog_shims.go"
+	case "orgs.go", "memberships.go", "superadmin.go", "impersonation.go",
+		"admin_memberships.go", "admin_orgs.go", "admin_users.go":
+		return "hiam", "iam_shims.go"
+	}
+	return "", ""
 }
 
 // endsWith is a tiny strings.HasSuffix-equivalent kept here so the helper
