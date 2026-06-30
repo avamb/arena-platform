@@ -70,40 +70,14 @@ export interface LegacyModulePlaceholder {
 }
 
 export const LEGACY_MODULE_PLACEHOLDERS: readonly LegacyModulePlaceholder[] = [
-  {
-    id: "events_sessions",
-    label: "Events and Sessions",
-    path: "/events",
-    purpose:
-      "Event organizer surface (events, sessions, media, pricing, quotas, sync). Requires event.read, org.read, or superadmin.read. Shell only -- backend contract gap.",
-    permission: {
-      anyOf: [
-        "superadmin.read",
-        "event.read",
-        "org.read",
-        "network.view_sales",
-      ],
-    },
-    scopeKinds: ["global", "platform", "network", "organization"],
-    sourceReference: {
-      legacyMapModuleId: "events_sessions",
-      legacyApps: ["TixEditor"],
-      legacyScreens: [
-        "tix_editor/2026-06-12_editor_audit/72_logged_in_full_desktop.png",
-        "tix_editor/2026-06-12_editor_audit/100_sync_open.png",
-        "tix_editor/2026-06-12_editor_audit/134_current_after_session_add.png",
-      ],
-    },
-    futureScope: [
-      "Event list with filters by scope, status, venue, dates, and sales status.",
-      "Event detail with sessions, media, pricing, quotas, publication, and sync.",
-      "Creation wizard instead of one giant form (replaces TixEditor monolith).",
-    ],
-    deferralReason:
-      "Backend gap: the legacy editor exposed ADD_ACTION / SAVE_ACTION for monolithic forms, but a modern event/session resource model (events, sessions, quotas, sale windows, media) is not yet defined in the unified admin OpenAPI contract.",
-    workflowShape: ["table/list view", "detail drawer", "wizard", "settings page"],
-    mvpPriority: "P0",
-  },
+  // events_sessions removed from placeholder list -- replaced by a real
+  // route in src/routes/events.tsx (feature #281). The /events nav entry
+  // in navConfig.ts now points at the real module (list with filters +
+  // detail drawer + status transitions backed by
+  // POST /v1/organizations/{org_id}/events/{id}/status). Full event /
+  // session create-edit-delete and the media/pricing/sync surfaces
+  // remain explicitly deferred -- they are separate concerns the E-3
+  // scope does not cover.
   // venues_seating removed from placeholder list -- replaced by a real
   // CRUD route in src/routes/venues.tsx (feature #242). The /venues nav
   // entry in navConfig.ts now points at the real module; the visual

@@ -17590,3 +17590,65 @@ Verification:
   npm --prefix apps/admin-web run type-check                   OK.
 
 Marked #280 passing. Backlog: 277/301.
+
+=== 2026-06-30: Feature #281 - E-3 Events list and drawer admin UI ===
+Graduated /events from the SAUI-12 legacy-module placeholder shell to a
+real admin route, mirroring the venues/channels/payments graduation
+pattern.
+
+apps/admin-web/src/routes/events.tsx (NEW, 1196 lines):
+  - Route export at "/events" wrapped in RequirePermission for the
+    "events" nav entry.
+  - List view: org/status/visibility/date-range filter bar; columns
+    poster thumb, name, venue, next session, status, channels;
+    client-side pagination (25/page) with prev/next.
+  - Visibility filter drives the backend GET /v1/events?visibility=
+    query; status and date-range are applied client-side.
+  - Right-side drawer (~520px) with 5 tabs:
+      Overview -- status badge plus transition buttons gated on
+        event.publish (draft->published, published->cancelled,
+        published->archived), wired to POST
+        /v1/organizations/{org_id}/events/{id}/status with
+        422/event.invalid_transition error mapping.
+      Sessions -- GET /v1/organizations/{org_id}/events/{event_id}/sessions
+      Ticket tiers -- iterates sessions, fetches tiers per session
+      Publications -- GET /v1/events/{event_id}/publications
+      Activity -- honest empty state (no per-event audit endpoint exists)
+  - Pure-function helpers exported for unit tests: allowedTransitions,
+    filterEventsByOrg/Status/DateRange, paginate, formatDateTime/Only,
+    posterInitial, isEventStatus, isEventVisibility.
+  - Pragmatic approximations documented inline:
+      "Next session" column renders event.start_at (EventItem lacks an
+       aggregated next-session timestamp; flagged for swap-in when an
+       events.next_session_at field is added).
+      "Channels" column shows em-dash with tooltip pointing to the
+       drawer's Publications tab to avoid N+1 per-row fan-out.
+  - No mock data: no globalThis/devStore/mockDb. All reads/writes via
+    real authedFetch.
+
+apps/admin-web/src/routes/events.test.ts (NEW, 213 lines, 27 tests):
+  Vitest coverage of every exported pure function plus the status/
+  visibility enum tables.
+
+apps/admin-web/src/routes/legacyPlaceholders.tsx:
+  Removed EventsRoute export, dropped "/events" from REGISTERED_PATHS,
+  added graduation comment mirroring venues/channels/payments.
+
+apps/admin-web/src/lib/admin/legacyModules.ts:
+  Removed events_sessions entry from LEGACY_MODULE_PLACEHOLDERS with
+  matching graduation comment.
+
+apps/admin-web/src/routes/legacyPlaceholders.test.ts:
+  Updated EXPECTED_PATHS, EXPECTED_MAP_IDS and placeholder count (4->3)
+  to reflect the events graduation -- same pattern previous graduations
+  used.
+
+apps/admin-web/src/routeTree.ts:
+  Imports EventsRoute from "@/routes/events" instead of legacyPlaceholders.
+
+Verification:
+  npm --prefix apps/admin-web run type-check                       OK
+  npm --prefix apps/admin-web test -- --run events                 27/27 PASS
+  npm --prefix apps/admin-web test -- --run legacyPlaceholders     24/24 PASS
+
+Marked #281 passing. Backlog: 278/301.

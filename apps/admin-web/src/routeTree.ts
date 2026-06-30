@@ -13,8 +13,8 @@ import { Route as ObservabilityRoute } from "@/routes/observability";
 import { Route as VenuesRoute } from "@/routes/venues";
 import { Route as ChannelsRoute } from "@/routes/channels";
 import { Route as PaymentsRoute } from "@/routes/payments";
+import { Route as EventsRoute } from "@/routes/events";
 import {
-  EventsRoute,
   ReportsRoute,
   ContentRoute,
   PosRoute,

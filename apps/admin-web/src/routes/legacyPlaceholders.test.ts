@@ -29,22 +29,20 @@ import {
 } from "@/lib/auth/navConfig";
 
 const EXPECTED_PATHS = [
-  "/events",
   "/reports",
   "/content",
   "/pos",
 ] as const;
 
 const EXPECTED_MAP_IDS = [
-  "events_sessions",
   "reports",
   "notifications_content",
   "pos",
 ] as const;
 
 describe("LEGACY_MODULE_PLACEHOLDERS table", () => {
-  it("ships exactly the 4 remaining SAUI-12 placeholders (venues_seating graduated in feature #242; frontends_channels in feature #243; payments_fiscal in feature #244)", () => {
-    expect(LEGACY_MODULE_PLACEHOLDERS).toHaveLength(4);
+  it("ships exactly the 3 remaining SAUI-12 placeholders (venues_seating graduated in feature #242; frontends_channels in feature #243; payments_fiscal in feature #244; events_sessions in feature #281)", () => {
+    expect(LEGACY_MODULE_PLACEHOLDERS).toHaveLength(3);
   });
 
   it("covers every documented path exactly once", () => {

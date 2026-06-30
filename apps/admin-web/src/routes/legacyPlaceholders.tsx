@@ -30,7 +30,8 @@ function placeholderRoute(path: NavRoutePath) {
 
 // Routes are exported individually so routeTree.ts keeps the same
 // "import Route as X" idiom used by every other route file.
-export const EventsRoute = placeholderRoute("/events");
+// /events graduated to a real route in src/routes/events.tsx
+// (feature #281). The Route export now lives there.
 // /venues graduated to a real CRUD route in src/routes/venues.tsx
 // (feature #242). The Route export now lives there.
 // /channels graduated to a real CRUD route in src/routes/channels.tsx
@@ -44,7 +45,6 @@ export const PosRoute = placeholderRoute("/pos");
 // Sanity check at module load: every path in LEGACY_MODULE_PLACEHOLDERS
 // has a Route export above. Catches typos faster than a 404 in browser.
 const REGISTERED_PATHS = new Set<NavRoutePath>([
-  "/events",
   "/reports",
   "/content",
   "/pos",
