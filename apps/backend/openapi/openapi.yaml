@@ -5664,6 +5664,134 @@ components:
             Human-readable confirmation string. Always literal
             `"subscriber deactivated"` today.
 
+    DeliveryJob:
+      type: object
+      required:
+        - id
+        - ticket_id
+        - status
+        - attempts
+        - recipient_email
+        - last_error
+        - sent_at
+        - queued_at
+        - created_at
+        - updated_at
+      description: |
+        Single `delivery_jobs` row tracking a ticket-delivery attempt.
+        Materialised by the post-issuance delivery pipeline
+        (`apps/backend/internal/platform/httpserver/delivery_enqueue.go`)
+        and the support-console resend endpoint
+        (`apps/backend/internal/platform/httpserver/admin_ticket_delivery.go`,
+        feature #291). Each delivery_jobs row is paired 1:1 with a
+        `worker_jobs` row of type `ticket.deliver`; the worker pool
+        picks them up via `FOR UPDATE SKIP LOCKED` and updates
+        `status`, `attempts`, `last_error`, and `sent_at` in place.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the `delivery_jobs` row.
+        ticket_id:
+          type: string
+          format: uuid
+          description: |
+            UUIDv7 of the `tickets` row the delivery attempt belongs
+            to.
+        status:
+          type: string
+          description: |
+            Current delivery state. Documented values today:
+            `pending` (queued, never attempted), `in_progress`
+            (worker has claimed the job), `sent` (terminal — email
+            delivered), `failed` (terminal — exhausted retry
+            budget). New states may be added in future waves but
+            the four above are stable.
+          enum: [pending, in_progress, sent, failed]
+        attempts:
+          type: integer
+          minimum: 0
+          description: |
+            Number of delivery attempts the worker has made so far
+            on this row. `0` immediately after enqueue; incremented
+            by the worker before each attempt.
+        recipient_email:
+          type: string
+          description: |
+            Email address the delivery worker will (or did) send
+            the ticket to. Defaults to `tickets.holder_email` at
+            enqueue time; emitted as JSON `null` when the ticket
+            has no holder email (the worker then logs and skips).
+            (OAS 3.1 `type: [string, "null"]` is not yet supported
+            by oapi-codegen v2.4.1; see CLAUDE.md — nullability is
+            documented prose-only.)
+        last_error:
+          type: string
+          description: |
+            Truncated error string from the last failed attempt.
+            Emitted as JSON `null` while the job is `pending` or
+            after a successful `sent` transition.
+            (OAS 3.1 `type: [string, "null"]` is not yet supported
+            by oapi-codegen v2.4.1; see CLAUDE.md — nullability is
+            documented prose-only.)
+        sent_at:
+          type: string
+          format: date-time
+          description: |
+            RFC 3339 timestamp the email was successfully handed
+            off to the delivery transport. Emitted as JSON `null`
+            until the worker marks the row `sent`.
+            (OAS 3.1 `type: [string, "null"]` is not yet supported
+            by oapi-codegen v2.4.1; see CLAUDE.md — nullability is
+            documented prose-only.)
+        queued_at:
+          type: string
+          format: date-time
+          description: RFC 3339 timestamp the row was first inserted.
+        created_at:
+          type: string
+          format: date-time
+          description: |
+            RFC 3339 timestamp the row was created (equals
+            `queued_at` today).
+        updated_at:
+          type: string
+          format: date-time
+          description: |
+            RFC 3339 timestamp the row was last mutated by the
+            worker (status / attempts / last_error / sent_at
+            update).
+
+    AdminTicketDeliveryResponse:
+      type: object
+      required: [delivery]
+      description: |
+        Envelope returned by `GET /v1/admin/tickets/{id}/delivery`.
+        Wraps the most recent `delivery_jobs` row for the ticket.
+      properties:
+        delivery:
+          $ref: "#/components/schemas/DeliveryJob"
+
+    AdminTicketDeliveryResendResponse:
+      type: object
+      required: [delivery, worker_job_id]
+      description: |
+        Envelope returned by
+        `POST /v1/admin/tickets/{id}/delivery/resend`. Carries the
+        freshly inserted `delivery_jobs` row plus the companion
+        `worker_jobs.id` so the support console can correlate the
+        enqueued attempt with downstream worker logs.
+      properties:
+        delivery:
+          $ref: "#/components/schemas/DeliveryJob"
+        worker_job_id:
+          type: string
+          format: uuid
+          description: |
+            UUIDv7 of the matching `worker_jobs` row inserted in
+            the same request. The worker pool will pick it up on
+            its next poll cycle.
+
     EventPublication:
       type: object
       required: [id, event_id, feed_token_id, published_at]
@@ -15763,6 +15891,282 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Media storage backend is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Admin — Ticket delivery (feature #276 / A-15)
+  #
+  # Inspect and resend the delivery state of a single issued ticket. Both
+  # endpoints are mounted under /v1/admin and share the same
+  # X-Admin-Reason + audit-log + RBAC gate used by GET /v1/admin/tickets.
+  # Implemented by
+  # `apps/backend/internal/platform/httpserver/admin_ticket_delivery.go`.
+  # ─────────────────────────────────────────────────────────────────────────
+
+  /v1/admin/tickets/{id}/delivery:
+    get:
+      operationId: getAdminTicketDelivery
+      summary: Admin — read the latest delivery_jobs row for a ticket
+      description: |
+        Returns the most recent `delivery_jobs` row for the given
+        ticket, including current `status`, `attempts`, the
+        `recipient_email` the worker is targeting, and any
+        `last_error` string from the previous failed attempt.
+
+        Used by the support-console "Delivery" section of the
+        ticket drawer in apps/admin-web. Returns `404
+        ticket_delivery.not_found` when no delivery has ever been
+        attempted for the ticket — the UI then renders an empty
+        "no delivery attempted" state.
+
+        Requires JWT + the `ticket.update` permission (or the
+        future `support.act` fallback) plus a non-empty
+        `X-Admin-Reason` header. The header value is recorded in
+        the `audit_events` row emitted on each successful call.
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            UUIDv7 primary key of the `tickets` row to inspect.
+            A malformed UUID returns `400 bad_request`.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: |
+            Human-readable business reason for the admin read
+            (audit trail). Empty values are rejected with
+            `400 bad_request`.
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: |
+            Latest delivery_jobs row for the ticket. The row may
+            be in any documented state (`pending`, `in_progress`,
+            `sent`, `failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTicketDeliveryResponse"
+              examples:
+                pending:
+                  summary: Job queued but not yet attempted
+                  value:
+                    delivery:
+                      id: "01929d0e-0e47-7000-8000-000000000d01"
+                      ticket_id: "01929d0e-0e47-7000-8000-000000000a01"
+                      status: "pending"
+                      attempts: 0
+                      recipient_email: "holder@example.com"
+                      last_error: null
+                      sent_at: null
+                      queued_at: "2026-06-30T12:00:00Z"
+                      created_at: "2026-06-30T12:00:00Z"
+                      updated_at: "2026-06-30T12:00:00Z"
+                sent:
+                  summary: Job successfully delivered
+                  value:
+                    delivery:
+                      id: "01929d0e-0e47-7000-8000-000000000d02"
+                      ticket_id: "01929d0e-0e47-7000-8000-000000000a02"
+                      status: "sent"
+                      attempts: 1
+                      recipient_email: "holder@example.com"
+                      last_error: null
+                      sent_at: "2026-06-30T12:00:30Z"
+                      queued_at: "2026-06-30T12:00:00Z"
+                      created_at: "2026-06-30T12:00:00Z"
+                      updated_at: "2026-06-30T12:00:30Z"
+                failed:
+                  summary: Job failed after exhausting retries
+                  value:
+                    delivery:
+                      id: "01929d0e-0e47-7000-8000-000000000d03"
+                      ticket_id: "01929d0e-0e47-7000-8000-000000000a03"
+                      status: "failed"
+                      attempts: 5
+                      recipient_email: "holder@example.com"
+                      last_error: "smtp 550 5.1.1 user unknown"
+                      sent_at: null
+                      queued_at: "2026-06-30T11:00:00Z"
+                      created_at: "2026-06-30T11:00:00Z"
+                      updated_at: "2026-06-30T11:05:00Z"
+        "400":
+          description: |
+            Invalid `{id}` (not a UUID) or missing/empty
+            `X-Admin-Reason` header (`bad_request`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: |
+            Caller lacks the `ticket.update` permission (or the
+            future `support.act` fallback).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: |
+            No delivery has ever been attempted for the ticket
+            (`ticket_delivery.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error while looking the row up
+            (`ticket_delivery.internal`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Delivery_jobs queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/tickets/{id}/delivery/resend:
+    post:
+      operationId: resendAdminTicketDelivery
+      summary: Admin — enqueue a fresh delivery attempt for a ticket
+      description: |
+        Inserts a new `delivery_jobs` row (status `pending`) and a
+        companion `worker_jobs` row of type `ticket.deliver` for
+        the given ticket. The existing worker handler picks the
+        job up on its normal poll cycle and emits a delivery email
+        to the ticket's `holder_email`.
+
+        Returns `202 Accepted` plus the freshly inserted
+        delivery_jobs row and the matching `worker_jobs.id` so the
+        support console can correlate the new attempt with
+        downstream worker logs.
+
+        The ticket must exist — a missing ticket returns
+        `404 ticket_delivery.ticket_not_found` rather than a
+        deferred worker-side failure.
+
+        Requires JWT + the `ticket.update` permission (or the
+        future `support.act` fallback) plus a non-empty
+        `X-Admin-Reason` header. The header value is recorded in
+        the `audit_events` row emitted on each successful call.
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            UUIDv7 primary key of the `tickets` row to resend.
+            A malformed UUID returns `400 bad_request`.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: |
+            Human-readable business reason for the admin write
+            (audit trail). Empty values are rejected with
+            `400 bad_request`.
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "202":
+          description: |
+            Resend accepted. The body carries the newly inserted
+            `delivery_jobs` row (status `pending`) and the
+            companion `worker_jobs.id`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTicketDeliveryResendResponse"
+              examples:
+                enqueued:
+                  summary: Fresh delivery attempt enqueued
+                  value:
+                    delivery:
+                      id: "01929d0e-0e47-7000-8000-000000000d04"
+                      ticket_id: "01929d0e-0e47-7000-8000-000000000a01"
+                      status: "pending"
+                      attempts: 0
+                      recipient_email: "holder@example.com"
+                      last_error: null
+                      sent_at: null
+                      queued_at: "2026-06-30T12:10:00Z"
+                      created_at: "2026-06-30T12:10:00Z"
+                      updated_at: "2026-06-30T12:10:00Z"
+                    worker_job_id: "01929d0e-0e47-7000-8000-000000000e04"
+        "400":
+          description: |
+            Invalid `{id}` (not a UUID) or missing/empty
+            `X-Admin-Reason` header (`bad_request`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: |
+            Caller lacks the `ticket.update` permission (or the
+            future `support.act` fallback).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: |
+            No ticket matches `{id}`
+            (`ticket_delivery.ticket_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error while inserting the new row or
+            building the worker payload
+            (`ticket_delivery.internal`,
+            `ticket_delivery.enqueue_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Delivery_jobs queries, ticket queries, or worker pool
+            unavailable
+            (`dependency.database_unavailable`).
           content:
             application/json:
               schema:

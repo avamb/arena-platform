@@ -149,6 +149,14 @@ const (
 	CreateVenueRequestStatusDraft    CreateVenueRequestStatus = "draft"
 )
 
+// Defines values for DeliveryJobStatus.
+const (
+	DeliveryJobStatusFailed     DeliveryJobStatus = "failed"
+	DeliveryJobStatusInProgress DeliveryJobStatus = "in_progress"
+	DeliveryJobStatusPending    DeliveryJobStatus = "pending"
+	DeliveryJobStatusSent       DeliveryJobStatus = "sent"
+)
+
 // Defines values for EventItemStatus.
 const (
 	EventItemStatusArchived  EventItemStatus = "archived"
@@ -371,13 +379,13 @@ const (
 
 // Defines values for TransitionPaymentIntentRequestState.
 const (
-	TransitionPaymentIntentRequestStateAuthorized     TransitionPaymentIntentRequestState = "authorized"
-	TransitionPaymentIntentRequestStateCreated        TransitionPaymentIntentRequestState = "created"
-	TransitionPaymentIntentRequestStateFailed         TransitionPaymentIntentRequestState = "failed"
-	TransitionPaymentIntentRequestStateManualReview   TransitionPaymentIntentRequestState = "manual_review"
-	TransitionPaymentIntentRequestStateProcessing     TransitionPaymentIntentRequestState = "processing"
-	TransitionPaymentIntentRequestStateRequiresAction TransitionPaymentIntentRequestState = "requires_action"
-	TransitionPaymentIntentRequestStateSucceeded      TransitionPaymentIntentRequestState = "succeeded"
+	Authorized     TransitionPaymentIntentRequestState = "authorized"
+	Created        TransitionPaymentIntentRequestState = "created"
+	Failed         TransitionPaymentIntentRequestState = "failed"
+	ManualReview   TransitionPaymentIntentRequestState = "manual_review"
+	Processing     TransitionPaymentIntentRequestState = "processing"
+	RequiresAction TransitionPaymentIntentRequestState = "requires_action"
+	Succeeded      TransitionPaymentIntentRequestState = "succeeded"
 )
 
 // Defines values for UpdateEventRequestVisibility.
@@ -562,6 +570,44 @@ type AdminCreatedUserOnboarding struct {
 
 	// PasswordResetIssued Whether a one-time password setup token was issued.
 	PasswordResetIssued bool `json:"password_reset_issued"`
+}
+
+// AdminTicketDeliveryResendResponse Envelope returned by
+// `POST /v1/admin/tickets/{id}/delivery/resend`. Carries the
+// freshly inserted `delivery_jobs` row plus the companion
+// `worker_jobs.id` so the support console can correlate the
+// enqueued attempt with downstream worker logs.
+type AdminTicketDeliveryResendResponse struct {
+	// Delivery Single `delivery_jobs` row tracking a ticket-delivery attempt.
+	// Materialised by the post-issuance delivery pipeline
+	// (`apps/backend/internal/platform/httpserver/delivery_enqueue.go`)
+	// and the support-console resend endpoint
+	// (`apps/backend/internal/platform/httpserver/admin_ticket_delivery.go`,
+	// feature #291). Each delivery_jobs row is paired 1:1 with a
+	// `worker_jobs` row of type `ticket.deliver`; the worker pool
+	// picks them up via `FOR UPDATE SKIP LOCKED` and updates
+	// `status`, `attempts`, `last_error`, and `sent_at` in place.
+	Delivery DeliveryJob `json:"delivery"`
+
+	// WorkerJobId UUIDv7 of the matching `worker_jobs` row inserted in
+	// the same request. The worker pool will pick it up on
+	// its next poll cycle.
+	WorkerJobId openapi_types.UUID `json:"worker_job_id"`
+}
+
+// AdminTicketDeliveryResponse Envelope returned by `GET /v1/admin/tickets/{id}/delivery`.
+// Wraps the most recent `delivery_jobs` row for the ticket.
+type AdminTicketDeliveryResponse struct {
+	// Delivery Single `delivery_jobs` row tracking a ticket-delivery attempt.
+	// Materialised by the post-issuance delivery pipeline
+	// (`apps/backend/internal/platform/httpserver/delivery_enqueue.go`)
+	// and the support-console resend endpoint
+	// (`apps/backend/internal/platform/httpserver/admin_ticket_delivery.go`,
+	// feature #291). Each delivery_jobs row is paired 1:1 with a
+	// `worker_jobs` row of type `ticket.deliver`; the worker pool
+	// picks them up via `FOR UPDATE SKIP LOCKED` and updates
+	// `status`, `attempts`, `last_error`, and `sent_at` in place.
+	Delivery DeliveryJob `json:"delivery"`
 }
 
 // ApproveRefundRequest Request body for `POST /v1/refunds/{id}/approve` and
@@ -1412,6 +1458,82 @@ type DeactivateWebhookSubscriberResponse struct {
 	// SubscriberId UUID of the subscriber that was deactivated.
 	SubscriberId openapi_types.UUID `json:"subscriber_id"`
 }
+
+// DeliveryJob Single `delivery_jobs` row tracking a ticket-delivery attempt.
+// Materialised by the post-issuance delivery pipeline
+// (`apps/backend/internal/platform/httpserver/delivery_enqueue.go`)
+// and the support-console resend endpoint
+// (`apps/backend/internal/platform/httpserver/admin_ticket_delivery.go`,
+// feature #291). Each delivery_jobs row is paired 1:1 with a
+// `worker_jobs` row of type `ticket.deliver`; the worker pool
+// picks them up via `FOR UPDATE SKIP LOCKED` and updates
+// `status`, `attempts`, `last_error`, and `sent_at` in place.
+type DeliveryJob struct {
+	// Attempts Number of delivery attempts the worker has made so far
+	// on this row. `0` immediately after enqueue; incremented
+	// by the worker before each attempt.
+	Attempts int `json:"attempts"`
+
+	// CreatedAt RFC 3339 timestamp the row was created (equals
+	// `queued_at` today).
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id UUIDv7 primary key of the `delivery_jobs` row.
+	Id openapi_types.UUID `json:"id"`
+
+	// LastError Truncated error string from the last failed attempt.
+	// Emitted as JSON `null` while the job is `pending` or
+	// after a successful `sent` transition.
+	// (OAS 3.1 `type: [string, "null"]` is not yet supported
+	// by oapi-codegen v2.4.1; see CLAUDE.md — nullability is
+	// documented prose-only.)
+	LastError string `json:"last_error"`
+
+	// QueuedAt RFC 3339 timestamp the row was first inserted.
+	QueuedAt time.Time `json:"queued_at"`
+
+	// RecipientEmail Email address the delivery worker will (or did) send
+	// the ticket to. Defaults to `tickets.holder_email` at
+	// enqueue time; emitted as JSON `null` when the ticket
+	// has no holder email (the worker then logs and skips).
+	// (OAS 3.1 `type: [string, "null"]` is not yet supported
+	// by oapi-codegen v2.4.1; see CLAUDE.md — nullability is
+	// documented prose-only.)
+	RecipientEmail string `json:"recipient_email"`
+
+	// SentAt RFC 3339 timestamp the email was successfully handed
+	// off to the delivery transport. Emitted as JSON `null`
+	// until the worker marks the row `sent`.
+	// (OAS 3.1 `type: [string, "null"]` is not yet supported
+	// by oapi-codegen v2.4.1; see CLAUDE.md — nullability is
+	// documented prose-only.)
+	SentAt time.Time `json:"sent_at"`
+
+	// Status Current delivery state. Documented values today:
+	// `pending` (queued, never attempted), `in_progress`
+	// (worker has claimed the job), `sent` (terminal — email
+	// delivered), `failed` (terminal — exhausted retry
+	// budget). New states may be added in future waves but
+	// the four above are stable.
+	Status DeliveryJobStatus `json:"status"`
+
+	// TicketId UUIDv7 of the `tickets` row the delivery attempt belongs
+	// to.
+	TicketId openapi_types.UUID `json:"ticket_id"`
+
+	// UpdatedAt RFC 3339 timestamp the row was last mutated by the
+	// worker (status / attempts / last_error / sent_at
+	// update).
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// DeliveryJobStatus Current delivery state. Documented values today:
+// `pending` (queued, never attempted), `in_progress`
+// (worker has claimed the job), `sent` (terminal — email
+// delivered), `failed` (terminal — exhausted retry
+// budget). New states may be added in future waves but
+// the four above are stable.
+type DeliveryJobStatus string
 
 // DevAuthTokenRequest defines model for DevAuthTokenRequest.
 type DevAuthTokenRequest struct {
@@ -4406,6 +4528,22 @@ type PatchV1AdminOrganizationsOrgIdMembersMembershipIdParams struct {
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 
+// GetAdminTicketDeliveryParams defines parameters for GetAdminTicketDelivery.
+type GetAdminTicketDeliveryParams struct {
+	// XAdminReason Human-readable business reason for the admin read
+	// (audit trail). Empty values are rejected with
+	// `400 bad_request`.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// ResendAdminTicketDeliveryParams defines parameters for ResendAdminTicketDelivery.
+type ResendAdminTicketDeliveryParams struct {
+	// XAdminReason Human-readable business reason for the admin write
+	// (audit trail). Empty values are rejected with
+	// `400 bad_request`.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
 // PostV1AdminUsersParams defines parameters for PostV1AdminUsers.
 type PostV1AdminUsersParams struct {
 	// XAdminReason Human-readable business reason for the admin write (audit trail).
@@ -4553,6 +4691,17 @@ type GetTicketCredentialParams struct {
 	// absent. Pinned to the `ticket_credentials_type_check`
 	// constraint in 0027_ticket_credentials.sql.
 	Type *string `form:"type,omitempty" json:"type,omitempty"`
+}
+
+// UpdateWebhookSubscriberJSONBody defines parameters for UpdateWebhookSubscriber.
+type UpdateWebhookSubscriberJSONBody struct {
+	// Active Pause (`false`) or resume (`true`) delivery to this
+	// subscriber. Re-activates a previously soft-deleted row.
+	Active *bool `json:"active,omitempty"`
+
+	// EventTypes Replace the event_types filter. Empty array switches
+	// the subscriber back to wildcard (receives every event).
+	EventTypes *[]string `json:"event_types,omitempty"`
 }
 
 // PostV1AdminGeoCitiesJSONRequestBody defines body for PostV1AdminGeoCities for application/json ContentType.
@@ -4737,3 +4886,6 @@ type CreateReservationJSONRequestBody = CreateReservationRequest
 
 // RegisterWebhookSubscriberJSONRequestBody defines body for RegisterWebhookSubscriber for application/json ContentType.
 type RegisterWebhookSubscriberJSONRequestBody = RegisterWebhookSubscriberRequest
+
+// UpdateWebhookSubscriberJSONRequestBody defines body for UpdateWebhookSubscriber for application/json ContentType.
+type UpdateWebhookSubscriberJSONRequestBody UpdateWebhookSubscriberJSONBody

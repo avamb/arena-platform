@@ -18553,3 +18553,50 @@ Verification (npm --prefix apps/admin-web):
   npm run type-check                                          OK
   npm test --run                                              777/777 PASS
 Marked #301 passing.
+
+
+## 2026-06-30 - Feature #276 (A-15) Document delivery_jobs endpoints in OpenAPI
+- Added /v1/admin/tickets/{id}/delivery (getAdminTicketDelivery) and
+  /v1/admin/tickets/{id}/delivery/resend (resendAdminTicketDelivery) to
+  apps/backend/openapi/openapi.yaml under a new "Admin - Ticket delivery"
+  section, with X-Admin-Reason header param, bearerAuth, tags [v1, admin],
+  ticket.update permission prose, ErrorEnvelope on every error code, and
+  example payloads for pending/sent/failed/enqueued.
+- New component schemas DeliveryJob, AdminTicketDeliveryResponse,
+  AdminTicketDeliveryResendResponse declared next to
+  DeactivateWebhookSubscriberResponse. Nullable trio (recipient_email,
+  last_error, sent_at) encoded via prose null-on-omission per the
+  existing oapi-codegen v2.4.1 workaround documented in CLAUDE.md.
+- mount_admin.go: POST /admin/tickets/{id}/delivery/resend now mounts
+  unconditionally (handler self-gates on workerPool with 503 envelope)
+  so the route is reachable for the openapi-drift coverage check. The
+  /admin/tickets/{id}/scans Group was moved behind an explicit
+  feedTokenQueries != nil gate so wiring DeliveryJobQueries does NOT
+  drag scans into the drift surface - preserves the deliberate
+  /v1/admin scans gap precedent from #291/#295 until that surface is
+  documented later.
+- openapi_drift_test.go: buildDriftTestServer now wires
+  DeliveryJobQueries: gen.New(nil) so both delivery routes mount and
+  SpecCoversAllCodeRoutes is satisfied.
+- New openapi_delivery_jobs_276_test.go (8 cases) is the executable
+  A-15 contract gate: paths present, operationIds present, schemas
+  present, ticket.update permission docs, bearerAuth + X-Admin-Reason
+  + admin tag wiring, ErrorEnvelope coverage, error code prose,
+  DeliveryJob required-field shape, and the SpecExamplesValidate
+  contract walking the inline pending/sent/failed/enqueued example
+  payloads asserting UUID shapes on id/ticket_id/worker_job_id,
+  status in {pending, in_progress, sent, failed}, attempts >= 0,
+  RFC3339 timestamps on queued_at/created_at/updated_at, and the
+  resend invariants (status=pending, attempts=0, sent_at=null,
+  last_error=null).
+- Regenerated Go server types via
+  go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.4.1
+  (known OpenAPI 3.1 warning preserved) and TypeScript client types
+  via node scripts/gen-ts-client.mjs. go build ./... clean;
+  npx tsc --noEmit on the regenerated d.ts clean.
+Verification:
+  go build ./...                                              OK
+  go test -run TestOpenAPI276 (8/8)                           PASS
+  go test -run TestOpenAPIDriftCheck_SpecCoversAllCodeRoutes  PASS
+  npx tsc --noEmit apps/backend/openapi/clients/ts/index.d.ts OK
+Marked #276 passing.

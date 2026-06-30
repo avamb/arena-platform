@@ -367,6 +367,19 @@ func buildDriftTestServer(t *testing.T) *Server {
 		// POST   /v1/events/{event_id}/publications,
 		// DELETE /v1/events/{event_id}/publications/{feed_token_id}.
 		PublicationQueries: gen.New(nil),
+		// Wire DeliveryJobQueries so the support-console ticket
+		// delivery inspect + resend routes (feature #291, documented
+		// under feature #276 / A-15) are mounted for the drift check:
+		// GET  /v1/admin/tickets/{id}/delivery,
+		// POST /v1/admin/tickets/{id}/delivery/resend.
+		// The POST handler self-gates on a missing *pgxpool.Pool with
+		// a 503 envelope so the drift test does not need a live worker
+		// pool. The companion /v1/admin/tickets/{id}/scans route is
+		// gated on FeedTokenQueries (intentionally NOT wired here) so
+		// the deliberate /v1/admin scans gap precedent from #291/#295
+		// is preserved until that surface is documented in a future
+		// A-* wave.
+		DeliveryJobQueries: gen.New(nil),
 		// NOTE: BarcodeQueries is intentionally NOT wired here for the
 		// drift check. The barcode federation surfaces seven routes
 		// (POST/GET /v1/barcodes/authorities, POST /v1/barcodes,

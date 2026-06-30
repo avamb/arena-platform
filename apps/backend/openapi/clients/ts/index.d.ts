@@ -2575,6 +2575,52 @@ export interface paths {
         delete: operations["deactivateWebhookSubscriber"];
         options?: never;
         head?: never;
+        /**
+         * Update a WordPress webhook subscriber (event_types / active)
+         * @description Mutates one or both of the subscriber's `event_types` filter and
+         *     its `active` flag. The signing_secret is intentionally NOT
+         *     rotatable here — it is write-only and is returned exactly once
+         *     at registration time. To rotate, deactivate and re-register.
+         *
+         *     Backs the SuperAdmin webhooks admin UI (Feature #294 — S-3).
+         *
+         *     Requires JWT + the `webhook.subscriber.manage` permission.
+         */
+        patch: operations["updateWebhookSubscriber"];
+        trace?: never;
+    };
+    "/v1/webhooks/subscribers/{id}/recent-deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recent outbox events for a webhook subscriber (admin UI)
+         * @description Returns the most recent outbox rows whose `event_type` would be
+         *     delivered to this subscriber. When the subscriber's
+         *     `event_types` filter is empty, the wildcard branch is taken and
+         *     every event_type is considered; otherwise the listing is
+         *     restricted to the subscriber's typed list.
+         *
+         *     The persisted per-subscriber delivery row does NOT exist today
+         *     (see `08_architecture/06_event_notifications_billing_reporting_ru.md`),
+         *     so `attempts` and `dispatched_at` reflect the aggregate
+         *     dispatcher state on the source outbox event row rather than
+         *     this subscriber specifically. The panel is therefore labelled
+         *     as best-effort in the admin UI.
+         *
+         *     Backs the SuperAdmin webhooks admin UI (Feature #294 — S-3).
+         *
+         *     Requires JWT + the `webhook.subscriber.manage` permission.
+         */
+        get: operations["listRecentWebhookDeliveries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
         patch?: never;
         trace?: never;
     };
@@ -2721,6 +2767,78 @@ export interface paths {
         get: operations["getV1MediaFile"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/tickets/{id}/delivery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin — read the latest delivery_jobs row for a ticket
+         * @description Returns the most recent `delivery_jobs` row for the given
+         *     ticket, including current `status`, `attempts`, the
+         *     `recipient_email` the worker is targeting, and any
+         *     `last_error` string from the previous failed attempt.
+         *
+         *     Used by the support-console "Delivery" section of the
+         *     ticket drawer in apps/admin-web. Returns `404
+         *     ticket_delivery.not_found` when no delivery has ever been
+         *     attempted for the ticket — the UI then renders an empty
+         *     "no delivery attempted" state.
+         *
+         *     Requires JWT + the `ticket.update` permission (or the
+         *     future `support.act` fallback) plus a non-empty
+         *     `X-Admin-Reason` header. The header value is recorded in
+         *     the `audit_events` row emitted on each successful call.
+         */
+        get: operations["getAdminTicketDelivery"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/tickets/{id}/delivery/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin — enqueue a fresh delivery attempt for a ticket
+         * @description Inserts a new `delivery_jobs` row (status `pending`) and a
+         *     companion `worker_jobs` row of type `ticket.deliver` for
+         *     the given ticket. The existing worker handler picks the
+         *     job up on its normal poll cycle and emits a delivery email
+         *     to the ticket's `holder_email`.
+         *
+         *     Returns `202 Accepted` plus the freshly inserted
+         *     delivery_jobs row and the matching `worker_jobs.id` so the
+         *     support console can correlate the new attempt with
+         *     downstream worker logs.
+         *
+         *     The ticket must exist — a missing ticket returns
+         *     `404 ticket_delivery.ticket_not_found` rather than a
+         *     deferred worker-side failure.
+         *
+         *     Requires JWT + the `ticket.update` permission (or the
+         *     future `support.act` fallback) plus a non-empty
+         *     `X-Admin-Reason` header. The header value is recorded in
+         *     the `audit_events` row emitted on each successful call.
+         */
+        post: operations["resendAdminTicketDelivery"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7497,6 +7615,117 @@ export interface components {
              *     `"subscriber deactivated"` today.
              */
             message: string;
+        };
+        /**
+         * @description Single `delivery_jobs` row tracking a ticket-delivery attempt.
+         *     Materialised by the post-issuance delivery pipeline
+         *     (`apps/backend/internal/platform/httpserver/delivery_enqueue.go`)
+         *     and the support-console resend endpoint
+         *     (`apps/backend/internal/platform/httpserver/admin_ticket_delivery.go`,
+         *     feature #291). Each delivery_jobs row is paired 1:1 with a
+         *     `worker_jobs` row of type `ticket.deliver`; the worker pool
+         *     picks them up via `FOR UPDATE SKIP LOCKED` and updates
+         *     `status`, `attempts`, `last_error`, and `sent_at` in place.
+         */
+        DeliveryJob: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the `delivery_jobs` row.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the `tickets` row the delivery attempt belongs
+             *     to.
+             */
+            ticket_id: string;
+            /**
+             * @description Current delivery state. Documented values today:
+             *     `pending` (queued, never attempted), `in_progress`
+             *     (worker has claimed the job), `sent` (terminal — email
+             *     delivered), `failed` (terminal — exhausted retry
+             *     budget). New states may be added in future waves but
+             *     the four above are stable.
+             * @enum {string}
+             */
+            status: "pending" | "in_progress" | "sent" | "failed";
+            /**
+             * @description Number of delivery attempts the worker has made so far
+             *     on this row. `0` immediately after enqueue; incremented
+             *     by the worker before each attempt.
+             */
+            attempts: number;
+            /**
+             * @description Email address the delivery worker will (or did) send
+             *     the ticket to. Defaults to `tickets.holder_email` at
+             *     enqueue time; emitted as JSON `null` when the ticket
+             *     has no holder email (the worker then logs and skips).
+             *     (OAS 3.1 `type: [string, "null"]` is not yet supported
+             *     by oapi-codegen v2.4.1; see CLAUDE.md — nullability is
+             *     documented prose-only.)
+             */
+            recipient_email: string;
+            /**
+             * @description Truncated error string from the last failed attempt.
+             *     Emitted as JSON `null` while the job is `pending` or
+             *     after a successful `sent` transition.
+             *     (OAS 3.1 `type: [string, "null"]` is not yet supported
+             *     by oapi-codegen v2.4.1; see CLAUDE.md — nullability is
+             *     documented prose-only.)
+             */
+            last_error: string;
+            /**
+             * Format: date-time
+             * @description RFC 3339 timestamp the email was successfully handed
+             *     off to the delivery transport. Emitted as JSON `null`
+             *     until the worker marks the row `sent`.
+             *     (OAS 3.1 `type: [string, "null"]` is not yet supported
+             *     by oapi-codegen v2.4.1; see CLAUDE.md — nullability is
+             *     documented prose-only.)
+             */
+            sent_at: string;
+            /**
+             * Format: date-time
+             * @description RFC 3339 timestamp the row was first inserted.
+             */
+            queued_at: string;
+            /**
+             * Format: date-time
+             * @description RFC 3339 timestamp the row was created (equals
+             *     `queued_at` today).
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description RFC 3339 timestamp the row was last mutated by the
+             *     worker (status / attempts / last_error / sent_at
+             *     update).
+             */
+            updated_at: string;
+        };
+        /**
+         * @description Envelope returned by `GET /v1/admin/tickets/{id}/delivery`.
+         *     Wraps the most recent `delivery_jobs` row for the ticket.
+         */
+        AdminTicketDeliveryResponse: {
+            delivery: components["schemas"]["DeliveryJob"];
+        };
+        /**
+         * @description Envelope returned by
+         *     `POST /v1/admin/tickets/{id}/delivery/resend`. Carries the
+         *     freshly inserted `delivery_jobs` row plus the companion
+         *     `worker_jobs.id` so the support console can correlate the
+         *     enqueued attempt with downstream worker logs.
+         */
+        AdminTicketDeliveryResendResponse: {
+            delivery: components["schemas"]["DeliveryJob"];
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the matching `worker_jobs` row inserted in
+             *     the same request. The worker pool will pick it up on
+             *     its next poll cycle.
+             */
+            worker_job_id: string;
         };
         /**
          * @description Single event-publication row connecting an event to an agent
@@ -17082,6 +17311,208 @@ export interface operations {
             };
         };
     };
+    updateWebhookSubscriber: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Subscriber UUID (primary key of `webhook_subscribers.id`). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * @description Replace the event_types filter. Empty array switches
+                     *     the subscriber back to wildcard (receives every event).
+                     */
+                    event_types?: string[];
+                    /**
+                     * @description Pause (`false`) or resume (`true`) delivery to this
+                     *     subscriber. Re-activates a previously soft-deleted row.
+                     */
+                    active?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated subscriber summary (no signing_secret). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookSubscriberSummary"];
+                };
+            };
+            /**
+             * @description Invalid UUID, empty body, or unknown JSON fields
+             *     (`bad_request` / `validation_error`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `webhook.subscriber.manage` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No subscriber row matches `{id}` (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error while updating the row (`internal_error`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Webhook subscriber queries or pool unavailable
+             *     (`service_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listRecentWebhookDeliveries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Subscriber UUID (primary key of `webhook_subscribers.id`). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Up to 50 most recent matching outbox rows, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        subscriber_id: string;
+                        /** @description True when `event_types` is empty. */
+                        wildcard: boolean;
+                        event_types: string[];
+                        attempts: {
+                            /** Format: uuid */
+                            event_id: string;
+                            event_type: string;
+                            /** Format: date-time */
+                            occurred_at: string;
+                            /**
+                             * Format: date-time
+                             * @description Omitted entirely when the source outbox row
+                             *     has not yet been dispatched (the platform's
+                             *     documented-omission idiom instead of `null`).
+                             */
+                            dispatched_at?: string;
+                            /** Format: int32 */
+                            attempts: number;
+                        }[];
+                        /** Format: int32 */
+                        total: number;
+                    };
+                };
+            };
+            /** @description `{id}` is not a valid UUID (`bad_request`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `webhook.subscriber.manage` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No subscriber row matches `{id}` (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error while listing deliveries (`internal_error`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Webhook subscriber queries or pool unavailable
+             *     (`service_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     listEventPublications: {
         parameters: {
             query?: never;
@@ -17551,6 +17982,221 @@ export interface operations {
                 };
             };
             /** @description Media storage backend is not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getAdminTicketDelivery: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Human-readable business reason for the admin read
+                 *     (audit trail). Empty values are rejected with
+                 *     `400 bad_request`.
+                 */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /**
+                 * @description UUIDv7 primary key of the `tickets` row to inspect.
+                 *     A malformed UUID returns `400 bad_request`.
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description Latest delivery_jobs row for the ticket. The row may
+             *     be in any documented state (`pending`, `in_progress`,
+             *     `sent`, `failed`).
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminTicketDeliveryResponse"];
+                };
+            };
+            /**
+             * @description Invalid `{id}` (not a UUID) or missing/empty
+             *     `X-Admin-Reason` header (`bad_request`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Caller lacks the `ticket.update` permission (or the
+             *     future `support.act` fallback).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description No delivery has ever been attempted for the ticket
+             *     (`ticket_delivery.not_found`).
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error while looking the row up
+             *     (`ticket_delivery.internal`).
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Delivery_jobs queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    resendAdminTicketDelivery: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Human-readable business reason for the admin write
+                 *     (audit trail). Empty values are rejected with
+                 *     `400 bad_request`.
+                 */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /**
+                 * @description UUIDv7 primary key of the `tickets` row to resend.
+                 *     A malformed UUID returns `400 bad_request`.
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description Resend accepted. The body carries the newly inserted
+             *     `delivery_jobs` row (status `pending`) and the
+             *     companion `worker_jobs.id`.
+             */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminTicketDeliveryResendResponse"];
+                };
+            };
+            /**
+             * @description Invalid `{id}` (not a UUID) or missing/empty
+             *     `X-Admin-Reason` header (`bad_request`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Caller lacks the `ticket.update` permission (or the
+             *     future `support.act` fallback).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description No ticket matches `{id}`
+             *     (`ticket_delivery.ticket_not_found`).
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error while inserting the new row or
+             *     building the worker payload
+             *     (`ticket_delivery.internal`,
+             *     `ticket_delivery.enqueue_failed`).
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Delivery_jobs queries, ticket queries, or worker pool
+             *     unavailable
+             *     (`dependency.database_unavailable`).
+             */
             503: {
                 headers: {
                     [name: string]: unknown;

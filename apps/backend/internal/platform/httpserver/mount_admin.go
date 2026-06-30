@@ -82,21 +82,29 @@ func (s *Server) mountAdminTicketDeliveryRoutes(r chi.Router) {
 		pr.Get("/admin/tickets/{id}/delivery", s.handleAdminGetTicketDelivery)
 		// Resend gate also accepted via support.act; future RBAC engine
 		// can grant either permission. AllowAll() passes both today.
-		if s.workerPool != nil {
-			pr.Post("/admin/tickets/{id}/delivery/resend", s.handleAdminResendTicketDelivery)
-		}
+		//
+		// Always mounted (handler self-gates on s.workerPool == nil with
+		// a 503 dependency.database_unavailable envelope) so that the
+		// route is documented as part of the openapi.yaml contract
+		// (feature #276, A-15) and the drift test does not need a real
+		// *pgxpool.Pool to assert coverage.
+		pr.Post("/admin/tickets/{id}/delivery/resend", s.handleAdminResendTicketDelivery)
 	})
 	// Read-only Scans panel for the ticket support drawer (feature #295,
 	// S-4). RBAC: scan_event.read (seeded for admin/org_admin/support in
-	// 0055_scan_events.sql). Mounted inside this gate (deliveryJobQueries
-	// non-nil) because the drift test only wires DeliveryJobQueries when
-	// the matching delivery suite is opted in, which transitively also
-	// gates this route out of the openapi-drift coverage check — matching
-	// the deliberate /v1/admin gap precedent documented in #291.
-	r.Group(func(pr chi.Router) {
-		s.applyAuth(pr, "scan_event.read", "scan_events")
-		pr.Get("/admin/tickets/{id}/scans", s.handleAdminListTicketScanEvents)
-	})
+	// 0055_scan_events.sql). Gated separately on feedTokenQueries
+	// (currently the scan_events read backend) so the openapi-drift
+	// coverage check can wire DeliveryJobQueries to assert the delivery
+	// routes (#276) without dragging in the scans surface, which is
+	// documented under a future A-* wave. This preserves the deliberate
+	// /v1/admin scans gap precedent established in #291 / #295 while
+	// closing the delivery gap.
+	if s.feedTokenQueries != nil {
+		r.Group(func(pr chi.Router) {
+			s.applyAuth(pr, "scan_event.read", "scan_events")
+			pr.Get("/admin/tickets/{id}/scans", s.handleAdminListTicketScanEvents)
+		})
+	}
 }
 
 // mountAdminOrgRoutes mounts admin-namespace Organizations CRUD endpoints
