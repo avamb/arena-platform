@@ -21,7 +21,7 @@
 //	DELETE does not remove the row; it sets deleted_at = now(). All
 //	subsequent reads filter WHERE deleted_at IS NULL. An audit event is
 //	written inside the same transaction as the soft-delete UPDATE.
-package httpserver
+package hiam
 
 import (
 	"encoding/json"
@@ -37,15 +37,14 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Response type
-// ─────────────────────────────────────────────────────────────────────────────
-
-// orgResponse is the JSON representation of a single organization.
-type orgResponse struct {
+// OrgResponse is the exported JSON representation of a single organization,
+// for use by the httpserver shim layer (orgs_test.go references orgResponse
+// from package httpserver via iam_shims.go).
+type OrgResponse struct {
 	ID                    string `json:"id"`
 	Name                  string `json:"name"`
 	Slug                  string `json:"slug"`
@@ -56,9 +55,9 @@ type orgResponse struct {
 	UpdatedAt             string `json:"updated_at"`
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// POST /v1/organizations
-// ─────────────────────────────────────────────────────────────────────────────
+// orgResponse is a package-level alias for OrgResponse so existing handler code
+// continues to compile unchanged.
+type orgResponse = OrgResponse
 
 // createOrgRequest is the request body for POST /v1/organizations.
 type createOrgRequest struct {
@@ -69,11 +68,21 @@ type createOrgRequest struct {
 	ReservationTTLSeconds int32  `json:"reservation_ttl_seconds"`
 }
 
-// handleCreateOrg serves POST /v1/organizations.
+// updateOrgRequest is the request body for PATCH /v1/organizations/{id}.
+// All fields are optional; empty/zero values leave the existing value unchanged.
+type updateOrgRequest struct {
+	Name                  string `json:"name"`
+	Slug                  string `json:"slug"`
+	Country               string `json:"country"`
+	DefaultLocale         string `json:"default_locale"`
+	ReservationTTLSeconds int32  `json:"reservation_ttl_seconds"`
+}
+
+// HandleCreateOrg serves POST /v1/organizations.
 // Requires JWT + "org.create" permission (enforced by middleware in mountV1Routes).
-func (s *Server) handleCreateOrg(w http.ResponseWriter, r *http.Request) {
-	if s.orgQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleCreateOrg(w http.ResponseWriter, r *http.Request) {
+	if h.orgQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -82,40 +91,38 @@ func (s *Server) handleCreateOrg(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("org.invalid_body", "cannot read request body: "+err.Error(), r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("org.invalid_body", "cannot read request body: "+err.Error(), r))
 		return
 	}
 	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("org.empty_body", "request body is required", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("org.empty_body", "request body is required", r))
 		return
 	}
 
 	var req createOrgRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("org.invalid_json", "request body is not valid JSON", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("org.invalid_json", "request body is not valid JSON", r))
 		return
 	}
 
-	// Normalize and validate required fields.
 	req.Name = strings.TrimSpace(req.Name)
 	req.Slug = strings.TrimSpace(strings.ToLower(req.Slug))
 
 	if req.Name == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"org.invalid_name", "name is required", r,
 			map[string]any{"field": "name"},
 		))
 		return
 	}
 	if req.Slug == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"org.invalid_slug", "slug is required", r,
 			map[string]any{"field": "slug"},
 		))
 		return
 	}
 
-	// Apply defaults.
 	if req.DefaultLocale == "" {
 		req.DefaultLocale = "en"
 	}
@@ -123,27 +130,27 @@ func (s *Server) handleCreateOrg(w http.ResponseWriter, r *http.Request) {
 		req.ReservationTTLSeconds = 1200
 	}
 
-	org, err := s.orgQueries.InsertOrganization(ctx,
+	org, err := h.orgQueries.InsertOrganization(ctx,
 		req.Name, req.Slug, req.Country, req.DefaultLocale, req.ReservationTTLSeconds,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
-			writeJSON(w, http.StatusConflict, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 				"org.duplicate",
 				"an organization with that name or slug already exists",
 				r,
 			))
 			return
 		}
-		s.logger.Error("org: insert failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("org: insert failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"org.insert_failed", "failed to create organization", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]any{
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
 		"organization": orgResponse{
 			ID:                    org.ID.String(),
 			Name:                  org.Name,
@@ -157,25 +164,21 @@ func (s *Server) handleCreateOrg(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GET /v1/organizations
-// ─────────────────────────────────────────────────────────────────────────────
-
-// handleListOrgs serves GET /v1/organizations.
+// HandleListOrgs serves GET /v1/organizations.
 // Requires JWT + "org.read" permission (enforced by middleware in mountV1Routes).
-func (s *Server) handleListOrgs(w http.ResponseWriter, r *http.Request) {
-	if s.orgQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleListOrgs(w http.ResponseWriter, r *http.Request) {
+	if h.orgQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
 	}
 	ctx := r.Context()
 
-	rows, err := s.orgQueries.ListOrganizations(ctx)
+	rows, err := h.orgQueries.ListOrganizations(ctx)
 	if err != nil {
-		s.logger.Error("org: list failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("org: list failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"org.list_failed", "failed to list organizations", r,
 		))
 		return
@@ -194,43 +197,39 @@ func (s *Server) handleListOrgs(w http.ResponseWriter, r *http.Request) {
 			UpdatedAt:             o.UpdatedAt.UTC().Format(time.RFC3339),
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"organizations": result})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"organizations": result})
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GET /v1/organizations/{id}
-// ─────────────────────────────────────────────────────────────────────────────
-
-// handleGetOrg serves GET /v1/organizations/{id}.
+// HandleGetOrg serves GET /v1/organizations/{id}.
 // Requires JWT + "org.read" permission.
-func (s *Server) handleGetOrg(w http.ResponseWriter, r *http.Request) {
-	if s.orgQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleGetOrg(w http.ResponseWriter, r *http.Request) {
+	if h.orgQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
 	}
 	ctx := r.Context()
 
-	orgID, ok := uuidPathParam(w, r, "id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
 		return
 	}
 
-	o, err := s.orgQueries.GetOrganizationByID(ctx, orgID)
+	o, err := h.orgQueries.GetOrganizationByID(ctx, orgID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("org.not_found", "organization not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("org.not_found", "organization not found", r))
 			return
 		}
-		s.logger.Error("org: get failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("org: get failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"org.get_failed", "failed to get organization", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"organization": orgResponse{
 			ID:                    o.ID.String(),
 			Name:                  o.Name,
@@ -244,83 +243,68 @@ func (s *Server) handleGetOrg(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PATCH /v1/organizations/{id}
-// ─────────────────────────────────────────────────────────────────────────────
-
-// updateOrgRequest is the request body for PATCH /v1/organizations/{id}.
-// All fields are optional; empty/zero values leave the existing value unchanged.
-type updateOrgRequest struct {
-	Name                  string `json:"name"`
-	Slug                  string `json:"slug"`
-	Country               string `json:"country"`
-	DefaultLocale         string `json:"default_locale"`
-	ReservationTTLSeconds int32  `json:"reservation_ttl_seconds"`
-}
-
-// handleUpdateOrg serves PATCH /v1/organizations/{id}.
+// HandleUpdateOrg serves PATCH /v1/organizations/{id}.
 // Requires JWT + "org.update" permission.
-func (s *Server) handleUpdateOrg(w http.ResponseWriter, r *http.Request) {
-	if s.orgQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleUpdateOrg(w http.ResponseWriter, r *http.Request) {
+	if h.orgQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
 	}
 	ctx := r.Context()
 
-	orgID, ok := uuidPathParam(w, r, "id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
 		return
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("org.invalid_body", "cannot read request body: "+err.Error(), r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("org.invalid_body", "cannot read request body: "+err.Error(), r))
 		return
 	}
 	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("org.empty_body", "request body is required", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("org.empty_body", "request body is required", r))
 		return
 	}
 
 	var req updateOrgRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("org.invalid_json", "request body is not valid JSON", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("org.invalid_json", "request body is not valid JSON", r))
 		return
 	}
 
-	// Normalize
 	req.Name = strings.TrimSpace(req.Name)
 	req.Slug = strings.TrimSpace(strings.ToLower(req.Slug))
 	req.Country = strings.TrimSpace(req.Country)
 	req.DefaultLocale = strings.TrimSpace(req.DefaultLocale)
 
-	updated, err := s.orgQueries.UpdateOrganization(ctx,
+	updated, err := h.orgQueries.UpdateOrganization(ctx,
 		orgID, req.Name, req.Slug, req.Country, req.DefaultLocale, req.ReservationTTLSeconds,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("org.not_found", "organization not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("org.not_found", "organization not found", r))
 			return
 		}
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
-			writeJSON(w, http.StatusConflict, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 				"org.duplicate",
 				"an organization with that name or slug already exists",
 				r,
 			))
 			return
 		}
-		s.logger.Error("org: update failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("org: update failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"org.update_failed", "failed to update organization", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"organization": orgResponse{
 			ID:                    updated.ID.String(),
 			Name:                  updated.Name,
@@ -334,54 +318,48 @@ func (s *Server) handleUpdateOrg(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DELETE /v1/organizations/{id}
-// ─────────────────────────────────────────────────────────────────────────────
-
-// handleDeleteOrg serves DELETE /v1/organizations/{id}.
+// HandleDeleteOrg serves DELETE /v1/organizations/{id}.
 // Performs a soft-delete (sets deleted_at = now()) and writes an audit event
 // inside the same transaction. Requires JWT + "org.delete" permission.
-func (s *Server) handleDeleteOrg(w http.ResponseWriter, r *http.Request) {
-	if s.orgQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleDeleteOrg(w http.ResponseWriter, r *http.Request) {
+	if h.orgQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
 	}
 	ctx := r.Context()
 
-	orgID, ok := uuidPathParam(w, r, "id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
 		return
 	}
 
-	// Open transaction: soft-delete + audit in one atomic write.
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "failed to begin transaction", r,
 		))
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	qtx := s.orgQueries.WithTx(tx)
+	qtx := h.orgQueries.WithTx(tx)
 
 	deleted, err := qtx.SoftDeleteOrganization(ctx, orgID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("org.not_found", "organization not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("org.not_found", "organization not found", r))
 			return
 		}
-		s.logger.Error("org: soft-delete failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("org: soft-delete failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"org.delete_failed", "failed to delete organization", r,
 		))
 		return
 	}
 
-	// Write audit event inside the same transaction (feature #119 step 3).
-	if s.audit != nil {
+	if h.audit != nil {
 		actor, _ := auth.ActorFromContext(ctx)
 		auditEv := audit.Event{
 			OccurredAt:   time.Now().UTC(),
@@ -392,15 +370,15 @@ func (s *Server) handleDeleteOrg(w http.ResponseWriter, r *http.Request) {
 			ResourceID:   orgID.String(),
 			RequestID:    logging.RequestID(ctx),
 			TraceID:      logging.TraceID(ctx),
-			IP:           extractClientIP(r),
+			IP:           httputil.ExtractClientIP(r),
 			Metadata: map[string]any{
 				"org_name": deleted.Name,
 				"org_slug": deleted.Slug,
 			},
 		}
-		if err := s.audit.WriteTx(ctx, tx, auditEv); err != nil {
-			s.logger.Error("org: audit write failed", slog.String("error", err.Error()))
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		if err := h.audit.WriteTx(ctx, tx, auditEv); err != nil {
+			h.logger.Error("org: audit write failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"org.audit_failed", "failed to write audit event", r,
 			))
 			return
@@ -408,13 +386,13 @@ func (s *Server) handleDeleteOrg(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"org.commit_failed", "failed to commit transaction", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"organization": orgResponse{
 			ID:                    deleted.ID.String(),
 			Name:                  deleted.Name,

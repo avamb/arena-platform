@@ -32,7 +32,7 @@
 // Roles are validated against validMembershipRoles (memberships.go), which
 // mirrors the memberships_role_check CHECK constraint as extended by
 // migration 0042_network_operator_role.sql.
-package httpserver
+package hiam
 
 import (
 	"encoding/json"
@@ -49,22 +49,38 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GET /v1/admin/organizations/{org_id}/members
-// ─────────────────────────────────────────────────────────────────────────────
+// adminAddMemberRequest is the request body for
+// POST /v1/admin/organizations/{org_id}/members.
+//
+// Exactly one of UserID / Email must be supplied. When Email is supplied, the
+// user is resolved via GetUserByEmail; a missing user yields 422
+// "admin_membership.user_not_found".
+type adminAddMemberRequest struct {
+	UserID string `json:"user_id,omitempty"`
+	Email  string `json:"email,omitempty"`
+	Role   string `json:"role"`
+}
 
-// handleAdminListMembers serves GET /v1/admin/organizations/{org_id}/members.
+// adminChangeMemberRoleRequest is the request body for
+// PATCH /v1/admin/organizations/{org_id}/members/{membership_id}.
+type adminChangeMemberRoleRequest struct {
+	Role string `json:"role"`
+}
+
+// HandleAdminListMembers serves GET /v1/admin/organizations/{org_id}/members.
 // Requires JWT + membership.read + X-Admin-Reason.
+// handleAdminListMembers is the legacy name for this operation.
 //
 // The handler reuses ListMembershipsByOrg (feature #120) so the admin
 // console sees the same authoritative active-membership view that the
 // non-admin org-members listing exposes.
-func (s *Server) handleAdminListMembers(w http.ResponseWriter, r *http.Request) {
-	if s.membershipQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleAdminListMembers(w http.ResponseWriter, r *http.Request) {
+	if h.membershipQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -74,15 +90,15 @@ func (s *Server) handleAdminListMembers(w http.ResponseWriter, r *http.Request) 
 	}
 	ctx := r.Context()
 
-	orgID, ok := uuidPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
 
-	rows, err := s.membershipQueries.ListMembershipsByOrg(ctx, orgID)
+	rows, err := h.membershipQueries.ListMembershipsByOrg(ctx, orgID)
 	if err != nil {
-		s.logger.Error("admin_membership: list failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("admin_membership: list failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"admin_membership.list_failed", "failed to list memberships", r,
 		))
 		return
@@ -99,30 +115,15 @@ func (s *Server) handleAdminListMembers(w http.ResponseWriter, r *http.Request) 
 			JoinedAt: m.JoinedAt.UTC().Format(time.RFC3339),
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"memberships": result})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"memberships": result})
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// POST /v1/admin/organizations/{org_id}/members
-// ─────────────────────────────────────────────────────────────────────────────
-
-// adminAddMemberRequest is the request body for
-// POST /v1/admin/organizations/{org_id}/members.
-//
-// Exactly one of UserID / Email must be supplied. When Email is supplied, the
-// user is resolved via GetUserByEmail; a missing user yields 422
-// "admin_membership.user_not_found".
-type adminAddMemberRequest struct {
-	UserID string `json:"user_id,omitempty"`
-	Email  string `json:"email,omitempty"`
-	Role   string `json:"role"`
-}
-
-// handleAdminAddMember serves POST /v1/admin/organizations/{org_id}/members.
+// HandleAdminAddMember serves POST /v1/admin/organizations/{org_id}/members.
 // Requires JWT + membership.grant + X-Admin-Reason.
-func (s *Server) handleAdminAddMember(w http.ResponseWriter, r *http.Request) {
-	if s.membershipQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+// handleAdminAddMember is the legacy name for this operation.
+func (h *Handler) HandleAdminAddMember(w http.ResponseWriter, r *http.Request) {
+	if h.membershipQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -133,21 +134,21 @@ func (s *Server) handleAdminAddMember(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	orgID, ok := uuidPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"admin_membership.invalid_body",
 			"cannot read request body: "+err.Error(), r,
 		))
 		return
 	}
 	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"admin_membership.empty_body", "request body is required", r,
 		))
 		return
@@ -155,7 +156,7 @@ func (s *Server) handleAdminAddMember(w http.ResponseWriter, r *http.Request) {
 
 	var req adminAddMemberRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"admin_membership.invalid_json",
 			"request body is not valid JSON", r,
 		))
@@ -167,7 +168,7 @@ func (s *Server) handleAdminAddMember(w http.ResponseWriter, r *http.Request) {
 	req.Role = strings.TrimSpace(req.Role)
 
 	if req.UserID == "" && req.Email == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"admin_membership.missing_user",
 			"either user_id or email is required", r,
 			map[string]any{"fields": []string{"user_id", "email"}},
@@ -175,7 +176,7 @@ func (s *Server) handleAdminAddMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.UserID != "" && req.Email != "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"admin_membership.ambiguous_user",
 			"user_id and email are mutually exclusive — supply exactly one", r,
 			map[string]any{"fields": []string{"user_id", "email"}},
@@ -183,28 +184,27 @@ func (s *Server) handleAdminAddMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Role == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"admin_membership.invalid_role", "role is required", r,
-			map[string]any{"field": "role", "allowed": membershipRoleList()},
+			map[string]any{"field": "role", "allowed": MembershipRoleList()},
 		))
 		return
 	}
 	if !validMembershipRoles[req.Role] {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"admin_membership.invalid_role",
 			"role must be one of: organizer, agent, platform_operator, external_ticketing_operator, platform_superadmin, network_operator",
 			r,
-			map[string]any{"field": "role", "allowed": membershipRoleList()},
+			map[string]any{"field": "role", "allowed": MembershipRoleList()},
 		))
 		return
 	}
 
-	// Resolve user_id either directly or by email lookup.
 	var userID uuid.UUID
 	if req.UserID != "" {
 		parsed, err := uuid.Parse(req.UserID)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 				"admin_membership.invalid_user_id",
 				"user_id must be a valid UUID", r,
 				map[string]any{"field": "user_id"},
@@ -213,18 +213,18 @@ func (s *Server) handleAdminAddMember(w http.ResponseWriter, r *http.Request) {
 		}
 		userID = parsed
 	} else {
-		row, err := s.membershipQueries.GetUserByEmail(ctx, req.Email)
+		row, err := h.membershipQueries.GetUserByEmail(ctx, req.Email)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				writeJSON(w, http.StatusUnprocessableEntity, errorEnvelopeWithDetails(
+				httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
 					"admin_membership.user_not_found",
 					"no user exists with that email", r,
 					map[string]any{"field": "email"},
 				))
 				return
 			}
-			s.logger.Error("admin_membership: GetUserByEmail failed", slog.String("error", err.Error()))
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+			h.logger.Error("admin_membership: GetUserByEmail failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"admin_membership.user_lookup_failed",
 				"failed to resolve user by email", r,
 			))
@@ -233,39 +233,39 @@ func (s *Server) handleAdminAddMember(w http.ResponseWriter, r *http.Request) {
 		userID = row.ID
 	}
 
-	m, err := s.membershipQueries.InsertMembership(ctx, userID, orgID, req.Role)
+	m, err := h.membershipQueries.InsertMembership(ctx, userID, orgID, req.Role)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
 			switch pgErr.Code {
 			case pgUniqueViolation:
-				writeJSON(w, http.StatusConflict, errorEnvelope(
+				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 					"admin_membership.duplicate",
 					"user already holds that role in this organization", r,
 				))
 				return
 			case pgForeignKeyViolation:
-				writeJSON(w, http.StatusUnprocessableEntity, errorEnvelope(
+				httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
 					"admin_membership.invalid_reference",
 					"user_id or org_id does not exist", r,
 				))
 				return
 			}
 		}
-		s.logger.Error("admin_membership: insert failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("admin_membership: insert failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"admin_membership.insert_failed", "failed to add member", r,
 		))
 		return
 	}
 
-	s.writeAdminMembershipAudit(r, "v1.admin.membership.create", m.ID.String(), reason, map[string]any{
+	h.writeAdminMembershipAudit(r, "v1.admin.membership.create", m.ID.String(), reason, map[string]any{
 		"org_id":  m.OrgID.String(),
 		"user_id": m.UserID.String(),
 		"role":    m.Role,
 	})
 
-	writeJSON(w, http.StatusCreated, map[string]any{
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
 		"membership": membershipResponse{
 			ID:       m.ID.String(),
 			UserID:   m.UserID.String(),
@@ -277,22 +277,13 @@ func (s *Server) handleAdminAddMember(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PATCH /v1/admin/organizations/{org_id}/members/{membership_id}
-// ─────────────────────────────────────────────────────────────────────────────
-
-// adminChangeMemberRoleRequest is the request body for
-// PATCH /v1/admin/organizations/{org_id}/members/{membership_id}.
-type adminChangeMemberRoleRequest struct {
-	Role string `json:"role"`
-}
-
-// handleAdminChangeMemberRole serves
+// HandleAdminChangeMemberRole serves
 // PATCH /v1/admin/organizations/{org_id}/members/{membership_id}.
 // Requires JWT + membership.grant + X-Admin-Reason.
-func (s *Server) handleAdminChangeMemberRole(w http.ResponseWriter, r *http.Request) {
-	if s.membershipQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+// handleAdminChangeMemberRole is the legacy name for this operation.
+func (h *Handler) HandleAdminChangeMemberRole(w http.ResponseWriter, r *http.Request) {
+	if h.membershipQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -303,25 +294,25 @@ func (s *Server) handleAdminChangeMemberRole(w http.ResponseWriter, r *http.Requ
 	}
 	ctx := r.Context()
 
-	orgID, ok := uuidPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
-	membershipID, ok := uuidPathParam(w, r, "membership_id")
+	membershipID, ok := httputil.UUIDPathParam(w, r, "membership_id")
 	if !ok {
 		return
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"admin_membership.invalid_body",
 			"cannot read request body: "+err.Error(), r,
 		))
 		return
 	}
 	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"admin_membership.empty_body", "request body is required", r,
 		))
 		return
@@ -329,7 +320,7 @@ func (s *Server) handleAdminChangeMemberRole(w http.ResponseWriter, r *http.Requ
 
 	var req adminChangeMemberRoleRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"admin_membership.invalid_json",
 			"request body is not valid JSON", r,
 		))
@@ -337,26 +328,26 @@ func (s *Server) handleAdminChangeMemberRole(w http.ResponseWriter, r *http.Requ
 	}
 	req.Role = strings.TrimSpace(req.Role)
 	if req.Role == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"admin_membership.invalid_role", "role is required", r,
-			map[string]any{"field": "role", "allowed": membershipRoleList()},
+			map[string]any{"field": "role", "allowed": MembershipRoleList()},
 		))
 		return
 	}
 	if !validMembershipRoles[req.Role] {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"admin_membership.invalid_role",
 			"role must be one of: organizer, agent, platform_operator, external_ticketing_operator, platform_superadmin, network_operator",
 			r,
-			map[string]any{"field": "role", "allowed": membershipRoleList()},
+			map[string]any{"field": "role", "allowed": MembershipRoleList()},
 		))
 		return
 	}
 
-	updated, err := s.membershipQueries.ChangeMembershipRole(ctx, membershipID, orgID, req.Role)
+	updated, err := h.membershipQueries.ChangeMembershipRole(ctx, membershipID, orgID, req.Role)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 				"admin_membership.not_found",
 				"no active membership matches this id within the organization", r,
 			))
@@ -364,26 +355,26 @@ func (s *Server) handleAdminChangeMemberRole(w http.ResponseWriter, r *http.Requ
 		}
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
-			writeJSON(w, http.StatusConflict, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 				"admin_membership.duplicate",
 				"user already holds the requested role in this organization", r,
 			))
 			return
 		}
-		s.logger.Error("admin_membership: change role failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("admin_membership: change role failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"admin_membership.update_failed", "failed to change member role", r,
 		))
 		return
 	}
 
-	s.writeAdminMembershipAudit(r, "v1.admin.membership.update", updated.ID.String(), reason, map[string]any{
+	h.writeAdminMembershipAudit(r, "v1.admin.membership.update", updated.ID.String(), reason, map[string]any{
 		"org_id":   updated.OrgID.String(),
 		"user_id":  updated.UserID.String(),
 		"new_role": updated.Role,
 	})
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"membership": membershipResponse{
 			ID:       updated.ID.String(),
 			UserID:   updated.UserID.String(),
@@ -395,17 +386,14 @@ func (s *Server) handleAdminChangeMemberRole(w http.ResponseWriter, r *http.Requ
 	})
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DELETE /v1/admin/organizations/{org_id}/members/{membership_id}
-// ─────────────────────────────────────────────────────────────────────────────
-
-// handleAdminDeactivateMember serves
+// HandleAdminDeactivateMember serves
 // DELETE /v1/admin/organizations/{org_id}/members/{membership_id}.
 // Soft-removes the membership (status='revoked'). Requires JWT +
 // membership.revoke + X-Admin-Reason.
-func (s *Server) handleAdminDeactivateMember(w http.ResponseWriter, r *http.Request) {
-	if s.membershipQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+// handleAdminDeactivateMember is the legacy name for this operation.
+func (h *Handler) HandleAdminDeactivateMember(w http.ResponseWriter, r *http.Request) {
+	if h.membershipQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -416,38 +404,38 @@ func (s *Server) handleAdminDeactivateMember(w http.ResponseWriter, r *http.Requ
 	}
 	ctx := r.Context()
 
-	orgID, ok := uuidPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
-	membershipID, ok := uuidPathParam(w, r, "membership_id")
+	membershipID, ok := httputil.UUIDPathParam(w, r, "membership_id")
 	if !ok {
 		return
 	}
 
-	deactivated, err := s.membershipQueries.DeactivateMembership(ctx, membershipID, orgID)
+	deactivated, err := h.membershipQueries.DeactivateMembership(ctx, membershipID, orgID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 				"admin_membership.not_found",
 				"no active membership matches this id within the organization", r,
 			))
 			return
 		}
-		s.logger.Error("admin_membership: deactivate failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("admin_membership: deactivate failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"admin_membership.delete_failed", "failed to deactivate member", r,
 		))
 		return
 	}
 
-	s.writeAdminMembershipAudit(r, "v1.admin.membership.deactivate", deactivated.ID.String(), reason, map[string]any{
+	h.writeAdminMembershipAudit(r, "v1.admin.membership.deactivate", deactivated.ID.String(), reason, map[string]any{
 		"org_id":  deactivated.OrgID.String(),
 		"user_id": deactivated.UserID.String(),
 		"role":    deactivated.Role,
 	})
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"membership": membershipResponse{
 			ID:       deactivated.ID.String(),
 			UserID:   deactivated.UserID.String(),
@@ -460,17 +448,13 @@ func (s *Server) handleAdminDeactivateMember(w http.ResponseWriter, r *http.Requ
 	})
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Shared audit helper (fire-and-forget, non-tx)
-// ─────────────────────────────────────────────────────────────────────────────
-
 // writeAdminMembershipAudit emits a single audit event for an admin-membership
 // write. The current revisions of the spec do not require atomic in-tx audit
 // for membership writes; this fire-and-forget helper logs failures but does
 // not abort the response. If a future revision requires atomicity, switch to
-// the WriteTx pattern used by handleAdminArchiveOrg.
-func (s *Server) writeAdminMembershipAudit(r *http.Request, action, resourceID, reason string, extra map[string]any) {
-	if s.audit == nil {
+// the WriteTx pattern used by HandleAdminArchiveOrg.
+func (h *Handler) writeAdminMembershipAudit(r *http.Request, action, resourceID, reason string, extra map[string]any) {
+	if h.audit == nil {
 		return
 	}
 	actor, _ := auth.ActorFromContext(r.Context())
@@ -487,11 +471,11 @@ func (s *Server) writeAdminMembershipAudit(r *http.Request, action, resourceID, 
 		ResourceID:   resourceID,
 		RequestID:    logging.RequestID(r.Context()),
 		TraceID:      logging.TraceID(r.Context()),
-		IP:           extractClientIP(r),
+		IP:           httputil.ExtractClientIP(r),
 		Metadata:     metadata,
 	}
-	if err := s.audit.Write(r.Context(), ev); err != nil {
-		s.logger.Warn("admin_membership: audit write failed",
+	if err := h.audit.Write(r.Context(), ev); err != nil {
+		h.logger.Warn("admin_membership: audit write failed",
 			slog.String("action", action),
 			slog.Any("error", err),
 		)

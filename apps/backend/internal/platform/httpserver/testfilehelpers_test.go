@@ -616,7 +616,7 @@ func resolveFileInRepo(repoRoot, name string) string {
 		}
 	case "superadmin.go":
 		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "superadmin.go"),
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hiam", "superadmin.go"),
 		}
 	// External allocation quota model (feature #145)
 	case "0035_external_allocations.sql":
@@ -669,7 +669,7 @@ func resolveFileInRepo(repoRoot, name string) string {
 	// Admin impersonation (feature #167)
 	case "impersonation.go":
 		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "impersonation.go"),
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hiam", "impersonation.go"),
 		}
 	// Stripe Billing adapter for SaaS invoices (feature #162)
 	case "0037_stripe_billing.sql":

@@ -20,7 +20,7 @@
 //
 // Errors are reported via the canonical JSON error envelope (code +
 // message), matching the rest of the /v1 API surface.
-package httpserver
+package hiam
 
 import (
 	"encoding/json"
@@ -36,18 +36,16 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
-// POST /v1/admin/organizations
-// ─────────────────────────────────────────────────────────────────────────────
-
-// handleAdminCreateOrg serves POST /v1/admin/organizations.
+// HandleAdminCreateOrg serves POST /v1/admin/organizations.
 // Requires JWT + org.create + X-Admin-Reason.
-func (s *Server) handleAdminCreateOrg(w http.ResponseWriter, r *http.Request) {
-	if s.orgQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+// handleAdminCreateOrg is the legacy name for this operation.
+func (h *Handler) HandleAdminCreateOrg(w http.ResponseWriter, r *http.Request) {
+	if h.orgQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -60,19 +58,19 @@ func (s *Server) handleAdminCreateOrg(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("admin_org.invalid_body",
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("admin_org.invalid_body",
 			"cannot read request body: "+err.Error(), r))
 		return
 	}
 	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("admin_org.empty_body",
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("admin_org.empty_body",
 			"request body is required", r))
 		return
 	}
 
 	var req createOrgRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("admin_org.invalid_json",
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("admin_org.invalid_json",
 			"request body is not valid JSON", r))
 		return
 	}
@@ -81,14 +79,14 @@ func (s *Server) handleAdminCreateOrg(w http.ResponseWriter, r *http.Request) {
 	req.Slug = strings.TrimSpace(strings.ToLower(req.Slug))
 
 	if req.Name == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"admin_org.invalid_name", "name is required", r,
 			map[string]any{"field": "name"},
 		))
 		return
 	}
 	if req.Slug == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"admin_org.invalid_slug", "slug is required", r,
 			map[string]any{"field": "slug"},
 		))
@@ -102,32 +100,32 @@ func (s *Server) handleAdminCreateOrg(w http.ResponseWriter, r *http.Request) {
 		req.ReservationTTLSeconds = 1200
 	}
 
-	org, err := s.orgQueries.InsertOrganization(ctx,
+	org, err := h.orgQueries.InsertOrganization(ctx,
 		req.Name, req.Slug, req.Country, req.DefaultLocale, req.ReservationTTLSeconds,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
-			writeJSON(w, http.StatusConflict, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 				"admin_org.duplicate",
 				"an organization with that name or slug already exists",
 				r,
 			))
 			return
 		}
-		s.logger.Error("admin_org: insert failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("admin_org: insert failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"admin_org.insert_failed", "failed to create organization", r,
 		))
 		return
 	}
 
-	s.writeAdminOrgAudit(r, "v1.admin.org.create", org.ID.String(), reason, map[string]any{
+	h.writeAdminOrgAudit(r, "v1.admin.org.create", org.ID.String(), reason, map[string]any{
 		"org_name": org.Name,
 		"org_slug": org.Slug,
 	})
 
-	writeJSON(w, http.StatusCreated, map[string]any{
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
 		"organization": orgResponse{
 			ID:                    org.ID.String(),
 			Name:                  org.Name,
@@ -141,15 +139,12 @@ func (s *Server) handleAdminCreateOrg(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PATCH /v1/admin/organizations/{id}
-// ─────────────────────────────────────────────────────────────────────────────
-
-// handleAdminUpdateOrg serves PATCH /v1/admin/organizations/{id}.
+// HandleAdminUpdateOrg serves PATCH /v1/admin/organizations/{id}.
 // Requires JWT + org.update + X-Admin-Reason.
-func (s *Server) handleAdminUpdateOrg(w http.ResponseWriter, r *http.Request) {
-	if s.orgQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+// handleAdminUpdateOrg is the legacy name for this operation.
+func (h *Handler) HandleAdminUpdateOrg(w http.ResponseWriter, r *http.Request) {
+	if h.orgQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -160,26 +155,26 @@ func (s *Server) handleAdminUpdateOrg(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	orgID, ok := uuidPathParam(w, r, "id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
 		return
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("admin_org.invalid_body",
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("admin_org.invalid_body",
 			"cannot read request body: "+err.Error(), r))
 		return
 	}
 	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("admin_org.empty_body",
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("admin_org.empty_body",
 			"request body is required", r))
 		return
 	}
 
 	var req updateOrgRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("admin_org.invalid_json",
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("admin_org.invalid_json",
 			"request body is not valid JSON", r))
 		return
 	}
@@ -189,32 +184,32 @@ func (s *Server) handleAdminUpdateOrg(w http.ResponseWriter, r *http.Request) {
 	req.Country = strings.TrimSpace(req.Country)
 	req.DefaultLocale = strings.TrimSpace(req.DefaultLocale)
 
-	updated, err := s.orgQueries.UpdateOrganization(ctx,
+	updated, err := h.orgQueries.UpdateOrganization(ctx,
 		orgID, req.Name, req.Slug, req.Country, req.DefaultLocale, req.ReservationTTLSeconds,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("admin_org.not_found",
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("admin_org.not_found",
 				"organization not found", r))
 			return
 		}
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
-			writeJSON(w, http.StatusConflict, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 				"admin_org.duplicate",
 				"an organization with that name or slug already exists",
 				r,
 			))
 			return
 		}
-		s.logger.Error("admin_org: update failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("admin_org: update failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"admin_org.update_failed", "failed to update organization", r,
 		))
 		return
 	}
 
-	s.writeAdminOrgAudit(r, "v1.admin.org.update", updated.ID.String(), reason, map[string]any{
+	h.writeAdminOrgAudit(r, "v1.admin.org.update", updated.ID.String(), reason, map[string]any{
 		"org_name": updated.Name,
 		"org_slug": updated.Slug,
 		"fields": map[string]any{
@@ -226,7 +221,7 @@ func (s *Server) handleAdminUpdateOrg(w http.ResponseWriter, r *http.Request) {
 		},
 	})
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"organization": orgResponse{
 			ID:                    updated.ID.String(),
 			Name:                  updated.Name,
@@ -240,16 +235,13 @@ func (s *Server) handleAdminUpdateOrg(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// POST /v1/admin/organizations/{id}/archive
-// ─────────────────────────────────────────────────────────────────────────────
-
-// handleAdminArchiveOrg serves POST /v1/admin/organizations/{id}/archive.
+// HandleAdminArchiveOrg serves POST /v1/admin/organizations/{id}/archive.
 // Performs a soft-delete (sets deleted_at = now()) and writes an audit event
 // inside the same transaction. Requires JWT + org.delete + X-Admin-Reason.
-func (s *Server) handleAdminArchiveOrg(w http.ResponseWriter, r *http.Request) {
-	if s.orgQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+// handleAdminArchiveOrg is the legacy name for this operation.
+func (h *Handler) HandleAdminArchiveOrg(w http.ResponseWriter, r *http.Request) {
+	if h.orgQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -260,37 +252,37 @@ func (s *Server) handleAdminArchiveOrg(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	orgID, ok := uuidPathParam(w, r, "id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
 		return
 	}
 
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "failed to begin transaction", r,
 		))
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	qtx := s.orgQueries.WithTx(tx)
+	qtx := h.orgQueries.WithTx(tx)
 
 	archived, err := qtx.SoftDeleteOrganization(ctx, orgID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("admin_org.not_found",
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("admin_org.not_found",
 				"organization not found", r))
 			return
 		}
-		s.logger.Error("admin_org: archive failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("admin_org: archive failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"admin_org.archive_failed", "failed to archive organization", r,
 		))
 		return
 	}
 
-	if s.audit != nil {
+	if h.audit != nil {
 		actor, _ := auth.ActorFromContext(ctx)
 		ev := audit.Event{
 			OccurredAt:   time.Now().UTC(),
@@ -301,16 +293,16 @@ func (s *Server) handleAdminArchiveOrg(w http.ResponseWriter, r *http.Request) {
 			ResourceID:   orgID.String(),
 			RequestID:    logging.RequestID(ctx),
 			TraceID:      logging.TraceID(ctx),
-			IP:           extractClientIP(r),
+			IP:           httputil.ExtractClientIP(r),
 			Metadata: map[string]any{
 				"reason":   reason,
 				"org_name": archived.Name,
 				"org_slug": archived.Slug,
 			},
 		}
-		if err := s.audit.WriteTx(ctx, tx, ev); err != nil {
-			s.logger.Error("admin_org: audit write failed", slog.String("error", err.Error()))
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		if err := h.audit.WriteTx(ctx, tx, ev); err != nil {
+			h.logger.Error("admin_org: audit write failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"admin_org.audit_failed", "failed to write audit event", r,
 			))
 			return
@@ -318,13 +310,13 @@ func (s *Server) handleAdminArchiveOrg(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"admin_org.commit_failed", "failed to commit transaction", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"organization": orgResponse{
 			ID:                    archived.ID.String(),
 			Name:                  archived.Name,
@@ -339,16 +331,12 @@ func (s *Server) handleAdminArchiveOrg(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Shared audit helper (create / update — fire-and-forget, non-tx)
-// ─────────────────────────────────────────────────────────────────────────────
-
 // writeAdminOrgAudit emits a single audit event for an admin-org write. The
 // archive path uses an in-transaction WriteTx for atomicity; create/update do
 // not need that guarantee, so this fire-and-forget helper logs failures but
 // does not abort the response.
-func (s *Server) writeAdminOrgAudit(r *http.Request, action, resourceID, reason string, extra map[string]any) {
-	if s.audit == nil {
+func (h *Handler) writeAdminOrgAudit(r *http.Request, action, resourceID, reason string, extra map[string]any) {
+	if h.audit == nil {
 		return
 	}
 	actor, _ := auth.ActorFromContext(r.Context())
@@ -365,11 +353,11 @@ func (s *Server) writeAdminOrgAudit(r *http.Request, action, resourceID, reason 
 		ResourceID:   resourceID,
 		RequestID:    logging.RequestID(r.Context()),
 		TraceID:      logging.TraceID(r.Context()),
-		IP:           extractClientIP(r),
+		IP:           httputil.ExtractClientIP(r),
 		Metadata:     metadata,
 	}
-	if err := s.audit.Write(r.Context(), ev); err != nil {
-		s.logger.Warn("admin_org: audit write failed",
+	if err := h.audit.Write(r.Context(), ev); err != nil {
+		h.logger.Warn("admin_org: audit write failed",
 			slog.String("action", action),
 			slog.Any("error", err),
 		)

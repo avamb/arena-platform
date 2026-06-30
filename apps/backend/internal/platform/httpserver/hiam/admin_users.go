@@ -1,4 +1,4 @@
-package httpserver
+package hiam
 
 import (
 	"context"
@@ -17,9 +17,12 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/users"
 )
+
+const passwordResetTokenTTL = time.Hour
 
 var globalAdminUserRoles = map[string]bool{
 	"platform_operator":   true,
@@ -61,11 +64,12 @@ type adminCreatedOnboardingDTO struct {
 	Delivery            string `json:"delivery"`
 }
 
-// handleAdminCreateUser serves POST /v1/admin/users.
+// HandleAdminCreateUser serves POST /v1/admin/users.
 // It creates a new account by email and immediately assigns the requested role.
-func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
-	if s.membershipQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+// handleAdminCreateUser is the legacy name for this operation.
+func (h *Handler) HandleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
+	if h.membershipQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -77,13 +81,13 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"admin_user.invalid_body", "cannot read request body: "+err.Error(), r,
 		))
 		return
 	}
 	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"admin_user.empty_body", "request body is required", r,
 		))
 		return
@@ -91,7 +95,7 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 
 	var req adminCreateUserRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"admin_user.invalid_json", "request body is not valid JSON", r,
 		))
 		return
@@ -99,7 +103,7 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 
 	email, err := users.NormalizeEmail(req.Email)
 	if err != nil || !strings.Contains(email, "@") {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"admin_user.invalid_email", "email address is invalid", r,
 			map[string]any{"field": "email"},
 		))
@@ -108,7 +112,7 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 
 	role := strings.TrimSpace(req.Role)
 	if role == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"admin_user.invalid_role", "role is required", r,
 			map[string]any{"field": "role", "allowed": adminCreateUserRoleList()},
 		))
@@ -127,23 +131,23 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 
 	tempPassword, err := users.GenerateVerificationToken()
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"internal.token_generation_failed", "failed to generate onboarding secret", r,
 		))
 		return
 	}
 	hash, err := users.HashPassword(tempPassword)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"internal.password_hash_failed", "failed to hash password", r,
 		))
 		return
 	}
 
 	ctx := r.Context()
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -155,15 +159,15 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
-			writeJSON(w, http.StatusConflict, errorEnvelopeWithDetails(
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
 				"admin_user.email_already_registered",
 				"this email address is already registered", r,
 				map[string]any{"field": "email"},
 			))
 			return
 		}
-		s.logger.Error("admin_user: insert user failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+		h.logger.Error("admin_user: insert user failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "failed to create user", r,
 		))
 		return
@@ -172,14 +176,14 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 	if scope == "global" {
 		if err := assignGlobalUserRole(ctx, tx, userRow.ID, role); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+				httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 					"admin_user.invalid_role", "role is not registered", r,
 					map[string]any{"field": "role", "allowed": adminCreateUserRoleList()},
 				))
 				return
 			}
-			s.logger.Error("admin_user: assign global role failed", slog.String("error", err.Error()))
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+			h.logger.Error("admin_user: assign global role failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"admin_user.role_assign_failed", "failed to assign role", r,
 			))
 			return
@@ -188,14 +192,14 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 		if _, err := q.InsertMembership(ctx, userRow.ID, *orgID, role); err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == pgForeignKeyViolation {
-				writeJSON(w, http.StatusUnprocessableEntity, errorEnvelopeWithDetails(
+				httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
 					"admin_user.invalid_org_id", "org_id does not exist", r,
 					map[string]any{"field": "org_id"},
 				))
 				return
 			}
-			s.logger.Error("admin_user: insert membership failed", slog.String("error", err.Error()))
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+			h.logger.Error("admin_user: insert membership failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"admin_user.role_assign_failed", "failed to assign role", r,
 			))
 			return
@@ -204,21 +208,21 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 
 	resetToken, err := users.GenerateVerificationToken()
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"internal.token_generation_failed", "failed to generate reset token", r,
 		))
 		return
 	}
 	resetExpiresAt := time.Now().UTC().Add(passwordResetTokenTTL)
 	if err := q.InsertPasswordResetToken(ctx, resetToken, userRow.ID, resetExpiresAt); err != nil {
-		s.logger.Error("admin_user: insert reset token failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("admin_user: insert reset token failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"internal.token_insert_failed", "failed to save reset token", r,
 		))
 		return
 	}
 
-	if s.audit != nil {
+	if h.audit != nil {
 		actor, _ := auth.ActorFromContext(ctx)
 		metadata := map[string]any{
 			"reason": reason,
@@ -229,7 +233,7 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 		if orgID != nil {
 			metadata["org_id"] = orgID.String()
 		}
-		if err := s.audit.WriteTx(ctx, tx, audit.Event{
+		if err := h.audit.WriteTx(ctx, tx, audit.Event{
 			OccurredAt:   time.Now().UTC(),
 			ActorType:    "user",
 			ActorID:      actor.ID,
@@ -238,11 +242,11 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 			ResourceID:   userRow.ID.String(),
 			RequestID:    logging.RequestID(ctx),
 			TraceID:      logging.TraceID(ctx),
-			IP:           extractClientIP(r),
+			IP:           httputil.ExtractClientIP(r),
 			Metadata:     metadata,
 		}); err != nil {
-			s.logger.Error("admin_user: audit write failed", slog.String("error", err.Error()))
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+			h.logger.Error("admin_user: audit write failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"admin_user.audit_failed", "failed to write audit event", r,
 			))
 			return
@@ -250,8 +254,8 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		s.logger.Error("admin_user: commit failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+		h.logger.Error("admin_user: commit failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "failed to save user", r,
 		))
 		return
@@ -271,7 +275,7 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 		s := orgID.String()
 		orgIDString = &s
 	}
-	writeJSON(w, http.StatusCreated, adminCreateUserResponse{
+	httputil.WriteJSON(w, http.StatusCreated, adminCreateUserResponse{
 		User: adminCreatedUserDTO{
 			ID:        userRow.ID.String(),
 			Email:     userRow.Email,
@@ -292,7 +296,7 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 func validateAdminUserRoleScope(w http.ResponseWriter, r *http.Request, role, rawOrgID string) (*uuid.UUID, string, bool) {
 	if globalAdminUserRoles[role] {
 		if rawOrgID != "" {
-			writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 				"admin_user.org_not_allowed",
 				"org_id must be omitted for global platform roles", r,
 				map[string]any{"field": "org_id"},
@@ -303,7 +307,7 @@ func validateAdminUserRoleScope(w http.ResponseWriter, r *http.Request, role, ra
 	}
 	if orgScopedAdminUserRoles[role] {
 		if rawOrgID == "" {
-			writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 				"admin_user.missing_org_id",
 				"org_id is required for organization-scoped roles", r,
 				map[string]any{"field": "org_id"},
@@ -312,7 +316,7 @@ func validateAdminUserRoleScope(w http.ResponseWriter, r *http.Request, role, ra
 		}
 		orgID, err := uuid.Parse(rawOrgID)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 				"admin_user.invalid_org_id", "org_id must be a valid UUID", r,
 				map[string]any{"field": "org_id"},
 			))
@@ -320,7 +324,7 @@ func validateAdminUserRoleScope(w http.ResponseWriter, r *http.Request, role, ra
 		}
 		return &orgID, "organization", true
 	}
-	writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+	httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 		"admin_user.invalid_role",
 		"role must be one of: agent, external_ticketing_operator, network_operator, organizer, platform_operator, platform_superadmin",
 		r,

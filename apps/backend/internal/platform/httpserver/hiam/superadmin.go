@@ -33,7 +33,7 @@
 //	resource_type = "superadmin"
 //	resource_id   = "<entity>"
 //	metadata      = {"reason": "<X-Admin-Reason>", "filters": {...}}
-package httpserver
+package hiam
 
 import (
 	"log/slog"
@@ -46,6 +46,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
@@ -60,10 +61,6 @@ const superadminDefaultLimit = 50
 // superadminMaxLimit is the maximum page size accepted by the superadmin endpoints.
 const superadminMaxLimit = 200
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Shared helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
 // parseSuperadminPagination extracts limit and offset from the request query
 // parameters. Returns the validated values or writes an error response and
 // returns false for ok.
@@ -74,7 +71,7 @@ func parseSuperadminPagination(w http.ResponseWriter, r *http.Request) (limit in
 	if v := r.URL.Query().Get("limit"); v != "" {
 		n, err := strconv.ParseInt(v, 10, 32)
 		if err != nil || n < 1 {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope("superadmin.invalid_limit",
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("superadmin.invalid_limit",
 				"limit must be a positive integer", r))
 			return 0, 0, false
 		}
@@ -87,7 +84,7 @@ func parseSuperadminPagination(w http.ResponseWriter, r *http.Request) (limit in
 	if v := r.URL.Query().Get("offset"); v != "" {
 		n, err := strconv.ParseInt(v, 10, 32)
 		if err != nil || n < 0 {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope("superadmin.invalid_offset",
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("superadmin.invalid_offset",
 				"offset must be a non-negative integer", r))
 			return 0, 0, false
 		}
@@ -107,7 +104,7 @@ func parseSuperadminOrgID(w http.ResponseWriter, r *http.Request) (*uuid.UUID, b
 	}
 	id, err := uuid.Parse(raw)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("superadmin.invalid_org_id",
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("superadmin.invalid_org_id",
 			"org_id must be a valid UUID", r))
 		return nil, false
 	}
@@ -119,7 +116,7 @@ func parseSuperadminOrgID(w http.ResponseWriter, r *http.Request) (*uuid.UUID, b
 func requireAdminReason(w http.ResponseWriter, r *http.Request) (string, bool) {
 	reason := strings.TrimSpace(r.Header.Get(superadminAdminReasonHeader))
 	if reason == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("superadmin.missing_reason",
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("superadmin.missing_reason",
 			"X-Admin-Reason header is required for superadmin operations", r))
 		return "", false
 	}
@@ -131,8 +128,8 @@ func requireAdminReason(w http.ResponseWriter, r *http.Request) (string, bool) {
 // filters is a map of the query filters applied (for metadata).
 // This is a fire-and-forget write — audit failure is logged but does NOT abort
 // the response, since the access has already occurred.
-func (s *Server) logSuperadminAudit(r *http.Request, entity, reason string, filters map[string]any) {
-	if s.audit == nil {
+func (h *Handler) logSuperadminAudit(r *http.Request, entity, reason string, filters map[string]any) {
+	if h.audit == nil {
 		return
 	}
 	actorID := ""
@@ -151,29 +148,27 @@ func (s *Server) logSuperadminAudit(r *http.Request, entity, reason string, filt
 		ResourceID:   entity,
 		RequestID:    logging.RequestID(r.Context()),
 		TraceID:      logging.TraceID(r.Context()),
-		IP:           extractClientIP(r),
+		IP:           httputil.ExtractClientIP(r),
 		Metadata: map[string]any{
 			"reason":  reason,
 			"filters": filters,
 		},
 	}
 
-	if err := s.audit.Write(r.Context(), ev); err != nil {
-		s.logger.Warn("superadmin: audit write failed",
+	if err := h.audit.Write(r.Context(), ev); err != nil {
+		h.logger.Warn("superadmin: audit write failed",
 			slog.String("entity", entity),
 			slog.Any("error", err),
 		)
 	}
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GET /v1/admin/organizations — list all organizations (cross-tenant)
-// ─────────────────────────────────────────────────────────────────────────────
-
-func (s *Server) handleSuperadminListOrganizations(w http.ResponseWriter, r *http.Request) {
-	if s.superadminQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable,
-			errorEnvelope("superadmin.unavailable", "superadmin console not configured", r))
+// HandleSuperadminListOrganizations serves GET /v1/admin/organizations.
+// handleSuperadminListOrganizations is the legacy name for this operation.
+func (h *Handler) HandleSuperadminListOrganizations(w http.ResponseWriter, r *http.Request) {
+	if h.superadminQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable,
+			httputil.ErrorEnvelope("superadmin.unavailable", "superadmin console not configured", r))
 		return
 	}
 
@@ -182,16 +177,15 @@ func (s *Server) handleSuperadminListOrganizations(w http.ResponseWriter, r *htt
 		return
 	}
 
-	rows, err := s.superadminQueries.ListOrganizations(r.Context())
+	rows, err := h.superadminQueries.ListOrganizations(r.Context())
 	if err != nil {
-		s.logger.Error("superadmin: list organizations failed", slog.Any("error", err))
-		writeJSON(w, http.StatusInternalServerError,
-			errorEnvelope("superadmin.internal", "failed to list organizations", r))
+		h.logger.Error("superadmin: list organizations failed", slog.Any("error", err))
+		httputil.WriteJSON(w, http.StatusInternalServerError,
+			httputil.ErrorEnvelope("superadmin.internal", "failed to list organizations", r))
 		return
 	}
 
-	// Audit log this cross-tenant read.
-	s.logSuperadminAudit(r, "organizations", reason, map[string]any{})
+	h.logSuperadminAudit(r, "organizations", reason, map[string]any{})
 
 	orgs := make([]map[string]any, 0, len(rows))
 	for _, o := range rows {
@@ -213,20 +207,18 @@ func (s *Server) handleSuperadminListOrganizations(w http.ResponseWriter, r *htt
 		orgs = append(orgs, m)
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"organizations": orgs,
 		"total":         len(orgs),
 	})
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GET /v1/admin/orders — list all checkout sessions (cross-tenant)
-// ─────────────────────────────────────────────────────────────────────────────
-
-func (s *Server) handleSuperadminListOrders(w http.ResponseWriter, r *http.Request) {
-	if s.superadminQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable,
-			errorEnvelope("superadmin.unavailable", "superadmin console not configured", r))
+// HandleSuperadminListOrders serves GET /v1/admin/orders.
+// handleSuperadminListOrders is the legacy name for this operation.
+func (h *Handler) HandleSuperadminListOrders(w http.ResponseWriter, r *http.Request) {
+	if h.superadminQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable,
+			httputil.ErrorEnvelope("superadmin.unavailable", "superadmin console not configured", r))
 		return
 	}
 
@@ -250,11 +242,11 @@ func (s *Server) handleSuperadminListOrders(w http.ResponseWriter, r *http.Reque
 		stateFilter = &v
 	}
 
-	rows, err := s.superadminQueries.ListAllCheckoutSessions(r.Context(), orgID, stateFilter, limit, offset)
+	rows, err := h.superadminQueries.ListAllCheckoutSessions(r.Context(), orgID, stateFilter, limit, offset)
 	if err != nil {
-		s.logger.Error("superadmin: list orders failed", slog.Any("error", err))
-		writeJSON(w, http.StatusInternalServerError,
-			errorEnvelope("superadmin.internal", "failed to list orders", r))
+		h.logger.Error("superadmin: list orders failed", slog.Any("error", err))
+		httputil.WriteJSON(w, http.StatusInternalServerError,
+			httputil.ErrorEnvelope("superadmin.internal", "failed to list orders", r))
 		return
 	}
 
@@ -265,7 +257,7 @@ func (s *Server) handleSuperadminListOrders(w http.ResponseWriter, r *http.Reque
 	if stateFilter != nil {
 		filters["state"] = *stateFilter
 	}
-	s.logSuperadminAudit(r, "orders", reason, filters)
+	h.logSuperadminAudit(r, "orders", reason, filters)
 
 	orders := make([]map[string]any, 0, len(rows))
 	for _, cs := range rows {
@@ -301,7 +293,7 @@ func (s *Server) handleSuperadminListOrders(w http.ResponseWriter, r *http.Reque
 		orders = append(orders, m)
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"orders": orders,
 		"total":  len(orders),
 		"limit":  limit,
@@ -309,14 +301,12 @@ func (s *Server) handleSuperadminListOrders(w http.ResponseWriter, r *http.Reque
 	})
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GET /v1/admin/tickets — list all tickets (cross-tenant)
-// ─────────────────────────────────────────────────────────────────────────────
-
-func (s *Server) handleSuperadminListTickets(w http.ResponseWriter, r *http.Request) {
-	if s.superadminQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable,
-			errorEnvelope("superadmin.unavailable", "superadmin console not configured", r))
+// HandleSuperadminListTickets serves GET /v1/admin/tickets.
+// handleSuperadminListTickets is the legacy name for this operation.
+func (h *Handler) HandleSuperadminListTickets(w http.ResponseWriter, r *http.Request) {
+	if h.superadminQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable,
+			httputil.ErrorEnvelope("superadmin.unavailable", "superadmin console not configured", r))
 		return
 	}
 
@@ -340,11 +330,11 @@ func (s *Server) handleSuperadminListTickets(w http.ResponseWriter, r *http.Requ
 		statusFilter = &v
 	}
 
-	rows, err := s.superadminQueries.ListAllTickets(r.Context(), orgID, statusFilter, limit, offset)
+	rows, err := h.superadminQueries.ListAllTickets(r.Context(), orgID, statusFilter, limit, offset)
 	if err != nil {
-		s.logger.Error("superadmin: list tickets failed", slog.Any("error", err))
-		writeJSON(w, http.StatusInternalServerError,
-			errorEnvelope("superadmin.internal", "failed to list tickets", r))
+		h.logger.Error("superadmin: list tickets failed", slog.Any("error", err))
+		httputil.WriteJSON(w, http.StatusInternalServerError,
+			httputil.ErrorEnvelope("superadmin.internal", "failed to list tickets", r))
 		return
 	}
 
@@ -355,7 +345,7 @@ func (s *Server) handleSuperadminListTickets(w http.ResponseWriter, r *http.Requ
 	if statusFilter != nil {
 		filters["status"] = *statusFilter
 	}
-	s.logSuperadminAudit(r, "tickets", reason, filters)
+	h.logSuperadminAudit(r, "tickets", reason, filters)
 
 	tickets := make([]map[string]any, 0, len(rows))
 	for _, t := range rows {
@@ -381,7 +371,7 @@ func (s *Server) handleSuperadminListTickets(w http.ResponseWriter, r *http.Requ
 		tickets = append(tickets, m)
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"tickets": tickets,
 		"total":   len(tickets),
 		"limit":   limit,
@@ -389,14 +379,12 @@ func (s *Server) handleSuperadminListTickets(w http.ResponseWriter, r *http.Requ
 	})
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GET /v1/admin/refunds — list all refunds (cross-tenant)
-// ─────────────────────────────────────────────────────────────────────────────
-
-func (s *Server) handleSuperadminListRefunds(w http.ResponseWriter, r *http.Request) {
-	if s.superadminQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable,
-			errorEnvelope("superadmin.unavailable", "superadmin console not configured", r))
+// HandleSuperadminListRefunds serves GET /v1/admin/refunds.
+// handleSuperadminListRefunds is the legacy name for this operation.
+func (h *Handler) HandleSuperadminListRefunds(w http.ResponseWriter, r *http.Request) {
+	if h.superadminQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable,
+			httputil.ErrorEnvelope("superadmin.unavailable", "superadmin console not configured", r))
 		return
 	}
 
@@ -420,11 +408,11 @@ func (s *Server) handleSuperadminListRefunds(w http.ResponseWriter, r *http.Requ
 		stateFilter = &v
 	}
 
-	rows, err := s.superadminQueries.ListAllRefunds(r.Context(), orgID, stateFilter, limit, offset)
+	rows, err := h.superadminQueries.ListAllRefunds(r.Context(), orgID, stateFilter, limit, offset)
 	if err != nil {
-		s.logger.Error("superadmin: list refunds failed", slog.Any("error", err))
-		writeJSON(w, http.StatusInternalServerError,
-			errorEnvelope("superadmin.internal", "failed to list refunds", r))
+		h.logger.Error("superadmin: list refunds failed", slog.Any("error", err))
+		httputil.WriteJSON(w, http.StatusInternalServerError,
+			httputil.ErrorEnvelope("superadmin.internal", "failed to list refunds", r))
 		return
 	}
 
@@ -435,7 +423,7 @@ func (s *Server) handleSuperadminListRefunds(w http.ResponseWriter, r *http.Requ
 	if stateFilter != nil {
 		filters["state"] = *stateFilter
 	}
-	s.logSuperadminAudit(r, "refunds", reason, filters)
+	h.logSuperadminAudit(r, "refunds", reason, filters)
 
 	refunds := make([]map[string]any, 0, len(rows))
 	for _, rf := range rows {
@@ -478,7 +466,7 @@ func (s *Server) handleSuperadminListRefunds(w http.ResponseWriter, r *http.Requ
 		refunds = append(refunds, m)
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"refunds": refunds,
 		"total":   len(refunds),
 		"limit":   limit,
