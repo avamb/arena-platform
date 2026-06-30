@@ -82,6 +82,8 @@ import { NAV_BY_PATH } from "@/lib/auth/navConfig";
 import {
   ResponsiveTable,
   type ResponsiveTableColumn,
+  mobileFormBarStyle,
+  singleColumnFormStyle,
 } from "@/components/layout";
 
 export const Route = createRoute({
@@ -2107,7 +2109,16 @@ function SessionEditor({
         </div>
       ) : null}
 
-      <div style={rowActionsStyle}>
+      <div style={mobileFormBarStyle} data-testid="events-session-actions">
+        <button
+          type="button"
+          style={refreshButtonStyle}
+          onClick={onClose}
+          disabled={mutation.isPending}
+          data-testid="events-session-cancel"
+        >
+          Cancel
+        </button>
         <button
           type="submit"
           style={primaryButtonStyle}
@@ -2119,15 +2130,6 @@ function SessionEditor({
             : mode.kind === "create"
               ? "Create session"
               : "Save changes"}
-        </button>
-        <button
-          type="button"
-          style={refreshButtonStyle}
-          onClick={onClose}
-          disabled={mutation.isPending}
-          data-testid="events-session-cancel"
-        >
-          Cancel
         </button>
       </div>
     </form>
@@ -2851,7 +2853,16 @@ function TierEditor({
         </label>
       </div>
 
-      <div style={rowActionsStyle}>
+      <div style={mobileFormBarStyle} data-testid="events-tier-actions">
+        <button
+          type="button"
+          style={refreshButtonStyle}
+          onClick={onClose}
+          disabled={mutation.isPending}
+          data-testid="events-tier-cancel"
+        >
+          Cancel
+        </button>
         <button
           type="submit"
           style={primaryButtonStyle}
@@ -2863,15 +2874,6 @@ function TierEditor({
             : mode.kind === "create"
               ? "Create tier"
               : "Save changes"}
-        </button>
-        <button
-          type="button"
-          style={refreshButtonStyle}
-          onClick={onClose}
-          disabled={mutation.isPending}
-          data-testid="events-tier-cancel"
-        >
-          Cancel
         </button>
       </div>
     </form>
@@ -3799,8 +3801,7 @@ const rowActionsStyle: CSSProperties = {
 };
 
 const editorFormStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
+  ...singleColumnFormStyle,
   gap: 10,
   padding: 12,
   border: "1px solid #cbd5e1",

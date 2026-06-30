@@ -55,6 +55,8 @@ import { NAV_BY_PATH } from "@/lib/auth/navConfig";
 import {
   ResponsiveTable,
   type ResponsiveTableColumn,
+  mobileFormBarStyle,
+  singleColumnFormStyle,
 } from "@/components/layout";
 
 export const Route = createRoute({
@@ -1408,7 +1410,7 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
             </div>
           ) : null}
 
-          <div style={formActionsStyle}>
+          <div style={mobileFormBarStyle} data-testid="venues-form-actions">
             <button
               type="button"
               onClick={onClose}
@@ -2001,9 +2003,10 @@ const dialogCloseStyle: CSSProperties = {
   padding: "0 4px",
 };
 
+// V-3 mobile contract: forms collapse to a single column < md and host
+// their Save / Cancel row inside the shared mobileFormBarStyle.
 const formStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
+  ...singleColumnFormStyle,
   gap: 16,
   padding: 16,
 };

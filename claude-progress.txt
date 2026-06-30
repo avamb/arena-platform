@@ -18365,3 +18365,59 @@ Verification (npm --prefix apps/admin-web):
   npm run type-check                                          OK
   npm test --run                                              723/723 PASS
 Marked #297 passing.
+
+
+## 2026-06-30 - Feature #298 (M-5) Forms used by organizer / agent on mobile
+- New apps/admin-web/src/components/layout/MobileFormBar.tsx exposes the
+  M-5 shared contract: mobileFormBarStyle (position:sticky bottom:0,
+  minHeight:56, paddingBottom: calc(8px + env(safe-area-inset-bottom)),
+  flex-row, gap:8, justify-content:flex-end, white background + top
+  border + soft shadow), singleColumnFormStyle (flex column),
+  M5_ACTION_BAR_MIN_HEIGHT_PX (=56) and an OverflowMenu primitive
+  (outside-click + Escape close, danger tone for destructive items,
+  marginRight:auto on the trigger so it sits to the LEFT of Save /
+  Cancel). Re-exported from the layout barrel index.ts.
+- Wired into the four M-5 form surfaces with minimal edits:
+    organizations.tsx (O-4 legal and billing): LegalEntitySection
+      footer switched from formActionsStyle to mobileFormBarStyle,
+      data-testid legal-form-actions; legalFormStyle now inherits
+      from singleColumnFormStyle.
+    venues.tsx (V-3 venue address): VenueForm footer switched to
+      mobileFormBarStyle with data-testid venues-form-actions;
+      formStyle extends singleColumnFormStyle. The DeleteConfirmDialog
+      keeps its own formActionsStyle (modal, not a form footer).
+    events.tsx (E-4 session form, E-5 tier form): SessionEditor and
+      TierEditor footers switched to mobileFormBarStyle (data-testids
+      events-session-actions / events-tier-actions). Button order
+      flipped so Cancel sits LEFT and Save sits RIGHT, matching the
+      M-5 spec. editorFormStyle now extends singleColumnFormStyle.
+      Inline edit-delete-confirm rows continue to use rowActionsStyle
+      (they live inside table cells, not form footers).
+- New apps/admin-web/src/routes/m5MobileForms.test.ts (16 cases) is the
+  executable M-5 gate:
+    asserts M5_ACTION_BAR_MIN_HEIGHT_PX === 56;
+    asserts mobileFormBarStyle is position:sticky bottom:0 flex
+      justify-content:flex-end with minHeight 56;
+    asserts paddingBottom contains env(safe-area-inset-bottom);
+    asserts singleColumnFormStyle is display:flex flexDirection:column;
+    asserts each of organizations/venues/events imports the helpers
+      from @/components/layout AND embeds the corresponding
+      data-testid={file}-actions sticky bar;
+    asserts none of the three route modules call window.alert or
+      bare alert() so errors flow through FieldRow / fieldErrorStyle
+      inline-error markers (no toast-only paths);
+    renders OverflowMenu via renderToStaticMarkup to verify the
+      trigger boots collapsed (aria-haspopup=menu,
+      aria-expanded=false) and the menu list stays hidden until
+      runtime interaction.
+- The inline-error contract was already in place: organizations.tsx
+  FieldRow renders per-field errors via fieldErrorStyle role=alert,
+  venues.tsx FieldRow does the same, events.tsx session+tier editors
+  render fieldErrorStyle span rows under each input. No code change
+  needed beyond the gate test.
+- 360x640 / 1280x800 screenshots are the Wave M-8 gate; the executable
+  contract above is what M-5 enforces.
+Verification (npm --prefix apps/admin-web):
+  npm run type-check                                          OK
+  npm test --run                                              739/739 PASS
+Marked #298 passing.

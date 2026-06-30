@@ -73,6 +73,8 @@ import { ImageUpload } from "@/components/ImageUpload";
 import {
   ResponsiveTable,
   type ResponsiveTableColumn,
+  mobileFormBarStyle,
+  singleColumnFormStyle,
 } from "@/components/layout";
 import { NAV_BY_PATH } from "@/lib/auth/navConfig";
 import { useAuth } from "@/lib/auth/useAuth";
@@ -1515,7 +1517,7 @@ function LegalEntitySection({ org }: { org: AdminOrganization }) {
           </div>
         ) : null}
 
-        <div style={formActionsStyle}>
+        <div style={mobileFormBarStyle} data-testid="legal-form-actions">
           <button
             type="submit"
             style={primaryButtonStyle}
@@ -4473,10 +4475,10 @@ const tabTdMonoStyle: CSSProperties = {
   fontSize: 11,
 };
 
-// Legal & billing tab styles (feature #256).
+// Legal & billing tab styles (feature #256). M-5 (#298) collapses to a
+// single column under md via the shared singleColumnFormStyle helper.
 const legalFormStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
+  ...singleColumnFormStyle,
   gap: 12,
   marginTop: 8,
 };
