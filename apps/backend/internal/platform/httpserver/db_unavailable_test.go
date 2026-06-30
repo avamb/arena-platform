@@ -84,6 +84,10 @@ func (p *dbDownPool) Exec(_ context.Context, _ string, _ ...any) (pgconn.Command
 	panic("dbDownPool: Exec must not be called when DB is down")
 }
 
+func (p *dbDownPool) Query(_ context.Context, _ string, _ ...any) (pgx.Rows, error) {
+	panic("dbDownPool: Query must not be called when DB is down")
+}
+
 var _ PoolDB = (*dbDownPool)(nil)
 
 // failingReadinessProbe implements ReadinessProbe and always fails its Ping.

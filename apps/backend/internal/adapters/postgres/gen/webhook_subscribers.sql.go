@@ -179,3 +179,32 @@ func (q *Queries) UpdateWebhookSubscriberEventTypes(
 	row := q.db.QueryRow(ctx, updateWebhookSubscriberEventTypesSQL, id, eventTypes)
 	return scanWebhookSubscriberRow(row)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SetWebhookSubscriberActive
+// ─────────────────────────────────────────────────────────────────────────────
+
+const setWebhookSubscriberActiveSQL = `-- name: SetWebhookSubscriberActive :one
+UPDATE webhook_subscribers
+SET    active     = $2,
+       updated_at = NOW()
+WHERE  id = $1
+RETURNING id, site_url, callback_url, signing_secret, event_types, active, created_at, updated_at`
+
+// SetWebhookSubscriberActive flips the active flag of an existing subscriber.
+//
+// Backs the SuperAdmin webhooks admin UI (Feature #294 — S-3 "Webhook
+// subscribers admin UI"). Used by PATCH /v1/webhooks/subscribers/{id}
+// so an operator can re-activate a previously soft-deleted subscriber
+// or deactivate one without an explicit DELETE. The dedicated
+// DeactivateWebhookSubscriber query is retained as the canonical
+// soft-delete invoked by the DELETE handler so the two flows remain
+// distinguishable in the audit/log surface.
+func (q *Queries) SetWebhookSubscriberActive(
+	ctx context.Context,
+	id uuid.UUID,
+	active bool,
+) (WebhookSubscriberRow, error) {
+	row := q.db.QueryRow(ctx, setWebhookSubscriberActiveSQL, id, active)
+	return scanWebhookSubscriberRow(row)
+}

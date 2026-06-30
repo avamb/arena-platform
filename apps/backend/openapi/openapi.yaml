@@ -14954,6 +14954,103 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      operationId: updateWebhookSubscriber
+      summary: Update a WordPress webhook subscriber (event_types / active)
+      description: |
+        Mutates one or both of the subscriber's `event_types` filter and
+        its `active` flag. The signing_secret is intentionally NOT
+        rotatable here — it is write-only and is returned exactly once
+        at registration time. To rotate, deactivate and re-register.
+
+        Backs the SuperAdmin webhooks admin UI (Feature #294 — S-3).
+
+        Requires JWT + the `webhook.subscriber.manage` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Subscriber UUID (primary key of `webhook_subscribers.id`).
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                event_types:
+                  type: array
+                  items: { type: string }
+                  description: |
+                    Replace the event_types filter. Empty array switches
+                    the subscriber back to wildcard (receives every event).
+                active:
+                  type: boolean
+                  description: |
+                    Pause (`false`) or resume (`true`) delivery to this
+                    subscriber. Re-activates a previously soft-deleted row.
+            examples:
+              activate:
+                summary: Re-activate a paused subscriber
+                value: { active: true }
+              retype:
+                summary: Narrow an existing subscriber to two event types
+                value: { event_types: ["order_paid", "ticket_issued"] }
+      responses:
+        "200":
+          description: Updated subscriber summary (no signing_secret).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSubscriberSummary"
+        "400":
+          description: |
+            Invalid UUID, empty body, or unknown JSON fields
+            (`bad_request` / `validation_error`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `webhook.subscriber.manage` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No subscriber row matches `{id}` (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error while updating the row (`internal_error`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Webhook subscriber queries or pool unavailable
+            (`service_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
     delete:
       operationId: deactivateWebhookSubscriber
       summary: Deactivate (soft-delete) a WordPress webhook subscriber
@@ -15019,6 +15116,124 @@ paths:
           description: |
             Internal server error while deactivating the row
             (`internal_error`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Webhook subscriber queries or pool unavailable
+            (`service_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/webhooks/subscribers/{id}/recent-deliveries:
+    get:
+      operationId: listRecentWebhookDeliveries
+      summary: Recent outbox events for a webhook subscriber (admin UI)
+      description: |
+        Returns the most recent outbox rows whose `event_type` would be
+        delivered to this subscriber. When the subscriber's
+        `event_types` filter is empty, the wildcard branch is taken and
+        every event_type is considered; otherwise the listing is
+        restricted to the subscriber's typed list.
+
+        The persisted per-subscriber delivery row does NOT exist today
+        (see `08_architecture/06_event_notifications_billing_reporting_ru.md`),
+        so `attempts` and `dispatched_at` reflect the aggregate
+        dispatcher state on the source outbox event row rather than
+        this subscriber specifically. The panel is therefore labelled
+        as best-effort in the admin UI.
+
+        Backs the SuperAdmin webhooks admin UI (Feature #294 — S-3).
+
+        Requires JWT + the `webhook.subscriber.manage` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Subscriber UUID (primary key of `webhook_subscribers.id`).
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Up to 50 most recent matching outbox rows, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [subscriber_id, wildcard, event_types, attempts, total]
+                properties:
+                  subscriber_id:
+                    type: string
+                    format: uuid
+                  wildcard:
+                    type: boolean
+                    description: True when `event_types` is empty.
+                  event_types:
+                    type: array
+                    items: { type: string }
+                  attempts:
+                    type: array
+                    items:
+                      type: object
+                      required: [event_id, event_type, occurred_at, attempts]
+                      properties:
+                        event_id:
+                          type: string
+                          format: uuid
+                        event_type:
+                          type: string
+                        occurred_at:
+                          type: string
+                          format: date-time
+                        dispatched_at:
+                          type: string
+                          format: date-time
+                          description: |
+                            Omitted entirely when the source outbox row
+                            has not yet been dispatched (the platform's
+                            documented-omission idiom instead of `null`).
+                        attempts:
+                          type: integer
+                          format: int32
+                  total:
+                    type: integer
+                    format: int32
+        "400":
+          description: |
+            `{id}` is not a valid UUID (`bad_request`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `webhook.subscriber.manage` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No subscriber row matches `{id}` (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error while listing deliveries (`internal_error`).
           content:
             application/json:
               schema:

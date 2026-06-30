@@ -20,6 +20,7 @@ import {
   PosRoute,
 } from "@/routes/legacyPlaceholders";
 import { GeoRoute } from "@/routes/guarded";
+import { Route as WebhooksRoute } from "@/routes/webhooks";
 
 /**
  * Manually-assembled route tree.
@@ -53,4 +54,5 @@ export const routeTree = RootRoute.addChildren([
   AuditRoute,
   ObservabilityRoute,
   GeoRoute,
+  WebhooksRoute,
 ]);

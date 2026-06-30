@@ -304,6 +304,282 @@ func (s *Server) handleDeactivateWebhookSubscriber(w http.ResponseWriter, r *htt
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PATCH /v1/webhooks/subscribers/{id} (Feature #294 — S-3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// updateSubscriberRequest is the JSON body for PATCH /v1/webhooks/subscribers/{id}.
+//
+// Both fields are optional; a request that supplies neither is rejected
+// with bad_request so callers cannot silently no-op. event_types
+// REPLACES the entire filter — empty array means wildcard. active is
+// applied via SetWebhookSubscriberActive so the same handler can both
+// re-activate a soft-deleted subscriber and pause an active one.
+//
+// signing_secret rotation is intentionally NOT supported here: the
+// secret is write-only (returned exactly once at registration), per
+// the file-level package doc. To rotate, deactivate and re-register.
+type updateSubscriberRequest struct {
+	EventTypes *[]string `json:"event_types,omitempty"`
+	Active     *bool     `json:"active,omitempty"`
+}
+
+// handleUpdateWebhookSubscriber handles PATCH /v1/webhooks/subscribers/{id}.
+//
+// Supports two distinct mutations, both optional:
+//   - event_types (TEXT[]): replace the subscriber's event-type filter.
+//     Pass [] to switch a typed subscriber back to wildcard. The
+//     dispatcher reads this column on every fan-out cycle.
+//   - active (boolean): pause or resume delivery. Re-activation is the
+//     UI's reason to exist; soft-deletion goes through DELETE.
+//
+// Responses mirror handleGetWebhookSubscriber: the safe summary shape
+// (no signing_secret) is returned on success. 400 / 404 / 500 / 503
+// envelopes match the existing webhook subscriber handler conventions.
+func (s *Server) handleUpdateWebhookSubscriber(w http.ResponseWriter, r *http.Request) {
+	if s.webhookSubQueries == nil || s.pool == nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("service_unavailable",
+			"webhook subscriber service not available", r))
+		return
+	}
+
+	idStr := chi.URLParam(r, "id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, errorEnvelope("bad_request",
+			"invalid subscriber id", r))
+		return
+	}
+
+	var req updateSubscriberRequest
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorEnvelope("bad_request", "invalid JSON body", r))
+		return
+	}
+
+	if req.EventTypes == nil && req.Active == nil {
+		writeJSON(w, http.StatusBadRequest, errorEnvelope("validation_error",
+			"at least one of event_types or active must be provided", r))
+		return
+	}
+
+	row, err := s.webhookSubQueries.GetWebhookSubscriberByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, errorEnvelope("not_found",
+				"subscriber not found", r))
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, errorEnvelope("internal_error",
+			"failed to load subscriber", r))
+		return
+	}
+
+	if req.EventTypes != nil {
+		next := *req.EventTypes
+		if next == nil {
+			next = []string{}
+		}
+		row, err = s.webhookSubQueries.UpdateWebhookSubscriberEventTypes(r.Context(), id, next)
+		if err != nil {
+			s.logger.Warn("handleUpdateWebhookSubscriber: update event_types failed",
+				slog.String("subscriber_id", id.String()),
+				slog.String("error", err.Error()))
+			writeJSON(w, http.StatusInternalServerError, errorEnvelope("internal_error",
+				"failed to update event_types", r))
+			return
+		}
+	}
+
+	if req.Active != nil {
+		row, err = s.webhookSubQueries.SetWebhookSubscriberActive(r.Context(), id, *req.Active)
+		if err != nil {
+			s.logger.Warn("handleUpdateWebhookSubscriber: set active failed",
+				slog.String("subscriber_id", id.String()),
+				slog.String("error", err.Error()))
+			writeJSON(w, http.StatusInternalServerError, errorEnvelope("internal_error",
+				"failed to update active flag", r))
+			return
+		}
+	}
+
+	s.logger.Info("webhook subscriber updated",
+		slog.String("subscriber_id", row.ID.String()),
+		slog.Bool("active", row.Active),
+		slog.Int("event_types_count", len(row.EventTypes)),
+	)
+
+	writeJSON(w, http.StatusOK, webhookSubscriberSummary{
+		SubscriberID: row.ID.String(),
+		SiteURL:      row.SiteURL,
+		CallbackURL:  row.CallbackURL,
+		EventTypes:   row.EventTypes,
+		Active:       row.Active,
+		CreatedAt:    row.CreatedAt.UTC().Format(time.RFC3339),
+	})
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /v1/webhooks/subscribers/{id}/recent-deliveries (Feature #294 — S-3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// recentDeliveryAttempt mirrors the columns surfaced by the SuperAdmin
+// webhooks UI delivery-attempts panel. The current outbox schema does
+// not record per-subscriber delivery rows; the dispatcher logs each
+// attempt but its persisted state is limited to outbox.attempts and
+// outbox.dispatched_at on the source event row. The UI therefore lists
+// the most recent outbox events that this subscriber's event_types
+// filter would match, annotated with the dispatcher's attempt counter
+// and dispatch timestamp.
+type recentDeliveryAttempt struct {
+	EventID    string `json:"event_id"`
+	EventType  string `json:"event_type"`
+	OccurredAt string `json:"occurred_at"`
+	// DispatchedAt is omitted from the JSON envelope when the source
+	// outbox row has not yet been dispatched. The platform's openapi
+	// dialect avoids the OAS 3.1 `nullable` keyword (and the
+	// `type: [string, "null"]` JSON Schema 2020-12 idiom that
+	// oapi-codegen does not yet support) by using documented field
+	// omission — see the package-level comment in openapi.yaml.
+	DispatchedAt string `json:"dispatched_at,omitempty"`
+	Attempts     int32  `json:"attempts"`
+}
+
+// recentDeliveriesResponse is the JSON body returned by
+// GET /v1/webhooks/subscribers/{id}/recent-deliveries.
+type recentDeliveriesResponse struct {
+	SubscriberID string                  `json:"subscriber_id"`
+	Wildcard     bool                    `json:"wildcard"`
+	EventTypes   []string                `json:"event_types"`
+	Attempts     []recentDeliveryAttempt `json:"attempts"`
+	Total        int                     `json:"total"`
+}
+
+// recentDeliveriesLimit caps how many rows the panel ever shows; the
+// dispatcher logs are paginated elsewhere. 50 mirrors the "recent" UX
+// (a single screen of context) and matches existing similar admin
+// panels in the codebase.
+const recentDeliveriesLimit = 50
+
+// handleListRecentWebhookDeliveries handles
+// GET /v1/webhooks/subscribers/{id}/recent-deliveries.
+//
+// Returns the most recent outbox rows whose event_type would be sent
+// to this subscriber (wildcard match when event_types is empty,
+// otherwise filtered by the subscriber's typed list). The output is
+// best-effort: per-subscriber delivery state is not persisted today
+// so attempts/dispatched_at reflect the aggregate dispatcher state of
+// the source event, not this subscriber specifically.
+func (s *Server) handleListRecentWebhookDeliveries(w http.ResponseWriter, r *http.Request) {
+	if s.webhookSubQueries == nil || s.pool == nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("service_unavailable",
+			"webhook subscriber service not available", r))
+		return
+	}
+
+	idStr := chi.URLParam(r, "id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, errorEnvelope("bad_request",
+			"invalid subscriber id", r))
+		return
+	}
+
+	sub, err := s.webhookSubQueries.GetWebhookSubscriberByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, errorEnvelope("not_found",
+				"subscriber not found", r))
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, errorEnvelope("internal_error",
+			"failed to load subscriber", r))
+		return
+	}
+
+	wildcard := len(sub.EventTypes) == 0
+
+	// The outbox table is read directly here (raw SQL on the pool)
+	// rather than via sqlc because no other code path needs this
+	// admin-only listing and the query is naturally tied to the
+	// subscriber filter shape.
+	var (
+		rows pgx.Rows
+		qerr error
+	)
+	if wildcard {
+		rows, qerr = s.pool.Query(r.Context(), `
+			SELECT id, event_type, occurred_at, dispatched_at, attempts
+			FROM   outbox
+			ORDER  BY occurred_at DESC
+			LIMIT  $1
+		`, recentDeliveriesLimit)
+	} else {
+		rows, qerr = s.pool.Query(r.Context(), `
+			SELECT id, event_type, occurred_at, dispatched_at, attempts
+			FROM   outbox
+			WHERE  event_type = ANY($1)
+			ORDER  BY occurred_at DESC
+			LIMIT  $2
+		`, sub.EventTypes, recentDeliveriesLimit)
+	}
+	if qerr != nil {
+		s.logger.Warn("handleListRecentWebhookDeliveries: query failed",
+			slog.String("subscriber_id", id.String()),
+			slog.String("error", qerr.Error()))
+		writeJSON(w, http.StatusInternalServerError, errorEnvelope("internal_error",
+			"failed to list recent deliveries", r))
+		return
+	}
+	defer rows.Close()
+
+	attempts := make([]recentDeliveryAttempt, 0)
+	for rows.Next() {
+		var (
+			eventID      uuid.UUID
+			eventType    string
+			occurredAt   time.Time
+			dispatchedAt *time.Time
+			cnt          int32
+		)
+		if err := rows.Scan(&eventID, &eventType, &occurredAt, &dispatchedAt, &cnt); err != nil {
+			s.logger.Warn("handleListRecentWebhookDeliveries: scan failed",
+				slog.String("error", err.Error()))
+			writeJSON(w, http.StatusInternalServerError, errorEnvelope("internal_error",
+				"failed to read delivery row", r))
+			return
+		}
+		var dispatched string
+		if dispatchedAt != nil {
+			dispatched = dispatchedAt.UTC().Format(time.RFC3339)
+		}
+		attempts = append(attempts, recentDeliveryAttempt{
+			EventID:      eventID.String(),
+			EventType:    eventType,
+			OccurredAt:   occurredAt.UTC().Format(time.RFC3339),
+			DispatchedAt: dispatched,
+			Attempts:     cnt,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		s.logger.Warn("handleListRecentWebhookDeliveries: rows.Err",
+			slog.String("error", err.Error()))
+		writeJSON(w, http.StatusInternalServerError, errorEnvelope("internal_error",
+			"failed to iterate delivery rows", r))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, recentDeliveriesResponse{
+		SubscriberID: sub.ID.String(),
+		Wildcard:     wildcard,
+		EventTypes:   sub.EventTypes,
+		Attempts:     attempts,
+		Total:        len(attempts),
+	})
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Compile-time interface guards
 // ─────────────────────────────────────────────────────────────────────────────
 

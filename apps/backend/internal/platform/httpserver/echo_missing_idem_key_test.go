@@ -116,6 +116,9 @@ func (p *fakePool46) Exec(_ context.Context, _ string, _ ...any) (pgconn.Command
 func (p *fakePool46) BeginTx(_ context.Context, _ pgx.TxOptions) (pgx.Tx, error) {
 	return p.tx, nil
 }
+func (p *fakePool46) Query(_ context.Context, _ string, _ ...any) (pgx.Rows, error) {
+	return nil, nil
+}
 
 var _ pgx.Tx = (*fakeTx46)(nil)
 var _ PoolDB = (*fakePool46)(nil)

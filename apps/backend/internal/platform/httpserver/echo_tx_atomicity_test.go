@@ -138,6 +138,9 @@ func (p *atomicityPool) Exec(_ context.Context, _ string, _ ...any) (pgconn.Comm
 func (p *atomicityPool) BeginTx(_ context.Context, _ pgx.TxOptions) (pgx.Tx, error) {
 	return p.tx, nil
 }
+func (p *atomicityPool) Query(_ context.Context, _ string, _ ...any) (pgx.Rows, error) {
+	return nil, nil
+}
 
 var _ PoolDB = (*atomicityPool)(nil)
 

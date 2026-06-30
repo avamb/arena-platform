@@ -139,6 +139,9 @@ func (p *dupPoolDB) Exec(_ context.Context, _ string, _ ...any) (pgconn.CommandT
 func (p *dupPoolDB) BeginTx(_ context.Context, _ pgx.TxOptions) (pgx.Tx, error) {
 	return p.tx, nil
 }
+func (p *dupPoolDB) Query(_ context.Context, _ string, _ ...any) (pgx.Rows, error) {
+	return nil, nil
+}
 
 // Compile-time checks.
 var _ pgx.Tx = (*dupCaptureTx)(nil)

@@ -88,6 +88,7 @@ var _ ReadinessProbe = (*pingerProbe)(nil)
 // unit tests can supply a fake without spinning up PostgreSQL — while the
 // production wiring still passes the real *pgxpool.Pool from database.Open.
 type PoolDB interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 	BeginTx(ctx context.Context, opts pgx.TxOptions) (pgx.Tx, error)

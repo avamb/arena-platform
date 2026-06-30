@@ -173,11 +173,17 @@ func (s *Server) mountWebhookSubscriberRoutes(r chi.Router) {
 		s.applyAuth(pr, "webhook.subscriber.manage", "webhooks")
 		pr.Get("/webhooks/subscribers", s.handleListWebhookSubscribers)
 		pr.Get("/webhooks/subscribers/{id}", s.handleGetWebhookSubscriber)
+		// Recent-deliveries listing (Feature #294 — S-3 admin UI). Read-only;
+		// safe to mount alongside the other read routes even when the
+		// shared pool is nil because the handler short-circuits on
+		// s.pool == nil with a 503.
+		pr.Get("/webhooks/subscribers/{id}/recent-deliveries", s.handleListRecentWebhookDeliveries)
 	})
 	if s.pool != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "webhook.subscriber.manage", "webhooks")
 			pr.Post("/webhooks/subscribers", s.handleRegisterWebhookSubscriber)
+			pr.Patch("/webhooks/subscribers/{id}", s.handleUpdateWebhookSubscriber)
 			pr.Delete("/webhooks/subscribers/{id}", s.handleDeactivateWebhookSubscriber)
 		})
 	}

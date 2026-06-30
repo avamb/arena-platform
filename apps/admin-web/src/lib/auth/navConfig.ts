@@ -59,7 +59,8 @@ export type NavRoutePath =
   | "/pos"
   | "/audit"
   | "/observability"
-  | "/geo";
+  | "/geo"
+  | "/webhooks";
 
 export type PermissionRule =
   | "always"
@@ -284,6 +285,15 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     permission: { anyOf: ["geo.admin"] },
     scopeKinds: ["global", "platform"],
     purpose: "Maintain countries/cities catalog. Requires geo.admin.",
+  },
+  {
+    id: "webhooks",
+    label: "Webhook Subscribers",
+    to: "/webhooks",
+    permission: { anyOf: ["webhook.subscriber.manage"] },
+    scopeKinds: ["global", "platform"],
+    purpose:
+      "Register, edit, and pause HTTP endpoints that receive signed outbox events. Requires webhook.subscriber.manage.",
   },
 ];
 

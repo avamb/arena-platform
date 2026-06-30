@@ -330,6 +330,7 @@ type Querier interface {
 	GetWebhookSubscriberByID(ctx context.Context, id uuid.UUID) (WebhookSubscriberRow, error)
 	DeactivateWebhookSubscriber(ctx context.Context, id uuid.UUID) (WebhookSubscriberRow, error)
 	UpdateWebhookSubscriberEventTypes(ctx context.Context, id uuid.UUID, eventTypes []string) (WebhookSubscriberRow, error)
+	SetWebhookSubscriberActive(ctx context.Context, id uuid.UUID, active bool) (WebhookSubscriberRow, error)
 
 	// External reconciliation — partner report submission, auto-match, exception queue (feature #147)
 	InsertReconciliationReport(ctx context.Context, allocationID uuid.UUID, partnerOrgID uuid.UUID, totalLines int32, matchedLines int32, exceptionLines int32, status string, notes *string) (ReconciliationReportRow, error)

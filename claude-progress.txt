@@ -18183,3 +18183,85 @@ Verification (docker golang:1.24, repo root):
   TestOpenAPIDriftCheck_CodeCoversAllSpecRoutes (22-route baseline
   documented under #291). No new failures from this feature.
 Marked #293 passing.
+
+## 2026-06-30 — Feature #294 (S-3) Webhook subscribers admin UI
+- Backend: extended /v1/webhooks/subscribers to a full CRUD surface so the
+  new admin UI can manage active toggles and event-type filters.
+    Added queries/webhook_subscribers.sql SetWebhookSubscriberActive
+      (UPDATE active flag + updated_at). Mirrored into the generated
+      gen/webhook_subscribers.sql.go and added to the gen.Querier
+      interface so the existing webhookSubQueries handle picks it up
+      without rerunning sqlc.
+    Added two handlers in httpserver/wp_webhooks.go:
+      - handleUpdateWebhookSubscriber backs PATCH /v1/webhooks/subscribers/{id}.
+        DisallowUnknownFields + body validation; needs event_types
+        OR active to be present; loads the row first (404 mapping),
+        then applies UpdateWebhookSubscriberEventTypes and
+        SetWebhookSubscriberActive in sequence. Returns the safe
+        webhookSubscriberSummary (no signing_secret).
+      - handleListRecentWebhookDeliveries backs
+        GET /v1/webhooks/subscribers/{id}/recent-deliveries. Uses the
+        pool directly (no sqlc dep) to SELECT id,event_type,
+        occurred_at,dispatched_at,attempts FROM outbox, filtered by
+        the subscriber's event_types when non-empty (wildcard
+        otherwise), newest-first, limited to 50. dispatched_at is
+        omitted (json:omitempty) when NULL to stay inside the
+        platform's no-nullable OAS 3.1 dialect.
+    Mounted both routes in mount_admin.go (PATCH + recent-deliveries).
+    Extended PoolDB interface to expose Query(ctx, sql, args) so the
+      handler can run raw outbox SELECTs. Updated every existing
+      PoolDB fake in this package (fakeLoginPool, dbDownPool,
+      fakePoolDB, blockingPoolDB, dupPoolDB, fakePool46,
+      captureOutboxPool, atomicityPool, replayPoolDB, race75Pool)
+      with a Query method (panic-or-noop, matching each fake's
+      existing posture).
+    openapi.yaml — added the PATCH op and the GET .../recent-deliveries
+      op alongside the existing GET/POST/DELETE entries so the
+      SpecCoversAllCodeRoutes drift check stays green for the new
+      routes.
+- Frontend: apps/admin-web/src/routes/webhooks.tsx (new) is a
+  RequirePermission-gated SuperAdmin CRUD page backed by authedFetch.
+    Table: site_url / callback_url / event_types / active / created_at
+      with inline Edit and Delete controls.
+    Create form: callback_url (mandatory, https/http validated),
+      site_url (optional), event-type multi-select. On success a
+      yellow "Copy this signing secret now" banner appears with the
+      one-time signing_secret returned by POST.
+    Edit drawer: event-type multi-select + active toggle, both backed
+      by PATCH. The signing-secret panel documents that rotation
+      needs a deactivate + re-register cycle.
+    Recent-deliveries panel: hits the new GET endpoint and renders
+      event_type / occurred / dispatched / attempts. Labels itself as
+      best-effort (per-subscriber delivery rows aren't persisted today).
+    No mock data (no globalThis / devStore). Pure helpers
+      validateCallbackUrl / validateSiteUrl / mapCreateServerError /
+      arrayEq / formatDateTime are exported and exercised by the new
+      apps/admin-web/src/routes/webhooks.test.ts (6 tests).
+- Frontend plumbing:
+    routeTree.ts — imported and registered WebhooksRoute.
+    lib/auth/navConfig.ts — added "/webhooks" to NavRoutePath and a
+      new NAV_ENTRIES entry id="webhooks" gated by
+      webhook.subscriber.manage, scoped to global/platform.
+    smoke/saui14_smoke.test.ts — added /webhooks -> WebhooksRoute /
+      webhooks.tsx to ROUTE_REGISTRY so the SAUI-14 coverage
+      assertions keep passing.
+    lib/auth/__tests__/navConfig.test.ts — added
+      webhook.subscriber.manage to the platform_superadmin fixture and
+      appended "webhooks" to the expected sidebar enumeration so the
+      "every nav entry visible" assertion stays accurate.
+Verification (docker golang:1.24, repo root):
+  go build ./apps/backend/...                                 OK
+  go vet   ./apps/backend/...                                 OK
+  go test  -run "Webhook|WordPress" ./apps/backend/internal/platform/httpserver/...
+                                                              PASS
+  Pre-existing baselines TestOpenAPI_NoNullableKeyword and the
+    OpenAPIDocs_* family still flag the same source-tree lines they
+    flagged before this feature (all hits are below line 14000;
+    my changes added entries at lines 14959 / 15035). No new
+    nullable keywords introduced.
+Frontend verification (npm --prefix apps/admin-web):
+  npm run type-check                                          OK
+  npm test --run                                              712/712 PASS
+  (includes new webhooks.test.ts 6/6 and updated navConfig +
+   saui14_smoke assertions.)
+Marked #294 passing.

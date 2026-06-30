@@ -443,6 +443,10 @@ func (f *fakeLoginPool) QueryRow(_ context.Context, _ string, _ ...any) pgx.Row 
 	panic("fakeLoginPool: QueryRow must not be called in this test")
 }
 
+func (f *fakeLoginPool) Query(_ context.Context, _ string, _ ...any) (pgx.Rows, error) {
+	panic("fakeLoginPool: Query must not be called in this test")
+}
+
 func (f *fakeLoginPool) Exec(_ context.Context, _ string, _ ...any) (pgconn.CommandTag, error) {
 	panic("fakeLoginPool: Exec must not be called in this test")
 }

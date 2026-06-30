@@ -143,6 +143,9 @@ func (p *blockingPoolDB) Exec(_ context.Context, _ string, _ ...any) (pgconn.Com
 func (p *blockingPoolDB) BeginTx(_ context.Context, _ pgx.TxOptions) (pgx.Tx, error) {
 	return p.tx, nil
 }
+func (p *blockingPoolDB) Query(_ context.Context, _ string, _ ...any) (pgx.Rows, error) {
+	return nil, nil
+}
 
 var _ PoolDB = (*blockingPoolDB)(nil)
 

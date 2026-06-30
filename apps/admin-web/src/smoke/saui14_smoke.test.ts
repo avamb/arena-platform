@@ -217,6 +217,7 @@ const ROUTE_REGISTRY: Readonly<
   "/content": { routeId: "ContentRoute", file: "legacyPlaceholders.tsx" },
   "/pos": { routeId: "PosRoute", file: "legacyPlaceholders.tsx" },
   "/geo": { routeId: "GeoRoute", file: "guarded.tsx" },
+  "/webhooks": { routeId: "WebhooksRoute", file: "webhooks.tsx" },
 };
 
 /**

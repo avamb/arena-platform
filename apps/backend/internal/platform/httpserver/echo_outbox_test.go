@@ -111,6 +111,9 @@ func (p *captureOutboxPool) Exec(_ context.Context, _ string, _ ...any) (pgconn.
 func (p *captureOutboxPool) BeginTx(_ context.Context, _ pgx.TxOptions) (pgx.Tx, error) {
 	return p.tx, nil
 }
+func (p *captureOutboxPool) Query(_ context.Context, _ string, _ ...any) (pgx.Rows, error) {
+	return nil, nil
+}
 
 // Compile-time interface checks.
 var _ pgx.Tx = (*captureOutboxTx)(nil)

@@ -171,6 +171,9 @@ func (p *fakePoolDB) Exec(_ context.Context, _ string, _ ...any) (pgconn.Command
 func (p *fakePoolDB) BeginTx(_ context.Context, _ pgx.TxOptions) (pgx.Tx, error) {
 	return p.tx, nil
 }
+func (p *fakePoolDB) Query(_ context.Context, _ string, _ ...any) (pgx.Rows, error) {
+	return nil, nil
+}
 
 // Compile-time interface checks.
 var _ pgx.Tx = (*fakeTx)(nil)

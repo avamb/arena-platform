@@ -155,6 +155,9 @@ func (p *race75Pool) Exec(_ context.Context, _ string, _ ...any) (pgconn.Command
 func (p *race75Pool) BeginTx(_ context.Context, _ pgx.TxOptions) (pgx.Tx, error) {
 	return p.tx, nil
 }
+func (p *race75Pool) Query(_ context.Context, _ string, _ ...any) (pgx.Rows, error) {
+	return nil, nil
+}
 
 var _ PoolDB = (*race75Pool)(nil)
 

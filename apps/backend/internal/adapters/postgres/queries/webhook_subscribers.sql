@@ -53,3 +53,15 @@ SET    event_types = $2,
        updated_at  = NOW()
 WHERE  id = $1
 RETURNING *;
+
+-- name: SetWebhookSubscriberActive :one
+-- Toggle the active flag for an existing subscriber.
+-- Used by the SuperAdmin webhooks UI (Feature #294 S-3) to re-activate
+-- a previously deactivated subscriber or to deactivate via the PATCH
+-- route. The DeactivateWebhookSubscriber query above remains the
+-- canonical soft-delete operation invoked by the DELETE handler.
+UPDATE webhook_subscribers
+SET    active     = $2,
+       updated_at = NOW()
+WHERE  id = $1
+RETURNING *;

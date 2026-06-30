@@ -57,7 +57,16 @@ function fixture(permissions: readonly string[], scopes: readonly string[]) {
 }
 
 const platformSuperadmin = fixture(
-  [...NETWORK_PERMS_FULL, "superadmin.read", "membership.grant", "geo.admin"],
+  [
+    ...NETWORK_PERMS_FULL,
+    "superadmin.read",
+    "membership.grant",
+    "geo.admin",
+    // Feature #294 — S-3 added the /webhooks SuperAdmin route, which
+    // requires `webhook.subscriber.manage` (matches the backend RBAC
+    // seed in 0040_webhook_subscribers.sql).
+    "webhook.subscriber.manage",
+  ],
   ["global", "network:0193f01a-0001-7000-8000-000000000001"],
 );
 
@@ -154,6 +163,7 @@ describe("visibleNavEntries -- /v1/me role fixtures", () => {
       "audit",
       "observability",
       "geo",
+      "webhooks",
     ]);
   });
 
