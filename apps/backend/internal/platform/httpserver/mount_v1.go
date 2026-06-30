@@ -61,6 +61,7 @@ func (s *Server) mountV1Routes() {
 		s.mountWebhookSubscriberRoutes(r)
 		s.mountReconciliationRoutes(r)
 		s.mountOperatorNetworkRoutes(r)
+		s.mountMediaRoutes(r)
 	})
 }
 

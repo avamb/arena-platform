@@ -16,6 +16,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/idempotency"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
@@ -111,6 +112,11 @@ type Options struct {
 	StripeBilling                stripeBillingHelper
 	SessionStore                 redissession.Store
 	MaxConcurrentSessionsPerUser int
+
+	// Media is the optional mediastore.Repo backing the /v1/media endpoints
+	// (feature #286). When nil the routes return 503 storage_unavailable;
+	// production deployments configure MEDIA_BACKEND so this is non-nil.
+	Media *mediastore.Repo
 }
 
 // pickQueries returns the explicitly-injected *gen.Queries, or one constructed
@@ -265,6 +271,7 @@ func New(opts Options) *Server {
 		reconciliationQueries: pickQueries(opts.ReconciliationQueries, opts.PgxPool),
 		networkQueries:        pickQueries(opts.NetworkQueries, opts.PgxPool),
 		meQueries:             pickMeQueries(opts.MeQueries, opts.PgxPool),
+		media:                 opts.Media,
 	}
 
 	s.mountOperationalRoutes()

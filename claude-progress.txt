@@ -17780,3 +17780,53 @@ Marked #284 passing. Backlog: 282 / 301.
 - MEDIA_BACKEND/MEDIA_LOCAL_ROOT/MEDIA_S3_* env vars wired into platform/config with validation
 - Tests cover config validation, key validation, local CRUD round-trip, S3 round-trip against httptest server, SigV4 worked example
 - go build ./..., go vet, and storage+config tests all pass
+
+## 2026-06-30 — Feature #286 (G-2) Media upload endpoints & worker garbage collector
+- Migration 0053_media_permissions.sql seeds media.write/media.read/media.delete
+  and grants them to admin + org_admin (mirrors 0010_sales_channels.sql pattern).
+- New package apps/backend/internal/platform/mediastore: Repo facade backed by
+  *pgxpool.Pool + storage.Storage (hand-written queries, not sqlc -- sqlc
+  binary not available in this sandbox). HMAC signing/verification for
+  local-backend download URLs, NewStorageKey helper, PutAndStream that tees
+  through SHA-256 while counting bytes.
+- Worker handler mediastore.NewGCHandler walks ListGCCandidates(cutoff=now-7d),
+  calls Storage.Delete per row, then HardDelete on success or
+  storage.ErrNotFound (so already-missing bytes still reap the row). JobType
+  "media-gc" registered from arena-worker main.go (registerMediaGCHandler)
+  when MEDIA_BACKEND is set.
+- HTTP handlers in apps/backend/internal/platform/httpserver/media.go +
+  mount_media.go:
+    POST   /v1/media           multipart upload (32MiB cap), media.write scope "media"
+    GET    /v1/media/{id}      media.read returns metadata + signed_url + ttl
+    DELETE /v1/media/{id}      media.delete soft-delete (204 No Content)
+    GET    /v1/media-files/{id} unauth signature-gated streaming download for
+                                local backend; verifies HMAC and expiry.
+  Routes mount even when s.media is nil so the OpenAPI <-> code drift check
+  still sees them; handlers return 503 media.storage_unavailable when
+  MEDIA_BACKEND is unset.
+- arena-api buildMediaRepo wires *mediastore.Repo through Options.Media;
+  SigningSecret reuses JWTSecretStub for the foundation milestone.
+- apps/backend/openapi/openapi.yaml: added /v1/media, /v1/media/{id} (GET +
+  DELETE), /v1/media-files/{id}, and MediaObject schema. Used prose-documented
+  omission for optional fields rather than `nullable:` to keep the 166-line
+  baseline of pre-existing OAS 3.0 violations from growing. oapi-codegen
+  regenerated; TS client regenerated via node scripts/gen-ts-client.mjs;
+  admin-web type-check still green.
+- Tests: new mediastore_test.go (HMAC roundtrip, key gen, AllowedOwnerTypes)
+  and gc_test.go (defaults, dispatch through stub storage) pass.
+Verification (docker golang:1.24, run from repo root):
+  go build ./...                                                 OK
+  go vet ./...                                                   OK
+  go test ./internal/platform/mediastore/...                     OK
+  go test ./internal/adapters/storage/...                        OK
+  oapi-codegen v2.4.1                                            OK (only the
+                                                                 known 3.1-not-
+                                                                 supported warning)
+  node scripts/gen-ts-client.mjs                                 OK
+  npm --prefix apps/admin-web run type-check                     OK
+  Pre-existing failing tests (TestOpenAPI_NoNullableKeyword,
+  TestOpenAPIDocs_*, TestOpenAPIDriftCheck_CodeCoversAllSpecRoutes 22-route
+  baseline, TestHttpserverFileSize175 channels/networks, TestNoJSMockBackendDeps,
+  TestNoUnaudittedPanic, TestTimestamp_StaticScan_RFC3339NanoWithUTC) UNCHANGED
+  -- no new violations introduced by this feature.
+Marked #286 passing. Backlog: 284/301.

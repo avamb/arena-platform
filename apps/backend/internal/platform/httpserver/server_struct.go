@@ -15,6 +15,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/clock"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/idempotency"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
@@ -89,6 +90,7 @@ type Server struct {
 	reconciliationQueries *gen.Queries
 	networkQueries        *gen.Queries
 	meQueries             meQuerier
+	media                 *mediastore.Repo
 
 	// Dev / test toggles.
 	faultInjectOutboxAfterAudit bool

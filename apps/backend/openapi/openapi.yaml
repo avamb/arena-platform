@@ -110,6 +110,93 @@ components:
                 field: "message"
                 reason: "must not be empty"
 
+    MediaObject:
+      type: object
+      description: |
+        A registered binary media object (org logo, event poster, artist
+        photo). The bytes live in the configured storage backend
+        (`MEDIA_BACKEND=s3|local`); this object holds the metadata. Fields
+        `org_id`, `owner_id`, `width`, `height`, `signed_url`, and
+        `signed_url_ttl_seconds` may be omitted from the JSON output —
+        omission is equivalent to a SQL NULL (oapi-codegen v2.4.1 still
+        warns on OAS 3.1 type-array null idiom, so we encode optionality
+        via documented omission rather than `type: [string, null]`).
+      required:
+        - id
+        - owner_type
+        - storage_backend
+        - storage_key
+        - content_type
+        - byte_size
+        - checksum_sha256
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the media_objects row.
+        org_id:
+          type: string
+          format: uuid
+          description: |
+            Owning organization UUID, or omitted for platform-owned
+            assets (default branding, system icons).
+        owner_type:
+          type: string
+          enum: [org_logo, event_poster, artist_photo]
+          description: |
+            Polymorphic owner kind. Future migrations widen the
+            enumeration as new media-bearing surfaces appear.
+        owner_id:
+          type: string
+          format: uuid
+          description: |
+            UUID of the owning row in the table implied by
+            `owner_type`. Omitted for unattached uploads.
+        storage_backend:
+          type: string
+          enum: [s3, local]
+          description: |
+            Which storage adapter holds the bytes. `s3` covers any
+            S3-compatible store (AWS S3, Cloudflare R2, MinIO).
+        storage_key:
+          type: string
+          description: |
+            Backend-specific locator (S3 object key or path relative to
+            `MEDIA_LOCAL_ROOT`).
+        content_type:
+          type: string
+          description: MIME type captured at upload time.
+        byte_size:
+          type: integer
+          format: int64
+          description: Stored object size in bytes.
+        checksum_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: Hex-encoded SHA-256 of the stored bytes (64 hex chars).
+        width:
+          type: integer
+          description: Image width in pixels (omitted for non-image media).
+        height:
+          type: integer
+          description: Image height in pixels (omitted for non-image media).
+        created_at:
+          type: string
+          format: date-time
+          description: RFC3339 UTC timestamp of the initial upload.
+        signed_url:
+          type: string
+          description: |
+            Short-lived download URL. Present on `GET /v1/media/{id}`
+            responses and omitted on `POST /v1/media` responses.
+        signed_url_ttl_seconds:
+          type: integer
+          format: int64
+          description: |
+            Lifetime (seconds) of the accompanying `signed_url`. Omitted
+            when `signed_url` is omitted.
+
     HealthzResponse:
       type: object
       required: [status]
@@ -15224,6 +15311,243 @@ paths:
           description: |
             Internal server error while deleting the row
             (`publication.internal`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/media:
+    post:
+      operationId: postV1Media
+      summary: Upload a media object (Wave G — feature #286)
+      description: |
+        Streams a single multipart upload into the configured storage backend
+        (s3|local) and records the metadata in the `media_objects` table.
+        Returns the created `media_object` (without `signed_url`; call
+        `GET /v1/media/{id}` to obtain a signed download URL).
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, owner_type]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                owner_type:
+                  type: string
+                  enum: [org_logo, event_poster, artist_photo]
+                owner_id:
+                  type: string
+                  format: uuid
+                org_id:
+                  type: string
+                  format: uuid
+                content_type:
+                  type: string
+      responses:
+        "201":
+          description: Media object created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [media_object]
+                properties:
+                  media_object:
+                    $ref: "#/components/schemas/MediaObject"
+        "400":
+          description: Multipart parse error, missing file part, invalid owner_type/owner_id/org_id, or empty upload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `media.write` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Media storage backend is not configured (MEDIA_BACKEND unset).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/media/{id}:
+    get:
+      operationId: getV1MediaByID
+      summary: Fetch media metadata + signed download URL (Wave G — feature #286)
+      description: |
+        Returns the media object record plus a short-lived signed URL the
+        caller can use to fetch the bytes. For the s3 backend the URL is
+        an S3 presigned GET URL; for the local backend it points at
+        `/v1/media-files/{id}` carrying `expires` + `sig` query
+        parameters that the public download endpoint validates.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the media_objects row to fetch.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Media metadata with short-lived signed download URL.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [media_object]
+                properties:
+                  media_object:
+                    $ref: "#/components/schemas/MediaObject"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `media.read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Media object not found or already soft-deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Media storage backend is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      operationId: deleteV1MediaByID
+      summary: Soft-delete a media object (Wave G — feature #286)
+      description: |
+        Sets `deleted_at = now()` on the row. The underlying bytes remain in
+        the storage backend until the `media-gc` worker job reclaims them
+        (default retention: 7 days).
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the media_objects row to soft-delete.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Soft-delete succeeded.
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `media.delete` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Media object not found or already soft-deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Media storage backend is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/media-files/{id}:
+    get:
+      operationId: getV1MediaFile
+      summary: Download media bytes via a signed URL (Wave G — feature #286)
+      description: |
+        Public endpoint — no JWT. Authorization is supplied via the
+        `expires` and `sig` query parameters issued by `GET /v1/media/{id}`.
+        For the s3 backend this endpoint is unused (clients follow the S3
+        presigned URL directly); for the local backend it is the only way
+        to stream the bytes back to a consumer.
+      tags: [v1]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the media_objects row whose bytes are being streamed.
+          schema:
+            type: string
+            format: uuid
+        - name: expires
+          in: query
+          required: true
+          description: Unix-seconds expiry timestamp embedded in the signed URL.
+          schema:
+            type: integer
+            format: int64
+        - name: sig
+          in: query
+          required: false
+          description: HMAC-SHA256 signature over `id:expires`. Required in production; optional in dev when no MEDIA_SIGNING_SECRET is set.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Streaming response carrying the stored bytes.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Invalid media id or missing expires parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Signature mismatch or signed URL expired.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Media object not found or bytes already reclaimed by the GC worker.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Media storage backend is not configured.
           content:
             application/json:
               schema:

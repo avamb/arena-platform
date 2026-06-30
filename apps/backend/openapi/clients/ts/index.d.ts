@@ -2650,6 +2650,83 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/media": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload a media object (Wave G — feature
+         * @description Streams a single multipart upload into the configured storage backend
+         *     (s3|local) and records the metadata in the `media_objects` table.
+         *     Returns the created `media_object` (without `signed_url`; call
+         *     `GET /v1/media/{id}` to obtain a signed download URL).
+         */
+        post: operations["postV1Media"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/media/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fetch media metadata + signed download URL (Wave G — feature
+         * @description Returns the media object record plus a short-lived signed URL the
+         *     caller can use to fetch the bytes. For the s3 backend the URL is
+         *     an S3 presigned GET URL; for the local backend it points at
+         *     `/v1/media-files/{id}` carrying `expires` + `sig` query
+         *     parameters that the public download endpoint validates.
+         */
+        get: operations["getV1MediaByID"];
+        put?: never;
+        post?: never;
+        /**
+         * Soft-delete a media object (Wave G — feature
+         * @description Sets `deleted_at = now()` on the row. The underlying bytes remain in
+         *     the storage backend until the `media-gc` worker job reclaims them
+         *     (default retention: 7 days).
+         */
+        delete: operations["deleteV1MediaByID"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/media-files/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download media bytes via a signed URL (Wave G — feature
+         * @description Public endpoint — no JWT. Authorization is supplied via the
+         *     `expires` and `sig` query parameters issued by `GET /v1/media/{id}`.
+         *     For the s3 backend this endpoint is unused (clients follow the S3
+         *     presigned URL directly); for the local backend it is the only way
+         *     to stream the bytes back to a consumer.
+         */
+        get: operations["getV1MediaFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2693,6 +2770,81 @@ export interface components {
                     [key: string]: unknown;
                 };
             };
+        };
+        /**
+         * @description A registered binary media object (org logo, event poster, artist
+         *     photo). The bytes live in the configured storage backend
+         *     (`MEDIA_BACKEND=s3|local`); this object holds the metadata. Fields
+         *     `org_id`, `owner_id`, `width`, `height`, `signed_url`, and
+         *     `signed_url_ttl_seconds` may be omitted from the JSON output —
+         *     omission is equivalent to a SQL NULL (oapi-codegen v2.4.1 still
+         *     warns on OAS 3.1 type-array null idiom, so we encode optionality
+         *     via documented omission rather than `type: [string, null]`).
+         */
+        MediaObject: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the media_objects row.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Owning organization UUID, or omitted for platform-owned
+             *     assets (default branding, system icons).
+             */
+            org_id?: string;
+            /**
+             * @description Polymorphic owner kind. Future migrations widen the
+             *     enumeration as new media-bearing surfaces appear.
+             * @enum {string}
+             */
+            owner_type: "org_logo" | "event_poster" | "artist_photo";
+            /**
+             * Format: uuid
+             * @description UUID of the owning row in the table implied by
+             *     `owner_type`. Omitted for unattached uploads.
+             */
+            owner_id?: string;
+            /**
+             * @description Which storage adapter holds the bytes. `s3` covers any
+             *     S3-compatible store (AWS S3, Cloudflare R2, MinIO).
+             * @enum {string}
+             */
+            storage_backend: "s3" | "local";
+            /**
+             * @description Backend-specific locator (S3 object key or path relative to
+             *     `MEDIA_LOCAL_ROOT`).
+             */
+            storage_key: string;
+            /** @description MIME type captured at upload time. */
+            content_type: string;
+            /**
+             * Format: int64
+             * @description Stored object size in bytes.
+             */
+            byte_size: number;
+            /** @description Hex-encoded SHA-256 of the stored bytes (64 hex chars). */
+            checksum_sha256: string;
+            /** @description Image width in pixels (omitted for non-image media). */
+            width?: number;
+            /** @description Image height in pixels (omitted for non-image media). */
+            height?: number;
+            /**
+             * Format: date-time
+             * @description RFC3339 UTC timestamp of the initial upload.
+             */
+            created_at: string;
+            /**
+             * @description Short-lived download URL. Present on `GET /v1/media/{id}`
+             *     responses and omitted on `POST /v1/media` responses.
+             */
+            signed_url?: string;
+            /**
+             * Format: int64
+             * @description Lifetime (seconds) of the accompanying `signed_url`. Omitted
+             *     when `signed_url` is omitted.
+             */
+            signed_url_ttl_seconds?: number;
         };
         HealthzResponse: {
             /**
@@ -17146,6 +17298,260 @@ export interface operations {
              *     (`publication.internal`).
              */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1Media: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                    /** @enum {string} */
+                    owner_type: "org_logo" | "event_poster" | "artist_photo";
+                    /** Format: uuid */
+                    owner_id?: string;
+                    /** Format: uuid */
+                    org_id?: string;
+                    content_type?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Media object created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        media_object: components["schemas"]["MediaObject"];
+                    };
+                };
+            };
+            /** @description Multipart parse error, missing file part, invalid owner_type/owner_id/org_id, or empty upload. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `media.write` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Media storage backend is not configured (MEDIA_BACKEND unset). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1MediaByID: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the media_objects row to fetch. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Media metadata with short-lived signed download URL. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        media_object: components["schemas"]["MediaObject"];
+                    };
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `media.read` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Media object not found or already soft-deleted. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Media storage backend is not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteV1MediaByID: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the media_objects row to soft-delete. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Soft-delete succeeded. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `media.delete` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Media object not found or already soft-deleted. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Media storage backend is not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1MediaFile: {
+        parameters: {
+            query: {
+                /** @description Unix-seconds expiry timestamp embedded in the signed URL. */
+                expires: number;
+                /** @description HMAC-SHA256 signature over `id:expires`. Required in production; optional in dev when no MEDIA_SIGNING_SECRET is set. */
+                sig?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUID of the media_objects row whose bytes are being streamed. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Streaming response carrying the stored bytes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description Invalid media id or missing expires parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Signature mismatch or signed URL expired. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Media object not found or bytes already reclaimed by the GC worker. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Media storage backend is not configured. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

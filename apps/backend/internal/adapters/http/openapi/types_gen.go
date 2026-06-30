@@ -169,6 +169,19 @@ const (
 	Ok HealthzResponseStatus = "ok"
 )
 
+// Defines values for MediaObjectOwnerType.
+const (
+	MediaObjectOwnerTypeArtistPhoto MediaObjectOwnerType = "artist_photo"
+	MediaObjectOwnerTypeEventPoster MediaObjectOwnerType = "event_poster"
+	MediaObjectOwnerTypeOrgLogo     MediaObjectOwnerType = "org_logo"
+)
+
+// Defines values for MediaObjectStorageBackend.
+const (
+	Local MediaObjectStorageBackend = "local"
+	S3    MediaObjectStorageBackend = "s3"
+)
+
 // Defines values for MembershipItemRole.
 const (
 	MembershipItemRoleAgent                     MembershipItemRole = "agent"
@@ -451,6 +464,13 @@ const (
 	ListEventsParamsVisibilityPrivate  ListEventsParamsVisibility = "private"
 	ListEventsParamsVisibilityPublic   ListEventsParamsVisibility = "public"
 	ListEventsParamsVisibilityUnlisted ListEventsParamsVisibility = "unlisted"
+)
+
+// Defines values for PostV1MediaMultipartBodyOwnerType.
+const (
+	PostV1MediaMultipartBodyOwnerTypeArtistPhoto PostV1MediaMultipartBodyOwnerType = "artist_photo"
+	PostV1MediaMultipartBodyOwnerTypeEventPoster PostV1MediaMultipartBodyOwnerType = "event_poster"
+	PostV1MediaMultipartBodyOwnerTypeOrgLogo     PostV1MediaMultipartBodyOwnerType = "org_logo"
 )
 
 // AdminAddMemberRequest Request body for POST /v1/admin/organizations/{org_id}/members
@@ -2039,6 +2059,73 @@ type MeUser struct {
 	// Type Actor type — stub_user / user / service / anonymous
 	Type string `json:"type"`
 }
+
+// MediaObject A registered binary media object (org logo, event poster, artist
+// photo). The bytes live in the configured storage backend
+// (`MEDIA_BACKEND=s3|local`); this object holds the metadata. Fields
+// `org_id`, `owner_id`, `width`, `height`, `signed_url`, and
+// `signed_url_ttl_seconds` may be omitted from the JSON output —
+// omission is equivalent to a SQL NULL (oapi-codegen v2.4.1 still
+// warns on OAS 3.1 type-array null idiom, so we encode optionality
+// via documented omission rather than `type: [string, null]`).
+type MediaObject struct {
+	// ByteSize Stored object size in bytes.
+	ByteSize int64 `json:"byte_size"`
+
+	// ChecksumSha256 Hex-encoded SHA-256 of the stored bytes (64 hex chars).
+	ChecksumSha256 string `json:"checksum_sha256"`
+
+	// ContentType MIME type captured at upload time.
+	ContentType string `json:"content_type"`
+
+	// CreatedAt RFC3339 UTC timestamp of the initial upload.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Height Image height in pixels (omitted for non-image media).
+	Height *int `json:"height,omitempty"`
+
+	// Id UUIDv7 primary key of the media_objects row.
+	Id openapi_types.UUID `json:"id"`
+
+	// OrgId Owning organization UUID, or omitted for platform-owned
+	// assets (default branding, system icons).
+	OrgId *openapi_types.UUID `json:"org_id,omitempty"`
+
+	// OwnerId UUID of the owning row in the table implied by
+	// `owner_type`. Omitted for unattached uploads.
+	OwnerId *openapi_types.UUID `json:"owner_id,omitempty"`
+
+	// OwnerType Polymorphic owner kind. Future migrations widen the
+	// enumeration as new media-bearing surfaces appear.
+	OwnerType MediaObjectOwnerType `json:"owner_type"`
+
+	// SignedUrl Short-lived download URL. Present on `GET /v1/media/{id}`
+	// responses and omitted on `POST /v1/media` responses.
+	SignedUrl *string `json:"signed_url,omitempty"`
+
+	// SignedUrlTtlSeconds Lifetime (seconds) of the accompanying `signed_url`. Omitted
+	// when `signed_url` is omitted.
+	SignedUrlTtlSeconds *int64 `json:"signed_url_ttl_seconds,omitempty"`
+
+	// StorageBackend Which storage adapter holds the bytes. `s3` covers any
+	// S3-compatible store (AWS S3, Cloudflare R2, MinIO).
+	StorageBackend MediaObjectStorageBackend `json:"storage_backend"`
+
+	// StorageKey Backend-specific locator (S3 object key or path relative to
+	// `MEDIA_LOCAL_ROOT`).
+	StorageKey string `json:"storage_key"`
+
+	// Width Image width in pixels (omitted for non-image media).
+	Width *int `json:"width,omitempty"`
+}
+
+// MediaObjectOwnerType Polymorphic owner kind. Future migrations widen the
+// enumeration as new media-bearing surfaces appear.
+type MediaObjectOwnerType string
+
+// MediaObjectStorageBackend Which storage adapter holds the bytes. `s3` covers any
+// S3-compatible store (AWS S3, Cloudflare R2, MinIO).
+type MediaObjectStorageBackend string
 
 // MembershipItem A single user → organization → role binding (feature #120). The
 // admin memberships endpoints (feature #234) use this shape on every
@@ -4403,6 +4490,27 @@ type GetV1GeoCountriesParams struct {
 	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
 }
 
+// PostV1MediaMultipartBody defines parameters for PostV1Media.
+type PostV1MediaMultipartBody struct {
+	ContentType *string                           `json:"content_type,omitempty"`
+	File        openapi_types.File                `json:"file"`
+	OrgId       *openapi_types.UUID               `json:"org_id,omitempty"`
+	OwnerId     *openapi_types.UUID               `json:"owner_id,omitempty"`
+	OwnerType   PostV1MediaMultipartBodyOwnerType `json:"owner_type"`
+}
+
+// PostV1MediaMultipartBodyOwnerType defines parameters for PostV1Media.
+type PostV1MediaMultipartBodyOwnerType string
+
+// GetV1MediaFileParams defines parameters for GetV1MediaFile.
+type GetV1MediaFileParams struct {
+	// Expires Unix-seconds expiry timestamp embedded in the signed URL.
+	Expires int64 `form:"expires" json:"expires"`
+
+	// Sig HMAC-SHA256 signature over `id:expires`. Required in production; optional in dev when no MEDIA_SIGNING_SECRET is set.
+	Sig *string `form:"sig,omitempty" json:"sig,omitempty"`
+}
+
 // CreateOperatorNetworkParams defines parameters for CreateOperatorNetwork.
 type CreateOperatorNetworkParams struct {
 	// XAdminReason SAUI-09 audit-reason header. The trimmed value is stamped
@@ -4530,6 +4638,9 @@ type PostV1EchoJSONRequestBody = EchoRequest
 
 // PublishEventJSONRequestBody defines body for PublishEvent for application/json ContentType.
 type PublishEventJSONRequestBody = PublishEventRequest
+
+// PostV1MediaMultipartRequestBody defines body for PostV1Media for multipart/form-data ContentType.
+type PostV1MediaMultipartRequestBody PostV1MediaMultipartBody
 
 // CreateOperatorNetworkJSONRequestBody defines body for CreateOperatorNetwork for application/json ContentType.
 type CreateOperatorNetworkJSONRequestBody = CreateOperatorNetworkRequest

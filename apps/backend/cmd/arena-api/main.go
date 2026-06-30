@@ -31,11 +31,15 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/storage"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/database"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 )
 
@@ -183,6 +187,14 @@ func run() error {
 			"/v1/debug/* routes are mounted. DO NOT use in production.")
 	}
 
+	// 7b. Media storage backend (feature #285 / G-1, #286 / G-2) ---------------
+	// MediaBackend selects the storage adapter (s3|local). Empty disables
+	// the /v1/media endpoints — they return 503 storage_unavailable.
+	mediaRepo, err := buildMediaRepo(cfg, logger, pool.Pool)
+	if err != nil {
+		return fmt.Errorf("init media storage: %w", err)
+	}
+
 	srv := httpserver.New(httpserver.Options{
 		Config:                      cfg,
 		Logger:                      logger,
@@ -194,6 +206,7 @@ func run() error {
 		MetricsHandler:              metrics.Handler(), // mounts the /metrics scrape endpoint
 		FaultInjectOutboxAfterAudit: faultInjectOutbox,
 		DebugRoutesEnabled:          debugRoutesEnabled,
+		Media:                       mediaRepo,
 	})
 
 	listenErrCh := make(chan error, 1)
@@ -244,6 +257,45 @@ func run() error {
 
 	logger.Info("arena-api stopped cleanly")
 	return nil
+}
+
+// buildMediaRepo constructs the *mediastore.Repo wired into the API
+// server when MEDIA_BACKEND is set. Empty MediaBackend returns (nil, nil)
+// so the /v1/media endpoints respond with 503 storage_unavailable until
+// an operator configures the env vars. Validation that fields required
+// by the selected backend are present already runs in config.Load().
+func buildMediaRepo(cfg *config.Config, logger *slog.Logger, pool *pgxpool.Pool) (*mediastore.Repo, error) {
+	if cfg.MediaBackend == "" {
+		logger.Info("media storage disabled (MEDIA_BACKEND not set)")
+		return nil, nil
+	}
+	st, err := storage.NewFromConfig(storage.Config{
+		Backend:           storage.Backend(cfg.MediaBackend),
+		LocalRoot:         cfg.MediaLocalRoot,
+		S3Endpoint:        cfg.MediaS3Endpoint,
+		S3Region:          cfg.MediaS3Region,
+		S3Bucket:          cfg.MediaS3Bucket,
+		S3AccessKeyID:     cfg.MediaS3AccessKeyID,
+		S3SecretAccessKey: cfg.MediaS3SecretAccessKey,
+		S3UsePathStyle:    cfg.MediaS3UsePathStyle,
+	})
+	if err != nil {
+		return nil, err
+	}
+	// Sign local-backend download URLs with the same dev JWT secret so
+	// developers do not need to plumb a second secret for HMAC. In
+	// production the operator would set a dedicated MEDIA_SIGNING_SECRET
+	// env var; for the foundation milestone we accept the small dev
+	// reuse.
+	signingSecret := []byte(cfg.JWTSecretStub)
+	logger.Info("media storage configured",
+		"backend", cfg.MediaBackend,
+	)
+	return mediastore.New(mediastore.Options{
+		Pool:          pool,
+		Storage:       st,
+		SigningSecret: signingSecret,
+	})
 }
 
 // coalesce returns the first non-empty argument; used to pick OTEL service

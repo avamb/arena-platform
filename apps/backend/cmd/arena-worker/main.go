@@ -44,11 +44,13 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/storage"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/database"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/idempotency"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
@@ -178,6 +180,7 @@ func run() error {
 	//   idempotency.cleanup — purges expired idempotency_keys (feature #48)
 	registry := worker.NewRegistry()
 	registerBuiltinHandlers(registry, pool.Pool, metrics, logger)
+	registerMediaGCHandler(registry, pool.Pool, cfg, logger)
 
 	// 7b. Idempotency cleanup startup scheduling (feature #48) ---------------
 	// Enqueue an idempotency.cleanup job immediately if none is already
@@ -350,6 +353,45 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, metrics *
 		FromAddress:        coalesce(getEmailFrom(), "tickets@arena.example.com"),
 		Logger:             logger,
 	}))
+}
+
+// registerMediaGCHandler registers the media-gc worker handler when the
+// media storage backend is configured. When MEDIA_BACKEND is unset the
+// handler is not registered — any media-gc job sitting in the queue
+// fails fast with worker.ErrUnknownJobType, surfacing the
+// misconfiguration to operators instead of silently leaking bytes.
+func registerMediaGCHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, logger *slog.Logger) {
+	if cfg.MediaBackend == "" {
+		logger.Info("media-gc handler skipped (MEDIA_BACKEND not set)")
+		return
+	}
+	st, err := storage.NewFromConfig(storage.Config{
+		Backend:           storage.Backend(cfg.MediaBackend),
+		LocalRoot:         cfg.MediaLocalRoot,
+		S3Endpoint:        cfg.MediaS3Endpoint,
+		S3Region:          cfg.MediaS3Region,
+		S3Bucket:          cfg.MediaS3Bucket,
+		S3AccessKeyID:     cfg.MediaS3AccessKeyID,
+		S3SecretAccessKey: cfg.MediaS3SecretAccessKey,
+		S3UsePathStyle:    cfg.MediaS3UsePathStyle,
+	})
+	if err != nil {
+		logger.Error("media-gc handler init failed", "error", err.Error())
+		return
+	}
+	repo, err := mediastore.New(mediastore.Options{Pool: pool, Storage: st})
+	if err != nil {
+		logger.Error("media-gc repo init failed", "error", err.Error())
+		return
+	}
+	reg.Register(mediastore.JobType, mediastore.NewGCHandler(mediastore.GCHandlerOptions{
+		Repo:   repo,
+		Logger: logger,
+	}))
+	logger.Info("media-gc handler registered",
+		"backend", cfg.MediaBackend,
+		"retention", mediastore.DefaultRetention.String(),
+	)
 }
 
 // buildEmailSender returns an email.Sender appropriate for the current
