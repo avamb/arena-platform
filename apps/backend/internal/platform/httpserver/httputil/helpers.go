@@ -6,6 +6,7 @@ package httputil
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
 	"strings"
 
@@ -82,4 +83,31 @@ func ClientIP(r *http.Request) string {
 		return strings.TrimSpace(ip)
 	}
 	return r.RemoteAddr
+}
+
+// ExtractClientIP returns a validated IP string from the request, checking
+// X-Forwarded-For, X-Real-IP, and RemoteAddr in order. Returns "" when no
+// valid IP is found so callers can store NULL in the DB rather than fail.
+func ExtractClientIP(r *http.Request) string {
+	if xff := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); xff != "" {
+		if idx := strings.Index(xff, ","); idx > 0 {
+			xff = xff[:idx]
+		}
+		if ip := net.ParseIP(strings.TrimSpace(xff)); ip != nil {
+			return ip.String()
+		}
+	}
+	if xri := strings.TrimSpace(r.Header.Get("X-Real-IP")); xri != "" {
+		if ip := net.ParseIP(xri); ip != nil {
+			return ip.String()
+		}
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.String()
+	}
+	return ""
 }

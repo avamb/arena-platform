@@ -1,0 +1,134 @@
+// logout.go implements POST /v1/auth/logout (feature #118).
+//
+// Logout flow:
+//  1. Require a valid JWT in the Authorization header (user must be authenticated).
+//  2. Parse the request body for the refresh_token to revoke.
+//  3. Fetch the refresh token row from the database; return 404 when not found.
+//  4. Verify the token belongs to the authenticated actor (prevents cross-user
+//     revocation via token-theft).
+//  5. If the token is already revoked → return 204 (idempotent logout).
+//  6. Revoke the token in the database (sets revoked_at = now()).
+//  7. If a session store is wired, call RevokeSession to:
+//     a. Write "arena:revoked:{token}" in Redis with TTL = remaining lifetime.
+//     b. Remove the token from "arena:sessions:{userID}" sorted set.
+//  8. Return 204 No Content.
+package hauth
+
+import (
+	"encoding/json"
+	"io"
+	"log/slog"
+	"net/http"
+	"strings"
+
+	"github.com/jackc/pgx/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
+)
+
+// Logout serves POST /v1/auth/logout.
+func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	logger := logging.FromContext(ctx)
+
+	actor, ok := auth.ActorFromContext(ctx)
+	if !ok || !actor.IsAuthenticated() {
+		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope("auth.unauthenticated", "authentication required", r))
+		return
+	}
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, 16*1024))
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("http.invalid_body", "cannot read request body: "+err.Error(), r))
+		return
+	}
+	if len(body) == 0 {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("http.empty_body", "request body is required", r))
+		return
+	}
+
+	var req struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("http.invalid_json", "request body is not valid JSON", r))
+		return
+	}
+	if strings.TrimSpace(req.RefreshToken) == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			"validation.refresh_token_required", "refresh_token is required", r,
+			map[string]any{"field": "refresh_token"},
+		))
+		return
+	}
+
+	if h.db == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "database is not available", r))
+		return
+	}
+
+	tx, err := h.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		logger.Error("auth.logout: begin tx failed", "error", err)
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "database is not available", r))
+		return
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	q := gen.New(tx)
+
+	row, err := q.GetRefreshToken(ctx, req.RefreshToken)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("auth.refresh_token_not_found", "refresh token not found", r))
+			return
+		}
+		logger.Error("auth.logout: get refresh token failed", "error", err)
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "database is not available", r))
+		return
+	}
+
+	if row.UserID.String() != actor.ID {
+		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope("auth.logout_forbidden", "refresh token does not belong to the authenticated user", r))
+		return
+	}
+
+	if row.RevokedAt != nil {
+		if h.sessionStore != nil {
+			_ = h.sessionStore.RevokeSession(ctx, actor.ID, req.RefreshToken, row.ExpiresAt)
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	if err := q.RevokeRefreshToken(ctx, req.RefreshToken); err != nil {
+		logger.Error("auth.logout: revoke refresh token failed", "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.revoke_failed", "failed to revoke refresh token", r))
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		logger.Error("auth.logout: commit failed", "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.transaction_failed", "failed to commit transaction", r))
+		return
+	}
+
+	if h.sessionStore != nil {
+		if redisErr := h.sessionStore.RevokeSession(ctx, actor.ID, req.RefreshToken, row.ExpiresAt); redisErr != nil {
+			logger.Warn("auth.logout: redis revoke session failed (token still revoked in DB)",
+				"error", redisErr,
+				"user_id", actor.ID,
+			)
+		}
+	}
+
+	slog.Info("auth.logout: session revoked",
+		"user_id", actor.ID,
+		"token_prefix", req.RefreshToken[:min(len(req.RefreshToken), 8)],
+	)
+
+	w.WriteHeader(http.StatusNoContent)
+}

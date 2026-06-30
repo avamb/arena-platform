@@ -4,6 +4,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hauth"
 )
 
 // mountAuthRoutes mounts the public auth + JWT-protected logout endpoints.
@@ -12,18 +13,28 @@ import (
 //	POST /v1/auth/refresh, POST /v1/auth/password-reset/{request,confirm},
 //	POST /v1/auth/logout.
 func (s *Server) mountAuthRoutes(r chi.Router) {
-	if s.pool != nil {
-		r.Post("/auth/register", s.handleAuthRegister)
-		r.Get("/auth/verify", s.handleAuthVerifyEmail)
-		r.Post("/auth/login", s.handleAuthLogin)
-		r.Post("/auth/refresh", s.handleAuthRefresh)
-		r.Post("/auth/password-reset/request", s.handleAuthPasswordResetRequest)
-		r.Post("/auth/password-reset/confirm", s.handleAuthPasswordResetConfirm)
+	if s.pool == nil {
+		return
 	}
-	if s.stub != nil && s.stub.Enabled() && s.pool != nil {
+
+	issuer, audience := "arena-api", "arena-api"
+	if s.stub != nil {
+		issuer = s.stub.Issuer()
+		audience = s.stub.Audience()
+	}
+	h := hauth.New(s.pool, s.audit, s.sessionStore, s.cfg.JWTSecretStub, issuer, audience, s.maxConcurrentSessions)
+
+	r.Post("/auth/register", h.Register)
+	r.Get("/auth/verify", h.VerifyEmail)
+	r.Post("/auth/login", h.Login)
+	r.Post("/auth/refresh", h.Refresh)
+	r.Post("/auth/password-reset/request", h.PasswordResetRequest)
+	r.Post("/auth/password-reset/confirm", h.PasswordResetConfirm)
+
+	if s.stub != nil && s.stub.Enabled() {
 		r.Group(func(pr chi.Router) {
 			pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
-			pr.Post("/auth/logout", s.handleAuthLogout)
+			pr.Post("/auth/logout", h.Logout)
 		})
 	}
 }
