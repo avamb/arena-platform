@@ -17773,3 +17773,10 @@ Verification:
   npm --prefix apps/admin-web test -- --run         691 / 691 PASS
 
 Marked #284 passing. Backlog: 282 / 301.
+
+## 2026-06-30 — Feature #285 (G-1) Media storage scaffold
+- Added migration 0052_media_objects.sql (0051 already taken by event_metadata; used next ordinal)
+- New package apps/backend/internal/adapters/storage with Storage interface, LocalStorage, S3Storage (SigV4, stdlib only)
+- MEDIA_BACKEND/MEDIA_LOCAL_ROOT/MEDIA_S3_* env vars wired into platform/config with validation
+- Tests cover config validation, key validation, local CRUD round-trip, S3 round-trip against httptest server, SigV4 worked example
+- go build ./..., go vet, and storage+config tests all pass

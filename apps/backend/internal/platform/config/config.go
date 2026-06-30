@@ -89,6 +89,28 @@ type Config struct {
 	// Disabled by default; set BIL24_COMPAT_ENABLED=true to enable.
 	Bil24CompatEnabled bool `env:"BIL24_COMPAT_ENABLED" required:"false" default:"false"`
 
+	// Media storage backend (feature #285 / G-1, Wave G)
+	// MediaBackend selects which adapter the storage package constructs:
+	//   "s3"    — any S3-compatible object store (AWS S3, Cloudflare R2, MinIO).
+	//   "local" — filesystem under MediaLocalRoot (development & tests).
+	// Empty value disables the media subsystem and is treated as inactive by
+	// callers (so binaries that do not need media — arena-migrate — can boot
+	// without setting any of the MEDIA_* variables).
+	MediaBackend string `env:"MEDIA_BACKEND" required:"false" default:""`
+	// MediaLocalRoot is the filesystem directory used when MediaBackend=local.
+	MediaLocalRoot string `env:"MEDIA_LOCAL_ROOT" required:"false" default:""`
+	// S3-compatible backend parameters. All five are required when
+	// MediaBackend=s3; otherwise ignored.
+	MediaS3Endpoint        string `env:"MEDIA_S3_ENDPOINT"          required:"false" default:""`
+	MediaS3Region          string `env:"MEDIA_S3_REGION"            required:"false" default:""`
+	MediaS3Bucket          string `env:"MEDIA_S3_BUCKET"            required:"false" default:""`
+	MediaS3AccessKeyID     string `env:"MEDIA_S3_ACCESS_KEY_ID"     required:"false" default:""`
+	MediaS3SecretAccessKey string `env:"MEDIA_S3_SECRET_ACCESS_KEY" required:"false" default:""`
+	// MediaS3UsePathStyle forces path-style addressing
+	// ("https://endpoint/bucket/key"). Defaults to true because it is the
+	// lowest-common-denominator format all three target providers accept.
+	MediaS3UsePathStyle bool `env:"MEDIA_S3_USE_PATH_STYLE" required:"false" default:"true"`
+
 	// Outbox dispatcher (feature #110)
 	// OutboxWebhookURL is the HTTP endpoint where outbox_events are POSTed.
 	// When empty the dispatcher uses the NoopDispatcher (log-only mode).
@@ -134,6 +156,14 @@ func Load() (*Config, error) {
 
 		OutboxWebhookURL:    getenv("OUTBOX_WEBHOOK_URL", ""),
 		OutboxSigningSecret: getenv("OUTBOX_SIGNING_SECRET", ""),
+
+		MediaBackend:           getenv("MEDIA_BACKEND", ""),
+		MediaLocalRoot:         getenv("MEDIA_LOCAL_ROOT", ""),
+		MediaS3Endpoint:        getenv("MEDIA_S3_ENDPOINT", ""),
+		MediaS3Region:          getenv("MEDIA_S3_REGION", ""),
+		MediaS3Bucket:          getenv("MEDIA_S3_BUCKET", ""),
+		MediaS3AccessKeyID:     getenv("MEDIA_S3_ACCESS_KEY_ID", ""),
+		MediaS3SecretAccessKey: getenv("MEDIA_S3_SECRET_ACCESS_KEY", ""),
 	}
 
 	// Parse errors are collected together with Validate() errors so a single
@@ -230,6 +260,13 @@ func Load() (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.Bil24CompatEnabled = b
+
+	// Media S3 path-style flag (feature #285 / G-1). Defaults to true.
+	b, err = getenvBool("MEDIA_S3_USE_PATH_STYLE", true)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.MediaS3UsePathStyle = b
 
 	// Outbox dispatcher poll interval (feature #110).
 	d, err = getenvDuration("OUTBOX_POLL_INTERVAL", time.Second, false)
@@ -351,6 +388,48 @@ func (c *Config) Validate() error {
 				"ENABLE_DEV_AUTH must be false in production (APP_ENV=production)",
 			))
 		}
+	}
+
+	// Media storage backend (feature #285 / G-1). Empty MediaBackend means
+	// the media subsystem is inactive (e.g. arena-migrate doesn't need it).
+	// When set, only "s3" and "local" are accepted, and the relevant
+	// adapter-specific fields must be populated.
+	switch strings.ToLower(strings.TrimSpace(c.MediaBackend)) {
+	case "":
+		// inactive — fine
+	case "local":
+		if strings.TrimSpace(c.MediaLocalRoot) == "" {
+			errs = append(errs, errors.New(
+				"MEDIA_LOCAL_ROOT is required when MEDIA_BACKEND=local",
+			))
+		}
+	case "s3":
+		var missing []string
+		if strings.TrimSpace(c.MediaS3Endpoint) == "" {
+			missing = append(missing, "MEDIA_S3_ENDPOINT")
+		}
+		if strings.TrimSpace(c.MediaS3Region) == "" {
+			missing = append(missing, "MEDIA_S3_REGION")
+		}
+		if strings.TrimSpace(c.MediaS3Bucket) == "" {
+			missing = append(missing, "MEDIA_S3_BUCKET")
+		}
+		if strings.TrimSpace(c.MediaS3AccessKeyID) == "" {
+			missing = append(missing, "MEDIA_S3_ACCESS_KEY_ID")
+		}
+		if strings.TrimSpace(c.MediaS3SecretAccessKey) == "" {
+			missing = append(missing, "MEDIA_S3_SECRET_ACCESS_KEY")
+		}
+		if len(missing) > 0 {
+			errs = append(errs, fmt.Errorf(
+				"MEDIA_BACKEND=s3 requires: %s", strings.Join(missing, ", "),
+			))
+		}
+	default:
+		errs = append(errs, fmt.Errorf(
+			"MEDIA_BACKEND %q is invalid (allowed: s3|local or empty for inactive)",
+			c.MediaBackend,
+		))
 	}
 
 	if len(errs) == 0 {
