@@ -10,7 +10,8 @@ import (
 )
 
 const (
-	BearerAuthScopes = "bearerAuth.Scopes"
+	AgentFeedTokenAuthScopes = "agentFeedTokenAuth.Scopes"
+	BearerAuthScopes         = "bearerAuth.Scopes"
 )
 
 // Defines values for AdminAddMemberRequestRole.
@@ -347,6 +348,12 @@ const (
 // Defines values for ReservationCancelEnvelopeCancelled.
 const (
 	ReservationCancelEnvelopeCancelledTrue ReservationCancelEnvelopeCancelled = true
+)
+
+// Defines values for ScannerScanInputResult.
+const (
+	Admitted ScannerScanInputResult = "admitted"
+	Denied   ScannerScanInputResult = "denied"
 )
 
 // Defines values for SessionItemStatus.
@@ -3472,6 +3479,132 @@ type ReservationEnvelope struct {
 	Reservation Reservation `json:"reservation"`
 }
 
+// ScannerScanBatchRequest POST body for `POST /v1/scanner/scan-events`. Carries one or
+// more scan attempts uploaded by an external scanner device.
+// Maximum batch size is 500 entries — scanners backfilling a
+// long offline window MUST page their callbacks.
+type ScannerScanBatchRequest struct {
+	// Scans Ordered batch of scan attempts. The response `results`
+	// array is returned in the same order so the scanner can
+	// index by position.
+	Scans []ScannerScanInput `json:"scans"`
+}
+
+// ScannerScanBatchResponse Top-level response body for `POST /v1/scanner/scan-events`.
+// Always 200 — per-entry errors surface on the
+// `ScannerScanResult.error` field rather than via the HTTP
+// status code. Only request-level failures (missing token,
+// invalid JSON, empty batch, oversized batch) produce a
+// non-200 status with an `ErrorEnvelope` body.
+type ScannerScanBatchResponse struct {
+	// Results One entry per request `scans` entry, in the same order.
+	Results []ScannerScanResult `json:"results"`
+}
+
+// ScannerScanInput Single scan attempt reported by an external scanner device.
+// Wire shape consumed by
+// `apps/backend/internal/platform/httpserver/scanner_callback.go`
+// (feature #293, S-2). Each entry records one physical scan at
+// the gate, regardless of whether the credential resolves to a
+// known ticket — unresolved scans still produce a `scan_events`
+// row for audit / abuse detection.
+type ScannerScanInput struct {
+	// CredentialCode QR-payload / barcode reference scanned at the gate. The
+	// handler resolves this against `tickets.credential_code`
+	// to locate a ticket; unresolved codes are persisted with
+	// NULL ticket lineage.
+	CredentialCode string `json:"credential_code"`
+
+	// DeviceId Optional stable scanner identifier (e.g. "scanner-007").
+	// Captured verbatim into `scan_events.device_id` so an
+	// operator investigating an abusive scanner can filter by
+	// device. Empty string is treated as "unspecified".
+	DeviceId *string `json:"device_id,omitempty"`
+
+	// Gate Optional human-readable gate label (e.g. "Gate 12"). Free
+	// form, captured verbatim into `scan_events.gate` for the
+	// support-console scans drawer. Empty string is treated as
+	// "unspecified".
+	Gate *string `json:"gate,omitempty"`
+
+	// Result Outcome the scanner device reached locally. `admitted`
+	// triggers the server-side `tickets.used_at` first-admission
+	// flip and emits the `v1.ticket.scanned` outbox event;
+	// `denied` is persisted for audit but does not touch the
+	// ticket row.
+	Result ScannerScanInputResult `json:"result"`
+
+	// ScannedAt RFC 3339 timestamp recorded by the scanner's local clock
+	// (NOT the server's). The handler treats the (credential_code,
+	// scanned_at) pair as the idempotency key — duplicate batch
+	// replays from a scanner with the same scanned_at collapse
+	// to a no-op via the `scan_events_credential_scanned_at_unique`
+	// constraint declared in 0055_scan_events.sql.
+	ScannedAt time.Time `json:"scanned_at"`
+}
+
+// ScannerScanInputResult Outcome the scanner device reached locally. `admitted`
+// triggers the server-side `tickets.used_at` first-admission
+// flip and emits the `v1.ticket.scanned` outbox event;
+// `denied` is persisted for audit but does not touch the
+// ticket row.
+type ScannerScanInputResult string
+
+// ScannerScanResult Per-entry outcome returned by `POST /v1/scanner/scan-events`.
+// Entries are returned in the same order as the request `scans`
+// array. Per-scan validation errors (bad timestamp, bad result
+// enum) are reported on the `error` field rather than failing
+// the whole batch — partial-success semantics mirror the way
+// scanner devices already debatch their uploads.
+type ScannerScanResult struct {
+	// CredentialCode Echo of the request `credential_code` so the scanner can
+	// correlate the response back to its local queue.
+	CredentialCode string `json:"credential_code"`
+
+	// Duplicate `true` when the (credential_code, scanned_at) pair
+	// already existed in `scan_events` (idempotent-replay
+	// path). Side effects (`tickets.used_at` flip,
+	// `v1.ticket.scanned` outbox event) are suppressed on
+	// replays — the original row identifiers are still
+	// returned so the scanner can acknowledge the batch.
+	Duplicate bool `json:"duplicate"`
+
+	// Error Per-scan validation error string when the entry failed
+	// input validation (e.g. "scanned_at must be RFC3339",
+	// `result must be "admitted" or "denied"`). Omitted on
+	// the happy path.
+	Error *string `json:"error,omitempty"`
+
+	// FirstAdmission `true` only on a fresh `admitted` insert whose ticket
+	// had `tickets.used_at IS NULL` before this scan. The
+	// handler uses this to drive analytics on first-entry
+	// counts vs. re-entries. Always `false` on replays,
+	// denied scans, and unresolved credentials.
+	FirstAdmission bool `json:"first_admission"`
+
+	// Result Echo of the request `result` ("admitted" or "denied").
+	Result string `json:"result"`
+
+	// ScanEventId UUIDv7 of the `scan_events` row the handler inserted (or
+	// located on the idempotent-replay path). Omitted on rows
+	// that hit the per-scan validation error branch (`error`
+	// populated, no row inserted).
+	ScanEventId *openapi_types.UUID `json:"scan_event_id,omitempty"`
+
+	// ScannedAt Echo of the request `scanned_at` (RFC 3339 from the
+	// scanner clock). Echoed as a string verbatim — the server
+	// does NOT re-format it.
+	ScannedAt string `json:"scanned_at"`
+
+	// TicketId UUIDv7 of the resolved `tickets` row, or JSON `null`
+	// when the `credential_code` did not match any known
+	// ticket (audit-only persistence path).
+	// (OAS 3.1 `type: [string, "null"]` is not yet supported
+	// by oapi-codegen v2.4.1; see CLAUDE.md — nullability is
+	// documented prose-only.)
+	TicketId openapi_types.UUID `json:"ticket_id"`
+}
+
 // ServerInfoResponse defines model for ServerInfoResponse.
 type ServerInfoResponse struct {
 	// BuildSha Git commit SHA embedded at build time via runtime/debug.ReadBuildInfo
@@ -4883,6 +5016,9 @@ type RejectRefundJSONRequestBody = ApproveRefundRequest
 
 // CreateReservationJSONRequestBody defines body for CreateReservation for application/json ContentType.
 type CreateReservationJSONRequestBody = CreateReservationRequest
+
+// PostScannerScanEventsJSONRequestBody defines body for PostScannerScanEvents for application/json ContentType.
+type PostScannerScanEventsJSONRequestBody = ScannerScanBatchRequest
 
 // RegisterWebhookSubscriberJSONRequestBody defines body for RegisterWebhookSubscriber for application/json ContentType.
 type RegisterWebhookSubscriberJSONRequestBody = RegisterWebhookSubscriberRequest

@@ -2845,6 +2845,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/scanner/scan-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Scanner — ingest a batch of scan reports
+         * @description Accepts up to 500 scan attempts uploaded by an external
+         *     scanner device. The handler:
+         *
+         *       1. Validates the `Authorization: Bearer <agent_feed_token>`
+         *          credential against `agent_feed_tokens` and resolves
+         *          the scanner scope (organization + sales channel).
+         *       2. For each entry:
+         *          - resolves `credential_code` to a `tickets` row when
+         *            possible (unresolved credentials still produce an
+         *            audit-only `scan_events` row);
+         *          - inserts a `scan_events` row scoped to the resolved
+         *            organization, idempotent on
+         *            `(credential_code, scanned_at)`;
+         *          - on a fresh `admitted` insert, flips
+         *            `tickets.used_at` if it was previously NULL and
+         *            emits a `v1.ticket.scanned` outbox event so
+         *            downstream consumers (analytics, reporting
+         *            fan-out) can react.
+         *       3. Touches `agent_feed_tokens.last_used_at` so operators
+         *          can see which scanners are active.
+         *
+         *     Permissions: this endpoint is NOT gated by the standard
+         *     JWT / RBAC stack. Authentication is performed solely via
+         *     the `agentFeedTokenAuth` bearer scheme — the token is a
+         *     long-lived credential bound to a single sales channel and
+         *     treated as the scanner's "scope of authority". An invalid
+         *     or revoked token returns `401 scanner.invalid_token` with
+         *     a `WWW-Authenticate: Bearer realm="arena-scanner"`
+         *     challenge.
+         *
+         *     Idempotency: the `(credential_code, scanned_at)` unique
+         *     constraint declared in `0055_scan_events.sql` collapses
+         *     retried requests to a no-op. The handler still returns 200
+         *     with the original row identifiers so the scanner side can
+         *     acknowledge the batch; side effects
+         *     (`tickets.used_at` update, outbox emit) are suppressed on
+         *     the replay path.
+         *
+         *     Partial-success: per-scan validation errors (bad timestamp,
+         *     bad result enum, missing credential_code) surface on the
+         *     per-entry `ScannerScanResult.error` field rather than
+         *     failing the whole batch. Only request-level failures
+         *     (missing token, invalid JSON, empty batch, oversized
+         *     batch) return a non-200 status with an `ErrorEnvelope` body.
+         */
+        post: operations["postScannerScanEvents"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -7726,6 +7789,148 @@ export interface components {
              *     its next poll cycle.
              */
             worker_job_id: string;
+        };
+        /**
+         * @description Single scan attempt reported by an external scanner device.
+         *     Wire shape consumed by
+         *     `apps/backend/internal/platform/httpserver/scanner_callback.go`
+         *     (feature #293, S-2). Each entry records one physical scan at
+         *     the gate, regardless of whether the credential resolves to a
+         *     known ticket — unresolved scans still produce a `scan_events`
+         *     row for audit / abuse detection.
+         */
+        ScannerScanInput: {
+            /**
+             * @description QR-payload / barcode reference scanned at the gate. The
+             *     handler resolves this against `tickets.credential_code`
+             *     to locate a ticket; unresolved codes are persisted with
+             *     NULL ticket lineage.
+             */
+            credential_code: string;
+            /**
+             * Format: date-time
+             * @description RFC 3339 timestamp recorded by the scanner's local clock
+             *     (NOT the server's). The handler treats the (credential_code,
+             *     scanned_at) pair as the idempotency key — duplicate batch
+             *     replays from a scanner with the same scanned_at collapse
+             *     to a no-op via the `scan_events_credential_scanned_at_unique`
+             *     constraint declared in 0055_scan_events.sql.
+             */
+            scanned_at: string;
+            /**
+             * @description Optional human-readable gate label (e.g. "Gate 12"). Free
+             *     form, captured verbatim into `scan_events.gate` for the
+             *     support-console scans drawer. Empty string is treated as
+             *     "unspecified".
+             */
+            gate?: string;
+            /**
+             * @description Optional stable scanner identifier (e.g. "scanner-007").
+             *     Captured verbatim into `scan_events.device_id` so an
+             *     operator investigating an abusive scanner can filter by
+             *     device. Empty string is treated as "unspecified".
+             */
+            device_id?: string;
+            /**
+             * @description Outcome the scanner device reached locally. `admitted`
+             *     triggers the server-side `tickets.used_at` first-admission
+             *     flip and emits the `v1.ticket.scanned` outbox event;
+             *     `denied` is persisted for audit but does not touch the
+             *     ticket row.
+             * @enum {string}
+             */
+            result: "admitted" | "denied";
+        };
+        /**
+         * @description POST body for `POST /v1/scanner/scan-events`. Carries one or
+         *     more scan attempts uploaded by an external scanner device.
+         *     Maximum batch size is 500 entries — scanners backfilling a
+         *     long offline window MUST page their callbacks.
+         */
+        ScannerScanBatchRequest: {
+            /**
+             * @description Ordered batch of scan attempts. The response `results`
+             *     array is returned in the same order so the scanner can
+             *     index by position.
+             */
+            scans: components["schemas"]["ScannerScanInput"][];
+        };
+        /**
+         * @description Per-entry outcome returned by `POST /v1/scanner/scan-events`.
+         *     Entries are returned in the same order as the request `scans`
+         *     array. Per-scan validation errors (bad timestamp, bad result
+         *     enum) are reported on the `error` field rather than failing
+         *     the whole batch — partial-success semantics mirror the way
+         *     scanner devices already debatch their uploads.
+         */
+        ScannerScanResult: {
+            /**
+             * @description Echo of the request `credential_code` so the scanner can
+             *     correlate the response back to its local queue.
+             */
+            credential_code: string;
+            /**
+             * @description Echo of the request `scanned_at` (RFC 3339 from the
+             *     scanner clock). Echoed as a string verbatim — the server
+             *     does NOT re-format it.
+             */
+            scanned_at: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the `scan_events` row the handler inserted (or
+             *     located on the idempotent-replay path). Omitted on rows
+             *     that hit the per-scan validation error branch (`error`
+             *     populated, no row inserted).
+             */
+            scan_event_id?: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the resolved `tickets` row, or JSON `null`
+             *     when the `credential_code` did not match any known
+             *     ticket (audit-only persistence path).
+             *     (OAS 3.1 `type: [string, "null"]` is not yet supported
+             *     by oapi-codegen v2.4.1; see CLAUDE.md — nullability is
+             *     documented prose-only.)
+             */
+            ticket_id: string;
+            /** @description Echo of the request `result` ("admitted" or "denied"). */
+            result: string;
+            /**
+             * @description `true` when the (credential_code, scanned_at) pair
+             *     already existed in `scan_events` (idempotent-replay
+             *     path). Side effects (`tickets.used_at` flip,
+             *     `v1.ticket.scanned` outbox event) are suppressed on
+             *     replays — the original row identifiers are still
+             *     returned so the scanner can acknowledge the batch.
+             */
+            duplicate: boolean;
+            /**
+             * @description `true` only on a fresh `admitted` insert whose ticket
+             *     had `tickets.used_at IS NULL` before this scan. The
+             *     handler uses this to drive analytics on first-entry
+             *     counts vs. re-entries. Always `false` on replays,
+             *     denied scans, and unresolved credentials.
+             */
+            first_admission: boolean;
+            /**
+             * @description Per-scan validation error string when the entry failed
+             *     input validation (e.g. "scanned_at must be RFC3339",
+             *     `result must be "admitted" or "denied"`). Omitted on
+             *     the happy path.
+             */
+            error?: string;
+        };
+        /**
+         * @description Top-level response body for `POST /v1/scanner/scan-events`.
+         *     Always 200 — per-entry errors surface on the
+         *     `ScannerScanResult.error` field rather than via the HTTP
+         *     status code. Only request-level failures (missing token,
+         *     invalid JSON, empty batch, oversized batch) produce a
+         *     non-200 status with an `ErrorEnvelope` body.
+         */
+        ScannerScanBatchResponse: {
+            /** @description One entry per request `scans` entry, in the same order. */
+            results: components["schemas"]["ScannerScanResult"][];
         };
         /**
          * @description Single event-publication row connecting an event to an agent
@@ -18196,6 +18401,106 @@ export interface operations {
              * @description Delivery_jobs queries, ticket queries, or worker pool
              *     unavailable
              *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postScannerScanEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScannerScanBatchRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description Batch ingested. The `results` array carries one entry
+             *     per request `scans` entry, in the same order. Per-scan
+             *     validation errors surface on `ScannerScanResult.error`
+             *     (the entry's `scan_event_id` is omitted on that path).
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScannerScanBatchResponse"];
+                };
+            };
+            /**
+             * @description Request-level validation failure — invalid JSON body
+             *     (`scanner.invalid_body`), empty `scans` array
+             *     (`scanner.empty_batch`), or other malformed input.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Missing, malformed, unknown, or revoked
+             *     `Authorization: Bearer <agent_feed_token>` header
+             *     (`scanner.missing_token`, `scanner.invalid_token`).
+             *     Response carries `WWW-Authenticate: Bearer
+             *     realm="arena-scanner"`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `scans` array exceeds the 500-entry per-batch cap
+             *     (`scanner.batch_too_large`). Scanners backfilling a
+             *     long offline window MUST page their callbacks.
+             */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error while validating the scanner
+             *     credential (`scanner.auth_lookup_failed`). Per-scan
+             *     row-insert failures DO NOT bubble up here — they are
+             *     reported on the per-entry `ScannerScanResult.error`
+             *     field instead.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Scanner ingest disabled — `feed_token_queries` handle
+             *     not wired (`dependency.database_unavailable`). The
+             *     route is always mounted so the openapi-drift coverage
+             *     check can see it; the handler self-gates on the
+             *     missing dependency.
              */
             503: {
                 headers: {

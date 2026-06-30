@@ -45,12 +45,15 @@ func (s *Server) mountScannerRoutes(r chi.Router) {
 // (feature #293 / S-2).  The route is intentionally OUTSIDE the JWT-gated
 // applyAuth group above because it is authenticated via an agent_feed_tokens
 // bearer presented in the Authorization header rather than a session JWT.
-// Mount condition: a feed-token queries handle must be wired so the bearer
-// can be validated against agent_feed_tokens at request time.
+//
+// Always mounted (handler self-gates on s.feedTokenQueries == nil with a
+// 503 dependency.database_unavailable envelope) so that the route is
+// reachable for the openapi-drift coverage check (feature #278, A-17) and
+// the drift test does not need to wire a *gen.Queries handle (which would
+// cascade and mount every other feed-token-gated route in mount_catalog.go).
+// Mirrors the unconditional-mount + self-gating precedent established by
+// POST /v1/admin/tickets/{id}/delivery/resend (feature #276, A-15).
 func (s *Server) mountScannerCallbackRoutes(r chi.Router) {
-	if s.feedTokenQueries == nil {
-		return
-	}
 	r.Post("/scanner/scan-events", s.handleScannerScanEvents)
 }
 

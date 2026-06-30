@@ -91,23 +91,24 @@ func TestS2_HandleScannerScanEvents_ServiceUnavailableWithoutFeedTokenQueries(t 
 
 func TestS2_HandleScannerScanEvents_UnauthorizedWithoutBearer(t *testing.T) {
 	t.Parallel()
-	// Provide a non-nil feedTokenQueries by faking an empty *gen.Queries via the
-	// router mount path -- but we can also exercise the unauth branch by
-	// short-circuiting on the missing header before any DB call.  The handler
-	// guard returns 503 first when feedTokenQueries is nil, so we need a
-	// non-nil queries handle.  Easiest: assert that mountScannerCallbackRoutes
-	// is a no-op when feedTokenQueries is nil (route not registered), which
-	// matches the production gating.
+	// Feature #278 (A-17) flipped mountScannerCallbackRoutes to always mount
+	// the route so it is reachable for the openapi-drift coverage check;
+	// the handler self-gates on s.feedTokenQueries == nil and returns a
+	// 503 dependency.database_unavailable envelope (mirroring the A-15
+	// delivery-resend precedent).  Confirm the route IS mounted and the
+	// handler returns 503 when feedTokenQueries is unset.
 	s := &Server{logger: slog.Default()}
 	r := chi.NewRouter()
 	r.Route("/v1", func(pr chi.Router) {
 		s.mountScannerCallbackRoutes(pr)
 	})
-	req := httptest.NewRequest(http.MethodPost, "/v1/scanner/scan-events", nil)
+	req := httptest.NewRequest(http.MethodPost, "/v1/scanner/scan-events",
+		strings.NewReader(`{"scans":[]}`))
+	req.Header.Set("Authorization", "Bearer abc")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
-	if w.Code != http.StatusMethodNotAllowed && w.Code != http.StatusNotFound {
-		t.Errorf("expected route to be unmounted when feedTokenQueries is nil; got status %d", w.Code)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected route to be mounted and return 503 when feedTokenQueries is nil; got status %d", w.Code)
 	}
 }
 

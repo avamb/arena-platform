@@ -18600,3 +18600,75 @@ Verification:
   go test -run TestOpenAPIDriftCheck_SpecCoversAllCodeRoutes  PASS
   npx tsc --noEmit apps/backend/openapi/clients/ts/index.d.ts OK
 Marked #276 passing.
+
+
+## 2026-06-30 - Feature #278 (A-17) Document scan_events endpoints in OpenAPI
+- Added POST /v1/scanner/scan-events to apps/backend/openapi/openapi.yaml
+  under a new "Scanner - scan_events ingest" section (operationId
+  postScannerScanEvents, tags [v1, scanner]). Documented request body
+  (ScannerScanBatchRequest wrapping ScannerScanInput entries with the
+  500-entry maxItems cap mirroring scanner_callback.go's
+  maxScannerBatchSize), 200 response (ScannerScanBatchResponse wrapping
+  ScannerScanResult entries), and the 400/401/413/500/503 error matrix
+  with ErrorEnvelope on every path. Error codes documented:
+  scanner.missing_token, scanner.invalid_token,
+  scanner.auth_lookup_failed, scanner.invalid_body, scanner.empty_batch,
+  scanner.batch_too_large, dependency.database_unavailable.
+- Added new agentFeedTokenAuth security scheme under
+  components.securitySchemes (bearerFormat: AgentFeedToken) so OpenAPI
+  consumers can tell the agent_feed_tokens bearer credential apart from
+  the JWT bearerAuth scheme. The scan-events operation declares
+  agentFeedTokenAuth: [] (not bearerAuth) because the endpoint is NOT
+  gated by JWT/RBAC -- it authenticates solely via the long-lived
+  agent_feed_token bound to a single sales channel.
+- mount_scanning.go: mountScannerCallbackRoutes now mounts
+  POST /scanner/scan-events unconditionally (handler self-gates on
+  s.feedTokenQueries == nil with 503 dependency.database_unavailable,
+  already present in the handler). Mirrors the A-15 #276 precedent for
+  POST /admin/tickets/{id}/delivery/resend and keeps the openapi-drift
+  coverage check honest WITHOUT cascading and mounting every other
+  feed-token-gated route in mount_catalog.go (which would also surface
+  /v1/feeds/{token} + feed-token CRUD). Updated
+  TestS2_HandleScannerScanEvents_UnauthorizedWithoutBearer to assert
+  the new contract: route IS mounted and handler returns 503 when
+  feedTokenQueries is unset. The deliberate /v1/admin scans gap
+  precedent (/v1/admin/tickets/{id}/scans still feedTokenQueries-gated)
+  is preserved for a future A-* wave.
+- New openapi_scan_events_278_test.go (11 cases) is the executable
+  A-17 contract gate: structural presence checks, the new security
+  scheme + bearerFormat pin, agentFeedTokenAuth on the operation +
+  tags, ErrorEnvelope on every error code, all 7 canonical error
+  codes documented in prose, ScannerScanResult required fields +
+  nullable ticket_id projection (prose-only because oapi-codegen
+  v2.4.1 does not yet accept OAS 3.1 type: [string, "null"]),
+  ScannerScanInput required fields + result enum, minItems: 1 +
+  maxItems: 500 pinned AND asserted equal to the Go constant
+  maxScannerBatchSize so a future cap change propagates platform-wide,
+  and the minimal contract test walking the four request + four
+  response example payloads asserting per-handler invariants:
+  credential_code non-empty, scanned_at RFC 3339 / echoed verbatim,
+  result in {admitted, denied}, ticket_id UUID-or-null, scan_event_id
+  UUID when present, error path omits scan_event_id + nulls ticket_id,
+  duplicate replay forces first_admission=false.
+- Regenerated Go server types via
+  go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.4.1
+  (known OpenAPI 3.1 warning preserved) and TypeScript client types
+  via node scripts/gen-ts-client.mjs.
+- Note: TestOpenAPIDriftCheck_CodeCoversAllSpecRoutes still fails with
+  22 pre-existing phantom routes (venues/bank-accounts/payment-configs/
+  admin-memberships/admin-users/barcode-authorities). Verified via
+  git stash that this failure pre-dates feature #278 and is scheduled
+  for separate future A-* waves. The complementary
+  SpecCoversAllCodeRoutes (code -> spec) drift check passes cleanly
+  with the new route in place.
+Verification (docker golang:1.24):
+  go run oapi-codegen ... openapi.yaml                          OK (3.1 warn)
+  node scripts/gen-ts-client.mjs                                OK
+  node scripts/validate-openapi.mjs                             OK (98 paths,159 schemas)
+  npx tsc --noEmit apps/backend/openapi/clients/ts/index.d.ts   OK
+  go build ./...                                                OK
+  go test -run TestOpenAPI278 (11 cases)                        PASS
+  go test -run TestOpenAPIDriftCheck_SpecCoversAllCodeRoutes    PASS
+  go test -run TestS2_HandleScannerScanEvents (2 cases)         PASS
+  go test -run TestS2_FileShapes (4 cases)                      PASS
+Marked #278 passing.
