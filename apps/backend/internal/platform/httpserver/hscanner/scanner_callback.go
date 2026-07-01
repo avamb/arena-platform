@@ -49,7 +49,7 @@
 // Outbox:  every newly-inserted scan_events row with a resolved ticket emits
 // a v1.ticket.scanned outbox event so downstream consumers (analytics,
 // reporting fan-out) can react.
-package httpserver
+package hscanner
 
 import (
 	"context"
@@ -63,6 +63,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 )
 
@@ -119,30 +120,30 @@ type scannerScanBatchResponse struct {
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-// maxScannerBatchSize caps the number of scans accepted in a single POST so
+// MaxScannerBatchSize caps the number of scans accepted in a single POST so
 // one device cannot monopolise the listener.  Scanners that need to backfill
 // a long offline window MUST page their callbacks.
-const maxScannerBatchSize = 500
+const MaxScannerBatchSize = 500
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Handler
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleScannerScanEvents accepts a batch of scan reports from an external
+// HandleScannerScanEvents accepts a batch of scan reports from an external
 // scanner device.  See the file header for the wire contract.
-func (s *Server) handleScannerScanEvents(w http.ResponseWriter, r *http.Request) {
-	if s.feedTokenQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleScannerScanEvents(w http.ResponseWriter, r *http.Request) {
+	if h.feedTokenQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "scanner ingest is not available", r,
 		))
 		return
 	}
 
 	// ── Bearer token extraction ──────────────────────────────────────────────
-	token := extractBearerToken(r.Header.Get("Authorization"))
+	token := ExtractBearerToken(r.Header.Get("Authorization"))
 	if token == "" {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="arena-scanner"`)
-		writeJSON(w, http.StatusUnauthorized, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope(
 			"scanner.missing_token", "Authorization: Bearer <agent_feed_token> required", r,
 		))
 		return
@@ -150,19 +151,19 @@ func (s *Server) handleScannerScanEvents(w http.ResponseWriter, r *http.Request)
 
 	ctx := r.Context()
 
-	scope, err := s.feedTokenQueries.ResolveFeedTokenScannerScope(ctx, token)
+	scope, err := h.feedTokenQueries.ResolveFeedTokenScannerScope(ctx, token)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="arena-scanner"`)
-			writeJSON(w, http.StatusUnauthorized, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope(
 				"scanner.invalid_token", "agent feed token is unknown or revoked", r,
 			))
 			return
 		}
-		s.logger.Error("scanner_callback: resolve feed token failed",
+		h.logger.Error("scanner_callback: resolve feed token failed",
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"scanner.auth_lookup_failed", "failed to validate scanner credential", r,
 		))
 		return
@@ -173,19 +174,19 @@ func (s *Server) handleScannerScanEvents(w http.ResponseWriter, r *http.Request)
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"scanner.invalid_body", "request body must be valid JSON with a 'scans' array", r,
 		))
 		return
 	}
 	if len(body.Scans) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"scanner.empty_batch", "scans array must contain at least one entry", r,
 		))
 		return
 	}
-	if len(body.Scans) > maxScannerBatchSize {
-		writeJSON(w, http.StatusRequestEntityTooLarge, errorEnvelope(
+	if len(body.Scans) > MaxScannerBatchSize {
+		httputil.WriteJSON(w, http.StatusRequestEntityTooLarge, httputil.ErrorEnvelope(
 			"scanner.batch_too_large",
 			"scans array exceeds maximum batch size; page the callback",
 			r,
@@ -196,23 +197,23 @@ func (s *Server) handleScannerScanEvents(w http.ResponseWriter, r *http.Request)
 	// ── Process each scan ───────────────────────────────────────────────────
 	results := make([]scannerScanResult, 0, len(body.Scans))
 	for _, in := range body.Scans {
-		results = append(results, s.processScannerScan(ctx, scope.OrgID, in))
+		results = append(results, h.processScannerScan(ctx, scope.OrgID, in))
 	}
 
 	// Best-effort touch on last_used_at so operators can see active scanners.
-	if err := s.feedTokenQueries.TouchFeedTokenLastUsed(ctx, token); err != nil {
-		s.logger.Warn("scanner_callback: touch feed token last_used_at failed",
+	if err := h.feedTokenQueries.TouchFeedTokenLastUsed(ctx, token); err != nil {
+		h.logger.Warn("scanner_callback: touch feed token last_used_at failed",
 			slog.String("error", err.Error()),
 		)
 	}
 
-	s.logger.Info("scanner_callback: batch ingested",
+	h.logger.Info("scanner_callback: batch ingested",
 		slog.String("org_id", scope.OrgID.String()),
 		slog.String("sales_channel_id", scope.SalesChannelID.String()),
 		slog.Int("batch_size", len(body.Scans)),
 	)
 
-	writeJSON(w, http.StatusOK, scannerScanBatchResponse{Results: results})
+	httputil.WriteJSON(w, http.StatusOK, scannerScanBatchResponse{Results: results})
 }
 
 // processScannerScan ingests a single scan input row.  Returns a response
@@ -220,7 +221,7 @@ func (s *Server) handleScannerScanEvents(w http.ResponseWriter, r *http.Request)
 // bad result enum) are reported on the returned scannerScanResult.Error
 // field instead of failing the whole batch — partial-success semantics
 // mirror the way scanner devices already debatch their uploads.
-func (s *Server) processScannerScan(ctx context.Context, orgID uuid.UUID, in scannerScanInput) scannerScanResult {
+func (h *Handler) processScannerScan(ctx context.Context, orgID uuid.UUID, in scannerScanInput) scannerScanResult {
 	res := scannerScanResult{
 		CredentialCode: in.CredentialCode,
 		ScannedAt:      in.ScannedAt,
@@ -248,12 +249,12 @@ func (s *Server) processScannerScan(ctx context.Context, orgID uuid.UUID, in sca
 	// Best-effort: resolve the credential to a known ticket.  Unresolved
 	// scans still get persisted (audit trail) but without ticket lineage.
 	var (
-		eventID       *uuid.UUID
-		sessionID     *uuid.UUID
-		ticketID      *uuid.UUID
-		usedAtBefore  *time.Time
+		eventID      *uuid.UUID
+		sessionID    *uuid.UUID
+		ticketID     *uuid.UUID
+		usedAtBefore *time.Time
 	)
-	resolved, lookupErr := s.feedTokenQueries.ResolveScanCredentialByTicketQR(ctx, in.CredentialCode)
+	resolved, lookupErr := h.feedTokenQueries.ResolveScanCredentialByTicketQR(ctx, in.CredentialCode)
 	switch {
 	case lookupErr == nil:
 		id := resolved.TicketID
@@ -266,22 +267,22 @@ func (s *Server) processScannerScan(ctx context.Context, orgID uuid.UUID, in sca
 	case errors.Is(lookupErr, pgx.ErrNoRows):
 		// Unresolved credential — preserve audit trail without FKs.
 	default:
-		s.logger.Error("scanner_callback: resolve credential failed",
-			slog.String("credential_code_prefix", credentialPrefixForLog(in.CredentialCode)),
+		h.logger.Error("scanner_callback: resolve credential failed",
+			slog.String("credential_code_prefix", CredentialPrefixForLog(in.CredentialCode)),
 			slog.String("error", lookupErr.Error()),
 		)
 		res.Error = "credential lookup failed"
 		return res
 	}
 
-	inserted, err := s.feedTokenQueries.InsertScanEvent(
+	inserted, err := h.feedTokenQueries.InsertScanEvent(
 		ctx,
 		orgID, eventID, sessionID, ticketID,
 		in.CredentialCode, scannedAt, in.Gate, in.DeviceID, in.Result,
 	)
 	if err != nil {
-		s.logger.Error("scanner_callback: insert scan_events failed",
-			slog.String("credential_code_prefix", credentialPrefixForLog(in.CredentialCode)),
+		h.logger.Error("scanner_callback: insert scan_events failed",
+			slog.String("credential_code_prefix", CredentialPrefixForLog(in.CredentialCode)),
 			slog.String("error", err.Error()),
 		)
 		res.Error = "scan_events insert failed"
@@ -298,8 +299,8 @@ func (s *Server) processScannerScan(ctx context.Context, orgID uuid.UUID, in sca
 	// Side effects only run on first insert (suppressed on idempotent replay).
 	if inserted.Inserted && ticketID != nil {
 		if in.Result == "admitted" {
-			if err := s.feedTokenQueries.MarkTicketUsedAtIfUnset(ctx, *ticketID, scannedAt); err != nil {
-				s.logger.Warn("scanner_callback: mark ticket used_at failed",
+			if err := h.feedTokenQueries.MarkTicketUsedAtIfUnset(ctx, *ticketID, scannedAt); err != nil {
+				h.logger.Warn("scanner_callback: mark ticket used_at failed",
 					slog.String("ticket_id", ticketID.String()),
 					slog.String("error", err.Error()),
 				)
@@ -323,7 +324,7 @@ func (s *Server) processScannerScan(ctx context.Context, orgID uuid.UUID, in sca
 			"device_id":       in.DeviceID,
 			"scan_event_id":   inserted.ID.String(),
 		}
-		s.publishScannerEvent(ctx, outbox.Event{
+		h.PublishScannerEvent(ctx, outbox.Event{
 			AggregateType: TicketAggregateType,
 			AggregateID:   ticketID.String(),
 			EventType:     TicketScannedEventType,
@@ -338,10 +339,10 @@ func (s *Server) processScannerScan(ctx context.Context, orgID uuid.UUID, in sca
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-// extractBearerToken parses an "Authorization: Bearer <token>" header value
+// ExtractBearerToken parses an "Authorization: Bearer <token>" header value
 // and returns the token, or the empty string when the header is missing /
 // malformed.
-func extractBearerToken(headerValue string) string {
+func ExtractBearerToken(headerValue string) string {
 	if headerValue == "" {
 		return ""
 	}
@@ -352,10 +353,10 @@ func extractBearerToken(headerValue string) string {
 	return strings.TrimSpace(headerValue[len(prefix):])
 }
 
-// credentialPrefixForLog returns a short non-reversible prefix of the
+// CredentialPrefixForLog returns a short non-reversible prefix of the
 // credential value for log lines.  We never log the full credential to avoid
 // leaking bearer-quality strings into structured-log sinks.
-func credentialPrefixForLog(code string) string {
+func CredentialPrefixForLog(code string) string {
 	const max = 8
 	if len(code) <= max {
 		return code

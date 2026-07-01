@@ -23,7 +23,7 @@
 //	GET    /v1/barcodes/{id}               (barcode.read)
 //	DELETE /v1/barcodes/{id}               (barcode.revoke)
 //	POST   /v1/scan                        (barcode.scan)
-package httpserver
+package hbarcode
 
 import (
 	"encoding/json"
@@ -37,22 +37,24 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Response types
 // ─────────────────────────────────────────────────────────────────────────────
 
-// barcodeAuthorityResponse is the JSON representation of a barcode_authorities row.
-type barcodeAuthorityResponse struct {
+// BarcodeAuthorityResponse is the JSON representation of a barcode_authorities row.
+type BarcodeAuthorityResponse struct {
 	ID        string `json:"id"`
 	Type      string `json:"type"`
 	Label     string `json:"label"`
 	CreatedAt string `json:"created_at"`
 }
 
-func barcodeAuthorityFromRow(r gen.BarcodeAuthorityRow) barcodeAuthorityResponse {
-	return barcodeAuthorityResponse{
+// BarcodeAuthorityFromRow maps a gen.BarcodeAuthorityRow into the JSON response shape.
+func BarcodeAuthorityFromRow(r gen.BarcodeAuthorityRow) BarcodeAuthorityResponse {
+	return BarcodeAuthorityResponse{
 		ID:        r.ID.String(),
 		Type:      r.Type,
 		Label:     r.Label,
@@ -60,8 +62,8 @@ func barcodeAuthorityFromRow(r gen.BarcodeAuthorityRow) barcodeAuthorityResponse
 	}
 }
 
-// barcodeResponse is the JSON representation of a barcodes row.
-type barcodeResponse struct {
+// BarcodeResponse is the JSON representation of a barcodes row.
+type BarcodeResponse struct {
 	ID          string  `json:"id"`
 	AuthorityID string  `json:"authority_id"`
 	ExternalRef string  `json:"external_ref"`
@@ -72,8 +74,9 @@ type barcodeResponse struct {
 	UpdatedAt   string  `json:"updated_at"`
 }
 
-func barcodeFromRow(r gen.BarcodeRow) barcodeResponse {
-	resp := barcodeResponse{
+// BarcodeFromRow maps a gen.BarcodeRow into the JSON response shape.
+func BarcodeFromRow(r gen.BarcodeRow) BarcodeResponse {
+	resp := BarcodeResponse{
 		ID:          r.ID.String(),
 		AuthorityID: r.AuthorityID.String(),
 		ExternalRef: r.ExternalRef,
@@ -107,9 +110,11 @@ type scanResponse struct {
 // nil-guard helper
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (s *Server) barcodeQueriesAvailable(w http.ResponseWriter, r *http.Request) bool {
-	if s.barcodeQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+// barcodeQueriesAvailable returns true when h.barcodeQueries is wired up.
+// On nil it writes a 503 dependency.database_unavailable envelope and returns false.
+func (h *Handler) barcodeQueriesAvailable(w http.ResponseWriter, r *http.Request) bool {
+	if h.barcodeQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return false
@@ -121,7 +126,7 @@ func (s *Server) barcodeQueriesAvailable(w http.ResponseWriter, r *http.Request)
 // POST /v1/barcodes/authorities
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleCreateBarcodeAuthority creates a new barcode authority.
+// HandleCreateBarcodeAuthority creates a new barcode authority.
 //
 // Request body:
 //
@@ -129,8 +134,8 @@ func (s *Server) barcodeQueriesAvailable(w http.ResponseWriter, r *http.Request)
 //
 // Returns 201 with the created authority on success.
 // Returns 400 when the request body is missing required fields or type is invalid.
-func (s *Server) handleCreateBarcodeAuthority(w http.ResponseWriter, r *http.Request) {
-	if !s.barcodeQueriesAvailable(w, r) {
+func (h *Handler) HandleCreateBarcodeAuthority(w http.ResponseWriter, r *http.Request) {
+	if !h.barcodeQueriesAvailable(w, r) {
 		return
 	}
 
@@ -139,7 +144,7 @@ func (s *Server) handleCreateBarcodeAuthority(w http.ResponseWriter, r *http.Req
 		Label string `json:"label"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"barcode.invalid_body", "request body must be valid JSON", r,
 		))
 		return
@@ -150,69 +155,69 @@ func (s *Server) handleCreateBarcodeAuthority(w http.ResponseWriter, r *http.Req
 		"external_platform": true, "guest_list": true,
 	}
 	if !validTypes[body.Type] {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"barcode.invalid_authority_type",
 			"type must be one of: platform, legacy_bil24, external_platform, guest_list", r,
 		))
 		return
 	}
 	if body.Label == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"barcode.missing_label", "label is required", r,
 		))
 		return
 	}
 
-	authority, err := s.barcodeQueries.InsertBarcodeAuthority(r.Context(), body.Type, body.Label)
+	authority, err := h.barcodeQueries.InsertBarcodeAuthority(r.Context(), body.Type, body.Label)
 	if err != nil {
-		s.logger.Error("barcode: insert authority failed",
+		h.logger.Error("barcode: insert authority failed",
 			slog.String("type", body.Type),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"barcode.create_authority_failed", "failed to create barcode authority", r,
 		))
 		return
 	}
 
-	s.logger.Info("barcode: authority created",
+	h.logger.Info("barcode: authority created",
 		slog.String("authority_id", authority.ID.String()),
 		slog.String("type", authority.Type),
 	)
-	writeJSON(w, http.StatusCreated, barcodeAuthorityFromRow(authority))
+	httputil.WriteJSON(w, http.StatusCreated, BarcodeAuthorityFromRow(authority))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /v1/barcodes/authorities
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleListBarcodeAuthorities returns all registered barcode authorities.
-func (s *Server) handleListBarcodeAuthorities(w http.ResponseWriter, r *http.Request) {
-	if !s.barcodeQueriesAvailable(w, r) {
+// HandleListBarcodeAuthorities returns all registered barcode authorities.
+func (h *Handler) HandleListBarcodeAuthorities(w http.ResponseWriter, r *http.Request) {
+	if !h.barcodeQueriesAvailable(w, r) {
 		return
 	}
 
-	authorities, err := s.barcodeQueries.ListBarcodeAuthorities(r.Context())
+	authorities, err := h.barcodeQueries.ListBarcodeAuthorities(r.Context())
 	if err != nil {
-		s.logger.Error("barcode: list authorities failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("barcode: list authorities failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"barcode.list_authorities_failed", "failed to list barcode authorities", r,
 		))
 		return
 	}
 
-	result := make([]barcodeAuthorityResponse, 0, len(authorities))
+	result := make([]BarcodeAuthorityResponse, 0, len(authorities))
 	for _, a := range authorities {
-		result = append(result, barcodeAuthorityFromRow(a))
+		result = append(result, BarcodeAuthorityFromRow(a))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"authorities": result})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"authorities": result})
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /v1/barcodes
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleRegisterBarcode registers a new barcode in the federation.
+// HandleRegisterBarcode registers a new barcode in the federation.
 //
 // Request body:
 //
@@ -225,8 +230,8 @@ func (s *Server) handleListBarcodeAuthorities(w http.ResponseWriter, r *http.Req
 // Returns 201 with the created barcode on success.
 // Returns 409 when the same external_ref already exists for the authority
 // (UNIQUE constraint violation → duplicate barcode rejected).
-func (s *Server) handleRegisterBarcode(w http.ResponseWriter, r *http.Request) {
-	if !s.barcodeQueriesAvailable(w, r) {
+func (h *Handler) HandleRegisterBarcode(w http.ResponseWriter, r *http.Request) {
+	if !h.barcodeQueriesAvailable(w, r) {
 		return
 	}
 
@@ -236,7 +241,7 @@ func (s *Server) handleRegisterBarcode(w http.ResponseWriter, r *http.Request) {
 		TicketID    *string `json:"ticket_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"barcode.invalid_body", "request body must be valid JSON", r,
 		))
 		return
@@ -244,13 +249,13 @@ func (s *Server) handleRegisterBarcode(w http.ResponseWriter, r *http.Request) {
 
 	authorityID, err := uuid.Parse(body.AuthorityID)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"barcode.invalid_authority_id", "authority_id must be a valid UUID", r,
 		))
 		return
 	}
 	if body.ExternalRef == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"barcode.missing_external_ref", "external_ref is required", r,
 		))
 		return
@@ -260,7 +265,7 @@ func (s *Server) handleRegisterBarcode(w http.ResponseWriter, r *http.Request) {
 	if body.TicketID != nil && *body.TicketID != "" {
 		tid, err := uuid.Parse(*body.TicketID)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 				"barcode.invalid_ticket_id", "ticket_id must be a valid UUID", r,
 			))
 			return
@@ -268,121 +273,121 @@ func (s *Server) handleRegisterBarcode(w http.ResponseWriter, r *http.Request) {
 		ticketID = &tid
 	}
 
-	barcode, err := s.barcodeQueries.InsertBarcode(r.Context(), authorityID, body.ExternalRef, ticketID)
+	barcode, err := h.barcodeQueries.InsertBarcode(r.Context(), authorityID, body.ExternalRef, ticketID)
 	if err != nil {
 		// Detect unique_violation (SQLSTATE 23505) — duplicate barcode within authority.
-		if isUniqueViolation(err) {
-			writeJSON(w, http.StatusConflict, errorEnvelope(
+		if IsUniqueViolation(err) {
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 				"barcode.duplicate",
 				"a barcode with this external_ref already exists for the given authority", r,
 			))
 			return
 		}
-		s.logger.Error("barcode: insert failed",
+		h.logger.Error("barcode: insert failed",
 			slog.String("authority_id", authorityID.String()),
 			slog.String("external_ref", body.ExternalRef),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"barcode.register_failed", "failed to register barcode", r,
 		))
 		return
 	}
 
-	s.logger.Info("barcode: registered",
+	h.logger.Info("barcode: registered",
 		slog.String("barcode_id", barcode.ID.String()),
 		slog.String("authority_id", barcode.AuthorityID.String()),
 		slog.String("external_ref", barcode.ExternalRef),
 	)
-	writeJSON(w, http.StatusCreated, barcodeFromRow(barcode))
+	httputil.WriteJSON(w, http.StatusCreated, BarcodeFromRow(barcode))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /v1/barcodes/{id}
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleGetBarcode returns a single barcode by its UUID.
-func (s *Server) handleGetBarcode(w http.ResponseWriter, r *http.Request) {
-	if !s.barcodeQueriesAvailable(w, r) {
+// HandleGetBarcode returns a single barcode by its UUID.
+func (h *Handler) HandleGetBarcode(w http.ResponseWriter, r *http.Request) {
+	if !h.barcodeQueriesAvailable(w, r) {
 		return
 	}
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"barcode.invalid_id", "id must be a valid UUID", r,
 		))
 		return
 	}
 
-	barcode, err := s.barcodeQueries.GetBarcodeByID(r.Context(), id)
+	barcode, err := h.barcodeQueries.GetBarcodeByID(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 				"barcode.not_found", "barcode not found", r,
 			))
 			return
 		}
-		s.logger.Error("barcode: get by ID failed",
+		h.logger.Error("barcode: get by ID failed",
 			slog.String("id", id.String()),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"barcode.fetch_failed", "failed to fetch barcode", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, barcodeFromRow(barcode))
+	httputil.WriteJSON(w, http.StatusOK, BarcodeFromRow(barcode))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DELETE /v1/barcodes/{id}
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleRevokeBarcode marks a barcode as 'revoked'. Revocation is terminal.
-func (s *Server) handleRevokeBarcode(w http.ResponseWriter, r *http.Request) {
-	if !s.barcodeQueriesAvailable(w, r) {
+// HandleRevokeBarcode marks a barcode as 'revoked'. Revocation is terminal.
+func (h *Handler) HandleRevokeBarcode(w http.ResponseWriter, r *http.Request) {
+	if !h.barcodeQueriesAvailable(w, r) {
 		return
 	}
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"barcode.invalid_id", "id must be a valid UUID", r,
 		))
 		return
 	}
 
-	barcode, err := s.barcodeQueries.RevokeBarcode(r.Context(), id)
+	barcode, err := h.barcodeQueries.RevokeBarcode(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 				"barcode.not_found", "barcode not found", r,
 			))
 			return
 		}
-		s.logger.Error("barcode: revoke failed",
+		h.logger.Error("barcode: revoke failed",
 			slog.String("id", id.String()),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"barcode.revoke_failed", "failed to revoke barcode", r,
 		))
 		return
 	}
 
-	s.logger.Info("barcode: revoked",
+	h.logger.Info("barcode: revoked",
 		slog.String("barcode_id", barcode.ID.String()),
 	)
-	writeJSON(w, http.StatusOK, barcodeFromRow(barcode))
+	httputil.WriteJSON(w, http.StatusOK, BarcodeFromRow(barcode))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /v1/scan  — authority-aware scan validation
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleScan validates a barcode scan within the context of its authority.
+// HandleScan validates a barcode scan within the context of its authority.
 //
 // Request body:
 //
@@ -399,8 +404,8 @@ func (s *Server) handleRevokeBarcode(w http.ResponseWriter, r *http.Request) {
 //     If MarkBarcodeScanned returns ErrNoRows the barcode was already scanned
 //     between our GetBarcodeByRef and the UPDATE → 409 barcode.already_scanned.
 //  5. Return scan result with ticket_id (nil for external/guest-list barcodes).
-func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
-	if !s.barcodeQueriesAvailable(w, r) {
+func (h *Handler) HandleScan(w http.ResponseWriter, r *http.Request) {
+	if !h.barcodeQueriesAvailable(w, r) {
 		return
 	}
 	ctx := r.Context()
@@ -410,61 +415,61 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		AuthorityType string `json:"authority_type"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"barcode.invalid_body", "request body must be valid JSON", r,
 		))
 		return
 	}
 	if body.ExternalRef == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"barcode.missing_external_ref", "external_ref is required", r,
 		))
 		return
 	}
 	if body.AuthorityType == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"barcode.missing_authority_type", "authority_type is required", r,
 		))
 		return
 	}
 
 	// ── Step 1: Resolve authority by type ─────────────────────────────────────
-	authority, err := s.barcodeQueries.GetBarcodeAuthorityByType(ctx, body.AuthorityType)
+	authority, err := h.barcodeQueries.GetBarcodeAuthorityByType(ctx, body.AuthorityType)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			// Unknown authority type → reject the scan.
-			writeJSON(w, http.StatusNotFound, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 				"barcode.unknown_authority",
 				"authority type not found in federation", r,
 			))
 			return
 		}
-		s.logger.Error("barcode: resolve authority failed",
+		h.logger.Error("barcode: resolve authority failed",
 			slog.String("authority_type", body.AuthorityType),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"barcode.authority_lookup_failed", "failed to resolve barcode authority", r,
 		))
 		return
 	}
 
 	// ── Step 2: Look up barcode by (authority_id, external_ref) ───────────────
-	barcode, err := s.barcodeQueries.GetBarcodeByRef(ctx, authority.ID, body.ExternalRef)
+	barcode, err := h.barcodeQueries.GetBarcodeByRef(ctx, authority.ID, body.ExternalRef)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 				"barcode.not_found",
 				"barcode not found for this authority", r,
 			))
 			return
 		}
-		s.logger.Error("barcode: get by ref failed",
+		h.logger.Error("barcode: get by ref failed",
 			slog.String("authority_id", authority.ID.String()),
 			slog.String("external_ref", body.ExternalRef),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"barcode.fetch_failed", "failed to fetch barcode", r,
 		))
 		return
@@ -472,7 +477,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 
 	// ── Step 3: Guard against revoked barcodes ─────────────────────────────────
 	if barcode.Status == "revoked" {
-		writeJSON(w, http.StatusConflict, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 			"barcode.revoked", "barcode has been revoked and cannot be scanned", r,
 		))
 		return
@@ -481,25 +486,25 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	// ── Step 4: Atomically mark as scanned ────────────────────────────────────
 	// MarkBarcodeScanned uses WHERE status='active'; if barcode was already
 	// scanned it returns ErrNoRows (double-scan protection).
-	scanned, err := s.barcodeQueries.MarkBarcodeScanned(ctx, barcode.ID)
+	scanned, err := h.barcodeQueries.MarkBarcodeScanned(ctx, barcode.ID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusConflict, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 				"barcode.already_scanned", "barcode has already been scanned", r,
 			))
 			return
 		}
-		s.logger.Error("barcode: mark scanned failed",
+		h.logger.Error("barcode: mark scanned failed",
 			slog.String("barcode_id", barcode.ID.String()),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"barcode.scan_failed", "failed to record scan", r,
 		))
 		return
 	}
 
-	s.logger.Info("barcode: scan recorded",
+	h.logger.Info("barcode: scan recorded",
 		slog.String("barcode_id", scanned.ID.String()),
 		slog.String("authority_type", authority.Type),
 		slog.String("external_ref", scanned.ExternalRef),
@@ -520,25 +525,26 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		resp.ScannedAt = scanned.ScannedAt.UTC().Format(time.RFC3339)
 	}
 
-	writeJSON(w, http.StatusOK, resp)
+	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // isUniqueViolation detects PostgreSQL unique constraint violations (SQLSTATE 23505).
 // ─────────────────────────────────────────────────────────────────────────────
 
-// isUniqueViolation returns true when err is a PostgreSQL unique_violation (23505).
-// Used to convert duplicate barcode inserts into 409 Conflict responses.
-func isUniqueViolation(err error) bool {
+// IsUniqueViolation returns true when err is a PostgreSQL unique_violation (23505).
+// Used to convert duplicate barcode inserts into 409 Conflict responses, and also
+// re-used by other domains (e.g. wp_webhooks) via the package-shim forwarder.
+func IsUniqueViolation(err error) bool {
 	if err == nil {
 		return false
 	}
-	return containsSQLState(err, "23505")
+	return ContainsSQLState(err, "23505")
 }
 
-// containsSQLState checks whether the error message contains a specific SQLSTATE code.
+// ContainsSQLState checks whether the error message contains a specific SQLSTATE code.
 // This is a lightweight alternative to importing pgconn just for error type assertions.
-func containsSQLState(err error, code string) bool {
+func ContainsSQLState(err error, code string) bool {
 	type pgErr interface {
 		SQLState() string
 	}

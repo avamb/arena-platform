@@ -25,7 +25,7 @@
 //	GET   /v1/barcode-batches/{id}        — get batch detail + entries (barcode_batch.read)
 //	POST  /v1/barcode-batches/{id}/approve — approve batch (barcode_batch.approve)
 //	POST  /v1/barcode-batches/{id}/reject  — reject batch  (barcode_batch.approve)
-package httpserver
+package hbarcode
 
 import (
 	"encoding/csv"
@@ -41,21 +41,23 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
-// maxBarcodeBatchFileSize is the maximum upload size for a single batch file (10 MiB).
-const maxBarcodeBatchFileSize = 10 << 20
+// MaxBarcodeBatchFileSize is the maximum upload size for a single batch file (10 MiB).
+const MaxBarcodeBatchFileSize = 10 << 20
 
-// maxBarcodeBatchRows is the maximum number of barcode rows accepted per batch.
-const maxBarcodeBatchRows = 50_000
+// MaxBarcodeBatchRows is the maximum number of barcode rows accepted per batch.
+const MaxBarcodeBatchRows = 50_000
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /v1/barcode-batches  (multipart/form-data)
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (s *Server) handleUploadBarcodeBatch(w http.ResponseWriter, r *http.Request) {
-	if s.barcodeBatchQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+// HandleUploadBarcodeBatch ingests a multipart CSV upload as a pending_approval batch.
+func (h *Handler) HandleUploadBarcodeBatch(w http.ResponseWriter, r *http.Request) {
+	if h.barcodeBatchQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -64,7 +66,7 @@ func (s *Server) handleUploadBarcodeBatch(w http.ResponseWriter, r *http.Request
 	// Parse the multipart form. Limit total memory to 32 MiB.
 	//nolint:gosec // G120 false positive: 32 MiB cap is explicitly bounded above
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"barcode_batch.parse_multipart_failed", "failed to parse multipart form: "+err.Error(), r,
 		))
 		return
@@ -75,7 +77,7 @@ func (s *Server) handleUploadBarcodeBatch(w http.ResponseWriter, r *http.Request
 	if aidStr := r.FormValue("allocation_id"); aidStr != "" {
 		aid, err := uuid.Parse(aidStr)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 				"barcode_batch.invalid_allocation_id", "allocation_id must be a valid UUID", r,
 			))
 			return
@@ -98,15 +100,15 @@ func (s *Server) handleUploadBarcodeBatch(w http.ResponseWriter, r *http.Request
 	// Get the file field.
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"barcode_batch.missing_file", "multipart field 'file' is required", r,
 		))
 		return
 	}
 	defer file.Close()
 
-	if header.Size > maxBarcodeBatchFileSize {
-		writeJSON(w, http.StatusRequestEntityTooLarge, errorEnvelope(
+	if header.Size > MaxBarcodeBatchFileSize {
+		httputil.WriteJSON(w, http.StatusRequestEntityTooLarge, httputil.ErrorEnvelope(
 			"barcode_batch.file_too_large",
 			"file exceeds maximum allowed size of 10 MiB",
 			r,
@@ -127,23 +129,23 @@ func (s *Server) handleUploadBarcodeBatch(w http.ResponseWriter, r *http.Request
 	}
 
 	// Parse CSV to extract barcode values.
-	barcodeRefs, err := parseBarcodeBatchCSV(io.LimitReader(file, maxBarcodeBatchFileSize))
+	barcodeRefs, err := ParseBarcodeBatchCSV(io.LimitReader(file, MaxBarcodeBatchFileSize))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"barcode_batch.csv_parse_failed", "failed to parse CSV: "+err.Error(), r,
 		))
 		return
 	}
 
 	if len(barcodeRefs) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"barcode_batch.empty_file", "CSV file contains no barcode rows", r,
 		))
 		return
 	}
 
-	if len(barcodeRefs) > maxBarcodeBatchRows {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+	if len(barcodeRefs) > MaxBarcodeBatchRows {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"barcode_batch.too_many_rows",
 			"CSV file exceeds maximum allowed rows (50,000)",
 			r,
@@ -153,16 +155,16 @@ func (s *Server) handleUploadBarcodeBatch(w http.ResponseWriter, r *http.Request
 
 	ctx := r.Context()
 
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "failed to begin transaction", r,
 		))
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	bq := s.barcodeBatchQueries.WithTx(tx)
+	bq := h.barcodeBatchQueries.WithTx(tx)
 
 	// Insert the batch record.
 	batch, err := bq.InsertBarcodeBatch(
@@ -178,8 +180,8 @@ func (s *Server) handleUploadBarcodeBatch(w http.ResponseWriter, r *http.Request
 		uploadedBy,
 	)
 	if err != nil {
-		s.logger.Error("barcode_batch: insert batch failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("barcode_batch: insert batch failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"barcode_batch.insert_failed", "failed to create batch record", r,
 		))
 		return
@@ -188,11 +190,11 @@ func (s *Server) handleUploadBarcodeBatch(w http.ResponseWriter, r *http.Request
 	// Insert each barcode entry.
 	for _, ref := range barcodeRefs {
 		if _, err := bq.InsertBarcodeBatchEntry(ctx, batch.ID, ref, "pending"); err != nil {
-			s.logger.Error("barcode_batch: insert entry failed",
+			h.logger.Error("barcode_batch: insert entry failed",
 				slog.String("error", err.Error()),
 				slog.String("external_ref", ref),
 			)
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"barcode_batch.entry_insert_failed", "failed to insert batch entry", r,
 			))
 			return
@@ -200,24 +202,24 @@ func (s *Server) handleUploadBarcodeBatch(w http.ResponseWriter, r *http.Request
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"barcode_batch.commit_failed", "failed to commit batch transaction", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]any{
-		"batch": barcodeBatchFromRow(batch),
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
+		"batch": BarcodeBatchFromRow(batch),
 	})
 }
 
-// parseBarcodeBatchCSV parses a CSV reader and returns deduplicated barcode ref strings.
+// ParseBarcodeBatchCSV parses a CSV reader and returns deduplicated barcode ref strings.
 //
 // Format: each row must have at least one column; the first column is the barcode
 // value. An optional header row is detected by checking if the first row looks
 // non-numeric or contains the word "barcode"/"code"/"ref".
 // Empty rows and rows whose first column is empty are skipped.
-func parseBarcodeBatchCSV(r io.Reader) ([]string, error) {
+func ParseBarcodeBatchCSV(r io.Reader) ([]string, error) {
 	cr := csv.NewReader(r)
 	cr.FieldsPerRecord = -1 // variable column count
 	cr.TrimLeadingSpace = true
@@ -271,9 +273,10 @@ func parseBarcodeBatchCSV(r io.Reader) ([]string, error) {
 // GET /v1/barcode-batches
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (s *Server) handleListBarcodeBatches(w http.ResponseWriter, r *http.Request) {
-	if s.barcodeBatchQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+// HandleListBarcodeBatches lists all batches, optionally filtered by allocation_id.
+func (h *Handler) HandleListBarcodeBatches(w http.ResponseWriter, r *http.Request) {
+	if h.barcodeBatchQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -285,34 +288,34 @@ func (s *Server) handleListBarcodeBatches(w http.ResponseWriter, r *http.Request
 	if aidStr := r.URL.Query().Get("allocation_id"); aidStr != "" {
 		aid, err := uuid.Parse(aidStr)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 				"barcode_batch.invalid_allocation_id", "allocation_id must be a valid UUID", r,
 			))
 			return
 		}
-		rows, err := s.barcodeBatchQueries.ListBarcodeBatchesByAllocation(ctx, aid)
+		rows, err := h.barcodeBatchQueries.ListBarcodeBatchesByAllocation(ctx, aid)
 		if err != nil {
-			s.logger.Error("barcode_batch: list by allocation failed", slog.String("error", err.Error()))
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+			h.logger.Error("barcode_batch: list by allocation failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"barcode_batch.list_failed", "failed to list barcode batches", r,
 			))
 			return
 		}
 		batches := make([]map[string]any, 0, len(rows))
 		for _, row := range rows {
-			batches = append(batches, barcodeBatchFromRow(row))
+			batches = append(batches, BarcodeBatchFromRow(row))
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{
 			"batches": batches,
 			"total":   len(batches),
 		})
 		return
 	}
 
-	rows, err := s.barcodeBatchQueries.ListAllBarcodeBatches(ctx)
+	rows, err := h.barcodeBatchQueries.ListAllBarcodeBatches(ctx)
 	if err != nil {
-		s.logger.Error("barcode_batch: list all failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("barcode_batch: list all failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"barcode_batch.list_failed", "failed to list barcode batches", r,
 		))
 		return
@@ -320,9 +323,9 @@ func (s *Server) handleListBarcodeBatches(w http.ResponseWriter, r *http.Request
 
 	batches := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
-		batches = append(batches, barcodeBatchFromRow(row))
+		batches = append(batches, BarcodeBatchFromRow(row))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"batches": batches,
 		"total":   len(batches),
 	})
@@ -332,9 +335,10 @@ func (s *Server) handleListBarcodeBatches(w http.ResponseWriter, r *http.Request
 // GET /v1/barcode-batches/{id}
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (s *Server) handleGetBarcodeBatch(w http.ResponseWriter, r *http.Request) {
-	if s.barcodeBatchQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+// HandleGetBarcodeBatch returns a single batch plus its entries.
+func (h *Handler) HandleGetBarcodeBatch(w http.ResponseWriter, r *http.Request) {
+	if h.barcodeBatchQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -343,7 +347,7 @@ func (s *Server) handleGetBarcodeBatch(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"barcode_batch.invalid_id", "id must be a valid UUID", r,
 		))
 		return
@@ -351,25 +355,25 @@ func (s *Server) handleGetBarcodeBatch(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	batch, err := s.barcodeBatchQueries.GetBarcodeBatchByID(ctx, id)
+	batch, err := h.barcodeBatchQueries.GetBarcodeBatchByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 				"barcode_batch.not_found", "barcode batch not found", r,
 			))
 			return
 		}
-		s.logger.Error("barcode_batch: get failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("barcode_batch: get failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"barcode_batch.get_failed", "failed to retrieve barcode batch", r,
 		))
 		return
 	}
 
-	entries, err := s.barcodeBatchQueries.ListBatchEntriesByBatchID(ctx, id)
+	entries, err := h.barcodeBatchQueries.ListBatchEntriesByBatchID(ctx, id)
 	if err != nil {
-		s.logger.Error("barcode_batch: list entries failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("barcode_batch: list entries failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"barcode_batch.entries_failed", "failed to retrieve batch entries", r,
 		))
 		return
@@ -377,14 +381,14 @@ func (s *Server) handleGetBarcodeBatch(w http.ResponseWriter, r *http.Request) {
 
 	entryList := make([]map[string]any, 0, len(entries))
 	for _, e := range entries {
-		entryList = append(entryList, barcodeBatchEntryFromRow(e))
+		entryList = append(entryList, BarcodeBatchEntryFromRow(e))
 	}
 
-	out := barcodeBatchFromRow(batch)
+	out := BarcodeBatchFromRow(batch)
 	out["entries"] = entryList
 	out["entry_count"] = len(entryList)
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"batch": out,
 	})
 }
@@ -393,9 +397,11 @@ func (s *Server) handleGetBarcodeBatch(w http.ResponseWriter, r *http.Request) {
 // POST /v1/barcode-batches/{id}/approve
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (s *Server) handleApproveBarcodeBatch(w http.ResponseWriter, r *http.Request) {
-	if s.barcodeBatchQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+// HandleApproveBarcodeBatch transitions a pending batch to 'active', registers
+// each entry under the external_platform barcode authority, and commits.
+func (h *Handler) HandleApproveBarcodeBatch(w http.ResponseWriter, r *http.Request) {
+	if h.barcodeBatchQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -404,7 +410,7 @@ func (s *Server) handleApproveBarcodeBatch(w http.ResponseWriter, r *http.Reques
 	idStr := chi.URLParam(r, "id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"barcode_batch.invalid_id", "id must be a valid UUID", r,
 		))
 		return
@@ -413,16 +419,16 @@ func (s *Server) handleApproveBarcodeBatch(w http.ResponseWriter, r *http.Reques
 	ctx := r.Context()
 
 	// Fetch the current batch.
-	batch, err := s.barcodeBatchQueries.GetBarcodeBatchByID(ctx, id)
+	batch, err := h.barcodeBatchQueries.GetBarcodeBatchByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 				"barcode_batch.not_found", "barcode batch not found", r,
 			))
 			return
 		}
-		s.logger.Error("barcode_batch: get for approve failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("barcode_batch: get for approve failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"barcode_batch.get_failed", "failed to retrieve barcode batch", r,
 		))
 		return
@@ -430,7 +436,7 @@ func (s *Server) handleApproveBarcodeBatch(w http.ResponseWriter, r *http.Reques
 
 	// Only pending_approval batches can be approved.
 	if batch.Status != "pending_approval" && batch.Status != "uploaded" {
-		writeJSON(w, http.StatusConflict, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 			"barcode_batch.invalid_status",
 			"only batches in 'pending_approval' or 'uploaded' status can be approved",
 			r,
@@ -439,36 +445,36 @@ func (s *Server) handleApproveBarcodeBatch(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Fetch entries.
-	entries, err := s.barcodeBatchQueries.ListBatchEntriesByBatchID(ctx, id)
+	entries, err := h.barcodeBatchQueries.ListBatchEntriesByBatchID(ctx, id)
 	if err != nil {
-		s.logger.Error("barcode_batch: list entries for approve failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("barcode_batch: list entries for approve failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"barcode_batch.entries_failed", "failed to retrieve batch entries", r,
 		))
 		return
 	}
 
 	// Begin transaction for atomic approval.
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "failed to begin transaction", r,
 		))
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	bq := s.barcodeBatchQueries.WithTx(tx)
+	bq := h.barcodeBatchQueries.WithTx(tx)
 
 	// Resolve the external_platform authority. When barcodeQueries is available,
 	// look it up by type; otherwise fall back to a nil authority_id (tests).
 	var authorityID *uuid.UUID
-	if s.barcodeQueries != nil {
-		barcodeQ := s.barcodeQueries.WithTx(tx)
+	if h.barcodeQueries != nil {
+		barcodeQ := h.barcodeQueries.WithTx(tx)
 		authority, err := barcodeQ.GetBarcodeAuthorityByType(ctx, "external_platform")
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-			s.logger.Error("barcode_batch: resolve authority failed", slog.String("error", err.Error()))
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+			h.logger.Error("barcode_batch: resolve authority failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"barcode_batch.authority_failed", "failed to resolve barcode authority", r,
 			))
 			return
@@ -482,7 +488,7 @@ func (s *Server) handleApproveBarcodeBatch(w http.ResponseWriter, r *http.Reques
 			for _, entry := range entries {
 				if _, insertErr := barcodeQ.InsertBarcode(ctx, *authorityID, entry.ExternalRef, nil); insertErr != nil {
 					// Skip duplicates — barcode may already be registered from a previous import.
-					s.logger.Warn("barcode_batch: barcode already registered, skipping",
+					h.logger.Warn("barcode_batch: barcode already registered, skipping",
 						slog.String("external_ref", entry.ExternalRef),
 						slog.String("error", insertErr.Error()),
 					)
@@ -493,8 +499,8 @@ func (s *Server) handleApproveBarcodeBatch(w http.ResponseWriter, r *http.Reques
 
 	// Update all batch entries to 'active'.
 	if _, err := bq.UpdateBatchEntriesStatus(ctx, id, "active"); err != nil {
-		s.logger.Error("barcode_batch: update entries status failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("barcode_batch: update entries status failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"barcode_batch.update_entries_failed", "failed to activate batch entries", r,
 		))
 		return
@@ -503,22 +509,22 @@ func (s *Server) handleApproveBarcodeBatch(w http.ResponseWriter, r *http.Reques
 	// Update the batch to 'active' and record the authority_id.
 	approved, err := bq.UpdateBarcodeBatchAuthorityAndStatus(ctx, id, authorityID, "active")
 	if err != nil {
-		s.logger.Error("barcode_batch: update batch status failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("barcode_batch: update batch status failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"barcode_batch.update_failed", "failed to approve batch", r,
 		))
 		return
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"barcode_batch.commit_failed", "failed to commit approval transaction", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
-		"batch":    barcodeBatchFromRow(approved),
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
+		"batch":    BarcodeBatchFromRow(approved),
 		"approved": true,
 	})
 }
@@ -527,9 +533,10 @@ func (s *Server) handleApproveBarcodeBatch(w http.ResponseWriter, r *http.Reques
 // POST /v1/barcode-batches/{id}/reject
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (s *Server) handleRejectBarcodeBatch(w http.ResponseWriter, r *http.Request) {
-	if s.barcodeBatchQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+// HandleRejectBarcodeBatch terminally rejects a non-active batch.
+func (h *Handler) HandleRejectBarcodeBatch(w http.ResponseWriter, r *http.Request) {
+	if h.barcodeBatchQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -538,7 +545,7 @@ func (s *Server) handleRejectBarcodeBatch(w http.ResponseWriter, r *http.Request
 	idStr := chi.URLParam(r, "id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"barcode_batch.invalid_id", "id must be a valid UUID", r,
 		))
 		return
@@ -547,16 +554,16 @@ func (s *Server) handleRejectBarcodeBatch(w http.ResponseWriter, r *http.Request
 	ctx := r.Context()
 
 	// Fetch the current batch.
-	batch, err := s.barcodeBatchQueries.GetBarcodeBatchByID(ctx, id)
+	batch, err := h.barcodeBatchQueries.GetBarcodeBatchByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 				"barcode_batch.not_found", "barcode batch not found", r,
 			))
 			return
 		}
-		s.logger.Error("barcode_batch: get for reject failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("barcode_batch: get for reject failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"barcode_batch.get_failed", "failed to retrieve barcode batch", r,
 		))
 		return
@@ -564,7 +571,7 @@ func (s *Server) handleRejectBarcodeBatch(w http.ResponseWriter, r *http.Request
 
 	// Cannot reject an already active or rejected batch.
 	if batch.Status == "active" || batch.Status == "rejected" {
-		writeJSON(w, http.StatusConflict, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 			"barcode_batch.invalid_status",
 			"cannot reject a batch that is already 'active' or 'rejected'",
 			r,
@@ -573,21 +580,21 @@ func (s *Server) handleRejectBarcodeBatch(w http.ResponseWriter, r *http.Request
 	}
 
 	ctx2 := r.Context()
-	tx, err := s.pool.BeginTx(ctx2, pgx.TxOptions{})
+	tx, err := h.pool.BeginTx(ctx2, pgx.TxOptions{})
 	if err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "failed to begin transaction", r,
 		))
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx2) }()
 
-	bq := s.barcodeBatchQueries.WithTx(tx)
+	bq := h.barcodeBatchQueries.WithTx(tx)
 
 	// Update all batch entries to 'rejected'.
 	if _, err := bq.UpdateBatchEntriesStatus(ctx2, id, "rejected"); err != nil {
-		s.logger.Error("barcode_batch: update entries to rejected failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("barcode_batch: update entries to rejected failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"barcode_batch.update_entries_failed", "failed to reject batch entries", r,
 		))
 		return
@@ -596,22 +603,22 @@ func (s *Server) handleRejectBarcodeBatch(w http.ResponseWriter, r *http.Request
 	// Update the batch itself to 'rejected'.
 	rejected, err := bq.UpdateBarcodeBatchStatus(ctx2, id, "rejected")
 	if err != nil {
-		s.logger.Error("barcode_batch: update batch to rejected failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("barcode_batch: update batch to rejected failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"barcode_batch.update_failed", "failed to reject batch", r,
 		))
 		return
 	}
 
 	if err := tx.Commit(ctx2); err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"barcode_batch.commit_failed", "failed to commit rejection transaction", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
-		"batch":    barcodeBatchFromRow(rejected),
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
+		"batch":    BarcodeBatchFromRow(rejected),
 		"rejected": true,
 	})
 }
@@ -620,7 +627,8 @@ func (s *Server) handleRejectBarcodeBatch(w http.ResponseWriter, r *http.Request
 // Response helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-func barcodeBatchFromRow(r gen.BarcodeBatchRow) map[string]any {
+// BarcodeBatchFromRow renders a gen.BarcodeBatchRow as a JSON object for HTTP responses.
+func BarcodeBatchFromRow(r gen.BarcodeBatchRow) map[string]any {
 	out := map[string]any{
 		"id":          r.ID.String(),
 		"source":      r.Source,
@@ -645,7 +653,8 @@ func barcodeBatchFromRow(r gen.BarcodeBatchRow) map[string]any {
 	return out
 }
 
-func barcodeBatchEntryFromRow(r gen.BarcodeBatchEntryRow) map[string]any {
+// BarcodeBatchEntryFromRow renders a single batch entry row for the GET /{id} response.
+func BarcodeBatchEntryFromRow(r gen.BarcodeBatchEntryRow) map[string]any {
 	return map[string]any{
 		"id":           r.ID.String(),
 		"batch_id":     r.BatchID.String(),

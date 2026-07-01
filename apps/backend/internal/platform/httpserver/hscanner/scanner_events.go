@@ -29,7 +29,7 @@
 // These string values are embedded in the bil24_order_status field of every
 // scanner event payload so that legacy Bil24 scanner software can consume
 // our events without modification.
-package httpserver
+package hscanner
 
 import (
 	"context"
@@ -104,13 +104,13 @@ const ScannerAggregateType = "scanner.ticket"
 // Payload builders
 // ─────────────────────────────────────────────────────────────────────────────
 
-// buildTicketIssuedPayload constructs the Bil24-compatible JSON payload for a
+// BuildTicketIssuedPayload constructs the Bil24-compatible JSON payload for a
 // ticket issuance event. The payload includes the full ticket identity, the
 // Bil24 order status ("PAID"), and the issuance timestamp in RFC3339 format.
 //
 // Optional fields (tier_id, holder_email) are omitted when nil so that the
 // JSON payload stays minimal for external-platform and guest-list barcodes.
-func buildTicketIssuedPayload(t gen.TicketRow) map[string]any {
+func BuildTicketIssuedPayload(t gen.TicketRow) map[string]any {
 	payload := map[string]any{
 		"ticket_id":           t.ID.String(),
 		"checkout_session_id": t.CheckoutSessionID.String(),
@@ -128,10 +128,10 @@ func buildTicketIssuedPayload(t gen.TicketRow) map[string]any {
 	return payload
 }
 
-// buildTicketRevokedPayload constructs the Bil24-compatible payload for a
+// BuildTicketRevokedPayload constructs the Bil24-compatible payload for a
 // generic ticket revocation event (non-refund cancellations).
 // reason is a short lower-snake-case string, e.g. "admin_cancel".
-func buildTicketRevokedPayload(ticketID, checkoutSessionID, reason string) map[string]any {
+func BuildTicketRevokedPayload(ticketID, checkoutSessionID, reason string) map[string]any {
 	return map[string]any{
 		"ticket_id":           ticketID,
 		"checkout_session_id": checkoutSessionID,
@@ -141,11 +141,11 @@ func buildTicketRevokedPayload(ticketID, checkoutSessionID, reason string) map[s
 	}
 }
 
-// buildTicketRefundedPayload constructs the Bil24-compatible payload for a
+// BuildTicketRefundedPayload constructs the Bil24-compatible payload for a
 // refund-driven ticket cancellation. It extends the cancellation signal with
 // financial context — refund_id, amount in minor units, and currency code —
 // so that scanner services can reconcile refund events against order records.
-func buildTicketRefundedPayload(checkoutSessionID, refundID, currency string, amount int64) map[string]any {
+func BuildTicketRefundedPayload(checkoutSessionID, refundID, currency string, amount int64) map[string]any {
 	return map[string]any{
 		"checkout_session_id": checkoutSessionID,
 		"refund_id":           refundID,
@@ -160,21 +160,21 @@ func buildTicketRefundedPayload(checkoutSessionID, refundID, currency string, am
 // Publishing helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-// publishScannerEvent appends a single scanner event to the outbox table using
+// PublishScannerEvent appends a single scanner event to the outbox table using
 // a short-lived transaction on the server pool. The call is best-effort: any
 // error is logged and the method returns without surfacing the failure to the
 // HTTP caller.
 //
-// Silently no-ops when s.pool or s.outboxWriter is nil (e.g. in tests where
+// Silently no-ops when h.pool or h.outboxWriter is nil (e.g. in tests where
 // the outbox pipeline is not wired up, or in environments where the scanner
 // integration is disabled).
-func (s *Server) publishScannerEvent(ctx context.Context, event outbox.Event) {
-	if s.pool == nil || s.outboxWriter == nil {
+func (h *Handler) PublishScannerEvent(ctx context.Context, event outbox.Event) {
+	if h.pool == nil || h.outboxWriter == nil {
 		return
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		s.logger.Warn("scanner: begin tx for outbox event",
+		h.logger.Warn("scanner: begin tx for outbox event",
 			slog.String("event_type", event.EventType),
 			slog.String("error", err.Error()),
 		)
@@ -182,8 +182,8 @@ func (s *Server) publishScannerEvent(ctx context.Context, event outbox.Event) {
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	if err := s.outboxWriter.Append(ctx, tx, event); err != nil {
-		s.logger.Warn("scanner: append outbox event",
+	if err := h.outboxWriter.Append(ctx, tx, event); err != nil {
+		h.logger.Warn("scanner: append outbox event",
 			slog.String("event_type", event.EventType),
 			slog.String("error", err.Error()),
 		)
@@ -191,38 +191,38 @@ func (s *Server) publishScannerEvent(ctx context.Context, event outbox.Event) {
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		s.logger.Warn("scanner: commit outbox event",
+		h.logger.Warn("scanner: commit outbox event",
 			slog.String("event_type", event.EventType),
 			slog.String("error", err.Error()),
 		)
 	}
 }
 
-// publishTicketIssuedEvents publishes ScannerEventTicketIssued to the outbox
+// PublishTicketIssuedEvents publishes ScannerEventTicketIssued to the outbox
 // for each ticket in the slice. Called by issueTicketsForCheckout immediately
 // after new tickets are inserted (not during idempotent replay — existing
 // tickets have already generated their issued events on first insertion).
-func (s *Server) publishTicketIssuedEvents(ctx context.Context, tickets []gen.TicketRow) {
+func (h *Handler) PublishTicketIssuedEvents(ctx context.Context, tickets []gen.TicketRow) {
 	for _, t := range tickets {
-		s.publishScannerEvent(ctx, outbox.Event{
+		h.PublishScannerEvent(ctx, outbox.Event{
 			AggregateType: ScannerAggregateType,
 			AggregateID:   t.ID.String(),
 			EventType:     ScannerEventTicketIssued,
-			Payload:       buildTicketIssuedPayload(t),
+			Payload:       BuildTicketIssuedPayload(t),
 		})
 	}
 }
 
-// publishTicketRefundedEvents publishes ScannerEventTicketRefunded to the
+// PublishTicketRefundedEvents publishes ScannerEventTicketRefunded to the
 // outbox when a refund webhook confirms that a payment was refunded and the
 // linked tickets have been cancelled. Called by handleRefundWebhook on the
 // "succeeded" transition after CancelTicketsByCheckoutSession completes.
-func (s *Server) publishTicketRefundedEvents(ctx context.Context, checkoutSessionID, refundID, currency string, amount int64) {
-	s.publishScannerEvent(ctx, outbox.Event{
+func (h *Handler) PublishTicketRefundedEvents(ctx context.Context, checkoutSessionID, refundID, currency string, amount int64) {
+	h.PublishScannerEvent(ctx, outbox.Event{
 		AggregateType: ScannerAggregateType,
 		AggregateID:   refundID,
 		EventType:     ScannerEventTicketRefunded,
-		Payload:       buildTicketRefundedPayload(checkoutSessionID, refundID, currency, amount),
+		Payload:       BuildTicketRefundedPayload(checkoutSessionID, refundID, currency, amount),
 	})
 }
 
@@ -230,9 +230,9 @@ func (s *Server) publishTicketRefundedEvents(ctx context.Context, checkoutSessio
 // Generic webhook catalog events (feature S-1)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// buildTicketRefundedV1Payload constructs the per-ticket payload for the
+// BuildTicketRefundedV1Payload constructs the per-ticket payload for the
 // generic v1.ticket.refunded webhook event.
-func buildTicketRefundedV1Payload(ticketID, checkoutSessionID, refundID, currency string, amount int64) map[string]any {
+func BuildTicketRefundedV1Payload(ticketID, checkoutSessionID, refundID, currency string, amount int64) map[string]any {
 	return map[string]any{
 		"ticket_id":           ticketID,
 		"checkout_session_id": checkoutSessionID,
@@ -243,9 +243,9 @@ func buildTicketRefundedV1Payload(ticketID, checkoutSessionID, refundID, currenc
 	}
 }
 
-// buildTicketRevokedV1Payload constructs the per-ticket payload for the
+// BuildTicketRevokedV1Payload constructs the per-ticket payload for the
 // generic v1.ticket.revoked webhook event (complimentary revocation path).
-func buildTicketRevokedV1Payload(ticketID, complimentaryIssuanceID, reason string) map[string]any {
+func BuildTicketRevokedV1Payload(ticketID, complimentaryIssuanceID, reason string) map[string]any {
 	payload := map[string]any{
 		"ticket_id":  ticketID,
 		"reason":     reason,
@@ -257,8 +257,8 @@ func buildTicketRevokedV1Payload(ticketID, complimentaryIssuanceID, reason strin
 	return payload
 }
 
-// buildSessionCancelledPayload constructs the payload for v1.session.cancelled.
-func buildSessionCancelledPayload(sessionID, eventID, previousStatus string) map[string]any {
+// BuildSessionCancelledPayload constructs the payload for v1.session.cancelled.
+func BuildSessionCancelledPayload(sessionID, eventID, previousStatus string) map[string]any {
 	payload := map[string]any{
 		"session_id":   sessionID,
 		"status":       "cancelled",
@@ -273,45 +273,45 @@ func buildSessionCancelledPayload(sessionID, eventID, previousStatus string) map
 	return payload
 }
 
-// publishTicketRefundedV1Events emits one v1.ticket.refunded outbox event per
+// PublishTicketRefundedV1Events emits one v1.ticket.refunded outbox event per
 // cancelled ticket after a refund finalization succeeds.  Aggregate is "ticket"
 // and the aggregate_id is the ticket UUID, so webhook subscribers can fan-out
 // by ticket aggregate.  Called by handleRefundWebhook on the "succeeded"
 // transition once the linked tickets have been listed.
-func (s *Server) publishTicketRefundedV1Events(ctx context.Context, ticketIDs []string, checkoutSessionID, refundID, currency string, amount int64) {
+func (h *Handler) PublishTicketRefundedV1Events(ctx context.Context, ticketIDs []string, checkoutSessionID, refundID, currency string, amount int64) {
 	for _, tid := range ticketIDs {
-		s.publishScannerEvent(ctx, outbox.Event{
+		h.PublishScannerEvent(ctx, outbox.Event{
 			AggregateType: TicketAggregateType,
 			AggregateID:   tid,
 			EventType:     TicketRefundedEventType,
-			Payload:       buildTicketRefundedV1Payload(tid, checkoutSessionID, refundID, currency, amount),
+			Payload:       BuildTicketRefundedV1Payload(tid, checkoutSessionID, refundID, currency, amount),
 		})
 	}
 }
 
-// publishTicketRevokedV1Events emits one v1.ticket.revoked outbox event per
+// PublishTicketRevokedV1Events emits one v1.ticket.revoked outbox event per
 // ticket revoked as part of a complimentary issuance revocation.  Called from
 // handleRevokeComplimentaryIssuance after the revocation transaction commits.
-func (s *Server) publishTicketRevokedV1Events(ctx context.Context, ticketIDs []string, complimentaryIssuanceID, reason string) {
+func (h *Handler) PublishTicketRevokedV1Events(ctx context.Context, ticketIDs []string, complimentaryIssuanceID, reason string) {
 	for _, tid := range ticketIDs {
-		s.publishScannerEvent(ctx, outbox.Event{
+		h.PublishScannerEvent(ctx, outbox.Event{
 			AggregateType: TicketAggregateType,
 			AggregateID:   tid,
 			EventType:     TicketRevokedEventType,
-			Payload:       buildTicketRevokedV1Payload(tid, complimentaryIssuanceID, reason),
+			Payload:       BuildTicketRevokedV1Payload(tid, complimentaryIssuanceID, reason),
 		})
 	}
 }
 
-// publishSessionCancelledEvent emits a single v1.session.cancelled outbox event
+// PublishSessionCancelledEvent emits a single v1.session.cancelled outbox event
 // when a session status transitions to "cancelled".  Called from
 // handleUpdateSession after the UPDATE succeeds, but only when the status
 // actually changed from a non-cancelled state.
-func (s *Server) publishSessionCancelledEvent(ctx context.Context, sessionID, eventID, previousStatus string) {
-	s.publishScannerEvent(ctx, outbox.Event{
+func (h *Handler) PublishSessionCancelledEvent(ctx context.Context, sessionID, eventID, previousStatus string) {
+	h.PublishScannerEvent(ctx, outbox.Event{
 		AggregateType: SessionAggregateType,
 		AggregateID:   sessionID,
 		EventType:     SessionCancelledEventType,
-		Payload:       buildSessionCancelledPayload(sessionID, eventID, previousStatus),
+		Payload:       BuildSessionCancelledPayload(sessionID, eventID, previousStatus),
 	})
 }

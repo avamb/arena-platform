@@ -971,6 +971,10 @@ func domainSubPackageFor(name string) (string, string) {
 	case "tickets.go", "credentials.go", "complimentary.go", "delivery_enqueue.go",
 		"admin_ticket_delivery.go", "admin_ticket_scans.go":
 		return "htickets", "tickets_shims.go"
+	case "barcodes.go", "barcode_batches.go":
+		return "hbarcode", "barcode_shims.go"
+	case "scanner_callback.go", "scanner_events.go", "scanner_snapshot.go":
+		return "hscanner", "scanner_shims.go"
 	}
 	return "", ""
 }
