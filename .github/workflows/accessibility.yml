@@ -46,16 +46,6 @@ jobs:
       - name: Install axe-core CLI
         run: npm install --save-dev @axe-core/cli
 
-      # axe-cli drives Chrome through selenium-webdriver, which downloads
-      # the newest ChromeDriver — often one major version ahead of the
-      # runner's preinstalled Chrome. Install a matched pair explicitly so
-      # the versions can never drift apart.
-      - name: Set up Chrome + matching ChromeDriver
-        uses: browser-actions/setup-chrome@v1
-        with:
-          chrome-version: stable
-          install-chromedriver: true
-
       - name: Generate HTML snapshots from WP plugin
         # Produces static HTML files that mirror the PHP render_tiers_html output
         # so axe-cli can scan them without a live WordPress instance.
@@ -65,13 +55,23 @@ jobs:
         # --stdout already emits JSON in current @axe-core/cli releases;
         # the former --reporter flag no longer exists. pipefail keeps a
         # failed axe invocation from being masked by tee.
+        #
+        # selenium-webdriver inside axe-cli downloads the newest
+        # ChromeDriver, which races ahead of the runner's preinstalled
+        # Chrome. Pin the chromedriver npm package to the major version of
+        # the Chrome that is actually on the runner and hand its binary to
+        # axe explicitly so the pair can never drift apart.
         run: |
           set -o pipefail
+          CHROME_MAJOR=$(google-chrome --version | grep -oE '[0-9]+' | head -1)
+          echo "Runner Chrome major: $CHROME_MAJOR"
+          npm install --no-save "chromedriver@$CHROME_MAJOR"
           npx axe \
             ops/accessibility/snapshots/checkout-tiers.html \
             ops/accessibility/snapshots/checkout-sold-out.html \
             ops/accessibility/snapshots/checkout-error-state.html \
             --tags wcag2a,wcag2aa,wcag21aa,wcag22aa \
+            --chromedriver-path "$(pwd)/node_modules/chromedriver/lib/chromedriver/chromedriver" \
             --stdout \
             | tee ops/accessibility/snapshots/axe-report.json
 
