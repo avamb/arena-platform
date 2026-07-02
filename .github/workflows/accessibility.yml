@@ -66,10 +66,12 @@ jobs:
           CHROME_MAJOR=$(google-chrome --version | grep -oE '[0-9]+' | head -1)
           echo "Runner Chrome major: $CHROME_MAJOR"
           npm install --no-save "chromedriver@$CHROME_MAJOR"
+          # axe treats bare arguments as URLs (a plain relative path dies
+          # with ERR_NAME_NOT_RESOLVED), so hand it file:// URLs.
           npx axe \
-            ops/accessibility/snapshots/checkout-tiers.html \
-            ops/accessibility/snapshots/checkout-sold-out.html \
-            ops/accessibility/snapshots/checkout-error-state.html \
+            "file://$(pwd)/ops/accessibility/snapshots/checkout-tiers.html" \
+            "file://$(pwd)/ops/accessibility/snapshots/checkout-sold-out.html" \
+            "file://$(pwd)/ops/accessibility/snapshots/checkout-error-state.html" \
             --tags wcag2a,wcag2aa,wcag21aa,wcag22aa \
             --chromedriver-path "$(pwd)/node_modules/chromedriver/lib/chromedriver/chromedriver" \
             --stdout \
