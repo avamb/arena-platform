@@ -17,10 +17,10 @@ import (
 // accessTokenTTL and refreshTokenTTL forward the hauth constants so that
 // auth_login_test.go (package httpserver) can reference them directly.
 const (
-	accessTokenTTL          = time.Duration(hauth.AccessTokenTTL)
-	refreshTokenTTL         = time.Duration(hauth.RefreshTokenTTL)
-	loginRateLimitAttempts  = hauth.LoginRateLimitAttempts
-	loginRateLimitWindow    = time.Duration(hauth.LoginRateLimitWindow)
+	accessTokenTTL         = time.Duration(hauth.AccessTokenTTL)
+	refreshTokenTTL        = time.Duration(hauth.RefreshTokenTTL)
+	loginRateLimitAttempts = hauth.LoginRateLimitAttempts
+	loginRateLimitWindow   = time.Duration(hauth.LoginRateLimitWindow)
 )
 
 // ─── package-level rate limiter ──────────────────────────────────────────────

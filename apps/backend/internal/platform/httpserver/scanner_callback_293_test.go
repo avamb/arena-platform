@@ -1,11 +1,11 @@
 // scanner_callback_293_test.go — unit tests for the S-2 scanner callback
 // (feature #293).  Covers:
 //
-//   * TicketScannedEventType constant
-//   * extractBearerToken header parsing edge cases
-//   * credentialPrefixForLog truncation behaviour
-//   * mountScannerCallbackRoutes mounts when feedTokenQueries is set
-//   * mountScannerCallbackRoutes is silent when feedTokenQueries is nil
+//   - TicketScannedEventType constant
+//   - extractBearerToken header parsing edge cases
+//   - credentialPrefixForLog truncation behaviour
+//   - mountScannerCallbackRoutes mounts when feedTokenQueries is set
+//   - mountScannerCallbackRoutes is silent when feedTokenQueries is nil
 //
 // Integration coverage of the full handler path (resolve token → resolve
 // credential → insert → mark used_at → emit outbox) is exercised in the

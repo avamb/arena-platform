@@ -20,9 +20,9 @@
 //	DELETE /v1/organizations/{org_id}/payment-configs/{id}   — soft-delete (payment_config.write)
 //
 // Secret handling:
-//   * The `secrets` map is accepted in POST/PATCH bodies but NEVER
+//   - The `secrets` map is accepted in POST/PATCH bodies but NEVER
 //     returned (paymentConfigFromRow drops it).
-//   * Status derivation runs after every write: when every required
+//   - Status derivation runs after every write: when every required
 //     secret field for the chosen provider is non-empty, status flips
 //     to "configured"; otherwise "missing_required_fields".
 //

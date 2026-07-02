@@ -11,14 +11,15 @@
 // server (e.g. the one started by docker compose up postgres).
 //
 // Tests verify:
-//   Step 1: SET TIMEZONE = 'America/Los_Angeles' in the session does not alter
-//           how the server stores UTC timestamps.
-//   Step 2: A row can be inserted into audit_events (simulating POST /v1/echo).
-//   Step 3: Querying occurred_at AT TIME ZONE 'UTC' returns a UTC timestamp.
-//   Step 4: The stored value reflects the moment of the insert (within 5 s).
-//   Step 5: INFORMATION_SCHEMA confirms audit_events.occurred_at is
-//           'timestamp with time zone' (PG reports timestamptz this way).
-//   Step 6: No column in any platform table uses 'timestamp without time zone'.
+//
+//	Step 1: SET TIMEZONE = 'America/Los_Angeles' in the session does not alter
+//	        how the server stores UTC timestamps.
+//	Step 2: A row can be inserted into audit_events (simulating POST /v1/echo).
+//	Step 3: Querying occurred_at AT TIME ZONE 'UTC' returns a UTC timestamp.
+//	Step 4: The stored value reflects the moment of the insert (within 5 s).
+//	Step 5: INFORMATION_SCHEMA confirms audit_events.occurred_at is
+//	        'timestamp with time zone' (PG reports timestamptz this way).
+//	Step 6: No column in any platform table uses 'timestamp without time zone'.
 package migrations_test
 
 import (

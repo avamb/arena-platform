@@ -20,11 +20,11 @@ RETURNING id, email, preferred_locale, created_at, email_verified_at
 
 // InsertUserRow is the result type for InsertUser.
 type InsertUserRow struct {
-	ID               uuid.UUID  `json:"id"`
-	Email            string     `json:"email"`
-	PreferredLocale  string     `json:"preferred_locale"`
-	CreatedAt        time.Time  `json:"created_at"`
-	EmailVerifiedAt  *time.Time `json:"email_verified_at"`
+	ID              uuid.UUID  `json:"id"`
+	Email           string     `json:"email"`
+	PreferredLocale string     `json:"preferred_locale"`
+	CreatedAt       time.Time  `json:"created_at"`
+	EmailVerifiedAt *time.Time `json:"email_verified_at"`
 }
 
 // InsertUser inserts a new user and returns the created row.
@@ -51,12 +51,12 @@ WHERE email = $1
 
 // GetUserByEmailRow is the result type for GetUserByEmail.
 type GetUserByEmailRow struct {
-	ID               uuid.UUID  `json:"id"`
-	Email            string     `json:"email"`
-	PasswordHash     string     `json:"password_hash"`
-	PreferredLocale  string     `json:"preferred_locale"`
-	CreatedAt        time.Time  `json:"created_at"`
-	EmailVerifiedAt  *time.Time `json:"email_verified_at"`
+	ID              uuid.UUID  `json:"id"`
+	Email           string     `json:"email"`
+	PasswordHash    string     `json:"password_hash"`
+	PreferredLocale string     `json:"preferred_locale"`
+	CreatedAt       time.Time  `json:"created_at"`
+	EmailVerifiedAt *time.Time `json:"email_verified_at"`
 }
 
 // GetUserByEmail fetches a user row by normalised email address.

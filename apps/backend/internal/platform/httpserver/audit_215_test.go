@@ -8,15 +8,15 @@
 //
 //   - actor        — captured from auth.ActorFromContext (ActorType+ActorID)
 //   - action       — a versioned, dotted verb ("v1.operator_network.create",
-//                    "v1.network.users.assign", "v1.network.organizers.attach", …)
+//     "v1.network.users.assign", "v1.network.organizers.attach", …)
 //   - resource     — ResourceType / ResourceID identifying the row
 //   - network_id   — metadata key tagging the originating operator_network
-//                    (so audit consumers can index by network without parsing
-//                    the resource_type column)
+//     (so audit consumers can index by network without parsing
+//     the resource_type column)
 //   - target       — metadata key tagging the primary subject of the mutation
-//                    (the network itself for operator_network mutations, the
-//                    user_id for network_users mutations, the organization_id
-//                    for network_organizations mutations)
+//     (the network itself for operator_network mutations, the
+//     user_id for network_users mutations, the organization_id
+//     for network_organizations mutations)
 //
 // These tests exercise the three audit helpers (writeOperatorNetworkAudit,
 // writeNetworkUserAudit, writeNetworkOrgAudit) directly with a

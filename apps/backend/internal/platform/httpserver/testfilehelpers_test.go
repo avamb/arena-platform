@@ -985,6 +985,13 @@ func domainSubPackageFor(name string) (string, string) {
 		return "hbarcode", "barcode_shims.go"
 	case "scanner_callback.go", "scanner_events.go", "scanner_snapshot.go":
 		return "hscanner", "scanner_shims.go"
+	case "networks.go", "network_orgs.go", "network_users.go":
+		return "hnetworks", "networks_shims.go"
+	// NOTE: hauth is deliberately absent — the refactor renamed its files
+	// (auth_login.go → hauth/login.go, …), so a same-name lookup cannot map
+	// them. No structural test greps the old auth_*.go handler files.
+	case "media.go":
+		return "hmedia", "mount_media.go"
 	}
 	return "", ""
 }

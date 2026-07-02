@@ -52,6 +52,8 @@ func NewReservationProcessor(pool *pgxpool.Pool, queries *gen.Queries, logger *s
 // hcheckout without importing that package directly.
 
 type priceBreakdownResponse = hcheckout.PriceBreakdownResponse
+
+//nolint:unused // source-grep witness: price_breakdown_163_test.go asserts the symbol name.
 type breakdownLineItem = hcheckout.BreakdownLineItem
 type checkoutSessionResponse = hcheckout.CheckoutSessionResponse
 type channelTTLLookup = hcheckout.ChannelTTLLookup
@@ -252,4 +254,3 @@ func (s *Server) handleDeletePromoCode(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleValidatePromoCode(w http.ResponseWriter, r *http.Request) {
 	s.checkoutHandler().HandleValidatePromoCode(w, r)
 }
-

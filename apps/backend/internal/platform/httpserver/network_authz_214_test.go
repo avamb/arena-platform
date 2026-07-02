@@ -3,32 +3,32 @@
 //
 // Coverage matrix:
 //
-//   Layer A -- Role/permission catalogue alignment
-//     Asserts that the role -> permission map encoded in migration
-//     0044_network_permissions.sql aligns with what each operator-network
-//     endpoint family requires (per mount_networks.go). Drift between the
-//     migration and the mount file is treated as a regression: a role that
-//     loses (or silently gains) a permission would break authorization
-//     end-to-end without any handler test ever firing.
+//	Layer A -- Role/permission catalogue alignment
+//	  Asserts that the role -> permission map encoded in migration
+//	  0044_network_permissions.sql aligns with what each operator-network
+//	  endpoint family requires (per mount_networks.go). Drift between the
+//	  migration and the mount file is treated as a regression: a role that
+//	  loses (or silently gains) a permission would break authorization
+//	  end-to-end without any handler test ever firing.
 //
-//   Layer B -- HTTP middleware allow/deny matrix
-//     For each (role, endpoint family) pair we build a tiny chi router
-//     wrapping a sentinel handler with the SAME middleware pair the real
-//     mount uses -- auth.Middleware + permissions.RequirePermission -- but
-//     swap the permission checker for a role-aware test impl that derives
-//     its allow/deny answer from the migration matrix. This exercises the
-//     "permission checks are enforced backend-side" requirement from #214
-//     without needing a live PostgreSQL instance.
+//	Layer B -- HTTP middleware allow/deny matrix
+//	  For each (role, endpoint family) pair we build a tiny chi router
+//	  wrapping a sentinel handler with the SAME middleware pair the real
+//	  mount uses -- auth.Middleware + permissions.RequirePermission -- but
+//	  swap the permission checker for a role-aware test impl that derives
+//	  its allow/deny answer from the migration matrix. This exercises the
+//	  "permission checks are enforced backend-side" requirement from #214
+//	  without needing a live PostgreSQL instance.
 //
-//   Layer C -- Invalid-assignment handler tests
-//     Direct handler calls with deliberately bad path params / bodies, to
-//     pin the "fail cleanly" contract (400 / 404, never 500 / panic).
+//	Layer C -- Invalid-assignment handler tests
+//	  Direct handler calls with deliberately bad path params / bodies, to
+//	  pin the "fail cleanly" contract (400 / 404, never 500 / panic).
 //
-//   Layer D -- Regression: organizer / platform_operator / platform_superadmin
-//     The non-network roles must keep working unchanged. We re-exercise the
-//     /v1/me scope computation contract that #211 introduced, to make sure
-//     adding network_operator gating did not accidentally drop or reorder
-//     the bypass / organization scopes for existing roles.
+//	Layer D -- Regression: organizer / platform_operator / platform_superadmin
+//	  The non-network roles must keep working unchanged. We re-exercise the
+//	  /v1/me scope computation contract that #211 introduced, to make sure
+//	  adding network_operator gating did not accidentally drop or reorder
+//	  the bypass / organization scopes for existing roles.
 //
 // All tests run without a live PostgreSQL connection.
 package httpserver
@@ -747,11 +747,11 @@ func TestAuthz214_LegacyRoleScopes_Preserved(t *testing.T) {
 		t.Parallel()
 		userID := uuid.New()
 		netA := gen.OperatorNetworkRow{
-			ID: uuid.MustParse("0193f01a-0000-7000-8000-0000000aaaaa"),
+			ID:   uuid.MustParse("0193f01a-0000-7000-8000-0000000aaaaa"),
 			Name: "A", Slug: "a", Status: "active",
 		}
 		netB := gen.OperatorNetworkRow{
-			ID: uuid.MustParse("0193f01a-0000-7000-8000-0000000bbbbb"),
+			ID:   uuid.MustParse("0193f01a-0000-7000-8000-0000000bbbbb"),
 			Name: "B", Slug: "b", Status: "active",
 		}
 		store := &fakeMeQuerier{
@@ -890,15 +890,15 @@ func TestAuthz214_AllFamiliesMountedOnChiRouter(t *testing.T) {
 
 	// Translate each family's concrete URL into the chi pattern shape.
 	pathToPattern := map[string]string{
-		"/v1/operator-networks":                           "/v1/operator-networks",
-		"/v1/operator-networks/{uuid}":                    "/v1/operator-networks/{id}",
-		"/v1/operator-networks/{uuid}/archive":            "/v1/operator-networks/{id}/archive",
-		"/v1/admin/networks/{uuid}/users":                 "/v1/admin/networks/{id}/users",
-		"/v1/admin/networks/{uuid}/users/{uuid}":          "/v1/admin/networks/{id}/users/{userId}",
-		"/v1/admin/networks/{uuid}/organizers":            "/v1/admin/networks/{id}/organizers",
-		"/v1/admin/networks/{uuid}/organizers/{uuid}":     "/v1/admin/networks/{id}/organizers/{orgId}",
-		"/v1/admin/networks/{uuid}/agents":                "/v1/admin/networks/{id}/agents",
-		"/v1/admin/networks/{uuid}/agents/{uuid}":         "/v1/admin/networks/{id}/agents/{orgId}",
+		"/v1/operator-networks":                       "/v1/operator-networks",
+		"/v1/operator-networks/{uuid}":                "/v1/operator-networks/{id}",
+		"/v1/operator-networks/{uuid}/archive":        "/v1/operator-networks/{id}/archive",
+		"/v1/admin/networks/{uuid}/users":             "/v1/admin/networks/{id}/users",
+		"/v1/admin/networks/{uuid}/users/{uuid}":      "/v1/admin/networks/{id}/users/{userId}",
+		"/v1/admin/networks/{uuid}/organizers":        "/v1/admin/networks/{id}/organizers",
+		"/v1/admin/networks/{uuid}/organizers/{uuid}": "/v1/admin/networks/{id}/organizers/{orgId}",
+		"/v1/admin/networks/{uuid}/agents":            "/v1/admin/networks/{id}/agents",
+		"/v1/admin/networks/{uuid}/agents/{uuid}":     "/v1/admin/networks/{id}/agents/{orgId}",
 	}
 
 	for _, fam := range endpointFamilies214() {

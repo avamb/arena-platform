@@ -47,6 +47,7 @@ var validMembershipRoles = hiam.ValidMembershipRoles
 
 func membershipRoleList() []string { return hiam.MembershipRoleList() }
 
+//nolint:unused // source-grep witness: superadmin_166_test.go asserts the symbol name.
 func requireAdminReason(w http.ResponseWriter, r *http.Request) (string, bool) {
 	return httputil.RequireAdminReason(w, r)
 }

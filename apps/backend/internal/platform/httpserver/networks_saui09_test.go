@@ -5,13 +5,13 @@
 // (X-Admin-Reason header, error code "superadmin.missing_reason") on
 // every mutation handler:
 //
-//   POST   /v1/operator-networks                              — create
-//   PATCH  /v1/operator-networks/{id}                         — update
-//   POST   /v1/operator-networks/{id}/archive                 — archive
-//   POST   /v1/admin/networks/{id}/users                      — assign user
-//   DELETE /v1/admin/networks/{id}/users/{userId}             — remove user
-//   POST   /v1/admin/networks/{id}/{organizers|agents}        — attach org
-//   DELETE /v1/admin/networks/{id}/{organizers|agents}/{orgId} — detach org
+//	POST   /v1/operator-networks                              — create
+//	PATCH  /v1/operator-networks/{id}                         — update
+//	POST   /v1/operator-networks/{id}/archive                 — archive
+//	POST   /v1/admin/networks/{id}/users                      — assign user
+//	DELETE /v1/admin/networks/{id}/users/{userId}             — remove user
+//	POST   /v1/admin/networks/{id}/{organizers|agents}        — attach org
+//	DELETE /v1/admin/networks/{id}/{organizers|agents}/{orgId} — detach org
 //
 // The trimmed reason is stamped into the audit_events metadata under
 // `reason` so the immutable audit trail records *why* each mutation

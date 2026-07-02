@@ -54,14 +54,17 @@ const reconciliationConfidenceThreshold = hreconciliation.ConfidenceThreshold
 // them live in package httpserver so the source-grep helpers find the symbols
 // inside the aggregated shim+sub-package content.
 
+//nolint:unused // source-grep witness: reconciliation_147_test.go asserts the symbol name.
 func reconciliationReportFromRow(r gen.ReconciliationReportRow) map[string]any {
 	return hreconciliation.ReportFromRow(r)
 }
 
+//nolint:unused // source-grep witness: reconciliation_147_test.go asserts the symbol name.
 func reconciliationLineFromRow(r gen.ReconciliationLineRow) map[string]any {
 	return hreconciliation.LineFromRow(r)
 }
 
+//nolint:unused // source-grep witness: reconciliation_147_test.go asserts the symbol name.
 func reconciliationLinesFromRows(rows []gen.ReconciliationLineRow) []map[string]any {
 	return hreconciliation.LinesFromRows(rows)
 }

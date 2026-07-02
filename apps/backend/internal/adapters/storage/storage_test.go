@@ -438,12 +438,12 @@ func TestDeriveSigningKey_AWSWorkedExample(t *testing.T) {
 func TestAWSURIEncode(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
-		"abc":           "abc",
-		"a b":           "a%20b",
-		"a/b":           "a%2Fb", // encodeSlash=true
-		"~_-.":          "~_-.",
-		"unicode:αβ":    "unicode%3A%CE%B1%CE%B2",
-		"plus+and=eq":   "plus%2Band%3Deq",
+		"abc":         "abc",
+		"a b":         "a%20b",
+		"a/b":         "a%2Fb", // encodeSlash=true
+		"~_-.":        "~_-.",
+		"unicode:αβ":  "unicode%3A%CE%B1%CE%B2",
+		"plus+and=eq": "plus%2Band%3Deq",
 	}
 	for in, want := range cases {
 		if got := awsURIEncode(in, true); got != want {

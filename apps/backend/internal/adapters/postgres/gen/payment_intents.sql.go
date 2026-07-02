@@ -25,23 +25,23 @@ import (
 // SCA fields (sca_redirect_url, client_secret) are non-nil only when the state
 // is requires_action and the provider uses a redirect-based 3DS flow.
 type PaymentIntentRow struct {
-	ID                 uuid.UUID  `json:"id"`
-	CheckoutSessionID  *uuid.UUID `json:"checkout_session_id"`
-	OrgID              uuid.UUID  `json:"org_id"`
-	Provider           string     `json:"provider"`
-	ProviderPaymentID  *string    `json:"provider_payment_id"`
-	Amount             int64      `json:"amount"`
-	Currency           string     `json:"currency"`
-	State              string     `json:"state"`
-	ScaRedirectURL     *string    `json:"sca_redirect_url"`
-	ClientSecret       *string    `json:"client_secret"`
-	FailureCode        *string    `json:"failure_code"`
-	FailureMessage     *string    `json:"failure_message"`
-	AuthorizedAt       *time.Time `json:"authorized_at"`
-	SucceededAt        *time.Time `json:"succeeded_at"`
-	FailedAt           *time.Time `json:"failed_at"`
-	CreatedAt          time.Time  `json:"created_at"`
-	UpdatedAt          time.Time  `json:"updated_at"`
+	ID                uuid.UUID  `json:"id"`
+	CheckoutSessionID *uuid.UUID `json:"checkout_session_id"`
+	OrgID             uuid.UUID  `json:"org_id"`
+	Provider          string     `json:"provider"`
+	ProviderPaymentID *string    `json:"provider_payment_id"`
+	Amount            int64      `json:"amount"`
+	Currency          string     `json:"currency"`
+	State             string     `json:"state"`
+	ScaRedirectURL    *string    `json:"sca_redirect_url"`
+	ClientSecret      *string    `json:"client_secret"`
+	FailureCode       *string    `json:"failure_code"`
+	FailureMessage    *string    `json:"failure_message"`
+	AuthorizedAt      *time.Time `json:"authorized_at"`
+	SucceededAt       *time.Time `json:"succeeded_at"`
+	FailedAt          *time.Time `json:"failed_at"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
 }
 
 // scanPaymentIntentRow scans a single payment_intents row into a PaymentIntentRow.

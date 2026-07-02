@@ -54,11 +54,11 @@ func concurrentMigrateDB(t *testing.T, tag string) interface {
 
 // TestConcurrentMigrations_TwoProvidersConcurrent is the primary integration
 // test for feature #74. It:
-//   1. Applies all embedded migrations to bring the DB to state-N.
-//   2. Creates an in-memory FS with a new test migration that sleeps 2s.
-//   3. Starts two goose.Provider instances (separate DB connections) concurrently.
-//   4. Verifies exactly one schema_migrations row exists for the test migration.
-//   5. Verifies the advisory lock is released (no orphan pg_advisory_lock rows).
+//  1. Applies all embedded migrations to bring the DB to state-N.
+//  2. Creates an in-memory FS with a new test migration that sleeps 2s.
+//  3. Starts two goose.Provider instances (separate DB connections) concurrently.
+//  4. Verifies exactly one schema_migrations row exists for the test migration.
+//  5. Verifies the advisory lock is released (no orphan pg_advisory_lock rows).
 func TestConcurrentMigrations_TwoProvidersConcurrent(t *testing.T) {
 	// Step 1: Bring the database to the fully-migrated baseline state.
 	db := integrationMigrateDB(t)

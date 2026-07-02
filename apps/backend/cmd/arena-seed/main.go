@@ -160,10 +160,10 @@ type SeedVenue struct {
 }
 
 type SeedUser struct {
-	ID               string
-	Email            string
-	PlaintextPwd     string // hashed at apply time with bcrypt cost 12
-	PreferredLocale  string
+	ID                  string
+	Email               string
+	PlaintextPwd        string // hashed at apply time with bcrypt cost 12
+	PreferredLocale     string
 	MarkEmailVerifiedAt bool
 }
 
@@ -582,4 +582,3 @@ func printSummary(seed SeedData) {
 		fmt.Fprintf(os.Stdout, "    - org=%s provider=%s mode=%s status=%s\n", pc.OrgID, pc.Provider, pc.Mode, pc.Status)
 	}
 }
-

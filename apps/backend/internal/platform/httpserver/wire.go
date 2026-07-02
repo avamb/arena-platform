@@ -70,10 +70,10 @@ type Options struct {
 	// (feature #211). When nil and PgxPool is non-nil, the constructor
 	// builds a default backed by gen.New(PgxPool). Tests inject a fake to
 	// exercise role-specific response shaping without a live database.
-	MeQueries            meQuerier
-	GeoQueries           *gen.Queries
-	OrgQueries           *gen.Queries
-	ChannelQueries       *gen.Queries
+	MeQueries      meQuerier
+	GeoQueries     *gen.Queries
+	OrgQueries     *gen.Queries
+	ChannelQueries *gen.Queries
 	// PaymentConfigQueries backs the /v1/organizations/{org_id}/payment-configs
 	// CRUD surface (feature #237). When nil and PgxPool is non-nil, the
 	// constructor falls back to gen.New(PgxPool).

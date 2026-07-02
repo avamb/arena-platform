@@ -80,7 +80,7 @@ func traceContext(next http.Handler) http.Handler {
 		logger.Info("http request start",
 			"method", r.Method,
 			"path", r.URL.Path,
-			"remote_ip", clientIP(r),
+			"remote_ip", httputil.ClientIP(r),
 		)
 
 		ww := chimw.NewWrapResponseWriter(w, r.ProtoMajor)
@@ -131,10 +131,4 @@ func newTraceID() string {
 		}
 	}
 	return hex.EncodeToString(b[:])
-}
-
-// clientIP delegates to httputil.ClientIP. Kept as an unexported alias so
-// existing handler methods on *Server require no import changes.
-func clientIP(r *http.Request) string {
-	return httputil.ClientIP(r)
 }

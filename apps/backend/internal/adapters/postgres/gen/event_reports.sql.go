@@ -19,22 +19,23 @@ import (
 // EventReportRow is the result type returned by all event_reports queries.
 //
 // State machine: pending → generating → ready (terminal, success)
-//                                     → failed (terminal, error)
+//
+//	→ failed (terminal, error)
 //
 // ReportWindowStart / ReportWindowEnd bound the aggregation time range.
 // ErrorMsg is non-nil when state = 'failed'.
 // GeneratedAt is non-nil when state = 'ready'.
 type EventReportRow struct {
-	ID                 uuid.UUID  `json:"id"`
-	EventID            uuid.UUID  `json:"event_id"`
-	OrgID              uuid.UUID  `json:"org_id"`
-	State              string     `json:"state"`
-	ReportWindowStart  *time.Time `json:"report_window_start"`
-	ReportWindowEnd    *time.Time `json:"report_window_end"`
-	ErrorMsg           *string    `json:"error_msg"`
-	GeneratedAt        *time.Time `json:"generated_at"`
-	CreatedAt          time.Time  `json:"created_at"`
-	UpdatedAt          time.Time  `json:"updated_at"`
+	ID                uuid.UUID  `json:"id"`
+	EventID           uuid.UUID  `json:"event_id"`
+	OrgID             uuid.UUID  `json:"org_id"`
+	State             string     `json:"state"`
+	ReportWindowStart *time.Time `json:"report_window_start"`
+	ReportWindowEnd   *time.Time `json:"report_window_end"`
+	ErrorMsg          *string    `json:"error_msg"`
+	GeneratedAt       *time.Time `json:"generated_at"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
 }
 
 // scanEventReportRow scans a single event_reports row into an EventReportRow.

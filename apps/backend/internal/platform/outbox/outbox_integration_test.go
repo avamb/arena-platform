@@ -98,7 +98,7 @@ func cleanupOutbox(t *testing.T, ctx context.Context, pool *pgxpool.Pool, eventT
 // ---------------------------------------------------------------------------
 
 const testAggType = "integration_test"
-const testAggID   = "00000000-0000-0000-0000-000000000099"
+const testAggID = "00000000-0000-0000-0000-000000000099"
 
 // TestOutbox_RollbackRemovesRow is the canonical step 6 test:
 // a write to the outbox inside a rolled-back transaction must leave no trace.

@@ -20,7 +20,7 @@
 //     documented as unauthenticated.
 //   - Step 3: minimal contract test validates the spec's request
 //     example payloads against the schema (yaml parse + key presence
-//     + invariants from payment_intents.go — runs without docker /
+//   - invariants from payment_intents.go — runs without docker /
 //     postgres / oapi-codegen).
 //   - Step 4: schemas live under components.schemas with the
 //     documented required fields and enum literals (the canonical

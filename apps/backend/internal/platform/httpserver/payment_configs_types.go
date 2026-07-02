@@ -4,9 +4,9 @@
 // internal/platform/httpserver/ size budget (feature #175).
 //
 // Contents:
-//   * Provider catalogue and required-secret rules.
-//   * Response struct and the row-to-response mapper.
-//   * Pure helpers for status derivation, secret extraction, and the
+//   - Provider catalogue and required-secret rules.
+//   - Response struct and the row-to-response mapper.
+//   - Pure helpers for status derivation, secret extraction, and the
 //     secret-patch merge logic used by PATCH.
 package httpserver
 

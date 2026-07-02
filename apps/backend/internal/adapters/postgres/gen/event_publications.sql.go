@@ -19,11 +19,11 @@ import (
 // EventPublicationRow is the result type returned by all event_publications queries.
 // city_id is nil when the publication has no city scope (visible everywhere).
 type EventPublicationRow struct {
-	ID           uuid.UUID  `json:"id"`
-	EventID      uuid.UUID  `json:"event_id"`
-	FeedTokenID  uuid.UUID  `json:"feed_token_id"`
-	CityID       *uuid.UUID `json:"city_id"`
-	PublishedAt  time.Time  `json:"published_at"`
+	ID          uuid.UUID  `json:"id"`
+	EventID     uuid.UUID  `json:"event_id"`
+	FeedTokenID uuid.UUID  `json:"feed_token_id"`
+	CityID      *uuid.UUID `json:"city_id"`
+	PublishedAt time.Time  `json:"published_at"`
 }
 
 // scanEventPublicationRow scans a single event_publications row into an EventPublicationRow.

@@ -23,17 +23,17 @@ import (
 // The active tariff for a billing period is the one with the largest
 // effective_from that is <= the period start date.
 type TariffRow struct {
-	ID                  uuid.UUID  `json:"id"`
-	OrgID               *uuid.UUID `json:"org_id"`
-	PlanName            string     `json:"plan_name"`
-	EffectiveFrom       time.Time  `json:"effective_from"`
-	PerTicketFeeMinor   int64      `json:"per_ticket_fee_minor"`
-	PerEventFeeMinor    int64      `json:"per_event_fee_minor"`
-	MonthlyFeeMinor     int64      `json:"monthly_fee_minor"`
-	Currency            string     `json:"currency"`
-	Notes               *string    `json:"notes"`
-	CreatedAt           time.Time  `json:"created_at"`
-	CreatedBy           *string    `json:"created_by"`
+	ID                uuid.UUID  `json:"id"`
+	OrgID             *uuid.UUID `json:"org_id"`
+	PlanName          string     `json:"plan_name"`
+	EffectiveFrom     time.Time  `json:"effective_from"`
+	PerTicketFeeMinor int64      `json:"per_ticket_fee_minor"`
+	PerEventFeeMinor  int64      `json:"per_event_fee_minor"`
+	MonthlyFeeMinor   int64      `json:"monthly_fee_minor"`
+	Currency          string     `json:"currency"`
+	Notes             *string    `json:"notes"`
+	CreatedAt         time.Time  `json:"created_at"`
+	CreatedBy         *string    `json:"created_by"`
 }
 
 // scanTariffRow scans a single tariffs row into a TariffRow.
@@ -101,17 +101,17 @@ func scanUsageRecordRow(row interface {
 // State machine: draft → issued → paid (terminal). draft/issued → void (terminal).
 // TotalAmountMinor is in the minor unit of Currency (e.g. cents for EUR/USD).
 type InvoiceRow struct {
-	ID                uuid.UUID  `json:"id"`
-	OrgID             uuid.UUID  `json:"org_id"`
-	BillingPeriod     string     `json:"billing_period"`
-	State             string     `json:"state"`
-	TotalAmountMinor  int64      `json:"total_amount_minor"`
-	Currency          string     `json:"currency"`
-	IssuedAt          *time.Time `json:"issued_at"`
-	PaidAt            *time.Time `json:"paid_at"`
-	VoidedAt          *time.Time `json:"voided_at"`
-	CreatedAt         time.Time  `json:"created_at"`
-	UpdatedAt         time.Time  `json:"updated_at"`
+	ID               uuid.UUID  `json:"id"`
+	OrgID            uuid.UUID  `json:"org_id"`
+	BillingPeriod    string     `json:"billing_period"`
+	State            string     `json:"state"`
+	TotalAmountMinor int64      `json:"total_amount_minor"`
+	Currency         string     `json:"currency"`
+	IssuedAt         *time.Time `json:"issued_at"`
+	PaidAt           *time.Time `json:"paid_at"`
+	VoidedAt         *time.Time `json:"voided_at"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 }
 
 // scanInvoiceRow scans a single invoices row into an InvoiceRow.

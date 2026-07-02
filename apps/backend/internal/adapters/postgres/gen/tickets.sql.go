@@ -27,15 +27,15 @@ import (
 // TierID is nil for GA / untiered reservations.
 // HolderEmail is nil for anonymous purchases or when email is not yet known.
 type TicketRow struct {
-	ID                 uuid.UUID  `json:"id"`
-	CheckoutSessionID  uuid.UUID  `json:"checkout_session_id"`
-	SessionID          uuid.UUID  `json:"session_id"`
-	TierID             *uuid.UUID `json:"tier_id"`
-	HolderEmail        *string    `json:"holder_email"`
-	Status             string     `json:"status"`
-	IssuedAt           time.Time  `json:"issued_at"`
-	CreatedAt          time.Time  `json:"created_at"`
-	UpdatedAt          time.Time  `json:"updated_at"`
+	ID                uuid.UUID  `json:"id"`
+	CheckoutSessionID uuid.UUID  `json:"checkout_session_id"`
+	SessionID         uuid.UUID  `json:"session_id"`
+	TierID            *uuid.UUID `json:"tier_id"`
+	HolderEmail       *string    `json:"holder_email"`
+	Status            string     `json:"status"`
+	IssuedAt          time.Time  `json:"issued_at"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
 }
 
 // scanTicketRow scans a single tickets row into a TicketRow.

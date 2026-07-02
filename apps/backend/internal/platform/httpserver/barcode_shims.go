@@ -46,14 +46,6 @@ func barcodeFromRow(r gen.BarcodeRow) barcodeResponse {
 	return hbarcode.BarcodeFromRow(r)
 }
 
-func barcodeBatchFromRow(r gen.BarcodeBatchRow) map[string]any {
-	return hbarcode.BarcodeBatchFromRow(r)
-}
-
-func barcodeBatchEntryFromRow(r gen.BarcodeBatchEntryRow) map[string]any {
-	return hbarcode.BarcodeBatchEntryFromRow(r)
-}
-
 func parseBarcodeBatchCSV(r io.Reader) ([]string, error) {
 	return hbarcode.ParseBarcodeBatchCSV(r)
 }
@@ -63,10 +55,6 @@ func parseBarcodeBatchCSV(r io.Reader) ([]string, error) {
 // about the hbarcode sub-package.
 func isUniqueViolation(err error) bool {
 	return hbarcode.IsUniqueViolation(err)
-}
-
-func containsSQLState(err error, code string) bool {
-	return hbarcode.ContainsSQLState(err, code)
 }
 
 // Compile-time witness so the goimports tool keeps "errors" in the import list

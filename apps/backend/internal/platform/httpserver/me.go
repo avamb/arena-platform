@@ -11,9 +11,9 @@
 //   - organization_memberships — every active membership for the user
 //   - assigned_networks       — every operator network the user belongs to
 //   - available_scopes        — derived authorization scopes the caller can act
-//                                under: "global" (bypass roles), "platform"
-//                                (platform_operator), "network:<uuid>", and
-//                                "organization:<uuid>"
+//     under: "global" (bypass roles), "platform"
+//     (platform_operator), "network:<uuid>", and
+//     "organization:<uuid>"
 //
 // The payload is composed entirely from existing sqlc queries plus the
 // purpose-built ListMembershipsByUser query added in #211 — no new tables and

@@ -23,18 +23,18 @@ import (
 // reservation_ttl_override is nil when the channel uses the org-level default.
 // settings is a free-form jsonb object — never null (defaults to '{}').
 type SalesChannelRow struct {
-	ID                    uuid.UUID       `json:"id"`
-	OrgID                 uuid.UUID       `json:"org_id"`
-	Name                  string          `json:"name"`
-	PaymentMode           string          `json:"payment_mode"`
-	Provider              string          `json:"provider"`
-	ProviderAccountID     *string         `json:"provider_account_id"`
-	FeePercent            string          `json:"fee_percent"` // numeric(5,2) scanned as string
-	ReservationTTLOverride *int32         `json:"reservation_ttl_override"`
-	Settings              json.RawMessage `json:"settings"`
-	CreatedAt             time.Time       `json:"created_at"`
-	UpdatedAt             time.Time       `json:"updated_at"`
-	DeletedAt             *time.Time      `json:"deleted_at"`
+	ID                     uuid.UUID       `json:"id"`
+	OrgID                  uuid.UUID       `json:"org_id"`
+	Name                   string          `json:"name"`
+	PaymentMode            string          `json:"payment_mode"`
+	Provider               string          `json:"provider"`
+	ProviderAccountID      *string         `json:"provider_account_id"`
+	FeePercent             string          `json:"fee_percent"` // numeric(5,2) scanned as string
+	ReservationTTLOverride *int32          `json:"reservation_ttl_override"`
+	Settings               json.RawMessage `json:"settings"`
+	CreatedAt              time.Time       `json:"created_at"`
+	UpdatedAt              time.Time       `json:"updated_at"`
+	DeletedAt              *time.Time      `json:"deleted_at"`
 }
 
 // scanSalesChannelRow scans a single sales_channels row into a SalesChannelRow.

@@ -14,7 +14,7 @@
 //     standard ErrorEnvelope is wired on every error status code.
 //   - Step 3: minimal contract test validates the spec's response
 //     example payloads against the schema (yaml parse + key presence
-//     + invariants from credentials.go and migration
+//   - invariants from credentials.go and migration
 //     0027_ticket_credentials.sql — runs without docker / postgres /
 //     oapi-codegen).
 //   - Step 4: schemas live under components.schemas with the

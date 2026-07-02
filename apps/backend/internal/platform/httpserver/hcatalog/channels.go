@@ -56,13 +56,9 @@ type ChannelResponse struct {
 	UpdatedAt              string          `json:"updated_at"`
 }
 
-func settingsForResponse(raw json.RawMessage) json.RawMessage {
-	return SettingsForResponse(raw)
-}
-
-// SettingsForResponse is the exported form of settingsForResponse, for use by
-// the httpserver shim layer (channels_test.go calls settingsForResponse from
-// package httpserver via a forwarder in catalog_shims.go).
+// SettingsForResponse normalizes a raw channel-settings payload for API
+// responses; the httpserver shim layer forwards to it (channels_test.go calls
+// settingsForResponse from package httpserver via catalog_shims.go).
 func SettingsForResponse(raw json.RawMessage) json.RawMessage {
 	if len(raw) == 0 {
 		return json.RawMessage(`{}`)

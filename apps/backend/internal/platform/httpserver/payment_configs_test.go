@@ -1,16 +1,16 @@
 // payment_configs_test.go — unit tests for feature #237.
 //
 // Coverage:
-//   * Migration file 0046_payment_provider_configs.sql exists with the
+//   - Migration file 0046_payment_provider_configs.sql exists with the
 //     expected schema, permission seeds, and goose Down block.
-//   * Route auth-gating (every endpoint returns 401 without a JWT).
-//   * Request validation: empty body / invalid JSON / unknown provider /
+//   - Route auth-gating (every endpoint returns 401 without a JWT).
+//   - Request validation: empty body / invalid JSON / unknown provider /
 //     invalid mode / invalid public_config.
-//   * Status-derivation helper correctly flags configured vs. missing
+//   - Status-derivation helper correctly flags configured vs. missing
 //     required fields for each supported provider.
-//   * Secret merge helper: replaces, deletes (empty-string), keeps
+//   - Secret merge helper: replaces, deletes (empty-string), keeps
 //     untouched keys.
-//   * Response serialization never leaks secret values; secret_fields_set
+//   - Response serialization never leaks secret values; secret_fields_set
 //     and missing_required_fields shape are stable.
 //
 // All tests are pure unit tests — no live PostgreSQL required.

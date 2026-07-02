@@ -1,0 +1,33 @@
+# Normalize line endings: source and text files are stored and checked out
+# with LF so gofmt and the source-grep test gates behave identically on
+# Windows and Linux (the Go toolchain and golangci-lint expect LF).
+*.go text eol=lf
+go.mod text eol=lf
+go.sum text eol=lf
+*.sql text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.sh text eol=lf
+Dockerfile text eol=lf
+Makefile text eol=lf
+
+# Windows-specific scripts keep CRLF.
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary assets are never normalized.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.woff binary
+*.woff2 binary

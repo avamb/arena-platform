@@ -32,7 +32,7 @@ import (
 type InventoryLedgerRow struct {
 	ID            uuid.UUID  `json:"id"`
 	SessionID     uuid.UUID  `json:"session_id"`
-	TierID        *uuid.UUID `json:"tier_id"`     // nil = session-level aggregate
+	TierID        *uuid.UUID `json:"tier_id"`        // nil = session-level aggregate
 	CapacityTotal *int32     `json:"capacity_total"` // nil = unlimited
 	CapacityHeld  int32      `json:"capacity_held"`  // reserved, not confirmed
 	CapacitySold  int32      `json:"capacity_sold"`  // confirmed (sold)

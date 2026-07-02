@@ -406,14 +406,14 @@ func (p *StubProvider) Verify(_ context.Context, token string) (Actor, error) {
 
 // jwtClaims is the internal payload shape for stub JWTs.
 type jwtClaims struct {
-	Sub       string   `json:"sub"`
-	Iss       string   `json:"iss"`
+	Sub       string           `json:"sub"`
+	Iss       string           `json:"iss"`
 	Aud       jwt.ClaimStrings `json:"aud,omitempty"`
-	Iat       int64    `json:"iat"`
-	Exp       int64    `json:"exp"`
-	Nbf       int64    `json:"nbf,omitempty"` // not-before; zero means no restriction
-	ActorType string   `json:"actor_type,omitempty"`
-	Roles     []string `json:"roles,omitempty"`
+	Iat       int64            `json:"iat"`
+	Exp       int64            `json:"exp"`
+	Nbf       int64            `json:"nbf,omitempty"` // not-before; zero means no restriction
+	ActorType string           `json:"actor_type,omitempty"`
+	Roles     []string         `json:"roles,omitempty"`
 	// Impersonation claims (feature #167). Set only when this token was issued
 	// by a platform admin via POST /v1/admin/impersonate.
 	ImpersonatedBy      string `json:"impersonated_by,omitempty"`

@@ -97,14 +97,14 @@ func EventFromRow(e gen.EventRow) EventResponse {
 // ─────────────────────────────────────────────────────────────────────────────
 
 type createEventRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	VenueID     string `json:"venue_id"`
-	Status      string `json:"status"`
-	StartAt     string `json:"start_at"`
-	EndAt       string `json:"end_at"`
-	Visibility  string `json:"visibility"`
-	ImageURL    string `json:"image_url"`
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	VenueID      string `json:"venue_id"`
+	Status       string `json:"status"`
+	StartAt      string `json:"start_at"`
+	EndAt        string `json:"end_at"`
+	Visibility   string `json:"visibility"`
+	ImageURL     string `json:"image_url"`
 	Translations map[string]struct {
 		Name        string `json:"name"`
 		Description string `json:"description"`
@@ -398,13 +398,13 @@ func (h *Handler) HandleListEventsByOrg(w http.ResponseWriter, r *http.Request) 
 // ─────────────────────────────────────────────────────────────────────────────
 
 type updateEventRequest struct {
-	Name        string  `json:"name"`
-	Description *string `json:"description"`
-	VenueID     *string `json:"venue_id"`
-	StartAt     *string `json:"start_at"`
-	EndAt       *string `json:"end_at"`
-	Visibility  string  `json:"visibility"`
-	ImageURL    *string `json:"image_url"`
+	Name         string  `json:"name"`
+	Description  *string `json:"description"`
+	VenueID      *string `json:"venue_id"`
+	StartAt      *string `json:"start_at"`
+	EndAt        *string `json:"end_at"`
+	Visibility   string  `json:"visibility"`
+	ImageURL     *string `json:"image_url"`
 	Translations map[string]struct {
 		Name        string `json:"name"`
 		Description string `json:"description"`

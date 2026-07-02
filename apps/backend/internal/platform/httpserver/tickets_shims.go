@@ -9,8 +9,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/htickets"
 )
@@ -114,13 +112,6 @@ func (s *Server) enqueueDeliveryJobs(ctx context.Context, tickets []gen.TicketRo
 // unchanged.
 func (s *Server) enqueueComplimentaryDeliveryJobs(ctx context.Context, tickets []gen.ComplimentaryTicketRow) {
 	s.ticketsHandler().EnqueueComplimentaryDeliveryJobs(ctx, tickets)
-}
-
-// generateCredentialPayload mirrors the original *Server method so source-grep
-// references in feature tests keep finding the symbol. Internal to htickets in
-// the live request path.
-func (s *Server) generateCredentialPayload(ticketID uuid.UUID, credType string) (string, error) {
-	return htickets.GenerateCredentialPayload(ticketID, credType)
 }
 
 // ─── ticket handler shims ─────────────────────────────────────────────────────

@@ -20,15 +20,15 @@ import (
 // revoked_at is nil for active tokens and non-nil for revoked ones.
 // last_used_at is nil when the token has never been used.
 type FeedTokenRow struct {
-	ID              uuid.UUID  `json:"id"`
-	Token           string     `json:"token"`
-	SalesChannelID  uuid.UUID  `json:"sales_channel_id"`
-	Label           string     `json:"label"`
-	IsActive        bool       `json:"is_active"`
-	RevokedAt       *time.Time `json:"revoked_at"`
-	LastUsedAt      *time.Time `json:"last_used_at"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	ID             uuid.UUID  `json:"id"`
+	Token          string     `json:"token"`
+	SalesChannelID uuid.UUID  `json:"sales_channel_id"`
+	Label          string     `json:"label"`
+	IsActive       bool       `json:"is_active"`
+	RevokedAt      *time.Time `json:"revoked_at"`
+	LastUsedAt     *time.Time `json:"last_used_at"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
 // scanFeedTokenRow scans a single agent_feed_tokens row into a FeedTokenRow.

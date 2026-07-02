@@ -33,14 +33,14 @@ type CheckoutSessionRow struct {
 	ReservationID   uuid.UUID  `json:"reservation_id"`
 	UserID          *uuid.UUID `json:"user_id"`
 	State           string     `json:"state"`
-	Subtotal        *int64     `json:"subtotal"`         // nil until pricing_confirmed
-	Discount        *int64     `json:"discount"`         // nil until pricing_confirmed
-	PlatformFee     *int64     `json:"platform_fee"`     // nil until pricing_confirmed
-	ProviderFee     *int64     `json:"provider_fee"`     // nil until pricing_confirmed
-	Tax             *int64     `json:"tax"`              // nil until pricing_confirmed
-	Total           *int64     `json:"total"`            // nil until pricing_confirmed
-	Currency        *string    `json:"currency"`         // nil until pricing_confirmed
-	PromoCodeID     *uuid.UUID `json:"promo_code_id"`    // nil when no promo applied
+	Subtotal        *int64     `json:"subtotal"`          // nil until pricing_confirmed
+	Discount        *int64     `json:"discount"`          // nil until pricing_confirmed
+	PlatformFee     *int64     `json:"platform_fee"`      // nil until pricing_confirmed
+	ProviderFee     *int64     `json:"provider_fee"`      // nil until pricing_confirmed
+	Tax             *int64     `json:"tax"`               // nil until pricing_confirmed
+	Total           *int64     `json:"total"`             // nil until pricing_confirmed
+	Currency        *string    `json:"currency"`          // nil until pricing_confirmed
+	PromoCodeID     *uuid.UUID `json:"promo_code_id"`     // nil when no promo applied
 	PaymentIntentID *string    `json:"payment_intent_id"` // nil until payment_started
 	PaymentProvider *string    `json:"payment_provider"`  // nil until payment_started
 	CompletedAt     *time.Time `json:"completed_at"`

@@ -5,10 +5,10 @@
 //
 //   - platform_superadmin: ALL 14 network.* permissions.
 //   - network_operator   : operational subset (11 permissions — no
-//                          create / archive / manage_users).
+//     create / archive / manage_users).
 //   - platform_operator  : NO new network.* bindings (preserved).
 //   - admin              : full network.* grant (idempotent re-seed of
-//                          the 0008 broad-grant pattern).
+//     the 0008 broad-grant pattern).
 //
 // These tests are structural / SQL-grep based, mirroring the style used
 // by feature #203 (memberships_network_operator_203_test.go) and #166

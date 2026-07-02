@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -582,7 +583,9 @@ func TestChannel121_GenGoFileHasCorrectFields(t *testing.T) {
 
 func TestChannel121_GenGoFileHasDeletedAtNullable(t *testing.T) {
 	content := findFileByName(t, "channels.sql.go")
-	if !strings.Contains(content, "DeletedAt             *time.Time") {
+	// Whitespace-tolerant: gofmt realigns struct-field columns, so match the
+	// field name and pointer type rather than the exact padding.
+	if !regexp.MustCompile(`DeletedAt\s+\*time\.Time`).MatchString(content) {
 		t.Error("channels.sql.go: DeletedAt must be *time.Time (nullable)")
 	}
 }

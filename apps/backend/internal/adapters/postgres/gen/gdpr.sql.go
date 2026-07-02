@@ -33,13 +33,13 @@ type DataSubjectRequestRow struct {
 // UserExportDataRow is the result type for GetUserExportData.
 // Intentionally excludes password_hash and anonymized_at.
 type UserExportDataRow struct {
-	ID              uuid.UUID  `json:"id"`
-	Email           string     `json:"email"`
-	PreferredLocale string     `json:"preferred_locale"`
-	CreatedAt       time.Time  `json:"created_at"`
-	EmailVerifiedAt *time.Time `json:"email_verified_at"`
-	ConsentGivenAt  *time.Time `json:"consent_given_at"`
-	MarketingConsent bool      `json:"marketing_consent"`
+	ID               uuid.UUID  `json:"id"`
+	Email            string     `json:"email"`
+	PreferredLocale  string     `json:"preferred_locale"`
+	CreatedAt        time.Time  `json:"created_at"`
+	EmailVerifiedAt  *time.Time `json:"email_verified_at"`
+	ConsentGivenAt   *time.Time `json:"consent_given_at"`
+	MarketingConsent bool       `json:"marketing_consent"`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
