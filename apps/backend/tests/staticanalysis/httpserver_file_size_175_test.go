@@ -62,12 +62,12 @@ var httpserverOversizedAllowlist = map[string]int{
 	// (originally >600 LOC). These are the primary migration targets.
 	// Entries for events.go, refunds.go, payment_intents.go,
 	// ticket_tiers.go, complimentary.go, checkout.go, barcode_batches.go,
-	// promo_codes.go, reservations.go and billing_ledger.go were removed
-	// when the httpserver refactoring (phases 1a–1j) moved those files
-	// into domain sub-packages (hcatalog, hcheckout, hbarcode, htickets,
-	// hbilling); this gate only scans the top-level package directory.
+	// promo_codes.go, reservations.go, billing_ledger.go and geo.go were
+	// removed when the httpserver refactoring (phases 1a–1k) moved those
+	// files into domain sub-packages (hcatalog, hcheckout, hbarcode,
+	// htickets, hbilling, hgeo); this gate only scans the top-level
+	// package directory.
 	"bil24_compat.go":         749,
-	"geo.go":                  728,
 	"sessions.go":             666,
 	"external_allocations.go": 645,
 

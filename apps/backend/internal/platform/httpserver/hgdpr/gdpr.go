@@ -22,7 +22,7 @@
 //     (accounting law requires keeping financial records for 5+ years)
 //   - Memberships, sessions, and other operational data → may be deleted
 //     by the anonymization worker in a later milestone as more tables land
-package httpserver
+package hgdpr
 
 import (
 	"encoding/json"
@@ -36,6 +36,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
@@ -43,8 +44,8 @@ import (
 // Response helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-// dataSubjectRequestResponse converts a DataSubjectRequestRow to the API response shape.
-func dataSubjectRequestResponse(r gen.DataSubjectRequestRow) map[string]any {
+// DataSubjectRequestResponse converts a DataSubjectRequestRow to the API response shape.
+func DataSubjectRequestResponse(r gen.DataSubjectRequestRow) map[string]any {
 	resp := map[string]any{
 		"id":           r.ID.String(),
 		"user_id":      r.UserID.String(),
@@ -68,7 +69,7 @@ func dataSubjectRequestResponse(r gen.DataSubjectRequestRow) map[string]any {
 // POST /v1/me/data-export
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleDataExportRequest handles POST /v1/me/data-export.
+// HandleDataExportRequest handles POST /v1/me/data-export.
 //
 // Creates a pending 'export' data_subject_request for the authenticated user
 // and returns 202 Accepted. The arena-worker will pick up the request and
@@ -81,26 +82,26 @@ func dataSubjectRequestResponse(r gen.DataSubjectRequestRow) map[string]any {
 // Response 202:
 //
 //	{"id": "...", "request_type": "export", "status": "pending", ...}
-func (s *Server) handleDataExportRequest(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleDataExportRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logger := logging.FromContext(ctx)
 
 	// --- Identify the authenticated user ---
 	actor, ok := auth.ActorFromContext(ctx)
 	if !ok || actor.ID == "" {
-		writeJSON(w, http.StatusUnauthorized, errorEnvelope("auth.unauthorized", "authentication required", r))
+		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope("auth.unauthorized", "authentication required", r))
 		return
 	}
 	userID, err := uuid.Parse(actor.ID)
 	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, errorEnvelope("auth.invalid_actor_id", "invalid actor ID in token", r))
+		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope("auth.invalid_actor_id", "invalid actor ID in token", r))
 		return
 	}
 
 	// --- Validate Content-Type (allow missing body) ---
 	ct := r.Header.Get("Content-Type")
 	if ct != "" && ct != "application/json" && ct != "application/json; charset=utf-8" {
-		writeJSON(w, http.StatusUnsupportedMediaType, errorEnvelope("http.unsupported_media_type", "Content-Type must be application/json", r))
+		httputil.WriteJSON(w, http.StatusUnsupportedMediaType, httputil.ErrorEnvelope("http.unsupported_media_type", "Content-Type must be application/json", r))
 		return
 	}
 
@@ -108,14 +109,14 @@ func (s *Server) handleDataExportRequest(w http.ResponseWriter, r *http.Request)
 	_, _ = io.Copy(io.Discard, io.LimitReader(r.Body, 4*1024))
 
 	// --- Create the pending request ---
-	if s.gdprQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("dependency.database_unavailable", "database is not available", r))
+	if h.queries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "database is not available", r))
 		return
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		logger.Error("gdpr.data_export: begin tx failed", "error", err)
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("dependency.database_unavailable", "database is not available", r))
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "database is not available", r))
 		return
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
@@ -124,13 +125,13 @@ func (s *Server) handleDataExportRequest(w http.ResponseWriter, r *http.Request)
 	req, err := q.InsertDataSubjectRequest(ctx, userID, "export")
 	if err != nil {
 		logger.Error("gdpr.data_export: insert request failed", "error", err)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("internal.request_insert_failed", "failed to create export request", r))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.request_insert_failed", "failed to create export request", r))
 		return
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		logger.Error("gdpr.data_export: commit failed", "error", err)
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("dependency.database_unavailable", "failed to save request", r))
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "failed to save request", r))
 		return
 	}
 
@@ -139,14 +140,14 @@ func (s *Server) handleDataExportRequest(w http.ResponseWriter, r *http.Request)
 		slog.String("user_id", userID.String()),
 	)
 
-	writeJSON(w, http.StatusAccepted, dataSubjectRequestResponse(req))
+	httputil.WriteJSON(w, http.StatusAccepted, DataSubjectRequestResponse(req))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /v1/me/data-delete
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleDataDeleteRequest handles POST /v1/me/data-delete.
+// HandleDataDeleteRequest handles POST /v1/me/data-delete.
 //
 // Creates a pending 'delete' data_subject_request for the authenticated user
 // and returns 202 Accepted. The arena-worker will pick up the request and
@@ -159,26 +160,26 @@ func (s *Server) handleDataExportRequest(w http.ResponseWriter, r *http.Request)
 // Response 202:
 //
 //	{"id": "...", "request_type": "delete", "status": "pending", ...}
-func (s *Server) handleDataDeleteRequest(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleDataDeleteRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logger := logging.FromContext(ctx)
 
 	// --- Identify the authenticated user ---
 	actor, ok := auth.ActorFromContext(ctx)
 	if !ok || actor.ID == "" {
-		writeJSON(w, http.StatusUnauthorized, errorEnvelope("auth.unauthorized", "authentication required", r))
+		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope("auth.unauthorized", "authentication required", r))
 		return
 	}
 	userID, err := uuid.Parse(actor.ID)
 	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, errorEnvelope("auth.invalid_actor_id", "invalid actor ID in token", r))
+		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope("auth.invalid_actor_id", "invalid actor ID in token", r))
 		return
 	}
 
 	// --- Validate Content-Type (allow missing body) ---
 	ct := r.Header.Get("Content-Type")
 	if ct != "" && ct != "application/json" && ct != "application/json; charset=utf-8" {
-		writeJSON(w, http.StatusUnsupportedMediaType, errorEnvelope("http.unsupported_media_type", "Content-Type must be application/json", r))
+		httputil.WriteJSON(w, http.StatusUnsupportedMediaType, httputil.ErrorEnvelope("http.unsupported_media_type", "Content-Type must be application/json", r))
 		return
 	}
 
@@ -186,14 +187,14 @@ func (s *Server) handleDataDeleteRequest(w http.ResponseWriter, r *http.Request)
 	_, _ = io.Copy(io.Discard, io.LimitReader(r.Body, 4*1024))
 
 	// --- Create the pending request ---
-	if s.gdprQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("dependency.database_unavailable", "database is not available", r))
+	if h.queries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "database is not available", r))
 		return
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		logger.Error("gdpr.data_delete: begin tx failed", "error", err)
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("dependency.database_unavailable", "database is not available", r))
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "database is not available", r))
 		return
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
@@ -202,13 +203,13 @@ func (s *Server) handleDataDeleteRequest(w http.ResponseWriter, r *http.Request)
 	req, err := q.InsertDataSubjectRequest(ctx, userID, "delete")
 	if err != nil {
 		logger.Error("gdpr.data_delete: insert request failed", "error", err)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("internal.request_insert_failed", "failed to create delete request", r))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.request_insert_failed", "failed to create delete request", r))
 		return
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		logger.Error("gdpr.data_delete: commit failed", "error", err)
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("dependency.database_unavailable", "failed to save request", r))
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "failed to save request", r))
 		return
 	}
 
@@ -217,64 +218,64 @@ func (s *Server) handleDataDeleteRequest(w http.ResponseWriter, r *http.Request)
 		slog.String("user_id", userID.String()),
 	)
 
-	writeJSON(w, http.StatusAccepted, dataSubjectRequestResponse(req))
+	httputil.WriteJSON(w, http.StatusAccepted, DataSubjectRequestResponse(req))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /v1/me/data-requests
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleListDataRequests handles GET /v1/me/data-requests.
+// HandleListDataRequests handles GET /v1/me/data-requests.
 //
 // Lists all GDPR requests submitted by the authenticated user, newest first.
 //
 // Response 200:
 //
 //	{"requests": [ { "id": "...", "request_type": "export", ... }, ... ]}
-func (s *Server) handleListDataRequests(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleListDataRequests(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logger := logging.FromContext(ctx)
 
 	// --- Identify the authenticated user ---
 	actor, ok := auth.ActorFromContext(ctx)
 	if !ok || actor.ID == "" {
-		writeJSON(w, http.StatusUnauthorized, errorEnvelope("auth.unauthorized", "authentication required", r))
+		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope("auth.unauthorized", "authentication required", r))
 		return
 	}
 	userID, err := uuid.Parse(actor.ID)
 	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, errorEnvelope("auth.invalid_actor_id", "invalid actor ID in token", r))
+		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope("auth.invalid_actor_id", "invalid actor ID in token", r))
 		return
 	}
 
-	if s.gdprQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("dependency.database_unavailable", "database is not available", r))
+	if h.queries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "database is not available", r))
 		return
 	}
 
-	rows, err := s.gdprQueries.ListDataSubjectRequestsByUser(ctx, userID)
+	rows, err := h.queries.ListDataSubjectRequestsByUser(ctx, userID)
 	if err != nil {
 		logger.Error("gdpr.list_requests: query failed", "error", err)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("internal.query_failed", "failed to list requests", r))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.query_failed", "failed to list requests", r))
 		return
 	}
 
 	var items []map[string]any
 	for _, row := range rows {
-		items = append(items, dataSubjectRequestResponse(row))
+		items = append(items, DataSubjectRequestResponse(row))
 	}
 	if items == nil {
 		items = []map[string]any{}
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"requests": items})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"requests": items})
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /v1/me/consent
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleRecordConsent handles POST /v1/me/consent.
+// HandleRecordConsent handles POST /v1/me/consent.
 //
 // Records the authenticated user's consent. Can be called at registration time
 // or any time the user updates their consent preferences.
@@ -286,32 +287,32 @@ func (s *Server) handleListDataRequests(w http.ResponseWriter, r *http.Request) 
 // Response 200:
 //
 //	{"message": "consent recorded"}
-func (s *Server) handleRecordConsent(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleRecordConsent(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logger := logging.FromContext(ctx)
 
 	// --- Identify the authenticated user ---
 	actor, ok := auth.ActorFromContext(ctx)
 	if !ok || actor.ID == "" {
-		writeJSON(w, http.StatusUnauthorized, errorEnvelope("auth.unauthorized", "authentication required", r))
+		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope("auth.unauthorized", "authentication required", r))
 		return
 	}
 	userID, err := uuid.Parse(actor.ID)
 	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, errorEnvelope("auth.invalid_actor_id", "invalid actor ID in token", r))
+		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope("auth.invalid_actor_id", "invalid actor ID in token", r))
 		return
 	}
 
 	// --- Parse body ---
 	ct := r.Header.Get("Content-Type")
 	if ct != "" && ct != "application/json" && ct != "application/json; charset=utf-8" {
-		writeJSON(w, http.StatusUnsupportedMediaType, errorEnvelope("http.unsupported_media_type", "Content-Type must be application/json", r))
+		httputil.WriteJSON(w, http.StatusUnsupportedMediaType, httputil.ErrorEnvelope("http.unsupported_media_type", "Content-Type must be application/json", r))
 		return
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 4*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("http.invalid_body", "cannot read request body", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("http.invalid_body", "cannot read request body", r))
 		return
 	}
 
@@ -320,19 +321,19 @@ func (s *Server) handleRecordConsent(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(body) > 0 {
 		if err := json.Unmarshal(body, &req); err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope("http.invalid_json", "request body is not valid JSON", r))
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("http.invalid_json", "request body is not valid JSON", r))
 			return
 		}
 	}
 
-	if s.gdprQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("dependency.database_unavailable", "database is not available", r))
+	if h.queries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "database is not available", r))
 		return
 	}
 
-	if err := s.gdprQueries.RecordUserConsent(ctx, userID, req.MarketingConsent); err != nil {
+	if err := h.queries.RecordUserConsent(ctx, userID, req.MarketingConsent); err != nil {
 		logger.Error("gdpr.consent: record consent failed", "error", err)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("internal.consent_failed", "failed to record consent", r))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.consent_failed", "failed to record consent", r))
 		return
 	}
 
@@ -341,5 +342,5 @@ func (s *Server) handleRecordConsent(w http.ResponseWriter, r *http.Request) {
 		slog.Bool("marketing_consent", req.MarketingConsent),
 	)
 
-	writeJSON(w, http.StatusOK, map[string]any{"message": "consent recorded"})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"message": "consent recorded"})
 }

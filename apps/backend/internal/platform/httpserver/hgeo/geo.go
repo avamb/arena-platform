@@ -21,7 +21,7 @@
 //	Admin POST/PATCH endpoints accept optional "name_en" and "name_ru" fields in
 //	the request body and upsert the corresponding i18n_text rows in the same
 //	transaction.
-package httpserver
+package hgeo
 
 import (
 	"context"
@@ -36,6 +36,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 )
 
@@ -64,23 +65,23 @@ type cityResponse struct {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// geoLocale extracts the effective locale from the HTTP request.
+// GeoLocale extracts the effective locale from the HTTP request.
 //
 // Priority chain (mirrors LocaleMiddleware):
 //  1. ?lang= query parameter
 //  2. Accept-Language header
-//  3. configured default locale (from Server.cfg)
+//  3. configured default locale (from Handler.cfg)
 //
 // Returns "en" as the ultimate fallback when cfg is nil or has no default.
 // ─────────────────────────────────────────────────────────────────────────────
-func (s *Server) geoLocale(r *http.Request) string {
+func (h *Handler) GeoLocale(r *http.Request) string {
 	defaultLocale := "en"
 	var supported []string
-	if s.cfg != nil {
-		if s.cfg.DefaultLocale != "" {
-			defaultLocale = s.cfg.DefaultLocale
+	if h.cfg != nil {
+		if h.cfg.DefaultLocale != "" {
+			defaultLocale = h.cfg.DefaultLocale
 		}
-		supported = s.cfg.ActiveLocales
+		supported = h.cfg.ActiveLocales
 	}
 	return i18n.NegotiateLocale(
 		r.Header.Get("Accept-Language"),
@@ -95,14 +96,14 @@ func (s *Server) geoLocale(r *http.Request) string {
 // GET /v1/geo/countries
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleListCountries serves GET /v1/geo/countries.
+// HandleListCountries serves GET /v1/geo/countries.
 //
 // Returns a JSON array of all countries sorted by iso2. Each item includes
 // the localized name resolved from i18n_text (falls back to English, then to
 // the iso2 code itself).
-func (s *Server) handleListCountries(w http.ResponseWriter, r *http.Request) {
-	if s.geoQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleListCountries(w http.ResponseWriter, r *http.Request) {
+	if h.queries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable",
 			"database is not available",
 			r,
@@ -110,11 +111,11 @@ func (s *Server) handleListCountries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	locale := s.geoLocale(r)
+	locale := h.GeoLocale(r)
 
-	rows, err := s.geoQueries.ListCountries(ctx, locale)
+	rows, err := h.queries.ListCountries(ctx, locale)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"geo.list_countries_failed",
 			"failed to list countries",
 			r,
@@ -133,24 +134,24 @@ func (s *Server) handleListCountries(w http.ResponseWriter, r *http.Request) {
 			Name: row.Name,
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"countries": result})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"countries": result})
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /v1/geo/cities
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleListCities serves GET /v1/geo/cities.
+// HandleListCities serves GET /v1/geo/cities.
 //
 // Optional query parameter:
 //   - country_id (UUID) — when provided, only cities belonging to that country
 //     are returned.
 //
 // Returns a JSON array of cities. Localized names are resolved from i18n_text
-// with the same fallback chain as handleListCountries.
-func (s *Server) handleListCities(w http.ResponseWriter, r *http.Request) {
-	if s.geoQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+// with the same fallback chain as HandleListCountries.
+func (h *Handler) HandleListCities(w http.ResponseWriter, r *http.Request) {
+	if h.queries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable",
 			"database is not available",
 			r,
@@ -158,14 +159,14 @@ func (s *Server) handleListCities(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	locale := s.geoLocale(r)
+	locale := h.GeoLocale(r)
 
 	// Parse optional country_id filter.
 	var countryID *uuid.UUID
 	if raw := r.URL.Query().Get("country_id"); raw != "" {
 		parsed, err := uuid.Parse(raw)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 				"geo.invalid_country_id",
 				"query parameter 'country_id' must be a valid UUID",
 				r,
@@ -176,9 +177,9 @@ func (s *Server) handleListCities(w http.ResponseWriter, r *http.Request) {
 		countryID = &parsed
 	}
 
-	rows, err := s.geoQueries.ListCities(ctx, locale, countryID)
+	rows, err := h.queries.ListCities(ctx, locale, countryID)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"geo.list_cities_failed",
 			"failed to list cities",
 			r,
@@ -196,7 +197,7 @@ func (s *Server) handleListCities(w http.ResponseWriter, r *http.Request) {
 			Name:        row.Name,
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"cities": result})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"cities": result})
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -212,11 +213,11 @@ type createCountryRequest struct {
 	NameRu string `json:"name_ru"`
 }
 
-// handleCreateCountry serves POST /v1/admin/geo/countries.
+// HandleCreateCountry serves POST /v1/admin/geo/countries.
 // Requires JWT + "geo.admin" permission (enforced by middleware in mountV1Routes).
-func (s *Server) handleCreateCountry(w http.ResponseWriter, r *http.Request) {
-	if s.geoQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleCreateCountry(w http.ResponseWriter, r *http.Request) {
+	if h.queries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable",
 			"database is not available",
 			r,
@@ -227,17 +228,17 @@ func (s *Server) handleCreateCountry(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 16*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("geo.invalid_body", "cannot read request body: "+err.Error(), r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("geo.invalid_body", "cannot read request body: "+err.Error(), r))
 		return
 	}
 	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("geo.empty_body", "request body is required", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("geo.empty_body", "request body is required", r))
 		return
 	}
 
 	var req createCountryRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("geo.invalid_json", "request body is not valid JSON", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("geo.invalid_json", "request body is not valid JSON", r))
 		return
 	}
 
@@ -247,21 +248,21 @@ func (s *Server) handleCreateCountry(w http.ResponseWriter, r *http.Request) {
 	req.Slug = strings.TrimSpace(strings.ToLower(req.Slug))
 
 	if len(req.Iso2) != 2 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"geo.invalid_iso2", "iso2 must be exactly 2 uppercase letters", r,
 			map[string]any{"field": "iso2"},
 		))
 		return
 	}
 	if len(req.Iso3) != 3 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"geo.invalid_iso3", "iso3 must be exactly 3 uppercase letters", r,
 			map[string]any{"field": "iso3"},
 		))
 		return
 	}
 	if req.Slug == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"geo.invalid_slug", "slug is required", r,
 			map[string]any{"field": "slug"},
 		))
@@ -269,29 +270,29 @@ func (s *Server) handleCreateCountry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Begin transaction: InsertCountry + upsert i18n_text in one round-trip.
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "failed to begin transaction", r,
 		))
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	qtx := s.geoQueries.WithTx(tx)
+	qtx := h.queries.WithTx(tx)
 
 	country, err := qtx.InsertCountry(ctx, req.Iso2, req.Iso3, req.Slug)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
-			writeJSON(w, http.StatusConflict, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 				"geo.country_exists",
 				"a country with that iso2 or slug already exists",
 				r,
 			))
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"geo.insert_country_failed", "failed to insert country", r,
 		))
 		return
@@ -299,26 +300,26 @@ func (s *Server) handleCreateCountry(w http.ResponseWriter, r *http.Request) {
 
 	// Upsert i18n_text for localized names (if provided).
 	if err := geoUpsertI18nName(ctx, tx, "geo.countries", req.Iso2, req.NameEn, req.NameRu); err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"geo.upsert_name_failed", "failed to upsert localized name", r,
 		))
 		return
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"geo.commit_failed", "failed to commit transaction", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]any{
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
 		"country": countryResponse{
 			ID:   country.ID.String(),
 			Iso2: country.Iso2,
 			Iso3: country.Iso3,
 			Slug: country.Slug,
-			Name: geoFirstNonEmpty(req.NameEn, req.Iso2),
+			Name: FirstNonEmpty(req.NameEn, req.Iso2),
 		},
 	})
 }
@@ -335,10 +336,10 @@ type updateCountryRequest struct {
 	NameRu string `json:"name_ru"`
 }
 
-// handleUpdateCountry serves PATCH /v1/admin/geo/countries/{iso2}.
-func (s *Server) handleUpdateCountry(w http.ResponseWriter, r *http.Request) {
-	if s.geoQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+// HandleUpdateCountry serves PATCH /v1/admin/geo/countries/{iso2}.
+func (h *Handler) HandleUpdateCountry(w http.ResponseWriter, r *http.Request) {
+	if h.queries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -346,7 +347,7 @@ func (s *Server) handleUpdateCountry(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	iso2 := strings.ToUpper(chi.URLParam(r, "iso2"))
 	if len(iso2) != 2 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"geo.invalid_iso2", "iso2 path parameter must be exactly 2 letters", r,
 			map[string]any{"param": "iso2"},
 		))
@@ -355,22 +356,22 @@ func (s *Server) handleUpdateCountry(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 16*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("geo.invalid_body", "cannot read request body: "+err.Error(), r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("geo.invalid_body", "cannot read request body: "+err.Error(), r))
 		return
 	}
 	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("geo.empty_body", "request body is required", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("geo.empty_body", "request body is required", r))
 		return
 	}
 
 	// Load current country for partial-update semantics.
-	current, err := s.geoQueries.GetCountryByISO2(ctx, iso2)
+	current, err := h.queries.GetCountryByISO2(ctx, iso2)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("geo.country_not_found", "country not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("geo.country_not_found", "country not found", r))
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"geo.get_country_failed", "failed to get country", r,
 		))
 		return
@@ -378,7 +379,7 @@ func (s *Server) handleUpdateCountry(w http.ResponseWriter, r *http.Request) {
 
 	var req updateCountryRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("geo.invalid_json", "request body is not valid JSON", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("geo.invalid_json", "request body is not valid JSON", r))
 		return
 	}
 
@@ -393,64 +394,64 @@ func (s *Server) handleUpdateCountry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(newIso3) != 3 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"geo.invalid_iso3", "iso3 must be exactly 3 uppercase letters", r,
 			map[string]any{"field": "iso3"},
 		))
 		return
 	}
 
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "failed to begin transaction", r,
 		))
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	qtx := s.geoQueries.WithTx(tx)
+	qtx := h.queries.WithTx(tx)
 
 	updated, err := qtx.UpdateCountry(ctx, iso2, newIso3, newSlug)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("geo.country_not_found", "country not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("geo.country_not_found", "country not found", r))
 			return
 		}
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
-			writeJSON(w, http.StatusConflict, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 				"geo.country_slug_exists", "a country with that slug already exists", r,
 			))
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"geo.update_country_failed", "failed to update country", r,
 		))
 		return
 	}
 
 	if err := geoUpsertI18nName(ctx, tx, "geo.countries", iso2, req.NameEn, req.NameRu); err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"geo.upsert_name_failed", "failed to upsert localized name", r,
 		))
 		return
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"geo.commit_failed", "failed to commit transaction", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"country": countryResponse{
 			ID:   updated.ID.String(),
 			Iso2: updated.Iso2,
 			Iso3: updated.Iso3,
 			Slug: updated.Slug,
-			Name: geoFirstNonEmpty(req.NameEn, updated.Iso2),
+			Name: FirstNonEmpty(req.NameEn, updated.Iso2),
 		},
 	})
 }
@@ -467,10 +468,10 @@ type createCityRequest struct {
 	NameRu    string `json:"name_ru"`
 }
 
-// handleCreateCity serves POST /v1/admin/geo/cities.
-func (s *Server) handleCreateCity(w http.ResponseWriter, r *http.Request) {
-	if s.geoQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+// HandleCreateCity serves POST /v1/admin/geo/cities.
+func (h *Handler) HandleCreateCity(w http.ResponseWriter, r *http.Request) {
+	if h.queries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -479,23 +480,23 @@ func (s *Server) handleCreateCity(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 16*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("geo.invalid_body", "cannot read request body: "+err.Error(), r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("geo.invalid_body", "cannot read request body: "+err.Error(), r))
 		return
 	}
 	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("geo.empty_body", "request body is required", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("geo.empty_body", "request body is required", r))
 		return
 	}
 
 	var req createCityRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("geo.invalid_json", "request body is not valid JSON", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("geo.invalid_json", "request body is not valid JSON", r))
 		return
 	}
 
 	countryID, err := uuid.Parse(req.CountryID)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"geo.invalid_country_id", "country_id must be a valid UUID", r,
 			map[string]any{"field": "country_id"},
 		))
@@ -504,23 +505,23 @@ func (s *Server) handleCreateCity(w http.ResponseWriter, r *http.Request) {
 
 	req.Slug = strings.TrimSpace(strings.ToLower(req.Slug))
 	if req.Slug == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"geo.invalid_slug", "slug is required", r,
 			map[string]any{"field": "slug"},
 		))
 		return
 	}
 
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "failed to begin transaction", r,
 		))
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	qtx := s.geoQueries.WithTx(tx)
+	qtx := h.queries.WithTx(tx)
 
 	city, err := qtx.InsertCity(ctx, countryID, req.Slug)
 	if err != nil {
@@ -528,43 +529,43 @@ func (s *Server) handleCreateCity(w http.ResponseWriter, r *http.Request) {
 		if errors.As(err, &pgErr) {
 			switch pgErr.Code {
 			case pgUniqueViolation:
-				writeJSON(w, http.StatusConflict, errorEnvelope(
+				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 					"geo.city_exists", "a city with that slug already exists", r,
 				))
 				return
 			case "23503": // foreign key violation
-				writeJSON(w, http.StatusBadRequest, errorEnvelope(
+				httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 					"geo.country_not_found", "the specified country does not exist", r,
 				))
 				return
 			}
 		}
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"geo.insert_city_failed", "failed to insert city", r,
 		))
 		return
 	}
 
 	if err := geoUpsertI18nName(ctx, tx, "geo.cities", req.Slug, req.NameEn, req.NameRu); err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"geo.upsert_name_failed", "failed to upsert localized name", r,
 		))
 		return
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"geo.commit_failed", "failed to commit transaction", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]any{
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
 		"city": cityResponse{
 			ID:        city.ID.String(),
 			CountryID: city.CountryID.String(),
 			Slug:      city.Slug,
-			Name:      geoFirstNonEmpty(req.NameEn, req.Slug),
+			Name:      FirstNonEmpty(req.NameEn, req.Slug),
 		},
 	})
 }
@@ -580,39 +581,39 @@ type updateCityRequest struct {
 	NameRu string `json:"name_ru"`
 }
 
-// handleUpdateCity serves PATCH /v1/admin/geo/cities/{id}.
-func (s *Server) handleUpdateCity(w http.ResponseWriter, r *http.Request) {
-	if s.geoQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+// HandleUpdateCity serves PATCH /v1/admin/geo/cities/{id}.
+func (h *Handler) HandleUpdateCity(w http.ResponseWriter, r *http.Request) {
+	if h.queries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
 	}
 	ctx := r.Context()
 
-	cityID, ok := uuidPathParam(w, r, "id")
+	cityID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
 		return
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 16*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("geo.invalid_body", "cannot read request body: "+err.Error(), r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("geo.invalid_body", "cannot read request body: "+err.Error(), r))
 		return
 	}
 	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("geo.empty_body", "request body is required", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("geo.empty_body", "request body is required", r))
 		return
 	}
 
 	// Load current city to enable partial update and get slug for i18n.
-	current, err := s.geoQueries.GetCityByID(ctx, cityID)
+	current, err := h.queries.GetCityByID(ctx, cityID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("geo.city_not_found", "city not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("geo.city_not_found", "city not found", r))
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"geo.get_city_failed", "failed to get city", r,
 		))
 		return
@@ -620,7 +621,7 @@ func (s *Server) handleUpdateCity(w http.ResponseWriter, r *http.Request) {
 
 	var req updateCityRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("geo.invalid_json", "request body is not valid JSON", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("geo.invalid_json", "request body is not valid JSON", r))
 		return
 	}
 
@@ -629,56 +630,56 @@ func (s *Server) handleUpdateCity(w http.ResponseWriter, r *http.Request) {
 		newSlug = current.Slug
 	}
 
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "failed to begin transaction", r,
 		))
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	qtx := s.geoQueries.WithTx(tx)
+	qtx := h.queries.WithTx(tx)
 
 	updated, err := qtx.UpdateCity(ctx, cityID, newSlug)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("geo.city_not_found", "city not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("geo.city_not_found", "city not found", r))
 			return
 		}
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
-			writeJSON(w, http.StatusConflict, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 				"geo.city_slug_exists", "a city with that slug already exists", r,
 			))
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"geo.update_city_failed", "failed to update city", r,
 		))
 		return
 	}
 
 	if err := geoUpsertI18nName(ctx, tx, "geo.cities", newSlug, req.NameEn, req.NameRu); err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"geo.upsert_name_failed", "failed to upsert localized name", r,
 		))
 		return
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"geo.commit_failed", "failed to commit transaction", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"city": cityResponse{
 			ID:        updated.ID.String(),
 			CountryID: updated.CountryID.String(),
 			Slug:      updated.Slug,
-			Name:      geoFirstNonEmpty(req.NameEn, updated.Slug),
+			Name:      FirstNonEmpty(req.NameEn, updated.Slug),
 		},
 	})
 }
@@ -717,8 +718,8 @@ func geoUpsertI18nName(ctx context.Context, tx pgx.Tx, namespace, key, nameEn, n
 	return nil
 }
 
-// geoFirstNonEmpty returns the first non-empty string from the provided values.
-func geoFirstNonEmpty(vals ...string) string {
+// FirstNonEmpty returns the first non-empty string from the provided values.
+func FirstNonEmpty(vals ...string) string {
 	for _, v := range vals {
 		if v != "" {
 			return v

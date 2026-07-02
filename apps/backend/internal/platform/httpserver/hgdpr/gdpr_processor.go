@@ -32,7 +32,7 @@
 //	                         — may be purged in a later cleanup pass
 //	orders / payments      RETAINED (accounting law — not yet implemented)
 //	audit_events           RETAINED (tamper-evident audit trail)
-package httpserver
+package hgdpr
 
 import (
 	"context"
@@ -48,15 +48,15 @@ import (
 
 // GDPRProcessor handles background processing of pending data_subject_requests.
 type GDPRProcessor struct {
-	pool    PoolDB
+	pool    TxStarter
 	queries *gen.Queries
 	logger  *slog.Logger
 }
 
 // NewGDPRProcessor constructs a GDPRProcessor.
-// pool must be a *pgxpool.Pool (or any PoolDB implementation) for transaction support.
+// pool must be a *pgxpool.Pool (or any TxStarter implementation) for transaction support.
 // queries must be constructed from the same pool for read-only queries.
-func NewGDPRProcessor(pool PoolDB, queries *gen.Queries, logger *slog.Logger) *GDPRProcessor {
+func NewGDPRProcessor(pool TxStarter, queries *gen.Queries, logger *slog.Logger) *GDPRProcessor {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -196,8 +196,8 @@ func (p *GDPRProcessor) processExport(ctx context.Context, req gen.DataSubjectRe
 			"email":             userData.Email,
 			"preferred_locale":  userData.PreferredLocale,
 			"created_at":        userData.CreatedAt.UTC().Format(time.RFC3339),
-			"email_verified_at": formatTimePtr(userData.EmailVerifiedAt),
-			"consent_given_at":  formatTimePtr(userData.ConsentGivenAt),
+			"email_verified_at": FormatTimePtr(userData.EmailVerifiedAt),
+			"consent_given_at":  FormatTimePtr(userData.ConsentGivenAt),
 			"marketing_consent": userData.MarketingConsent,
 		},
 		"roles":                 memberships,
@@ -247,8 +247,8 @@ func (p *GDPRProcessor) processDelete(ctx context.Context, req gen.DataSubjectRe
 	return nil
 }
 
-// formatTimePtr formats a *time.Time as RFC3339 or returns nil for JSON serialization.
-func formatTimePtr(t *time.Time) any {
+// FormatTimePtr formats a *time.Time as RFC3339 or returns nil for JSON serialization.
+func FormatTimePtr(t *time.Time) any {
 	if t == nil {
 		return nil
 	}
