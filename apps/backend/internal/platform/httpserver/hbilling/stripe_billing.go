@@ -7,7 +7,7 @@
 //
 //	POST /v1/billing/stripe/push-invoice/{id}  — push local invoice to Stripe (billing.admin)
 //	POST /v1/billing/stripe/webhook            — Stripe Billing webhook receiver (public)
-package httpserver
+package hbilling
 
 import (
 	"context"
@@ -23,16 +23,20 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/stripebilling"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
-// stripeBillingHelper — interface for the Stripe Billing adapter
+// StripeBillingHelper — interface for the Stripe Billing adapter
 // ─────────────────────────────────────────────────────────────────────────────
 
-// stripeBillingHelper defines the Stripe Billing operations used by the HTTP
+// StripeBillingHelper defines the Stripe Billing operations used by the HTTP
 // handlers. The interface decouples the handlers from the concrete adapter so
-// tests can inject a mock without making real Stripe API calls.
-type stripeBillingHelper interface {
+// tests can inject a mock without making real Stripe API calls. Exported so
+// billing_shims.go can alias the original unexported name
+// (stripeBillingHelper) that server_struct.go, wire.go and
+// stripe_billing_162_test.go reference at compile time.
+type StripeBillingHelper interface {
 	// CreateOrUpdateCustomer creates a Stripe Customer on the platform account.
 	// email and name may be empty strings. idempotencyKey should be
 	// "cust-<orgID>" to prevent duplicate creation on retries.
@@ -51,14 +55,14 @@ type stripeBillingHelper interface {
 	HandleBillingWebhook(body []byte, sigHeader, secret string) (*stripebilling.BillingWebhookEvent, error)
 }
 
-// compile-time interface guard: *stripebilling.Adapter must implement stripeBillingHelper.
-var _ stripeBillingHelper = (*stripebilling.Adapter)(nil)
+// compile-time interface guard: *stripebilling.Adapter must implement StripeBillingHelper.
+var _ StripeBillingHelper = (*stripebilling.Adapter)(nil)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /v1/billing/stripe/push-invoice/{id}
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handlePushInvoiceToStripe pushes a locally issued platform invoice to Stripe
+// HandlePushInvoiceToStripe pushes a locally issued platform invoice to Stripe
 // Billing so Stripe can collect the payment from the organizer.
 //
 // Flow:
@@ -70,51 +74,51 @@ var _ stripeBillingHelper = (*stripebilling.Adapter)(nil)
 //  6. Store stripe_invoice_id on the local invoice row.
 //
 // Permission required: billing.admin
-func (s *Server) handlePushInvoiceToStripe(w http.ResponseWriter, r *http.Request) {
-	if s.stripeBilling == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("stripe_billing.unavailable", "Stripe Billing adapter not configured", r))
+func (h *Handler) HandlePushInvoiceToStripe(w http.ResponseWriter, r *http.Request) {
+	if h.stripeBilling == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("stripe_billing.unavailable", "Stripe Billing adapter not configured", r))
 		return
 	}
-	if s.billingQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("billing.unavailable", "billing ledger not configured", r))
+	if h.billingQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("billing.unavailable", "billing ledger not configured", r))
 		return
 	}
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("billing.bad_request", "id must be a valid UUID", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("billing.bad_request", "id must be a valid UUID", r))
 		return
 	}
 
 	ctx := r.Context()
 
 	// ── Step 1: Fetch invoice; must be issued ─────────────────────────────────
-	invoice, err := s.billingQueries.GetInvoiceByID(ctx, id)
+	invoice, err := h.billingQueries.GetInvoiceByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("billing.not_found", "invoice not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("billing.not_found", "invoice not found", r))
 			return
 		}
-		s.logger.Error("stripe_billing: get invoice failed", slog.Any("error", err))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("billing.internal", "failed to fetch invoice", r))
+		h.logger.Error("stripe_billing: get invoice failed", slog.Any("error", err))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("billing.internal", "failed to fetch invoice", r))
 		return
 	}
 
 	if invoice.State != "issued" {
-		writeJSON(w, http.StatusConflict, errorEnvelope("stripe_billing.wrong_state",
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope("stripe_billing.wrong_state",
 			fmt.Sprintf("invoice must be in 'issued' state to push to Stripe; current state: %s", invoice.State), r))
 		return
 	}
 
 	// ── Step 2: Fetch invoice lines ───────────────────────────────────────────
-	lines, err := s.billingQueries.ListInvoiceLines(ctx, id)
+	lines, err := h.billingQueries.ListInvoiceLines(ctx, id)
 	if err != nil {
-		s.logger.Error("stripe_billing: list invoice lines failed", slog.Any("error", err))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("billing.internal", "failed to fetch invoice lines", r))
+		h.logger.Error("stripe_billing: list invoice lines failed", slog.Any("error", err))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("billing.internal", "failed to fetch invoice lines", r))
 		return
 	}
 	if len(lines) == 0 {
-		writeJSON(w, http.StatusUnprocessableEntity, errorEnvelope("stripe_billing.no_lines", "invoice has no lines; cannot push empty invoice to Stripe", r))
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope("stripe_billing.no_lines", "invoice has no lines; cannot push empty invoice to Stripe", r))
 		return
 	}
 
@@ -122,29 +126,29 @@ func (s *Server) handlePushInvoiceToStripe(w http.ResponseWriter, r *http.Reques
 	orgID := invoice.OrgID
 	var stripeCustomerID string
 
-	existingCustomer, lookupErr := s.billingQueries.GetStripeCustomerByOrgID(ctx, orgID)
+	existingCustomer, lookupErr := h.billingQueries.GetStripeCustomerByOrgID(ctx, orgID)
 	if lookupErr != nil && !errors.Is(lookupErr, pgx.ErrNoRows) {
-		s.logger.Error("stripe_billing: get stripe customer failed", slog.Any("error", lookupErr))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("billing.internal", "failed to look up Stripe customer", r))
+		h.logger.Error("stripe_billing: get stripe customer failed", slog.Any("error", lookupErr))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("billing.internal", "failed to look up Stripe customer", r))
 		return
 	}
 
 	if errors.Is(lookupErr, pgx.ErrNoRows) {
 		// Create a new Stripe Customer for this org.
 		idempotencyKey := "cust-" + orgID.String()
-		newCustomerID, createErr := s.stripeBilling.CreateOrUpdateCustomer(ctx, "", "", idempotencyKey)
+		newCustomerID, createErr := h.stripeBilling.CreateOrUpdateCustomer(ctx, "", "", idempotencyKey)
 		if createErr != nil {
-			s.logger.Error("stripe_billing: create Stripe customer failed",
+			h.logger.Error("stripe_billing: create Stripe customer failed",
 				slog.String("org_id", orgID.String()),
 				slog.Any("error", createErr),
 			)
-			writeJSON(w, http.StatusBadGateway, errorEnvelope("stripe_billing.customer_error", "failed to create Stripe customer", r))
+			httputil.WriteJSON(w, http.StatusBadGateway, httputil.ErrorEnvelope("stripe_billing.customer_error", "failed to create Stripe customer", r))
 			return
 		}
 		stripeCustomerID = newCustomerID
 		// Persist the mapping.
-		if _, persistErr := s.billingQueries.UpsertStripeCustomer(ctx, orgID, stripeCustomerID, nil, nil); persistErr != nil {
-			s.logger.Error("stripe_billing: upsert stripe customer mapping failed",
+		if _, persistErr := h.billingQueries.UpsertStripeCustomer(ctx, orgID, stripeCustomerID, nil, nil); persistErr != nil {
+			h.logger.Error("stripe_billing: upsert stripe customer mapping failed",
 				slog.String("org_id", orgID.String()),
 				slog.Any("error", persistErr),
 			)
@@ -157,7 +161,7 @@ func (s *Server) handlePushInvoiceToStripe(w http.ResponseWriter, r *http.Reques
 	// ── Step 4: Create Stripe InvoiceItems for each line ─────────────────────
 	for _, line := range lines {
 		itemIdempotencyKey := "item-" + line.ID.String()
-		if _, itemErr := s.stripeBilling.CreateInvoiceItem(
+		if _, itemErr := h.stripeBilling.CreateInvoiceItem(
 			ctx,
 			stripeCustomerID,
 			line.Description,
@@ -165,12 +169,12 @@ func (s *Server) handlePushInvoiceToStripe(w http.ResponseWriter, r *http.Reques
 			line.Currency,
 			itemIdempotencyKey,
 		); itemErr != nil {
-			s.logger.Error("stripe_billing: create invoice item failed",
+			h.logger.Error("stripe_billing: create invoice item failed",
 				slog.String("invoice_id", id.String()),
 				slog.String("line_id", line.ID.String()),
 				slog.Any("error", itemErr),
 			)
-			writeJSON(w, http.StatusBadGateway, errorEnvelope("stripe_billing.item_error", "failed to create Stripe invoice item", r))
+			httputil.WriteJSON(w, http.StatusBadGateway, httputil.ErrorEnvelope("stripe_billing.item_error", "failed to create Stripe invoice item", r))
 			return
 		}
 	}
@@ -184,7 +188,7 @@ func (s *Server) handlePushInvoiceToStripe(w http.ResponseWriter, r *http.Reques
 	}
 	invIdempotencyKey := "inv-" + id.String()
 
-	stripeInvoiceID, invErr := s.stripeBilling.CreateAndFinalizeInvoice(
+	stripeInvoiceID, invErr := h.stripeBilling.CreateAndFinalizeInvoice(
 		ctx,
 		stripeCustomerID,
 		description,
@@ -192,25 +196,25 @@ func (s *Server) handlePushInvoiceToStripe(w http.ResponseWriter, r *http.Reques
 		invIdempotencyKey,
 	)
 	if invErr != nil {
-		s.logger.Error("stripe_billing: create and finalize Stripe invoice failed",
+		h.logger.Error("stripe_billing: create and finalize Stripe invoice failed",
 			slog.String("invoice_id", id.String()),
 			slog.Any("error", invErr),
 		)
-		writeJSON(w, http.StatusBadGateway, errorEnvelope("stripe_billing.invoice_error", "failed to create Stripe invoice", r))
+		httputil.WriteJSON(w, http.StatusBadGateway, httputil.ErrorEnvelope("stripe_billing.invoice_error", "failed to create Stripe invoice", r))
 		return
 	}
 
 	// ── Step 6: Persist stripe_invoice_id ────────────────────────────────────
-	updated, persistErr := s.billingQueries.UpdateInvoiceStripeID(ctx, id, stripeInvoiceID)
+	updated, persistErr := h.billingQueries.UpdateInvoiceStripeID(ctx, id, stripeInvoiceID)
 	if persistErr != nil {
-		s.logger.Error("stripe_billing: store stripe_invoice_id failed",
+		h.logger.Error("stripe_billing: store stripe_invoice_id failed",
 			slog.String("invoice_id", id.String()),
 			slog.String("stripe_invoice_id", stripeInvoiceID),
 			slog.Any("error", persistErr),
 		)
 		// Return success anyway — the Stripe invoice was created; idempotency
 		// keys protect from duplicate charges on retry.
-		writeJSON(w, http.StatusOK, map[string]any{
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{
 			"invoice_id":        id.String(),
 			"stripe_invoice_id": stripeInvoiceID,
 			"warning":           "stripe_invoice_id could not be persisted locally; retry to reconcile",
@@ -218,14 +222,14 @@ func (s *Server) handlePushInvoiceToStripe(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	s.logger.Info("stripe_billing: invoice pushed to Stripe",
+	h.logger.Info("stripe_billing: invoice pushed to Stripe",
 		slog.String("invoice_id", id.String()),
 		slog.String("stripe_invoice_id", stripeInvoiceID),
 		slog.String("org_id", orgID.String()),
 		slog.String("billing_period", invoice.BillingPeriod),
 	)
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"invoice_id":        updated.ID.String(),
 		"stripe_invoice_id": stripeInvoiceID,
 		"state":             updated.State,
@@ -237,7 +241,7 @@ func (s *Server) handlePushInvoiceToStripe(w http.ResponseWriter, r *http.Reques
 // POST /v1/billing/stripe/webhook
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleStripeBillingWebhook receives Stripe Billing webhook events and syncs
+// HandleStripeBillingWebhook receives Stripe Billing webhook events and syncs
 // payment status to the local invoice ledger.
 //
 // Handled events:
@@ -247,37 +251,37 @@ func (s *Server) handlePushInvoiceToStripe(w http.ResponseWriter, r *http.Reques
 // This endpoint is public (no JWT auth) because Stripe cannot send Bearer tokens.
 // Security is provided by the Stripe-Signature HMAC verification inside
 // HandleBillingWebhook.
-func (s *Server) handleStripeBillingWebhook(w http.ResponseWriter, r *http.Request) {
-	if s.stripeBilling == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("stripe_billing.unavailable", "Stripe Billing adapter not configured", r))
+func (h *Handler) HandleStripeBillingWebhook(w http.ResponseWriter, r *http.Request) {
+	if h.stripeBilling == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("stripe_billing.unavailable", "Stripe Billing adapter not configured", r))
 		return
 	}
-	if s.billingQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("billing.unavailable", "billing ledger not configured", r))
+	if h.billingQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("billing.unavailable", "billing ledger not configured", r))
 		return
 	}
 
 	// Read the raw body for signature verification (must not be parsed first).
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("stripe_billing.read_error", "cannot read request body", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("stripe_billing.read_error", "cannot read request body", r))
 		return
 	}
 
 	sigHeader := r.Header.Get("Stripe-Signature")
 	if sigHeader == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("stripe_billing.missing_signature", "Stripe-Signature header is required", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("stripe_billing.missing_signature", "Stripe-Signature header is required", r))
 		return
 	}
 
-	event, err := s.stripeBilling.HandleBillingWebhook(body, sigHeader, "")
+	event, err := h.stripeBilling.HandleBillingWebhook(body, sigHeader, "")
 	if err != nil {
 		if errors.Is(err, payments.ErrInvalidWebhookSignature) {
-			writeJSON(w, http.StatusUnauthorized, errorEnvelope("stripe_billing.invalid_signature", "webhook signature verification failed", r))
+			httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope("stripe_billing.invalid_signature", "webhook signature verification failed", r))
 			return
 		}
-		s.logger.Error("stripe_billing: webhook parse failed", slog.Any("error", err))
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("stripe_billing.parse_error", "failed to parse webhook event", r))
+		h.logger.Error("stripe_billing: webhook parse failed", slog.Any("error", err))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("stripe_billing.parse_error", "failed to parse webhook event", r))
 		return
 	}
 
@@ -285,8 +289,8 @@ func (s *Server) handleStripeBillingWebhook(w http.ResponseWriter, r *http.Reque
 
 	switch event.EventType {
 	case stripebilling.EventInvoicePaid:
-		if syncErr := s.syncStripeBillingInvoicePaid(ctx, event); syncErr != nil {
-			s.logger.Error("stripe_billing: handle invoice.paid failed",
+		if syncErr := h.syncStripeBillingInvoicePaid(ctx, event); syncErr != nil {
+			h.logger.Error("stripe_billing: handle invoice.paid failed",
 				slog.String("stripe_event_id", event.StripeEventID),
 				slog.String("stripe_invoice_id", event.StripeInvoiceID),
 				slog.Any("error", syncErr),
@@ -295,7 +299,7 @@ func (s *Server) handleStripeBillingWebhook(w http.ResponseWriter, r *http.Reque
 		}
 
 	case stripebilling.EventInvoicePaymentFailed:
-		s.logger.Warn("stripe_billing: invoice payment failed",
+		h.logger.Warn("stripe_billing: invoice payment failed",
 			slog.String("stripe_event_id", event.StripeEventID),
 			slog.String("stripe_invoice_id", event.StripeInvoiceID),
 			slog.String("status", event.Status),
@@ -303,14 +307,14 @@ func (s *Server) handleStripeBillingWebhook(w http.ResponseWriter, r *http.Reque
 
 	default:
 		// Unknown event type — acknowledge and ignore.
-		s.logger.Info("stripe_billing: ignoring unknown webhook event",
+		h.logger.Info("stripe_billing: ignoring unknown webhook event",
 			slog.String("event_type", event.EventType),
 			slog.String("stripe_event_id", event.StripeEventID),
 		)
 	}
 
 	// Always return 200 to Stripe to prevent retries.
-	writeJSON(w, http.StatusOK, map[string]any{"received": true})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"received": true})
 }
 
 // syncStripeBillingInvoicePaid transitions the local invoice to "paid" state
@@ -319,7 +323,7 @@ func (s *Server) handleStripeBillingWebhook(w http.ResponseWriter, r *http.Reque
 //
 // Panics from the DB layer (e.g. nil pool in tests) are caught and returned
 // as errors so the webhook handler can log them and still return HTTP 200.
-func (s *Server) syncStripeBillingInvoicePaid(ctx context.Context, event *stripebilling.BillingWebhookEvent) (retErr error) {
+func (h *Handler) syncStripeBillingInvoicePaid(ctx context.Context, event *stripebilling.BillingWebhookEvent) (retErr error) {
 	defer func() {
 		if r := recover(); r != nil {
 			retErr = fmt.Errorf("stripe_billing: syncStripeBillingInvoicePaid: recovered panic: %v", r)
@@ -327,10 +331,10 @@ func (s *Server) syncStripeBillingInvoicePaid(ctx context.Context, event *stripe
 	}()
 
 	// Look up the local invoice by stripe_invoice_id.
-	localInvoice, err := s.billingQueries.GetInvoiceByStripeID(ctx, event.StripeInvoiceID)
+	localInvoice, err := h.billingQueries.GetInvoiceByStripeID(ctx, event.StripeInvoiceID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			s.logger.Warn("stripe_billing: invoice.paid event for unknown stripe_invoice_id",
+			h.logger.Warn("stripe_billing: invoice.paid event for unknown stripe_invoice_id",
 				slog.String("stripe_invoice_id", event.StripeInvoiceID),
 				slog.String("stripe_event_id", event.StripeEventID),
 			)
@@ -341,7 +345,7 @@ func (s *Server) syncStripeBillingInvoicePaid(ctx context.Context, event *stripe
 
 	// Skip if already in a terminal state.
 	if isTerminalInvoiceState(localInvoice.State) {
-		s.logger.Info("stripe_billing: invoice already in terminal state; skip paid sync",
+		h.logger.Info("stripe_billing: invoice already in terminal state; skip paid sync",
 			slog.String("invoice_id", localInvoice.ID.String()),
 			slog.String("state", localInvoice.State),
 		)
@@ -350,18 +354,18 @@ func (s *Server) syncStripeBillingInvoicePaid(ctx context.Context, event *stripe
 
 	// Validate transition to "paid" is legal from current state.
 	if !validInvoiceTransitions[localInvoice.State]["paid"] {
-		s.logger.Warn("stripe_billing: cannot transition invoice to paid from current state",
+		h.logger.Warn("stripe_billing: cannot transition invoice to paid from current state",
 			slog.String("invoice_id", localInvoice.ID.String()),
 			slog.String("current_state", localInvoice.State),
 		)
 		return nil // Log and skip; do not return error to Stripe.
 	}
 
-	if _, err := s.billingQueries.UpdateInvoiceState(ctx, localInvoice.ID, "paid"); err != nil {
+	if _, err := h.billingQueries.UpdateInvoiceState(ctx, localInvoice.ID, "paid"); err != nil {
 		return fmt.Errorf("update invoice state to paid: %w", err)
 	}
 
-	s.logger.Info("stripe_billing: invoice marked paid via Stripe webhook",
+	h.logger.Info("stripe_billing: invoice marked paid via Stripe webhook",
 		slog.String("invoice_id", localInvoice.ID.String()),
 		slog.String("stripe_invoice_id", event.StripeInvoiceID),
 		slog.String("stripe_event_id", event.StripeEventID),

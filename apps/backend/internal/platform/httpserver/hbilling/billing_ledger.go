@@ -26,7 +26,7 @@
 //	POST /v1/billing/invoices/{id}/issue              — draft → issued        (billing.admin)
 //	POST /v1/billing/invoices/{id}/pay                — issued → paid         (billing.admin)
 //	POST /v1/billing/invoices/{id}/void               — draft/issued → void   (billing.admin)
-package httpserver
+package hbilling
 
 import (
 	"context"
@@ -45,6 +45,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	billingdomain "github.com/abhteam/arena_new/apps/backend/internal/domain/billing"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -61,6 +62,8 @@ import (
 var validInvoiceTransitions = billingdomain.ValidInvoiceTransitions
 
 // allInvoiceStates forwards to billingdomain.AllInvoiceStates.
+//
+//nolint:unused // source-grep witness: billing_ledger_161_test.go asserts the symbol name; the live compile-time uses sit in billing_shims.go forwarders.
 var allInvoiceStates = billingdomain.AllInvoiceStates
 
 const (
@@ -96,25 +99,25 @@ type createTariffRequest struct {
 	Notes             *string `json:"notes"`
 }
 
-func (s *Server) handleCreateTariff(w http.ResponseWriter, r *http.Request) {
-	if s.billingQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("billing.unavailable", "billing ledger not configured", r))
+func (h *Handler) HandleCreateTariff(w http.ResponseWriter, r *http.Request) {
+	if h.billingQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("billing.unavailable", "billing ledger not configured", r))
 		return
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 4096))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("billing.invalid_body", "cannot read request body", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("billing.invalid_body", "cannot read request body", r))
 		return
 	}
 	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("billing.empty_body", "request body is required", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("billing.empty_body", "request body is required", r))
 		return
 	}
 
 	var req createTariffRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("billing.invalid_json", "request body is not valid JSON", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("billing.invalid_json", "request body is not valid JSON", r))
 		return
 	}
 
@@ -125,16 +128,16 @@ func (s *Server) handleCreateTariff(w http.ResponseWriter, r *http.Request) {
 		req.Currency = "EUR"
 	}
 	if req.EffectiveFrom == "" {
-		writeJSON(w, http.StatusUnprocessableEntity, errorEnvelope("billing.validation", "effective_from is required (YYYY-MM-DD)", r))
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope("billing.validation", "effective_from is required (YYYY-MM-DD)", r))
 		return
 	}
 	effectiveFrom, err := time.Parse("2006-01-02", req.EffectiveFrom)
 	if err != nil {
-		writeJSON(w, http.StatusUnprocessableEntity, errorEnvelope("billing.validation", "effective_from must be YYYY-MM-DD", r))
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope("billing.validation", "effective_from must be YYYY-MM-DD", r))
 		return
 	}
 	if req.PerTicketFeeMinor < 0 || req.PerEventFeeMinor < 0 || req.MonthlyFeeMinor < 0 {
-		writeJSON(w, http.StatusUnprocessableEntity, errorEnvelope("billing.validation", "fee amounts must be non-negative", r))
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope("billing.validation", "fee amounts must be non-negative", r))
 		return
 	}
 
@@ -142,7 +145,7 @@ func (s *Server) handleCreateTariff(w http.ResponseWriter, r *http.Request) {
 	if req.OrgID != nil && *req.OrgID != "" {
 		id, err := uuid.Parse(*req.OrgID)
 		if err != nil {
-			writeJSON(w, http.StatusUnprocessableEntity, errorEnvelope("billing.validation", "org_id must be a valid UUID", r))
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope("billing.validation", "org_id must be a valid UUID", r))
 			return
 		}
 		orgID = &id
@@ -157,7 +160,7 @@ func (s *Server) handleCreateTariff(w http.ResponseWriter, r *http.Request) {
 		createdBy = &actorID
 	}
 
-	row, err := s.billingQueries.InsertTariff(
+	row, err := h.billingQueries.InsertTariff(
 		r.Context(),
 		orgID,
 		req.PlanName,
@@ -170,21 +173,21 @@ func (s *Server) handleCreateTariff(w http.ResponseWriter, r *http.Request) {
 		createdBy,
 	)
 	if err != nil {
-		s.logger.Error("billing: insert tariff failed", slog.Any("error", err))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("billing.internal", "failed to create tariff", r))
+		h.logger.Error("billing: insert tariff failed", slog.Any("error", err))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("billing.internal", "failed to create tariff", r))
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, tariffToResponse(row))
+	httputil.WriteJSON(w, http.StatusCreated, TariffToResponse(row))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /v1/billing/tariffs/active — get the currently active tariff
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (s *Server) handleGetActiveTariff(w http.ResponseWriter, r *http.Request) {
-	if s.billingQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("billing.unavailable", "billing ledger not configured", r))
+func (h *Handler) HandleGetActiveTariff(w http.ResponseWriter, r *http.Request) {
+	if h.billingQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("billing.unavailable", "billing ledger not configured", r))
 		return
 	}
 
@@ -193,40 +196,40 @@ func (s *Server) handleGetActiveTariff(w http.ResponseWriter, r *http.Request) {
 	if orgIDStr := r.URL.Query().Get("org_id"); orgIDStr != "" {
 		id, err := uuid.Parse(orgIDStr)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope("billing.bad_request", "org_id must be a valid UUID", r))
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("billing.bad_request", "org_id must be a valid UUID", r))
 			return
 		}
 		orgID = id
 	}
 
-	row, err := s.billingQueries.GetActiveTariff(r.Context(), orgID, time.Now().UTC())
+	row, err := h.billingQueries.GetActiveTariff(r.Context(), orgID, time.Now().UTC())
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("billing.not_found", "no active tariff configured", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("billing.not_found", "no active tariff configured", r))
 			return
 		}
-		s.logger.Error("billing: get active tariff failed", slog.Any("error", err))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("billing.internal", "failed to fetch active tariff", r))
+		h.logger.Error("billing: get active tariff failed", slog.Any("error", err))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("billing.internal", "failed to fetch active tariff", r))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, tariffToResponse(row))
+	httputil.WriteJSON(w, http.StatusOK, TariffToResponse(row))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /v1/organizations/{org_id}/billing/usage — current-period usage for org
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (s *Server) handleGetUsage(w http.ResponseWriter, r *http.Request) {
-	if s.billingQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("billing.unavailable", "billing ledger not configured", r))
+func (h *Handler) HandleGetUsage(w http.ResponseWriter, r *http.Request) {
+	if h.billingQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("billing.unavailable", "billing ledger not configured", r))
 		return
 	}
 
 	orgIDStr := chi.URLParam(r, "org_id")
 	orgID, err := uuid.Parse(orgIDStr)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("billing.bad_request", "org_id must be a valid UUID", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("billing.bad_request", "org_id must be a valid UUID", r))
 		return
 	}
 
@@ -234,17 +237,17 @@ func (s *Server) handleGetUsage(w http.ResponseWriter, r *http.Request) {
 	period := billingPeriodForTime(time.Now().UTC())
 	if p := r.URL.Query().Get("period"); p != "" {
 		if _, err := time.Parse("2006-01", p); err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope("billing.bad_request", "period must be YYYY-MM format", r))
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("billing.bad_request", "period must be YYYY-MM format", r))
 			return
 		}
 		period = p
 	}
 
-	row, err := s.billingQueries.GetUsageRecord(r.Context(), orgID, period)
+	row, err := h.billingQueries.GetUsageRecord(r.Context(), orgID, period)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			// No usage yet — return zeroed record rather than 404.
-			writeJSON(w, http.StatusOK, map[string]any{
+			httputil.WriteJSON(w, http.StatusOK, map[string]any{
 				"org_id":               orgID.String(),
 				"billing_period":       period,
 				"tickets_sold":         0,
@@ -253,12 +256,12 @@ func (s *Server) handleGetUsage(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		s.logger.Error("billing: get usage record failed", slog.Any("error", err))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("billing.internal", "failed to fetch usage record", r))
+		h.logger.Error("billing: get usage record failed", slog.Any("error", err))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("billing.internal", "failed to fetch usage record", r))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, usageToResponse(row))
+	httputil.WriteJSON(w, http.StatusOK, UsageToResponse(row))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -269,22 +272,22 @@ type generateInvoicesRequest struct {
 	BillingPeriod string `json:"billing_period"` // 'YYYY-MM'
 }
 
-func (s *Server) handleGenerateInvoices(w http.ResponseWriter, r *http.Request) {
-	if s.billingQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("billing.unavailable", "billing ledger not configured", r))
+func (h *Handler) HandleGenerateInvoices(w http.ResponseWriter, r *http.Request) {
+	if h.billingQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("billing.unavailable", "billing ledger not configured", r))
 		return
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("billing.invalid_body", "cannot read request body", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("billing.invalid_body", "cannot read request body", r))
 		return
 	}
 
 	var req generateInvoicesRequest
 	if len(body) > 0 {
 		if err := json.Unmarshal(body, &req); err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope("billing.invalid_json", "request body is not valid JSON", r))
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("billing.invalid_json", "request body is not valid JSON", r))
 			return
 		}
 	}
@@ -295,21 +298,21 @@ func (s *Server) handleGenerateInvoices(w http.ResponseWriter, r *http.Request) 
 		req.BillingPeriod = billingPeriodForTime(prev)
 	}
 	if _, err := time.Parse("2006-01", req.BillingPeriod); err != nil {
-		writeJSON(w, http.StatusUnprocessableEntity, errorEnvelope("billing.validation", "billing_period must be YYYY-MM", r))
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope("billing.validation", "billing_period must be YYYY-MM", r))
 		return
 	}
 
-	results, err := s.generateInvoicesForPeriod(r.Context(), req.BillingPeriod)
+	results, err := h.generateInvoicesForPeriod(r.Context(), req.BillingPeriod)
 	if err != nil {
-		s.logger.Error("billing: month-end generate failed",
+		h.logger.Error("billing: month-end generate failed",
 			slog.String("period", req.BillingPeriod),
 			slog.Any("error", err),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("billing.internal", "invoice generation failed", r))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("billing.internal", "invoice generation failed", r))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"billing_period":   req.BillingPeriod,
 		"invoices_created": len(results),
 		"invoices":         results,
@@ -322,7 +325,7 @@ func (s *Server) handleGenerateInvoices(w http.ResponseWriter, r *http.Request) 
 //  2. Creates a draft invoice (idempotent: skips if already exists).
 //  3. Inserts invoice lines for each tariff component with non-zero usage.
 //  4. Finalizes the invoice total.
-func (s *Server) generateInvoicesForPeriod(ctx context.Context, period string) ([]map[string]any, error) {
+func (h *Handler) generateInvoicesForPeriod(ctx context.Context, period string) ([]map[string]any, error) {
 	// Parse period to get the period start date for tariff lookup.
 	periodStart, err := time.Parse("2006-01", period)
 	if err != nil {
@@ -330,7 +333,7 @@ func (s *Server) generateInvoicesForPeriod(ctx context.Context, period string) (
 	}
 
 	// Find all orgs with usage in this period.
-	usageRecords, err := s.billingQueries.ListUsageRecordsByPeriod(ctx, period)
+	usageRecords, err := h.billingQueries.ListUsageRecordsByPeriod(ctx, period)
 	if err != nil {
 		return nil, fmt.Errorf("list usage records: %w", err)
 	}
@@ -339,7 +342,7 @@ func (s *Server) generateInvoicesForPeriod(ctx context.Context, period string) (
 
 	for _, usage := range usageRecords {
 		// Skip if invoice already exists (idempotent).
-		existing, err := s.billingQueries.GetInvoiceByOrgAndPeriod(ctx, usage.OrgID, period)
+		existing, err := h.billingQueries.GetInvoiceByOrgAndPeriod(ctx, usage.OrgID, period)
 		if err == nil {
 			results = append(results, map[string]any{
 				"invoice_id":     existing.ID.String(),
@@ -354,10 +357,10 @@ func (s *Server) generateInvoicesForPeriod(ctx context.Context, period string) (
 		}
 
 		// Look up active tariff for this org.
-		tariff, err := s.billingQueries.GetActiveTariff(ctx, usage.OrgID, periodStart)
+		tariff, err := h.billingQueries.GetActiveTariff(ctx, usage.OrgID, periodStart)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				s.logger.Warn("billing: no tariff for org, skipping invoice generation",
+				h.logger.Warn("billing: no tariff for org, skipping invoice generation",
 					slog.String("org_id", usage.OrgID.String()),
 					slog.String("period", period),
 				)
@@ -408,7 +411,7 @@ func (s *Server) generateInvoicesForPeriod(ctx context.Context, period string) (
 		}
 
 		// Create draft invoice.
-		invoice, err := s.billingQueries.InsertInvoice(ctx, usage.OrgID, period, 0, tariff.Currency)
+		invoice, err := h.billingQueries.InsertInvoice(ctx, usage.OrgID, period, 0, tariff.Currency)
 		if err != nil {
 			return nil, fmt.Errorf("insert invoice for org %s: %w", usage.OrgID, err)
 		}
@@ -416,7 +419,7 @@ func (s *Server) generateInvoicesForPeriod(ctx context.Context, period string) (
 		// Insert lines.
 		tariffIDPtr := &tariff.ID
 		for _, l := range lines {
-			if _, err := s.billingQueries.InsertInvoiceLine(
+			if _, err := h.billingQueries.InsertInvoiceLine(
 				ctx,
 				invoice.ID,
 				tariffIDPtr,
@@ -431,12 +434,12 @@ func (s *Server) generateInvoicesForPeriod(ctx context.Context, period string) (
 		}
 
 		// Update total.
-		invoice, err = s.billingQueries.UpdateInvoiceTotal(ctx, invoice.ID, totalMinor)
+		invoice, err = h.billingQueries.UpdateInvoiceTotal(ctx, invoice.ID, totalMinor)
 		if err != nil {
 			return nil, fmt.Errorf("update invoice total for org %s: %w", usage.OrgID, err)
 		}
 
-		s.logger.Info("billing: generated draft invoice",
+		h.logger.Info("billing: generated draft invoice",
 			slog.String("invoice_id", invoice.ID.String()),
 			slog.String("org_id", usage.OrgID.String()),
 			slog.String("period", period),
@@ -461,76 +464,76 @@ func (s *Server) generateInvoicesForPeriod(ctx context.Context, period string) (
 // GET /v1/billing/invoices/{id} — get invoice + lines
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (s *Server) handleGetInvoice(w http.ResponseWriter, r *http.Request) {
-	if s.billingQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("billing.unavailable", "billing ledger not configured", r))
+func (h *Handler) HandleGetInvoice(w http.ResponseWriter, r *http.Request) {
+	if h.billingQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("billing.unavailable", "billing ledger not configured", r))
 		return
 	}
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("billing.bad_request", "id must be a valid UUID", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("billing.bad_request", "id must be a valid UUID", r))
 		return
 	}
 
-	invoice, err := s.billingQueries.GetInvoiceByID(r.Context(), id)
+	invoice, err := h.billingQueries.GetInvoiceByID(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("billing.not_found", "invoice not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("billing.not_found", "invoice not found", r))
 			return
 		}
-		s.logger.Error("billing: get invoice failed", slog.Any("error", err))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("billing.internal", "failed to fetch invoice", r))
+		h.logger.Error("billing: get invoice failed", slog.Any("error", err))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("billing.internal", "failed to fetch invoice", r))
 		return
 	}
 
-	lines, err := s.billingQueries.ListInvoiceLines(r.Context(), id)
+	lines, err := h.billingQueries.ListInvoiceLines(r.Context(), id)
 	if err != nil {
-		s.logger.Error("billing: list invoice lines failed", slog.Any("error", err))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("billing.internal", "failed to fetch invoice lines", r))
+		h.logger.Error("billing: list invoice lines failed", slog.Any("error", err))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("billing.internal", "failed to fetch invoice lines", r))
 		return
 	}
 
-	resp := invoiceToResponse(invoice)
+	resp := InvoiceToResponse(invoice)
 	lineResps := make([]map[string]any, 0, len(lines))
 	for _, l := range lines {
-		lineResps = append(lineResps, invoiceLineToResponse(l))
+		lineResps = append(lineResps, InvoiceLineToResponse(l))
 	}
 	resp["lines"] = lineResps
 
-	writeJSON(w, http.StatusOK, resp)
+	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /v1/organizations/{org_id}/billing/invoices — list invoices for org
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (s *Server) handleListOrgInvoices(w http.ResponseWriter, r *http.Request) {
-	if s.billingQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("billing.unavailable", "billing ledger not configured", r))
+func (h *Handler) HandleListOrgInvoices(w http.ResponseWriter, r *http.Request) {
+	if h.billingQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("billing.unavailable", "billing ledger not configured", r))
 		return
 	}
 
 	orgIDStr := chi.URLParam(r, "org_id")
 	orgID, err := uuid.Parse(orgIDStr)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("billing.bad_request", "org_id must be a valid UUID", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("billing.bad_request", "org_id must be a valid UUID", r))
 		return
 	}
 
-	invoices, err := s.billingQueries.ListInvoicesByOrg(r.Context(), orgID)
+	invoices, err := h.billingQueries.ListInvoicesByOrg(r.Context(), orgID)
 	if err != nil {
-		s.logger.Error("billing: list invoices failed", slog.Any("error", err))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("billing.internal", "failed to list invoices", r))
+		h.logger.Error("billing: list invoices failed", slog.Any("error", err))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("billing.internal", "failed to list invoices", r))
 		return
 	}
 
 	resps := make([]map[string]any, 0, len(invoices))
 	for _, inv := range invoices {
-		resps = append(resps, invoiceToResponse(inv))
+		resps = append(resps, InvoiceToResponse(inv))
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"org_id":   orgID.String(),
 		"invoices": resps,
 	})
@@ -540,82 +543,82 @@ func (s *Server) handleListOrgInvoices(w http.ResponseWriter, r *http.Request) {
 // POST /v1/billing/invoices/{id}/issue — draft → issued
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (s *Server) handleIssueInvoice(w http.ResponseWriter, r *http.Request) {
-	s.handleInvoiceTransition(w, r, "issued")
+func (h *Handler) HandleIssueInvoice(w http.ResponseWriter, r *http.Request) {
+	h.handleInvoiceTransition(w, r, "issued")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /v1/billing/invoices/{id}/pay — issued → paid
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (s *Server) handlePayInvoice(w http.ResponseWriter, r *http.Request) {
-	s.handleInvoiceTransition(w, r, "paid")
+func (h *Handler) HandlePayInvoice(w http.ResponseWriter, r *http.Request) {
+	h.handleInvoiceTransition(w, r, "paid")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /v1/billing/invoices/{id}/void — draft/issued → void
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (s *Server) handleVoidInvoice(w http.ResponseWriter, r *http.Request) {
-	s.handleInvoiceTransition(w, r, "void")
+func (h *Handler) HandleVoidInvoice(w http.ResponseWriter, r *http.Request) {
+	h.handleInvoiceTransition(w, r, "void")
 }
 
 // handleInvoiceTransition is the shared state transition handler.
-func (s *Server) handleInvoiceTransition(w http.ResponseWriter, r *http.Request, targetState string) {
-	if s.billingQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("billing.unavailable", "billing ledger not configured", r))
+func (h *Handler) handleInvoiceTransition(w http.ResponseWriter, r *http.Request, targetState string) {
+	if h.billingQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("billing.unavailable", "billing ledger not configured", r))
 		return
 	}
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("billing.bad_request", "id must be a valid UUID", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("billing.bad_request", "id must be a valid UUID", r))
 		return
 	}
 
-	invoice, err := s.billingQueries.GetInvoiceByID(r.Context(), id)
+	invoice, err := h.billingQueries.GetInvoiceByID(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("billing.not_found", "invoice not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("billing.not_found", "invoice not found", r))
 			return
 		}
-		s.logger.Error("billing: get invoice for transition failed", slog.Any("error", err))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("billing.internal", "failed to fetch invoice", r))
+		h.logger.Error("billing: get invoice for transition failed", slog.Any("error", err))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("billing.internal", "failed to fetch invoice", r))
 		return
 	}
 
 	// Check terminal state.
 	if isTerminalInvoiceState(invoice.State) {
-		writeJSON(w, http.StatusConflict, errorEnvelope("billing.terminal_state",
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope("billing.terminal_state",
 			fmt.Sprintf("invoice is in terminal state '%s'", invoice.State), r))
 		return
 	}
 
 	// Validate transition.
 	if !validInvoiceTransitions[invoice.State][targetState] {
-		writeJSON(w, http.StatusConflict, errorEnvelope("billing.invalid_transition",
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope("billing.invalid_transition",
 			fmt.Sprintf("cannot transition from '%s' to '%s'", invoice.State, targetState), r))
 		return
 	}
 
-	updated, err := s.billingQueries.UpdateInvoiceState(r.Context(), id, targetState)
+	updated, err := h.billingQueries.UpdateInvoiceState(r.Context(), id, targetState)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("billing.not_found", "invoice not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("billing.not_found", "invoice not found", r))
 			return
 		}
-		s.logger.Error("billing: update invoice state failed", slog.Any("error", err))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("billing.internal", "failed to update invoice state", r))
+		h.logger.Error("billing: update invoice state failed", slog.Any("error", err))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("billing.internal", "failed to update invoice state", r))
 		return
 	}
 
-	s.logger.Info("billing: invoice state transition",
+	h.logger.Info("billing: invoice state transition",
 		slog.String("invoice_id", id.String()),
 		slog.String("from", invoice.State),
 		slog.String("to", updated.State),
 	)
 
-	writeJSON(w, http.StatusOK, invoiceToResponse(updated))
+	httputil.WriteJSON(w, http.StatusOK, InvoiceToResponse(updated))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -625,20 +628,20 @@ func (s *Server) handleInvoiceTransition(w http.ResponseWriter, r *http.Request,
 // IncrementBillingUsage increments usage counters for the given org and the
 // current billing period. Designed to be called from ticket issuance and
 // event publication hooks. Safe to call with nil billingQueries (no-op).
-func (s *Server) IncrementBillingUsage(
+func (h *Handler) IncrementBillingUsage(
 	ctx context.Context,
 	orgID uuid.UUID,
 	deltaTickets int64,
 	deltaComplimentary int64,
 	deltaEvents int64,
 ) {
-	if s.billingQueries == nil {
+	if h.billingQueries == nil {
 		return
 	}
 	period := billingPeriodForTime(time.Now().UTC())
-	_, err := s.billingQueries.IncrementUsageRecord(ctx, orgID, period, deltaTickets, deltaComplimentary, deltaEvents)
+	_, err := h.billingQueries.IncrementUsageRecord(ctx, orgID, period, deltaTickets, deltaComplimentary, deltaEvents)
 	if err != nil {
-		s.logger.Error("billing: increment usage record failed",
+		h.logger.Error("billing: increment usage record failed",
 			slog.String("org_id", orgID.String()),
 			slog.String("period", period),
 			slog.Any("error", err),
@@ -647,10 +650,12 @@ func (s *Server) IncrementBillingUsage(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Response helpers
+// Response helpers (exported so billing_shims.go can re-export the original
+// lowercase names to package httpserver)
 // ─────────────────────────────────────────────────────────────────────────────
 
-func tariffToResponse(r gen.TariffRow) map[string]any {
+// TariffToResponse converts a TariffRow to a JSON map.
+func TariffToResponse(r gen.TariffRow) map[string]any {
 	resp := map[string]any{
 		"id":                   r.ID.String(),
 		"plan_name":            r.PlanName,
@@ -679,7 +684,8 @@ func tariffToResponse(r gen.TariffRow) map[string]any {
 	return resp
 }
 
-func usageToResponse(r gen.UsageRecordRow) map[string]any {
+// UsageToResponse converts a UsageRecordRow to a JSON map.
+func UsageToResponse(r gen.UsageRecordRow) map[string]any {
 	return map[string]any{
 		"id":                   r.ID.String(),
 		"org_id":               r.OrgID.String(),
@@ -692,7 +698,8 @@ func usageToResponse(r gen.UsageRecordRow) map[string]any {
 	}
 }
 
-func invoiceToResponse(r gen.InvoiceRow) map[string]any {
+// InvoiceToResponse converts an InvoiceRow to a JSON map.
+func InvoiceToResponse(r gen.InvoiceRow) map[string]any {
 	resp := map[string]any{
 		"id":                 r.ID.String(),
 		"org_id":             r.OrgID.String(),
@@ -721,7 +728,8 @@ func invoiceToResponse(r gen.InvoiceRow) map[string]any {
 	return resp
 }
 
-func invoiceLineToResponse(r gen.InvoiceLineRow) map[string]any {
+// InvoiceLineToResponse converts an InvoiceLineRow to a JSON map.
+func InvoiceLineToResponse(r gen.InvoiceLineRow) map[string]any {
 	resp := map[string]any{
 		"id":                 r.ID.String(),
 		"invoice_id":         r.InvoiceID.String(),

@@ -604,7 +604,7 @@ func resolveFileInRepo(repoRoot, name string) string {
 		}
 	case "billing_ledger.go":
 		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "billing_ledger.go"),
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hbilling", "billing_ledger.go"),
 		}
 	// Platform superadmin console (feature #166)
 	case "0034_superadmin.sql":
@@ -691,7 +691,7 @@ func resolveFileInRepo(repoRoot, name string) string {
 		}
 	case "stripe_billing.go":
 		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "stripe_billing.go"),
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hbilling", "stripe_billing.go"),
 		}
 	case "stripebilling_adapter.go":
 		candidates = []string{
@@ -983,6 +983,8 @@ func domainSubPackageFor(name string) (string, string) {
 		return "htickets", "tickets_shims.go"
 	case "barcodes.go", "barcode_batches.go":
 		return "hbarcode", "barcode_shims.go"
+	case "billing_ledger.go", "stripe_billing.go", "stripe_connect.go":
+		return "hbilling", "billing_shims.go"
 	case "scanner_callback.go", "scanner_events.go", "scanner_snapshot.go":
 		return "hscanner", "scanner_shims.go"
 	case "networks.go", "network_orgs.go", "network_users.go":

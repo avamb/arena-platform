@@ -16,17 +16,21 @@
 // Options.StripeConnect is non-nil. The drift-test server omits this dependency,
 // so these routes are absent from the chi.Walk output and from openapi.yaml
 // (following the same convention as payment-intent and checkout routes).
-package httpserver
+package hbilling
 
 import (
 	"context"
 	"net/http"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
-// stripeConnectHelper is the narrow interface consumed by the Stripe Connect
+// StripeConnectHelper is the narrow interface consumed by the Stripe Connect
 // handlers. *stripe.Adapter implements this interface; tests can supply a minimal
-// stub without importing the concrete stripe adapter package.
-type stripeConnectHelper interface {
+// stub without importing the concrete stripe adapter package. Exported so
+// billing_shims.go can alias the original unexported name
+// (stripeConnectHelper) that server_struct.go and wire.go reference.
+type StripeConnectHelper interface {
 	// ConnectAuthorizeURL builds the Stripe Connect Standard OAuth authorization
 	// URL. Redirect the organizer's browser to this URL to begin onboarding.
 	ConnectAuthorizeURL(redirectURI, state string) string
@@ -35,7 +39,7 @@ type stripeConnectHelper interface {
 	ConnectExchangeCode(ctx context.Context, code string) (accountID string, err error)
 }
 
-// handleStripeConnectAuthorize serves GET /v1/stripe/connect/authorize.
+// HandleStripeConnectAuthorize serves GET /v1/stripe/connect/authorize.
 //
 // Returns the Stripe Connect OAuth authorization URL that the front-end should
 // redirect the organizer to. Pass redirect=true to get a 302 response instead
@@ -46,10 +50,10 @@ type stripeConnectHelper interface {
 //	redirect_uri  (required) — callback URI Stripe will redirect to after auth
 //	state         (optional) — CSRF token; returned verbatim by Stripe
 //	redirect      (optional) — if "true", respond with 302 instead of JSON
-func (s *Server) handleStripeConnectAuthorize(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleStripeConnectAuthorize(w http.ResponseWriter, r *http.Request) {
 	redirectURI := r.URL.Query().Get("redirect_uri")
 	if redirectURI == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"stripe_connect.missing_redirect_uri",
 			"redirect_uri query parameter is required",
 			r,
@@ -58,19 +62,19 @@ func (s *Server) handleStripeConnectAuthorize(w http.ResponseWriter, r *http.Req
 	}
 
 	state := r.URL.Query().Get("state")
-	authorizeURL := s.stripeConnect.ConnectAuthorizeURL(redirectURI, state)
+	authorizeURL := h.stripeConnect.ConnectAuthorizeURL(redirectURI, state)
 
 	if r.URL.Query().Get("redirect") == "true" {
 		http.Redirect(w, r, authorizeURL, http.StatusFound) //nolint:gosec // URL is derived from configured Stripe credentials, not user input
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"authorize_url": authorizeURL,
 	})
 }
 
-// handleStripeConnectCallback serves GET /v1/stripe/connect/callback.
+// HandleStripeConnectCallback serves GET /v1/stripe/connect/callback.
 //
 // Exchanges the Stripe Connect authorization code for the connected account's
 // Stripe user ID and returns it as JSON. The caller should persist the
@@ -81,11 +85,11 @@ func (s *Server) handleStripeConnectAuthorize(w http.ResponseWriter, r *http.Req
 //	code   (required) — authorization code from Stripe's redirect
 //	state  (optional) — CSRF state the caller passed; echoed back for verification
 //	error  (optional) — set by Stripe when the organizer denies access
-func (s *Server) handleStripeConnectCallback(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleStripeConnectCallback(w http.ResponseWriter, r *http.Request) {
 	// Surface provider-level errors (e.g. organizer denied access).
 	if errParam := r.URL.Query().Get("error"); errParam != "" {
 		errDesc := r.URL.Query().Get("error_description")
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"stripe_connect.oauth_error",
 			"Stripe Connect authorization failed: "+errDesc,
 			r,
@@ -99,7 +103,7 @@ func (s *Server) handleStripeConnectCallback(w http.ResponseWriter, r *http.Requ
 
 	code := r.URL.Query().Get("code")
 	if code == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"stripe_connect.missing_code",
 			"code query parameter is required",
 			r,
@@ -107,10 +111,10 @@ func (s *Server) handleStripeConnectCallback(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	accountID, err := s.stripeConnect.ConnectExchangeCode(r.Context(), code)
+	accountID, err := h.stripeConnect.ConnectExchangeCode(r.Context(), code)
 	if err != nil {
-		s.logger.Error("stripe_connect: code exchange failed", "error", err.Error())
-		writeJSON(w, http.StatusBadGateway, errorEnvelope(
+		h.logger.Error("stripe_connect: code exchange failed", "error", err.Error())
+		httputil.WriteJSON(w, http.StatusBadGateway, httputil.ErrorEnvelope(
 			"stripe_connect.exchange_failed",
 			"failed to exchange authorization code with Stripe",
 			r,
@@ -118,7 +122,7 @@ func (s *Server) handleStripeConnectCallback(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"account_id": accountID,
 		"state":      r.URL.Query().Get("state"),
 	})
