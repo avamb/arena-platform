@@ -303,7 +303,11 @@ func BuildSeed() SeedData {
 			{ID: ChannelAAllpay, OrgID: OrgA, Name: "TEST AllPay MoR", PaymentMode: "merchant_of_record", Provider: "allpay", ProviderAccountID: "", FeePercent: 4.90, ReservationTTLOverride: 600},
 			{ID: ChannelBStripe, OrgID: OrgB, Name: "TEST Stripe EE", PaymentMode: "direct_merchant", Provider: "stripe", ProviderAccountID: "acct_TEST_ORGB", FeePercent: 2.90, ReservationTTLOverride: 0},
 		},
+		// The SecretsJSON literals below are deliberately fake dev-seed
+		// placeholders (sk_test_*_DO_NOT_USE); nothing here grants access
+		// to any real provider account.
 		PaymentConfigs: []SeedPaymentConfig{
+			//nolint:gosec // G101: fake dev-seed placeholder credentials.
 			{
 				ID:                PaymentCfgAStripe,
 				OrgID:             OrgA,
@@ -314,6 +318,7 @@ func BuildSeed() SeedData {
 				SecretsJSON:       `{"api_key":"sk_test_TEST_ORGA_DO_NOT_USE","webhook_secret":"whsec_TEST_ORGA_DO_NOT_USE"}`,
 				Status:            "configured",
 			},
+			//nolint:gosec // G101: fake dev-seed placeholder credentials.
 			{
 				ID:                PaymentCfgAAllpay,
 				OrgID:             OrgA,
@@ -324,6 +329,7 @@ func BuildSeed() SeedData {
 				SecretsJSON:       `{"merchant_id":"merchant_TEST_ORGA","secret_key":"TEST_ORGA_ALLPAY_SECRET"}`,
 				Status:            "configured",
 			},
+			//nolint:gosec // G101: fake dev-seed placeholder credentials.
 			{
 				ID:                PaymentCfgBStripe,
 				OrgID:             OrgB,

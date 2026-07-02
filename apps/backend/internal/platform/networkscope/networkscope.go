@@ -43,6 +43,7 @@ package networkscope
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -468,9 +469,16 @@ func handleScopeError(w http.ResponseWriter, r *http.Request, err error, resourc
 func writeScopeError(w http.ResponseWriter, _ *http.Request, status int, code, message, resource, resourceID string) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
-	body := fmt.Sprintf(
-		`{"error":{"code":%q,"message":%q,"resource":%q,"resource_id":%q}}`,
-		code, message, resource, resourceID,
-	)
-	_, _ = w.Write([]byte(body))
+	body, err := json.Marshal(map[string]map[string]string{
+		"error": {
+			"code":        code,
+			"message":     message,
+			"resource":    resource,
+			"resource_id": resourceID,
+		},
+	})
+	if err != nil {
+		return
+	}
+	_, _ = w.Write(body)
 }

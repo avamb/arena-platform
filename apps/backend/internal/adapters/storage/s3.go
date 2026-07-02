@@ -485,7 +485,7 @@ func awsURIEncode(s string, encodeSlash bool) string {
 		case c == '/' && !encodeSlash:
 			b.WriteByte(c)
 		default:
-			b.WriteString(fmt.Sprintf("%%%02X", c))
+			fmt.Fprintf(&b, "%%%02X", c)
 		}
 	}
 	return b.String()

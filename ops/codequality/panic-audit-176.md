@@ -37,7 +37,7 @@ that exists to exercise the panic-recoverer middleware.
 | `internal/platform/ratelimit/ratelimit.go` | 79 | (c) init | Constructor configuration validation (`Window > 0`). |
 | `internal/platform/observability/metrics.go` | 315 | (a) invariant | `MustNew` is the documented panic-on-error variant of `New`; called once from `main()`. |
 | `internal/platform/httpserver/debug_panic.go` | 27 | (a) invariant | Dedicated `GET /v1/debug/panic` endpoint that exists solely to exercise the panic-recoverer middleware in integration tests; mounted only when `DEBUG_ROUTES_ENABLED=true`. |
-| `internal/platform/networkscope/networkscope.go` | 186 | (c) init | Constructor nil-dependency guard (`NewScoper` requires a non-nil `Querier`); called only from boot wiring. |
+| `internal/platform/networkscope/networkscope.go` | 187 | (c) init | Constructor nil-dependency guard (`NewScoper` requires a non-nil `Querier`); called only from boot wiring. |
 
 `cmd/arena-migrate/main.go:403` (goose `Fatalf` adapter) is exempt
 because it lives under `cmd/` — the static-analysis gate ignores that

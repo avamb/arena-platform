@@ -84,6 +84,7 @@ func (h *Handler) CreateMedia(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	r.Body = http.MaxBytesReader(w, r.Body, mediaUploadMaxBytes)
+	//nolint:gosec // G120 false positive: the body is capped by MaxBytesReader above.
 	if err := r.ParseMultipartForm(8 * 1024 * 1024); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"media.invalid_multipart", "cannot parse multipart form: "+err.Error(), r,

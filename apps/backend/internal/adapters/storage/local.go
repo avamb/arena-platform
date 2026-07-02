@@ -184,7 +184,7 @@ func writeMetaSidecar(objectPath, contentType string) error {
 		return nil
 	}
 	meta := "Content-Type: " + contentType + "\n"
-	if err := os.WriteFile(objectPath+".meta", []byte(meta), 0o644); err != nil {
+	if err := os.WriteFile(objectPath+".meta", []byte(meta), 0o600); err != nil {
 		return fmt.Errorf("storage/local: write metadata sidecar for %q: %w", objectPath, err)
 	}
 	return nil

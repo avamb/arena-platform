@@ -492,7 +492,7 @@ func TestRequireNetworkScope_DeniesOutOfScope(t *testing.T) {
 
 	r := chi.NewRouter()
 	r.With(networkscope.RequireNetworkScope(s, "network_id")).
-		Get("/v1/networks/{network_id}", func(w http.ResponseWriter, _ *http.Request) {
+		Get("/v1/networks/{network_id}", func(_ http.ResponseWriter, _ *http.Request) {
 			t.Fatal("handler must not run on out-of-scope")
 		})
 
