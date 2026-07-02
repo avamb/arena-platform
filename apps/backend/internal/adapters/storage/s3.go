@@ -341,7 +341,9 @@ const (
 
 func (s *S3Storage) signV4(req *http.Request, payload []byte) error {
 	now := s.now().UTC()
+	// allow:timeformat: X-Amz-Date must use the AWS SigV4 wire format.
 	amzDate := now.Format("20060102T150405Z")
+	// allow:timeformat: SigV4 credential scope requires the YYYYMMDD stamp.
 	dateStamp := now.Format("20060102")
 
 	payloadHash := sha256Hex(payload)

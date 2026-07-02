@@ -322,6 +322,14 @@ func scanGoFilesForTimestampFormatting(t *testing.T, root string) []string {
 	// We detect "time.Now().Format(" (no UTC() in chain) as a heuristic.
 	reNowDirectFormat := regexp.MustCompile(`time\.Now\(\)\.Format\(`)
 
+	// Escape hatch mirroring the feature-#176 `// allow:panic` marker: a line
+	// (or its immediate predecessor) carrying `// allow:timeformat: <reason>`
+	// is exempt. Legitimate uses are wire formats mandated by external
+	// protocols (e.g. AWS SigV4 X-Amz-Date) and human-facing display strings
+	// rendered in a venue-local timezone (email bodies, PDF tickets) — those
+	// are deliberately NOT machine-readable API timestamps.
+	reAllowMarker := regexp.MustCompile(`//\s*allow:timeformat\b`)
+
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -344,6 +352,7 @@ func scanGoFilesForTimestampFormatting(t *testing.T, root string) []string {
 		defer f.Close()
 
 		lineNum := 0
+		prevLine := ""
 		scanner := bufio.NewScanner(f)
 		for scanner.Scan() {
 			lineNum++
@@ -352,8 +361,17 @@ func scanGoFilesForTimestampFormatting(t *testing.T, root string) []string {
 			// Skip comment lines.
 			trimmed := strings.TrimSpace(line)
 			if strings.HasPrefix(trimmed, "//") {
+				prevLine = line
 				continue
 			}
+
+			// Honour the `// allow:timeformat` escape hatch on the same or
+			// immediately preceding line.
+			if reAllowMarker.MatchString(line) || reAllowMarker.MatchString(prevLine) {
+				prevLine = line
+				continue
+			}
+			prevLine = line
 
 			// Check for .Format() calls using non-RFC3339 format strings.
 			matches := reFormatCall.FindAllStringSubmatch(line, -1)

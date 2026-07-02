@@ -275,7 +275,7 @@ func TestOpenAPI280_EventPublicationCityIDIsNullable(t *testing.T) {
 	if !strings.Contains(block, "\n        city_id:") {
 		t.Errorf("EventPublication must declare a city_id property; block:\n%s", block)
 	}
-	if !strings.Contains(block, "nullable: true") {
+	if !schemaBlockDeclaresNull(block) {
 		t.Errorf("EventPublication.city_id must be nullable (matches *string in publications.go); block:\n%s", block)
 	}
 
@@ -294,9 +294,19 @@ func TestOpenAPI280_EventPublicationCityIDIsNullable(t *testing.T) {
 	if !strings.Contains(rBlock, "\n        city_id:") {
 		t.Errorf("PublishEventRequest must declare a city_id property; block:\n%s", rBlock)
 	}
-	if !strings.Contains(rBlock, "nullable: true") {
+	if !schemaBlockDeclaresNull(rBlock) {
 		t.Errorf("PublishEventRequest.city_id must be nullable; block:\n%s", rBlock)
 	}
+}
+
+// schemaBlockDeclaresNull reports whether a schema block marks a property as
+// nullable. OpenAPI 3.1 expresses this as a type array containing "null"
+// (the OAS 3.0 `nullable: true` keyword is forbidden by
+// TestOpenAPI_NoNullableKeyword but still accepted here for robustness).
+func schemaBlockDeclaresNull(block string) bool {
+	return strings.Contains(block, `"null"`) ||
+		strings.Contains(block, `'null'`) ||
+		strings.Contains(block, "nullable: true")
 }
 
 // TestOpenAPI280_SpecExamplesValidate is the minimal contract test. It

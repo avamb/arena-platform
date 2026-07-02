@@ -3,9 +3,10 @@
  *
  * Covers SAUI-02 step 9: "401 handling, refresh failure, missing permissions".
  *
- * These tests stub global.fetch directly rather than using msw -- the
- * client surface is small enough that a hand-rolled mock keeps the test
- * file tight and removes a runtime dependency from CI.
+ * These tests stub global.fetch directly rather than using a service-worker
+ * mocking library (MSW) -- the client surface is small enough that a
+ * hand-rolled mock keeps the test file tight and removes a runtime
+ * dependency from CI.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {

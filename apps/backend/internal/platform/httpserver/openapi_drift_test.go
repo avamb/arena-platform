@@ -380,16 +380,25 @@ func buildDriftTestServer(t *testing.T) *Server {
 		// is preserved until that surface is documented in a future
 		// A-* wave.
 		DeliveryJobQueries: gen.New(nil),
-		// NOTE: BarcodeQueries is intentionally NOT wired here for the
-		// drift check. The barcode federation surfaces seven routes
-		// (POST/GET /v1/barcodes/authorities, POST /v1/barcodes,
-		// GET/DELETE /v1/barcodes/{id}, POST /v1/scan,
-		// GET /v1/scanner/snapshot, POST /v1/scanner/validate). Feature
-		// #275 documents ONLY the barcode_authorities subset; the
-		// remaining five paths are scheduled for later A-* waves
-		// (A-15…). Wiring BarcodeQueries here would mount all seven
-		// routes and break the SpecCoversAllCodeRoutes drift check
-		// until the rest of the group is documented.
+		// Wire MembershipQueries so the org-membership routes (feature
+		// #120) and the /v1/admin membership + user-provisioning routes
+		// (feature #234) are mounted for the drift check.
+		MembershipQueries: gen.New(nil),
+		// Wire VenueQueries so the venue CRUD routes (feature #124) are
+		// mounted for the drift check: GET /v1/venues[/{id}] and the
+		// /v1/organizations/{org_id}/venues surface.
+		VenueQueries: gen.New(nil),
+		// Wire PaymentConfigQueries so the payment-provider-config CRUD
+		// routes (feature #237) under
+		// /v1/organizations/{org_id}/payment-configs are mounted.
+		PaymentConfigQueries: gen.New(nil),
+		// Wire BarcodeQueries so the barcode federation + scanner routes
+		// (features #142/#144, documented under #275 and the follow-up
+		// full-surface documentation pass) are mounted: GET/POST
+		// /v1/barcodes/authorities, POST /v1/barcodes, GET/DELETE
+		// /v1/barcodes/{id}, POST /v1/scan, GET /v1/scanner/snapshot,
+		// POST /v1/scanner/validate.
+		BarcodeQueries: gen.New(nil),
 	})
 }
 
@@ -672,10 +681,26 @@ func TestOpenAPIDriftCheck_SpecCoversAllCodeRoutes(t *testing.T) {
 	}
 }
 
+// specPendingImplementation lists (METHOD path) pairs that are documented in
+// openapi.yaml AHEAD of their implementation — the spec-first exception to
+// the YAML → code drift check. Every entry must reference the feature that
+// will implement it. When a route lands in code, the check below fails until
+// its entry is deleted, so this list can never go stale silently.
+var specPendingImplementation = map[string]string{
+	// Wave O / feature #255 documented the organization bank-accounts CRUD
+	// surface together with migration 0048 (organization_bank_accounts);
+	// the HTTP handlers have not been implemented yet.
+	"GET /v1/organizations/{org_id}/bank-accounts":         "feature #255",
+	"POST /v1/organizations/{org_id}/bank-accounts":        "feature #255",
+	"PATCH /v1/organizations/{org_id}/bank-accounts/{id}":  "feature #255",
+	"DELETE /v1/organizations/{org_id}/bank-accounts/{id}": "feature #255",
+}
+
 // TestOpenAPIDriftCheck_CodeCoversAllSpecRoutes verifies step 8 (YAML → code):
 // every (path, method) pair documented in openapi.yaml is actually registered
 // on the chi router. A route present in the spec but absent from code indicates
-// a phantom route (documented but not implemented).
+// a phantom route (documented but not implemented), unless it is explicitly
+// declared spec-first in specPendingImplementation.
 func TestOpenAPIDriftCheck_CodeCoversAllSpecRoutes(t *testing.T) {
 	t.Parallel()
 
@@ -692,15 +717,37 @@ func TestOpenAPIDriftCheck_CodeCoversAllSpecRoutes(t *testing.T) {
 	var phantom []string
 	for path, methods := range specRoutes {
 		for method := range methods {
-			if codeRoutes[path] == nil || !codeRoutes[path][method] {
-				phantom = append(phantom, strings.ToUpper(method)+" "+path)
+			if codeRoutes[path] != nil && codeRoutes[path][method] {
+				continue
 			}
+			key := strings.ToUpper(method) + " " + path
+			if _, pending := specPendingImplementation[key]; pending {
+				continue
+			}
+			phantom = append(phantom, key)
 		}
 	}
 	sort.Strings(phantom)
 
 	if len(phantom) > 0 {
-		t.Errorf("routes documented in openapi.yaml but MISSING from code (%d):\n  %s\n\nEither implement these routes or remove them from openapi/openapi.yaml",
+		t.Errorf("routes documented in openapi.yaml but MISSING from code (%d):\n  %s\n\nEither implement these routes, remove them from openapi/openapi.yaml, or (for deliberate spec-first documentation) add them to specPendingImplementation with a feature reference",
 			len(phantom), strings.Join(phantom, "\n  "))
+	}
+
+	// Staleness guard: a pending entry whose route now exists in code (or
+	// disappeared from the spec) must be removed from the list.
+	for key, feature := range specPendingImplementation {
+		parts := strings.SplitN(key, " ", 2)
+		if len(parts) != 2 {
+			t.Errorf("specPendingImplementation entry %q is malformed (want \"METHOD /path\")", key)
+			continue
+		}
+		method, path := strings.ToLower(parts[0]), parts[1]
+		if specRoutes[path] == nil || !specRoutes[path][method] {
+			t.Errorf("specPendingImplementation entry %q (%s) is no longer documented in openapi.yaml — delete the entry", key, feature)
+		}
+		if codeRoutes[path] != nil && codeRoutes[path][method] {
+			t.Errorf("specPendingImplementation entry %q (%s) is now implemented — delete the entry", key, feature)
+		}
 	}
 }

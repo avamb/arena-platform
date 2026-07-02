@@ -181,6 +181,8 @@ type Scoper struct {
 // to silently allowing every request through.
 func NewScoper(querier Querier) *Scoper {
 	if querier == nil {
+		// allow:panic: constructor-time nil-dependency guard; NewScoper is
+		// called only from boot wiring, never on the request path.
 		panic("networkscope: NewScoper requires a non-nil Querier")
 	}
 	return &Scoper{db: querier}

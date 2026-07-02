@@ -110,6 +110,8 @@ var defaultSkipDirs = map[string]struct{}{
 	".playwright":     {},
 	".playwright-cli": {},
 	".autoforge":      {},
+	".claude":         {},
+	".gomodcache":     {},
 	"node_modules":    {},
 	"vendor":          {},
 	"dist":            {},
@@ -392,13 +394,22 @@ func TestNoJSMockBackendDeps(t *testing.T) {
 		for scanner.Scan() {
 			lineNo++
 			line := scanner.Text()
-			if pattern.MatchString(line) {
-				hits = append(hits, match{
-					Path: rel,
-					Line: lineNo,
-					Text: strings.TrimSpace(line),
-				})
+			if !pattern.MatchString(line) {
+				continue
 			}
+			// npm lockfiles (v3) record optional peerDependency metadata for
+			// packages that are NOT installed — e.g. @vitest/mocker declares
+			// an optional `msw` peer. An actually-installed package always
+			// has a "node_modules/<name>" entry line, so only those lines
+			// count as evidence of a mock-backend dependency.
+			if d.Name() == "package-lock.json" && !strings.Contains(line, "node_modules/") {
+				continue
+			}
+			hits = append(hits, match{
+				Path: rel,
+				Line: lineNo,
+				Text: strings.TrimSpace(line),
+			})
 		}
 		return scanner.Err()
 	})

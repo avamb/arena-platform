@@ -632,6 +632,8 @@ func formatSessionForEmail(t time.Time, tz string) string {
 			zoneLabel = tz
 		}
 	}
+	// Human-facing email body rendered in the venue-local timezone;
+	// allow:timeformat: deliberately not an RFC3339 API timestamp.
 	return fmt.Sprintf("%s (%s)", t.In(loc).Format("2006-01-02 15:04"), zoneLabel)
 }
 

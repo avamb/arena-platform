@@ -17,11 +17,13 @@
 //	     ops/codequality/panic-audit-176.md).
 //
 // The audit performed in feature #176 found 9 panic( call sites in
-// non-test, non-cmd production code. Every one is either a constructor /
-// boot-time precondition guard, a documented Must* variant, the idiomatic
-// "rollback-and-rethrow" pattern in defer, or the dedicated debug endpoint
-// that exists to exercise the panic-recoverer middleware. All 9 have been
-// annotated with `// allow:panic: <reason>` and are therefore exempt.
+// non-test, non-cmd production code (a 10th — the networkscope.NewScoper
+// nil-dependency guard from feature #207 — was annotated later). Every one
+// is either a constructor / boot-time precondition guard, a documented
+// Must* variant, the idiomatic "rollback-and-rethrow" pattern in defer, or
+// the dedicated debug endpoint that exists to exercise the panic-recoverer
+// middleware. All have been annotated with `// allow:panic: <reason>` and
+// are therefore exempt.
 //
 // If this test starts failing, a new panic( has been introduced in
 // production code without an audit-approved exemption. Choose one:

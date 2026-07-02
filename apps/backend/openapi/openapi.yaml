@@ -1254,11 +1254,14 @@ components:
       required: [user, onboarding, message]
       properties:
         user:
+          description: The newly created user row (admin projection).
           $ref: "#/components/schemas/AdminCreatedUser"
         onboarding:
+          description: Onboarding artifacts (password setup token metadata) issued for the new user.
           $ref: "#/components/schemas/AdminCreatedUserOnboarding"
         message:
           type: string
+          description: Human-readable confirmation of the create action.
           example: "User created. A password setup link has been issued to the email address."
 
     AuthVerifyResponse:
@@ -1417,8 +1420,7 @@ components:
           description: Seat-hold expiry window in seconds (default 1200 = 20 minutes)
           example: 1200
         legal_name:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Registered juridical name of the tenant entity (distinct from
             the public display name). Used on invoices, contracts, and
@@ -1426,76 +1428,64 @@ components:
             self-service profile.
           example: "ACME Tickets GmbH"
         tax_id:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Tax registration identifier (VAT, EIN, etc.). Format is
             validated application-side based on `tax_id_scheme`.
           example: "DE123456789"
         tax_id_scheme:
-          type: string
-          nullable: true
+          type: [string, "null"]
           enum: [eu_vat, gb_vat, il_vat, us_ein, other]
           description: |
             Identifies the tax-id scheme. NULL when the organization has
             not registered a tax id yet.
           example: "eu_vat"
         registration_number:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Company-registry number in the home country (e.g. HRB for
             Germany, OGRN-equivalents elsewhere).
           example: "HRB 12345"
         legal_address_line1:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: Street address line 1 of the registered office.
           example: "Friedrichstr. 1"
         legal_address_line2:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: Street address line 2 of the registered office.
           example: "Suite 200"
         legal_address_postal_code:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: Postal / ZIP code of the registered office.
           example: "10117"
         legal_address_city:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: City of the registered office.
           example: "Berlin"
         legal_address_country:
-          type: string
-          nullable: true
+          type: [string, "null"]
           pattern: "^[A-Z]{2}$"
           description: |
             ISO 3166-1 alpha-2 country code of the registered office.
             App layer validates membership in an allowlist.
           example: "DE"
         contact_email:
-          type: string
+          type: [string, "null"]
           format: email
-          nullable: true
           description: Public operations / billing contact email.
           example: "ops@acme.example"
         contact_phone:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: Public operations / billing contact phone (E.164 recommended).
           example: "+49 30 1234567"
         website_url:
-          type: string
+          type: [string, "null"]
           format: uri
-          nullable: true
           description: Public marketing or info URL.
           example: "https://acme.example"
         logo_media_id:
-          type: string
+          type: [string, "null"]
           format: uuid
-          nullable: true
           description: |
             Optional forward reference to a media row that ships in
             Wave G. The DB FK is intentionally deferred — currently a
@@ -1509,9 +1499,8 @@ components:
             defaults new organizations to `unverified`.
           example: "unverified"
         kyb_verified_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: |
             Timestamp when KYB verification last reached the `verified`
             state. NULL until the first successful verification.
@@ -1666,8 +1655,7 @@ components:
           description: New tax registration identifier (empty string clears).
           example: "DE123456789"
         tax_id_scheme:
-          type: string
-          nullable: true
+          type: [string, "null"]
           enum: [eu_vat, gb_vat, il_vat, us_ein, other]
           description: |
             New tax-id scheme. Pass `null` to clear the field (sets to
@@ -1705,8 +1693,7 @@ components:
           type: string
           description: New public marketing / info URL (empty string clears). Validated as URI when non-empty.
         logo_media_id:
-          type: string
-          nullable: true
+          type: [string, "null"]
           format: uuid
           description: |
             New media-row FK (forward reference, Wave G). `null`
@@ -1786,33 +1773,28 @@ components:
           description: ISO 3166-1 alpha-2 country code where the account is held.
           example: "DE"
         bank_name:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: Free-form bank name for operator display.
           example: "Commerzbank AG"
         iban:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             IBAN (International Bank Account Number). Optional — North
             American accounts use `account_number` + `routing_number`
             instead. Format validated app-side.
           example: "DE89370400440532013000"
         bic:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: BIC / SWIFT code (8 or 11 chars). Optional.
           example: "COBADEFFXXX"
         account_number:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Domestic account number (non-IBAN markets). Mutually
             populated with `routing_number` for US ACH-style accounts.
           example: "000123456789"
         routing_number:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Domestic routing/sort/ABA code that pairs with
             `account_number`. Optional.
@@ -1827,10 +1809,12 @@ components:
         created_at:
           type: string
           format: date-time
+          description: ISO 8601 / RFC 3339 timestamp of row creation.
           example: "2024-01-01T00:00:00Z"
         updated_at:
           type: string
           format: date-time
+          description: ISO 8601 / RFC 3339 timestamp of last update.
           example: "2024-01-01T00:00:00Z"
 
     CreateBankAccountRequest:
@@ -1846,21 +1830,25 @@ components:
         holder_name:
           type: string
           minLength: 1
+          description: Legal name of the account holder (typically the org's legal_name).
           example: "ACME Tickets GmbH"
         currency:
           type: string
           minLength: 3
           maxLength: 3
           pattern: "^[A-Z]{3}$"
+          description: ISO 4217 three-letter currency code of the account.
           example: "EUR"
         country:
           type: string
           minLength: 2
           maxLength: 2
           pattern: "^[A-Z]{2}$"
+          description: ISO 3166-1 alpha-2 country code where the account is held.
           example: "DE"
         bank_name:
           type: string
+          description: Free-form bank name for operator display (optional).
         iban:
           type: string
           description: IBAN (mutually exclusive with account_number+routing_number).
@@ -1897,38 +1885,40 @@ components:
         holder_name:
           type: string
           minLength: 1
+          description: New legal name of the account holder.
         currency:
           type: string
           minLength: 3
           maxLength: 3
           pattern: "^[A-Z]{3}$"
+          description: New ISO 4217 three-letter currency code of the account.
         country:
           type: string
           minLength: 2
           maxLength: 2
           pattern: "^[A-Z]{2}$"
+          description: New ISO 3166-1 alpha-2 country code where the account is held.
         bank_name:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: Empty string or null clears the field.
         iban:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: Empty string or null clears the field.
         bic:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: Empty string or null clears the field.
         account_number:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: Empty string or null clears the field.
         routing_number:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: Empty string or null clears the field.
         is_primary:
           type: boolean
+          description: |
+            Set true to promote this account to primary (atomically
+            demotes the previous primary). Setting false while no other
+            primary exists is rejected with 409.
 
     # Venue schemas — feature #124 / extended for admin UI consumption (#235)
     VenueItem:
@@ -1952,9 +1942,8 @@ components:
             mutate the venue.
           example: "01929d0e-0e47-7000-8000-000000000001"
         city_id:
-          type: string
+          type: [string, "null"]
           format: uuid
-          nullable: true
           description: |
             Optional FK to the geo.cities reference table. NULL means the city
             is not specified.
@@ -1966,8 +1955,7 @@ components:
             owning organization.
           example: "Tel Aviv Convention Center"
         address:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Legacy free-form street address. Preserved for backward
             compatibility with reads that pre-date the structured
@@ -1977,29 +1965,25 @@ components:
             structured field is set.
           example: "101 Rothschild Blvd, Tel Aviv-Yafo"
         address_line1:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Structured street address line 1 (e.g. street name +
             number). V-1 field (migration 0050). Optional.
           example: "Rothschild Blvd 101"
         address_line2:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Structured street address line 2 (e.g. suite, building,
             floor). V-1 field. Optional.
           example: "Suite 4B"
         postal_code:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Postal / ZIP code. V-1 field. Country-specific format,
             not validated at the database layer.
           example: "6688101"
         country:
-          type: string
-          nullable: true
+          type: [string, "null"]
           minLength: 2
           maxLength: 2
           pattern: "^[A-Z]{2}$"
@@ -2009,9 +1993,8 @@ components:
             explicit override is passed at the API layer.
           example: "IL"
         geo_lat:
-          type: number
+          type: [number, "null"]
           format: double
-          nullable: true
           minimum: -90
           maximum: 90
           description: |
@@ -2019,9 +2002,8 @@ components:
             DB side (~10 cm precision). V-1 field. Optional.
           example: 32.063889
         geo_lng:
-          type: number
+          type: [number, "null"]
           format: double
-          nullable: true
           minimum: -180
           maximum: 180
           description: |
@@ -2029,8 +2011,7 @@ components:
             DB side (~10 cm precision). V-1 field. Optional.
           example: 34.770556
         timezone:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             IANA time zone name (e.g. `Europe/Berlin`,
             `Asia/Jerusalem`, `America/New_York`). V-1 field.
@@ -2042,22 +2023,19 @@ components:
             `error.code = "venue.invalid_timezone"`.
           example: "Asia/Jerusalem"
         contact_phone:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Public contact phone number for the venue. V-1 field.
             E.164 format recommended but not enforced.
           example: "+972-3-555-0100"
         contact_email:
-          type: string
+          type: [string, "null"]
           format: email
-          nullable: true
           description: Public contact email for the venue. V-1 field. Optional.
           example: "info@tlv-convention.example"
         website_url:
-          type: string
+          type: [string, "null"]
           format: uri
-          nullable: true
           description: Public website URL for the venue. V-1 field. Optional.
           example: "https://tlv-convention.example"
         status:
@@ -2071,8 +2049,7 @@ components:
             reports). Defaults to `active` when not set on create.
           example: "active"
         capacity_default:
-          type: integer
-          nullable: true
+          type: [integer, "null"]
           description: |
             Optional default total capacity of the venue. NULL means
             unspecified. Individual events may override this with their own
@@ -2182,8 +2159,7 @@ components:
             `active` when omitted.
           example: "active"
         capacity_default:
-          type: integer
-          nullable: true
+          type: [integer, "null"]
           description: Optional default capacity (positive integer).
           example: 1200
 
@@ -2212,30 +2188,26 @@ components:
             deprecated — prefer the structured address fields).
           example: "200 Allenby St, Tel Aviv-Yafo"
         address_line1:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Replacement structured street address line 1 (V-1
             field). Tri-state: omitted leaves the existing value;
             explicit `null` clears it; non-empty string replaces it.
           example: "Allenby St 200"
         address_line2:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Replacement structured street address line 2 (V-1
             field). Tri-state semantics — see `address_line1`.
           example: "Floor 2"
         postal_code:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Replacement postal code (V-1 field). Tri-state
             semantics — see `address_line1`.
           example: "6618303"
         country:
-          type: string
-          nullable: true
+          type: [string, "null"]
           minLength: 2
           maxLength: 2
           pattern: "^[A-Z]{2}$"
@@ -2246,9 +2218,8 @@ components:
             explicit override flag is passed.
           example: "IL"
         geo_lat:
-          type: number
+          type: [number, "null"]
           format: double
-          nullable: true
           minimum: -90
           maximum: 90
           description: |
@@ -2256,9 +2227,8 @@ components:
             semantics — see `address_line1`.
           example: 32.075000
         geo_lng:
-          type: number
+          type: [number, "null"]
           format: double
-          nullable: true
           minimum: -180
           maximum: 180
           description: |
@@ -2266,8 +2236,7 @@ components:
             semantics — see `address_line1`.
           example: 34.775000
         timezone:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Replacement IANA time zone name (V-1 field). Validated
             server-side via Go `time.LoadLocation`. Unknown values
@@ -2275,24 +2244,21 @@ components:
             semantics — see `address_line1`.
           example: "Asia/Jerusalem"
         contact_phone:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Replacement public contact phone (V-1 field). Tri-state
             semantics.
           example: "+972-3-555-0200"
         contact_email:
-          type: string
+          type: [string, "null"]
           format: email
-          nullable: true
           description: |
             Replacement public contact email (V-1 field). Tri-state
             semantics.
           example: "hello@tlv-convention.example"
         website_url:
-          type: string
+          type: [string, "null"]
           format: uri
-          nullable: true
           description: |
             Replacement public website URL (V-1 field). Tri-state
             semantics.
@@ -2306,8 +2272,7 @@ components:
             unchanged.
           example: "draft"
         capacity_default:
-          type: integer
-          nullable: true
+          type: [integer, "null"]
           description: Replacement default capacity (optional).
           example: 1500
 
@@ -2356,8 +2321,7 @@ components:
           description: Operating mode for the credential set.
           example: "live"
         provider_account_id:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Optional public account identifier (e.g. Stripe acct_..., AllPay
             merchant id). Safe to return; never a secret.
@@ -2403,10 +2367,12 @@ components:
         created_at:
           type: string
           format: date-time
+          description: ISO 8601 / RFC 3339 timestamp of row creation.
           example: "2024-01-01T00:00:00Z"
         updated_at:
           type: string
           format: date-time
+          description: ISO 8601 / RFC 3339 timestamp of last update.
           example: "2024-01-01T00:00:00Z"
 
     CreatePaymentProviderConfigRequest:
@@ -2430,8 +2396,7 @@ components:
           description: Operating mode for the credential set.
           example: "live"
         provider_account_id:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: Optional public account identifier.
           example: "acct_1Q2W3E4R5T6Y"
         public_config:
@@ -2466,8 +2431,7 @@ components:
         values delete the corresponding key.
       properties:
         provider_account_id:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: Replacement account identifier (empty string clears it).
         public_config:
           type: object
@@ -2823,9 +2787,8 @@ components:
             mutate the event.
           example: "01929d0e-0e47-7000-8000-000000000001"
         venue_id:
-          type: string
+          type: [string, "null"]
           format: uuid
-          nullable: true
           description: |
             Optional FK to a venue (see /v1/venues/{id}). NULL when the
             event has no fixed venue (e.g. online stream, TBD location).
@@ -2838,8 +2801,7 @@ components:
             otherwise the canonical name stored on the events row.
           example: "Summer Festival 2026"
         description:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Optional long-form description. Locale-resolved like `name`.
           example: "Open-air festival on the Tel Aviv beachfront."
@@ -2873,18 +2835,19 @@ components:
             `?visibility=` filter.
           example: "public"
         image_url:
-          type: string
+          type: [string, "null"]
           format: uri
-          nullable: true
           description: Optional poster / cover image URL.
           example: "https://cdn.example/events/summer-2026.jpg"
         created_at:
           type: string
           format: date-time
+          description: ISO 8601 / RFC 3339 timestamp of row creation.
           example: "2026-06-01T00:00:00Z"
         updated_at:
           type: string
           format: date-time
+          description: ISO 8601 / RFC 3339 timestamp of last update.
           example: "2026-06-02T12:34:56Z"
 
     CreateEventRequest:
@@ -2931,6 +2894,7 @@ components:
           format: uri
           description: Optional poster / cover image URL.
         translations:
+          description: Optional per-locale name/description overrides stored as i18n_text rows.
           $ref: "#/components/schemas/EventTranslations"
 
     UpdateEventRequest:
@@ -2946,33 +2910,32 @@ components:
           type: string
           description: New canonical event name. Empty leaves the value unchanged.
         description:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: New long-form description.
         venue_id:
-          type: string
+          type: [string, "null"]
           format: uuid
-          nullable: true
           description: Reassign the event to a different (same-org) venue.
         start_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
+          description: New event start time (RFC 3339, UTC).
         end_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: |
             When both start_at and end_at are present in the same body,
             end_at must remain strictly after start_at.
         visibility:
           type: string
           enum: [public, private, unlisted]
+          description: New discovery visibility for the event.
         image_url:
-          type: string
+          type: [string, "null"]
           format: uri
-          nullable: true
+          description: New poster / cover image URL. Null clears the field.
         translations:
+          description: Optional per-locale name/description overrides stored as i18n_text rows.
           $ref: "#/components/schemas/EventTranslations"
 
     UpdateEventStatusRequest:
@@ -3003,6 +2966,7 @@ components:
       description: Single-event response envelope.
       properties:
         event:
+          description: The event row.
           $ref: "#/components/schemas/EventItem"
 
     EventListResponse:
@@ -3012,6 +2976,7 @@ components:
       properties:
         events:
           type: array
+          description: Events matching the request filters.
           items:
             $ref: "#/components/schemas/EventItem"
 
@@ -3021,9 +2986,11 @@ components:
       description: Soft-delete response envelope.
       properties:
         event:
+          description: The event row as it stood at deletion time.
           $ref: "#/components/schemas/EventItem"
         deleted:
           type: boolean
+          description: Always true on success; confirms the soft delete.
           example: true
 
     # ───────────────────────────────────────────────────────────────────────
@@ -3097,10 +3064,12 @@ components:
         created_at:
           type: string
           format: date-time
+          description: ISO 8601 / RFC 3339 timestamp of row creation.
           example: "2026-06-01T00:00:00Z"
         updated_at:
           type: string
           format: date-time
+          description: ISO 8601 / RFC 3339 timestamp of last update.
           example: "2026-06-02T12:34:56Z"
         has_overlapping_sessions:
           type: boolean
@@ -3154,23 +3123,20 @@ components:
         `session.invalid_transition` is returned for disallowed moves.
       properties:
         start_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: New session start time (RFC 3339, UTC). Empty leaves unchanged.
         end_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: |
             New session end time. When both start_at and end_at are
             present in the same body, end_at must remain strictly after
             start_at.
         capacity_total:
-          type: integer
+          type: [integer, "null"]
           format: int32
           minimum: 1
-          nullable: true
           description: |
             New seat total; must be > 0. Triggers the capacity propagation
             hook (inventory ledger sync) when changed.
@@ -3193,6 +3159,7 @@ components:
       description: Single-session response envelope.
       properties:
         session:
+          description: The session row.
           $ref: "#/components/schemas/SessionItem"
 
     SessionListResponse:
@@ -3205,10 +3172,12 @@ components:
       properties:
         sessions:
           type: array
+          description: Sessions belonging to the event, ordered by start_at.
           items:
             $ref: "#/components/schemas/SessionItem"
         has_overlapping_sessions:
           type: boolean
+          description: True when any pair of returned sessions overlaps in time.
           example: false
 
     SessionDeleteResponse:
@@ -3217,9 +3186,11 @@ components:
       description: Soft-delete response envelope.
       properties:
         session:
+          description: The session row as it stood at deletion time.
           $ref: "#/components/schemas/SessionItem"
         deleted:
           type: boolean
+          description: Always true on success; confirms the soft delete.
           example: true
 
     TicketTierItem:
@@ -3282,41 +3253,36 @@ components:
           description: ISO 4217 currency code. Defaults to `USD` when omitted on create.
           example: "USD"
         pwyw_min:
-          type: integer
+          type: [integer, "null"]
           format: int64
-          nullable: true
           description: |
             Optional lower bound for `pricing_mode = pwyw` (cents). When
             both `pwyw_min` and `pwyw_max` are present, `pwyw_min <= pwyw_max`.
           example: 500
         pwyw_max:
-          type: integer
+          type: [integer, "null"]
           format: int64
-          nullable: true
           description: Optional upper bound for `pricing_mode = pwyw` (cents).
           example: 10000
         capacity:
-          type: integer
+          type: [integer, "null"]
           format: int32
-          nullable: true
           minimum: 1
           description: |
             Optional per-tier capacity cap. When set, must be > 0. `null`
             means "no tier-level cap" (only the session-level cap applies).
           example: 200
         sale_window_start:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: |
             Optional sale-window start (RFC 3339, UTC). When both
             `sale_window_start` and `sale_window_end` are present,
             `sale_window_end` must be strictly after `sale_window_start`.
           example: "2026-07-01T00:00:00Z"
         sale_window_end:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: Optional sale-window end (RFC 3339, UTC).
           example: "2026-08-15T17:59:59Z"
         sort_order:
@@ -3327,10 +3293,12 @@ components:
         created_at:
           type: string
           format: date-time
+          description: ISO 8601 / RFC 3339 timestamp of row creation.
           example: "2026-06-01T00:00:00Z"
         updated_at:
           type: string
           format: date-time
+          description: ISO 8601 / RFC 3339 timestamp of last update.
           example: "2026-06-02T12:34:56Z"
 
     CreateTicketTierRequest:
@@ -3364,30 +3332,25 @@ components:
           description: ISO 4217 currency code. Defaults to `USD` when omitted.
           example: "USD"
         pwyw_min:
-          type: integer
+          type: [integer, "null"]
           format: int64
-          nullable: true
           description: Lower bound for `pricing_mode = pwyw` (cents).
         pwyw_max:
-          type: integer
+          type: [integer, "null"]
           format: int64
-          nullable: true
           description: Upper bound for `pricing_mode = pwyw` (cents).
         capacity:
-          type: integer
+          type: [integer, "null"]
           format: int32
-          nullable: true
           minimum: 1
           description: Optional per-tier capacity. When set, must be > 0.
         sale_window_start:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: Optional sale-window start (RFC 3339, UTC).
         sale_window_end:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: |
             Optional sale-window end. When both `sale_window_start` and
             `sale_window_end` are set, `sale_window_end` must be strictly
@@ -3409,57 +3372,47 @@ components:
         `CreateTicketTierRequest`.
       properties:
         name:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: New tier name. When provided, must be non-empty after trim.
         pricing_mode:
-          type: string
+          type: [string, "null"]
           enum: [free, fixed, pwyw]
-          nullable: true
           description: New pricing mode. Validated against price / pwyw bounds.
         price_amount:
-          type: integer
+          type: [integer, "null"]
           format: int64
           minimum: 0
-          nullable: true
           description: New tier price in cents.
         currency:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: New ISO 4217 currency code.
         pwyw_min:
-          type: integer
+          type: [integer, "null"]
           format: int64
-          nullable: true
           description: New lower bound for `pricing_mode = pwyw` (cents).
         pwyw_max:
-          type: integer
+          type: [integer, "null"]
           format: int64
-          nullable: true
           description: New upper bound for `pricing_mode = pwyw` (cents).
         capacity:
-          type: integer
+          type: [integer, "null"]
           format: int32
           minimum: 1
-          nullable: true
           description: New per-tier capacity. When provided, must be > 0.
         sale_window_start:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: New sale-window start (RFC 3339, UTC).
         sale_window_end:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: |
             New sale-window end. When both `sale_window_start` and
             `sale_window_end` are set, `sale_window_end` must be strictly
             after `sale_window_start`.
         sort_order:
-          type: integer
+          type: [integer, "null"]
           format: int32
-          nullable: true
           description: New display order.
 
     TicketTierEnvelope:
@@ -3468,6 +3421,7 @@ components:
       description: Single ticket-tier response envelope.
       properties:
         tier:
+          description: The ticket-tier row.
           $ref: "#/components/schemas/TicketTierItem"
 
     TicketTierListResponse:
@@ -3477,6 +3431,7 @@ components:
       properties:
         tiers:
           type: array
+          description: Ticket tiers for the session, ordered by sort_order.
           items:
             $ref: "#/components/schemas/TicketTierItem"
 
@@ -3486,9 +3441,11 @@ components:
       description: Soft-delete response envelope for a ticket tier.
       properties:
         tier:
+          description: The ticket-tier row as it stood at deletion time.
           $ref: "#/components/schemas/TicketTierItem"
         deleted:
           type: boolean
+          description: Always true on success; confirms the soft delete.
           example: true
 
     TicketItem:
@@ -3533,16 +3490,14 @@ components:
           description: FK to the event session this ticket grants access to.
           example: "01929d0e-0e47-7000-8000-000000000501"
         tier_id:
-          type: string
+          type: [string, "null"]
           format: uuid
-          nullable: true
           description: |
             Optional FK to the ticket_tiers row associated with this ticket.
             `null` for GA / untiered sessions.
           example: "01929d0e-0e47-7000-8000-000000000701"
         holder_email:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Optional delivery email for the ticket holder. `null` for
             anonymous purchases or when email is not yet collected at
@@ -3661,9 +3616,8 @@ components:
           description: Issuance timestamp (RFC 3339, UTC).
           example: "2026-06-30T12:00:00Z"
         revoked_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: |
             Revocation timestamp (RFC 3339, UTC). `null` means the
             credential is active. Set on ticket cancellation, refund,
@@ -3750,6 +3704,353 @@ components:
           description: Human-readable display name for operator UIs.
           example: "Legacy Bil24"
 
+    BarcodeItem:
+      type: object
+      required:
+        - id
+        - authority_id
+        - external_ref
+        - ticket_id
+        - status
+        - scanned_at
+        - created_at
+        - updated_at
+      description: |
+        A single barcodes row in the barcode authority federation
+        (feature #142, migration 0030_barcodes.sql). Each barcode is
+        scoped to exactly one authority; `(authority_id, external_ref)`
+        is UNIQUE among rows. Lifecycle: `active` → `scanned` (via
+        POST /v1/scan) or `active`|`scanned` → `revoked` (terminal, via
+        DELETE /v1/barcodes/{id}).
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the barcodes row.
+          example: "01929d0e-0e47-7000-8000-000000000b01"
+        authority_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the barcode authority the barcode belongs to.
+          example: "01929d0e-0e47-7000-8000-000000000a01"
+        external_ref:
+          type: string
+          description: |
+            The barcode string as printed / encoded on the ticket.
+            Unique within the owning authority.
+          example: "ARN-2026-000123"
+        ticket_id:
+          type: [string, "null"]
+          format: uuid
+          description: |
+            Optional link to a platform tickets row. `null` for barcodes
+            originating from external platforms or guest lists.
+          example: "01929d0e-0e47-7000-8000-000000000c01"
+        status:
+          type: string
+          enum: [active, scanned, revoked]
+          description: |
+            Lifecycle status. `active` barcodes admit entry; `scanned`
+            marks a consumed barcode (double-scan protected); `revoked`
+            is terminal.
+          example: "active"
+        scanned_at:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            UTC timestamp of the successful scan. `null` until the
+            barcode has been scanned.
+          example: "2026-06-30T19:05:00Z"
+        created_at:
+          type: string
+          format: date-time
+          description: ISO 8601 / RFC 3339 timestamp of row creation.
+          example: "2026-06-30T12:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: ISO 8601 / RFC 3339 timestamp of last update.
+          example: "2026-06-30T12:00:00Z"
+
+    RegisterBarcodeRequest:
+      type: object
+      required: [authority_id, external_ref]
+      description: |
+        Request body for `POST /v1/barcodes`. Registers a barcode under
+        an existing authority. Duplicate `external_ref` values within
+        the same authority are rejected with 409 `barcode.duplicate`.
+      properties:
+        authority_id:
+          type: string
+          format: uuid
+          description: UUID of the barcode authority the barcode belongs to.
+          example: "01929d0e-0e47-7000-8000-000000000a01"
+        external_ref:
+          type: string
+          minLength: 1
+          description: |
+            The barcode string. Required; must be unique within the
+            authority.
+          example: "ARN-2026-000123"
+        ticket_id:
+          type: [string, "null"]
+          format: uuid
+          description: |
+            Optional platform ticket UUID to link. Omit or send `null`
+            for external / guest-list barcodes.
+
+    ScanRequest:
+      type: object
+      required: [external_ref, authority_type]
+      description: |
+        Request body for `POST /v1/scan`. The scan flow resolves the
+        authority by `authority_type`, looks up the barcode by
+        `(authority_id, external_ref)`, and atomically transitions
+        `active` → `scanned`.
+      properties:
+        external_ref:
+          type: string
+          minLength: 1
+          description: The scanned barcode string.
+          example: "ARN-2026-000123"
+        authority_type:
+          type: string
+          enum:
+            - platform
+            - legacy_bil24
+            - external_platform
+            - guest_list
+          description: |
+            Authority type the barcode is expected to belong to. Unknown
+            types are rejected with 404 `barcode.unknown_authority`.
+          example: "platform"
+
+    ScanResultResponse:
+      type: object
+      required: [barcode_id, authority_type, external_ref, ticket_id, status, scanned_at]
+      description: |
+        Successful scan result returned by `POST /v1/scan` after the
+        barcode has been atomically marked `scanned`.
+      properties:
+        barcode_id:
+          type: string
+          format: uuid
+          description: UUID of the scanned barcodes row.
+          example: "01929d0e-0e47-7000-8000-000000000b01"
+        authority_type:
+          type: string
+          description: Authority type the barcode was resolved against.
+          example: "platform"
+        external_ref:
+          type: string
+          description: Echo of the scanned barcode string.
+          example: "ARN-2026-000123"
+        ticket_id:
+          type: [string, "null"]
+          format: uuid
+          description: |
+            Linked platform ticket UUID; `null` for external /
+            guest-list barcodes.
+        status:
+          type: string
+          description: Post-scan barcode status (always `scanned` on success).
+          example: "scanned"
+        scanned_at:
+          type: string
+          format: date-time
+          description: UTC timestamp at which the scan was recorded.
+          example: "2026-06-30T19:05:00Z"
+
+    ScannerSnapshotBarcode:
+      type: object
+      required: [id, external_ref, status, updated_at]
+      description: |
+        Minimal barcode projection returned inside the offline scanner
+        snapshot (feature #144). Offline scanners only need
+        `external_ref` and `status` to decide whether to admit a ticket.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUID of the barcodes row.
+          example: "01929d0e-0e47-7000-8000-000000000b01"
+        external_ref:
+          type: string
+          description: The barcode string encoded on the ticket.
+          example: "ARN-2026-000123"
+        ticket_id:
+          type: string
+          format: uuid
+          description: |
+            Linked platform ticket UUID. Omitted for barcodes without a
+            ticket link.
+        status:
+          type: string
+          enum: [active, scanned]
+          description: |
+            Barcode status at snapshot time. Revoked barcodes are
+            excluded from the snapshot entirely.
+          example: "active"
+        updated_at:
+          type: string
+          format: date-time
+          description: Last-update timestamp used by the `since` delta cursor.
+          example: "2026-06-24T10:00:00Z"
+
+    ScannerSnapshotResponse:
+      type: object
+      required: [barcodes, total, page, per_page, total_pages]
+      description: |
+        Paginated offline-validation snapshot returned by
+        `GET /v1/scanner/snapshot` (feature #144). Clients store
+        `last_updated_at` and pass it as the `since` query parameter on
+        the next poll to receive only changed / newly issued barcodes.
+      properties:
+        barcodes:
+          type: array
+          description: Non-revoked barcodes for the requested session (current page).
+          items:
+            $ref: "#/components/schemas/ScannerSnapshotBarcode"
+        total:
+          type: integer
+          format: int64
+          description: Total matching barcodes across all pages.
+          example: 1234
+        page:
+          type: integer
+          description: 1-based page number echoed from the request.
+          example: 1
+        per_page:
+          type: integer
+          description: Page size echoed from the request (default 200, max 500).
+          example: 200
+        total_pages:
+          type: integer
+          description: Total number of pages (minimum 1).
+          example: 7
+        last_updated_at:
+          type: string
+          format: date-time
+          description: |
+            Maximum `updated_at` among returned barcodes; pass as
+            `since` on the next poll. Omitted when the page is empty.
+          example: "2026-06-24T10:00:00Z"
+
+    ScannerValidateRequest:
+      type: object
+      required: [external_ref, authority_type]
+      description: |
+        Request body for `POST /v1/scanner/validate`. Identical shape to
+        `ScanRequest`, but the validate endpoint performs a pure read —
+        the barcode status is NOT changed.
+      properties:
+        external_ref:
+          type: string
+          minLength: 1
+          description: The barcode string to validate.
+          example: "ARN-2026-000123"
+        authority_type:
+          type: string
+          enum:
+            - platform
+            - legacy_bil24
+            - external_platform
+            - guest_list
+          description: |
+            Authority type the barcode is expected to belong to. Unknown
+            types are rejected with 404 `scanner.unknown_authority`.
+          example: "platform"
+
+    ScannerValidateResponse:
+      type: object
+      required: [barcode_id, external_ref, authority_type, status, valid]
+      description: |
+        Read-only validation verdict returned by
+        `POST /v1/scanner/validate`. Unlike `POST /v1/scan` the barcode
+        status is left untouched.
+      properties:
+        barcode_id:
+          type: string
+          format: uuid
+          description: UUID of the barcodes row.
+          example: "01929d0e-0e47-7000-8000-000000000b01"
+        external_ref:
+          type: string
+          description: Echo of the validated barcode string.
+          example: "ARN-2026-000123"
+        authority_type:
+          type: string
+          description: Authority type the barcode was resolved against.
+          example: "platform"
+        ticket_id:
+          type: string
+          format: uuid
+          description: |
+            Linked platform ticket UUID. Omitted for barcodes without a
+            ticket link.
+        status:
+          type: string
+          enum: [active, scanned, revoked]
+          description: Current barcode status (unchanged by this call).
+          example: "active"
+        valid:
+          type: boolean
+          description: True only when the barcode status is `active`.
+          example: true
+        invalid_reason:
+          type: string
+          enum: [barcode_revoked, already_scanned]
+          description: |
+            Machine-readable reason when `valid` is false. Omitted for
+            valid barcodes.
+
+    GrantMembershipRequest:
+      type: object
+      required: [user_id, role]
+      description: |
+        Request body for `POST /v1/organizations/{org_id}/members`
+        (feature #120). Binds an existing user to the organization in
+        the path with a named role. A user may hold multiple roles in
+        the same organization.
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: UUID of the user to grant the role to. Must exist.
+          example: "01929d0e-0e47-7000-8000-000000000020"
+        role:
+          type: string
+          enum:
+            - organizer
+            - agent
+            - platform_operator
+            - external_ticketing_operator
+            - platform_superadmin
+            - network_operator
+          description: Named role to grant, scoped to the organization in the path.
+          example: "organizer"
+
+    RevokeMembershipRequest:
+      type: object
+      required: [role]
+      description: |
+        Request body for
+        `DELETE /v1/organizations/{org_id}/members/{user_id}`. The role
+        must be supplied because a user may hold multiple roles in the
+        same organization.
+      properties:
+        role:
+          type: string
+          enum:
+            - organizer
+            - agent
+            - platform_operator
+            - external_ticketing_operator
+            - platform_superadmin
+            - network_operator
+          description: The specific role binding to revoke.
+          example: "organizer"
+
     InventoryRowItem:
       type: object
       required:
@@ -3777,17 +4078,15 @@ components:
           format: uuid
           description: FK to the owning session.
         tier_id:
-          type: string
+          type: [string, "null"]
           format: uuid
-          nullable: true
           description: |
             FK to the owning ticket tier, or null for the session-level
             General-Admission ledger row (the only mode wired by the
             current handler set).
         capacity_total:
-          type: integer
+          type: [integer, "null"]
           format: int32
-          nullable: true
           description: |
             Total capacity available for sale on this ledger row. `null`
             means unlimited (and `capacity_available` is then also `null`).
@@ -3806,9 +4105,8 @@ components:
           minimum: 0
           description: Capacity units that have been confirmed (sold).
         capacity_available:
-          type: integer
+          type: [integer, "null"]
           format: int32
-          nullable: true
           minimum: 0
           description: |
             Derived field: `capacity_total - capacity_held - capacity_sold`.
@@ -3824,6 +4122,7 @@ components:
       description: Single inventory ledger row response envelope.
       properties:
         inventory:
+          description: The inventory ledger row.
           $ref: "#/components/schemas/InventoryRowItem"
 
     InventoryListResponse:
@@ -3833,6 +4132,7 @@ components:
       properties:
         inventory:
           type: array
+          description: Inventory ledger rows for the session (session-level and per-tier).
           items:
             $ref: "#/components/schemas/InventoryRowItem"
 
@@ -3846,9 +4146,8 @@ components:
         unlimited-capacity row.
       properties:
         capacity_total:
-          type: integer
+          type: [integer, "null"]
           format: int32
-          nullable: true
           minimum: 0
           description: |
             Total capacity to seed the ledger row with. `null` (or omitted)
@@ -3912,16 +4211,14 @@ components:
           format: uuid
           description: Session whose capacity is held by the reservation.
         tier_id:
-          type: string
+          type: [string, "null"]
           format: uuid
-          nullable: true
           description: |
             Optional ticket tier. When `null`, the reservation is a
             session-level GA hold.
         user_id:
-          type: string
+          type: [string, "null"]
           format: uuid
-          nullable: true
           description: |
             JWT actor that created the reservation. May be `null` for
             anonymous public-feed checkouts.
@@ -3943,21 +4240,23 @@ components:
         created_at:
           type: string
           format: date-time
+          description: ISO 8601 / RFC 3339 timestamp of row creation.
         updated_at:
           type: string
           format: date-time
+          description: ISO 8601 / RFC 3339 timestamp of last update.
         cancelled_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
+          description: UTC timestamp of cancellation; null unless state is `cancelled`.
         converted_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
+          description: UTC timestamp of conversion to an order; null unless state is `converted`.
         expired_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
+          description: UTC timestamp when the hold expired; null unless state is `expired`.
 
     ReservationEnvelope:
       type: object
@@ -3965,6 +4264,7 @@ components:
       description: Single-reservation response envelope.
       properties:
         reservation:
+          description: The reservation row.
           $ref: "#/components/schemas/Reservation"
 
     ReservationCancelEnvelope:
@@ -3977,6 +4277,7 @@ components:
         ledger.
       properties:
         reservation:
+          description: The reservation row in its now-cancelled state.
           $ref: "#/components/schemas/Reservation"
         cancelled:
           type: boolean
@@ -4079,33 +4380,29 @@ components:
             Optional whitelist of ticket-tier UUIDs the code applies to.
             Empty array means the code applies order-wide.
         max_uses:
-          type: integer
+          type: [integer, "null"]
           format: int32
-          nullable: true
           description: |
             Total redemption cap across all customers. `null` means
             unlimited. When the cap is reached, `promo-validate` returns
             409 `promo.exhausted`.
         max_uses_per_customer:
-          type: integer
+          type: [integer, "null"]
           format: int32
-          nullable: true
           description: |
             Per-customer redemption cap. `null` means unlimited. Enforced
             in `promo-validate` only when a `user_id` is supplied;
             anonymous validations bypass the per-customer counter.
         valid_from:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: |
             RFC3339 start of the validity window. `null` means no lower
             bound. Validation returns 422 `promo.not_yet_valid` for
             requests before this instant.
         valid_until:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: |
             RFC3339 end of the validity window. `null` means no upper
             bound. Validation returns 422 `promo.expired` for requests
@@ -4128,9 +4425,11 @@ components:
         created_at:
           type: string
           format: date-time
+          description: ISO 8601 / RFC 3339 timestamp of row creation.
         updated_at:
           type: string
           format: date-time
+          description: ISO 8601 / RFC 3339 timestamp of last update.
 
     PromoCodeEnvelope:
       type: object
@@ -4138,6 +4437,7 @@ components:
       description: Single-promo-code response envelope.
       properties:
         promo_code:
+          description: The promo-code row.
           $ref: "#/components/schemas/PromoCodeItem"
 
     PromoCodeListResponse:
@@ -4150,6 +4450,7 @@ components:
       properties:
         promo_codes:
           type: array
+          description: All promo codes owned by the organization.
           items:
             $ref: "#/components/schemas/PromoCodeItem"
 
@@ -4164,6 +4465,7 @@ components:
         applied.
       properties:
         promo_code:
+          description: The promo-code row immediately before the soft-delete marker was applied.
           $ref: "#/components/schemas/PromoCodeItem"
         deleted:
           type: boolean
@@ -4207,26 +4509,22 @@ components:
             Optional ticket-tier UUID whitelist. Omitted/null is
             normalised to an empty array server-side.
         max_uses:
-          type: integer
+          type: [integer, "null"]
           format: int32
-          nullable: true
           description: Total redemption cap; null = unlimited.
         max_uses_per_customer:
-          type: integer
+          type: [integer, "null"]
           format: int32
-          nullable: true
           description: Per-customer redemption cap; null = unlimited.
         valid_from:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: |
             RFC3339 start of the validity window. Non-RFC3339 values are
             rejected with 400 `promo.invalid_valid_from`.
         valid_until:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: |
             RFC3339 end of the validity window. Non-RFC3339 values are
             rejected with 400 `promo.invalid_valid_until`.
@@ -4258,45 +4556,49 @@ components:
             Optional new discount type. Values outside the enum are
             rejected with 400 `promo.invalid_discount_type`.
         discount_value:
-          type: integer
+          type: [integer, "null"]
           format: int64
           minimum: 1
-          nullable: true
+          description: |
+            Optional new discount value. Percent in [1, 100] for
+            `percent`; minor units for `fixed_amount`.
         applies_to_tier_ids:
           type: array
+          description: |
+            New whitelist of ticket-tier UUIDs the code applies to.
+            Empty array makes the code apply order-wide.
           items:
             type: string
             format: uuid
         max_uses:
-          type: integer
+          type: [integer, "null"]
           format: int32
-          nullable: true
+          description: New total redemption cap. `null` means unlimited.
         max_uses_per_customer:
-          type: integer
+          type: [integer, "null"]
           format: int32
-          nullable: true
+          description: New per-customer redemption cap. `null` means unlimited.
         valid_from:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: |
             RFC3339 instant. Non-RFC3339 values return 400
             `promo.invalid_valid_from`.
         valid_until:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: |
             RFC3339 instant. Non-RFC3339 values return 400
             `promo.invalid_valid_until`.
         min_order_amount:
-          type: integer
+          type: [integer, "null"]
           format: int64
           minimum: 0
-          nullable: true
+          description: New minor-units minimum order subtotal required for the code to apply.
         status:
           type: string
           enum: [active, paused]
+          description: New lifecycle status. `paused` codes fail promo-validate with 422.
 
     ValidatePromoCodeRequest:
       type: object
@@ -4360,6 +4662,7 @@ components:
             mis-specified fixed-amount codes; the checkout pipeline
             clamps at zero.
         promo_code:
+          description: The promo-code row that was validated, echoed back.
           $ref: "#/components/schemas/PromoCodeItem"
 
     PricingBreakdownItem:
@@ -4482,8 +4785,7 @@ components:
               format: uuid
               description: UUID of the session that owns the tier.
             promo_code:
-              type: string
-              nullable: true
+              type: [string, "null"]
               description: |
                 Echoed promo code when one was applied and validated;
                 `null` when no promo code was supplied or it failed
@@ -4499,6 +4801,7 @@ components:
         this API for read-only resource fetches).
       properties:
         quote:
+          description: The computed price quote.
           $ref: "#/components/schemas/QuoteResponseItem"
 
     CheckoutSessionItem:
@@ -4560,9 +4863,8 @@ components:
             reservation expires the checkout session is cascaded to
             `expired` by `reservation_processor.go`.
         user_id:
-          type: string
+          type: [string, "null"]
           format: uuid
-          nullable: true
           description: |
             Authenticated buyer when known; `null` for anonymous /
             guest checkouts. Set at session creation and immutable.
@@ -4587,85 +4889,72 @@ components:
             `manual_review` → {`completed`, `abandoned`};
             `completed`, `abandoned`, `expired` are terminal.
         subtotal:
-          type: integer
+          type: [integer, "null"]
           format: int64
-          nullable: true
           minimum: 0
           description: |
             Pricing-snapshot `unit_price * quantity`, in minor currency
             units. `null` until the session is confirmed.
         discount:
-          type: integer
+          type: [integer, "null"]
           format: int64
-          nullable: true
           minimum: 0
           description: Pricing-snapshot discount, clamped to `[0, subtotal]`.
         platform_fee:
-          type: integer
+          type: [integer, "null"]
           format: int64
-          nullable: true
           minimum: 0
           description: Pricing-snapshot platform fee.
         provider_fee:
-          type: integer
+          type: [integer, "null"]
           format: int64
-          nullable: true
           minimum: 0
           description: Pricing-snapshot provider fee.
         tax:
-          type: integer
+          type: [integer, "null"]
           format: int64
-          nullable: true
           minimum: 0
           description: Pricing-snapshot tax.
         total:
-          type: integer
+          type: [integer, "null"]
           format: int64
-          nullable: true
           minimum: 0
           description: |
             Pricing-snapshot grand total:
             `(subtotal - discount) + platform_fee + provider_fee + tax`.
         currency:
-          type: string
-          nullable: true
+          type: [string, "null"]
           minLength: 3
           maxLength: 3
           description: ISO 4217 currency code snapshot (`USD`, `EUR`, ...).
         promo_code_id:
-          type: string
+          type: [string, "null"]
           format: uuid
-          nullable: true
           description: |
             ID of the promo code applied at confirm time; `null` when
             no promo was supplied or it failed validation.
         payment_intent_id:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Provider-side payment intent identifier captured when the
             session is completed via the paid path. `null` for free
             checkouts (total = 0).
         payment_provider:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Payment provider name (e.g. `stripe`, `tinkoff`) captured at
             completion. `null` for free checkouts.
         completed_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: RFC3339 timestamp when the session reached `completed`.
         abandoned_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: RFC3339 timestamp when the session reached `abandoned`.
         expired_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: |
             RFC3339 timestamp when the session was force-expired by the
             reservation processor or TTL worker.
@@ -4688,6 +4977,7 @@ components:
         single-resource fetches in this API.
       properties:
         checkout_session:
+          description: The checkout-session row.
           $ref: "#/components/schemas/CheckoutSessionItem"
 
     StartCheckoutRequest:
@@ -4712,9 +5002,8 @@ components:
           format: uuid
           description: Reservation the session wraps.
         user_id:
-          type: string
+          type: [string, "null"]
           format: uuid
-          nullable: true
           description: Optional buyer UUID; `null` for anonymous buyers.
 
     ConfirmCheckoutRequest:
@@ -4747,15 +5036,13 @@ components:
           minimum: 1
           description: Number of tickets being quoted; must be > 0.
         promo_code:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Optional promo code; when present the handler resolves and
             validates it before stamping `promo_code_id`.
         chosen_price:
-          type: integer
+          type: [integer, "null"]
           format: int64
-          nullable: true
           minimum: 0
           description: |
             Buyer-chosen unit price for pay-what-you-want tiers
@@ -4834,6 +5121,7 @@ components:
         `GET /v1/checkout/{id}/price-breakdown`.
       properties:
         price_breakdown:
+          description: The itemized pricing pipeline result for the checkout session.
           $ref: "#/components/schemas/PriceBreakdownItem"
 
     CompleteCheckoutRequest:
@@ -4895,9 +5183,8 @@ components:
           format: uuid
           description: UUIDv7 of the payment intent row.
         checkout_session_id:
-          type: string
+          type: [string, "null"]
           format: uuid
-          nullable: true
           description: |
             Optional link to the checkout session this payment was created
             for; `null` for standalone payments not tied to a checkout.
@@ -4910,8 +5197,7 @@ components:
           description: |
             Payment provider name (e.g. `stripe`, `tinkoff`, `mock`).
         provider_payment_id:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Provider-side payment intent identifier. May be `null` at
             creation when the provider issues the id asynchronously; set
@@ -4947,43 +5233,36 @@ components:
             `manual_review` → {`succeeded`, `failed`};
             `succeeded`, `failed` are terminal.
         sca_redirect_url:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             3DS / SCA redirect URL. Populated when the intent enters
             `requires_action` so the buyer can complete the challenge.
         client_secret:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Provider client secret for SDK-based SCA flows (e.g. Stripe.js
             `confirmCardPayment`). Treat as a bearer credential.
         failure_code:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Structured failure code populated when the intent transitions
             to `failed` (provider-specific, e.g. `card_declined`).
         failure_message:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Human-readable failure description populated when the intent
             transitions to `failed`.
         authorized_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: RFC3339 timestamp when the intent reached `authorized`.
         succeeded_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: RFC3339 timestamp when the intent reached `succeeded`.
         failed_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: RFC3339 timestamp when the intent reached `failed`.
         created_at:
           type: string
@@ -5003,6 +5282,7 @@ components:
         `PaymentIntentItem` under the `payment_intent` key.
       properties:
         payment_intent:
+          description: The payment-intent row.
           $ref: "#/components/schemas/PaymentIntentItem"
 
     CreatePaymentIntentRequest:
@@ -5016,9 +5296,8 @@ components:
         used as the initial state.
       properties:
         checkout_session_id:
-          type: string
+          type: [string, "null"]
           format: uuid
-          nullable: true
           description: |
             Optional checkout session this payment is linked to. When
             provided, a webhook transition to `succeeded` will trigger
@@ -5032,8 +5311,7 @@ components:
           description: |
             Payment provider name (e.g. `stripe`, `tinkoff`, `mock`).
         provider_payment_id:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Provider-side payment intent identifier; may be `null` and
             set later via webhook or transition.
@@ -5060,14 +5338,12 @@ components:
             Terminal states (`succeeded`, `failed`) are rejected with
             `payment_intent.invalid_initial_state`.
         sca_redirect_url:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             3DS / SCA redirect URL; set when creating an intent that
             already requires a buyer-side challenge.
         client_secret:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Optional provider client secret for SDK-based SCA flows.
 
@@ -5096,29 +5372,24 @@ components:
             - failed
           description: Target state.
         sca_redirect_url:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             3DS / SCA redirect URL; required when transitioning to
             `requires_action`.
         client_secret:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: Provider client secret for SDK-based SCA flows.
         failure_code:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Structured failure code; set when transitioning to `failed`.
         failure_message:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Human-readable failure message; set when transitioning to
             `failed`.
         provider_payment_id:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Provider-side payment intent identifier; may be set on the
             first transition if it was unknown at creation.
@@ -5164,17 +5435,21 @@ components:
             Optional explicit target state that overrides the
             `event_type` → state mapping.
         sca_redirect_url:
-          type: string
-          nullable: true
+          type: [string, "null"]
+          description: |
+            Provider 3-D Secure / SCA redirect URL persisted on the
+            intent when the event requires customer action.
         client_secret:
-          type: string
-          nullable: true
+          type: [string, "null"]
+          description: |
+            Provider client secret for browser-side confirmation flows;
+            stored on the intent when supplied.
         failure_code:
-          type: string
-          nullable: true
+          type: [string, "null"]
+          description: Machine-readable provider failure code recorded on failure events.
         failure_message:
-          type: string
-          nullable: true
+          type: [string, "null"]
+          description: Human-readable provider failure message recorded on failure events.
         event_payload:
           description: |
             Raw provider webhook payload, persisted verbatim for audit
@@ -5209,9 +5484,9 @@ components:
             Present when `processed` is `false`; explains why no
             transition was performed.
         payment_intent:
-          allOf:
+          oneOf:
             - $ref: "#/components/schemas/PaymentIntentItem"
-          nullable: true
+            - type: "null"
           description: |
             Present when `processed: true`; carries the updated intent.
 
@@ -5276,14 +5551,12 @@ components:
           maxLength: 3
           description: ISO 4217 currency code (`USD`, `EUR`, ...).
         reason:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Optional customer-facing refund reason captured at request
             time.
         requested_by:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Optional free-form identifier of the actor that requested
             the refund (admin user id, support ticket id, etc.).
@@ -5307,14 +5580,12 @@ components:
             `manual_review` → {`succeeded`, `failed`};
             `rejected`, `succeeded`, `failed` are terminal.
         provider_refund_id:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Provider-side refund identifier (e.g. Stripe's `re_…`
             string). `null` until the provider webhook carries it.
         failure_reason:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Structured failure reason populated when the refund
             transitions to `failed` (provider-specific).
@@ -5323,19 +5594,16 @@ components:
           format: date-time
           description: RFC3339 timestamp when the refund was first requested.
         approved_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: RFC3339 timestamp when the refund reached `approved`.
         succeeded_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: RFC3339 timestamp when the refund reached `succeeded`.
         failed_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: RFC3339 timestamp when the refund reached `failed`.
         created_at:
           type: string
@@ -5355,6 +5623,7 @@ components:
         `refund` key.
       properties:
         refund:
+          description: The refund row.
           $ref: "#/components/schemas/RefundItem"
 
     CreateRefundRequest:
@@ -5387,14 +5656,12 @@ components:
             ISO 4217 currency code. Empty values are rejected with
             `refund.missing_currency`.
         reason:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Optional customer-facing refund reason persisted with the
             refund row.
         requested_by:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Optional free-form identifier of the requesting actor
             (admin user id, support ticket id, etc.).
@@ -5409,8 +5676,7 @@ components:
         the refund audit trail.
       properties:
         notes:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: Optional approval/rejection note.
 
     RefundWebhookRequest:
@@ -5467,8 +5733,7 @@ components:
             Non-UUID values are rejected with
             `refund_webhook.invalid_refund_id`.
         failure_reason:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: |
             Optional failure reason persisted when the refund
             transitions to `failed`.
@@ -5506,9 +5771,9 @@ components:
             Present when `processed` is `false`; explains why no
             transition was performed.
         refund:
-          allOf:
+          oneOf:
             - $ref: "#/components/schemas/RefundItem"
-          nullable: true
+            - type: "null"
           description: |
             Present when `processed: true`; carries the updated refund.
 
@@ -5784,6 +6049,7 @@ components:
         Wraps the most recent `delivery_jobs` row for the ticket.
       properties:
         delivery:
+          description: The most recent delivery job for the ticket.
           $ref: "#/components/schemas/DeliveryJob"
 
     AdminTicketDeliveryResendResponse:
@@ -5797,6 +6063,7 @@ components:
         enqueued attempt with downstream worker logs.
       properties:
         delivery:
+          description: The freshly inserted delivery job created by the resend.
           $ref: "#/components/schemas/DeliveryJob"
         worker_job_id:
           type: string
@@ -6000,9 +6267,8 @@ components:
           format: uuid
           description: UUIDv7 of the agent feed token the event is published to.
         city_id:
-          type: string
+          type: [string, "null"]
           format: uuid
-          nullable: true
           description: |
             Optional city scope. `null` means the publication is
             visible in all geographies; a non-null UUID restricts
@@ -6027,9 +6293,8 @@ components:
             UUIDv7 of the agent feed token to publish the event to.
             Must reference an existing row in `agent_feed_tokens`.
         city_id:
-          type: string
+          type: [string, "null"]
           format: uuid
-          nullable: true
           description: |
             Optional city scope. Omit or set to `null` for a global
             publication. When set, only consumers querying for that
@@ -7583,12 +7848,14 @@ paths:
         - name: org_id
           in: path
           required: true
+          description: UUIDv7 primary key of the owning organization.
           schema:
             type: string
             format: uuid
         - name: id
           in: path
           required: true
+          description: UUIDv7 primary key of the resource being addressed.
           schema:
             type: string
             format: uuid
@@ -7665,12 +7932,14 @@ paths:
         - name: org_id
           in: path
           required: true
+          description: UUIDv7 primary key of the owning organization.
           schema:
             type: string
             format: uuid
         - name: id
           in: path
           required: true
+          description: UUIDv7 primary key of the resource being addressed.
           schema:
             type: string
             format: uuid
@@ -7722,6 +7991,264 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database not wired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Organization membership management (feature #120)
+  # ─────────────────────────────────────────────────────────────────────────
+
+  /v1/organizations/{org_id}/members:
+    get:
+      operationId: listOrganizationMembers
+      summary: List members of an organization
+      description: |
+        Returns every active membership row for the organization in the
+        path (feature #120,
+        `apps/backend/internal/platform/httpserver/hiam/memberships.go`
+        HandleListMembers). A user may appear multiple times — once per
+        role held. Requires JWT + the `membership.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the organization whose members to list.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Active memberships in the organization (possibly empty).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [memberships]
+                properties:
+                  memberships:
+                    type: array
+                    description: Active membership rows for the organization.
+                    items:
+                      $ref: "#/components/schemas/MembershipItem"
+        "400":
+          description: org_id path parameter is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `membership.read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error while listing memberships (`membership.list_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Membership queries unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: grantOrganizationMembership
+      summary: Grant a role to a user in an organization
+      description: |
+        Binds a user to the organization in the path with a named role
+        (feature #120, HandleGrantMembership). A user may hold multiple
+        roles in the same organization; granting the same role twice
+        returns 409 `membership.duplicate`. Grants take effect on the
+        next request — permission resolution unions JWT roles with
+        active membership roles, so no re-authentication is required.
+        Requires JWT + the `membership.grant` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the organization to grant the role in.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GrantMembershipRequest"
+      responses:
+        "201":
+          description: Membership created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [membership]
+                properties:
+                  membership:
+                    description: The newly created membership row.
+                    $ref: "#/components/schemas/MembershipItem"
+        "400":
+          description: |
+            Invalid path or body. Possible error codes:
+            `membership.invalid_body`, `membership.empty_body`,
+            `membership.invalid_json`, `membership.missing_user_id`,
+            `membership.invalid_user_id`, `membership.invalid_role`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `membership.grant` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            User already holds that role in this organization
+            (`membership.duplicate`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: |
+            user_id or org_id does not exist
+            (`membership.invalid_reference`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error while granting (`membership.insert_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Database pool or membership queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/members/{user_id}:
+    delete:
+      operationId: revokeOrganizationMembership
+      summary: Revoke a role from a user in an organization
+      description: |
+        Revokes one specific role binding for the user in the path
+        (feature #120, HandleRevokeMembership). The role MUST be
+        supplied in the request body because a user may hold multiple
+        roles in the same organization; other role bindings are left
+        intact. Revocation takes effect on the next request through
+        membership-aware permission resolution. Requires JWT + the
+        `membership.revoke` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the organization the role is scoped to.
+          schema:
+            type: string
+            format: uuid
+        - name: user_id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the user whose role binding to revoke.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RevokeMembershipRequest"
+      responses:
+        "200":
+          description: Membership revoked; echoes the revoked row.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [membership, revoked]
+                properties:
+                  membership:
+                    description: The membership row that was revoked.
+                    $ref: "#/components/schemas/MembershipItem"
+                  revoked:
+                    type: boolean
+                    description: Always true on success; confirms the revocation.
+                    example: true
+        "400":
+          description: |
+            Invalid path or body. Possible error codes:
+            `membership.invalid_body`, `membership.empty_body`,
+            `membership.invalid_json`, `membership.invalid_role`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `membership.revoke` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: |
+            No active membership found for this user, org, and role
+            combination (`membership.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error while revoking (`membership.revoke_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Database pool or membership queries unavailable
+            (`dependency.database_unavailable`).
           content:
             application/json:
               schema:
@@ -8778,6 +9305,7 @@ paths:
         - name: org_id
           in: path
           required: true
+          description: UUIDv7 primary key of the owning organization.
           schema:
             type: string
             format: uuid
@@ -8828,6 +9356,7 @@ paths:
         - name: org_id
           in: path
           required: true
+          description: UUIDv7 primary key of the owning organization.
           schema:
             type: string
             format: uuid
@@ -8894,12 +9423,14 @@ paths:
         - name: org_id
           in: path
           required: true
+          description: UUIDv7 primary key of the owning organization.
           schema:
             type: string
             format: uuid
         - name: id
           in: path
           required: true
+          description: UUIDv7 primary key of the resource being addressed.
           schema:
             type: string
             format: uuid
@@ -8953,12 +9484,14 @@ paths:
         - name: org_id
           in: path
           required: true
+          description: UUIDv7 primary key of the owning organization.
           schema:
             type: string
             format: uuid
         - name: id
           in: path
           required: true
+          description: UUIDv7 primary key of the resource being addressed.
           schema:
             type: string
             format: uuid
@@ -9023,12 +9556,14 @@ paths:
         - name: org_id
           in: path
           required: true
+          description: UUIDv7 primary key of the owning organization.
           schema:
             type: string
             format: uuid
         - name: id
           in: path
           required: true
+          description: UUIDv7 primary key of the resource being addressed.
           schema:
             type: string
             format: uuid
@@ -14955,6 +15490,503 @@ paths:
           description: |
             Internal server error while creating the authority
             (`barcode.create_authority_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Barcode queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/barcodes:
+    post:
+      operationId: registerBarcode
+      summary: Register a barcode in the federation
+      description: |
+        Registers a new barcode under an existing barcode authority
+        (feature #142, `apps/backend/internal/platform/httpserver/
+        hbarcode/barcodes.go` HandleRegisterBarcode). The
+        `(authority_id, external_ref)` pair is UNIQUE — re-registering
+        the same reference under the same authority returns 409
+        `barcode.duplicate`. `ticket_id` is optional and links the
+        barcode to a platform ticket; external-platform and guest-list
+        barcodes typically omit it.
+
+        Requires JWT + the `barcode.create` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterBarcodeRequest"
+      responses:
+        "201":
+          description: Barcode registered; echoes the created row.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BarcodeItem"
+        "400":
+          description: |
+            Invalid body or field. Possible error codes:
+            `barcode.invalid_body`, `barcode.invalid_authority_id`,
+            `barcode.missing_external_ref`, `barcode.invalid_ticket_id`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `barcode.create` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            A barcode with this `external_ref` already exists for the
+            given authority (`barcode.duplicate`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error while registering the barcode
+            (`barcode.register_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Barcode queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/barcodes/{id}:
+    get:
+      operationId: getBarcode
+      summary: Get a barcode by id
+      description: |
+        Returns a single barcodes row by its UUID (feature #142,
+        HandleGetBarcode). 404 when no barcode with the given id exists.
+
+        Requires JWT + the `barcode.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID primary key of the barcodes row.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The barcode row.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BarcodeItem"
+        "400":
+          description: id path parameter is not a valid UUID (`barcode.invalid_id`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `barcode.read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Barcode not found (`barcode.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error while fetching the barcode
+            (`barcode.fetch_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Barcode queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      operationId: revokeBarcode
+      summary: Revoke a barcode
+      description: |
+        Marks the barcode as `revoked` (feature #142,
+        HandleRevokeBarcode). Revocation is terminal — a revoked barcode
+        can never be scanned; subsequent scan attempts return 409
+        `barcode.revoked`. Returns the updated row rather than 204 so
+        operator UIs can render the final state.
+
+        Requires JWT + the `barcode.revoke` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID primary key of the barcodes row to revoke.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Barcode revoked; echoes the updated row (`status = revoked`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BarcodeItem"
+        "400":
+          description: id path parameter is not a valid UUID (`barcode.invalid_id`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `barcode.revoke` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Barcode not found (`barcode.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error while revoking the barcode
+            (`barcode.revoke_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Barcode queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/scan:
+    post:
+      operationId: scanBarcode
+      summary: Validate and consume a barcode scan
+      description: |
+        Authority-aware scan validation (feature #142, HandleScan).
+        Flow: resolve the authority by `authority_type` (404 when
+        unknown), look up the barcode by `(authority_id, external_ref)`
+        (404 when absent), reject revoked barcodes (409
+        `barcode.revoked`), then atomically transition
+        `active` → `scanned`. A barcode that was already scanned —
+        including one scanned concurrently between lookup and update —
+        returns 409 `barcode.already_scanned` (double-scan protection).
+
+        Requires JWT + the `barcode.scan` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScanRequest"
+      responses:
+        "200":
+          description: Scan recorded; the barcode is now `scanned`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanResultResponse"
+        "400":
+          description: |
+            Invalid body or field. Possible error codes:
+            `barcode.invalid_body`, `barcode.missing_external_ref`,
+            `barcode.missing_authority_type`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `barcode.scan` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: |
+            Authority type not found in the federation
+            (`barcode.unknown_authority`) or no barcode with this
+            `external_ref` under the authority (`barcode.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            Barcode cannot be consumed: revoked (`barcode.revoked`) or
+            already scanned (`barcode.already_scanned`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error during the scan flow
+            (`barcode.authority_lookup_failed`, `barcode.fetch_failed`,
+            `barcode.scan_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Barcode queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/scanner/snapshot:
+    get:
+      operationId: getScannerSnapshot
+      summary: Download an offline-validation barcode snapshot
+      description: |
+        Returns a paginated snapshot of all non-revoked barcodes for the
+        tickets in a session (feature #144,
+        `apps/backend/internal/platform/httpserver/hscanner/
+        scanner_snapshot.go` HandleScannerSnapshot). Offline scanners
+        download the snapshot so they can validate tickets without
+        network connectivity, then poll with the `since` cursor for
+        delta updates (store `last_updated_at` from each response and
+        pass it as `since` on the next request).
+
+        Rate limited per client IP (600 req/min) and per session
+        (300 req/min); excess requests return 429 `scanner.rate_limited`.
+
+        Requires JWT + the `barcode.scan` permission (scanner devices
+        use a service-account JWT).
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: session_id
+          in: query
+          required: true
+          description: UUID of the event session whose barcodes to retrieve.
+          schema:
+            type: string
+            format: uuid
+        - name: since
+          in: query
+          required: false
+          description: |
+            RFC 3339 delta cursor — only barcodes updated strictly after
+            this instant are returned. Omit for a full snapshot.
+          schema:
+            type: string
+            format: date-time
+        - name: page
+          in: query
+          required: false
+          description: 1-based page number (default 1).
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: per_page
+          in: query
+          required: false
+          description: Page size (default 200, capped at 500).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 200
+      responses:
+        "200":
+          description: One page of the barcode snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScannerSnapshotResponse"
+        "400":
+          description: |
+            Invalid query parameter. Possible error codes:
+            `scanner.missing_session_id`, `scanner.invalid_session_id`,
+            `scanner.invalid_since`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `barcode.scan` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: |
+            Per-IP or per-session rate limit exceeded
+            (`scanner.rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error while building the snapshot
+            (`scanner.snapshot_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Barcode queries unavailable
+            (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/scanner/validate:
+    post:
+      operationId: validateScannerBarcode
+      summary: Read-only online barcode validation
+      description: |
+        Performs a read-only barcode validity check (feature #144,
+        HandleScannerValidate). Unlike `POST /v1/scan` this endpoint
+        does NOT mark the barcode as scanned — it reports whether the
+        barcode is valid (`active`), already scanned, or revoked.
+        Online scanners call this for a definitive server-side check
+        before admitting a ticket.
+
+        Rate limited per client IP (600 req/min); excess requests
+        return 429 `scanner.rate_limited`.
+
+        Requires JWT + the `barcode.scan` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScannerValidateRequest"
+      responses:
+        "200":
+          description: |
+            Validation verdict (returned for valid AND invalid barcodes
+            — inspect the `valid` flag and `invalid_reason`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScannerValidateResponse"
+        "400":
+          description: |
+            Invalid body or field. Possible error codes:
+            `scanner.invalid_body`, `scanner.missing_external_ref`,
+            `scanner.missing_authority_type`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `barcode.scan` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: |
+            Authority type not found (`scanner.unknown_authority`) or no
+            barcode with this `external_ref` under the authority
+            (`scanner.barcode_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Per-IP rate limit exceeded (`scanner.rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error during validation
+            (`scanner.authority_lookup_failed`, `scanner.validate_failed`).
           content:
             application/json:
               schema:

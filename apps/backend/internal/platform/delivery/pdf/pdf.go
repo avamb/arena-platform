@@ -198,6 +198,10 @@ func Render(ctx context.Context, ticket Ticket) ([]byte, error) {
 	pdf.SetMargins(margin, margin, margin)
 	pdf.SetAutoPageBreak(false, margin)
 	pdf.SetCompression(false) // deterministic byte output for tests
+	// gofpdf emits resource dictionaries (fonts, images) by iterating Go
+	// maps, whose order is randomized per process; sorting them keeps two
+	// renders of the same Ticket byte-identical.
+	pdf.SetCatalogSort(true)
 	// gofpdf treats a zero time as "use time.Now() at render time". To keep
 	// Render's output deterministic (the same Ticket renders to byte-identical
 	// PDFs) we pin both timestamps to a fixed sentinel.
@@ -422,6 +426,8 @@ func formatSessionInVenueTZ(t time.Time, tz string) string {
 		}
 	}
 	local := t.In(loc)
+	// Human-facing PDF ticket text rendered in the venue-local timezone;
+	// allow:timeformat: deliberately not an RFC3339 API timestamp.
 	return fmt.Sprintf("%s (%s)", local.Format("2006-01-02 15:04"), zoneLabel)
 }
 

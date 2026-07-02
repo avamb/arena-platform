@@ -71,12 +71,17 @@ func checkSQLForBareTimetamp(t *testing.T, filename, content string) {
 	t.Helper()
 
 	lines := strings.Split(content, "\n")
-	for i, line := range lines {
+	for i, rawLine := range lines {
 		// Skip comment lines.
-		trimmed := strings.TrimSpace(line)
+		trimmed := strings.TrimSpace(rawLine)
 		if strings.HasPrefix(trimmed, "--") {
 			continue
 		}
+
+		// Blank out single-quoted string literals so prose such as
+		// COMMENT ON ... IS 'First admitted scan timestamp ...' does not
+		// trip the column-type scan. Only DDL outside literals matters.
+		line := stripSQLStringLiterals(rawLine)
 
 		matches := timestampWordRE.FindAllStringIndex(line, -1)
 		for _, match := range matches {
@@ -98,7 +103,7 @@ func checkSQLForBareTimetamp(t *testing.T, filename, content string) {
 			// "timestamp without time zone" — forbidden.
 			if strings.HasPrefix(suffixLower, "without time zone") {
 				t.Errorf("%s line %d: found forbidden 'timestamp without time zone' — use timestamptz: %q",
-					filename, i+1, strings.TrimSpace(line))
+					filename, i+1, strings.TrimSpace(rawLine))
 				continue
 			}
 
@@ -124,7 +129,7 @@ func checkSQLForBareTimetamp(t *testing.T, filename, content string) {
 
 			// Bare timestamp as a type.
 			t.Errorf("%s line %d: found bare 'timestamp' column type — use 'timestamptz': %q",
-				filename, i+1, strings.TrimSpace(line))
+				filename, i+1, strings.TrimSpace(rawLine))
 		}
 	}
 }
@@ -132,6 +137,33 @@ func checkSQLForBareTimetamp(t *testing.T, filename, content string) {
 // isIdentChar reports whether c can appear in a SQL/Go identifier.
 func isIdentChar(c byte) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
+}
+
+// stripSQLStringLiterals replaces the content of single-quoted SQL string
+// literals in line with spaces, preserving byte offsets. A doubled quote
+// (”) inside a literal is the SQL escape for a single quote and does not
+// terminate the literal. Literals spanning multiple lines are not handled;
+// migration comments in this repository keep each literal on one line.
+func stripSQLStringLiterals(line string) string {
+	out := []byte(line)
+	inString := false
+	for i := 0; i < len(out); i++ {
+		if out[i] != '\'' {
+			if inString {
+				out[i] = ' '
+			}
+			continue
+		}
+		if inString && i+1 < len(out) && out[i+1] == '\'' {
+			// Escaped quote inside a literal — blank both and stay inside.
+			out[i] = ' '
+			out[i+1] = ' '
+			i++
+			continue
+		}
+		inString = !inString
+	}
+	return string(out)
 }
 
 // TestTimestamptz_AuditEventsColumnType verifies step 5: the audit_events table
