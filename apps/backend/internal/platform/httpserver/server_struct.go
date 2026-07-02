@@ -53,6 +53,7 @@ type Server struct {
 	orgQueries            *gen.Queries
 	channelQueries        *gen.Queries
 	paymentConfigQueries  *gen.Queries
+	bankAccountQueries    *gen.Queries
 	membershipQueries     *gen.Queries
 	venueQueries          *gen.Queries
 	feedTokenQueries      *gen.Queries

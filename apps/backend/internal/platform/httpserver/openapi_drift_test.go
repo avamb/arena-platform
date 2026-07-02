@@ -392,6 +392,10 @@ func buildDriftTestServer(t *testing.T) *Server {
 		// routes (feature #237) under
 		// /v1/organizations/{org_id}/payment-configs are mounted.
 		PaymentConfigQueries: gen.New(nil),
+		// Wire BankAccountQueries so the organization bank-account CRUD
+		// routes (feature #255) under
+		// /v1/organizations/{org_id}/bank-accounts are mounted.
+		BankAccountQueries: gen.New(nil),
 		// Wire BarcodeQueries so the barcode federation + scanner routes
 		// (features #142/#144, documented under #275 and the follow-up
 		// full-surface documentation pass) are mounted: GET/POST
@@ -686,15 +690,7 @@ func TestOpenAPIDriftCheck_SpecCoversAllCodeRoutes(t *testing.T) {
 // the YAML → code drift check. Every entry must reference the feature that
 // will implement it. When a route lands in code, the check below fails until
 // its entry is deleted, so this list can never go stale silently.
-var specPendingImplementation = map[string]string{
-	// Wave O / feature #255 documented the organization bank-accounts CRUD
-	// surface together with migration 0048 (organization_bank_accounts);
-	// the HTTP handlers have not been implemented yet.
-	"GET /v1/organizations/{org_id}/bank-accounts":         "feature #255",
-	"POST /v1/organizations/{org_id}/bank-accounts":        "feature #255",
-	"PATCH /v1/organizations/{org_id}/bank-accounts/{id}":  "feature #255",
-	"DELETE /v1/organizations/{org_id}/bank-accounts/{id}": "feature #255",
-}
+var specPendingImplementation = map[string]string{}
 
 // TestOpenAPIDriftCheck_CodeCoversAllSpecRoutes verifies step 8 (YAML → code):
 // every (path, method) pair documented in openapi.yaml is actually registered

@@ -109,6 +109,24 @@ func (s *Server) mountPaymentConfigRoutes(r chi.Router) {
 	})
 }
 
+// mountBankAccountRoutes mounts organization bank-account CRUD endpoints (feature #255).
+//
+// All four operations are gated on `org.update` — banking coordinates are
+// sensitive financial data and are deliberately NOT exposed to actors with
+// only `org.read` (see the Wave O section of openapi.yaml).
+func (s *Server) mountBankAccountRoutes(r chi.Router) {
+	if s.stub == nil || !s.stub.Enabled() || s.bankAccountQueries == nil || s.pool == nil {
+		return
+	}
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "org.update", "organizations")
+		pr.Get("/organizations/{org_id}/bank-accounts", s.handleListBankAccounts)
+		pr.Post("/organizations/{org_id}/bank-accounts", s.handleCreateBankAccount)
+		pr.Patch("/organizations/{org_id}/bank-accounts/{id}", s.handleUpdateBankAccount)
+		pr.Delete("/organizations/{org_id}/bank-accounts/{id}", s.handleDeleteBankAccount)
+	})
+}
+
 // mountMembershipRoutes mounts membership grant/revoke/list endpoints (feature #120).
 func (s *Server) mountMembershipRoutes(r chi.Router) {
 	if s.stub == nil || !s.stub.Enabled() || s.membershipQueries == nil || s.pool == nil {

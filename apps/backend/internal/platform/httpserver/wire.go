@@ -78,6 +78,10 @@ type Options struct {
 	// CRUD surface (feature #237). When nil and PgxPool is non-nil, the
 	// constructor falls back to gen.New(PgxPool).
 	PaymentConfigQueries *gen.Queries
+	// BankAccountQueries backs the /v1/organizations/{org_id}/bank-accounts
+	// CRUD surface (feature #255). When nil and PgxPool is non-nil, the
+	// constructor falls back to gen.New(PgxPool).
+	BankAccountQueries   *gen.Queries
 	MembershipQueries    *gen.Queries
 	VenueQueries         *gen.Queries
 	FeedTokenQueries     *gen.Queries
@@ -234,6 +238,7 @@ func New(opts Options) *Server {
 		orgQueries:            pickQueries(opts.OrgQueries, opts.PgxPool),
 		channelQueries:        pickQueries(opts.ChannelQueries, opts.PgxPool),
 		paymentConfigQueries:  pickQueries(opts.PaymentConfigQueries, opts.PgxPool),
+		bankAccountQueries:    pickQueries(opts.BankAccountQueries, opts.PgxPool),
 		membershipQueries:     pickQueries(opts.MembershipQueries, opts.PgxPool),
 		venueQueries:          pickQueries(opts.VenueQueries, opts.PgxPool),
 		feedTokenQueries:      pickQueries(opts.FeedTokenQueries, opts.PgxPool),

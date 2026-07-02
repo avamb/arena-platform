@@ -59,6 +59,15 @@ type Querier interface {
 	UpdatePaymentProviderConfig(ctx context.Context, id, orgID uuid.UUID, providerAccountID *string, publicConfig, secrets json.RawMessage, status string, isActive *bool) (PaymentProviderConfigRow, error)
 	SoftDeletePaymentProviderConfig(ctx context.Context, id, orgID uuid.UUID) (PaymentProviderConfigRow, error)
 
+	// Organization bank accounts — per-org banking coordinates (feature #255)
+	InsertOrganizationBankAccount(ctx context.Context, orgID uuid.UUID, bankName *string, holderName string, iban, bic, accountNumber, routingNumber *string, currency, country string, isPrimary bool) (OrganizationBankAccountRow, error)
+	GetOrganizationBankAccountByID(ctx context.Context, id, orgID uuid.UUID) (OrganizationBankAccountRow, error)
+	ListOrganizationBankAccountsByOrg(ctx context.Context, orgID uuid.UUID) ([]OrganizationBankAccountRow, error)
+	UpdateOrganizationBankAccount(ctx context.Context, id, orgID uuid.UUID, bankName *string, holderName string, iban, bic, accountNumber, routingNumber *string, currency, country string, isPrimary bool) (OrganizationBankAccountRow, error)
+	SoftDeleteOrganizationBankAccount(ctx context.Context, id, orgID uuid.UUID) (OrganizationBankAccountRow, error)
+	DemoteOrganizationBankAccountDefault(ctx context.Context, orgID, excludeID uuid.UUID) error
+	CountOtherActiveOrganizationBankAccounts(ctx context.Context, orgID, excludeID uuid.UUID) (int64, error)
+
 	// Sales channels — per-org payment configuration (feature #121)
 	InsertSalesChannel(ctx context.Context, orgID uuid.UUID, name, paymentMode, provider string, providerAccountID *string, feePercent string, reservationTTLOverride *int32, settings json.RawMessage) (SalesChannelRow, error)
 	GetSalesChannelByID(ctx context.Context, id, orgID uuid.UUID) (SalesChannelRow, error)

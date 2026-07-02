@@ -823,6 +823,23 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hpayments", "payment_configs.go"),
 		}
+	// Organization bank accounts (feature #255; table from #254 wave)
+	case "0048_organization_bank_accounts.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0048_organization_bank_accounts.sql"),
+		}
+	case "0056_organization_bank_accounts_country.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0056_organization_bank_accounts_country.sql"),
+		}
+	case "bank_accounts.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "bank_accounts.sql"),
+		}
+	case "bank_accounts.sql.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "bank_accounts.sql.go"),
+		}
 	// External reconciliation (feature #147)
 	case "0041_reconciliation_reports.sql":
 		candidates = []string{
@@ -1010,6 +1027,8 @@ func domainSubPackageFor(name string) (string, string) {
 		return "hreports", "reports_shims.go"
 	case "payment_configs.go", "payment_configs_write.go", "payment_configs_types.go":
 		return "hpayments", "payments_shims.go"
+	case "bank_accounts.go", "bank_accounts_write.go", "bank_accounts_types.go":
+		return "hbankaccounts", "bank_accounts_shims.go"
 	// NOTE: hauth is deliberately absent — the refactor renamed its files
 	// (auth_login.go → hauth/login.go, …), so a same-name lookup cannot map
 	// them. No structural test greps the old auth_*.go handler files.
