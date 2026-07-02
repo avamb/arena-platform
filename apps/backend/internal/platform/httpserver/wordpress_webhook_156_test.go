@@ -121,11 +121,20 @@ func readWPWebhookFile(t *testing.T, relPath string) string {
 // internal/platform/httpserver/server.go (post-feature-#174 split), the helper
 // returns the concatenated union of server.go + server_struct.go + wire.go +
 // mount_*.go so existing structural tests that grep for symbols still pass.
+// Likewise, internal/platform/httpserver/wp_webhooks.go moved into the
+// hwordpress sub-package (phase 1n); the helper returns the concatenated
+// union of hwordpress/wp_webhooks.go + wordpress_shims.go via
+// readServerGoLike so the structural greps keep matching.
 func readBackendFile(t *testing.T, relPath string) string {
 	t.Helper()
 	root := wpWebhookRepoRoot(t)
 	if relPath == "internal/platform/httpserver/server.go" {
 		if combined := readServerGoLike(root, "server.go"); combined != "" {
+			return combined
+		}
+	}
+	if relPath == "internal/platform/httpserver/wp_webhooks.go" {
+		if combined := readServerGoLike(root, "wp_webhooks.go"); combined != "" {
 			return combined
 		}
 	}

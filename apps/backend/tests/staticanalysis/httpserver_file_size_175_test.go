@@ -57,35 +57,40 @@ const httpserverFileSizeLimit = 400
 // into reconciliation.go, reconciliation_submit.go, reconciliation_query.go
 // and reconciliation_review.go and is therefore NOT in this allowlist —
 // it has already crossed the budget and may not regress.
-var httpserverOversizedAllowlist = map[string]int{
-	// Group A — files explicitly listed in the feature #175 description
-	// (originally >600 LOC). These are the primary migration targets.
-	// Entries for events.go, refunds.go, payment_intents.go,
-	// ticket_tiers.go, complimentary.go, checkout.go, barcode_batches.go,
-	// promo_codes.go, reservations.go, billing_ledger.go, geo.go and
-	// external_allocations.go were removed when the httpserver refactoring
-	// (phases 1a–1l) moved those files into domain sub-packages (hcatalog,
-	// hcheckout, hbarcode, htickets, hbilling, hgeo, hinventory); the
-	// sessions.go entry was removed in phase 1m when the sessions surface
-	// moved into hcatalog/. This gate only scans the top-level package
-	// directory.
-	"bil24_compat.go": 749,
-
-	// Group B — files in the 400–600 LOC range that also exceed the
-	// budget. Not in the feature #175 description by name, but the
-	// per-file budget is hard so they are listed here as a documented
-	// backlog. Each may only shrink; once a file drops to ≤ 400 LOC its
-	// entry must be removed. Entries for auth_login.go, barcodes.go,
-	// channels.go, orgs.go, scanner_snapshot.go, superadmin.go and
-	// venues.go were removed after the phase 1a–1i sub-package moves;
-	// feed_tokens.go, public_feed.go and public_feed_checkout.go were
-	// removed in phase 1l when the feed domain moved into hfeed/. Phase 1m
-	// moved event_reports.go, report_delivery_enqueue.go, me.go,
-	// payment_configs*.go and the pricing/session surfaces into hreports/,
-	// hiam/, hpayments/, hcheckout/ and hcatalog/ — none of those files
-	// needed an entry (all were ≤ 400 LOC except sessions.go, Group A).
-	"wp_webhooks.go": 589,
-}
+// The map is now EMPTY: the feature #175 backlog is fully drained. Every
+// former entry was retired by the phased httpserver refactoring:
+//
+//   - Group A (files explicitly listed in the feature #175 description,
+//     originally >600 LOC): entries for events.go, refunds.go,
+//     payment_intents.go, ticket_tiers.go, complimentary.go, checkout.go,
+//     barcode_batches.go, promo_codes.go, reservations.go,
+//     billing_ledger.go, geo.go and external_allocations.go were removed
+//     when phases 1a–1l moved those files into domain sub-packages
+//     (hcatalog, hcheckout, hbarcode, htickets, hbilling, hgeo,
+//     hinventory); the sessions.go entry was removed in phase 1m when the
+//     sessions surface moved into hcatalog/; the final entry,
+//     bil24_compat.go, was removed in phase 1n when the Bil24 gateway
+//     moved into hbil24/. This gate only scans the top-level package
+//     directory.
+//
+//   - Group B (files in the 400–600 LOC range that also exceeded the
+//     budget): entries for auth_login.go, barcodes.go, channels.go,
+//     orgs.go, scanner_snapshot.go, superadmin.go and venues.go were
+//     removed after the phase 1a–1i sub-package moves; feed_tokens.go,
+//     public_feed.go and public_feed_checkout.go were removed in phase 1l
+//     when the feed domain moved into hfeed/. Phase 1m moved
+//     event_reports.go, report_delivery_enqueue.go, me.go,
+//     payment_configs*.go and the pricing/session surfaces into hreports/,
+//     hiam/, hpayments/, hcheckout/ and hcatalog/ — none of those files
+//     needed an entry (all were ≤ 400 LOC except sessions.go, Group A).
+//     The final entry, wp_webhooks.go, was removed in phase 1n when the
+//     WordPress webhook subscriber registry moved into hwordpress/.
+//
+// The empty map is kept (rather than deleting the gate) so the ratchet
+// stays armed: any future top-level file exceeding the budget fails the
+// test unless it is deliberately re-listed here. The staleness logic below
+// tolerates an empty map.
+var httpserverOversizedAllowlist = map[string]int{}
 
 // TestHttpserverFileSize175 enforces the three-part contract documented at
 // the top of this file.

@@ -1,4 +1,4 @@
-// Package httpserver — WordPress webhook subscriber management.
+// wp_webhooks.go — WordPress webhook subscriber management.
 //
 // Feature #156 — WordPress webhook receiver: subscriber registration.
 //
@@ -7,7 +7,7 @@
 // The registration response includes a generated signing secret that the WP
 // plugin stores in arena_webhook_secret for HMAC-SHA256 signature verification.
 //
-// Routes (mounted in server.go):
+// Routes (mounted in mount_admin.go via wordpress_shims.go):
 //
 //	POST   /v1/webhooks/subscribers          — register a new subscriber
 //	GET    /v1/webhooks/subscribers          — list active subscribers
@@ -22,7 +22,7 @@
 //   - The secret is NOT returned in GET responses to avoid mass disclosure.
 //   - Only the signing_secret is omitted in list/get responses; all other
 //     fields are returned.
-package httpserver
+package hwordpress
 
 import (
 	"crypto/rand"
@@ -38,6 +38,8 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hbarcode"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -91,7 +93,7 @@ type webhookSubscriberSummary struct {
 // Handlers
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleRegisterWebhookSubscriber handles POST /v1/webhooks/subscribers.
+// HandleRegisterWebhookSubscriber handles POST /v1/webhooks/subscribers.
 //
 // Registers a new webhook subscriber, generates a random HMAC-SHA256 signing
 // secret, and returns it in the response. The secret is stored in
@@ -110,21 +112,21 @@ type webhookSubscriberSummary struct {
 //   - 400:          missing callback_url or invalid JSON.
 //   - 409:          callback_url already registered.
 //   - 503:          queries or pool not available.
-func (s *Server) handleRegisterWebhookSubscriber(w http.ResponseWriter, r *http.Request) {
-	if s.webhookSubQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("service_unavailable",
+func (h *Handler) HandleRegisterWebhookSubscriber(w http.ResponseWriter, r *http.Request) {
+	if h.queries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("service_unavailable",
 			"webhook subscriber service not available", r))
 		return
 	}
 
 	var req registerSubscriberRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("bad_request", "invalid JSON body", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("bad_request", "invalid JSON body", r))
 		return
 	}
 
 	if req.CallbackURL == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("validation_error",
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("validation_error",
 			"callback_url is required", r))
 		return
 	}
@@ -140,15 +142,15 @@ func (s *Server) handleRegisterWebhookSubscriber(w http.ResponseWriter, r *http.
 	// Generate a cryptographically-random 32-byte hex secret.
 	secretBytes := make([]byte, 32)
 	if _, err := rand.Read(secretBytes); err != nil {
-		s.logger.Error("handleRegisterWebhookSubscriber: failed to generate secret",
+		h.logger.Error("handleRegisterWebhookSubscriber: failed to generate secret",
 			slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("internal_error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal_error",
 			"failed to generate signing secret", r))
 		return
 	}
 	secret := hex.EncodeToString(secretBytes)
 
-	row, err := s.webhookSubQueries.CreateWebhookSubscriber(
+	row, err := h.queries.CreateWebhookSubscriber(
 		r.Context(),
 		req.SiteURL,
 		req.CallbackURL,
@@ -156,25 +158,25 @@ func (s *Server) handleRegisterWebhookSubscriber(w http.ResponseWriter, r *http.
 		req.EventTypes,
 	)
 	if err != nil {
-		s.logger.Warn("handleRegisterWebhookSubscriber: db error",
+		h.logger.Warn("handleRegisterWebhookSubscriber: db error",
 			slog.String("error", err.Error()))
-		if isUniqueViolation(err) {
-			writeJSON(w, http.StatusConflict, errorEnvelope("conflict",
+		if hbarcode.IsUniqueViolation(err) {
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope("conflict",
 				"callback_url already registered", r))
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("internal_error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal_error",
 			"failed to register subscriber", r))
 		return
 	}
 
-	s.logger.Info("webhook subscriber registered",
+	h.logger.Info("webhook subscriber registered",
 		slog.String("subscriber_id", row.ID.String()),
 		slog.String("callback_url", row.CallbackURL),
 		slog.String("site_url", row.SiteURL),
 	)
 
-	writeJSON(w, http.StatusCreated, registerSubscriberResponse{
+	httputil.WriteJSON(w, http.StatusCreated, registerSubscriberResponse{
 		SubscriberID:  row.ID.String(),
 		SiteURL:       row.SiteURL,
 		CallbackURL:   row.CallbackURL,
@@ -184,21 +186,21 @@ func (s *Server) handleRegisterWebhookSubscriber(w http.ResponseWriter, r *http.
 	})
 }
 
-// handleListWebhookSubscribers handles GET /v1/webhooks/subscribers.
+// HandleListWebhookSubscribers handles GET /v1/webhooks/subscribers.
 //
 // Returns all active webhook subscribers. The signing_secret field is NEVER
 // included in list responses.
-func (s *Server) handleListWebhookSubscribers(w http.ResponseWriter, r *http.Request) {
-	if s.webhookSubQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("service_unavailable",
+func (h *Handler) HandleListWebhookSubscribers(w http.ResponseWriter, r *http.Request) {
+	if h.queries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("service_unavailable",
 			"webhook subscriber service not available", r))
 		return
 	}
 
-	rows, err := s.webhookSubQueries.ListActiveWebhookSubscribers(r.Context())
+	rows, err := h.queries.ListActiveWebhookSubscribers(r.Context())
 	if err != nil {
-		s.logger.Warn("handleListWebhookSubscribers: db error", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("internal_error",
+		h.logger.Warn("handleListWebhookSubscribers: db error", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal_error",
 			"failed to list subscribers", r))
 		return
 	}
@@ -215,18 +217,18 @@ func (s *Server) handleListWebhookSubscribers(w http.ResponseWriter, r *http.Req
 		})
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"subscribers": summaries,
 		"total":       len(summaries),
 	})
 }
 
-// handleGetWebhookSubscriber handles GET /v1/webhooks/subscribers/{id}.
+// HandleGetWebhookSubscriber handles GET /v1/webhooks/subscribers/{id}.
 //
 // Returns a single subscriber summary. The signing_secret is NOT included.
-func (s *Server) handleGetWebhookSubscriber(w http.ResponseWriter, r *http.Request) {
-	if s.webhookSubQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("service_unavailable",
+func (h *Handler) HandleGetWebhookSubscriber(w http.ResponseWriter, r *http.Request) {
+	if h.queries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("service_unavailable",
 			"webhook subscriber service not available", r))
 		return
 	}
@@ -234,24 +236,24 @@ func (s *Server) handleGetWebhookSubscriber(w http.ResponseWriter, r *http.Reque
 	idStr := chi.URLParam(r, "id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("bad_request",
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("bad_request",
 			"invalid subscriber id", r))
 		return
 	}
 
-	row, err := s.webhookSubQueries.GetWebhookSubscriberByID(r.Context(), id)
+	row, err := h.queries.GetWebhookSubscriberByID(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("not_found",
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("not_found",
 				"subscriber not found", r))
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("internal_error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal_error",
 			"failed to get subscriber", r))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, webhookSubscriberSummary{
+	httputil.WriteJSON(w, http.StatusOK, webhookSubscriberSummary{
 		SubscriberID: row.ID.String(),
 		SiteURL:      row.SiteURL,
 		CallbackURL:  row.CallbackURL,
@@ -261,12 +263,12 @@ func (s *Server) handleGetWebhookSubscriber(w http.ResponseWriter, r *http.Reque
 	})
 }
 
-// handleDeactivateWebhookSubscriber handles DELETE /v1/webhooks/subscribers/{id}.
+// HandleDeactivateWebhookSubscriber handles DELETE /v1/webhooks/subscribers/{id}.
 //
 // Soft-deletes the subscriber (sets active=false). The row is retained for audit purposes.
-func (s *Server) handleDeactivateWebhookSubscriber(w http.ResponseWriter, r *http.Request) {
-	if s.webhookSubQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("service_unavailable",
+func (h *Handler) HandleDeactivateWebhookSubscriber(w http.ResponseWriter, r *http.Request) {
+	if h.queries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("service_unavailable",
 			"webhook subscriber service not available", r))
 		return
 	}
@@ -274,29 +276,29 @@ func (s *Server) handleDeactivateWebhookSubscriber(w http.ResponseWriter, r *htt
 	idStr := chi.URLParam(r, "id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("bad_request",
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("bad_request",
 			"invalid subscriber id", r))
 		return
 	}
 
-	row, err := s.webhookSubQueries.DeactivateWebhookSubscriber(r.Context(), id)
+	row, err := h.queries.DeactivateWebhookSubscriber(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("not_found",
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("not_found",
 				"subscriber not found", r))
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("internal_error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal_error",
 			"failed to deactivate subscriber", r))
 		return
 	}
 
-	s.logger.Info("webhook subscriber deactivated",
+	h.logger.Info("webhook subscriber deactivated",
 		slog.String("subscriber_id", row.ID.String()),
 		slog.String("callback_url", row.CallbackURL),
 	)
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"subscriber_id": row.ID.String(),
 		"active":        row.Active,
 		"message":       "subscriber deactivated",
@@ -323,7 +325,7 @@ type updateSubscriberRequest struct {
 	Active     *bool     `json:"active,omitempty"`
 }
 
-// handleUpdateWebhookSubscriber handles PATCH /v1/webhooks/subscribers/{id}.
+// HandleUpdateWebhookSubscriber handles PATCH /v1/webhooks/subscribers/{id}.
 //
 // Supports two distinct mutations, both optional:
 //   - event_types (TEXT[]): replace the subscriber's event-type filter.
@@ -332,12 +334,12 @@ type updateSubscriberRequest struct {
 //   - active (boolean): pause or resume delivery. Re-activation is the
 //     UI's reason to exist; soft-deletion goes through DELETE.
 //
-// Responses mirror handleGetWebhookSubscriber: the safe summary shape
+// Responses mirror HandleGetWebhookSubscriber: the safe summary shape
 // (no signing_secret) is returned on success. 400 / 404 / 500 / 503
 // envelopes match the existing webhook subscriber handler conventions.
-func (s *Server) handleUpdateWebhookSubscriber(w http.ResponseWriter, r *http.Request) {
-	if s.webhookSubQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("service_unavailable",
+func (h *Handler) HandleUpdateWebhookSubscriber(w http.ResponseWriter, r *http.Request) {
+	if h.queries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("service_unavailable",
 			"webhook subscriber service not available", r))
 		return
 	}
@@ -345,7 +347,7 @@ func (s *Server) handleUpdateWebhookSubscriber(w http.ResponseWriter, r *http.Re
 	idStr := chi.URLParam(r, "id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("bad_request",
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("bad_request",
 			"invalid subscriber id", r))
 		return
 	}
@@ -354,24 +356,24 @@ func (s *Server) handleUpdateWebhookSubscriber(w http.ResponseWriter, r *http.Re
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("bad_request", "invalid JSON body", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("bad_request", "invalid JSON body", r))
 		return
 	}
 
 	if req.EventTypes == nil && req.Active == nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("validation_error",
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("validation_error",
 			"at least one of event_types or active must be provided", r))
 		return
 	}
 
-	row, err := s.webhookSubQueries.GetWebhookSubscriberByID(r.Context(), id)
+	row, err := h.queries.GetWebhookSubscriberByID(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("not_found",
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("not_found",
 				"subscriber not found", r))
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("internal_error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal_error",
 			"failed to load subscriber", r))
 		return
 	}
@@ -381,36 +383,36 @@ func (s *Server) handleUpdateWebhookSubscriber(w http.ResponseWriter, r *http.Re
 		if next == nil {
 			next = []string{}
 		}
-		row, err = s.webhookSubQueries.UpdateWebhookSubscriberEventTypes(r.Context(), id, next)
+		row, err = h.queries.UpdateWebhookSubscriberEventTypes(r.Context(), id, next)
 		if err != nil {
-			s.logger.Warn("handleUpdateWebhookSubscriber: update event_types failed",
+			h.logger.Warn("handleUpdateWebhookSubscriber: update event_types failed",
 				slog.String("subscriber_id", id.String()),
 				slog.String("error", err.Error()))
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope("internal_error",
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal_error",
 				"failed to update event_types", r))
 			return
 		}
 	}
 
 	if req.Active != nil {
-		row, err = s.webhookSubQueries.SetWebhookSubscriberActive(r.Context(), id, *req.Active)
+		row, err = h.queries.SetWebhookSubscriberActive(r.Context(), id, *req.Active)
 		if err != nil {
-			s.logger.Warn("handleUpdateWebhookSubscriber: set active failed",
+			h.logger.Warn("handleUpdateWebhookSubscriber: set active failed",
 				slog.String("subscriber_id", id.String()),
 				slog.String("error", err.Error()))
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope("internal_error",
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal_error",
 				"failed to update active flag", r))
 			return
 		}
 	}
 
-	s.logger.Info("webhook subscriber updated",
+	h.logger.Info("webhook subscriber updated",
 		slog.String("subscriber_id", row.ID.String()),
 		slog.Bool("active", row.Active),
 		slog.Int("event_types_count", len(row.EventTypes)),
 	)
 
-	writeJSON(w, http.StatusOK, webhookSubscriberSummary{
+	httputil.WriteJSON(w, http.StatusOK, webhookSubscriberSummary{
 		SubscriberID: row.ID.String(),
 		SiteURL:      row.SiteURL,
 		CallbackURL:  row.CallbackURL,
@@ -462,7 +464,7 @@ type recentDeliveriesResponse struct {
 // panels in the codebase.
 const recentDeliveriesLimit = 50
 
-// handleListRecentWebhookDeliveries handles
+// HandleListRecentWebhookDeliveries handles
 // GET /v1/webhooks/subscribers/{id}/recent-deliveries.
 //
 // Returns the most recent outbox rows whose event_type would be sent
@@ -471,9 +473,9 @@ const recentDeliveriesLimit = 50
 // best-effort: per-subscriber delivery state is not persisted today
 // so attempts/dispatched_at reflect the aggregate dispatcher state of
 // the source event, not this subscriber specifically.
-func (s *Server) handleListRecentWebhookDeliveries(w http.ResponseWriter, r *http.Request) {
-	if s.webhookSubQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("service_unavailable",
+func (h *Handler) HandleListRecentWebhookDeliveries(w http.ResponseWriter, r *http.Request) {
+	if h.queries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("service_unavailable",
 			"webhook subscriber service not available", r))
 		return
 	}
@@ -481,19 +483,19 @@ func (s *Server) handleListRecentWebhookDeliveries(w http.ResponseWriter, r *htt
 	idStr := chi.URLParam(r, "id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("bad_request",
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("bad_request",
 			"invalid subscriber id", r))
 		return
 	}
 
-	sub, err := s.webhookSubQueries.GetWebhookSubscriberByID(r.Context(), id)
+	sub, err := h.queries.GetWebhookSubscriberByID(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("not_found",
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("not_found",
 				"subscriber not found", r))
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("internal_error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal_error",
 			"failed to load subscriber", r))
 		return
 	}
@@ -509,14 +511,14 @@ func (s *Server) handleListRecentWebhookDeliveries(w http.ResponseWriter, r *htt
 		qerr error
 	)
 	if wildcard {
-		rows, qerr = s.pool.Query(r.Context(), `
+		rows, qerr = h.pool.Query(r.Context(), `
 			SELECT id, event_type, occurred_at, dispatched_at, attempts
 			FROM   outbox
 			ORDER  BY occurred_at DESC
 			LIMIT  $1
 		`, recentDeliveriesLimit)
 	} else {
-		rows, qerr = s.pool.Query(r.Context(), `
+		rows, qerr = h.pool.Query(r.Context(), `
 			SELECT id, event_type, occurred_at, dispatched_at, attempts
 			FROM   outbox
 			WHERE  event_type = ANY($1)
@@ -525,10 +527,10 @@ func (s *Server) handleListRecentWebhookDeliveries(w http.ResponseWriter, r *htt
 		`, sub.EventTypes, recentDeliveriesLimit)
 	}
 	if qerr != nil {
-		s.logger.Warn("handleListRecentWebhookDeliveries: query failed",
+		h.logger.Warn("handleListRecentWebhookDeliveries: query failed",
 			slog.String("subscriber_id", id.String()),
 			slog.String("error", qerr.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("internal_error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal_error",
 			"failed to list recent deliveries", r))
 		return
 	}
@@ -544,9 +546,9 @@ func (s *Server) handleListRecentWebhookDeliveries(w http.ResponseWriter, r *htt
 			cnt          int32
 		)
 		if err := rows.Scan(&eventID, &eventType, &occurredAt, &dispatchedAt, &cnt); err != nil {
-			s.logger.Warn("handleListRecentWebhookDeliveries: scan failed",
+			h.logger.Warn("handleListRecentWebhookDeliveries: scan failed",
 				slog.String("error", err.Error()))
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope("internal_error",
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal_error",
 				"failed to read delivery row", r))
 			return
 		}
@@ -563,14 +565,14 @@ func (s *Server) handleListRecentWebhookDeliveries(w http.ResponseWriter, r *htt
 		})
 	}
 	if err := rows.Err(); err != nil {
-		s.logger.Warn("handleListRecentWebhookDeliveries: rows.Err",
+		h.logger.Warn("handleListRecentWebhookDeliveries: rows.Err",
 			slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope("internal_error",
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal_error",
 			"failed to iterate delivery rows", r))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, recentDeliveriesResponse{
+	httputil.WriteJSON(w, http.StatusOK, recentDeliveriesResponse{
 		SubscriberID: sub.ID.String(),
 		Wildcard:     wildcard,
 		EventTypes:   sub.EventTypes,

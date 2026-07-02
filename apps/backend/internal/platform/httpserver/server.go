@@ -7,7 +7,7 @@
 //   - /healthz, /readyz       — operational probes (liveness + readiness)
 //   - /metrics                — Prometheus scrape (when MetricsHandler wired)
 //   - /v1/*                   — business + auth endpoints (see mount_*.go)
-//   - /compat/bil24/*         — legacy Bil24 compat gateway (bil24_compat.go)
+//   - /compat/bil24/*         — legacy Bil24 compat gateway (bil24_shims.go + hbil24/)
 //
 // Dev-only routes (/v1/dev/*, /v1/debug/*) are runtime-gated by ENABLE_DEV_AUTH
 // and DEBUG_ROUTES_ENABLED respectively.
@@ -135,7 +135,7 @@ func (s *Server) mountOperationalRoutes() {
 	s.router.MethodNotAllowed(handleMethodNotAllowed)
 }
 
-// mountCompatRoutes is defined in bil24_compat.go (feature #157).
+// mountCompatRoutes is defined in bil24_shims.go (feature #157).
 // mountV1Routes is defined in mount_v1.go.
 
 // -----------------------------------------------------------------------------

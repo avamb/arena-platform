@@ -516,10 +516,10 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "mount_v1.go"),
 		}
-	// Bil24 command gateway (feature #157)
+	// Bil24 command gateway (feature #157) — moved into hbil24/ (phase 1n)
 	case "bil24_compat.go":
 		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "bil24_compat.go"),
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hbil24", "bil24_compat.go"),
 		}
 	// Platform config file (referenced by feature #157 tests)
 	case "config.go":
@@ -758,9 +758,11 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "webhook_subscribers.sql.go"),
 		}
+	// WordPress webhook subscriber registry (feature #156) — moved into
+	// hwordpress/ (phase 1n)
 	case "wp_webhooks.go":
 		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "wp_webhooks.go"),
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hwordpress", "wp_webhooks.go"),
 		}
 	// External barcode batch import (feature #146)
 	case "0039_barcode_batches.sql":
@@ -1013,6 +1015,10 @@ func domainSubPackageFor(name string) (string, string) {
 	// them. No structural test greps the old auth_*.go handler files.
 	case "media.go":
 		return "hmedia", "mount_media.go"
+	case "wp_webhooks.go":
+		return "hwordpress", "wordpress_shims.go"
+	case "bil24_compat.go":
+		return "hbil24", "bil24_shims.go"
 	}
 	return "", ""
 }

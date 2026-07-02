@@ -5,16 +5,18 @@
 // orchestration. Feature #188 moves the wire format (request/response
 // envelope, result codes, ID translation helpers) into the dedicated
 // adapter package internal/adapters/bil24compat. This file is now the
-// HTTP-layer entry point: it mounts the /compat/bil24/* subtree, decodes
-// the wire envelope via the adapter package, and dispatches to per-command
-// handlers that orchestrate platform queries.
+// HTTP-layer entry point: it decodes the wire envelope via the adapter
+// package and dispatches to per-command handlers that orchestrate platform
+// queries. The /compat/bil24/* subtree itself is mounted by the parent
+// package (bil24_shims.go, mountCompatRoutes).
 //
 // For backward compatibility with the existing httpserver-package test
 // (#157), short aliases / forwarders for the moved symbols
 // (bil24Request, bil24Response, bil24OK, bil24Error, writeBil24JSON,
 // ResultCode*, TranslateLegacyID, TranslatePlatformID, ErrLegacyIDNotFound)
-// are exposed here. Migration of the per-command handlers themselves into
-// use-cases under internal/app/* is an incremental follow-up.
+// are exposed both here and in the parent package's bil24_shims.go.
+// Migration of the per-command handlers themselves into use-cases under
+// internal/app/* is an incremental follow-up.
 //
 // Wire compatibility:
 //
@@ -43,7 +45,7 @@
 // Feature flag: BIL24_COMPAT_ENABLED (env var, default false).
 // The /compat/bil24/* subtree is only mounted when the flag is true.
 // Requests to these paths return 404 when the flag is false.
-package httpserver
+package hbil24
 
 import (
 	"encoding/json"
@@ -54,7 +56,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
@@ -140,25 +141,10 @@ func TranslatePlatformID(id uuid.UUID) string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Gateway feature-flag guard
-// ─────────────────────────────────────────────────────────────────────────────
-
-// bil24CompatEnabled returns true when the Bil24 compatibility gateway has
-// been enabled at server construction time. When false, the
-// /compat/bil24/* subtree is not mounted and requests to those paths get a
-// chi 404 via handleNotFound. Individual commands may still return 503 if a
-// specific query subset is missing.
-//
-//nolint:unused // referenced by test #157 as identifier surface check
-func (s *Server) bil24CompatEnabled() bool {
-	return s.bil24Enabled
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Main gateway handler
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleBil24Command is the single-entry-point for POST /compat/bil24/json.
+// HandleBil24Command is the single-entry-point for POST /compat/bil24/json.
 //
 // It parses the command field and dispatches to the appropriate domain
 // adapter. All errors are returned in the Bil24 envelope format so that
@@ -168,7 +154,7 @@ func (s *Server) bil24CompatEnabled() bool {
 // HTTP status is always 200 for protocol errors (unknown command, bad input)
 // so that legacy clients that hard-code 200 checks remain compatible.
 // 500 is reserved for genuine server-side failures.
-func (s *Server) handleBil24Command(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleBil24Command(w http.ResponseWriter, r *http.Request) {
 	var req bil24Request
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeBil24JSON(w, http.StatusOK, bil24Error(
@@ -191,7 +177,7 @@ func (s *Server) handleBil24Command(w http.ResponseWriter, r *http.Request) {
 	// (resultCode=-99) instead of an HTTP 500 from the middleware recoverer.
 	defer func() {
 		if rec := recover(); rec != nil {
-			s.logger.Error("bil24_compat: recovered panic in command handler",
+			h.logger.Error("bil24_compat: recovered panic in command handler",
 				slog.String("command", command),
 				slog.Any("panic", rec),
 			)
@@ -201,7 +187,7 @@ func (s *Server) handleBil24Command(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	s.logger.Info("bil24_compat: command received",
+	h.logger.Info("bil24_compat: command received",
 		slog.String("command", command),
 		slog.String("fid", req.FID),
 		slog.String("locale", req.Locale),
@@ -209,19 +195,19 @@ func (s *Server) handleBil24Command(w http.ResponseWriter, r *http.Request) {
 
 	switch command {
 	case "GET_ALL_ACTIONS":
-		s.handleBil24GetAllActions(w, r, req)
+		h.handleBil24GetAllActions(w, r, req)
 	case "GET_SEAT_LIST":
-		s.handleBil24GetSeatList(w, r, req)
+		h.handleBil24GetSeatList(w, r, req)
 	case "GET_ORDER_INFO":
-		s.handleBil24GetOrderInfo(w, r, req)
+		h.handleBil24GetOrderInfo(w, r, req)
 	case "CREATE_ORDER_EXT":
-		s.handleBil24CreateOrderExt(w, r, req)
+		h.handleBil24CreateOrderExt(w, r, req)
 	case "SCAN_TICKET":
-		s.handleBil24ScanTicket(w, r, req)
+		h.handleBil24ScanTicket(w, r, req)
 	case "CANCEL_ORDER":
-		s.handleBil24CancelOrder(w, r, req)
+		h.handleBil24CancelOrder(w, r, req)
 	default:
-		s.logger.Warn("bil24_compat: unknown command",
+		h.logger.Warn("bil24_compat: unknown command",
 			slog.String("command", command),
 			slog.String("fid", req.FID),
 		)
@@ -250,8 +236,8 @@ func (s *Server) handleBil24Command(w http.ResponseWriter, r *http.Request) {
 //	  "bigPosterUrl":   "...",
 //	  "firstEventDate": "<RFC3339>"
 //	}
-func (s *Server) handleBil24GetAllActions(w http.ResponseWriter, r *http.Request, req bil24Request) {
-	if s.eventQueries == nil {
+func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Request, req bil24Request) {
+	if h.eventQueries == nil {
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeInternalError, "catalog service unavailable",
 		))
@@ -263,9 +249,9 @@ func (s *Server) handleBil24GetAllActions(w http.ResponseWriter, r *http.Request
 		locale = "en"
 	}
 
-	events, err := s.eventQueries.ListEvents(r.Context(), locale, "public")
+	events, err := h.eventQueries.ListEvents(r.Context(), locale, "public")
 	if err != nil {
-		s.logger.Error("bil24_compat: GET_ALL_ACTIONS: list events failed",
+		h.logger.Error("bil24_compat: GET_ALL_ACTIONS: list events failed",
 			slog.String("error", err.Error()),
 		)
 		writeBil24JSON(w, http.StatusOK, bil24Error(
@@ -317,8 +303,8 @@ func (s *Server) handleBil24GetAllActions(w http.ResponseWriter, r *http.Request
 //	  "pricingMode":     "fixed"|"free"|"pwyw",
 //	  "availableCount":  <int or null>
 //	}
-func (s *Server) handleBil24GetSeatList(w http.ResponseWriter, r *http.Request, req bil24Request) {
-	if s.tierQueries == nil {
+func (h *Handler) handleBil24GetSeatList(w http.ResponseWriter, r *http.Request, req bil24Request) {
+	if h.tierQueries == nil {
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeInternalError, "tier service unavailable",
 		))
@@ -334,9 +320,9 @@ func (s *Server) handleBil24GetSeatList(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	tiers, err := s.tierQueries.ListTicketTiersBySession(r.Context(), sessionID)
+	tiers, err := h.tierQueries.ListTicketTiersBySession(r.Context(), sessionID)
 	if err != nil {
-		s.logger.Error("bil24_compat: GET_SEAT_LIST: list tiers failed",
+		h.logger.Error("bil24_compat: GET_SEAT_LIST: list tiers failed",
 			slog.String("session_id", sessionID.String()),
 			slog.String("error", err.Error()),
 		)
@@ -397,8 +383,8 @@ func (s *Server) handleBil24GetSeatList(w http.ResponseWriter, r *http.Request, 
 // For strict compatibility we include ticketCount but omit the full list.
 // Clients migrated to the new platform can request the full list via
 // GET /v1/checkout/{id}/tickets.
-func (s *Server) handleBil24GetOrderInfo(w http.ResponseWriter, r *http.Request, req bil24Request) {
-	if s.checkoutQueries == nil {
+func (h *Handler) handleBil24GetOrderInfo(w http.ResponseWriter, r *http.Request, req bil24Request) {
+	if h.checkoutQueries == nil {
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeInternalError, "order service unavailable",
 		))
@@ -414,7 +400,7 @@ func (s *Server) handleBil24GetOrderInfo(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	cs, err := s.checkoutQueries.GetCheckoutSessionByID(r.Context(), orderID)
+	cs, err := h.checkoutQueries.GetCheckoutSessionByID(r.Context(), orderID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeBil24JSON(w, http.StatusOK, bil24Error(
@@ -422,7 +408,7 @@ func (s *Server) handleBil24GetOrderInfo(w http.ResponseWriter, r *http.Request,
 			))
 			return
 		}
-		s.logger.Error("bil24_compat: GET_ORDER_INFO: fetch checkout session failed",
+		h.logger.Error("bil24_compat: GET_ORDER_INFO: fetch checkout session failed",
 			slog.String("order_id", orderID.String()),
 			slog.String("error", err.Error()),
 		)
@@ -462,8 +448,8 @@ func (s *Server) handleBil24GetOrderInfo(w http.ResponseWriter, r *http.Request,
 
 	// Get ticket count if ticketQueries is available.
 	ticketCount := 0
-	if s.ticketQueries != nil {
-		tickets, err := s.ticketQueries.ListTicketsByCheckoutSession(r.Context(), orderID)
+	if h.ticketQueries != nil {
+		tickets, err := h.ticketQueries.ListTicketsByCheckoutSession(r.Context(), orderID)
 		if err == nil {
 			ticketCount = len(tickets)
 		}
@@ -505,7 +491,7 @@ func (s *Server) handleBil24GetOrderInfo(w http.ResponseWriter, r *http.Request,
 // response signalling that the command structure is understood.
 //
 // Response: { "resultCode": 0, "command": "CREATE_ORDER_EXT", "orderId": "<placeholder>" }
-func (s *Server) handleBil24CreateOrderExt(w http.ResponseWriter, _ *http.Request, req bil24Request) {
+func (h *Handler) handleBil24CreateOrderExt(w http.ResponseWriter, _ *http.Request, req bil24Request) {
 	if req.ActionEventID == "" {
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeInvalidRequest,
@@ -540,7 +526,7 @@ func (s *Server) handleBil24CreateOrderExt(w http.ResponseWriter, _ *http.Reques
 		quantity = 1
 	}
 
-	s.logger.Info("bil24_compat: CREATE_ORDER_EXT: scaffold stub",
+	h.logger.Info("bil24_compat: CREATE_ORDER_EXT: scaffold stub",
 		slog.String("session_id", req.ActionEventID),
 		slog.String("tier_id", req.CategoryPriceID),
 		slog.Int("quantity", quantity),
@@ -572,8 +558,8 @@ func (s *Server) handleBil24CreateOrderExt(w http.ResponseWriter, _ *http.Reques
 // Response:
 //
 //	{ "resultCode": 0, "command": "SCAN_TICKET", "scanStatus": "OK", "ticketId": "..." }
-func (s *Server) handleBil24ScanTicket(w http.ResponseWriter, r *http.Request, req bil24Request) {
-	if s.barcodeQueries == nil {
+func (h *Handler) handleBil24ScanTicket(w http.ResponseWriter, r *http.Request, req bil24Request) {
+	if h.barcodeQueries == nil {
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeInternalError, "scan service unavailable",
 		))
@@ -590,7 +576,7 @@ func (s *Server) handleBil24ScanTicket(w http.ResponseWriter, r *http.Request, r
 	ctx := r.Context()
 
 	// Resolve the legacy_bil24 barcode authority.
-	authority, err := s.barcodeQueries.GetBarcodeAuthorityByType(ctx, "legacy_bil24")
+	authority, err := h.barcodeQueries.GetBarcodeAuthorityByType(ctx, "legacy_bil24")
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeBil24JSON(w, http.StatusOK, bil24Error(
@@ -600,7 +586,7 @@ func (s *Server) handleBil24ScanTicket(w http.ResponseWriter, r *http.Request, r
 			))
 			return
 		}
-		s.logger.Error("bil24_compat: SCAN_TICKET: authority lookup failed",
+		h.logger.Error("bil24_compat: SCAN_TICKET: authority lookup failed",
 			slog.String("error", err.Error()),
 		)
 		writeBil24JSON(w, http.StatusOK, bil24Error(
@@ -610,7 +596,7 @@ func (s *Server) handleBil24ScanTicket(w http.ResponseWriter, r *http.Request, r
 	}
 
 	// Look up the barcode by (authority_id, external_ref).
-	barcode, err := s.barcodeQueries.GetBarcodeByRef(ctx, authority.ID, req.TicketID)
+	barcode, err := h.barcodeQueries.GetBarcodeByRef(ctx, authority.ID, req.TicketID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeBil24JSON(w, http.StatusOK, bil24Error(
@@ -618,7 +604,7 @@ func (s *Server) handleBil24ScanTicket(w http.ResponseWriter, r *http.Request, r
 			))
 			return
 		}
-		s.logger.Error("bil24_compat: SCAN_TICKET: barcode lookup failed",
+		h.logger.Error("bil24_compat: SCAN_TICKET: barcode lookup failed",
 			slog.String("ticket_id", req.TicketID),
 			slog.String("error", err.Error()),
 		)
@@ -645,7 +631,7 @@ func (s *Server) handleBil24ScanTicket(w http.ResponseWriter, r *http.Request, r
 	}
 
 	// Atomically mark as scanned.
-	scanned, err := s.barcodeQueries.MarkBarcodeScanned(ctx, barcode.ID)
+	scanned, err := h.barcodeQueries.MarkBarcodeScanned(ctx, barcode.ID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeBil24JSON(w, http.StatusOK, bil24Error(
@@ -653,7 +639,7 @@ func (s *Server) handleBil24ScanTicket(w http.ResponseWriter, r *http.Request, r
 			))
 			return
 		}
-		s.logger.Error("bil24_compat: SCAN_TICKET: mark scanned failed",
+		h.logger.Error("bil24_compat: SCAN_TICKET: mark scanned failed",
 			slog.String("barcode_id", barcode.ID.String()),
 			slog.String("error", err.Error()),
 		)
@@ -663,7 +649,7 @@ func (s *Server) handleBil24ScanTicket(w http.ResponseWriter, r *http.Request, r
 		return
 	}
 
-	s.logger.Info("bil24_compat: SCAN_TICKET: scan recorded",
+	h.logger.Info("bil24_compat: SCAN_TICKET: scan recorded",
 		slog.String("barcode_id", scanned.ID.String()),
 		slog.String("external_ref", scanned.ExternalRef),
 	)
@@ -697,7 +683,7 @@ func (s *Server) handleBil24ScanTicket(w http.ResponseWriter, r *http.Request, r
 // a placeholder response.
 //
 // Response: { "resultCode": 0, "command": "CANCEL_ORDER", "status": "cancelled" }
-func (s *Server) handleBil24CancelOrder(w http.ResponseWriter, _ *http.Request, req bil24Request) {
+func (h *Handler) handleBil24CancelOrder(w http.ResponseWriter, _ *http.Request, req bil24Request) {
 	if req.OrderID == "" {
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeInvalidRequest, "orderId is required",
@@ -713,7 +699,7 @@ func (s *Server) handleBil24CancelOrder(w http.ResponseWriter, _ *http.Request, 
 		return
 	}
 
-	s.logger.Info("bil24_compat: CANCEL_ORDER: scaffold stub",
+	h.logger.Info("bil24_compat: CANCEL_ORDER: scaffold stub",
 		slog.String("order_id", orderID.String()),
 	)
 
@@ -724,26 +710,4 @@ func (s *Server) handleBil24CancelOrder(w http.ResponseWriter, _ *http.Request, 
 		"status":  "scaffold_stub",
 		"message": "cancellation requires checkout state machine; use POST /v1/checkout/{id}/cancel",
 	}))
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Router mounting
-// ─────────────────────────────────────────────────────────────────────────────
-
-// mountCompatRoutes mounts the Bil24-compatible API gateway under /compat/bil24/*.
-//
-// The subtree is only mounted when bil24Enabled is true (env: BIL24_COMPAT_ENABLED).
-// When disabled the paths do not exist in the router; chi returns 404 via handleNotFound.
-// Feature #157.
-func (s *Server) mountCompatRoutes() {
-	if !s.bil24Enabled {
-		return
-	}
-	s.router.Route("/compat/bil24", func(r chi.Router) {
-		// POST /compat/bil24/json — Bil24 command gateway.
-		// Accepts { "command": "...", "fid": "...", "token": "...", ... }
-		// and dispatches to the appropriate domain adapter.
-		// No JWT auth — the gateway uses fid/token credentials from the request body.
-		r.Post("/json", s.handleBil24Command)
-	})
 }

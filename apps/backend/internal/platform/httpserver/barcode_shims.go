@@ -1,7 +1,9 @@
 // barcode_shims.go bridges the *Server god-object to the hbarcode sub-package.
 // All handler bodies live in hbarcode/; these thin delegating methods preserve
-// the unexported *Server method surface so mount_scanning.go, test files, and
-// wp_webhooks.go (the cross-domain isUniqueViolation user) compile unchanged.
+// the unexported *Server method surface so mount_scanning.go and test files
+// compile unchanged. (The former cross-domain isUniqueViolation user,
+// wp_webhooks.go, moved into hwordpress/ in phase 1n and now imports
+// hbarcode.IsUniqueViolation directly.)
 package httpserver
 
 import (
@@ -35,8 +37,7 @@ type barcodeResponse = hbarcode.BarcodeResponse
 // ─── pure-function forwarders ─────────────────────────────────────────────────
 // Tests call these unqualified — keep the lowercase names live in package
 // httpserver so the test source-grep helpers find the symbols inside the
-// aggregated shim+sub-package content, and other domain files (e.g.
-// wp_webhooks.go) keep using isUniqueViolation via the same package.
+// aggregated shim+sub-package content.
 
 func barcodeAuthorityFromRow(r gen.BarcodeAuthorityRow) barcodeAuthorityResponse {
 	return hbarcode.BarcodeAuthorityFromRow(r)
@@ -50,9 +51,9 @@ func parseBarcodeBatchCSV(r io.Reader) ([]string, error) {
 	return hbarcode.ParseBarcodeBatchCSV(r)
 }
 
-// isUniqueViolation is also consumed by wp_webhooks.go — keep the unexported
-// package-level identifier alive here so that caller does not have to learn
-// about the hbarcode sub-package.
+// isUniqueViolation is driven directly by barcodes_142_test.go — keep the
+// unexported package-level identifier alive here so the test does not have
+// to learn about the hbarcode sub-package.
 func isUniqueViolation(err error) bool {
 	return hbarcode.IsUniqueViolation(err)
 }
