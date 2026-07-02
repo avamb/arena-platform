@@ -205,8 +205,9 @@ func (s *Server) publishTicketRevokedV1Events(ctx context.Context, ticketIDs []s
 }
 
 // publishSessionCancelledEvent forwards to hscanner.PublishSessionCancelledEvent.
-// Kept as a *Server method because sessions.go and scanner_events_catalog_test.go
-// invoke it on *Server directly.
+// Kept as a *Server method because catalog_shims.go passes it as a func value
+// into hcatalog.New (the session PATCH handler fires it on cancellation) and
+// scanner_events_catalog_test.go invokes it on *Server directly.
 func (s *Server) publishSessionCancelledEvent(ctx context.Context, sessionID, eventID, previousStatus string) {
 	s.scannerHandler().PublishSessionCancelledEvent(ctx, sessionID, eventID, previousStatus)
 }

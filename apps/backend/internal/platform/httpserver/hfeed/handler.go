@@ -49,8 +49,8 @@ type RateLimiter interface {
 // PromoValidator checks whether a promo code is applicable for a given order
 // amount at a given time. It returns the discount in smallest currency units
 // and an empty error code on success, or (0, "<error.code>") on failure.
-// The canonical implementation is validatePromoCode in the parent package's
-// pricing_calculator.go, injected by feed_shims.go.
+// The canonical implementation is hcheckout.ValidatePromoCode, injected by
+// feed_shims.go.
 type PromoValidator func(pc gen.PromoCodeRow, orderAmount int64, now time.Time) (int64, string)
 
 // Handler holds the shared dependencies for all feed-domain HTTP handlers.

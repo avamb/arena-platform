@@ -21,7 +21,7 @@
 //
 // Secret handling:
 //   - The `secrets` map is accepted in POST/PATCH bodies but NEVER
-//     returned (paymentConfigFromRow drops it).
+//     returned (PaymentConfigFromRow drops it).
 //   - Status derivation runs after every write: when every required
 //     secret field for the chosen provider is non-empty, status flips
 //     to "configured"; otherwise "missing_required_fields".
@@ -29,7 +29,7 @@
 // All endpoints are owner-gated through the WHERE org_id=$N clause in
 // the underlying queries — a caller authenticated as org A cannot
 // mutate or read configs belonging to org B.
-package httpserver
+package hpayments
 
 import (
 	"context"
@@ -42,6 +42,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
@@ -49,73 +50,75 @@ import (
 // GET /v1/organizations/{org_id}/payment-configs
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (s *Server) handleListPaymentConfigs(w http.ResponseWriter, r *http.Request) {
-	if s.paymentConfigQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+// HandleListPaymentConfigs serves GET /v1/organizations/{org_id}/payment-configs.
+func (h *Handler) HandleListPaymentConfigs(w http.ResponseWriter, r *http.Request) {
+	if h.paymentConfigQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
 	}
 	ctx := r.Context()
 
-	orgID, ok := uuidPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
 
-	rows, err := s.paymentConfigQueries.ListPaymentProviderConfigsByOrg(ctx, orgID)
+	rows, err := h.paymentConfigQueries.ListPaymentProviderConfigsByOrg(ctx, orgID)
 	if err != nil {
-		s.logger.Error("payment_config: list failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("payment_config: list failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"payment_config.list_failed", "failed to list payment configs", r,
 		))
 		return
 	}
 
-	result := make([]paymentConfigResponse, 0, len(rows))
+	result := make([]PaymentConfigResponse, 0, len(rows))
 	for _, p := range rows {
-		result = append(result, paymentConfigFromRow(p))
+		result = append(result, PaymentConfigFromRow(p))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"payment_configs": result})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"payment_configs": result})
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /v1/organizations/{org_id}/payment-configs/{id}
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (s *Server) handleGetPaymentConfig(w http.ResponseWriter, r *http.Request) {
-	if s.paymentConfigQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+// HandleGetPaymentConfig serves GET /v1/organizations/{org_id}/payment-configs/{id}.
+func (h *Handler) HandleGetPaymentConfig(w http.ResponseWriter, r *http.Request) {
+	if h.paymentConfigQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
 	}
 	ctx := r.Context()
 
-	orgID, ok := uuidPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
-	id, ok := uuidPathParam(w, r, "id")
+	id, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
 		return
 	}
 
-	row, err := s.paymentConfigQueries.GetPaymentProviderConfigByID(ctx, id, orgID)
+	row, err := h.paymentConfigQueries.GetPaymentProviderConfigByID(ctx, id, orgID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("payment_config.not_found", "payment config not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("payment_config.not_found", "payment config not found", r))
 			return
 		}
-		s.logger.Error("payment_config: get failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("payment_config: get failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"payment_config.get_failed", "failed to get payment config", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
-		"payment_config": paymentConfigFromRow(row),
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
+		"payment_config": PaymentConfigFromRow(row),
 	})
 }
 
@@ -123,48 +126,49 @@ func (s *Server) handleGetPaymentConfig(w http.ResponseWriter, r *http.Request) 
 // DELETE /v1/organizations/{org_id}/payment-configs/{id}
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (s *Server) handleDeletePaymentConfig(w http.ResponseWriter, r *http.Request) {
-	if s.paymentConfigQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+// HandleDeletePaymentConfig serves DELETE /v1/organizations/{org_id}/payment-configs/{id}.
+func (h *Handler) HandleDeletePaymentConfig(w http.ResponseWriter, r *http.Request) {
+	if h.paymentConfigQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
 	}
 	ctx := r.Context()
 
-	orgID, ok := uuidPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
-	id, ok := uuidPathParam(w, r, "id")
+	id, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
 		return
 	}
 
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "failed to begin transaction", r,
 		))
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	qtx := s.paymentConfigQueries.WithTx(tx)
+	qtx := h.paymentConfigQueries.WithTx(tx)
 	deleted, err := qtx.SoftDeletePaymentProviderConfig(ctx, id, orgID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("payment_config.not_found", "payment config not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("payment_config.not_found", "payment config not found", r))
 			return
 		}
-		s.logger.Error("payment_config: delete failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("payment_config: delete failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"payment_config.delete_failed", "failed to delete payment config", r,
 		))
 		return
 	}
 
-	if s.audit != nil {
+	if h.audit != nil {
 		actor, _ := auth.ActorFromContext(ctx)
 		ev := audit.Event{
 			OccurredAt:   time.Now().UTC(),
@@ -175,16 +179,16 @@ func (s *Server) handleDeletePaymentConfig(w http.ResponseWriter, r *http.Reques
 			ResourceID:   deleted.ID.String(),
 			RequestID:    logging.RequestID(ctx),
 			TraceID:      logging.TraceID(ctx),
-			IP:           extractClientIP(r),
+			IP:           httputil.ExtractClientIP(r),
 			Metadata: map[string]any{
 				"org_id":   orgID.String(),
 				"provider": deleted.Provider,
 				"mode":     deleted.Mode,
 			},
 		}
-		if err := s.audit.WriteTx(ctx, tx, ev); err != nil {
-			s.logger.Error("payment_config: audit write failed", slog.String("error", err.Error()))
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		if err := h.audit.WriteTx(ctx, tx, ev); err != nil {
+			h.logger.Error("payment_config: audit write failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"payment_config.audit_failed", "failed to write audit event", r,
 			))
 			return
@@ -192,14 +196,14 @@ func (s *Server) handleDeletePaymentConfig(w http.ResponseWriter, r *http.Reques
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"payment_config.commit_failed", "failed to commit transaction", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
-		"payment_config": paymentConfigFromRow(deleted),
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
+		"payment_config": PaymentConfigFromRow(deleted),
 		"deleted":        true,
 	})
 }
@@ -212,8 +216,8 @@ func (s *Server) handleDeletePaymentConfig(w http.ResponseWriter, r *http.Reques
 // Failures are logged but do not fail the surrounding HTTP response —
 // the row is already committed at that point. Used by the write
 // handlers in payment_configs_write.go.
-func (s *Server) writePaymentConfigAudit(ctx context.Context, r *http.Request, action, resourceID string, metadata map[string]any) {
-	if s.audit == nil {
+func (h *Handler) writePaymentConfigAudit(ctx context.Context, r *http.Request, action, resourceID string, metadata map[string]any) {
+	if h.audit == nil {
 		return
 	}
 	actor, _ := auth.ActorFromContext(ctx)
@@ -226,10 +230,10 @@ func (s *Server) writePaymentConfigAudit(ctx context.Context, r *http.Request, a
 		ResourceID:   resourceID,
 		RequestID:    logging.RequestID(ctx),
 		TraceID:      logging.TraceID(ctx),
-		IP:           extractClientIP(r),
+		IP:           httputil.ExtractClientIP(r),
 		Metadata:     metadata,
 	}
-	if err := s.audit.Write(ctx, ev); err != nil {
-		s.logger.Warn("payment_config: best-effort audit failed", slog.String("error", err.Error()))
+	if err := h.audit.Write(ctx, ev); err != nil {
+		h.logger.Warn("payment_config: best-effort audit failed", slog.String("error", err.Error()))
 	}
 }

@@ -18,7 +18,7 @@
 // The payload is composed entirely from existing sqlc queries plus the
 // purpose-built ListMembershipsByUser query added in #211 — no new tables and
 // no breaking changes to other endpoints. Backwards-compatible additions only.
-package httpserver
+package hiam
 
 import (
 	"context"
@@ -31,28 +31,29 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
-// meQuerier — narrow read-only interface the handler depends on
+// MeQuerier — narrow read-only interface the handler depends on
 // ─────────────────────────────────────────────────────────────────────────────
 
-// meQuerier is the read-only data surface required by handleMe. The real
+// MeQuerier is the read-only data surface required by HandleMe. The real
 // *gen.Queries satisfies this interface in production; tests inject a fake to
 // exercise the response-shaping logic without spinning up PostgreSQL.
-type meQuerier interface {
+type MeQuerier interface {
 	GetActiveRolesForUser(ctx context.Context, userID uuid.UUID) ([]string, error)
 	GetPermissionsForRoles(ctx context.Context, roleNames []string) ([]string, error)
 	ListMembershipsByUser(ctx context.Context, userID uuid.UUID) ([]gen.MembershipRow, error)
 	ListNetworksByUser(ctx context.Context, userID uuid.UUID) ([]gen.OperatorNetworkRow, error)
 }
 
-// pickMeQueries returns the explicitly-injected meQuerier, or one built from
+// PickMeQueries returns the explicitly-injected MeQuerier, or one built from
 // the pgxpool when the inject value is nil and pool is non-nil. Returns nil
 // when both are absent — mountMeRoutes guards against that and the route is
 // simply not mounted.
-func pickMeQueries(inject meQuerier, pool *pgxpool.Pool) meQuerier {
+func PickMeQueries(inject MeQuerier, pool *pgxpool.Pool) MeQuerier {
 	if inject != nil {
 		return inject
 	}
@@ -141,14 +142,14 @@ func hasBypassRole(roles []string) bool {
 	return false
 }
 
-// computeAvailableScopes returns the deduplicated, deterministically-ordered
+// ComputeAvailableScopes returns the deduplicated, deterministically-ordered
 // list of authorization scopes the caller can act under.
 //
 // Ordering: "global" first (when present), then "platform" (when present),
 // then sorted "network:<uuid>" entries, then sorted "organization:<uuid>"
 // entries. The deterministic order keeps the response stable for clients and
 // makes the test assertions trivial.
-func computeAvailableScopes(roles []string, memberships []gen.MembershipRow, networks []gen.OperatorNetworkRow) []string {
+func ComputeAvailableScopes(roles []string, memberships []gen.MembershipRow, networks []gen.OperatorNetworkRow) []string {
 	scopes := make([]string, 0, 2+len(networks)+len(memberships))
 	if hasBypassRole(roles) {
 		scopes = append(scopes, "global")
@@ -188,7 +189,7 @@ func computeAvailableScopes(roles []string, memberships []gen.MembershipRow, net
 // Handler
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleMe serves GET /v1/me. The route is protected by auth.Middleware, so
+// HandleMe serves GET /v1/me. The route is protected by auth.Middleware, so
 // the actor is always present when the handler fires. The handler then:
 //
 //  1. Parses the actor ID as a UUID — the membership / network queries are
@@ -197,12 +198,12 @@ func computeAvailableScopes(roles []string, memberships []gen.MembershipRow, net
 //     JWT roles (deduplicated, sorted).
 //  3. Expands the union into a permissions list via GetPermissionsForRoles.
 //  4. Loads active memberships and assigned operator networks.
-//  5. Derives available_scopes (see computeAvailableScopes).
+//  5. Derives available_scopes (see ComputeAvailableScopes).
 //  6. Writes the JSON envelope.
 //
 // Any database error short-circuits to a 503 envelope — the endpoint is
 // strictly read-only so transient failures should not poison the audit log.
-func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleMe(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logger := logging.FromContext(ctx)
 
@@ -210,7 +211,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	if !ok || !actor.IsAuthenticated() {
 		// Should never happen — auth.Middleware enforces this — but guard
 		// defensively so a misconfigured mount can never leak data.
-		writeJSON(w, http.StatusUnauthorized, errorEnvelope("auth.unauthenticated", "authentication required", r))
+		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope("auth.unauthenticated", "authentication required", r))
 		return
 	}
 
@@ -219,21 +220,21 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		// Stub tokens occasionally carry non-UUID subjects (legacy fixtures).
 		// We still return the JWT-derived blocks so clients can render at
 		// least the user header.
-		s.writeMeJWTOnly(w, r, actor)
+		h.writeMeJWTOnly(w, r, actor)
 		return
 	}
 
-	if s.meQueries == nil {
+	if h.meQueries == nil {
 		// Route should not be mounted in this case; treat as 503 if it ever
 		// fires (e.g. dependency stripped at runtime).
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("dependency.database_unavailable", "user context store unavailable", r))
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "user context store unavailable", r))
 		return
 	}
 
-	membershipRoles, err := s.meQueries.GetActiveRolesForUser(ctx, userID)
+	membershipRoles, err := h.meQueries.GetActiveRolesForUser(ctx, userID)
 	if err != nil {
 		logger.Warn("me: GetActiveRolesForUser failed", "err", err)
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("dependency.database_unavailable", "could not load user roles", r))
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "could not load user roles", r))
 		return
 	}
 
@@ -241,10 +242,10 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 
 	var permissions []string
 	if len(roles) > 0 {
-		permissions, err = s.meQueries.GetPermissionsForRoles(ctx, roles)
+		permissions, err = h.meQueries.GetPermissionsForRoles(ctx, roles)
 		if err != nil {
 			logger.Warn("me: GetPermissionsForRoles failed", "err", err)
-			writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("dependency.database_unavailable", "could not load user permissions", r))
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "could not load user permissions", r))
 			return
 		}
 	}
@@ -252,17 +253,17 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		permissions = []string{}
 	}
 
-	memberships, err := s.meQueries.ListMembershipsByUser(ctx, userID)
+	memberships, err := h.meQueries.ListMembershipsByUser(ctx, userID)
 	if err != nil {
 		logger.Warn("me: ListMembershipsByUser failed", "err", err)
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("dependency.database_unavailable", "could not load user memberships", r))
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "could not load user memberships", r))
 		return
 	}
 
-	networks, err := s.meQueries.ListNetworksByUser(ctx, userID)
+	networks, err := h.meQueries.ListNetworksByUser(ctx, userID)
 	if err != nil {
 		logger.Warn("me: ListNetworksByUser failed", "err", err)
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope("dependency.database_unavailable", "could not load assigned networks", r))
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "could not load assigned networks", r))
 		return
 	}
 
@@ -279,16 +280,16 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		Permissions:             permissions,
 		OrganizationMemberships: membershipsToDTO(memberships),
 		AssignedNetworks:        networksToDTO(networks),
-		AvailableScopes:         computeAvailableScopes(roles, memberships, networks),
+		AvailableScopes:         ComputeAvailableScopes(roles, memberships, networks),
 	}
-	writeJSON(w, http.StatusOK, resp)
+	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 
 // writeMeJWTOnly is the degraded response used when the actor ID is not a
 // valid UUID (legacy stub-token fixtures). The handler still returns 200 with
 // the JWT-derived user + roles so the client can render the header — there is
 // just no membership / network data to attach.
-func (s *Server) writeMeJWTOnly(w http.ResponseWriter, _ *http.Request, actor auth.Actor) {
+func (h *Handler) writeMeJWTOnly(w http.ResponseWriter, _ *http.Request, actor auth.Actor) {
 	roles := mergeRoles(actor.Roles, nil)
 	resp := meResponse{
 		User: meUserDTO{
@@ -303,9 +304,9 @@ func (s *Server) writeMeJWTOnly(w http.ResponseWriter, _ *http.Request, actor au
 		Permissions:             []string{},
 		OrganizationMemberships: []meMembershipDTO{},
 		AssignedNetworks:        []meNetworkDTO{},
-		AvailableScopes:         computeAvailableScopes(roles, nil, nil),
+		AvailableScopes:         ComputeAvailableScopes(roles, nil, nil),
 	}
-	writeJSON(w, http.StatusOK, resp)
+	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

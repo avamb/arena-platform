@@ -3,7 +3,7 @@
 // write surface out of payment_configs.go keeps each file under the
 // internal/platform/httpserver/ size budget enforced by the
 // httpserver_file_size_175_test gate (feature #175).
-package httpserver
+package hpayments
 
 import (
 	"encoding/json"
@@ -16,6 +16,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -46,33 +48,34 @@ type updatePaymentConfigRequest struct {
 // POST /v1/organizations/{org_id}/payment-configs
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (s *Server) handleCreatePaymentConfig(w http.ResponseWriter, r *http.Request) {
-	if s.paymentConfigQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+// HandleCreatePaymentConfig serves POST /v1/organizations/{org_id}/payment-configs.
+func (h *Handler) HandleCreatePaymentConfig(w http.ResponseWriter, r *http.Request) {
+	if h.paymentConfigQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
 	}
 	ctx := r.Context()
 
-	orgID, ok := uuidPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("payment_config.invalid_body", "cannot read request body: "+err.Error(), r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("payment_config.invalid_body", "cannot read request body: "+err.Error(), r))
 		return
 	}
 	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("payment_config.empty_body", "request body is required", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("payment_config.empty_body", "request body is required", r))
 		return
 	}
 
 	var req createPaymentConfigRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("payment_config.invalid_json", "request body is not valid JSON", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("payment_config.invalid_json", "request body is not valid JSON", r))
 		return
 	}
 
@@ -80,14 +83,14 @@ func (s *Server) handleCreatePaymentConfig(w http.ResponseWriter, r *http.Reques
 	req.Mode = strings.TrimSpace(strings.ToLower(req.Mode))
 
 	if req.Provider == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"payment_config.invalid_provider", "provider is required", r,
 			map[string]any{"field": "provider", "allowed": supportedProviderList()},
 		))
 		return
 	}
-	if !supportedPaymentProviders[req.Provider] {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+	if !SupportedPaymentProviders[req.Provider] {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"payment_config.unsupported_provider",
 			fmt.Sprintf("provider %q is not supported", req.Provider), r,
 			map[string]any{"field": "provider", "allowed": supportedProviderList()},
@@ -98,7 +101,7 @@ func (s *Server) handleCreatePaymentConfig(w http.ResponseWriter, r *http.Reques
 		req.Mode = "test"
 	}
 	if !supportedModes[req.Mode] {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"payment_config.invalid_mode", "mode must be 'test' or 'live'", r,
 			map[string]any{"field": "mode", "allowed": []string{"test", "live"}},
 		))
@@ -119,7 +122,7 @@ func (s *Server) handleCreatePaymentConfig(w http.ResponseWriter, r *http.Reques
 	if len(publicConfig) > 0 {
 		var probe map[string]any
 		if err := json.Unmarshal(publicConfig, &probe); err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 				"payment_config.invalid_public_config",
 				"public_config must be a JSON object", r,
 				map[string]any{"field": "public_config"},
@@ -129,50 +132,50 @@ func (s *Server) handleCreatePaymentConfig(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Build the secrets jsonb from the patch map (empty patch -> '{}').
-	secretsJSON, _, err := mergeSecrets(nil, req.Secrets)
+	secretsJSON, _, err := MergeSecrets(nil, req.Secrets)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"payment_config.invalid_secrets", err.Error(), r,
 		))
 		return
 	}
 
-	status := deriveStatus(req.Provider, secretsJSON)
+	status := DeriveStatus(req.Provider, secretsJSON)
 	isActive := true
 	if req.IsActive != nil {
 		isActive = *req.IsActive
 	}
 
-	row, err := s.paymentConfigQueries.InsertPaymentProviderConfig(
+	row, err := h.paymentConfigQueries.InsertPaymentProviderConfig(
 		ctx, orgID, req.Provider, req.Mode, providerAccountID,
 		publicConfig, secretsJSON, status, isActive,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
-			writeJSON(w, http.StatusConflict, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 				"payment_config.duplicate",
 				"a payment provider config for this provider+mode already exists in this organization",
 				r,
 			))
 			return
 		}
-		s.logger.Error("payment_config: insert failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("payment_config: insert failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"payment_config.insert_failed", "failed to create payment config", r,
 		))
 		return
 	}
 
-	s.writePaymentConfigAudit(ctx, r, "v1.payment_config.create", row.ID.String(), map[string]any{
+	h.writePaymentConfigAudit(ctx, r, "v1.payment_config.create", row.ID.String(), map[string]any{
 		"org_id":   orgID.String(),
 		"provider": req.Provider,
 		"mode":     req.Mode,
 		"status":   status,
 	})
 
-	writeJSON(w, http.StatusCreated, map[string]any{
-		"payment_config": paymentConfigFromRow(row),
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
+		"payment_config": PaymentConfigFromRow(row),
 	})
 }
 
@@ -180,49 +183,50 @@ func (s *Server) handleCreatePaymentConfig(w http.ResponseWriter, r *http.Reques
 // PATCH /v1/organizations/{org_id}/payment-configs/{id}
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (s *Server) handleUpdatePaymentConfig(w http.ResponseWriter, r *http.Request) {
-	if s.paymentConfigQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+// HandleUpdatePaymentConfig serves PATCH /v1/organizations/{org_id}/payment-configs/{id}.
+func (h *Handler) HandleUpdatePaymentConfig(w http.ResponseWriter, r *http.Request) {
+	if h.paymentConfigQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
 	}
 	ctx := r.Context()
 
-	orgID, ok := uuidPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
-	id, ok := uuidPathParam(w, r, "id")
+	id, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
 		return
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("payment_config.invalid_body", "cannot read request body: "+err.Error(), r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("payment_config.invalid_body", "cannot read request body: "+err.Error(), r))
 		return
 	}
 	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("payment_config.empty_body", "request body is required", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("payment_config.empty_body", "request body is required", r))
 		return
 	}
 
 	var req updatePaymentConfigRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("payment_config.invalid_json", "request body is not valid JSON", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("payment_config.invalid_json", "request body is not valid JSON", r))
 		return
 	}
 
 	// Fetch existing row so we can merge secrets and recompute status.
-	existing, err := s.paymentConfigQueries.GetPaymentProviderConfigByID(ctx, id, orgID)
+	existing, err := h.paymentConfigQueries.GetPaymentProviderConfigByID(ctx, id, orgID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("payment_config.not_found", "payment config not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("payment_config.not_found", "payment config not found", r))
 			return
 		}
-		s.logger.Error("payment_config: pre-update get failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("payment_config: pre-update get failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"payment_config.update_failed", "failed to load payment config", r,
 		))
 		return
@@ -238,7 +242,7 @@ func (s *Server) handleUpdatePaymentConfig(w http.ResponseWriter, r *http.Reques
 	if len(publicConfig) > 0 {
 		var probe map[string]any
 		if err := json.Unmarshal(publicConfig, &probe); err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 				"payment_config.invalid_public_config",
 				"public_config must be a JSON object", r,
 				map[string]any{"field": "public_config"},
@@ -247,9 +251,9 @@ func (s *Server) handleUpdatePaymentConfig(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	mergedSecrets, secretsChanged, err := mergeSecrets(existing.Secrets, req.Secrets)
+	mergedSecrets, secretsChanged, err := MergeSecrets(existing.Secrets, req.Secrets)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"payment_config.invalid_secrets", err.Error(), r,
 		))
 		return
@@ -259,24 +263,24 @@ func (s *Server) handleUpdatePaymentConfig(w http.ResponseWriter, r *http.Reques
 		secretsParam = mergedSecrets
 	}
 
-	status := deriveStatus(existing.Provider, mergedSecrets)
+	status := DeriveStatus(existing.Provider, mergedSecrets)
 
-	row, err := s.paymentConfigQueries.UpdatePaymentProviderConfig(
+	row, err := h.paymentConfigQueries.UpdatePaymentProviderConfig(
 		ctx, id, orgID, providerAccountID, publicConfig, secretsParam, status, req.IsActive,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("payment_config.not_found", "payment config not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("payment_config.not_found", "payment config not found", r))
 			return
 		}
-		s.logger.Error("payment_config: update failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("payment_config: update failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"payment_config.update_failed", "failed to update payment config", r,
 		))
 		return
 	}
 
-	s.writePaymentConfigAudit(ctx, r, "v1.payment_config.update", row.ID.String(), map[string]any{
+	h.writePaymentConfigAudit(ctx, r, "v1.payment_config.update", row.ID.String(), map[string]any{
 		"org_id":          orgID.String(),
 		"provider":        row.Provider,
 		"mode":            row.Mode,
@@ -285,7 +289,7 @@ func (s *Server) handleUpdatePaymentConfig(w http.ResponseWriter, r *http.Reques
 		"is_active_set":   req.IsActive != nil,
 	})
 
-	writeJSON(w, http.StatusOK, map[string]any{
-		"payment_config": paymentConfigFromRow(row),
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
+		"payment_config": PaymentConfigFromRow(row),
 	})
 }

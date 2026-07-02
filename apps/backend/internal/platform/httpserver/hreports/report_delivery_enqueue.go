@@ -1,6 +1,6 @@
 // report_delivery_enqueue.go — post-report-trigger delivery job enqueueing (feature #160).
 //
-// enqueueReportDeliveryJob is called from handleTriggerEventReport after the
+// enqueueReportDeliveryJob is called from HandleTriggerEventReport after the
 // event_reports row is created in 'pending' state. It enqueues a worker_jobs
 // row of type "report.deliver" so the report delivery handler runs once the
 // report generation worker transitions the report to 'ready'.
@@ -10,7 +10,7 @@
 //
 // Best-effort: errors are logged and swallowed so a delivery infrastructure
 // issue never blocks the trigger API response.
-package httpserver
+package hreports
 
 import (
 	"context"
@@ -24,18 +24,18 @@ import (
 
 // enqueueReportDeliveryJob creates a worker_jobs row of type "report.deliver"
 // for the given report ID. Called after a new event_reports row is created in
-// 'pending' state by handleTriggerEventReport.
+// 'pending' state by HandleTriggerEventReport.
 //
 // No-op when workerPool is nil (delivery infrastructure not configured).
-func (s *Server) enqueueReportDeliveryJob(ctx context.Context, reportID uuid.UUID) {
-	if s.workerPool == nil {
+func (h *Handler) enqueueReportDeliveryJob(ctx context.Context, reportID uuid.UUID) {
+	if h.workerPool == nil {
 		return
 	}
 
 	p := reportdelivery.Payload{ReportID: reportID.String()}
 	body, jsonErr := json.Marshal(p)
 	if jsonErr != nil {
-		s.logger.Warn("reportdelivery: marshal payload failed",
+		h.logger.Warn("reportdelivery: marshal payload failed",
 			slog.String("report_id", reportID.String()),
 			slog.String("error", jsonErr.Error()),
 		)
@@ -48,17 +48,17 @@ func (s *Server) enqueueReportDeliveryJob(ctx context.Context, reportID uuid.UUI
 		RETURNING id::text`
 
 	var jobID string
-	if qErr := s.workerPool.QueryRow(ctx, insertJobSQL,
+	if qErr := h.workerPool.QueryRow(ctx, insertJobSQL,
 		reportdelivery.JobType, body, 5,
 	).Scan(&jobID); qErr != nil {
-		s.logger.Warn("reportdelivery: enqueue worker_job failed",
+		h.logger.Warn("reportdelivery: enqueue worker_job failed",
 			slog.String("report_id", reportID.String()),
 			slog.String("error", qErr.Error()),
 		)
 		return
 	}
 
-	s.logger.Info("reportdelivery: delivery job enqueued",
+	h.logger.Info("reportdelivery: delivery job enqueued",
 		slog.String("report_id", reportID.String()),
 		slog.String("worker_job_id", jobID),
 	)

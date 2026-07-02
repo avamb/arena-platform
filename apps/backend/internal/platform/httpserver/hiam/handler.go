@@ -1,6 +1,7 @@
 // Package hiam implements HTTP handlers for the IAM domain:
 // organizations, memberships, superadmin console, impersonation,
-// admin-org management, admin-membership management, and admin-user creation.
+// admin-org management, admin-membership management, admin-user creation,
+// and the current-user context endpoint (GET /v1/me).
 package hiam
 
 import (
@@ -24,6 +25,8 @@ type TxStarter interface {
 }
 
 // Handler holds the shared dependencies for all IAM HTTP handlers.
+// meQueries is the narrow read-only surface behind GET /v1/me (feature #211);
+// production wiring passes the *Server meQueries field, tests inject fakes.
 type Handler struct {
 	orgQueries        *gen.Queries
 	membershipQueries *gen.Queries
@@ -32,6 +35,7 @@ type Handler struct {
 	audit             audit.Writer
 	logger            *slog.Logger
 	stub              *auth.StubProvider
+	meQueries         MeQuerier
 }
 
 // New constructs a Handler from the caller's dependencies.
@@ -41,6 +45,7 @@ func New(
 	auditWriter audit.Writer,
 	logger *slog.Logger,
 	stub *auth.StubProvider,
+	meQ MeQuerier,
 ) *Handler {
 	return &Handler{
 		orgQueries:        orgQ,
@@ -50,5 +55,6 @@ func New(
 		audit:             auditWriter,
 		logger:            logger,
 		stub:              stub,
+		meQueries:         meQ,
 	}
 }

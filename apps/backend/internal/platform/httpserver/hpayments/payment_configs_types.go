@@ -8,7 +8,7 @@
 //   - Response struct and the row-to-response mapper.
 //   - Pure helpers for status derivation, secret extraction, and the
 //     secret-patch merge logic used by PATCH.
-package httpserver
+package hpayments
 
 import (
 	"encoding/json"
@@ -24,10 +24,10 @@ import (
 // Provider catalogue + required-secret rules
 // ─────────────────────────────────────────────────────────────────────────────
 
-// supportedPaymentProviders lists the provider slugs the platform knows
+// SupportedPaymentProviders lists the provider slugs the platform knows
 // how to talk to. Anything else is rejected at create-time so we never
 // store credentials for a provider we cannot wire to.
-var supportedPaymentProviders = map[string]bool{
+var SupportedPaymentProviders = map[string]bool{
 	"stripe":        true,
 	"allpay":        true,
 	"cloudpayments": true,
@@ -57,8 +57,8 @@ var supportedModes = map[string]bool{
 // supportedProviderList returns a sorted slice of supported provider
 // slugs for inclusion in error details.
 func supportedProviderList() []string {
-	out := make([]string, 0, len(supportedPaymentProviders))
-	for p := range supportedPaymentProviders {
+	out := make([]string, 0, len(SupportedPaymentProviders))
+	for p := range SupportedPaymentProviders {
 		out = append(out, p)
 	}
 	sort.Strings(out)
@@ -69,7 +69,7 @@ func supportedProviderList() []string {
 // Response shape
 // ─────────────────────────────────────────────────────────────────────────────
 
-// paymentConfigResponse is the JSON representation of a
+// PaymentConfigResponse is the JSON representation of a
 // payment_provider_config row in HTTP responses.
 //
 // `secrets` is intentionally absent. `secret_fields_set` lists the
@@ -77,7 +77,7 @@ func supportedProviderList() []string {
 // "[STORED]" markers. `missing_required_fields` lists the secret keys
 // still expected for the chosen provider; populated only when status =
 // "missing_required_fields".
-type paymentConfigResponse struct {
+type PaymentConfigResponse struct {
 	ID                    string          `json:"id"`
 	OrgID                 string          `json:"org_id"`
 	Provider              string          `json:"provider"`
@@ -92,19 +92,19 @@ type paymentConfigResponse struct {
 	UpdatedAt             string          `json:"updated_at"`
 }
 
-// paymentConfigFromRow renders a row into the response shape, stripping
+// PaymentConfigFromRow renders a row into the response shape, stripping
 // secret values and deriving the missing-field list.
-func paymentConfigFromRow(p gen.PaymentProviderConfigRow) paymentConfigResponse {
-	resp := paymentConfigResponse{
+func PaymentConfigFromRow(p gen.PaymentProviderConfigRow) PaymentConfigResponse {
+	resp := PaymentConfigResponse{
 		ID:                    p.ID.String(),
 		OrgID:                 p.OrgID.String(),
 		Provider:              p.Provider,
 		Mode:                  p.Mode,
 		ProviderAccountID:     p.ProviderAccountID,
 		PublicConfig:          publicConfigForResponse(p.PublicConfig),
-		SecretFieldsSet:       extractStoredSecretKeys(p.Secrets),
+		SecretFieldsSet:       ExtractStoredSecretKeys(p.Secrets),
 		Status:                p.Status,
-		MissingRequiredFields: computeMissingRequiredFields(p.Provider, p.Secrets),
+		MissingRequiredFields: ComputeMissingRequiredFields(p.Provider, p.Secrets),
 		IsActive:              p.IsActive,
 		CreatedAt:             p.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:             p.UpdatedAt.UTC().Format(time.RFC3339),
@@ -128,10 +128,10 @@ func publicConfigForResponse(raw json.RawMessage) json.RawMessage {
 	return raw
 }
 
-// extractStoredSecretKeys returns the keys present in the secrets jsonb
+// ExtractStoredSecretKeys returns the keys present in the secrets jsonb
 // whose corresponding string value is non-empty. The function never
 // returns the values themselves.
-func extractStoredSecretKeys(raw json.RawMessage) []string {
+func ExtractStoredSecretKeys(raw json.RawMessage) []string {
 	if len(raw) == 0 {
 		return nil
 	}
@@ -149,10 +149,10 @@ func extractStoredSecretKeys(raw json.RawMessage) []string {
 	return out
 }
 
-// computeMissingRequiredFields returns the required-secret keys for the
+// ComputeMissingRequiredFields returns the required-secret keys for the
 // given provider that are either missing from the secrets jsonb or are
 // present with an empty/whitespace value.
-func computeMissingRequiredFields(provider string, secrets json.RawMessage) []string {
+func ComputeMissingRequiredFields(provider string, secrets json.RawMessage) []string {
 	required, ok := requiredSecretFields[provider]
 	if !ok || len(required) == 0 {
 		return nil
@@ -177,21 +177,21 @@ func computeMissingRequiredFields(provider string, secrets json.RawMessage) []st
 	return missing
 }
 
-// deriveStatus computes the status column value for the given provider
+// DeriveStatus computes the status column value for the given provider
 // and the secrets that will be stored on the row.
-func deriveStatus(provider string, secrets json.RawMessage) string {
-	if len(computeMissingRequiredFields(provider, secrets)) == 0 {
+func DeriveStatus(provider string, secrets json.RawMessage) string {
+	if len(ComputeMissingRequiredFields(provider, secrets)) == 0 {
 		return "configured"
 	}
 	return "missing_required_fields"
 }
 
-// mergeSecrets layers the patch map on top of the existing secrets
+// MergeSecrets layers the patch map on top of the existing secrets
 // jsonb. Empty-string values in the patch DELETE the corresponding
 // key (so admins can clear a secret without removing the whole row).
 // Returns the merged jsonb plus a flag indicating whether the patch
 // changed anything.
-func mergeSecrets(existing json.RawMessage, patch map[string]string) (json.RawMessage, bool, error) {
+func MergeSecrets(existing json.RawMessage, patch map[string]string) (json.RawMessage, bool, error) {
 	current := map[string]any{}
 	if len(existing) > 0 {
 		if err := json.Unmarshal(existing, &current); err != nil {

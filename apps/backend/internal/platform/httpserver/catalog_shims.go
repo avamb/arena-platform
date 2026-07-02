@@ -5,14 +5,19 @@
 package httpserver
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+
+	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcatalog"
 )
 
 // catalogHandler constructs a hcatalog.Handler from the server's dependencies.
+// The session-cancelled webhook publisher is injected as a callback because
+// its implementation lives in the hscanner sub-package (see scanner_shims.go).
 func (s *Server) catalogHandler() *hcatalog.Handler {
 	return hcatalog.New(
 		s.eventQueries,
@@ -20,9 +25,12 @@ func (s *Server) catalogHandler() *hcatalog.Handler {
 		s.tierQueries,
 		s.channelQueries,
 		s.publicationQueries,
+		s.sessionQueries,
+		s.inventoryQueries,
 		s.pool,
 		s.audit,
 		s.logger,
+		s.publishSessionCancelledEvent,
 	)
 }
 
@@ -33,6 +41,7 @@ func (s *Server) catalogHandler() *hcatalog.Handler {
 type channelResponse = hcatalog.ChannelResponse
 type eventResponse = hcatalog.EventResponse
 type publicationResponse = hcatalog.PublicationResponse
+type sessionResponse = hcatalog.SessionResponse
 type tierResponse = hcatalog.TierResponse
 type venueResponse = hcatalog.VenueResponse
 
@@ -84,6 +93,18 @@ func tierFromRow(t gen.TicketTierRow) tierResponse {
 
 func venueFromRow(v gen.VenueRow) venueResponse {
 	return hcatalog.VenueFromRow(v)
+}
+
+func isValidSessionTransition(from, to string) bool {
+	return hcatalog.IsValidSessionTransition(from, to)
+}
+
+func sessionFromRow(sess gen.SessionRow, hasOverlap bool) sessionResponse {
+	return hcatalog.SessionFromRow(sess, hasOverlap)
+}
+
+func detectSessionOverlaps(sessions []gen.SessionRow) bool {
+	return hcatalog.DetectSessionOverlaps(sessions)
 }
 
 // ──── event handler shims ─────────────────────────────────────────────────────
@@ -198,4 +219,33 @@ func (s *Server) handleUpdateChannel(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDeleteChannel(w http.ResponseWriter, r *http.Request) {
 	s.catalogHandler().HandleDeleteChannel(w, r)
+}
+
+// ──── session handler shims ───────────────────────────────────────────────────
+
+// onCapacityChange forwards to hcatalog.OnCapacityChange. Kept as a *Server
+// method because sessions_test.go invokes the capacity propagation hook on
+// *Server directly.
+func (s *Server) onCapacityChange(ctx context.Context, sessionID uuid.UUID, oldCapacity, newCapacity int32) {
+	s.catalogHandler().OnCapacityChange(ctx, sessionID, oldCapacity, newCapacity)
+}
+
+func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleCreateSession(w, r)
+}
+
+func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleListSessions(w, r)
+}
+
+func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleGetSession(w, r)
+}
+
+func (s *Server) handleUpdateSession(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleUpdateSession(w, r)
+}
+
+func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleDeleteSession(w, r)
 }

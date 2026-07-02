@@ -93,8 +93,9 @@ func (rl *publicFeedRateLimiter) CheckIP(ip string) bool { return rl.checkIP(ip)
 // feedHandler constructs an hfeed.Handler from the server's dependencies. A
 // fresh handler per request keeps the wiring uniform with hbilling / hgeo /
 // hgdpr and avoids stale captures when test code mutates *Server fields
-// between calls. The promo-code validator is injected as a callback because
-// the canonical validatePromoCode still lives in pricing_calculator.go.
+// between calls. The promo-code validator is injected as a callback; its
+// canonical implementation is hcheckout.ValidatePromoCode (the pricing domain
+// moved into hcheckout in phase 1m).
 func (s *Server) feedHandler() *hfeed.Handler {
 	return hfeed.New(
 		s.feedTokenQueries,
@@ -110,7 +111,7 @@ func (s *Server) feedHandler() *hfeed.Handler {
 		s.audit,
 		s.publicFeedRL,
 		hcheckout.PricingRules(s.pricingRules),
-		validatePromoCode,
+		hcheckout.ValidatePromoCode,
 	)
 }
 

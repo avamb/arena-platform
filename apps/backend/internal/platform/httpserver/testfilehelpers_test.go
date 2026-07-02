@@ -323,7 +323,7 @@ func resolveFileInRepo(repoRoot, name string) string {
 		}
 	case "sessions.go":
 		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "sessions.go"),
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hcatalog", "sessions.go"),
 		}
 	case "server.go":
 		candidates = []string{
@@ -361,6 +361,7 @@ func resolveFileInRepo(repoRoot, name string) string {
 		}
 	case "pricing_calculator.go":
 		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hcheckout", "pricing_calculator.go"),
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "pricing_calculator.go"),
 		}
 	// Checkout sessions (feature #132)
@@ -583,7 +584,7 @@ func resolveFileInRepo(repoRoot, name string) string {
 		}
 	case "event_reports.go":
 		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "event_reports.go"),
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hreports", "event_reports.go"),
 		}
 	case "reporting_handler.go":
 		candidates = []string{
@@ -669,7 +670,7 @@ func resolveFileInRepo(repoRoot, name string) string {
 		}
 	case "report_delivery_enqueue.go":
 		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "report_delivery_enqueue.go"),
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hreports", "report_delivery_enqueue.go"),
 		}
 	// Admin impersonation (feature #167)
 	case "impersonation.go":
@@ -818,7 +819,7 @@ func resolveFileInRepo(repoRoot, name string) string {
 		}
 	case "payment_configs.go":
 		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "payment_configs.go"),
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hpayments", "payment_configs.go"),
 		}
 	// External reconciliation (feature #147)
 	case "0041_reconciliation_reports.sql":
@@ -868,9 +869,10 @@ func resolveFileInRepo(repoRoot, name string) string {
 //     file plus three handler files.
 //
 //   - name is a file moved into a domain sub-package (hcheckout/, hcatalog/,
-//     hiam/) — returns the sub-package file concatenated with the
-//     corresponding shim file in httpserver/ (checkout_shims.go,
-//     catalog_shims.go, iam_shims.go). The shim preserves the original
+//     hiam/, hreports/, hpayments/, …) — returns the sub-package file
+//     concatenated with the corresponding shim file in httpserver/
+//     (checkout_shims.go, catalog_shims.go, iam_shims.go, reports_shims.go,
+//     payments_shims.go). The shim preserves the original
 //     unexported handler/callback identifiers, so existing structural tests
 //     that grep for symbols like handlePriceBreakdown or enqueueDeliveryJobs
 //     keep matching even though those identifiers now live in the shim
@@ -973,10 +975,15 @@ func domainSubPackageFor(name string) (string, string) {
 	case "checkout.go", "reservations.go", "reservation_processor.go",
 		"price_breakdown.go", "payment_intents.go", "refunds.go", "promo_codes.go":
 		return "hcheckout", "checkout_shims.go"
-	case "events.go", "channels.go", "publications.go", "ticket_tiers.go", "venues.go":
+	// pricing_calculator.go keeps its own top-level shim file (same name) so
+	// TestPricing129_PricingCalculatorFileExists continues to stat it directly.
+	case "pricing_calculator.go":
+		return "hcheckout", "pricing_calculator.go"
+	case "events.go", "channels.go", "publications.go", "ticket_tiers.go", "venues.go",
+		"sessions.go":
 		return "hcatalog", "catalog_shims.go"
 	case "orgs.go", "memberships.go", "superadmin.go", "impersonation.go",
-		"admin_memberships.go", "admin_orgs.go", "admin_users.go":
+		"admin_memberships.go", "admin_orgs.go", "admin_users.go", "me.go":
 		return "hiam", "iam_shims.go"
 	case "tickets.go", "credentials.go", "complimentary.go", "delivery_enqueue.go",
 		"admin_ticket_delivery.go", "admin_ticket_scans.go":
@@ -997,6 +1004,10 @@ func domainSubPackageFor(name string) (string, string) {
 		return "hfeed", "feed_shims.go"
 	case "inventory.go", "inventory_ledger.go", "external_allocations.go":
 		return "hinventory", "inventory_shims.go"
+	case "event_reports.go", "report_delivery_enqueue.go":
+		return "hreports", "reports_shims.go"
+	case "payment_configs.go", "payment_configs_write.go", "payment_configs_types.go":
+		return "hpayments", "payments_shims.go"
 	// NOTE: hauth is deliberately absent — the refactor renamed its files
 	// (auth_login.go → hauth/login.go, …), so a same-name lookup cannot map
 	// them. No structural test greps the old auth_*.go handler files.
