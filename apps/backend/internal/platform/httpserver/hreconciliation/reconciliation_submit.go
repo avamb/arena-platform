@@ -1,6 +1,6 @@
 // reconciliation_submit.go implements POST /v1/reconciliation/reports
-// (feature #147). Extracted from reconciliation.go as part of feature #175.
-package httpserver
+// (feature #147).
+package hreconciliation
 
 import (
 	"encoding/json"
@@ -15,11 +15,12 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
-func (s *Server) handleSubmitReconciliationReport(w http.ResponseWriter, r *http.Request) {
-	if s.reconciliationQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleSubmitReport(w http.ResponseWriter, r *http.Request) {
+	if h.queries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -27,7 +28,7 @@ func (s *Server) handleSubmitReconciliationReport(w http.ResponseWriter, r *http
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 256*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"reconciliation.read_body_failed", "failed to read request body", r,
 		))
 		return
@@ -35,7 +36,7 @@ func (s *Server) handleSubmitReconciliationReport(w http.ResponseWriter, r *http
 
 	var req submitReconciliationReportRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"reconciliation.invalid_json", "request body is not valid JSON", r,
 		))
 		return
@@ -44,7 +45,7 @@ func (s *Server) handleSubmitReconciliationReport(w http.ResponseWriter, r *http
 	// Validate allocation_id.
 	allocationID, err := uuid.Parse(req.AllocationID)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"reconciliation.invalid_allocation_id", "allocation_id must be a valid UUID", r,
 		))
 		return
@@ -52,14 +53,14 @@ func (s *Server) handleSubmitReconciliationReport(w http.ResponseWriter, r *http
 
 	// Validate lines.
 	if len(req.Lines) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"reconciliation.no_lines", "at least one line is required", r,
 		))
 		return
 	}
 	for i, line := range req.Lines {
 		if strings.TrimSpace(line.ExternalRef) == "" {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 				"reconciliation.invalid_line",
 				"line "+strconv.Itoa(i)+": external_ref is required",
 				r,
@@ -67,7 +68,7 @@ func (s *Server) handleSubmitReconciliationReport(w http.ResponseWriter, r *http
 			return
 		}
 		if line.LineType != "sale" && line.LineType != "return" {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 				"reconciliation.invalid_line_type",
 				"line "+strconv.Itoa(i)+": line_type must be 'sale' or 'return'",
 				r,
@@ -75,7 +76,7 @@ func (s *Server) handleSubmitReconciliationReport(w http.ResponseWriter, r *http
 			return
 		}
 		if line.Qty <= 0 {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 				"reconciliation.invalid_qty",
 				"line "+strconv.Itoa(i)+": qty must be a positive integer",
 				r,
@@ -86,16 +87,16 @@ func (s *Server) handleSubmitReconciliationReport(w http.ResponseWriter, r *http
 
 	// Verify the allocation exists.
 	ctx := r.Context()
-	allocation, err := s.reconciliationQueries.GetExternalAllocationByID(ctx, allocationID)
+	allocation, err := h.queries.GetExternalAllocationByID(ctx, allocationID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 				"reconciliation.allocation_not_found", "external allocation not found", r,
 			))
 			return
 		}
-		s.logger.Error("reconciliation: get allocation failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("reconciliation: get allocation failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"reconciliation.allocation_fetch_failed", "failed to retrieve allocation", r,
 		))
 		return
@@ -103,7 +104,7 @@ func (s *Server) handleSubmitReconciliationReport(w http.ResponseWriter, r *http
 
 	// Only active/disputed allocations may be reconciled.
 	if allocation.Status != "active" && allocation.Status != "disputed" {
-		writeJSON(w, http.StatusConflict, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 			"reconciliation.invalid_allocation_status",
 			"reconciliation reports can only be submitted for active or disputed allocations",
 			r,
@@ -135,9 +136,9 @@ func (s *Server) handleSubmitReconciliationReport(w http.ResponseWriter, r *http
 		}
 
 		// Look up barcode by external_ref within the allocation's batches.
-		lookup, lookupErr := s.reconciliationQueries.LookupBarcodeByExternalRef(ctx, line.ExternalRef, allocationID)
+		lookup, lookupErr := h.queries.LookupBarcodeByExternalRef(ctx, line.ExternalRef, allocationID)
 		if lookupErr != nil && !errors.Is(lookupErr, pgx.ErrNoRows) {
-			s.logger.Warn("reconciliation: barcode lookup error",
+			h.logger.Warn("reconciliation: barcode lookup error",
 				slog.String("external_ref", line.ExternalRef),
 				slog.String("error", lookupErr.Error()),
 			)
@@ -183,16 +184,16 @@ func (s *Server) handleSubmitReconciliationReport(w http.ResponseWriter, r *http
 	totalLines := int32(len(req.Lines)) //nolint:gosec // req.Lines length capped upstream by body-size limit
 
 	// ── Persist report + lines in a transaction ───────────────────────────────
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "failed to begin transaction", r,
 		))
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	rq := s.reconciliationQueries.WithTx(tx)
+	rq := h.queries.WithTx(tx)
 
 	report, err := rq.InsertReconciliationReport(
 		ctx,
@@ -205,8 +206,8 @@ func (s *Server) handleSubmitReconciliationReport(w http.ResponseWriter, r *http
 		req.Notes,
 	)
 	if err != nil {
-		s.logger.Error("reconciliation: insert report failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("reconciliation: insert report failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"reconciliation.insert_failed", "failed to create reconciliation report", r,
 		))
 		return
@@ -227,8 +228,8 @@ func (s *Server) handleSubmitReconciliationReport(w http.ResponseWriter, r *http
 			ls.reason,
 		)
 		if err != nil {
-			s.logger.Error("reconciliation: insert line failed", slog.String("error", err.Error()))
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+			h.logger.Error("reconciliation: insert line failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"reconciliation.line_insert_failed", "failed to persist reconciliation line", r,
 			))
 			return
@@ -237,13 +238,13 @@ func (s *Server) handleSubmitReconciliationReport(w http.ResponseWriter, r *http
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"reconciliation.commit_failed", "failed to commit reconciliation transaction", r,
 		))
 		return
 	}
 
-	s.logger.Info("reconciliation: report submitted",
+	h.logger.Info("reconciliation: report submitted",
 		slog.String("report_id", report.ID.String()),
 		slog.String("allocation_id", allocationID.String()),
 		slog.String("status", reportStatus),
@@ -252,8 +253,8 @@ func (s *Server) handleSubmitReconciliationReport(w http.ResponseWriter, r *http
 		slog.Int("exception_lines", int(exceptionCount)),
 	)
 
-	writeJSON(w, http.StatusCreated, map[string]any{
-		"report": reconciliationReportFromRow(report),
-		"lines":  reconciliationLinesFromRows(insertedLines),
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
+		"report": ReportFromRow(report),
+		"lines":  LinesFromRows(insertedLines),
 	})
 }

@@ -1,10 +1,7 @@
-// reconciliation.go declares the shared types and response mappers for the
-// external reconciliation HTTP API (feature #147).
+// reconciliation.go declares the shared request/response types and row
+// mappers for the external reconciliation HTTP API (feature #147).
 //
-// The HTTP handlers themselves live in sibling files, all in this same
-// package, so the package surface and the chi router wiring are unchanged.
-// This split is part of feature #175 — "Split the remaining oversized files
-// in internal/platform/httpserver (>600 lines)":
+// The HTTP handlers themselves live in sibling files in this same package:
 //
 //   - reconciliation_submit.go  – POST  /v1/reconciliation/reports
 //   - reconciliation_query.go   – GET   /v1/reconciliation/reports/{id}
@@ -44,24 +41,14 @@
 //	GET   /v1/reconciliation/exceptions                     — exception queue (reconciliation.review)
 //	PATCH /v1/reconciliation/reports/{id}/review            — mark report reviewed (reconciliation.review)
 //	PATCH /v1/reconciliation/reports/{id}/lines/{line_id}   — resolve exception line (reconciliation.review)
-package httpserver
+package hreconciliation
 
 import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Constants
-// ─────────────────────────────────────────────────────────────────────────────
-
-const (
-	// reconciliationConfidenceThreshold is the minimum confidence score for
-	// a line to be auto-matched. Lines below this threshold become exceptions.
-	reconciliationConfidenceThreshold = 80
-)
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Request / Response types
+// Request / Response types (package-private — only used within hreconciliation)
 // ─────────────────────────────────────────────────────────────────────────────
 
 // reconciliationLineInput is a single line item in a partner reconciliation report.
@@ -89,11 +76,12 @@ type reviewReportRequest struct {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Response helpers
+// Response helpers (exported so reconciliation_shims.go can re-export the
+// original lowercase names to package httpserver)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// reconciliationReportFromRow converts a ReconciliationReportRow to a JSON map.
-func reconciliationReportFromRow(r gen.ReconciliationReportRow) map[string]any {
+// ReportFromRow converts a ReconciliationReportRow to a JSON map.
+func ReportFromRow(r gen.ReconciliationReportRow) map[string]any {
 	return map[string]any{
 		"id":              r.ID,
 		"allocation_id":   r.AllocationID,
@@ -111,8 +99,8 @@ func reconciliationReportFromRow(r gen.ReconciliationReportRow) map[string]any {
 	}
 }
 
-// reconciliationLineFromRow converts a ReconciliationLineRow to a JSON map.
-func reconciliationLineFromRow(r gen.ReconciliationLineRow) map[string]any {
+// LineFromRow converts a ReconciliationLineRow to a JSON map.
+func LineFromRow(r gen.ReconciliationLineRow) map[string]any {
 	return map[string]any{
 		"id":                 r.ID,
 		"report_id":          r.ReportID,
@@ -129,11 +117,11 @@ func reconciliationLineFromRow(r gen.ReconciliationLineRow) map[string]any {
 	}
 }
 
-// reconciliationLinesFromRows converts a slice of ReconciliationLineRow to JSON maps.
-func reconciliationLinesFromRows(rows []gen.ReconciliationLineRow) []map[string]any {
+// LinesFromRows converts a slice of ReconciliationLineRow to JSON maps.
+func LinesFromRows(rows []gen.ReconciliationLineRow) []map[string]any {
 	out := make([]map[string]any, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, reconciliationLineFromRow(r))
+		out = append(out, LineFromRow(r))
 	}
 	return out
 }

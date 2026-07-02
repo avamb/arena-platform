@@ -835,7 +835,7 @@ func resolveFileInRepo(repoRoot, name string) string {
 		}
 	case "reconciliation.go":
 		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "reconciliation.go"),
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hreconciliation", "reconciliation.go"),
 		}
 	default:
 		// Generic fallback: try the file directly at the repo root.
@@ -913,6 +913,11 @@ func readServerGoLike(repoRoot, name string) string {
 		return string(buf)
 
 	case "reconciliation.go":
+		// The reconciliation domain now lives in hreconciliation/ (Phase 1i).
+		// Aggregate the 4 sub-package files with the *Server-side shim so that
+		// structural greps in reconciliation_147_test.go find both the moved
+		// handler bodies (h-receiver) and the original *Server-receiver
+		// witnesses preserved in reconciliation_shims.go.
 		var buf []byte
 		for _, n := range []string{
 			"reconciliation.go",
@@ -920,11 +925,16 @@ func readServerGoLike(repoRoot, name string) string {
 			"reconciliation_query.go",
 			"reconciliation_review.go",
 		} {
-			data, err := os.ReadFile(filepath.Join(httpserverDir, n))
+			data, err := os.ReadFile(filepath.Join(httpserverDir, "hreconciliation", n))
 			if err != nil {
 				continue
 			}
-			buf = append(buf, []byte("// === "+n+" ===\n")...)
+			buf = append(buf, []byte("// === hreconciliation/"+n+" ===\n")...)
+			buf = append(buf, data...)
+			buf = append(buf, '\n')
+		}
+		if data, err := os.ReadFile(filepath.Join(httpserverDir, "reconciliation_shims.go")); err == nil {
+			buf = append(buf, []byte("// === reconciliation_shims.go ===\n")...)
 			buf = append(buf, data...)
 			buf = append(buf, '\n')
 		}
