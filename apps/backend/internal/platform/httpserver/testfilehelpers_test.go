@@ -561,12 +561,12 @@ func resolveFileInRepo(repoRoot, name string) string {
 		}
 	case "public_feed.go":
 		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "public_feed.go"),
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hfeed", "public_feed.go"),
 		}
 	// Public feed checkout start (feature #153)
 	case "public_feed_checkout.go":
 		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "public_feed_checkout.go"),
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hfeed", "public_feed_checkout.go"),
 		}
 	// Post-event report generation (feature #159)
 	case "0032_event_reports.sql":
@@ -638,7 +638,7 @@ func resolveFileInRepo(repoRoot, name string) string {
 		}
 	case "external_allocations.go":
 		candidates = []string{
-			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "external_allocations.go"),
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hinventory", "external_allocations.go"),
 		}
 	// Complimentary ticket issuance flow (feature #148)
 	case "0036_complimentary_issuances.sql":
@@ -993,6 +993,10 @@ func domainSubPackageFor(name string) (string, string) {
 		return "hgeo", "geo_shims.go"
 	case "gdpr.go", "gdpr_processor.go":
 		return "hgdpr", "gdpr_shims.go"
+	case "feed_tokens.go", "public_feed.go", "public_feed_checkout.go":
+		return "hfeed", "feed_shims.go"
+	case "inventory.go", "inventory_ledger.go", "external_allocations.go":
+		return "hinventory", "inventory_shims.go"
 	// NOTE: hauth is deliberately absent — the refactor renamed its files
 	// (auth_login.go → hauth/login.go, …), so a same-name lookup cannot map
 	// them. No structural test greps the old auth_*.go handler files.

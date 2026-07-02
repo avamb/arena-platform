@@ -14,18 +14,21 @@
 //	Per-token: 100 requests/minute
 //	Per-IP:    300 requests/minute
 //
+// The concrete in-memory limiter (publicFeedRateLimiter) lives in the parent
+// package's feed_shims.go; the handlers here consume it through the narrow
+// RateLimiter interface declared in handler.go.
+//
 // Cache-Control:
 //
 //	List:   public, max-age=60, stale-while-revalidate=30
 //	Detail: public, max-age=30, stale-while-revalidate=15
-package httpserver
+package hfeed
 
 import (
 	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -33,66 +36,8 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
-
-// ─────────────────────────────────────────────────────────────────────────────
-// In-memory rate limiter (per token + per IP)
-// ─────────────────────────────────────────────────────────────────────────────
-
-// rateLimiterWindow tracks request count within a rolling 1-minute window.
-type rateLimiterWindow struct {
-	count   int
-	resetAt time.Time
-}
-
-// publicFeedRateLimiter is a simple in-memory token-bucket rate limiter.
-// It tracks per-token and per-IP request counts with 1-minute windows.
-// The limiter is safe for concurrent use.
-type publicFeedRateLimiter struct {
-	mu         sync.Mutex
-	tokenLimit int
-	ipLimit    int
-	tokens     map[string]*rateLimiterWindow
-	ips        map[string]*rateLimiterWindow
-}
-
-// newPublicFeedRateLimiter creates a rate limiter with the given per-token and
-// per-IP limits (requests per minute).
-func newPublicFeedRateLimiter(tokenLimit, ipLimit int) *publicFeedRateLimiter {
-	return &publicFeedRateLimiter{
-		tokenLimit: tokenLimit,
-		ipLimit:    ipLimit,
-		tokens:     make(map[string]*rateLimiterWindow),
-		ips:        make(map[string]*rateLimiterWindow),
-	}
-}
-
-// check increments the counter for key in the given window map and returns true
-// when the request is allowed (counter <= limit) and false when it is blocked.
-func (rl *publicFeedRateLimiter) check(m map[string]*rateLimiterWindow, key string, limit int) bool {
-	now := time.Now()
-	w, ok := m[key]
-	if !ok || now.After(w.resetAt) {
-		m[key] = &rateLimiterWindow{count: 1, resetAt: now.Add(time.Minute)}
-		return true
-	}
-	w.count++
-	return w.count <= limit
-}
-
-// checkToken increments the per-token counter and returns true when allowed.
-func (rl *publicFeedRateLimiter) checkToken(token string) bool {
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
-	return rl.check(rl.tokens, token, rl.tokenLimit)
-}
-
-// checkIP increments the per-IP counter and returns true when allowed.
-func (rl *publicFeedRateLimiter) checkIP(ip string) bool {
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
-	return rl.check(rl.ips, ip, rl.ipLimit)
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Response types
@@ -207,7 +152,7 @@ type publicFeedPagination struct {
 // GET /v1/public/feeds/{feed_token}/events — list published events
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handlePublicFeedEvents returns published events for the given feed token.
+// HandlePublicFeedEvents returns published events for the given feed token.
 // Unauthenticated; the token in the path acts as the read credential.
 //
 // Query parameters:
@@ -224,46 +169,46 @@ type publicFeedPagination struct {
 //	404 — token unknown or revoked
 //	429 — rate limited
 //	503 — database not available
-func (s *Server) handlePublicFeedEvents(w http.ResponseWriter, r *http.Request) {
-	if s.publicFeedQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandlePublicFeedEvents(w http.ResponseWriter, r *http.Request) {
+	if h.publicFeedQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
 	}
 
 	feedToken := chi.URLParam(r, "feed_token")
-	clientIP := extractClientIP(r)
+	clientIP := httputil.ExtractClientIP(r)
 
 	// Rate limit: per-token + per-IP
-	if !s.publicFeedRL.checkToken(feedToken) || !s.publicFeedRL.checkIP(clientIP) {
-		writeJSON(w, http.StatusTooManyRequests, errorEnvelope(
+	if !h.rl.CheckToken(feedToken) || !h.rl.CheckIP(clientIP) {
+		httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorEnvelope(
 			"feed.rate_limited", "too many requests; please slow down", r,
 		))
 		return
 	}
 
 	// Validate the feed token by looking it up. Revoked / unknown → 404.
-	if s.feedTokenQueries != nil {
-		ft, err := s.feedTokenQueries.GetFeedTokenByToken(r.Context(), feedToken)
+	if h.feedTokenQueries != nil {
+		ft, err := h.feedTokenQueries.GetFeedTokenByToken(r.Context(), feedToken)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				writeJSON(w, http.StatusNotFound, errorEnvelope(
+				httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 					"feed.token_not_found", "feed token not found or has been revoked", r,
 				))
 				return
 			}
-			s.logger.Error("public_feed: token lookup failed",
+			h.logger.Error("public_feed: token lookup failed",
 				slog.String("feed_token", feedToken),
 				slog.String("error", err.Error()),
 			)
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"feed.token_lookup_failed", "failed to validate feed token", r,
 			))
 			return
 		}
 		if !ft.IsActive {
-			writeJSON(w, http.StatusNotFound, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 				"feed.token_not_found", "feed token not found or has been revoked", r,
 			))
 			return
@@ -277,7 +222,7 @@ func (s *Server) handlePublicFeedEvents(w http.ResponseWriter, r *http.Request) 
 	if raw := q.Get("city_id"); raw != "" {
 		id, err := uuid.Parse(raw)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 				"feed.invalid_city_id", "city_id must be a valid UUID", r,
 			))
 			return
@@ -290,7 +235,7 @@ func (s *Server) handlePublicFeedEvents(w http.ResponseWriter, r *http.Request) 
 	if raw := q.Get("date_from"); raw != "" {
 		t, err := time.Parse(time.RFC3339, raw)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 				"feed.invalid_date_from", "date_from must be RFC3339", r,
 			))
 			return
@@ -303,7 +248,7 @@ func (s *Server) handlePublicFeedEvents(w http.ResponseWriter, r *http.Request) 
 	if raw := q.Get("date_to"); raw != "" {
 		t, err := time.Parse(time.RFC3339, raw)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 				"feed.invalid_date_to", "date_to must be RFC3339", r,
 			))
 			return
@@ -316,7 +261,7 @@ func (s *Server) handlePublicFeedEvents(w http.ResponseWriter, r *http.Request) 
 	if raw := q.Get("page"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n < 1 {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 				"feed.invalid_page", "page must be a positive integer", r,
 			))
 			return
@@ -328,7 +273,7 @@ func (s *Server) handlePublicFeedEvents(w http.ResponseWriter, r *http.Request) 
 	if raw := q.Get("per_page"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n < 1 || n > 100 {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 				"feed.invalid_per_page", "per_page must be between 1 and 100", r,
 			))
 			return
@@ -341,26 +286,26 @@ func (s *Server) handlePublicFeedEvents(w http.ResponseWriter, r *http.Request) 
 	limit := int32(perPage)               //nolint:gosec // perPage bounded above by validation
 
 	// Count total matching events for pagination metadata.
-	total, err := s.publicFeedQueries.CountPublishedEventsByFeedToken(ctx, feedToken, cityID, dateFrom, dateTo)
+	total, err := h.publicFeedQueries.CountPublishedEventsByFeedToken(ctx, feedToken, cityID, dateFrom, dateTo)
 	if err != nil {
-		s.logger.Error("public_feed: count events failed",
+		h.logger.Error("public_feed: count events failed",
 			slog.String("feed_token", feedToken),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"feed.count_failed", "failed to count events", r,
 		))
 		return
 	}
 
 	// Fetch the page of events.
-	rows, err := s.publicFeedQueries.ListPublishedEventsByFeedToken(ctx, feedToken, cityID, dateFrom, dateTo, limit, offset)
+	rows, err := h.publicFeedQueries.ListPublishedEventsByFeedToken(ctx, feedToken, cityID, dateFrom, dateTo, limit, offset)
 	if err != nil {
-		s.logger.Error("public_feed: list events failed",
+		h.logger.Error("public_feed: list events failed",
 			slog.String("feed_token", feedToken),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"feed.list_failed", "failed to list events", r,
 		))
 		return
@@ -380,7 +325,7 @@ func (s *Server) handlePublicFeedEvents(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.Header().Set("Cache-Control", "public, max-age=60, stale-while-revalidate=30")
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"events": events,
 		"pagination": publicFeedPagination{
 			Page:       page,
@@ -395,7 +340,7 @@ func (s *Server) handlePublicFeedEvents(w http.ResponseWriter, r *http.Request) 
 // GET /v1/public/feeds/{feed_token}/events/{event_id} — event detail + tiers
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handlePublicFeedEvent returns the full detail for a single published event,
+// HandlePublicFeedEvent returns the full detail for a single published event,
 // including its sessions and each session's ticket tiers.
 // Unauthenticated; the token in the path acts as the read credential.
 //
@@ -406,20 +351,20 @@ func (s *Server) handlePublicFeedEvents(w http.ResponseWriter, r *http.Request) 
 //	404 — token unknown/revoked OR event not published to this token
 //	429 — rate limited
 //	503 — database not available
-func (s *Server) handlePublicFeedEvent(w http.ResponseWriter, r *http.Request) {
-	if s.publicFeedQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) {
+	if h.publicFeedQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
 	}
 
 	feedToken := chi.URLParam(r, "feed_token")
-	clientIP := extractClientIP(r)
+	clientIP := httputil.ExtractClientIP(r)
 
 	// Rate limit: per-token + per-IP
-	if !s.publicFeedRL.checkToken(feedToken) || !s.publicFeedRL.checkIP(clientIP) {
-		writeJSON(w, http.StatusTooManyRequests, errorEnvelope(
+	if !h.rl.CheckToken(feedToken) || !h.rl.CheckIP(clientIP) {
+		httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorEnvelope(
 			"feed.rate_limited", "too many requests; please slow down", r,
 		))
 		return
@@ -428,7 +373,7 @@ func (s *Server) handlePublicFeedEvent(w http.ResponseWriter, r *http.Request) {
 	// Parse event_id from path.
 	eventID, err := uuid.Parse(chi.URLParam(r, "event_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"feed.invalid_event_id", "event_id must be a valid UUID", r,
 		))
 		return
@@ -437,20 +382,20 @@ func (s *Server) handlePublicFeedEvent(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// Fetch the event — validates token + event visibility in one query.
-	event, err := s.publicFeedQueries.GetPublishedEventByFeedToken(ctx, feedToken, eventID)
+	event, err := h.publicFeedQueries.GetPublishedEventByFeedToken(ctx, feedToken, eventID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 				"feed.event_not_found", "event not found or not published to this feed", r,
 			))
 			return
 		}
-		s.logger.Error("public_feed: get event failed",
+		h.logger.Error("public_feed: get event failed",
 			slog.String("feed_token", feedToken),
 			slog.String("event_id", eventID.String()),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"feed.fetch_failed", "failed to fetch event", r,
 		))
 		return
@@ -469,10 +414,10 @@ func (s *Server) handlePublicFeedEvent(w http.ResponseWriter, r *http.Request) {
 		Sessions:                []publicFeedSessionResponse{},
 	}
 
-	if s.sessionQueries != nil {
-		sessions, err := s.sessionQueries.ListSessionsByEvent(ctx, eventID)
+	if h.sessionQueries != nil {
+		sessions, err := h.sessionQueries.ListSessionsByEvent(ctx, eventID)
 		if err != nil {
-			s.logger.Error("public_feed: list sessions failed",
+			h.logger.Error("public_feed: list sessions failed",
 				slog.String("event_id", eventID.String()),
 				slog.String("error", err.Error()),
 			)
@@ -482,10 +427,10 @@ func (s *Server) handlePublicFeedEvent(w http.ResponseWriter, r *http.Request) {
 				sessResp := publicFeedSessionFromRow(sess)
 
 				// Fetch tiers for each session.
-				if s.tierQueries != nil {
-					tiers, err := s.tierQueries.ListTicketTiersBySession(ctx, sess.ID)
+				if h.tierQueries != nil {
+					tiers, err := h.tierQueries.ListTicketTiersBySession(ctx, sess.ID)
 					if err != nil {
-						s.logger.Error("public_feed: list tiers failed",
+						h.logger.Error("public_feed: list tiers failed",
 							slog.String("session_id", sess.ID.String()),
 							slog.String("error", err.Error()),
 						)
@@ -503,7 +448,7 @@ func (s *Server) handlePublicFeedEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Cache-Control", "public, max-age=30, stale-while-revalidate=15")
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"event": detail,
 	})
 }

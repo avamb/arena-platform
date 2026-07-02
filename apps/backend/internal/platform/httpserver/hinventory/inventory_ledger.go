@@ -1,12 +1,12 @@
 // inventory_ledger.go — supplemental helpers for the inventory ledger (feature #130).
 //
-// Core handlers (handleListInventory, handleInitInventory, handleReserveCapacity,
-// handleReleaseCapacity, handleConfirmCapacity) and request/response types live
+// Core handlers (HandleListInventory, HandleInitInventory, HandleReserveCapacity,
+// HandleReleaseCapacity, HandleConfirmCapacity) and request/response types live
 // in inventory.go.  This file adds pure utility functions used by handler code
 // and tests.
-package httpserver
+package hinventory
 
-// checkCapacityInvariant returns true when reserving `amount` units would NOT
+// CheckCapacityInvariant returns true when reserving `amount` units would NOT
 // violate the GA capacity invariant:
 //
 //	held + sold + amount ≤ total  (when total IS NOT NULL)
@@ -19,7 +19,7 @@ package httpserver
 // This pure function is used by unit and concurrency tests to verify the
 // invariant logic independently of the database layer.  The actual database
 // enforcement uses SELECT FOR UPDATE in a CTE (see inventory_ledger.sql).
-func checkCapacityInvariant(total *int32, held, sold, amount int32) bool {
+func CheckCapacityInvariant(total *int32, held, sold, amount int32) bool {
 	if total == nil {
 		return true // unlimited — always passes
 	}

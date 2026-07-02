@@ -34,7 +34,7 @@
 //	409 — insufficient capacity
 //	429 — rate limited (shared publicFeedRL limiter)
 //	503 — database not available
-package httpserver
+package hfeed
 
 import (
 	"encoding/json"
@@ -48,15 +48,18 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Request / response types
 // ─────────────────────────────────────────────────────────────────────────────
 
-// publicFeedCheckoutStartRequest is the JSON body for
+// PublicFeedCheckoutStartRequest is the JSON body for
 // POST /v1/public/feeds/{feed_token}/checkout/start.
-type publicFeedCheckoutStartRequest struct {
+type PublicFeedCheckoutStartRequest struct {
 	TierID      string  `json:"tier_id"`
 	SessionID   string  `json:"session_id"`
 	Qty         int32   `json:"qty"`
@@ -68,7 +71,7 @@ type publicFeedCheckoutStartRequest struct {
 // POST /v1/public/feeds/{feed_token}/checkout/start
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handlePublicFeedCheckoutStart serves
+// HandlePublicFeedCheckoutStart serves
 // POST /v1/public/feeds/{feed_token}/checkout/start.
 //
 // No JWT required — the feed token in the path is the credential.
@@ -86,20 +89,20 @@ type publicFeedCheckoutStartRequest struct {
 //  9. Construct redirect URL.
 //
 // 10. Return 201 with checkout_session + redirect_url.
-func (s *Server) handlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.Request) {
-	if s.publicFeedQueries == nil || s.checkoutQueries == nil || s.reservationQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.Request) {
+	if h.publicFeedQueries == nil || h.checkoutQueries == nil || h.reservationQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
 	}
 
 	feedToken := chi.URLParam(r, "feed_token")
-	clientIP := extractClientIP(r)
+	clientIP := httputil.ExtractClientIP(r)
 
 	// ── 1. Rate limiting (shared with browse endpoints) ──────────────────────
-	if !s.publicFeedRL.checkToken(feedToken) || !s.publicFeedRL.checkIP(clientIP) {
-		writeJSON(w, http.StatusTooManyRequests, errorEnvelope(
+	if !h.rl.CheckToken(feedToken) || !h.rl.CheckIP(clientIP) {
+		httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorEnvelope(
 			"feed.rate_limited", "too many requests; please slow down", r,
 		))
 		return
@@ -108,21 +111,21 @@ func (s *Server) handlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.Re
 	// ── 2. Parse + validate body ──────────────────────────────────────────────
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"checkout.invalid_body", "cannot read request body: "+err.Error(), r,
 		))
 		return
 	}
 	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"checkout.empty_body", "request body is required", r,
 		))
 		return
 	}
 
-	var req publicFeedCheckoutStartRequest
+	var req PublicFeedCheckoutStartRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"checkout.invalid_json", "request body is not valid JSON", r,
 		))
 		return
@@ -130,7 +133,7 @@ func (s *Server) handlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.Re
 
 	tierID, err := uuid.Parse(req.TierID)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"checkout.invalid_tier_id", "tier_id must be a valid UUID", r,
 			map[string]any{"field": "tier_id"},
 		))
@@ -139,7 +142,7 @@ func (s *Server) handlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.Re
 
 	sessionID, err := uuid.Parse(req.SessionID)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"checkout.invalid_session_id", "session_id must be a valid UUID", r,
 			map[string]any{"field": "session_id"},
 		))
@@ -147,7 +150,7 @@ func (s *Server) handlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.Re
 	}
 
 	if req.Qty <= 0 || req.Qty > 50 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"checkout.invalid_qty", "qty must be between 1 and 50", r,
 			map[string]any{"field": "qty"},
 		))
@@ -155,7 +158,7 @@ func (s *Server) handlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.Re
 	}
 
 	if req.HolderEmail == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelopeWithDetails(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"checkout.missing_holder_email", "holder_email is required", r,
 			map[string]any{"field": "holder_email"},
 		))
@@ -167,48 +170,48 @@ func (s *Server) handlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.Re
 	// ── 3. Validate session belongs to this feed token ────────────────────────
 	// Returns org_id + sales_channel_id needed for reservation + checkout.
 	// 403 when session is not published to this feed (ADR-013 mismatch).
-	checkCtx, err := s.publicFeedQueries.GetPublicCheckoutContext(ctx, feedToken, sessionID)
+	checkCtx, err := h.publicFeedQueries.GetPublicCheckoutContext(ctx, feedToken, sessionID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusForbidden, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope(
 				"feed.session_not_on_feed",
 				"session is not published to this feed token",
 				r,
 			))
 			return
 		}
-		s.logger.Error("public_feed_checkout: context lookup failed",
+		h.logger.Error("public_feed_checkout: context lookup failed",
 			slog.String("feed_token", feedToken),
 			slog.String("session_id", sessionID.String()),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"checkout.context_failed", "failed to validate checkout context", r,
 		))
 		return
 	}
 
 	// ── 4. Validate tier exists in this session ───────────────────────────────
-	if s.tierQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+	if h.tierQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.tier_unavailable", "tier service is not available", r,
 		))
 		return
 	}
 
-	tier, err := s.tierQueries.GetTicketTierByID(ctx, tierID, sessionID)
+	tier, err := h.tierQueries.GetTicketTierByID(ctx, tierID, sessionID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 				"checkout.tier_not_found", "ticket tier not found in this session", r,
 			))
 			return
 		}
-		s.logger.Error("public_feed_checkout: tier lookup failed",
+		h.logger.Error("public_feed_checkout: tier lookup failed",
 			slog.String("tier_id", tierID.String()),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"checkout.tier_lookup_failed", "failed to retrieve ticket tier", r,
 		))
 		return
@@ -224,14 +227,14 @@ func (s *Server) handlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.Re
 	case "pwyw":
 		// Public checkout does not support PWYW — buyer must use the authenticated
 		// checkout flow where chosen_price can be negotiated.
-		writeJSON(w, http.StatusUnprocessableEntity, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
 			"checkout.pwyw_not_supported",
 			"pay-what-you-want tiers require the authenticated checkout flow",
 			r,
 		))
 		return
 	default:
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"checkout.unknown_pricing_mode", "ticket tier has an unsupported pricing mode", r,
 		))
 		return
@@ -242,27 +245,27 @@ func (s *Server) handlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.Re
 	var promoCodeID *uuid.UUID
 	subtotalBeforeDiscount := unitPrice * int64(req.Qty)
 
-	if req.PromoCode != nil && *req.PromoCode != "" && s.promoQueries != nil {
-		promoRow, err := s.promoQueries.GetPromoCodeByCode(ctx, checkCtx.OrgID, *req.PromoCode)
+	if req.PromoCode != nil && *req.PromoCode != "" && h.promoQueries != nil {
+		promoRow, err := h.promoQueries.GetPromoCodeByCode(ctx, checkCtx.OrgID, *req.PromoCode)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				writeJSON(w, http.StatusUnprocessableEntity, errorEnvelope(
+				httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
 					"promo.not_found", "promo code not found", r,
 				))
 				return
 			}
-			s.logger.Error("public_feed_checkout: promo lookup failed",
+			h.logger.Error("public_feed_checkout: promo lookup failed",
 				slog.String("promo_code", *req.PromoCode),
 				slog.String("error", err.Error()),
 			)
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"checkout.promo_lookup_failed", "failed to retrieve promo code", r,
 			))
 			return
 		}
-		d, errCode := validatePromoCode(promoRow, subtotalBeforeDiscount, time.Now().UTC())
+		d, errCode := h.validatePromo(promoRow, subtotalBeforeDiscount, time.Now().UTC())
 		if errCode != "" {
-			writeJSON(w, http.StatusUnprocessableEntity, errorEnvelope(errCode, "promo code is not applicable", r))
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(errCode, "promo code is not applicable", r))
 			return
 		}
 		discount = d
@@ -270,43 +273,43 @@ func (s *Server) handlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.Re
 	}
 
 	// ── Compute final pricing ─────────────────────────────────────────────────
-	bd := ComputePricing(unitPrice, req.Qty, discount, tier.Currency, s.pricingRules)
+	bd := hcheckout.ComputePricing(unitPrice, req.Qty, discount, tier.Currency, h.pricingRules)
 
 	// ── 5. Atomic: reserve capacity + insert reservation ─────────────────────
-	if s.inventoryQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+	if h.inventoryQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
 	}
 
-	expiresAt := time.Now().UTC().Add(defaultReservationTTL)
+	expiresAt := time.Now().UTC().Add(hcheckout.DefaultReservationTTL)
 	tierIDPtr := &tierID
 
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "failed to begin transaction", r,
 		))
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	invQ := s.inventoryQueries.WithTx(tx)
-	resQ := s.reservationQueries.WithTx(tx)
+	invQ := h.inventoryQueries.WithTx(tx)
+	resQ := h.reservationQueries.WithTx(tx)
 
 	if _, err := invQ.ReserveCapacity(ctx, sessionID, tierIDPtr, req.Qty); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusConflict, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 				"reservation.over_capacity", "insufficient capacity for this reservation", r,
 			))
 			return
 		}
-		s.logger.Error("public_feed_checkout: reserve capacity failed",
+		h.logger.Error("public_feed_checkout: reserve capacity failed",
 			slog.String("session_id", sessionID.String()),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"reservation.capacity_failed", "failed to reserve capacity", r,
 		))
 		return
@@ -323,24 +326,24 @@ func (s *Server) handlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.Re
 		expiresAt,
 	)
 	if err != nil {
-		s.logger.Error("public_feed_checkout: insert reservation failed",
+		h.logger.Error("public_feed_checkout: insert reservation failed",
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"reservation.insert_failed", "failed to create reservation", r,
 		))
 		return
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"reservation.commit_failed", "failed to commit transaction", r,
 		))
 		return
 	}
 
 	// ── 6. Create checkout session ────────────────────────────────────────────
-	csQ := s.checkoutQueries
+	csQ := h.checkoutQueries
 	cs, err := csQ.InsertCheckoutSession(
 		ctx,
 		checkCtx.OrgID,
@@ -349,11 +352,11 @@ func (s *Server) handlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.Re
 		nil, // userID — anonymous
 	)
 	if err != nil {
-		s.logger.Error("public_feed_checkout: insert checkout session failed",
+		h.logger.Error("public_feed_checkout: insert checkout session failed",
 			slog.String("reservation_id", reservation.ID.String()),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"checkout.start_failed", "failed to create checkout session", r,
 		))
 		return
@@ -373,11 +376,11 @@ func (s *Server) handlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.Re
 		promoCodeID,
 	)
 	if err != nil {
-		s.logger.Error("public_feed_checkout: confirm checkout session failed",
+		h.logger.Error("public_feed_checkout: confirm checkout session failed",
 			slog.String("checkout_session_id", cs.ID.String()),
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"checkout.confirm_failed", "failed to confirm checkout session", r,
 		))
 		return
@@ -394,7 +397,7 @@ func (s *Server) handlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.Re
 		redirectURL = fmt.Sprintf("/checkout/%s/complete", cs.ID.String())
 	}
 
-	s.logger.Info("public_feed_checkout: session created",
+	h.logger.Info("public_feed_checkout: session created",
 		slog.String("feed_token", feedToken),
 		slog.String("checkout_session_id", cs.ID.String()),
 		slog.String("session_id", sessionID.String()),
@@ -403,8 +406,8 @@ func (s *Server) handlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.Re
 		slog.String("currency", bd.Currency),
 	)
 
-	writeJSON(w, http.StatusCreated, map[string]any{
-		"checkout_session": checkoutSessionFromRow(cs),
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
+		"checkout_session": hcheckout.CheckoutSessionFromRow(cs),
 		"redirect_url":     redirectURL,
 	})
 }

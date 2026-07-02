@@ -25,7 +25,7 @@
 //
 //	TouchFeedTokenLastUsed is called best-effort after a successful public feed
 //	read. Errors in the update do not block the response.
-package httpserver
+package hfeed
 
 import (
 	"crypto/rand"
@@ -45,6 +45,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
@@ -52,10 +53,10 @@ import (
 // Response types
 // ─────────────────────────────────────────────────────────────────────────────
 
-// feedTokenResponse is the JSON representation of a single agent feed token.
+// FeedTokenResponse is the JSON representation of a single agent feed token.
 // The token value is included in full so the issuing caller can record it.
 // (Subsequent reads via GET will also include it — it is a public credential.)
-type feedTokenResponse struct {
+type FeedTokenResponse struct {
 	ID             string  `json:"id"`
 	Token          string  `json:"token"`
 	SalesChannelID string  `json:"sales_channel_id"`
@@ -67,9 +68,9 @@ type feedTokenResponse struct {
 	UpdatedAt      string  `json:"updated_at"`
 }
 
-// feedTokenFromRow converts a gen.FeedTokenRow to a feedTokenResponse.
-func feedTokenFromRow(ft gen.FeedTokenRow) feedTokenResponse {
-	r := feedTokenResponse{
+// FeedTokenFromRow converts a gen.FeedTokenRow to a FeedTokenResponse.
+func FeedTokenFromRow(ft gen.FeedTokenRow) FeedTokenResponse {
+	r := FeedTokenResponse{
 		ID:             ft.ID.String(),
 		Token:          ft.Token,
 		SalesChannelID: ft.SalesChannelID.String(),
@@ -89,9 +90,9 @@ func feedTokenFromRow(ft gen.FeedTokenRow) feedTokenResponse {
 	return r
 }
 
-// generateFeedToken returns a cryptographically random 32-byte hex string
+// GenerateFeedToken returns a cryptographically random 32-byte hex string
 // suitable for use as a public feed token credential.
-func generateFeedToken() (string, error) {
+func GenerateFeedToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
@@ -108,69 +109,69 @@ type createFeedTokenRequest struct {
 	Label string `json:"label"`
 }
 
-// handleCreateFeedToken serves POST /v1/organizations/{org_id}/channels/{channel_id}/feed-tokens.
+// HandleCreateFeedToken serves POST /v1/organizations/{org_id}/channels/{channel_id}/feed-tokens.
 // Requires JWT + "feed_token.create" permission.
-func (s *Server) handleCreateFeedToken(w http.ResponseWriter, r *http.Request) {
-	if s.feedTokenQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleCreateFeedToken(w http.ResponseWriter, r *http.Request) {
+	if h.feedTokenQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
 	}
 	ctx := r.Context()
 
-	_, ok := uuidPathParam(w, r, "org_id")
+	_, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
-	channelID, ok := uuidPathParam(w, r, "channel_id")
+	channelID, ok := httputil.UUIDPathParam(w, r, "channel_id")
 	if !ok {
 		return
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("feed_token.invalid_body", "cannot read request body: "+err.Error(), r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("feed_token.invalid_body", "cannot read request body: "+err.Error(), r))
 		return
 	}
 
 	var req createFeedTokenRequest
 	if len(body) > 0 {
 		if err := json.Unmarshal(body, &req); err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope("feed_token.invalid_json", "request body is not valid JSON", r))
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("feed_token.invalid_json", "request body is not valid JSON", r))
 			return
 		}
 	}
 	req.Label = strings.TrimSpace(req.Label)
 
 	// Generate cryptographically random token.
-	tokenValue, err := generateFeedToken()
+	tokenValue, err := GenerateFeedToken()
 	if err != nil {
-		s.logger.Error("feed_token: generate token failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("feed_token: generate token failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"feed_token.generate_failed", "failed to generate token", r,
 		))
 		return
 	}
 
-	ft, err := s.feedTokenQueries.InsertFeedToken(ctx, tokenValue, channelID, req.Label)
+	ft, err := h.feedTokenQueries.InsertFeedToken(ctx, tokenValue, channelID, req.Label)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
-			writeJSON(w, http.StatusConflict, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 				"feed_token.duplicate", "a feed token with that value already exists", r,
 			))
 			return
 		}
-		s.logger.Error("feed_token: insert failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("feed_token: insert failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"feed_token.insert_failed", "failed to create feed token", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]any{
-		"feed_token": feedTokenFromRow(ft),
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
+		"feed_token": FeedTokenFromRow(ft),
 	})
 }
 
@@ -178,85 +179,85 @@ func (s *Server) handleCreateFeedToken(w http.ResponseWriter, r *http.Request) {
 // GET /v1/organizations/{org_id}/channels/{channel_id}/feed-tokens
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleListFeedTokens serves GET /v1/organizations/{org_id}/channels/{channel_id}/feed-tokens.
+// HandleListFeedTokens serves GET /v1/organizations/{org_id}/channels/{channel_id}/feed-tokens.
 // Requires JWT + "feed_token.read" permission.
-func (s *Server) handleListFeedTokens(w http.ResponseWriter, r *http.Request) {
-	if s.feedTokenQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleListFeedTokens(w http.ResponseWriter, r *http.Request) {
+	if h.feedTokenQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
 	}
 	ctx := r.Context()
 
-	_, ok := uuidPathParam(w, r, "org_id")
+	_, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
-	channelID, ok := uuidPathParam(w, r, "channel_id")
+	channelID, ok := httputil.UUIDPathParam(w, r, "channel_id")
 	if !ok {
 		return
 	}
 
-	rows, err := s.feedTokenQueries.ListFeedTokensByChannel(ctx, channelID)
+	rows, err := h.feedTokenQueries.ListFeedTokensByChannel(ctx, channelID)
 	if err != nil {
-		s.logger.Error("feed_token: list failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("feed_token: list failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"feed_token.list_failed", "failed to list feed tokens", r,
 		))
 		return
 	}
 
-	result := make([]feedTokenResponse, 0, len(rows))
+	result := make([]FeedTokenResponse, 0, len(rows))
 	for _, ft := range rows {
-		result = append(result, feedTokenFromRow(ft))
+		result = append(result, FeedTokenFromRow(ft))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"feed_tokens": result})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"feed_tokens": result})
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /v1/organizations/{org_id}/channels/{channel_id}/feed-tokens/{id}
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleGetFeedToken serves GET /v1/organizations/{org_id}/channels/{channel_id}/feed-tokens/{id}.
+// HandleGetFeedToken serves GET /v1/organizations/{org_id}/channels/{channel_id}/feed-tokens/{id}.
 // Requires JWT + "feed_token.read" permission.
-func (s *Server) handleGetFeedToken(w http.ResponseWriter, r *http.Request) {
-	if s.feedTokenQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleGetFeedToken(w http.ResponseWriter, r *http.Request) {
+	if h.feedTokenQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
 	}
 	ctx := r.Context()
 
-	_, ok := uuidPathParam(w, r, "org_id")
+	_, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
-	channelID, ok := uuidPathParam(w, r, "channel_id")
+	channelID, ok := httputil.UUIDPathParam(w, r, "channel_id")
 	if !ok {
 		return
 	}
-	tokenID, ok := uuidPathParam(w, r, "id")
+	tokenID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
 		return
 	}
 
-	ft, err := s.feedTokenQueries.GetFeedTokenByID(ctx, tokenID, channelID)
+	ft, err := h.feedTokenQueries.GetFeedTokenByID(ctx, tokenID, channelID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("feed_token.not_found", "feed token not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("feed_token.not_found", "feed token not found", r))
 			return
 		}
-		s.logger.Error("feed_token: get failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("feed_token: get failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"feed_token.get_failed", "failed to get feed token", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
-		"feed_token": feedTokenFromRow(ft),
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
+		"feed_token": FeedTokenFromRow(ft),
 	})
 }
 
@@ -264,58 +265,58 @@ func (s *Server) handleGetFeedToken(w http.ResponseWriter, r *http.Request) {
 // DELETE /v1/organizations/{org_id}/channels/{channel_id}/feed-tokens/{id}
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleRevokeFeedToken serves DELETE /v1/organizations/{org_id}/channels/{channel_id}/feed-tokens/{id}.
+// HandleRevokeFeedToken serves DELETE /v1/organizations/{org_id}/channels/{channel_id}/feed-tokens/{id}.
 // Sets is_active=false + revoked_at=now(). Writes an audit event. The row is
 // retained for audit purposes. Requires JWT + "feed_token.delete" permission.
-func (s *Server) handleRevokeFeedToken(w http.ResponseWriter, r *http.Request) {
-	if s.feedTokenQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandleRevokeFeedToken(w http.ResponseWriter, r *http.Request) {
+	if h.feedTokenQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
 	}
 	ctx := r.Context()
 
-	orgID, ok := uuidPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
-	channelID, ok := uuidPathParam(w, r, "channel_id")
+	channelID, ok := httputil.UUIDPathParam(w, r, "channel_id")
 	if !ok {
 		return
 	}
-	tokenID, ok := uuidPathParam(w, r, "id")
+	tokenID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
 		return
 	}
 
 	// Open transaction: revoke + audit in one atomic write.
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "failed to begin transaction", r,
 		))
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	qtx := s.feedTokenQueries.WithTx(tx)
+	qtx := h.feedTokenQueries.WithTx(tx)
 
 	revoked, err := qtx.RevokeFeedToken(ctx, tokenID, channelID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("feed_token.not_found", "feed token not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("feed_token.not_found", "feed token not found", r))
 			return
 		}
-		s.logger.Error("feed_token: revoke failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("feed_token: revoke failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"feed_token.revoke_failed", "failed to revoke feed token", r,
 		))
 		return
 	}
 
 	// Write audit event inside the same transaction.
-	if s.audit != nil {
+	if h.audit != nil {
 		actor, _ := auth.ActorFromContext(ctx)
 		auditEv := audit.Event{
 			OccurredAt:   time.Now().UTC(),
@@ -326,16 +327,16 @@ func (s *Server) handleRevokeFeedToken(w http.ResponseWriter, r *http.Request) {
 			ResourceID:   tokenID.String(),
 			RequestID:    logging.RequestID(ctx),
 			TraceID:      logging.TraceID(ctx),
-			IP:           extractClientIP(r),
+			IP:           httputil.ExtractClientIP(r),
 			Metadata: map[string]any{
 				"channel_id": channelID.String(),
 				"org_id":     orgID.String(),
 				"label":      revoked.Label,
 			},
 		}
-		if err := s.audit.WriteTx(ctx, tx, auditEv); err != nil {
-			s.logger.Error("feed_token: audit write failed", slog.String("error", err.Error()))
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		if err := h.audit.WriteTx(ctx, tx, auditEv); err != nil {
+			h.logger.Error("feed_token: audit write failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"feed_token.audit_failed", "failed to write audit event", r,
 			))
 			return
@@ -343,14 +344,14 @@ func (s *Server) handleRevokeFeedToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"feed_token.commit_failed", "failed to commit transaction", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
-		"feed_token": feedTokenFromRow(revoked),
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
+		"feed_token": FeedTokenFromRow(revoked),
 		"revoked":    true,
 	})
 }
@@ -359,15 +360,15 @@ func (s *Server) handleRevokeFeedToken(w http.ResponseWriter, r *http.Request) {
 // GET /v1/feeds/{token} — public feed endpoint (no JWT required)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handlePublicFeed serves GET /v1/feeds/{token}.
+// HandlePublicFeed serves GET /v1/feeds/{token}.
 // This is the public read-only feed endpoint. No JWT is required — the token
 // in the path is the credential. Rejected if the token is unknown or revoked.
 //
 // Step 3: TouchFeedTokenLastUsed is called best-effort after a successful
 // token validation. Errors in the touch do not block the response.
-func (s *Server) handlePublicFeed(w http.ResponseWriter, r *http.Request) {
-	if s.feedTokenQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+func (h *Handler) HandlePublicFeed(w http.ResponseWriter, r *http.Request) {
+	if h.feedTokenQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -376,18 +377,18 @@ func (s *Server) handlePublicFeed(w http.ResponseWriter, r *http.Request) {
 
 	tokenValue := chi.URLParam(r, "token")
 	if tokenValue == "" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope("feed_token.missing_token", "token is required in path", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("feed_token.missing_token", "token is required in path", r))
 		return
 	}
 
-	ft, err := s.feedTokenQueries.GetFeedTokenByToken(ctx, tokenValue)
+	ft, err := h.feedTokenQueries.GetFeedTokenByToken(ctx, tokenValue)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope("feed_token.not_found", "feed token not found or revoked", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("feed_token.not_found", "feed token not found or revoked", r))
 			return
 		}
-		s.logger.Error("feed_token: public feed lookup failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		h.logger.Error("feed_token: public feed lookup failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"feed_token.lookup_failed", "failed to look up feed token", r,
 		))
 		return
@@ -395,20 +396,20 @@ func (s *Server) handlePublicFeed(w http.ResponseWriter, r *http.Request) {
 
 	// Reject revoked tokens.
 	if !ft.IsActive {
-		writeJSON(w, http.StatusNotFound, errorEnvelope("feed_token.not_found", "feed token not found or revoked", r))
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("feed_token.not_found", "feed token not found or revoked", r))
 		return
 	}
 
 	// Step 3: Touch last_used_at best-effort (run in background; do not block on error).
 	go func() {
-		if err := s.feedTokenQueries.TouchFeedTokenLastUsed(ctx, tokenValue); err != nil {
-			s.logger.Warn("feed_token: touch last_used_at failed", slog.String("error", err.Error()))
+		if err := h.feedTokenQueries.TouchFeedTokenLastUsed(ctx, tokenValue); err != nil {
+			h.logger.Warn("feed_token: touch last_used_at failed", slog.String("error", err.Error()))
 		}
 	}()
 
 	// Return the token details for the feed consumer to use.
-	writeJSON(w, http.StatusOK, map[string]any{
-		"feed_token":       feedTokenFromRow(ft),
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
+		"feed_token":       FeedTokenFromRow(ft),
 		"sales_channel_id": ft.SalesChannelID.String(),
 	})
 }

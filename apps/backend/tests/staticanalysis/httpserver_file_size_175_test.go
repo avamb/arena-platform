@@ -62,14 +62,13 @@ var httpserverOversizedAllowlist = map[string]int{
 	// (originally >600 LOC). These are the primary migration targets.
 	// Entries for events.go, refunds.go, payment_intents.go,
 	// ticket_tiers.go, complimentary.go, checkout.go, barcode_batches.go,
-	// promo_codes.go, reservations.go, billing_ledger.go and geo.go were
-	// removed when the httpserver refactoring (phases 1a–1k) moved those
-	// files into domain sub-packages (hcatalog, hcheckout, hbarcode,
-	// htickets, hbilling, hgeo); this gate only scans the top-level
-	// package directory.
-	"bil24_compat.go":         749,
-	"sessions.go":             666,
-	"external_allocations.go": 645,
+	// promo_codes.go, reservations.go, billing_ledger.go, geo.go and
+	// external_allocations.go were removed when the httpserver refactoring
+	// (phases 1a–1l) moved those files into domain sub-packages (hcatalog,
+	// hcheckout, hbarcode, htickets, hbilling, hgeo, hinventory); this gate
+	// only scans the top-level package directory.
+	"bil24_compat.go": 749,
+	"sessions.go":     666,
 
 	// Group B — files in the 400–600 LOC range that also exceed the
 	// budget. Not in the feature #175 description by name, but the
@@ -77,11 +76,10 @@ var httpserverOversizedAllowlist = map[string]int{
 	// backlog. Each may only shrink; once a file drops to ≤ 400 LOC its
 	// entry must be removed. Entries for auth_login.go, barcodes.go,
 	// channels.go, orgs.go, scanner_snapshot.go, superadmin.go and
-	// venues.go were removed after the phase 1a–1i sub-package moves.
-	"feed_tokens.go":          414,
-	"public_feed.go":          509,
-	"public_feed_checkout.go": 410,
-	"wp_webhooks.go":          589,
+	// venues.go were removed after the phase 1a–1i sub-package moves;
+	// feed_tokens.go, public_feed.go and public_feed_checkout.go were
+	// removed in phase 1l when the feed domain moved into hfeed/.
+	"wp_webhooks.go": 589,
 }
 
 // TestHttpserverFileSize175 enforces the three-part contract documented at

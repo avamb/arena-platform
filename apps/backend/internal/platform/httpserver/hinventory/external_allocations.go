@@ -18,7 +18,7 @@
 //	GET   /v1/organizations/{org_id}/external-allocations            — list by partner org (allocation.read)
 //	GET   /v1/organizations/{org_id}/external-allocations/{id}       — get detail (allocation.read)
 //	PATCH /v1/organizations/{org_id}/external-allocations/{id}       — update status / report consumption (allocation.update)
-package httpserver
+package hinventory
 
 import (
 	"encoding/json"
@@ -33,6 +33,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	inventorydomain "github.com/abhteam/arena_new/apps/backend/internal/domain/inventory"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -42,8 +43,9 @@ import (
 // validAllocationTransitions mirrors the pure-domain transition table from
 // internal/domain/inventory.ValidAllocationTransitions (feature #184),
 // projected back to a string-keyed map so the in-package state-machine
-// tests (external_allocations_145_test.go) can inspect terminal-state
-// emptiness without importing the domain package. Allowed transitions:
+// tests (external_allocations_145_test.go, via the inventory_shims.go
+// forwarders) can inspect terminal-state emptiness without importing the
+// domain package. Allowed transitions:
 // pending → active|reconciled, active → reconciled|disputed, disputed →
 // reconciled; reconciled is terminal.
 var validAllocationTransitions = func() map[string]map[string]bool {
@@ -54,17 +56,6 @@ var validAllocationTransitions = func() map[string]map[string]bool {
 			row[string(to)] = true
 		}
 		out[string(from)] = row
-	}
-	return out
-}()
-
-// allAllocationStatuses is the complete set of valid external allocation
-// statuses, projected from the canonical pure-domain slice
-// inventorydomain.AllAllocationStatuses (feature #184).
-var allAllocationStatuses = func() []string {
-	out := make([]string, 0, len(inventorydomain.AllAllocationStatuses))
-	for _, s := range inventorydomain.AllAllocationStatuses {
-		out = append(out, string(s))
 	}
 	return out
 }()
@@ -88,9 +79,10 @@ type createExternalAllocationRequest struct {
 	Notes     *string `json:"notes"`
 }
 
-func (s *Server) handleCreateExternalAllocation(w http.ResponseWriter, r *http.Request) {
-	if s.allocationQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+// HandleCreateExternalAllocation serves POST /v1/organizations/{org_id}/external-allocations.
+func (h *Handler) HandleCreateExternalAllocation(w http.ResponseWriter, r *http.Request) {
+	if h.allocationQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -99,7 +91,7 @@ func (s *Server) handleCreateExternalAllocation(w http.ResponseWriter, r *http.R
 	orgIDStr := chi.URLParam(r, "org_id")
 	partnerOrgID, err := uuid.Parse(orgIDStr)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"allocation.invalid_org_id", "org_id must be a valid UUID", r,
 		))
 		return
@@ -107,7 +99,7 @@ func (s *Server) handleCreateExternalAllocation(w http.ResponseWriter, r *http.R
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"allocation.read_body_failed", "failed to read request body", r,
 		))
 		return
@@ -115,7 +107,7 @@ func (s *Server) handleCreateExternalAllocation(w http.ResponseWriter, r *http.R
 
 	var req createExternalAllocationRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"allocation.invalid_json", "request body is not valid JSON", r,
 		))
 		return
@@ -124,7 +116,7 @@ func (s *Server) handleCreateExternalAllocation(w http.ResponseWriter, r *http.R
 	// Validate session_id.
 	sessionID, err := uuid.Parse(req.SessionID)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"allocation.invalid_session_id", "session_id must be a valid UUID", r,
 		))
 		return
@@ -132,7 +124,7 @@ func (s *Server) handleCreateExternalAllocation(w http.ResponseWriter, r *http.R
 
 	// Validate quota_qty.
 	if req.QuotaQty <= 0 {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"allocation.invalid_quota", "quota_qty must be a positive integer", r,
 		))
 		return
@@ -143,7 +135,7 @@ func (s *Server) handleCreateExternalAllocation(w http.ResponseWriter, r *http.R
 		req.Status = "pending"
 	}
 	if req.Status != "pending" && req.Status != "active" {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"allocation.invalid_status", "initial status must be 'pending' or 'active'", r,
 		))
 		return
@@ -154,7 +146,7 @@ func (s *Server) handleCreateExternalAllocation(w http.ResponseWriter, r *http.R
 	if req.TierID != nil && *req.TierID != "" {
 		tid, err := uuid.Parse(*req.TierID)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 				"allocation.invalid_tier_id", "tier_id must be a valid UUID", r,
 			))
 			return
@@ -166,37 +158,37 @@ func (s *Server) handleCreateExternalAllocation(w http.ResponseWriter, r *http.R
 
 	// If creating as 'active', we need to atomically reserve inventory + insert allocation.
 	if req.Status == "active" {
-		if s.inventoryQueries == nil {
-			writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+		if h.inventoryQueries == nil {
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 				"dependency.database_unavailable", "inventory service is not available", r,
 			))
 			return
 		}
 
-		tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+		tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 		if err != nil {
-			writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 				"dependency.database_unavailable", "failed to begin transaction", r,
 			))
 			return
 		}
 		defer func() { _ = tx.Rollback(ctx) }()
 
-		invQ := s.inventoryQueries.WithTx(tx)
-		allocQ := s.allocationQueries.WithTx(tx)
+		invQ := h.inventoryQueries.WithTx(tx)
+		allocQ := h.allocationQueries.WithTx(tx)
 
 		// Reserve capacity — returns pgx.ErrNoRows on over-capacity.
 		if _, err := invQ.ReserveCapacity(ctx, sessionID, tierID, req.QuotaQty); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				writeJSON(w, http.StatusConflict, errorEnvelope(
+				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 					"allocation.quota_overflow", "insufficient platform inventory for this allocation quota", r,
 				))
 				return
 			}
-			s.logger.Error("external_allocation: reserve capacity failed",
+			h.logger.Error("external_allocation: reserve capacity failed",
 				slog.String("error", err.Error()),
 			)
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"allocation.capacity_failed", "failed to reserve inventory capacity", r,
 			))
 			return
@@ -206,43 +198,43 @@ func (s *Server) handleCreateExternalAllocation(w http.ResponseWriter, r *http.R
 			ctx, sessionID, partnerOrgID, tierID, req.QuotaQty, "active", req.Notes,
 		)
 		if err != nil {
-			s.logger.Error("external_allocation: insert failed",
+			h.logger.Error("external_allocation: insert failed",
 				slog.String("error", err.Error()),
 			)
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"allocation.insert_failed", "failed to create external allocation", r,
 			))
 			return
 		}
 
 		if err := tx.Commit(ctx); err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"allocation.commit_failed", "failed to commit allocation transaction", r,
 			))
 			return
 		}
 
-		writeJSON(w, http.StatusCreated, map[string]any{
+		httputil.WriteJSON(w, http.StatusCreated, map[string]any{
 			"allocation": externalAllocationFromRow(alloc),
 		})
 		return
 	}
 
 	// Default: create in 'pending' status (no inventory change yet).
-	alloc, err := s.allocationQueries.InsertExternalAllocation(
+	alloc, err := h.allocationQueries.InsertExternalAllocation(
 		ctx, sessionID, partnerOrgID, tierID, req.QuotaQty, "pending", req.Notes,
 	)
 	if err != nil {
-		s.logger.Error("external_allocation: insert failed",
+		h.logger.Error("external_allocation: insert failed",
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"allocation.insert_failed", "failed to create external allocation", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]any{
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
 		"allocation": externalAllocationFromRow(alloc),
 	})
 }
@@ -251,9 +243,10 @@ func (s *Server) handleCreateExternalAllocation(w http.ResponseWriter, r *http.R
 // GET /v1/organizations/{org_id}/external-allocations
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (s *Server) handleListExternalAllocations(w http.ResponseWriter, r *http.Request) {
-	if s.allocationQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+// HandleListExternalAllocations serves GET /v1/organizations/{org_id}/external-allocations.
+func (h *Handler) HandleListExternalAllocations(w http.ResponseWriter, r *http.Request) {
+	if h.allocationQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -262,7 +255,7 @@ func (s *Server) handleListExternalAllocations(w http.ResponseWriter, r *http.Re
 	orgIDStr := chi.URLParam(r, "org_id")
 	partnerOrgID, err := uuid.Parse(orgIDStr)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"allocation.invalid_org_id", "org_id must be a valid UUID", r,
 		))
 		return
@@ -275,12 +268,12 @@ func (s *Server) handleListExternalAllocations(w http.ResponseWriter, r *http.Re
 	}
 
 	ctx := r.Context()
-	rows, err := s.allocationQueries.ListExternalAllocationsByOrg(ctx, partnerOrgID, statusFilter)
+	rows, err := h.allocationQueries.ListExternalAllocationsByOrg(ctx, partnerOrgID, statusFilter)
 	if err != nil {
-		s.logger.Error("external_allocation: list failed",
+		h.logger.Error("external_allocation: list failed",
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"allocation.list_failed", "failed to list external allocations", r,
 		))
 		return
@@ -290,7 +283,7 @@ func (s *Server) handleListExternalAllocations(w http.ResponseWriter, r *http.Re
 	for _, row := range rows {
 		allocations = append(allocations, externalAllocationFromRow(row))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"allocations": allocations,
 		"total":       len(allocations),
 	})
@@ -300,9 +293,10 @@ func (s *Server) handleListExternalAllocations(w http.ResponseWriter, r *http.Re
 // GET /v1/organizations/{org_id}/external-allocations/{id}
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (s *Server) handleGetExternalAllocation(w http.ResponseWriter, r *http.Request) {
-	if s.allocationQueries == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+// HandleGetExternalAllocation serves GET /v1/organizations/{org_id}/external-allocations/{id}.
+func (h *Handler) HandleGetExternalAllocation(w http.ResponseWriter, r *http.Request) {
+	if h.allocationQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -311,31 +305,31 @@ func (s *Server) handleGetExternalAllocation(w http.ResponseWriter, r *http.Requ
 	idStr := chi.URLParam(r, "id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"allocation.invalid_id", "id must be a valid UUID", r,
 		))
 		return
 	}
 
 	ctx := r.Context()
-	alloc, err := s.allocationQueries.GetExternalAllocationByID(ctx, id)
+	alloc, err := h.allocationQueries.GetExternalAllocationByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 				"allocation.not_found", "external allocation not found", r,
 			))
 			return
 		}
-		s.logger.Error("external_allocation: get failed",
+		h.logger.Error("external_allocation: get failed",
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"allocation.get_failed", "failed to retrieve external allocation", r,
 		))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"allocation": externalAllocationFromRow(alloc),
 	})
 }
@@ -354,9 +348,10 @@ type patchExternalAllocationRequest struct {
 	Notes *string `json:"notes"`
 }
 
-func (s *Server) handlePatchExternalAllocation(w http.ResponseWriter, r *http.Request) {
-	if s.allocationQueries == nil || s.pool == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+// HandlePatchExternalAllocation serves PATCH /v1/organizations/{org_id}/external-allocations/{id}.
+func (h *Handler) HandlePatchExternalAllocation(w http.ResponseWriter, r *http.Request) {
+	if h.allocationQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
 		return
@@ -365,7 +360,7 @@ func (s *Server) handlePatchExternalAllocation(w http.ResponseWriter, r *http.Re
 	idStr := chi.URLParam(r, "id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"allocation.invalid_id", "id must be a valid UUID", r,
 		))
 		return
@@ -373,7 +368,7 @@ func (s *Server) handlePatchExternalAllocation(w http.ResponseWriter, r *http.Re
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"allocation.read_body_failed", "failed to read request body", r,
 		))
 		return
@@ -381,7 +376,7 @@ func (s *Server) handlePatchExternalAllocation(w http.ResponseWriter, r *http.Re
 
 	var req patchExternalAllocationRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"allocation.invalid_json", "request body is not valid JSON", r,
 		))
 		return
@@ -390,18 +385,18 @@ func (s *Server) handlePatchExternalAllocation(w http.ResponseWriter, r *http.Re
 	ctx := r.Context()
 
 	// Fetch the current allocation.
-	current, err := s.allocationQueries.GetExternalAllocationByID(ctx, id)
+	current, err := h.allocationQueries.GetExternalAllocationByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 				"allocation.not_found", "external allocation not found", r,
 			))
 			return
 		}
-		s.logger.Error("external_allocation: get failed",
+		h.logger.Error("external_allocation: get failed",
 			slog.String("error", err.Error()),
 		)
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"allocation.get_failed", "failed to retrieve external allocation", r,
 		))
 		return
@@ -409,7 +404,7 @@ func (s *Server) handlePatchExternalAllocation(w http.ResponseWriter, r *http.Re
 
 	// Cannot modify terminal allocations.
 	if isTerminalAllocationStatus(current.Status) {
-		writeJSON(w, http.StatusConflict, errorEnvelope(
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 			"allocation.terminal_status",
 			"allocation is in a terminal status and cannot be modified",
 			r,
@@ -427,7 +422,7 @@ func (s *Server) handlePatchExternalAllocation(w http.ResponseWriter, r *http.Re
 	if targetStatus != current.Status {
 		allowed, ok := validAllocationTransitions[current.Status]
 		if !ok || !allowed[targetStatus] {
-			writeJSON(w, http.StatusConflict, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 				"allocation.invalid_transition",
 				"invalid status transition: "+current.Status+" → "+targetStatus,
 				r,
@@ -440,39 +435,39 @@ func (s *Server) handlePatchExternalAllocation(w http.ResponseWriter, r *http.Re
 	switch {
 	case current.Status == "pending" && targetStatus == "active":
 		// Reserve capacity atomically with status update.
-		if s.inventoryQueries == nil {
-			writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+		if h.inventoryQueries == nil {
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 				"dependency.database_unavailable", "inventory service is not available", r,
 			))
 			return
 		}
 
-		tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+		tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 		if err != nil {
-			writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 				"dependency.database_unavailable", "failed to begin transaction", r,
 			))
 			return
 		}
 		defer func() { _ = tx.Rollback(ctx) }()
 
-		invQ := s.inventoryQueries.WithTx(tx)
-		allocQ := s.allocationQueries.WithTx(tx)
+		invQ := h.inventoryQueries.WithTx(tx)
+		allocQ := h.allocationQueries.WithTx(tx)
 
 		// Reserve capacity — returns pgx.ErrNoRows on over-capacity.
 		if _, err := invQ.ReserveCapacity(ctx, current.SessionID, current.TierID, current.QuotaQty); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				writeJSON(w, http.StatusConflict, errorEnvelope(
+				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 					"allocation.quota_overflow",
 					"insufficient platform inventory for this allocation quota",
 					r,
 				))
 				return
 			}
-			s.logger.Error("external_allocation: reserve capacity failed",
+			h.logger.Error("external_allocation: reserve capacity failed",
 				slog.String("error", err.Error()),
 			)
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"allocation.capacity_failed", "failed to reserve inventory capacity", r,
 			))
 			return
@@ -480,31 +475,31 @@ func (s *Server) handlePatchExternalAllocation(w http.ResponseWriter, r *http.Re
 
 		alloc, err := allocQ.UpdateExternalAllocationStatus(ctx, id, "active")
 		if err != nil {
-			s.logger.Error("external_allocation: status update failed",
+			h.logger.Error("external_allocation: status update failed",
 				slog.String("error", err.Error()),
 			)
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"allocation.update_failed", "failed to update allocation status", r,
 			))
 			return
 		}
 
 		if err := tx.Commit(ctx); err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"allocation.commit_failed", "failed to commit allocation transaction", r,
 			))
 			return
 		}
 
-		writeJSON(w, http.StatusOK, map[string]any{
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{
 			"allocation": externalAllocationFromRow(alloc),
 		})
 		return
 
 	case (current.Status == "active" || current.Status == "disputed") && targetStatus == "reconciled":
 		// Settle inventory: confirm consumed + release remainder.
-		if s.inventoryQueries == nil {
-			writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+		if h.inventoryQueries == nil {
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 				"dependency.database_unavailable", "inventory service is not available", r,
 			))
 			return
@@ -516,7 +511,7 @@ func (s *Server) handlePatchExternalAllocation(w http.ResponseWriter, r *http.Re
 			consumed = *req.QuotaConsumed
 		}
 		if consumed < 0 || consumed > current.QuotaQty {
-			writeJSON(w, http.StatusBadRequest, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 				"allocation.invalid_consumed",
 				"quota_consumed must be between 0 and quota_qty",
 				r,
@@ -524,25 +519,25 @@ func (s *Server) handlePatchExternalAllocation(w http.ResponseWriter, r *http.Re
 			return
 		}
 
-		tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+		tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 		if err != nil {
-			writeJSON(w, http.StatusServiceUnavailable, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 				"dependency.database_unavailable", "failed to begin transaction", r,
 			))
 			return
 		}
 		defer func() { _ = tx.Rollback(ctx) }()
 
-		invQ := s.inventoryQueries.WithTx(tx)
-		allocQ := s.allocationQueries.WithTx(tx)
+		invQ := h.inventoryQueries.WithTx(tx)
+		allocQ := h.allocationQueries.WithTx(tx)
 
 		// Confirm consumed capacity (held → sold).
 		if consumed > 0 {
 			if _, err := invQ.ConfirmCapacity(ctx, current.SessionID, current.TierID, consumed); err != nil {
-				s.logger.Error("external_allocation: confirm capacity failed",
+				h.logger.Error("external_allocation: confirm capacity failed",
 					slog.String("error", err.Error()),
 				)
-				writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 					"allocation.confirm_failed", "failed to confirm consumed capacity", r,
 				))
 				return
@@ -553,10 +548,10 @@ func (s *Server) handlePatchExternalAllocation(w http.ResponseWriter, r *http.Re
 		remainder := current.QuotaQty - consumed
 		if remainder > 0 {
 			if _, err := invQ.ReleaseCapacity(ctx, current.SessionID, current.TierID, remainder); err != nil {
-				s.logger.Error("external_allocation: release capacity failed",
+				h.logger.Error("external_allocation: release capacity failed",
 					slog.String("error", err.Error()),
 				)
-				writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 					"allocation.release_failed", "failed to release unused capacity", r,
 				))
 				return
@@ -565,23 +560,23 @@ func (s *Server) handlePatchExternalAllocation(w http.ResponseWriter, r *http.Re
 
 		alloc, err := allocQ.ReportAllocationConsumption(ctx, id, consumed, "reconciled")
 		if err != nil {
-			s.logger.Error("external_allocation: report consumption failed",
+			h.logger.Error("external_allocation: report consumption failed",
 				slog.String("error", err.Error()),
 			)
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"allocation.update_failed", "failed to reconcile allocation", r,
 			))
 			return
 		}
 
 		if err := tx.Commit(ctx); err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"allocation.commit_failed", "failed to commit reconciliation transaction", r,
 			))
 			return
 		}
 
-		writeJSON(w, http.StatusOK, map[string]any{
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{
 			"allocation": externalAllocationFromRow(alloc),
 		})
 		return
@@ -596,27 +591,27 @@ func (s *Server) handlePatchExternalAllocation(w http.ResponseWriter, r *http.Re
 
 		var alloc gen.ExternalAllocationRow
 		if req.QuotaConsumed != nil {
-			alloc, err = s.allocationQueries.ReportAllocationConsumption(ctx, id, consumed, targetStatus)
+			alloc, err = h.allocationQueries.ReportAllocationConsumption(ctx, id, consumed, targetStatus)
 		} else {
-			alloc, err = s.allocationQueries.UpdateExternalAllocationStatus(ctx, id, targetStatus)
+			alloc, err = h.allocationQueries.UpdateExternalAllocationStatus(ctx, id, targetStatus)
 		}
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				writeJSON(w, http.StatusNotFound, errorEnvelope(
+				httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 					"allocation.not_found", "external allocation not found", r,
 				))
 				return
 			}
-			s.logger.Error("external_allocation: update failed",
+			h.logger.Error("external_allocation: update failed",
 				slog.String("error", err.Error()),
 			)
-			writeJSON(w, http.StatusInternalServerError, errorEnvelope(
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"allocation.update_failed", "failed to update allocation", r,
 			))
 			return
 		}
 
-		writeJSON(w, http.StatusOK, map[string]any{
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{
 			"allocation": externalAllocationFromRow(alloc),
 		})
 	}
