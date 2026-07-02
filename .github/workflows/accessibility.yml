@@ -46,6 +46,16 @@ jobs:
       - name: Install axe-core CLI
         run: npm install --save-dev @axe-core/cli
 
+      # axe-cli drives Chrome through selenium-webdriver, which downloads
+      # the newest ChromeDriver — often one major version ahead of the
+      # runner's preinstalled Chrome. Install a matched pair explicitly so
+      # the versions can never drift apart.
+      - name: Set up Chrome + matching ChromeDriver
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+          install-chromedriver: true
+
       - name: Generate HTML snapshots from WP plugin
         # Produces static HTML files that mirror the PHP render_tiers_html output
         # so axe-cli can scan them without a live WordPress instance.
