@@ -52,13 +52,16 @@ jobs:
         run: node ops/accessibility/generate-snapshots.js
 
       - name: Run axe-core scan (WCAG 2.2 AA)
+        # --stdout already emits JSON in current @axe-core/cli releases;
+        # the former --reporter flag no longer exists. pipefail keeps a
+        # failed axe invocation from being masked by tee.
         run: |
+          set -o pipefail
           npx axe \
             ops/accessibility/snapshots/checkout-tiers.html \
             ops/accessibility/snapshots/checkout-sold-out.html \
             ops/accessibility/snapshots/checkout-error-state.html \
             --tags wcag2a,wcag2aa,wcag21aa,wcag22aa \
-            --reporter json \
             --stdout \
             | tee ops/accessibility/snapshots/axe-report.json
 

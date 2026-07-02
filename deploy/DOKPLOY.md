@@ -520,11 +520,19 @@ All four locations must stay in sync. If the release branch is ever renamed
 (e.g., `master` → `main`), update **all five rows** above in a single PR and
 update both Dokploy applications' Source → Branch in the Dokploy UI.
 
-### 13.2 Required GitHub registry secrets
+### 13.2 GitHub registry secrets (optional — GHCR fallback built in)
 
-`build-and-push` in `.github/workflows/ci.yml` requires the following
-repository (or organisation) secrets to be configured before the first push
-to `master`:
+When none of the secrets below are configured, `build-and-push` falls back
+to **GitHub Container Registry** automatically: it logs in to `ghcr.io`
+with the built-in `GITHUB_TOKEN` and publishes
+`ghcr.io/<repo-owner>/arena-api:<short-sha>` + `:latest`. The resulting
+GHCR package is **private by default** — either make it public (GitHub →
+Packages → arena-api → Package settings → Change visibility) or configure
+registry credentials in Dokploy so it can pull the private image.
+
+To publish to a different registry instead, configure the following
+repository (or organisation) secrets; they take precedence over the GHCR
+fallback:
 
 | Secret | Purpose | Example |
 |---|---|---|
