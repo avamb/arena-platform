@@ -707,6 +707,66 @@ export interface paths {
         patch: operations["updateOrganizationBankAccount"];
         trace?: never;
     };
+    "/v1/organizations/{org_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List members of an organization
+         * @description Returns every active membership row for the organization in the
+         *     path (feature #120,
+         *     `apps/backend/internal/platform/httpserver/hiam/memberships.go`
+         *     HandleListMembers). A user may appear multiple times — once per
+         *     role held. Requires JWT + the `membership.read` permission.
+         */
+        get: operations["listOrganizationMembers"];
+        put?: never;
+        /**
+         * Grant a role to a user in an organization
+         * @description Binds a user to the organization in the path with a named role
+         *     (feature #120, HandleGrantMembership). A user may hold multiple
+         *     roles in the same organization; granting the same role twice
+         *     returns 409 `membership.duplicate`. Grants take effect on the
+         *     next request — permission resolution unions JWT roles with
+         *     active membership roles, so no re-authentication is required.
+         *     Requires JWT + the `membership.grant` permission.
+         */
+        post: operations["grantOrganizationMembership"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/members/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke a role from a user in an organization
+         * @description Revokes one specific role binding for the user in the path
+         *     (feature #120, HandleRevokeMembership). The role MUST be
+         *     supplied in the request body because a user may hold multiple
+         *     roles in the same organization; other role bindings are left
+         *     intact. Revocation takes effect on the next request through
+         *     membership-aware permission resolution. Requires JWT + the
+         *     `membership.revoke` permission.
+         */
+        delete: operations["revokeOrganizationMembership"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/organizations": {
         parameters: {
             query?: never;
@@ -2495,6 +2555,160 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/barcodes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register a barcode in the federation
+         * @description Registers a new barcode under an existing barcode authority
+         *     (feature #142, `apps/backend/internal/platform/httpserver/
+         *     hbarcode/barcodes.go` HandleRegisterBarcode). The
+         *     `(authority_id, external_ref)` pair is UNIQUE — re-registering
+         *     the same reference under the same authority returns 409
+         *     `barcode.duplicate`. `ticket_id` is optional and links the
+         *     barcode to a platform ticket; external-platform and guest-list
+         *     barcodes typically omit it.
+         *
+         *     Requires JWT + the `barcode.create` permission.
+         */
+        post: operations["registerBarcode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/barcodes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a barcode by id
+         * @description Returns a single barcodes row by its UUID (feature #142,
+         *     HandleGetBarcode). 404 when no barcode with the given id exists.
+         *
+         *     Requires JWT + the `barcode.read` permission.
+         */
+        get: operations["getBarcode"];
+        put?: never;
+        post?: never;
+        /**
+         * Revoke a barcode
+         * @description Marks the barcode as `revoked` (feature #142,
+         *     HandleRevokeBarcode). Revocation is terminal — a revoked barcode
+         *     can never be scanned; subsequent scan attempts return 409
+         *     `barcode.revoked`. Returns the updated row rather than 204 so
+         *     operator UIs can render the final state.
+         *
+         *     Requires JWT + the `barcode.revoke` permission.
+         */
+        delete: operations["revokeBarcode"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate and consume a barcode scan
+         * @description Authority-aware scan validation (feature #142, HandleScan).
+         *     Flow: resolve the authority by `authority_type` (404 when
+         *     unknown), look up the barcode by `(authority_id, external_ref)`
+         *     (404 when absent), reject revoked barcodes (409
+         *     `barcode.revoked`), then atomically transition
+         *     `active` → `scanned`. A barcode that was already scanned —
+         *     including one scanned concurrently between lookup and update —
+         *     returns 409 `barcode.already_scanned` (double-scan protection).
+         *
+         *     Requires JWT + the `barcode.scan` permission.
+         */
+        post: operations["scanBarcode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/scanner/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download an offline-validation barcode snapshot
+         * @description Returns a paginated snapshot of all non-revoked barcodes for the
+         *     tickets in a session (feature #144,
+         *     `apps/backend/internal/platform/httpserver/hscanner/
+         *     scanner_snapshot.go` HandleScannerSnapshot). Offline scanners
+         *     download the snapshot so they can validate tickets without
+         *     network connectivity, then poll with the `since` cursor for
+         *     delta updates (store `last_updated_at` from each response and
+         *     pass it as `since` on the next request).
+         *
+         *     Rate limited per client IP (600 req/min) and per session
+         *     (300 req/min); excess requests return 429 `scanner.rate_limited`.
+         *
+         *     Requires JWT + the `barcode.scan` permission (scanner devices
+         *     use a service-account JWT).
+         */
+        get: operations["getScannerSnapshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/scanner/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read-only online barcode validation
+         * @description Performs a read-only barcode validity check (feature #144,
+         *     HandleScannerValidate). Unlike `POST /v1/scan` this endpoint
+         *     does NOT mark the barcode as scanned — it reports whether the
+         *     barcode is valid (`active`), already scanned, or revoked.
+         *     Online scanners call this for a definitive server-side check
+         *     before admitting a ticket.
+         *
+         *     Rate limited per client IP (600 req/min); excess requests
+         *     return 429 `scanner.rate_limited`.
+         *
+         *     Requires JWT + the `barcode.scan` permission.
+         */
+        post: operations["validateScannerBarcode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/webhooks/subscribers": {
         parameters: {
             query?: never;
@@ -3967,9 +4181,14 @@ export interface components {
             delivery: string;
         };
         AdminCreateUserResponse: {
+            /** @description The newly created user row (admin projection). */
             user: components["schemas"]["AdminCreatedUser"];
+            /** @description Onboarding artifacts (password setup token metadata) issued for the new user. */
             onboarding: components["schemas"]["AdminCreatedUserOnboarding"];
-            /** @example User created. A password setup link has been issued to the email address. */
+            /**
+             * @description Human-readable confirmation of the create action.
+             * @example User created. A password setup link has been issued to the email address.
+             */
             message: string;
         };
         AuthVerifyResponse: {
@@ -4479,11 +4698,13 @@ export interface components {
             is_primary: boolean;
             /**
              * Format: date-time
+             * @description ISO 8601 / RFC 3339 timestamp of row creation.
              * @example 2024-01-01T00:00:00Z
              */
             created_at: string;
             /**
              * Format: date-time
+             * @description ISO 8601 / RFC 3339 timestamp of last update.
              * @example 2024-01-01T00:00:00Z
              */
             updated_at: string;
@@ -4495,12 +4716,22 @@ export interface components {
          *     with 400 `bank_account.identifier_required`.
          */
         CreateBankAccountRequest: {
-            /** @example ACME Tickets GmbH */
+            /**
+             * @description Legal name of the account holder (typically the org's legal_name).
+             * @example ACME Tickets GmbH
+             */
             holder_name: string;
-            /** @example EUR */
+            /**
+             * @description ISO 4217 three-letter currency code of the account.
+             * @example EUR
+             */
             currency: string;
-            /** @example DE */
+            /**
+             * @description ISO 3166-1 alpha-2 country code where the account is held.
+             * @example DE
+             */
             country: string;
+            /** @description Free-form bank name for operator display (optional). */
             bank_name?: string;
             /**
              * @description IBAN (mutually exclusive with account_number+routing_number).
@@ -4533,8 +4764,11 @@ export interface components {
          *     (an org with any active account must have exactly one primary).
          */
         UpdateBankAccountRequest: {
+            /** @description New legal name of the account holder. */
             holder_name?: string;
+            /** @description New ISO 4217 three-letter currency code of the account. */
             currency?: string;
+            /** @description New ISO 3166-1 alpha-2 country code where the account is held. */
             country?: string;
             /** @description Empty string or null clears the field. */
             bank_name?: string | null;
@@ -4546,6 +4780,11 @@ export interface components {
             account_number?: string | null;
             /** @description Empty string or null clears the field. */
             routing_number?: string | null;
+            /**
+             * @description Set true to promote this account to primary (atomically
+             *     demotes the previous primary). Setting false while no other
+             *     primary exists is rejected with 409.
+             */
             is_primary?: boolean;
         };
         /**
@@ -4971,11 +5210,13 @@ export interface components {
             is_active: boolean;
             /**
              * Format: date-time
+             * @description ISO 8601 / RFC 3339 timestamp of row creation.
              * @example 2024-01-01T00:00:00Z
              */
             created_at: string;
             /**
              * Format: date-time
+             * @description ISO 8601 / RFC 3339 timestamp of last update.
              * @example 2024-01-01T00:00:00Z
              */
             updated_at: string;
@@ -5417,11 +5658,13 @@ export interface components {
             image_url?: string | null;
             /**
              * Format: date-time
+             * @description ISO 8601 / RFC 3339 timestamp of row creation.
              * @example 2026-06-01T00:00:00Z
              */
             created_at: string;
             /**
              * Format: date-time
+             * @description ISO 8601 / RFC 3339 timestamp of last update.
              * @example 2026-06-02T12:34:56Z
              */
             updated_at: string;
@@ -5472,6 +5715,7 @@ export interface components {
              * @description Optional poster / cover image URL.
              */
             image_url?: string;
+            /** @description Optional per-locale name/description overrides stored as i18n_text rows. */
             translations?: components["schemas"]["EventTranslations"];
         };
         /**
@@ -5491,7 +5735,10 @@ export interface components {
              * @description Reassign the event to a different (same-org) venue.
              */
             venue_id?: string | null;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description New event start time (RFC 3339, UTC).
+             */
             start_at?: string | null;
             /**
              * Format: date-time
@@ -5499,10 +5746,17 @@ export interface components {
              *     end_at must remain strictly after start_at.
              */
             end_at?: string | null;
-            /** @enum {string} */
+            /**
+             * @description New discovery visibility for the event.
+             * @enum {string}
+             */
             visibility?: "public" | "private" | "unlisted";
-            /** Format: uri */
+            /**
+             * Format: uri
+             * @description New poster / cover image URL. Null clears the field.
+             */
             image_url?: string | null;
+            /** @description Optional per-locale name/description overrides stored as i18n_text rows. */
             translations?: components["schemas"]["EventTranslations"];
         };
         /**
@@ -5527,16 +5781,22 @@ export interface components {
         };
         /** @description Single-event response envelope. */
         EventEnvelope: {
+            /** @description The event row. */
             event: components["schemas"]["EventItem"];
         };
         /** @description List-events response envelope. */
         EventListResponse: {
+            /** @description Events matching the request filters. */
             events: components["schemas"]["EventItem"][];
         };
         /** @description Soft-delete response envelope. */
         EventDeleteResponse: {
+            /** @description The event row as it stood at deletion time. */
             event: components["schemas"]["EventItem"];
-            /** @example true */
+            /**
+             * @description Always true on success; confirms the soft delete.
+             * @example true
+             */
             deleted: boolean;
         };
         /**
@@ -5592,11 +5852,13 @@ export interface components {
             status: "draft" | "scheduled" | "cancelled" | "completed";
             /**
              * Format: date-time
+             * @description ISO 8601 / RFC 3339 timestamp of row creation.
              * @example 2026-06-01T00:00:00Z
              */
             created_at: string;
             /**
              * Format: date-time
+             * @description ISO 8601 / RFC 3339 timestamp of last update.
              * @example 2026-06-02T12:34:56Z
              */
             updated_at: string;
@@ -5683,6 +5945,7 @@ export interface components {
         };
         /** @description Single-session response envelope. */
         SessionEnvelope: {
+            /** @description The session row. */
             session: components["schemas"]["SessionItem"];
         };
         /**
@@ -5691,14 +5954,22 @@ export interface components {
          *     sessions overlaps in time.
          */
         SessionListResponse: {
+            /** @description Sessions belonging to the event, ordered by start_at. */
             sessions: components["schemas"]["SessionItem"][];
-            /** @example false */
+            /**
+             * @description True when any pair of returned sessions overlaps in time.
+             * @example false
+             */
             has_overlapping_sessions: boolean;
         };
         /** @description Soft-delete response envelope. */
         SessionDeleteResponse: {
+            /** @description The session row as it stood at deletion time. */
             session: components["schemas"]["SessionItem"];
-            /** @example true */
+            /**
+             * @description Always true on success; confirms the soft delete.
+             * @example true
+             */
             deleted: boolean;
         };
         /**
@@ -5793,11 +6064,13 @@ export interface components {
             sort_order: number;
             /**
              * Format: date-time
+             * @description ISO 8601 / RFC 3339 timestamp of row creation.
              * @example 2026-06-01T00:00:00Z
              */
             created_at: string;
             /**
              * Format: date-time
+             * @description ISO 8601 / RFC 3339 timestamp of last update.
              * @example 2026-06-02T12:34:56Z
              */
             updated_at: string;
@@ -5924,16 +6197,22 @@ export interface components {
         };
         /** @description Single ticket-tier response envelope. */
         TicketTierEnvelope: {
+            /** @description The ticket-tier row. */
             tier: components["schemas"]["TicketTierItem"];
         };
         /** @description List-ticket-tiers response envelope. */
         TicketTierListResponse: {
+            /** @description Ticket tiers for the session, ordered by sort_order. */
             tiers: components["schemas"]["TicketTierItem"][];
         };
         /** @description Soft-delete response envelope for a ticket tier. */
         TicketTierDeleteResponse: {
+            /** @description The ticket-tier row as it stood at deletion time. */
             tier: components["schemas"]["TicketTierItem"];
-            /** @example true */
+            /**
+             * @description Always true on success; confirms the soft delete.
+             * @example true
+             */
             deleted: boolean;
         };
         /**
@@ -6153,6 +6432,326 @@ export interface components {
             label: string;
         };
         /**
+         * @description A single barcodes row in the barcode authority federation
+         *     (feature #142, migration 0030_barcodes.sql). Each barcode is
+         *     scoped to exactly one authority; `(authority_id, external_ref)`
+         *     is UNIQUE among rows. Lifecycle: `active` → `scanned` (via
+         *     POST /v1/scan) or `active`|`scanned` → `revoked` (terminal, via
+         *     DELETE /v1/barcodes/{id}).
+         */
+        BarcodeItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the barcodes row.
+             * @example 01929d0e-0e47-7000-8000-000000000b01
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the barcode authority the barcode belongs to.
+             * @example 01929d0e-0e47-7000-8000-000000000a01
+             */
+            authority_id: string;
+            /**
+             * @description The barcode string as printed / encoded on the ticket.
+             *     Unique within the owning authority.
+             * @example ARN-2026-000123
+             */
+            external_ref: string;
+            /**
+             * Format: uuid
+             * @description Optional link to a platform tickets row. `null` for barcodes
+             *     originating from external platforms or guest lists.
+             * @example 01929d0e-0e47-7000-8000-000000000c01
+             */
+            ticket_id: string | null;
+            /**
+             * @description Lifecycle status. `active` barcodes admit entry; `scanned`
+             *     marks a consumed barcode (double-scan protected); `revoked`
+             *     is terminal.
+             * @example active
+             * @enum {string}
+             */
+            status: "active" | "scanned" | "revoked";
+            /**
+             * Format: date-time
+             * @description UTC timestamp of the successful scan. `null` until the
+             *     barcode has been scanned.
+             * @example 2026-06-30T19:05:00Z
+             */
+            scanned_at: string | null;
+            /**
+             * Format: date-time
+             * @description ISO 8601 / RFC 3339 timestamp of row creation.
+             * @example 2026-06-30T12:00:00Z
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description ISO 8601 / RFC 3339 timestamp of last update.
+             * @example 2026-06-30T12:00:00Z
+             */
+            updated_at: string;
+        };
+        /**
+         * @description Request body for `POST /v1/barcodes`. Registers a barcode under
+         *     an existing authority. Duplicate `external_ref` values within
+         *     the same authority are rejected with 409 `barcode.duplicate`.
+         */
+        RegisterBarcodeRequest: {
+            /**
+             * Format: uuid
+             * @description UUID of the barcode authority the barcode belongs to.
+             * @example 01929d0e-0e47-7000-8000-000000000a01
+             */
+            authority_id: string;
+            /**
+             * @description The barcode string. Required; must be unique within the
+             *     authority.
+             * @example ARN-2026-000123
+             */
+            external_ref: string;
+            /**
+             * Format: uuid
+             * @description Optional platform ticket UUID to link. Omit or send `null`
+             *     for external / guest-list barcodes.
+             */
+            ticket_id?: string | null;
+        };
+        /**
+         * @description Request body for `POST /v1/scan`. The scan flow resolves the
+         *     authority by `authority_type`, looks up the barcode by
+         *     `(authority_id, external_ref)`, and atomically transitions
+         *     `active` → `scanned`.
+         */
+        ScanRequest: {
+            /**
+             * @description The scanned barcode string.
+             * @example ARN-2026-000123
+             */
+            external_ref: string;
+            /**
+             * @description Authority type the barcode is expected to belong to. Unknown
+             *     types are rejected with 404 `barcode.unknown_authority`.
+             * @example platform
+             * @enum {string}
+             */
+            authority_type: "platform" | "legacy_bil24" | "external_platform" | "guest_list";
+        };
+        /**
+         * @description Successful scan result returned by `POST /v1/scan` after the
+         *     barcode has been atomically marked `scanned`.
+         */
+        ScanResultResponse: {
+            /**
+             * Format: uuid
+             * @description UUID of the scanned barcodes row.
+             * @example 01929d0e-0e47-7000-8000-000000000b01
+             */
+            barcode_id: string;
+            /**
+             * @description Authority type the barcode was resolved against.
+             * @example platform
+             */
+            authority_type: string;
+            /**
+             * @description Echo of the scanned barcode string.
+             * @example ARN-2026-000123
+             */
+            external_ref: string;
+            /**
+             * Format: uuid
+             * @description Linked platform ticket UUID; `null` for external /
+             *     guest-list barcodes.
+             */
+            ticket_id: string | null;
+            /**
+             * @description Post-scan barcode status (always `scanned` on success).
+             * @example scanned
+             */
+            status: string;
+            /**
+             * Format: date-time
+             * @description UTC timestamp at which the scan was recorded.
+             * @example 2026-06-30T19:05:00Z
+             */
+            scanned_at: string;
+        };
+        /**
+         * @description Minimal barcode projection returned inside the offline scanner
+         *     snapshot (feature #144). Offline scanners only need
+         *     `external_ref` and `status` to decide whether to admit a ticket.
+         */
+        ScannerSnapshotBarcode: {
+            /**
+             * Format: uuid
+             * @description UUID of the barcodes row.
+             * @example 01929d0e-0e47-7000-8000-000000000b01
+             */
+            id: string;
+            /**
+             * @description The barcode string encoded on the ticket.
+             * @example ARN-2026-000123
+             */
+            external_ref: string;
+            /**
+             * Format: uuid
+             * @description Linked platform ticket UUID. Omitted for barcodes without a
+             *     ticket link.
+             */
+            ticket_id?: string;
+            /**
+             * @description Barcode status at snapshot time. Revoked barcodes are
+             *     excluded from the snapshot entirely.
+             * @example active
+             * @enum {string}
+             */
+            status: "active" | "scanned";
+            /**
+             * Format: date-time
+             * @description Last-update timestamp used by the `since` delta cursor.
+             * @example 2026-06-24T10:00:00Z
+             */
+            updated_at: string;
+        };
+        /**
+         * @description Paginated offline-validation snapshot returned by
+         *     `GET /v1/scanner/snapshot` (feature #144). Clients store
+         *     `last_updated_at` and pass it as the `since` query parameter on
+         *     the next poll to receive only changed / newly issued barcodes.
+         */
+        ScannerSnapshotResponse: {
+            /** @description Non-revoked barcodes for the requested session (current page). */
+            barcodes: components["schemas"]["ScannerSnapshotBarcode"][];
+            /**
+             * Format: int64
+             * @description Total matching barcodes across all pages.
+             * @example 1234
+             */
+            total: number;
+            /**
+             * @description 1-based page number echoed from the request.
+             * @example 1
+             */
+            page: number;
+            /**
+             * @description Page size echoed from the request (default 200, max 500).
+             * @example 200
+             */
+            per_page: number;
+            /**
+             * @description Total number of pages (minimum 1).
+             * @example 7
+             */
+            total_pages: number;
+            /**
+             * Format: date-time
+             * @description Maximum `updated_at` among returned barcodes; pass as
+             *     `since` on the next poll. Omitted when the page is empty.
+             * @example 2026-06-24T10:00:00Z
+             */
+            last_updated_at?: string;
+        };
+        /**
+         * @description Request body for `POST /v1/scanner/validate`. Identical shape to
+         *     `ScanRequest`, but the validate endpoint performs a pure read —
+         *     the barcode status is NOT changed.
+         */
+        ScannerValidateRequest: {
+            /**
+             * @description The barcode string to validate.
+             * @example ARN-2026-000123
+             */
+            external_ref: string;
+            /**
+             * @description Authority type the barcode is expected to belong to. Unknown
+             *     types are rejected with 404 `scanner.unknown_authority`.
+             * @example platform
+             * @enum {string}
+             */
+            authority_type: "platform" | "legacy_bil24" | "external_platform" | "guest_list";
+        };
+        /**
+         * @description Read-only validation verdict returned by
+         *     `POST /v1/scanner/validate`. Unlike `POST /v1/scan` the barcode
+         *     status is left untouched.
+         */
+        ScannerValidateResponse: {
+            /**
+             * Format: uuid
+             * @description UUID of the barcodes row.
+             * @example 01929d0e-0e47-7000-8000-000000000b01
+             */
+            barcode_id: string;
+            /**
+             * @description Echo of the validated barcode string.
+             * @example ARN-2026-000123
+             */
+            external_ref: string;
+            /**
+             * @description Authority type the barcode was resolved against.
+             * @example platform
+             */
+            authority_type: string;
+            /**
+             * Format: uuid
+             * @description Linked platform ticket UUID. Omitted for barcodes without a
+             *     ticket link.
+             */
+            ticket_id?: string;
+            /**
+             * @description Current barcode status (unchanged by this call).
+             * @example active
+             * @enum {string}
+             */
+            status: "active" | "scanned" | "revoked";
+            /**
+             * @description True only when the barcode status is `active`.
+             * @example true
+             */
+            valid: boolean;
+            /**
+             * @description Machine-readable reason when `valid` is false. Omitted for
+             *     valid barcodes.
+             * @enum {string}
+             */
+            invalid_reason?: "barcode_revoked" | "already_scanned";
+        };
+        /**
+         * @description Request body for `POST /v1/organizations/{org_id}/members`
+         *     (feature #120). Binds an existing user to the organization in
+         *     the path with a named role. A user may hold multiple roles in
+         *     the same organization.
+         */
+        GrantMembershipRequest: {
+            /**
+             * Format: uuid
+             * @description UUID of the user to grant the role to. Must exist.
+             * @example 01929d0e-0e47-7000-8000-000000000020
+             */
+            user_id: string;
+            /**
+             * @description Named role to grant, scoped to the organization in the path.
+             * @example organizer
+             * @enum {string}
+             */
+            role: "organizer" | "agent" | "platform_operator" | "external_ticketing_operator" | "platform_superadmin" | "network_operator";
+        };
+        /**
+         * @description Request body for
+         *     `DELETE /v1/organizations/{org_id}/members/{user_id}`. The role
+         *     must be supplied because a user may hold multiple roles in the
+         *     same organization.
+         */
+        RevokeMembershipRequest: {
+            /**
+             * @description The specific role binding to revoke.
+             * @example organizer
+             * @enum {string}
+             */
+            role: "organizer" | "agent" | "platform_operator" | "external_ticketing_operator" | "platform_superadmin" | "network_operator";
+        };
+        /**
          * @description A single inventory_ledger row. Tracks real-time capacity state for a
          *     session (and optionally a tier; the GA-first capacity model uses
          *     `tier_id = null` for the session-level row). `capacity_available`
@@ -6209,10 +6808,12 @@ export interface components {
         };
         /** @description Single inventory ledger row response envelope. */
         InventoryEnvelope: {
+            /** @description The inventory ledger row. */
             inventory: components["schemas"]["InventoryRowItem"];
         };
         /** @description List-inventory response envelope. */
         InventoryListResponse: {
+            /** @description Inventory ledger rows for the session (session-level and per-tier). */
             inventory: components["schemas"]["InventoryRowItem"][];
         };
         /**
@@ -6301,19 +6902,35 @@ export interface components {
              *     `ReservationProcessor` worker if not converted or cancelled.
              */
             expires_at: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description ISO 8601 / RFC 3339 timestamp of row creation.
+             */
             created_at: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description ISO 8601 / RFC 3339 timestamp of last update.
+             */
             updated_at: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description UTC timestamp of cancellation; null unless state is `cancelled`.
+             */
             cancelled_at: string | null;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description UTC timestamp of conversion to an order; null unless state is `converted`.
+             */
             converted_at: string | null;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description UTC timestamp when the hold expired; null unless state is `expired`.
+             */
             expired_at: string | null;
         };
         /** @description Single-reservation response envelope. */
         ReservationEnvelope: {
+            /** @description The reservation row. */
             reservation: components["schemas"]["Reservation"];
         };
         /**
@@ -6323,6 +6940,7 @@ export interface components {
          *     ledger.
          */
         ReservationCancelEnvelope: {
+            /** @description The reservation row in its now-cancelled state. */
             reservation: components["schemas"]["Reservation"];
             /**
              * @description Always `true` on a successful cancel response.
@@ -6448,13 +7066,20 @@ export interface components {
              * @enum {string}
              */
             status: "active" | "paused";
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description ISO 8601 / RFC 3339 timestamp of row creation.
+             */
             created_at: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description ISO 8601 / RFC 3339 timestamp of last update.
+             */
             updated_at: string;
         };
         /** @description Single-promo-code response envelope. */
         PromoCodeEnvelope: {
+            /** @description The promo-code row. */
             promo_code: components["schemas"]["PromoCodeItem"];
         };
         /**
@@ -6463,6 +7088,7 @@ export interface components {
          *     promo codes.
          */
         PromoCodeListResponse: {
+            /** @description All promo codes owned by the organization. */
             promo_codes: components["schemas"]["PromoCodeItem"][];
         };
         /**
@@ -6473,6 +7099,7 @@ export interface components {
          *     applied.
          */
         PromoCodeDeleteResponse: {
+            /** @description The promo-code row immediately before the soft-delete marker was applied. */
             promo_code: components["schemas"]["PromoCodeItem"];
             /**
              * @description Always `true` on a successful delete response.
@@ -6556,12 +7183,26 @@ export interface components {
              * @enum {string}
              */
             discount_type?: "percent" | "fixed_amount";
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Optional new discount value. Percent in [1, 100] for
+             *     `percent`; minor units for `fixed_amount`.
+             */
             discount_value?: number | null;
+            /**
+             * @description New whitelist of ticket-tier UUIDs the code applies to.
+             *     Empty array makes the code apply order-wide.
+             */
             applies_to_tier_ids?: string[];
-            /** Format: int32 */
+            /**
+             * Format: int32
+             * @description New total redemption cap. `null` means unlimited.
+             */
             max_uses?: number | null;
-            /** Format: int32 */
+            /**
+             * Format: int32
+             * @description New per-customer redemption cap. `null` means unlimited.
+             */
             max_uses_per_customer?: number | null;
             /**
              * Format: date-time
@@ -6575,9 +7216,15 @@ export interface components {
              *     `promo.invalid_valid_until`.
              */
             valid_until?: string | null;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description New minor-units minimum order subtotal required for the code to apply.
+             */
             min_order_amount?: number | null;
-            /** @enum {string} */
+            /**
+             * @description New lifecycle status. `paused` codes fail promo-validate with 422.
+             * @enum {string}
+             */
             status?: "active" | "paused";
         };
         /**
@@ -6636,6 +7283,7 @@ export interface components {
              *     clamps at zero.
              */
             final_amount: number;
+            /** @description The promo-code row that was validated, echoed back. */
             promo_code: components["schemas"]["PromoCodeItem"];
         };
         /**
@@ -6735,6 +7383,7 @@ export interface components {
          *     this API for read-only resource fetches).
          */
         QuoteResponseEnvelope: {
+            /** @description The computed price quote. */
             quote: components["schemas"]["QuoteResponseItem"];
         };
         /**
@@ -6879,6 +7528,7 @@ export interface components {
          *     single-resource fetches in this API.
          */
         CheckoutSessionEnvelope: {
+            /** @description The checkout-session row. */
             checkout_session: components["schemas"]["CheckoutSessionItem"];
         };
         /**
@@ -7004,6 +7654,7 @@ export interface components {
          *     `GET /v1/checkout/{id}/price-breakdown`.
          */
         PriceBreakdownEnvelope: {
+            /** @description The itemized pricing pipeline result for the checkout session. */
             price_breakdown: components["schemas"]["PriceBreakdownItem"];
         };
         /**
@@ -7136,6 +7787,7 @@ export interface components {
          *     `PaymentIntentItem` under the `payment_intent` key.
          */
         PaymentIntentEnvelope: {
+            /** @description The payment-intent row. */
             payment_intent: components["schemas"]["PaymentIntentItem"];
         };
         /**
@@ -7255,9 +7907,19 @@ export interface components {
              * @enum {string}
              */
             target_state?: "requires_action" | "processing" | "authorized" | "manual_review" | "succeeded" | "failed";
+            /**
+             * @description Provider 3-D Secure / SCA redirect URL persisted on the
+             *     intent when the event requires customer action.
+             */
             sca_redirect_url?: string | null;
+            /**
+             * @description Provider client secret for browser-side confirmation flows;
+             *     stored on the intent when supplied.
+             */
             client_secret?: string | null;
+            /** @description Machine-readable provider failure code recorded on failure events. */
             failure_code?: string | null;
+            /** @description Human-readable provider failure message recorded on failure events. */
             failure_message?: string | null;
             /**
              * @description Raw provider webhook payload, persisted verbatim for audit
@@ -7400,6 +8062,7 @@ export interface components {
          *     `refund` key.
          */
         RefundEnvelope: {
+            /** @description The refund row. */
             refund: components["schemas"]["RefundItem"];
         };
         /**
@@ -7771,6 +8434,7 @@ export interface components {
          *     Wraps the most recent `delivery_jobs` row for the ticket.
          */
         AdminTicketDeliveryResponse: {
+            /** @description The most recent delivery job for the ticket. */
             delivery: components["schemas"]["DeliveryJob"];
         };
         /**
@@ -7781,6 +8445,7 @@ export interface components {
          *     enqueued attempt with downstream worker logs.
          */
         AdminTicketDeliveryResendResponse: {
+            /** @description The freshly inserted delivery job created by the resend. */
             delivery: components["schemas"]["DeliveryJob"];
             /**
              * Format: uuid
@@ -9785,7 +10450,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description UUIDv7 primary key of the owning organization. */
                 org_id: string;
+                /** @description UUIDv7 primary key of the resource being addressed. */
                 id: string;
             };
             cookie?: never;
@@ -9869,7 +10536,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description UUIDv7 primary key of the owning organization. */
                 org_id: string;
+                /** @description UUIDv7 primary key of the resource being addressed. */
                 id: string;
             };
             cookie?: never;
@@ -9940,6 +10609,285 @@ export interface operations {
                 };
             };
             /** @description Database not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listOrganizationMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 primary key of the organization whose members to list. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active memberships in the organization (possibly empty). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description Active membership rows for the organization. */
+                        memberships: components["schemas"]["MembershipItem"][];
+                    };
+                };
+            };
+            /** @description org_id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `membership.read` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error while listing memberships (`membership.list_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Membership queries unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    grantOrganizationMembership: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 primary key of the organization to grant the role in. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GrantMembershipRequest"];
+            };
+        };
+        responses: {
+            /** @description Membership created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description The newly created membership row. */
+                        membership: components["schemas"]["MembershipItem"];
+                    };
+                };
+            };
+            /**
+             * @description Invalid path or body. Possible error codes:
+             *     `membership.invalid_body`, `membership.empty_body`,
+             *     `membership.invalid_json`, `membership.missing_user_id`,
+             *     `membership.invalid_user_id`, `membership.invalid_role`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `membership.grant` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description User already holds that role in this organization
+             *     (`membership.duplicate`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description user_id or org_id does not exist
+             *     (`membership.invalid_reference`).
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error while granting (`membership.insert_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Database pool or membership queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    revokeOrganizationMembership: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 primary key of the organization the role is scoped to. */
+                org_id: string;
+                /** @description UUIDv7 primary key of the user whose role binding to revoke. */
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevokeMembershipRequest"];
+            };
+        };
+        responses: {
+            /** @description Membership revoked; echoes the revoked row. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description The membership row that was revoked. */
+                        membership: components["schemas"]["MembershipItem"];
+                        /**
+                         * @description Always true on success; confirms the revocation.
+                         * @example true
+                         */
+                        revoked: boolean;
+                    };
+                };
+            };
+            /**
+             * @description Invalid path or body. Possible error codes:
+             *     `membership.invalid_body`, `membership.empty_body`,
+             *     `membership.invalid_json`, `membership.invalid_role`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `membership.revoke` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description No active membership found for this user, org, and role
+             *     combination (`membership.not_found`).
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error while revoking (`membership.revoke_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Database pool or membership queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -11077,6 +12025,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description UUIDv7 primary key of the owning organization. */
                 org_id: string;
             };
             cookie?: never;
@@ -11128,6 +12077,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description UUIDv7 primary key of the owning organization. */
                 org_id: string;
             };
             cookie?: never;
@@ -11201,7 +12151,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description UUIDv7 primary key of the owning organization. */
                 org_id: string;
+                /** @description UUIDv7 primary key of the resource being addressed. */
                 id: string;
             };
             cookie?: never;
@@ -11262,7 +12214,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description UUIDv7 primary key of the owning organization. */
                 org_id: string;
+                /** @description UUIDv7 primary key of the resource being addressed. */
                 id: string;
             };
             cookie?: never;
@@ -11325,7 +12279,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description UUIDv7 primary key of the owning organization. */
                 org_id: string;
+                /** @description UUIDv7 primary key of the resource being addressed. */
                 id: string;
             };
             cookie?: never;
@@ -17169,6 +18125,571 @@ export interface operations {
             /**
              * @description Internal server error while creating the authority
              *     (`barcode.create_authority_failed`).
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Barcode queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    registerBarcode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterBarcodeRequest"];
+            };
+        };
+        responses: {
+            /** @description Barcode registered; echoes the created row. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BarcodeItem"];
+                };
+            };
+            /**
+             * @description Invalid body or field. Possible error codes:
+             *     `barcode.invalid_body`, `barcode.invalid_authority_id`,
+             *     `barcode.missing_external_ref`, `barcode.invalid_ticket_id`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `barcode.create` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description A barcode with this `external_ref` already exists for the
+             *     given authority (`barcode.duplicate`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error while registering the barcode
+             *     (`barcode.register_failed`).
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Barcode queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getBarcode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID primary key of the barcodes row. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The barcode row. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BarcodeItem"];
+                };
+            };
+            /** @description id path parameter is not a valid UUID (`barcode.invalid_id`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `barcode.read` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Barcode not found (`barcode.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error while fetching the barcode
+             *     (`barcode.fetch_failed`).
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Barcode queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    revokeBarcode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID primary key of the barcodes row to revoke. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Barcode revoked; echoes the updated row (`status = revoked`). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BarcodeItem"];
+                };
+            };
+            /** @description id path parameter is not a valid UUID (`barcode.invalid_id`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `barcode.revoke` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Barcode not found (`barcode.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error while revoking the barcode
+             *     (`barcode.revoke_failed`).
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Barcode queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    scanBarcode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScanRequest"];
+            };
+        };
+        responses: {
+            /** @description Scan recorded; the barcode is now `scanned`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScanResultResponse"];
+                };
+            };
+            /**
+             * @description Invalid body or field. Possible error codes:
+             *     `barcode.invalid_body`, `barcode.missing_external_ref`,
+             *     `barcode.missing_authority_type`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `barcode.scan` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Authority type not found in the federation
+             *     (`barcode.unknown_authority`) or no barcode with this
+             *     `external_ref` under the authority (`barcode.not_found`).
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Barcode cannot be consumed: revoked (`barcode.revoked`) or
+             *     already scanned (`barcode.already_scanned`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error during the scan flow
+             *     (`barcode.authority_lookup_failed`, `barcode.fetch_failed`,
+             *     `barcode.scan_failed`).
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Barcode queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getScannerSnapshot: {
+        parameters: {
+            query: {
+                /** @description UUID of the event session whose barcodes to retrieve. */
+                session_id: string;
+                /**
+                 * @description RFC 3339 delta cursor — only barcodes updated strictly after
+                 *     this instant are returned. Omit for a full snapshot.
+                 */
+                since?: string;
+                /** @description 1-based page number (default 1). */
+                page?: number;
+                /** @description Page size (default 200, capped at 500). */
+                per_page?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of the barcode snapshot. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScannerSnapshotResponse"];
+                };
+            };
+            /**
+             * @description Invalid query parameter. Possible error codes:
+             *     `scanner.missing_session_id`, `scanner.invalid_session_id`,
+             *     `scanner.invalid_since`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `barcode.scan` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Per-IP or per-session rate limit exceeded
+             *     (`scanner.rate_limited`).
+             */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error while building the snapshot
+             *     (`scanner.snapshot_failed`).
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Barcode queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    validateScannerBarcode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScannerValidateRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description Validation verdict (returned for valid AND invalid barcodes
+             *     — inspect the `valid` flag and `invalid_reason`).
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScannerValidateResponse"];
+                };
+            };
+            /**
+             * @description Invalid body or field. Possible error codes:
+             *     `scanner.invalid_body`, `scanner.missing_external_ref`,
+             *     `scanner.missing_authority_type`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `barcode.scan` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Authority type not found (`scanner.unknown_authority`) or no
+             *     barcode with this `external_ref` under the authority
+             *     (`scanner.barcode_not_found`).
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Per-IP rate limit exceeded (`scanner.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error during validation
+             *     (`scanner.authority_lookup_failed`, `scanner.validate_failed`).
              */
             500: {
                 headers: {

@@ -32,11 +32,26 @@ BIN_DIR := bin
 # Regenerates Go types from the OpenAPI spec. Re-run whenever openapi.yaml
 # changes — any field rename or removal used by handler code cascades to a
 # compile error in `go build ./...` (proven by feature #34 coupling test).
+#
+# oapi-codegen (v2.4.1 pinned; still true of v2.7.1) cannot parse the OpenAPI
+# 3.1 nullability idioms used by the committed spec (`type: [X, "null"]`,
+# `oneOf: [$ref, {type: "null"}]`). The openapi30gen tool first projects the
+# spec into a throwaway 3.0-compat file that expresses nullability as
+# `nullable: true`, and oapi-codegen consumes THAT. The committed
+# apps/backend/openapi/openapi.yaml stays pure OpenAPI 3.1 (structural tests
+# forbid `nullable:` in it). The compat file is removed afterwards and is
+# gitignored as a safety net.
+OPENAPI_COMPAT30 := apps/backend/openapi/.openapi.compat30.gen.yaml
+
 gen-openapi:
 	@mkdir -p apps/backend/internal/adapters/http/openapi
+	go run ./apps/backend/tools/openapi30gen \
+		apps/backend/openapi/openapi.yaml \
+		$(OPENAPI_COMPAT30)
 	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.4.1 \
 		--config=apps/backend/openapi/oapi-codegen.yaml \
-		apps/backend/openapi/openapi.yaml
+		$(OPENAPI_COMPAT30)
+	@rm -f $(OPENAPI_COMPAT30)
 
 # Regenerates TypeScript client types from the OpenAPI spec.
 # Output: apps/backend/openapi/clients/ts/index.d.ts

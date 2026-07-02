@@ -28,5 +28,15 @@
 // (not the package directory) so that the output path in oapi-codegen.yaml
 // resolves correctly. `make gen-openapi` handles this automatically.
 //
-//go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.4.1 --config=apps/backend/openapi/oapi-codegen.yaml apps/backend/openapi/openapi.yaml
+// # OpenAPI 3.1 → 3.0 downconversion
+//
+// oapi-codegen v2.4.1 cannot parse the OpenAPI 3.1 nullability idioms used by
+// openapi.yaml (`type: [X, "null"]` / `oneOf: [$ref, {type: "null"}]`), so the
+// first directive projects the spec into a throwaway 3.0-compat file
+// (apps/backend/openapi/.openapi.compat30.gen.yaml, gitignored) and the second
+// feeds that file to oapi-codegen. `make gen-openapi` runs the same pipeline
+// and removes the compat file afterwards.
+//
+//go:generate go run ./apps/backend/tools/openapi30gen apps/backend/openapi/openapi.yaml apps/backend/openapi/.openapi.compat30.gen.yaml
+//go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.4.1 --config=apps/backend/openapi/oapi-codegen.yaml apps/backend/openapi/.openapi.compat30.gen.yaml
 package openapi

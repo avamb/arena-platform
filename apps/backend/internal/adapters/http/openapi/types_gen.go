@@ -58,6 +58,13 @@ const (
 	BarcodeAuthorityItemTypePlatform         BarcodeAuthorityItemType = "platform"
 )
 
+// Defines values for BarcodeItemStatus.
+const (
+	BarcodeItemStatusActive  BarcodeItemStatus = "active"
+	BarcodeItemStatusRevoked BarcodeItemStatus = "revoked"
+	BarcodeItemStatusScanned BarcodeItemStatus = "scanned"
+)
+
 // Defines values for CheckoutSessionItemState.
 const (
 	CheckoutSessionItemStateAbandoned        CheckoutSessionItemState = "abandoned"
@@ -173,6 +180,16 @@ const (
 	EventItemVisibilityUnlisted EventItemVisibility = "unlisted"
 )
 
+// Defines values for GrantMembershipRequestRole.
+const (
+	GrantMembershipRequestRoleAgent                     GrantMembershipRequestRole = "agent"
+	GrantMembershipRequestRoleExternalTicketingOperator GrantMembershipRequestRole = "external_ticketing_operator"
+	GrantMembershipRequestRoleNetworkOperator           GrantMembershipRequestRole = "network_operator"
+	GrantMembershipRequestRoleOrganizer                 GrantMembershipRequestRole = "organizer"
+	GrantMembershipRequestRolePlatformOperator          GrantMembershipRequestRole = "platform_operator"
+	GrantMembershipRequestRolePlatformSuperadmin        GrantMembershipRequestRole = "platform_superadmin"
+)
+
 // Defines values for HealthzResponseStatus.
 const (
 	Ok HealthzResponseStatus = "ok"
@@ -227,7 +244,7 @@ const (
 
 // Defines values for NetworkOrganizersListResponseAssignmentKind.
 const (
-	Organizer NetworkOrganizersListResponseAssignmentKind = "organizer"
+	NetworkOrganizersListResponseAssignmentKindOrganizer NetworkOrganizersListResponseAssignmentKind = "organizer"
 )
 
 // Defines values for NetworkUserAssignmentStatus.
@@ -350,10 +367,55 @@ const (
 	ReservationCancelEnvelopeCancelledTrue ReservationCancelEnvelopeCancelled = true
 )
 
+// Defines values for RevokeMembershipRequestRole.
+const (
+	Agent                     RevokeMembershipRequestRole = "agent"
+	ExternalTicketingOperator RevokeMembershipRequestRole = "external_ticketing_operator"
+	NetworkOperator           RevokeMembershipRequestRole = "network_operator"
+	Organizer                 RevokeMembershipRequestRole = "organizer"
+	PlatformOperator          RevokeMembershipRequestRole = "platform_operator"
+	PlatformSuperadmin        RevokeMembershipRequestRole = "platform_superadmin"
+)
+
+// Defines values for ScanRequestAuthorityType.
+const (
+	ScanRequestAuthorityTypeExternalPlatform ScanRequestAuthorityType = "external_platform"
+	ScanRequestAuthorityTypeGuestList        ScanRequestAuthorityType = "guest_list"
+	ScanRequestAuthorityTypeLegacyBil24      ScanRequestAuthorityType = "legacy_bil24"
+	ScanRequestAuthorityTypePlatform         ScanRequestAuthorityType = "platform"
+)
+
 // Defines values for ScannerScanInputResult.
 const (
 	Admitted ScannerScanInputResult = "admitted"
 	Denied   ScannerScanInputResult = "denied"
+)
+
+// Defines values for ScannerSnapshotBarcodeStatus.
+const (
+	ScannerSnapshotBarcodeStatusActive  ScannerSnapshotBarcodeStatus = "active"
+	ScannerSnapshotBarcodeStatusScanned ScannerSnapshotBarcodeStatus = "scanned"
+)
+
+// Defines values for ScannerValidateRequestAuthorityType.
+const (
+	ScannerValidateRequestAuthorityTypeExternalPlatform ScannerValidateRequestAuthorityType = "external_platform"
+	ScannerValidateRequestAuthorityTypeGuestList        ScannerValidateRequestAuthorityType = "guest_list"
+	ScannerValidateRequestAuthorityTypeLegacyBil24      ScannerValidateRequestAuthorityType = "legacy_bil24"
+	ScannerValidateRequestAuthorityTypePlatform         ScannerValidateRequestAuthorityType = "platform"
+)
+
+// Defines values for ScannerValidateResponseInvalidReason.
+const (
+	AlreadyScanned ScannerValidateResponseInvalidReason = "already_scanned"
+	BarcodeRevoked ScannerValidateResponseInvalidReason = "barcode_revoked"
+)
+
+// Defines values for ScannerValidateResponseStatus.
+const (
+	ScannerValidateResponseStatusActive  ScannerValidateResponseStatus = "active"
+	ScannerValidateResponseStatusRevoked ScannerValidateResponseStatus = "revoked"
+	ScannerValidateResponseStatusScanned ScannerValidateResponseStatus = "scanned"
 )
 
 // Defines values for SessionItemStatus.
@@ -468,9 +530,9 @@ const (
 
 // Defines values for VenueItemStatus.
 const (
-	VenueItemStatusActive   VenueItemStatus = "active"
-	VenueItemStatusArchived VenueItemStatus = "archived"
-	VenueItemStatusDraft    VenueItemStatus = "draft"
+	Active   VenueItemStatus = "active"
+	Archived VenueItemStatus = "archived"
+	Draft    VenueItemStatus = "draft"
 )
 
 // Defines values for ListEventsParamsVisibility.
@@ -538,6 +600,7 @@ type AdminCreateUserRequestRole string
 
 // AdminCreateUserResponse defines model for AdminCreateUserResponse.
 type AdminCreateUserResponse struct {
+	// Message Human-readable confirmation of the create action.
 	Message    string                     `json:"message"`
 	Onboarding AdminCreatedUserOnboarding `json:"onboarding"`
 	User       AdminCreatedUser           `json:"user"`
@@ -749,7 +812,9 @@ type BankAccountItem struct {
 	Bic *string `json:"bic"`
 
 	// Country ISO 3166-1 alpha-2 country code where the account is held.
-	Country   string    `json:"country"`
+	Country string `json:"country"`
+
+	// CreatedAt ISO 8601 / RFC 3339 timestamp of row creation.
 	CreatedAt time.Time `json:"created_at"`
 
 	// Currency ISO 4217 three-letter currency code of the account.
@@ -776,8 +841,10 @@ type BankAccountItem struct {
 
 	// RoutingNumber Domestic routing/sort/ABA code that pairs with
 	// `account_number`. Optional.
-	RoutingNumber *string   `json:"routing_number"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	RoutingNumber *string `json:"routing_number"`
+
+	// UpdatedAt ISO 8601 / RFC 3339 timestamp of last update.
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // BarcodeAuthorityItem A single barcode authority — one row per originating system in the
@@ -811,6 +878,48 @@ type BarcodeAuthorityListResponse struct {
 	// Authorities Registered barcode authorities (possibly empty).
 	Authorities []BarcodeAuthorityItem `json:"authorities"`
 }
+
+// BarcodeItem A single barcodes row in the barcode authority federation
+// (feature #142, migration 0030_barcodes.sql). Each barcode is
+// scoped to exactly one authority; `(authority_id, external_ref)`
+// is UNIQUE among rows. Lifecycle: `active` → `scanned` (via
+// POST /v1/scan) or `active`|`scanned` → `revoked` (terminal, via
+// DELETE /v1/barcodes/{id}).
+type BarcodeItem struct {
+	// AuthorityId UUIDv7 of the barcode authority the barcode belongs to.
+	AuthorityId openapi_types.UUID `json:"authority_id"`
+
+	// CreatedAt ISO 8601 / RFC 3339 timestamp of row creation.
+	CreatedAt time.Time `json:"created_at"`
+
+	// ExternalRef The barcode string as printed / encoded on the ticket.
+	// Unique within the owning authority.
+	ExternalRef string `json:"external_ref"`
+
+	// Id UUIDv7 primary key of the barcodes row.
+	Id openapi_types.UUID `json:"id"`
+
+	// ScannedAt UTC timestamp of the successful scan. `null` until the
+	// barcode has been scanned.
+	ScannedAt *time.Time `json:"scanned_at"`
+
+	// Status Lifecycle status. `active` barcodes admit entry; `scanned`
+	// marks a consumed barcode (double-scan protected); `revoked`
+	// is terminal.
+	Status BarcodeItemStatus `json:"status"`
+
+	// TicketId Optional link to a platform tickets row. `null` for barcodes
+	// originating from external platforms or guest lists.
+	TicketId *openapi_types.UUID `json:"ticket_id"`
+
+	// UpdatedAt ISO 8601 / RFC 3339 timestamp of last update.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// BarcodeItemStatus Lifecycle status. `active` barcodes admit entry; `scanned`
+// marks a consumed barcode (double-scan protected); `revoked`
+// is terminal.
+type BarcodeItemStatus string
 
 // CheckoutSessionEnvelope Top-level response envelope returned by every checkout-session
 // endpoint. Wraps a single `CheckoutSessionItem` under the
@@ -998,13 +1107,21 @@ type ConfirmCheckoutRequest struct {
 type CreateBankAccountRequest struct {
 	// AccountNumber Domestic account number (pairs with routing_number).
 	AccountNumber *string `json:"account_number,omitempty"`
-	BankName      *string `json:"bank_name,omitempty"`
+
+	// BankName Free-form bank name for operator display (optional).
+	BankName *string `json:"bank_name,omitempty"`
 
 	// Bic BIC / SWIFT code (optional).
-	Bic        *string `json:"bic,omitempty"`
-	Country    string  `json:"country"`
-	Currency   string  `json:"currency"`
-	HolderName string  `json:"holder_name"`
+	Bic *string `json:"bic,omitempty"`
+
+	// Country ISO 3166-1 alpha-2 country code where the account is held.
+	Country string `json:"country"`
+
+	// Currency ISO 4217 three-letter currency code of the account.
+	Currency string `json:"currency"`
+
+	// HolderName Legal name of the account holder (typically the org's legal_name).
+	HolderName string `json:"holder_name"`
 
 	// Iban IBAN (mutually exclusive with account_number+routing_number).
 	Iban *string `json:"iban,omitempty"`
@@ -1676,6 +1793,7 @@ type ErrorEnvelope struct {
 
 // EventDeleteResponse Soft-delete response envelope.
 type EventDeleteResponse struct {
+	// Deleted Always true on success; confirms the soft delete.
 	Deleted bool `json:"deleted"`
 
 	// Event A single dated event organized by one organization at an optional venue.
@@ -1702,6 +1820,7 @@ type EventEnvelope struct {
 // The `name` and `description` fields are locale-resolved per the
 // request's Accept-Language header / ?lang= query parameter.
 type EventItem struct {
+	// CreatedAt ISO 8601 / RFC 3339 timestamp of row creation.
 	CreatedAt time.Time `json:"created_at"`
 
 	// Description Optional long-form description. Locale-resolved like `name`.
@@ -1732,8 +1851,10 @@ type EventItem struct {
 	StartAt time.Time `json:"start_at"`
 
 	// Status Lifecycle status.
-	Status    EventItemStatus `json:"status"`
-	UpdatedAt time.Time       `json:"updated_at"`
+	Status EventItemStatus `json:"status"`
+
+	// UpdatedAt ISO 8601 / RFC 3339 timestamp of last update.
+	UpdatedAt time.Time `json:"updated_at"`
 
 	// VenueId Optional FK to a venue (see /v1/venues/{id}). NULL when the
 	// event has no fixed venue (e.g. online stream, TBD location).
@@ -1757,6 +1878,7 @@ type EventItemVisibility string
 
 // EventListResponse List-events response envelope.
 type EventListResponse struct {
+	// Events Events matching the request filters.
 	Events []EventItem `json:"events"`
 }
 
@@ -1958,6 +2080,21 @@ type GeoUpdateCountryRequest struct {
 	Slug *string `json:"slug,omitempty"`
 }
 
+// GrantMembershipRequest Request body for `POST /v1/organizations/{org_id}/members`
+// (feature #120). Binds an existing user to the organization in
+// the path with a named role. A user may hold multiple roles in
+// the same organization.
+type GrantMembershipRequest struct {
+	// Role Named role to grant, scoped to the organization in the path.
+	Role GrantMembershipRequestRole `json:"role"`
+
+	// UserId UUID of the user to grant the role to. Must exist.
+	UserId openapi_types.UUID `json:"user_id"`
+}
+
+// GrantMembershipRequestRole Named role to grant, scoped to the organization in the path.
+type GrantMembershipRequestRole string
+
 // HealthzResponse defines model for HealthzResponse.
 type HealthzResponse struct {
 	// Status Always "ok" when the process is alive
@@ -2060,6 +2197,7 @@ type InventoryEnvelope struct {
 
 // InventoryListResponse List-inventory response envelope.
 type InventoryListResponse struct {
+	// Inventory Inventory ledger rows for the session (session-level and per-tier).
 	Inventory []InventoryRowItem `json:"inventory"`
 }
 
@@ -2784,6 +2922,8 @@ type PaymentIntentWebhookAck struct {
 // recorded with a UNIQUE constraint. Duplicate deliveries return
 // `204 No Content` without reprocessing.
 type PaymentIntentWebhookRequest struct {
+	// ClientSecret Provider client secret for browser-side confirmation flows;
+	// stored on the intent when supplied.
 	ClientSecret *string `json:"client_secret"`
 
 	// EventPayload Raw provider webhook payload, persisted verbatim for audit
@@ -2795,14 +2935,21 @@ type PaymentIntentWebhookRequest struct {
 	// `payment_intent.payment_failed`,
 	// `payment_intent.requires_action`). Unknown event types are
 	// acknowledged with `processed: false` (no transition).
-	EventType      string  `json:"event_type"`
-	FailureCode    *string `json:"failure_code"`
+	EventType string `json:"event_type"`
+
+	// FailureCode Machine-readable provider failure code recorded on failure events.
+	FailureCode *string `json:"failure_code"`
+
+	// FailureMessage Human-readable provider failure message recorded on failure events.
 	FailureMessage *string `json:"failure_message"`
 
 	// ProviderPaymentId Provider-side payment intent identifier used to look up the
 	// row to transition.
-	ProviderPaymentId string  `json:"provider_payment_id"`
-	ScaRedirectUrl    *string `json:"sca_redirect_url"`
+	ProviderPaymentId string `json:"provider_payment_id"`
+
+	// ScaRedirectUrl Provider 3-D Secure / SCA redirect URL persisted on the
+	// intent when the event requires customer action.
+	ScaRedirectUrl *string `json:"sca_redirect_url"`
 
 	// TargetState Optional explicit target state that overrides the
 	// `event_type` → state mapping.
@@ -2820,6 +2967,7 @@ type PaymentIntentWebhookRequestTargetState string
 // derived from the stored secrets vs. the provider's required-secret
 // catalogue (see internal/platform/httpserver/payment_configs.go).
 type PaymentProviderConfigItem struct {
+	// CreatedAt ISO 8601 / RFC 3339 timestamp of row creation.
 	CreatedAt time.Time `json:"created_at"`
 
 	// Id UUIDv7 primary key of the config row
@@ -2858,8 +3006,10 @@ type PaymentProviderConfigItem struct {
 
 	// Status `configured` when every required secret for the provider is
 	// populated; otherwise `missing_required_fields`.
-	Status    PaymentProviderConfigItemStatus `json:"status"`
-	UpdatedAt time.Time                       `json:"updated_at"`
+	Status PaymentProviderConfigItemStatus `json:"status"`
+
+	// UpdatedAt ISO 8601 / RFC 3339 timestamp of last update.
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // PaymentProviderConfigItemMode Operating mode for the credential set.
@@ -3011,7 +3161,9 @@ type PromoCodeItem struct {
 
 	// Code The redeemable code string (e.g. `SUMMER25`). Unique per
 	// organization; duplicate inserts return 409 `promo.duplicate`.
-	Code      string    `json:"code"`
+	Code string `json:"code"`
+
+	// CreatedAt ISO 8601 / RFC 3339 timestamp of row creation.
 	CreatedAt time.Time `json:"created_at"`
 
 	// DiscountType Either `percent` (1-100) or `fixed_amount`. Other values are
@@ -3047,8 +3199,10 @@ type PromoCodeItem struct {
 	// Status Lifecycle status. `paused` codes return 422
 	// `promo.not_active` from `promo-validate`. Defaults to
 	// `active` on create when omitted.
-	Status    PromoCodeItemStatus `json:"status"`
-	UpdatedAt time.Time           `json:"updated_at"`
+	Status PromoCodeItemStatus `json:"status"`
+
+	// UpdatedAt ISO 8601 / RFC 3339 timestamp of last update.
+	UpdatedAt time.Time `json:"updated_at"`
 
 	// ValidFrom RFC3339 start of the validity window. `null` means no lower
 	// bound. Validation returns 422 `promo.not_yet_valid` for
@@ -3074,6 +3228,7 @@ type PromoCodeItemStatus string
 // The `promo_codes` array is empty when the organization has no
 // promo codes.
 type PromoCodeListResponse struct {
+	// PromoCodes All promo codes owned by the organization.
 	PromoCodes []PromoCodeItem `json:"promo_codes"`
 }
 
@@ -3343,6 +3498,22 @@ type RefundWebhookRequest struct {
 // `event_type` → state mapping.
 type RefundWebhookRequestTargetState string
 
+// RegisterBarcodeRequest Request body for `POST /v1/barcodes`. Registers a barcode under
+// an existing authority. Duplicate `external_ref` values within
+// the same authority are rejected with 409 `barcode.duplicate`.
+type RegisterBarcodeRequest struct {
+	// AuthorityId UUID of the barcode authority the barcode belongs to.
+	AuthorityId openapi_types.UUID `json:"authority_id"`
+
+	// ExternalRef The barcode string. Required; must be unique within the
+	// authority.
+	ExternalRef string `json:"external_ref"`
+
+	// TicketId Optional platform ticket UUID to link. Omit or send `null`
+	// for external / guest-list barcodes.
+	TicketId *openapi_types.UUID `json:"ticket_id"`
+}
+
 // RegisterWebhookSubscriberRequest Request body for `POST /v1/webhooks/subscribers`. Only
 // `callback_url` is strictly required; `site_url` defaults to
 // `callback_url` when absent, and `event_types` defaults to the
@@ -3406,13 +3577,20 @@ type RegisterWebhookSubscriberResponse struct {
 // `sales_channels.reservation_ttl_override ->
 // organizations.reservation_ttl_seconds -> 1200 s system default`.
 type Reservation struct {
+	// CancelledAt UTC timestamp of cancellation; null unless state is `cancelled`.
 	CancelledAt *time.Time `json:"cancelled_at"`
 
 	// ChannelId Sales channel through which the reservation was created.
-	ChannelId   openapi_types.UUID `json:"channel_id"`
-	ConvertedAt *time.Time         `json:"converted_at"`
-	CreatedAt   time.Time          `json:"created_at"`
-	ExpiredAt   *time.Time         `json:"expired_at"`
+	ChannelId openapi_types.UUID `json:"channel_id"`
+
+	// ConvertedAt UTC timestamp of conversion to an order; null unless state is `converted`.
+	ConvertedAt *time.Time `json:"converted_at"`
+
+	// CreatedAt ISO 8601 / RFC 3339 timestamp of row creation.
+	CreatedAt time.Time `json:"created_at"`
+
+	// ExpiredAt UTC timestamp when the hold expired; null unless state is `expired`.
+	ExpiredAt *time.Time `json:"expired_at"`
 
 	// ExpiresAt UTC timestamp when the hold is released by the
 	// `ReservationProcessor` worker if not converted or cancelled.
@@ -3435,8 +3613,10 @@ type Reservation struct {
 
 	// TierId Optional ticket tier. When `null`, the reservation is a
 	// session-level GA hold.
-	TierId    *openapi_types.UUID `json:"tier_id"`
-	UpdatedAt time.Time           `json:"updated_at"`
+	TierId *openapi_types.UUID `json:"tier_id"`
+
+	// UpdatedAt ISO 8601 / RFC 3339 timestamp of last update.
+	UpdatedAt time.Time `json:"updated_at"`
 
 	// UserId JWT actor that created the reservation. May be `null` for
 	// anonymous public-feed checkouts.
@@ -3477,6 +3657,58 @@ type ReservationEnvelope struct {
 	// `sales_channels.reservation_ttl_override ->
 	// organizations.reservation_ttl_seconds -> 1200 s system default`.
 	Reservation Reservation `json:"reservation"`
+}
+
+// RevokeMembershipRequest Request body for
+// `DELETE /v1/organizations/{org_id}/members/{user_id}`. The role
+// must be supplied because a user may hold multiple roles in the
+// same organization.
+type RevokeMembershipRequest struct {
+	// Role The specific role binding to revoke.
+	Role RevokeMembershipRequestRole `json:"role"`
+}
+
+// RevokeMembershipRequestRole The specific role binding to revoke.
+type RevokeMembershipRequestRole string
+
+// ScanRequest Request body for `POST /v1/scan`. The scan flow resolves the
+// authority by `authority_type`, looks up the barcode by
+// `(authority_id, external_ref)`, and atomically transitions
+// `active` → `scanned`.
+type ScanRequest struct {
+	// AuthorityType Authority type the barcode is expected to belong to. Unknown
+	// types are rejected with 404 `barcode.unknown_authority`.
+	AuthorityType ScanRequestAuthorityType `json:"authority_type"`
+
+	// ExternalRef The scanned barcode string.
+	ExternalRef string `json:"external_ref"`
+}
+
+// ScanRequestAuthorityType Authority type the barcode is expected to belong to. Unknown
+// types are rejected with 404 `barcode.unknown_authority`.
+type ScanRequestAuthorityType string
+
+// ScanResultResponse Successful scan result returned by `POST /v1/scan` after the
+// barcode has been atomically marked `scanned`.
+type ScanResultResponse struct {
+	// AuthorityType Authority type the barcode was resolved against.
+	AuthorityType string `json:"authority_type"`
+
+	// BarcodeId UUID of the scanned barcodes row.
+	BarcodeId openapi_types.UUID `json:"barcode_id"`
+
+	// ExternalRef Echo of the scanned barcode string.
+	ExternalRef string `json:"external_ref"`
+
+	// ScannedAt UTC timestamp at which the scan was recorded.
+	ScannedAt time.Time `json:"scanned_at"`
+
+	// Status Post-scan barcode status (always `scanned` on success).
+	Status string `json:"status"`
+
+	// TicketId Linked platform ticket UUID; `null` for external /
+	// guest-list barcodes.
+	TicketId *openapi_types.UUID `json:"ticket_id"`
 }
 
 // ScannerScanBatchRequest POST body for `POST /v1/scanner/scan-events`. Carries one or
@@ -3605,6 +3837,108 @@ type ScannerScanResult struct {
 	TicketId openapi_types.UUID `json:"ticket_id"`
 }
 
+// ScannerSnapshotBarcode Minimal barcode projection returned inside the offline scanner
+// snapshot (feature #144). Offline scanners only need
+// `external_ref` and `status` to decide whether to admit a ticket.
+type ScannerSnapshotBarcode struct {
+	// ExternalRef The barcode string encoded on the ticket.
+	ExternalRef string `json:"external_ref"`
+
+	// Id UUID of the barcodes row.
+	Id openapi_types.UUID `json:"id"`
+
+	// Status Barcode status at snapshot time. Revoked barcodes are
+	// excluded from the snapshot entirely.
+	Status ScannerSnapshotBarcodeStatus `json:"status"`
+
+	// TicketId Linked platform ticket UUID. Omitted for barcodes without a
+	// ticket link.
+	TicketId *openapi_types.UUID `json:"ticket_id,omitempty"`
+
+	// UpdatedAt Last-update timestamp used by the `since` delta cursor.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ScannerSnapshotBarcodeStatus Barcode status at snapshot time. Revoked barcodes are
+// excluded from the snapshot entirely.
+type ScannerSnapshotBarcodeStatus string
+
+// ScannerSnapshotResponse Paginated offline-validation snapshot returned by
+// `GET /v1/scanner/snapshot` (feature #144). Clients store
+// `last_updated_at` and pass it as the `since` query parameter on
+// the next poll to receive only changed / newly issued barcodes.
+type ScannerSnapshotResponse struct {
+	// Barcodes Non-revoked barcodes for the requested session (current page).
+	Barcodes []ScannerSnapshotBarcode `json:"barcodes"`
+
+	// LastUpdatedAt Maximum `updated_at` among returned barcodes; pass as
+	// `since` on the next poll. Omitted when the page is empty.
+	LastUpdatedAt *time.Time `json:"last_updated_at,omitempty"`
+
+	// Page 1-based page number echoed from the request.
+	Page int `json:"page"`
+
+	// PerPage Page size echoed from the request (default 200, max 500).
+	PerPage int `json:"per_page"`
+
+	// Total Total matching barcodes across all pages.
+	Total int64 `json:"total"`
+
+	// TotalPages Total number of pages (minimum 1).
+	TotalPages int `json:"total_pages"`
+}
+
+// ScannerValidateRequest Request body for `POST /v1/scanner/validate`. Identical shape to
+// `ScanRequest`, but the validate endpoint performs a pure read —
+// the barcode status is NOT changed.
+type ScannerValidateRequest struct {
+	// AuthorityType Authority type the barcode is expected to belong to. Unknown
+	// types are rejected with 404 `scanner.unknown_authority`.
+	AuthorityType ScannerValidateRequestAuthorityType `json:"authority_type"`
+
+	// ExternalRef The barcode string to validate.
+	ExternalRef string `json:"external_ref"`
+}
+
+// ScannerValidateRequestAuthorityType Authority type the barcode is expected to belong to. Unknown
+// types are rejected with 404 `scanner.unknown_authority`.
+type ScannerValidateRequestAuthorityType string
+
+// ScannerValidateResponse Read-only validation verdict returned by
+// `POST /v1/scanner/validate`. Unlike `POST /v1/scan` the barcode
+// status is left untouched.
+type ScannerValidateResponse struct {
+	// AuthorityType Authority type the barcode was resolved against.
+	AuthorityType string `json:"authority_type"`
+
+	// BarcodeId UUID of the barcodes row.
+	BarcodeId openapi_types.UUID `json:"barcode_id"`
+
+	// ExternalRef Echo of the validated barcode string.
+	ExternalRef string `json:"external_ref"`
+
+	// InvalidReason Machine-readable reason when `valid` is false. Omitted for
+	// valid barcodes.
+	InvalidReason *ScannerValidateResponseInvalidReason `json:"invalid_reason,omitempty"`
+
+	// Status Current barcode status (unchanged by this call).
+	Status ScannerValidateResponseStatus `json:"status"`
+
+	// TicketId Linked platform ticket UUID. Omitted for barcodes without a
+	// ticket link.
+	TicketId *openapi_types.UUID `json:"ticket_id,omitempty"`
+
+	// Valid True only when the barcode status is `active`.
+	Valid bool `json:"valid"`
+}
+
+// ScannerValidateResponseInvalidReason Machine-readable reason when `valid` is false. Omitted for
+// valid barcodes.
+type ScannerValidateResponseInvalidReason string
+
+// ScannerValidateResponseStatus Current barcode status (unchanged by this call).
+type ScannerValidateResponseStatus string
+
 // ServerInfoResponse defines model for ServerInfoResponse.
 type ServerInfoResponse struct {
 	// BuildSha Git commit SHA embedded at build time via runtime/debug.ReadBuildInfo
@@ -3628,6 +3962,7 @@ type ServerInfoResponse struct {
 
 // SessionDeleteResponse Soft-delete response envelope.
 type SessionDeleteResponse struct {
+	// Deleted Always true on success; confirms the soft delete.
 	Deleted bool `json:"deleted"`
 
 	// Session A single dated session (time slot) under an event. Overlap with
@@ -3658,8 +3993,10 @@ type SessionItem struct {
 	// than zero. When this value changes via PATCH, the handler
 	// fires the capacity propagation hook (onCapacityChange) to
 	// keep the inventory ledger in sync.
-	CapacityTotal int32     `json:"capacity_total"`
-	CreatedAt     time.Time `json:"created_at"`
+	CapacityTotal int32 `json:"capacity_total"`
+
+	// CreatedAt ISO 8601 / RFC 3339 timestamp of row creation.
+	CreatedAt time.Time `json:"created_at"`
 
 	// EndAt Session end time (RFC 3339, UTC). Must be strictly after
 	// `start_at` — enforced by both the handler and a CHECK
@@ -3684,8 +4021,10 @@ type SessionItem struct {
 
 	// Status Lifecycle status. Transitions: draft → scheduled, scheduled
 	// → cancelled|completed.
-	Status    SessionItemStatus `json:"status"`
-	UpdatedAt time.Time         `json:"updated_at"`
+	Status SessionItemStatus `json:"status"`
+
+	// UpdatedAt ISO 8601 / RFC 3339 timestamp of last update.
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // SessionItemStatus Lifecycle status. Transitions: draft → scheduled, scheduled
@@ -3696,8 +4035,11 @@ type SessionItemStatus string
 // `has_overlapping_sessions` flag is true when any pair of returned
 // sessions overlaps in time.
 type SessionListResponse struct {
-	HasOverlappingSessions bool          `json:"has_overlapping_sessions"`
-	Sessions               []SessionItem `json:"sessions"`
+	// HasOverlappingSessions True when any pair of returned sessions overlaps in time.
+	HasOverlappingSessions bool `json:"has_overlapping_sessions"`
+
+	// Sessions Sessions belonging to the event, ordered by start_at.
+	Sessions []SessionItem `json:"sessions"`
 }
 
 // StartCheckoutRequest Request body for `POST /v1/checkout/start`. Creates a new checkout
@@ -3837,6 +4179,7 @@ type TicketListResponse struct {
 
 // TicketTierDeleteResponse Soft-delete response envelope for a ticket tier.
 type TicketTierDeleteResponse struct {
+	// Deleted Always true on success; confirms the soft delete.
 	Deleted bool `json:"deleted"`
 
 	// Tier A single pricing tier (ticket type) within a Session. Three pricing
@@ -3880,7 +4223,9 @@ type TicketTierEnvelope struct {
 type TicketTierItem struct {
 	// Capacity Optional per-tier capacity cap. When set, must be > 0. `null`
 	// means "no tier-level cap" (only the session-level cap applies).
-	Capacity  *int32    `json:"capacity"`
+	Capacity *int32 `json:"capacity"`
+
+	// CreatedAt ISO 8601 / RFC 3339 timestamp of row creation.
 	CreatedAt time.Time `json:"created_at"`
 
 	// Currency ISO 4217 currency code. Defaults to `USD` when omitted on create.
@@ -3920,7 +4265,9 @@ type TicketTierItem struct {
 	SessionId openapi_types.UUID `json:"session_id"`
 
 	// SortOrder Display order; lower values render first.
-	SortOrder int32     `json:"sort_order"`
+	SortOrder int32 `json:"sort_order"`
+
+	// UpdatedAt ISO 8601 / RFC 3339 timestamp of last update.
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
@@ -3930,6 +4277,7 @@ type TicketTierItemPricingMode string
 
 // TicketTierListResponse List-ticket-tiers response envelope.
 type TicketTierListResponse struct {
+	// Tiers Ticket tiers for the session, ordered by sort_order.
 	Tiers []TicketTierItem `json:"tiers"`
 }
 
@@ -3981,14 +4329,24 @@ type UpdateBankAccountRequest struct {
 	BankName *string `json:"bank_name"`
 
 	// Bic Empty string or null clears the field.
-	Bic        *string `json:"bic"`
-	Country    *string `json:"country,omitempty"`
-	Currency   *string `json:"currency,omitempty"`
+	Bic *string `json:"bic"`
+
+	// Country New ISO 3166-1 alpha-2 country code where the account is held.
+	Country *string `json:"country,omitempty"`
+
+	// Currency New ISO 4217 three-letter currency code of the account.
+	Currency *string `json:"currency,omitempty"`
+
+	// HolderName New legal name of the account holder.
 	HolderName *string `json:"holder_name,omitempty"`
 
 	// Iban Empty string or null clears the field.
-	Iban      *string `json:"iban"`
-	IsPrimary *bool   `json:"is_primary,omitempty"`
+	Iban *string `json:"iban"`
+
+	// IsPrimary Set true to promote this account to primary (atomically
+	// demotes the previous primary). Setting false while no other
+	// primary exists is rejected with 409.
+	IsPrimary *bool `json:"is_primary,omitempty"`
 
 	// RoutingNumber Empty string or null clears the field.
 	RoutingNumber *string `json:"routing_number"`
@@ -4005,11 +4363,15 @@ type UpdateEventRequest struct {
 
 	// EndAt When both start_at and end_at are present in the same body,
 	// end_at must remain strictly after start_at.
-	EndAt    *time.Time `json:"end_at"`
-	ImageUrl *string    `json:"image_url"`
+	EndAt *time.Time `json:"end_at"`
+
+	// ImageUrl New poster / cover image URL. Null clears the field.
+	ImageUrl *string `json:"image_url"`
 
 	// Name New canonical event name. Empty leaves the value unchanged.
-	Name    *string    `json:"name,omitempty"`
+	Name *string `json:"name,omitempty"`
+
+	// StartAt New event start time (RFC 3339, UTC).
 	StartAt *time.Time `json:"start_at"`
 
 	// Translations Optional map of locale code → translated event name and description.
@@ -4019,11 +4381,13 @@ type UpdateEventRequest struct {
 	Translations *EventTranslations `json:"translations,omitempty"`
 
 	// VenueId Reassign the event to a different (same-org) venue.
-	VenueId    *openapi_types.UUID           `json:"venue_id"`
+	VenueId *openapi_types.UUID `json:"venue_id"`
+
+	// Visibility New discovery visibility for the event.
 	Visibility *UpdateEventRequestVisibility `json:"visibility,omitempty"`
 }
 
-// UpdateEventRequestVisibility defines model for UpdateEventRequest.Visibility.
+// UpdateEventRequestVisibility New discovery visibility for the event.
 type UpdateEventRequestVisibility string
 
 // UpdateEventStatusRequest Status-transition body for POST
@@ -4178,16 +4542,29 @@ type UpdatePaymentProviderConfigRequest struct {
 // All fields are optional; omitted fields leave the corresponding
 // column unchanged. Validation rules mirror create.
 type UpdatePromoCodeRequest struct {
+	// AppliesToTierIds New whitelist of ticket-tier UUIDs the code applies to.
+	// Empty array makes the code apply order-wide.
 	AppliesToTierIds *[]openapi_types.UUID `json:"applies_to_tier_ids,omitempty"`
 
 	// DiscountType Optional new discount type. Values outside the enum are
 	// rejected with 400 `promo.invalid_discount_type`.
-	DiscountType       *UpdatePromoCodeRequestDiscountType `json:"discount_type,omitempty"`
-	DiscountValue      *int64                              `json:"discount_value"`
-	MaxUses            *int32                              `json:"max_uses"`
-	MaxUsesPerCustomer *int32                              `json:"max_uses_per_customer"`
-	MinOrderAmount     *int64                              `json:"min_order_amount"`
-	Status             *UpdatePromoCodeRequestStatus       `json:"status,omitempty"`
+	DiscountType *UpdatePromoCodeRequestDiscountType `json:"discount_type,omitempty"`
+
+	// DiscountValue Optional new discount value. Percent in [1, 100] for
+	// `percent`; minor units for `fixed_amount`.
+	DiscountValue *int64 `json:"discount_value"`
+
+	// MaxUses New total redemption cap. `null` means unlimited.
+	MaxUses *int32 `json:"max_uses"`
+
+	// MaxUsesPerCustomer New per-customer redemption cap. `null` means unlimited.
+	MaxUsesPerCustomer *int32 `json:"max_uses_per_customer"`
+
+	// MinOrderAmount New minor-units minimum order subtotal required for the code to apply.
+	MinOrderAmount *int64 `json:"min_order_amount"`
+
+	// Status New lifecycle status. `paused` codes fail promo-validate with 422.
+	Status *UpdatePromoCodeRequestStatus `json:"status,omitempty"`
 
 	// ValidFrom RFC3339 instant. Non-RFC3339 values return 400
 	// `promo.invalid_valid_from`.
@@ -4202,7 +4579,7 @@ type UpdatePromoCodeRequest struct {
 // rejected with 400 `promo.invalid_discount_type`.
 type UpdatePromoCodeRequestDiscountType string
 
-// UpdatePromoCodeRequestStatus defines model for UpdatePromoCodeRequest.Status.
+// UpdatePromoCodeRequestStatus New lifecycle status. `paused` codes fail promo-validate with 422.
 type UpdatePromoCodeRequestStatus string
 
 // UpdateSessionRequest Partial update for PATCH
@@ -4818,6 +5195,22 @@ type ListOrgEventsParams struct {
 	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
 }
 
+// GetScannerSnapshotParams defines parameters for GetScannerSnapshot.
+type GetScannerSnapshotParams struct {
+	// SessionId UUID of the event session whose barcodes to retrieve.
+	SessionId openapi_types.UUID `form:"session_id" json:"session_id"`
+
+	// Since RFC 3339 delta cursor — only barcodes updated strictly after
+	// this instant are returned. Omit for a full snapshot.
+	Since *time.Time `form:"since,omitempty" json:"since,omitempty"`
+
+	// Page 1-based page number (default 1).
+	Page *int `form:"page,omitempty" json:"page,omitempty"`
+
+	// PerPage Page size (default 200, capped at 500).
+	PerPage *int `form:"per_page,omitempty" json:"per_page,omitempty"`
+}
+
 // GetTicketCredentialParams defines parameters for GetTicketCredential.
 type GetTicketCredentialParams struct {
 	// Type Credential type to retrieve. Defaults to `static_qr` when
@@ -4893,6 +5286,9 @@ type PostV1AuthRefreshJSONRequestBody = AuthRefreshRequest
 
 // PostV1AuthRegisterJSONRequestBody defines body for PostV1AuthRegister for application/json ContentType.
 type PostV1AuthRegisterJSONRequestBody = AuthRegisterRequest
+
+// RegisterBarcodeJSONRequestBody defines body for RegisterBarcode for application/json ContentType.
+type RegisterBarcodeJSONRequestBody = RegisterBarcodeRequest
 
 // CreateBarcodeAuthorityJSONRequestBody defines body for CreateBarcodeAuthority for application/json ContentType.
 type CreateBarcodeAuthorityJSONRequestBody = CreateBarcodeAuthorityRequest
@@ -4975,6 +5371,12 @@ type UpdateEventJSONRequestBody = UpdateEventRequest
 // UpdateEventStatusJSONRequestBody defines body for UpdateEventStatus for application/json ContentType.
 type UpdateEventStatusJSONRequestBody = UpdateEventStatusRequest
 
+// GrantOrganizationMembershipJSONRequestBody defines body for GrantOrganizationMembership for application/json ContentType.
+type GrantOrganizationMembershipJSONRequestBody = GrantMembershipRequest
+
+// RevokeOrganizationMembershipJSONRequestBody defines body for RevokeOrganizationMembership for application/json ContentType.
+type RevokeOrganizationMembershipJSONRequestBody = RevokeMembershipRequest
+
 // CreatePaymentProviderConfigJSONRequestBody defines body for CreatePaymentProviderConfig for application/json ContentType.
 type CreatePaymentProviderConfigJSONRequestBody = CreatePaymentProviderConfigRequest
 
@@ -5017,8 +5419,14 @@ type RejectRefundJSONRequestBody = ApproveRefundRequest
 // CreateReservationJSONRequestBody defines body for CreateReservation for application/json ContentType.
 type CreateReservationJSONRequestBody = CreateReservationRequest
 
+// ScanBarcodeJSONRequestBody defines body for ScanBarcode for application/json ContentType.
+type ScanBarcodeJSONRequestBody = ScanRequest
+
 // PostScannerScanEventsJSONRequestBody defines body for PostScannerScanEvents for application/json ContentType.
 type PostScannerScanEventsJSONRequestBody = ScannerScanBatchRequest
+
+// ValidateScannerBarcodeJSONRequestBody defines body for ValidateScannerBarcode for application/json ContentType.
+type ValidateScannerBarcodeJSONRequestBody = ScannerValidateRequest
 
 // RegisterWebhookSubscriberJSONRequestBody defines body for RegisterWebhookSubscriber for application/json ContentType.
 type RegisterWebhookSubscriberJSONRequestBody = RegisterWebhookSubscriberRequest

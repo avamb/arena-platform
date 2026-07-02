@@ -28,10 +28,12 @@ jobs:
           cache: true
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        # v8 of the action installs golangci-lint v2, which is required to
+        # parse the v2-format .golangci.yml (the v6 action caps at v1.64.x
+        # and fails config verification).
+        uses: golangci/golangci-lint-action@v8
         with:
           version: latest
-          args: --timeout=5m
 
   # ─────────────────────────────────────────────────────────────────
   # Job 2: Test — unit tests with race detector + coverage

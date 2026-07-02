@@ -77,5 +77,9 @@ Projectsarena_new/
 /Projects*/
 .gomodcache/
 
+# OpenAPI 3.0-compat temp spec produced by `make gen-openapi`
+# (apps/backend/tools/openapi30gen output; consumed by oapi-codegen only)
+apps/backend/openapi/.openapi.compat30.gen.yaml
+
 # Claude Code local settings (machine-specific permissions)
 .claude/settings.local.json

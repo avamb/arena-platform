@@ -96,7 +96,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check: form inputs have associated labels (for/id pairs)
+      - name: "Check: form inputs have associated labels (for/id pairs)"
         run: |
           php -r "
             \$file = 'apps/wp-plugin/arena-events/includes/class-checkout.php';
@@ -125,7 +125,7 @@ jobs:
             echo 'PASS: ARIA markup checks passed.' . PHP_EOL;
           "
 
-      - name: Check: accessibility documentation present
+      - name: "Check: accessibility documentation present"
         run: |
           test -f ops/accessibility/wcag-checklist.md       || { echo "FAIL: wcag-checklist.md missing"; exit 1; }
           test -f ops/accessibility/wp-demo-test-plan.md    || { echo "FAIL: wp-demo-test-plan.md missing"; exit 1; }
