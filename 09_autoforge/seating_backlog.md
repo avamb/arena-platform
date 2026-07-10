@@ -412,10 +412,19 @@ sightlines, house holds).
 ### Wave SEAT-C — commerce path with seats
 
 **SEAT-C1. Seat reservations.** Extend `POST /v1/reservations`
-(hcheckout): request gains mutually-exclusive `seats: ["<seat_key>",…]`
-alongside `quantity` (validation: exactly one of them; `seats` requires
-a seated session, `quantity` a GA session — hybrid sessions accept
-both). Seated path: transactional hold per §5.2 concurrency contract,
+(hcheckout): request gains `seats: ["<seat_key>",…]` alongside the
+existing `quantity`. Validation by admission_mode: `seats` requires a
+seated/hybrid session, bare `quantity` a GA/hybrid session.
+**Hybrid sessions support a MIXED reservation in one request** —
+`{"seats": [...], "ga_items": [{"tier_id": "...", "quantity": N}, …]}`
+(`ga_items` generalizes quantity+tier and allows multiple GA/standing
+zones; plain `quantity`+`tier_id` remains as the single-item shorthand
+for backward compatibility). A mixed reservation is ONE hold with ONE
+TTL: seats via the §5.2 seat contract and GA units via the existing
+inventory_ledger counters, atomically in the same transaction — the
+widget's mixed cart (seat rows + zone rows, one timer, one payment;
+see 16_ticket_widget_ux_and_technology_ru.md §4.11) maps 1:1 onto it.
+Seated path: transactional hold per §5.2 concurrency contract,
 writes `reservation_seats`, sets `session_seats.status='held'` +
 `reservation_id`, bumps versions. Deterministic 409 body lists
 conflicting seat keys (`reservation.seats_conflict`). Reservation
