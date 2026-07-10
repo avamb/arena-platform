@@ -29,12 +29,38 @@ import (
 // hgeo / hfeed and avoids stale captures when test code mutates *Server
 // fields between calls.
 func (s *Server) bil24Handler() *hbil24.Handler {
+	// admissionQ and seatQ (feature #312 Wave SEAT-D1) reuse
+	// s.sessionQueries and s.seatingQueries — the same *gen.Queries
+	// values wired at Server construction. Passed nil when the Server
+	// has not been constructed with a pool (nil-safe: the SEAT-D1
+	// GET_SEAT_LIST branch and RESERVATION dispatcher self-gate on
+	// h.admissionQ / h.seatQ before dereferencing).
+	var admissionQ hbil24.AdmissionQuerier
+	if s.sessionQueries != nil {
+		admissionQ = s.sessionQueries
+	}
+	var seatQ hbil24.SeatQuerier
+	if s.seatingQueries != nil {
+		seatQ = s.seatingQueries
+	}
+	// schemaQ (feature #313 Wave SEAT-D2) reuses s.seatingQueries: the
+	// same *gen.Queries value already satisfies GetPublicSessionSchema
+	// (from queries/session_seating_public.sql) and ListSessionSeats.
+	// Nil-safe: handleBil24GetSchema self-gates and returns
+	// resultCode=-99 when the dependency is unavailable.
+	var schemaQ hbil24.SchemaQuerier
+	if s.seatingQueries != nil {
+		schemaQ = s.seatingQueries
+	}
 	return hbil24.New(
 		s.eventQueries,
 		s.tierQueries,
 		s.checkoutQueries,
 		s.ticketQueries,
 		s.barcodeQueries,
+		admissionQ,
+		seatQ,
+		schemaQ,
 		s.logger,
 	)
 }

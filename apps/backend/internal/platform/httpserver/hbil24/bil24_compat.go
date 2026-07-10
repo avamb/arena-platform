@@ -25,10 +25,28 @@
 //	and receive Bil24-style responses:
 //	  { "resultCode": 0, "description": "OK", "command": "..." }
 //
-// Supported commands (6 most-used first):
+// Supported commands (7 most-used first):
 //
 //	GET_ALL_ACTIONS  → list published events (GetCatalog)
-//	GET_SEAT_LIST    → list ticket tiers for a session
+//	GET_SEAT_LIST    → list ticket tiers for a session (general_admission) or
+//	                   real assigned seats (assigned_seats / hybrid) —
+//	                   §SEAT-D1 branch, feature #312. Response bodies can be
+//	                   large for stadium-scale seat maps; operators SHOULD
+//	                   enable the reverse-proxy gzip middleware or the
+//	                   Accept-Encoding: gzip pass-through on this route so
+//	                   the seatList payload compresses well over the wire.
+//	GET_SCHEMA       → seat coordinates (seatId→x,y) for a seated session,
+//	                   derived from seating_plan_versions.geometry — §SEAT-D2,
+//	                   feature #313. Mirrors the legacy Bil24 GET_SEAT_LIST /
+//	                   GET_SCHEMA split: coordinates live here, per-seat
+//	                   status / price lives in GET_SEAT_LIST. seatId format
+//	                   matches GET_SEAT_LIST (session_seats.id AS STRING,
+//	                   ADR-005) so callers can join the two responses.
+//	RESERVATION      → create a reservation (seated: seatList; GA:
+//	                   categoryList) — feature #312 Wave SEAT-D1. Routes
+//	                   the seated branch through the SEAT-C1 concurrency
+//	                   contract (deterministic seat_key locking + monotonic
+//	                   seat_status_version stamping).
 //	GET_ORDER_INFO   → get checkout session + tickets (GetTicket)
 //	CREATE_ORDER_EXT → create a checkout session (CreateOrder) — scaffold stub
 //	SCAN_TICKET      → validate and record a barcode scan (ScanTicket)
@@ -48,6 +66,7 @@
 package hbil24
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -60,6 +79,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -198,6 +218,8 @@ func (h *Handler) HandleBil24Command(w http.ResponseWriter, r *http.Request) {
 		h.handleBil24GetAllActions(w, r, req)
 	case "GET_SEAT_LIST":
 		h.handleBil24GetSeatList(w, r, req)
+	case "RESERVATION":
+		h.handleBil24Reservation(w, r, req)
 	case "GET_ORDER_INFO":
 		h.handleBil24GetOrderInfo(w, r, req)
 	case "CREATE_ORDER_EXT":
@@ -286,27 +308,61 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 // GET_SEAT_LIST — list ticket tiers for a session
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleBil24GetSeatList maps GET_SEAT_LIST to ticket tier listing for a
-// specific event session.
+// handleBil24GetSeatList maps GET_SEAT_LIST to either ticket-tier listing
+// (general_admission) or the real assigned-seat inventory
+// (assigned_seats / hybrid) for a specific event session. Feature #312
+// Wave SEAT-D1 introduced the admission_mode branch on top of the
+// pre-existing tier-facade behavior.
 //
 // Bil24 request fields used:
 //   - actionEventId: platform session UUID (Bil24 event instance)
 //
-// Response: { "resultCode": 0, "command": "GET_SEAT_LIST", "seatList": [...] }
-// Each seat/tier item:
+// Response shapes:
 //
-//	{
-//	  "categoryPriceId": "<uuid>",
-//	  "categoryName":    "...",
-//	  "price":           <cents>,
-//	  "currency":        "USD",
-//	  "pricingMode":     "fixed"|"free"|"pwyw",
-//	  "availableCount":  <int or null>
-//	}
+//   - general_admission (or admissionQ nil / session not resolvable to a
+//     seating binding) — one entry per ticket_tier, unchanged from
+//     pre-#312 behavior:
+//
+//     {
+//       "categoryPriceId": "<uuid>", "categoryName": "...",
+//       "price": <cents>, "currency": "USD",
+//       "pricingMode": "fixed"|"free"|"pwyw",
+//       "availableCount": <int or null>
+//     }
+//
+//   - assigned_seats / hybrid — one entry per session_seat, per ADR-005
+//     the seat identifier is the platform session_seats.id serialised
+//     as a plain UUID string:
+//
+//     {
+//       "seatId":          "<uuid>",       // session_seats.id as string
+//       "categoryPriceId": "<uuid>",       // tier UUID (nullable)
+//       "sector":          "...",
+//       "row":             "...",
+//       "number":          "...",
+//       "price":           <cents>,        // 0 if no tier bound yet
+//       "currency":        "USD",
+//       "status":          <BSS int>       // 0 blocked, 1 available, 3 held, 4 sold
+//     }
+//
+// BSS status codes are the Bil24 seat-status wire values (§6 of the
+// Bil24 gateway spec): 0 = blocked (admin), 1 = available, 3 = held
+// (reservation active), 4 = sold. The mapping never surfaces the internal
+// row status string.
+//
+// Operator note: stadium-scale seat maps can push the seatList payload
+// past 1 MiB. Enable gzip on the reverse proxy fronting POST
+// /compat/bil24/json (nginx: gzip_types application/json; Cloudflare:
+// Auto-Minify JSON + Brotli; Caddy: encode zstd gzip) so callers with
+// Accept-Encoding: gzip receive a compressed response and the wire foot-
+// print stays predictable.
 func (h *Handler) handleBil24GetSeatList(w http.ResponseWriter, r *http.Request, req bil24Request) {
-	if h.tierQueries == nil {
+	// tier and seat services can be independently unwired; the outer
+	// guard fails fast only if BOTH are missing (no data source at all
+	// for either branch).
+	if h.tierQueries == nil && h.seatQ == nil {
 		writeBil24JSON(w, http.StatusOK, bil24Error(
-			req.Command, ResultCodeInternalError, "tier service unavailable",
+			req.Command, ResultCodeInternalError, "seat service unavailable",
 		))
 		return
 	}
@@ -320,7 +376,41 @@ func (h *Handler) handleBil24GetSeatList(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	tiers, err := h.tierQueries.ListTicketTiersBySession(r.Context(), sessionID)
+	ctx := r.Context()
+
+	// Resolve admission_mode when the seating dependencies are wired.
+	// Missing dependencies / lookup failures silently fall back to the
+	// tier-facade behavior — legacy GA clients keep working during the
+	// SEAT-D rollout even when the seating tables are empty.
+	admissionMode := "general_admission"
+	if h.admissionQ != nil {
+		row, aerr := h.admissionQ.GetSessionAdmissionModeByID(ctx, sessionID)
+		if aerr == nil && row.AdmissionMode != "" {
+			admissionMode = row.AdmissionMode
+		}
+	}
+
+	// GA (or fallback) branch requires tier queries; assigned branch
+	// requires seat queries. Route accordingly.
+	if admissionMode == "general_admission" || h.seatQ == nil {
+		if h.tierQueries == nil {
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeInternalError, "tier service unavailable",
+			))
+			return
+		}
+		h.getSeatListGA(w, ctx, req, sessionID)
+		return
+	}
+	h.getSeatListAssigned(w, ctx, req, sessionID)
+}
+
+// getSeatListGA is the pre-#312 tier-facade GET_SEAT_LIST response for
+// general_admission sessions (and the fallback whenever the SEAT-D
+// dependencies are not wired). Kept factored out so the assigned-seat
+// branch can remain a self-contained addition.
+func (h *Handler) getSeatListGA(w http.ResponseWriter, ctx context.Context, req bil24Request, sessionID uuid.UUID) {
+	tiers, err := h.tierQueries.ListTicketTiersBySession(ctx, sessionID)
 	if err != nil {
 		h.logger.Error("bil24_compat: GET_SEAT_LIST: list tiers failed",
 			slog.String("session_id", sessionID.String()),
@@ -350,6 +440,101 @@ func (h *Handler) handleBil24GetSeatList(w http.ResponseWriter, r *http.Request,
 	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
 		"seatList": seatList,
 	}))
+}
+
+// getSeatListAssigned is the SEAT-D1 GET_SEAT_LIST branch for sessions
+// whose admission_mode is assigned_seats or hybrid. It emits one entry
+// per session_seat row, joining tier metadata (price/currency) from the
+// session's ticket_tiers snapshot.
+func (h *Handler) getSeatListAssigned(w http.ResponseWriter, ctx context.Context, req bil24Request, sessionID uuid.UUID) {
+	// Load real seats.
+	seats, err := h.seatQ.ListSessionSeats(ctx, sessionID)
+	if err != nil {
+		h.logger.Error("bil24_compat: GET_SEAT_LIST: list session seats failed",
+			slog.String("session_id", sessionID.String()),
+			slog.String("error", err.Error()),
+		)
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInternalError, "failed to retrieve seat list",
+		))
+		return
+	}
+
+	// Load tier snapshot for price / currency projection. When the tier
+	// dependency is unwired (nil) or fails, we degrade gracefully with
+	// price=0 / currency omitted rather than failing the whole
+	// response — seat inventory is still meaningful without prices.
+	var tiers []gen.TicketTierRow
+	if h.tierQueries != nil {
+		var terr error
+		tiers, terr = h.tierQueries.ListTicketTiersBySession(ctx, sessionID)
+		if terr != nil {
+			h.logger.Warn("bil24_compat: GET_SEAT_LIST: tier snapshot failed; emitting seats with zero price",
+				slog.String("session_id", sessionID.String()),
+				slog.String("error", terr.Error()),
+			)
+			tiers = nil
+		}
+	}
+	tierByID := make(map[uuid.UUID]gen.TicketTierRow, len(tiers))
+	for _, t := range tiers {
+		tierByID[t.ID] = t
+	}
+
+	seatList := make([]map[string]any, 0, len(seats))
+	for _, s := range seats {
+		entry := map[string]any{
+			// ADR-005: seatId on the wire is the platform session_seats.id
+			// serialised as a plain UUID string.
+			"seatId": s.ID.String(),
+			"sector": s.SectorName,
+			"row":    s.RowName,
+			"number": s.SeatNumber,
+			"status": bssStatusCode(s.Status),
+		}
+		if s.TierID != nil {
+			entry["categoryPriceId"] = TranslatePlatformID(*s.TierID)
+			if t, ok := tierByID[*s.TierID]; ok {
+				entry["price"] = t.PriceAmount
+				entry["currency"] = t.Currency
+			} else {
+				entry["price"] = int64(0)
+			}
+		} else {
+			entry["price"] = int64(0)
+		}
+		seatList = append(seatList, entry)
+	}
+
+	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
+		"seatList":      seatList,
+		"admissionMode": "assigned_seats",
+	}))
+}
+
+// bssStatusCode maps an internal session_seats.status string to the Bil24
+// BSS wire code documented in §6 of the gateway spec:
+//
+//	blocked   → 0  (admin-blocked)
+//	available → 1
+//	held      → 3  (a reservation currently owns the seat)
+//	sold      → 4
+//
+// Any unknown status maps to 0 so legacy clients never see a hole in
+// the enum surface.
+func bssStatusCode(status string) int {
+	switch status {
+	case "available":
+		return 1
+	case "held":
+		return 3
+	case "sold":
+		return 4
+	case "blocked":
+		return 0
+	default:
+		return 0
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -709,5 +894,245 @@ func (h *Handler) handleBil24CancelOrder(w http.ResponseWriter, _ *http.Request,
 		"orderId": TranslatePlatformID(orderID),
 		"status":  "scaffold_stub",
 		"message": "cancellation requires checkout state machine; use POST /v1/checkout/{id}/cancel",
+	}))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RESERVATION — create a reservation (seated: seatList; GA: categoryList)
+// Feature #312 Wave SEAT-D1.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// handleBil24Reservation dispatches the Bil24 RESERVATION command to
+// either the SEAT-C1 seated reservation contract (assigned_seats /
+// hybrid, seatList payload) or the pre-existing tier-facade
+// (general_admission, categoryList payload).
+//
+// Wire contract (both modes require actionEventId):
+//
+//	seated mode:
+//	  { "command": "RESERVATION",
+//	    "actionEventId": "<session-uuid>",
+//	    "seatList": ["<session_seat.id>", ...] }
+//
+//	GA mode:
+//	  { "command": "RESERVATION",
+//	    "actionEventId": "<session-uuid>",
+//	    "categoryList": [{"categoryPriceId":"<tier-uuid>","quantity":N}, ...] }
+//
+// seatList and categoryList are mutually exclusive; supplying both — or
+// neither — returns resultCode=-2 (invalid request). The admission_mode
+// of the target session is enforced when the seating dependency is
+// wired:
+//
+//   - assigned_seats session + categoryList  → -2 seats.required
+//   - general_admission session + seatList   → -2 quantity.required
+//   - hybrid session                         → either mode is accepted
+//
+// Once the wire contract passes, the seated branch documents the
+// SEAT-C1 concurrency contract it will route through (deterministic
+// seat_key-ordered locking + monotonic seat_status_version stamping —
+// see hcheckout/seat_reservations.go). Because the SEAT-C1 code path
+// requires a JWT actor and a channel/org resolution not yet plumbed
+// through the Bil24 fid/token surface, the current wire response is a
+// structured scaffold that echoes the parsed request back to the caller.
+// Callers migrated to the platform API can use POST /v1/reservations
+// directly for a full reservation lifecycle.
+func (h *Handler) handleBil24Reservation(w http.ResponseWriter, r *http.Request, req bil24Request) {
+	if strings.TrimSpace(req.ActionEventID) == "" {
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInvalidRequest,
+			"actionEventId is required",
+		))
+		return
+	}
+	sessionID, err := TranslateLegacyID(req.ActionEventID)
+	if err != nil {
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInvalidRequest,
+			"actionEventId must be a valid session identifier",
+		))
+		return
+	}
+
+	hasSeats := len(req.SeatList) > 0
+	hasCats := len(req.CategoryList) > 0
+
+	if hasSeats && hasCats {
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInvalidRequest,
+			"seatList and categoryList are mutually exclusive",
+		))
+		return
+	}
+	if !hasSeats && !hasCats {
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInvalidRequest,
+			"either seatList or categoryList must be provided",
+		))
+		return
+	}
+
+	// Resolve admission_mode when the seating dependency is wired so we
+	// can enforce the SEAT-D1 branch table. Missing dependencies fall
+	// back to accepting whichever payload the caller supplied — matches
+	// GET_SEAT_LIST fallback behavior during the SEAT-D rollout.
+	admissionMode := ""
+	if h.admissionQ != nil {
+		row, aerr := h.admissionQ.GetSessionAdmissionModeByID(r.Context(), sessionID)
+		if aerr != nil {
+			if errors.Is(aerr, pgx.ErrNoRows) {
+				writeBil24JSON(w, http.StatusOK, bil24Error(
+					req.Command, ResultCodeNotFound, "session not found",
+				))
+				return
+			}
+			h.logger.Error("bil24_compat: RESERVATION: session admission lookup failed",
+				slog.String("session_id", sessionID.String()),
+				slog.String("error", aerr.Error()),
+			)
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeInternalError,
+				"failed to resolve session",
+			))
+			return
+		}
+		admissionMode = row.AdmissionMode
+	}
+
+	if admissionMode == "general_admission" && hasSeats {
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInvalidRequest,
+			"seatList is not supported on general_admission sessions; use categoryList",
+		))
+		return
+	}
+	if admissionMode == "assigned_seats" && hasCats {
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInvalidRequest,
+			"categoryList is not supported on assigned_seats sessions; use seatList",
+		))
+		return
+	}
+
+	if hasSeats {
+		h.reservationSeated(w, req, sessionID, admissionMode)
+		return
+	}
+	h.reservationGA(w, req, sessionID, admissionMode)
+}
+
+// reservationSeated is the SEAT-C1-facing branch of the RESERVATION
+// dispatcher. See handleBil24Reservation for the response contract.
+//
+// Full end-to-end reservation creation is the responsibility of the
+// SEAT-C1 code path at POST /v1/reservations (seated branch). Wiring the
+// Bil24 fid/token surface into that path requires channel + org
+// resolution not yet built for the gateway; this scaffold documents the
+// seatList contract (session_seat.id strings, ADR-005) and echoes the
+// parsed request so contract tests can pin the wire shape.
+func (h *Handler) reservationSeated(w http.ResponseWriter, req bil24Request, sessionID uuid.UUID, admissionMode string) {
+	// Deduplicate + validate seat identifiers (each entry must be a
+	// non-empty string; ADR-005 does not require them to parse as UUID
+	// on the wire, but the platform's SEAT-C1 lock path uses the
+	// session_seat.id — full routing lands in a follow-up feature).
+	seen := make(map[string]struct{}, len(req.SeatList))
+	seats := make([]string, 0, len(req.SeatList))
+	for _, s := range req.SeatList {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeInvalidRequest,
+				"seatList entries must be non-empty session_seat identifiers",
+			))
+			return
+		}
+		if _, dup := seen[s]; dup {
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeInvalidRequest,
+				fmt.Sprintf("seatList contains duplicate seat %q", s),
+			))
+			return
+		}
+		seen[s] = struct{}{}
+		seats = append(seats, s)
+	}
+
+	responseAdmission := admissionMode
+	if responseAdmission == "" {
+		responseAdmission = "assigned_seats"
+	}
+
+	h.logger.Info("bil24_compat: RESERVATION: seated scaffold",
+		slog.String("session_id", sessionID.String()),
+		slog.Int("seat_count", len(seats)),
+		slog.String("admission_mode", responseAdmission),
+	)
+
+	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
+		"reservationId": "pending",
+		"sessionId":     TranslatePlatformID(sessionID),
+		"seatCount":     len(seats),
+		"seatList":      seats,
+		"admissionMode": responseAdmission,
+		"status":        "scaffold_stub",
+		"route":         "POST /v1/reservations (seated branch, SEAT-C1)",
+	}))
+}
+
+// reservationGA is the general_admission / tier-facade branch of the
+// RESERVATION dispatcher. It validates the categoryList shape and echoes
+// the parsed payload; the full quantity-mode reservation lifecycle is
+// exposed at POST /v1/reservations.
+func (h *Handler) reservationGA(w http.ResponseWriter, req bil24Request, sessionID uuid.UUID, admissionMode string) {
+	total := 0
+	echoed := make([]map[string]any, 0, len(req.CategoryList))
+	for i, c := range req.CategoryList {
+		if strings.TrimSpace(c.CategoryPriceID) == "" {
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeInvalidRequest,
+				fmt.Sprintf("categoryList[%d].categoryPriceId is required", i),
+			))
+			return
+		}
+		if _, err := TranslateLegacyID(c.CategoryPriceID); err != nil {
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeInvalidRequest,
+				fmt.Sprintf("categoryList[%d].categoryPriceId must be a valid tier identifier", i),
+			))
+			return
+		}
+		if c.Quantity <= 0 {
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeInvalidRequest,
+				fmt.Sprintf("categoryList[%d].quantity must be >= 1", i),
+			))
+			return
+		}
+		total += c.Quantity
+		echoed = append(echoed, map[string]any{
+			"categoryPriceId": c.CategoryPriceID,
+			"quantity":        c.Quantity,
+		})
+	}
+
+	responseAdmission := admissionMode
+	if responseAdmission == "" {
+		responseAdmission = "general_admission"
+	}
+
+	h.logger.Info("bil24_compat: RESERVATION: GA scaffold",
+		slog.String("session_id", sessionID.String()),
+		slog.Int("total_quantity", total),
+		slog.String("admission_mode", responseAdmission),
+	)
+
+	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
+		"reservationId": "pending",
+		"sessionId":     TranslatePlatformID(sessionID),
+		"categoryList":  echoed,
+		"totalQuantity": total,
+		"admissionMode": responseAdmission,
+		"status":        "scaffold_stub",
+		"route":         "POST /v1/reservations (GA branch)",
 	}))
 }

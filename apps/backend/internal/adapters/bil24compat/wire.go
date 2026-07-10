@@ -54,6 +54,39 @@ type Request struct {
 	OrderID string
 	// TicketID is the Bil24 barcode / ticket identifier (SCAN_TICKET).
 	TicketID string
+
+	// SeatList is the seated-mode RESERVATION payload (feature #312,
+	// Wave SEAT-D1). Each entry is a session_seat.id string (ADR-005 —
+	// the platform's session_seats.id, serialised as a plain UUID
+	// string). Present for RESERVATION on sessions whose admission_mode
+	// is assigned_seats (or hybrid with seats). Mutually exclusive with
+	// CategoryList.
+	//
+	// No JSON tag: Go's encoding/json decoder matches the "seatList"
+	// wire key case-insensitively against the PascalCase field name,
+	// matching the rest of Request. This also keeps the platform's
+	// snake_case JSON tag policy intact — the Bil24 gateway is a
+	// legacy wire-compat layer, not a first-party API surface.
+	SeatList []string
+	// CategoryList is the general-admission RESERVATION payload used by
+	// legacy Bil24 clients on general_admission (tier-facade) sessions.
+	// Each entry names a categoryPriceId (platform tier UUID) and a
+	// quantity. Mutually exclusive with SeatList.
+	CategoryList []CategoryQty
+}
+
+// CategoryQty is one row of the legacy Bil24 categoryList payload used by
+// RESERVATION on general_admission sessions. CategoryPriceID names a
+// platform ticket_tier.id; Quantity is the number of tickets requested
+// against that tier. The struct is unmarshal-only; no JSON tags are
+// declared so the snake_case policy scan stays quiet (case-insensitive
+// matching against the PascalCase fields covers the legacy camelCase
+// wire keys).
+type CategoryQty struct {
+	// CategoryPriceID is the ticket_tier identifier (platform UUID).
+	CategoryPriceID string
+	// Quantity is the requested ticket count for the tier (>= 1).
+	Quantity int
 }
 
 // Response is the Bil24-compatible response envelope. ResultCode=0

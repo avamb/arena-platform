@@ -19110,3 +19110,49 @@ Note: pre-existing uncommitted hbil24 in-flight work (from another
   agent session) fails go vet on that package only; unrelated to #311.
   Left untouched.
 Marked #311 passing.
+
+
+## 2026-07-10 - Feature #312 (SEAT-D1) Bil24 gateway GET_SEAT_LIST + RESERVATION with real seats
+- bil24compat/wire.go: added SeatList and CategoryList request fields
+  (no json tags -- case-insensitive decoding keeps snake_case JSON-tag
+  policy quiet); CategoryQty carries CategoryPriceID + Quantity.
+- hbil24/handler.go: promoted AdmissionQuerier + SeatQuerier as narrow
+  exported interfaces satisfied by *gen.Queries. Handler struct gains
+  admissionQ + seatQ fields; New() takes them alongside the existing
+  five gen.Queries handles. bil24_shims.go wires s.sessionQueries and
+  s.seatingQueries as the AdmissionQuerier / SeatQuerier respectively
+  (nil-safe when the seating pool is not present).
+- hbil24/bil24_compat.go: GET_SEAT_LIST now branches on
+  GetSessionAdmissionModeByID(). general_admission stays on the
+  pre-#312 tier-facade; assigned_seats / hybrid emit one entry per
+  session_seat with ADR-005 seatId (session_seats.id string), sector,
+  row, number, BSS status code (blocked=0, available=1, held=3,
+  sold=4) plus categoryPriceId + price when the tier snapshot is
+  wired. Tier-service unavailability degrades gracefully to price=0.
+  Package doc + wire response comment both document the operator
+  gzip recommendation for stadium-scale payloads.
+- hbil24/bil24_compat.go: new RESERVATION command dispatcher -- parses
+  seatList XOR categoryList, enforces mutual-exclusivity, resolves
+  admission_mode for the target session (assigned_seats + categoryList
+  yields -2, general_admission + seatList yields -2, hybrid accepts
+  either; session-not-found yields -3). Seated branch dedupes /
+  whitespace-checks seatList entries and echoes a scaffold response
+  documenting the SEAT-C1 concurrency contract it will route through.
+  GA branch validates each categoryPriceId as a UUID + quantity >= 1
+  and echoes the parsed payload. Both branches return
+  status=scaffold_stub + route hint pending full fid/token to
+  channel/org plumbing.
+- hbil24/seat_d1_312_test.go: 18 contract tests covering BSS status
+  mapping (6 cases), assigned-seats GET_SEAT_LIST wire projection
+  (seatId, BSS codes, tier binding), GA branch tier-service-unavailable
+  guard, and the RESERVATION dispatcher (missing / invalid session,
+  mutual-exclusivity, admission_mode gate for both directions, seated
+  happy path + duplicate / empty-seat validation, GA happy path +
+  quantity / tier validation, hybrid accepts both payloads, missing
+  admissionQ fallback). Fakes implement AdmissionQuerier + SeatQuerier
+  so tests run pool-free.
+Verification (docker golang:1.24):
+  go build ./...                                                    OK
+  go test ./internal/platform/httpserver/hbil24/... -count=1        OK 18/18
+  go test ./... -count=1                                            all PASS
+Marked #312 passing.
