@@ -18717,3 +18717,55 @@ Verification (docker golang:1.24 / golangci-lint:latest):
   go test ./apps/backend/internal/domain/seating/             PASS
   golangci-lint run ./apps/backend/internal/domain/seating/   0 issues
 Marked #303 passing.
+
+
+## 2026-07-10 - Feature #304 (SEAT-A3) hseating sub-package
+- New apps/backend/internal/platform/httpserver/hseating/ sub-package
+  following the hbankaccounts pattern: handler.go (Handler + New),
+  types.go (response shapes, decoders, enum guards), plans.go (list
+  by venue, get, create, patch, fork), versions.go (create + get).
+- seating_shims.go bridges *Server to the hseating.Handler;
+  mount_seating.go registers the 7 endpoints in mount_v1.go via
+  s.mountSeatingRoutes(r).
+- SeatingQueries wired via wire.go Options + server_struct.go +
+  pickQueries.
+- Endpoints (stub JWT auth + RBAC):
+  * GET   /v1/venues/{venue_id}/seating-plans      (seating_plan.read)
+  * POST  /v1/venues/{venue_id}/seating-plans      (seating_plan.create)
+  * GET   /v1/seating-plans/{id}                   (seating_plan.read)
+  * PATCH /v1/seating-plans/{id}                   (seating_plan.update.own)
+  * POST  /v1/seating-plans/{id}/fork              (seating_plan.fork)
+  * POST  /v1/seating-plans/{id}/versions          (seating_plan.update.own)
+  * GET   /v1/seating-plans/{id}/versions/{n}      (seating_plan.read)
+- Version create body accepts either raw source markup or a pre-built
+  canonical model; the domain seating.ImportSVG canonicaliser runs
+  inline and returns 422 with per-element validation error details on
+  rule violations. Non-fatal warnings are echoed alongside the created
+  version.
+- Fork guardrail #13 enforced at handler layer: forking a plan the
+  target org already owns returns 409 seating_plan.fork_own_plan;
+  otherwise the current version is duplicated as v1 of the fork in
+  the same transaction and source_seating_plan_id records lineage.
+- All mutations wrapped in a transaction + audit event
+  (v1.seating_plan.create/update/fork/version.create) written via
+  audit.WriteTx.
+- openapi.yaml (3.1): added the 7 path items and 6 component schemas
+  (SeatingPlan, SeatingPlanVersion, SeatingPlanValidationIssue,
+  CreateSeatingPlanRequest, UpdateSeatingPlanRequest,
+  ForkSeatingPlanRequest, CreateSeatingPlanVersionRequest).
+  Regenerated apps/backend/internal/adapters/http/openapi/types_gen.go
+  via oapi-codegen v2.4.1 (known 3.1 warning) and the TypeScript client
+  index.d.ts via node scripts/gen-ts-client.mjs.
+- openapi_drift_test buildDriftTestServer wired with
+  SeatingQueries: gen.New(nil) so drift SpecCoversAllCodeRoutes and
+  CodeCoversAllSpecRoutes pass with the new routes.
+- testfilehelpers_test.go domainSubPackageFor gained plans.go and
+  versions.go -> hseating / seating_shims.go so structural greps in
+  future SEAT-A3 tests can find both bodies.
+Verification (docker golang:1.24):
+  go build ./apps/backend/...                                 OK
+  oapi-codegen v2.4.1 on openapi.yaml                         OK (3.1 warn)
+  node scripts/gen-ts-client.mjs                              OK
+  npx tsc --noEmit apps/backend/openapi/clients/ts/index.d.ts OK
+  go test ./apps/backend/internal/platform/httpserver/...     OK (19.6s)
+Marked #304 passing.
