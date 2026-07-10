@@ -65,6 +65,12 @@ const (
 	BarcodeItemStatusScanned BarcodeItemStatus = "scanned"
 )
 
+// Defines values for BindSessionSeatingRequestAdmissionMode.
+const (
+	BindSessionSeatingRequestAdmissionModeAssignedSeats BindSessionSeatingRequestAdmissionMode = "assigned_seats"
+	BindSessionSeatingRequestAdmissionModeHybrid        BindSessionSeatingRequestAdmissionMode = "hybrid"
+)
+
 // Defines values for CheckoutSessionItemState.
 const (
 	CheckoutSessionItemStateAbandoned        CheckoutSessionItemState = "abandoned"
@@ -299,6 +305,26 @@ const (
 	OrganizationItemTaxIdSchemeUsEin OrganizationItemTaxIdScheme = "us_ein"
 )
 
+// Defines values for PatchSessionSeatsRequestAction.
+const (
+	PatchSessionSeatsRequestActionBlock   PatchSessionSeatsRequestAction = "block"
+	PatchSessionSeatsRequestActionUnblock PatchSessionSeatsRequestAction = "unblock"
+)
+
+// Defines values for PatchSessionSeatsResponseAction.
+const (
+	PatchSessionSeatsResponseActionBlock   PatchSessionSeatsResponseAction = "block"
+	PatchSessionSeatsResponseActionUnblock PatchSessionSeatsResponseAction = "unblock"
+)
+
+// Defines values for PatchSessionSeatsSeatOutcomeOutcome.
+const (
+	Blocked   PatchSessionSeatsSeatOutcomeOutcome = "blocked"
+	Noop      PatchSessionSeatsSeatOutcomeOutcome = "noop"
+	Skipped   PatchSessionSeatsSeatOutcomeOutcome = "skipped"
+	Unblocked PatchSessionSeatsSeatOutcomeOutcome = "unblocked"
+)
+
 // Defines values for PaymentIntentItemState.
 const (
 	PaymentIntentItemStateAuthorized     PaymentIntentItemState = "authorized"
@@ -462,6 +488,12 @@ const (
 	SeatingPlanVisibilityPrivate          SeatingPlanVisibility = "private"
 	SeatingPlanVisibilityPublicTemplate   SeatingPlanVisibility = "public_template"
 	SeatingPlanVisibilitySharedRead       SeatingPlanVisibility = "shared_read"
+)
+
+// Defines values for SeatingSchemaResponseAdmissionMode.
+const (
+	SeatingSchemaResponseAdmissionModeAssignedSeats SeatingSchemaResponseAdmissionMode = "assigned_seats"
+	SeatingSchemaResponseAdmissionModeHybrid        SeatingSchemaResponseAdmissionMode = "hybrid"
 )
 
 // Defines values for SessionItemStatus.
@@ -981,6 +1013,74 @@ type BarcodeItem struct {
 // marks a consumed barcode (double-scan protected); `revoked`
 // is terminal.
 type BarcodeItemStatus string
+
+// BindSessionSeatingRequest Request body for the seating-bind endpoint. Assigns the given
+// seating_plan_version to the target session in an assigned-seats
+// or hybrid admission mode, materializes one session_seats row per
+// geometry seat, and applies the category → tier map. When
+// `auto_create_tiers` is true, unmapped categories are provisioned
+// as new ticket_tiers rows using the geometry category name /
+// price_hint / currency_hint.
+type BindSessionSeatingRequest struct {
+	// AdmissionMode Admission mode to set on the session. GA sessions never reach this endpoint.
+	AdmissionMode BindSessionSeatingRequestAdmissionMode `json:"admission_mode"`
+
+	// AutoCreateTiers When true, categories without a mapping are provisioned as new tiers.
+	AutoCreateTiers *bool `json:"auto_create_tiers,omitempty"`
+
+	// CategoryTierMap Map of category index (stringified) → ticket_tiers UUID. Every
+	// geometry category MUST have an entry unless `auto_create_tiers`
+	// is true. A `null` value asks the server to auto-provision a
+	// tier for that category.
+	CategoryTierMap map[string]openapi_types.UUID `json:"category_tier_map"`
+
+	// SeatingPlanVersionId UUIDv7 of the seating_plan_versions row to bind to the session.
+	SeatingPlanVersionId openapi_types.UUID `json:"seating_plan_version_id"`
+}
+
+// BindSessionSeatingRequestAdmissionMode Admission mode to set on the session. GA sessions never reach this endpoint.
+type BindSessionSeatingRequestAdmissionMode string
+
+// BindSessionSeatingResponse Response envelope for the seating-bind endpoint. Echoes the
+// updated session projection, the (possibly newly-locked) plan
+// version, and a summary of the materialization step.
+type BindSessionSeatingResponse struct {
+	// CategoryTierMap Final category → tier UUID resolution, including any auto-created tiers.
+	CategoryTierMap map[string]openapi_types.UUID `json:"category_tier_map"`
+
+	// CreatedTierIds UUIDs of ticket_tiers rows auto-created for previously-unmapped categories.
+	CreatedTierIds *[]openapi_types.UUID `json:"created_tier_ids,omitempty"`
+
+	// MaterializedSeats Number of session_seats rows materialized in the bind transaction.
+	MaterializedSeats int `json:"materialized_seats"`
+
+	// Rebound True when the session already carried a binding and this call replaced it.
+	Rebound bool `json:"rebound"`
+
+	// SeatingPlanVersion Snapshot of the bound seating_plan_versions row (echoes locked_at, capacity, checksum).
+	SeatingPlanVersion SeatingPlanVersion `json:"seating_plan_version"`
+
+	// Session Projection of the updated session row.
+	Session struct {
+		// AdmissionMode Post-bind admission mode.
+		AdmissionMode string `json:"admission_mode"`
+
+		// CapacityTotal Recomputed session capacity (seated + standing).
+		CapacityTotal int32 `json:"capacity_total"`
+
+		// EventId UUIDv7 of the parent event.
+		EventId openapi_types.UUID `json:"event_id"`
+
+		// Id UUIDv7 of the session.
+		Id openapi_types.UUID `json:"id"`
+
+		// SeatStatusVersion Live session-scoped monotonic cursor for seat status.
+		SeatStatusVersion int64 `json:"seat_status_version"`
+
+		// SeatingPlanVersionId UUIDv7 of the bound plan version, when set.
+		SeatingPlanVersionId *openapi_types.UUID `json:"seating_plan_version_id,omitempty"`
+	} `json:"session"`
+}
 
 // CheckoutSessionEnvelope Top-level response envelope returned by every checkout-session
 // endpoint. Wraps a single `CheckoutSessionItem` under the
@@ -2907,6 +3007,107 @@ type PasswordResetRequestResponse struct {
 	Message string `json:"message"`
 }
 
+// PatchSessionSeatsRequest Request body for the operator seat block/unblock endpoint. At
+// least one of `seat_keys`, `sectors`, `rows` MUST be non-empty
+// (409 `seating.no_selectors` otherwise). Selectors are unioned
+// server-side into a deduplicated set of session_seats rows.
+type PatchSessionSeatsRequest struct {
+	// Action Admin transition to attempt. `block` moves available→blocked; `unblock` moves blocked→available.
+	Action PatchSessionSeatsRequestAction `json:"action"`
+
+	// Rows Whole-row selectors, scoped by `(sector, row)`. Empty rows
+	// resolve to zero seats (silent no-op).
+	Rows *[]PatchSessionSeatsRowSelector `json:"rows,omitempty"`
+
+	// SeatKeys Explicit list of `session_seats.seat_key` values to target.
+	// Unknown keys are reported per-key in the response as
+	// skipped with reason `seat_not_found` — never a 400.
+	SeatKeys *[]string `json:"seat_keys,omitempty"`
+
+	// Sectors Whole-sector selectors. Every seat with
+	// `session_seats.sector_name` equal to any listed value is
+	// included. Empty sectors resolve to zero seats (silent no-op).
+	Sectors *[]string `json:"sectors,omitempty"`
+}
+
+// PatchSessionSeatsRequestAction Admin transition to attempt. `block` moves available→blocked; `unblock` moves blocked→available.
+type PatchSessionSeatsRequestAction string
+
+// PatchSessionSeatsResponse Response envelope for the operator seat block/unblock endpoint.
+// `seat_status_version` is the post-transaction session cursor;
+// every mutated row shares this stamp so SEAT-B3 delta pollers
+// observe the whole batch atomically.
+type PatchSessionSeatsResponse struct {
+	// Action Echoes the request `action`.
+	Action PatchSessionSeatsResponseAction `json:"action"`
+
+	// Outcomes One entry per resolved seat plus one entry per unknown seat_key.
+	Outcomes []PatchSessionSeatsSeatOutcome `json:"outcomes"`
+
+	// SeatStatusVersion Post-transaction `sessions.seat_status_version`.
+	SeatStatusVersion int64 `json:"seat_status_version"`
+
+	// SessionId UUIDv7 of the session the request targeted.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// Summary Aggregate counters for the operator batch (applied vs skipped).
+	Summary PatchSessionSeatsSummary `json:"summary"`
+}
+
+// PatchSessionSeatsResponseAction Echoes the request `action`.
+type PatchSessionSeatsResponseAction string
+
+// PatchSessionSeatsRowSelector Selects every seat in a single `(sector, row)` pair. Both
+// components are matched exactly against
+// `session_seats.sector_name` and `session_seats.row_name` as
+// materialised by SEAT-B2 binding.
+type PatchSessionSeatsRowSelector struct {
+	// Row Row name (must be non-empty).
+	Row string `json:"row"`
+
+	// Sector Sector / section name (must be non-empty).
+	Sector string `json:"sector"`
+}
+
+// PatchSessionSeatsSeatOutcome Per-seat outcome envelope. `outcome` is one of `blocked`,
+// `unblocked`, `noop`, `skipped`; `reason` is populated only
+// when `outcome == skipped` (values include `held`, `sold`,
+// `seat_not_found`, `concurrent_transition`, `unknown_status`).
+// `status` echoes the post-attempt seat status: `blocked` /
+// `available` for successful changes, the pre-existing status
+// for noop / skipped rows, and empty string for unknown seats.
+type PatchSessionSeatsSeatOutcome struct {
+	// Outcome Effect of the attempted transition on this seat.
+	Outcome PatchSessionSeatsSeatOutcomeOutcome `json:"outcome"`
+
+	// Reason Populated for skipped outcomes; documents why the transition was refused.
+	Reason *string `json:"reason,omitempty"`
+
+	// SeatKey Canonical seat_key.
+	SeatKey string `json:"seat_key"`
+
+	// Status Post-attempt `session_seats.status` (or empty when the seat was not found).
+	Status string `json:"status"`
+}
+
+// PatchSessionSeatsSeatOutcomeOutcome Effect of the attempted transition on this seat.
+type PatchSessionSeatsSeatOutcomeOutcome string
+
+// PatchSessionSeatsSummary Roll-up counts across every entry in `outcomes`.
+type PatchSessionSeatsSummary struct {
+	// Changed Seats that transitioned successfully (blocked / unblocked).
+	Changed int `json:"changed"`
+
+	// Noop Seats that were already in the target status (idempotent no-op).
+	Noop int `json:"noop"`
+
+	// Requested Total number of per-seat outcomes returned (targets + unknown).
+	Requested int `json:"requested"`
+
+	// Skipped Seats refused a transition (held / sold / unknown key / etc.).
+	Skipped int `json:"skipped"`
+}
+
 // PaymentIntentEnvelope Top-level response envelope returned by every payment-intent
 // endpoint that yields a single row. Wraps a single
 // `PaymentIntentItem` under the `payment_intent` key.
@@ -4057,6 +4258,45 @@ type ScannerValidateResponseInvalidReason string
 // ScannerValidateResponseStatus Current barcode status (unchanged by this call).
 type ScannerValidateResponseStatus string
 
+// SeatingCategoryPrice Resolved category → tier / price projection returned inside
+// `SeatingSchemaResponse.category_prices`. `index`, `name`, `color`,
+// `price_hint`, `currency_hint` are copied verbatim from the stored
+// geometry (import-time authoring hints). The `tier_*` / `price_*`
+// fields are populated when the operator has already mapped the
+// category to a live `ticket_tiers` row through SEAT-B2 binding —
+// first-seat-wins so the resolution stays stable across renames.
+type SeatingCategoryPrice struct {
+	// Color Authoring-time swatch color (`#RRGGBB`) used to bind seats to this category during SVG import.
+	Color *string `json:"color,omitempty"`
+
+	// Currency ISO 4217 currency code of the mapped tier, when resolved.
+	Currency *string `json:"currency,omitempty"`
+
+	// CurrencyHint Import-time currency hint from the source SVG. Advisory only.
+	CurrencyHint *string `json:"currency_hint,omitempty"`
+
+	// Index 1-based category index from the imported geometry.
+	Index int `json:"index"`
+
+	// Name Human-readable category name (e.g. "First", "VIP").
+	Name string `json:"name"`
+
+	// PriceAmount Fixed-tier price amount in the smallest currency unit, when resolved.
+	PriceAmount *int64 `json:"price_amount,omitempty"`
+
+	// PriceHint Import-time price hint from the source SVG. Advisory only — real prices come from the mapped tier.
+	PriceHint *string `json:"price_hint,omitempty"`
+
+	// PricingMode Pricing mode of the mapped tier (e.g. `fixed`, `pay_what_you_want`), when resolved.
+	PricingMode *string `json:"pricing_mode,omitempty"`
+
+	// TierId UUIDv7 of the ticket_tiers row this category resolves to when a binding exists.
+	TierId *openapi_types.UUID `json:"tier_id,omitempty"`
+
+	// TierName Display name of the mapped tier, when resolved.
+	TierName *string `json:"tier_name,omitempty"`
+}
+
 // SeatingPlan A logical seating plan owned by one organization and attached to a
 // venue. Feature #302 seeded the storage; feature #304 (Wave SEAT-A3)
 // added the CRUD / fork surface documented here.
@@ -4165,6 +4405,70 @@ type SeatingPlanVersion struct {
 
 	// VersionNumber 1-based positional version number scoped to the plan.
 	VersionNumber int `json:"version_number"`
+}
+
+// SeatingSchemaResponse Response body for `GET /v1/event-sessions/{id}/schema`. Contains the
+// raw canonical geometry (byte-for-byte identical to the stored
+// `seating_plan_versions.geometry`) plus a `category_prices` overlay
+// with per-category tier / price resolution. The strong `ETag`
+// response header is set to `"<geometry_checksum>"` and the response
+// is served with `Cache-Control: public, max-age=86400, immutable`
+// because a new plan version always yields a new checksum.
+type SeatingSchemaResponse struct {
+	// AdmissionMode Admission mode of the session. GA sessions do not expose a schema and receive 404.
+	AdmissionMode SeatingSchemaResponseAdmissionMode `json:"admission_mode"`
+
+	// CapacitySeated Seated capacity of the plan version (informational).
+	CapacitySeated int `json:"capacity_seated"`
+
+	// CapacityStanding Standing capacity of the plan version (informational).
+	CapacityStanding int `json:"capacity_standing"`
+
+	// CategoryPrices Per-category tier / price resolution overlay, in geometry order.
+	CategoryPrices []SeatingCategoryPrice `json:"category_prices"`
+
+	// EventId UUIDv7 of the parent event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Geometry Canonical geometry JSON per seating_backlog.md §5.3. Opaque schema — clients render it directly.
+	Geometry map[string]interface{} `json:"geometry"`
+
+	// GeometryChecksum sha256 hex digest of the canonicalised geometry JSON. Doubles as the strong ETag for this endpoint.
+	GeometryChecksum string `json:"geometry_checksum"`
+
+	// SeatStatusVersion Session-scoped monotonic version cursor for seat status. Also returned by seat-status endpoints so the client can resume with `since_version`.
+	SeatStatusVersion int64 `json:"seat_status_version"`
+
+	// SeatingPlanVersionId UUIDv7 of the seating_plan_versions row bound to the session, when set.
+	SeatingPlanVersionId *openapi_types.UUID `json:"seating_plan_version_id,omitempty"`
+
+	// SessionId UUIDv7 of the event session this schema is bound to.
+	SessionId openapi_types.UUID `json:"session_id"`
+}
+
+// SeatingSchemaResponseAdmissionMode Admission mode of the session. GA sessions do not expose a schema and receive 404.
+type SeatingSchemaResponseAdmissionMode string
+
+// SeatingSeatStatusResponse Response body for `GET /v1/event-sessions/{id}/seat-status`. When
+// called without a query, returns the full snapshot of every
+// `session_seats` row keyed by `seat_key`. When called with
+// `?since_version=N`, returns only rows whose `status_version`
+// strictly exceeds `N`, alongside the live `status_version` cursor
+// the client should resume from. Callers already at head receive an
+// empty `seats` map and the current cursor. Deltas are served with
+// `Cache-Control: no-cache` because seat holds propagate promptly.
+type SeatingSeatStatusResponse struct {
+	// Delta `true` when the response is a since_version delta, `false` when it is a full snapshot.
+	Delta bool `json:"delta"`
+
+	// Seats Map of `seat_key` → seat status. Empty when the caller is already at head. Statuses are `available|held|sold|blocked`.
+	Seats map[string]string `json:"seats"`
+
+	// SessionId UUIDv7 of the event session.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// StatusVersion Live session-scoped monotonic cursor. Callers should persist this and pass it back as `since_version` on the next call.
+	StatusVersion int64 `json:"status_version"`
 }
 
 // ServerInfoResponse defines model for ServerInfoResponse.
@@ -5351,6 +5655,21 @@ type PostV1EchoParams struct {
 	IdempotencyKey openapi_types.UUID `json:"Idempotency-Key"`
 }
 
+// GetPublicSessionSchemaParams defines parameters for GetPublicSessionSchema.
+type GetPublicSessionSchemaParams struct {
+	// IfNoneMatch Standard conditional-request header. When it matches the current `geometry_checksum` ETag the server responds 304 with no body.
+	IfNoneMatch *string `json:"If-None-Match,omitempty"`
+}
+
+// GetPublicSessionSeatStatusParams defines parameters for GetPublicSessionSeatStatus.
+type GetPublicSessionSeatStatusParams struct {
+	// SinceVersion Optional non-negative integer cursor. Present ⇒ delta mode
+	// (only seats with `status_version > since_version` are
+	// returned). Absent ⇒ full snapshot. Anything else is 400
+	// `event_session.invalid_since_version`.
+	SinceVersion *int64 `form:"since_version,omitempty" json:"since_version,omitempty"`
+}
+
 // ListEventsParams defines parameters for ListEvents.
 type ListEventsParams struct {
 	// Visibility Visibility filter. One of `public` (default), `private`,
@@ -5594,6 +5913,12 @@ type CreateSessionJSONRequestBody = CreateSessionRequest
 
 // UpdateSessionJSONRequestBody defines body for UpdateSession for application/json ContentType.
 type UpdateSessionJSONRequestBody = UpdateSessionRequest
+
+// BindSessionSeatingJSONRequestBody defines body for BindSessionSeating for application/json ContentType.
+type BindSessionSeatingJSONRequestBody = BindSessionSeatingRequest
+
+// PatchSessionSeatsJSONRequestBody defines body for PatchSessionSeats for application/json ContentType.
+type PatchSessionSeatsJSONRequestBody = PatchSessionSeatsRequest
 
 // InitInventoryJSONRequestBody defines body for InitInventory for application/json ContentType.
 type InitInventoryJSONRequestBody = InitInventoryRequest

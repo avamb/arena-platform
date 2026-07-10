@@ -1131,6 +1131,153 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/events/{event_id}/sessions/{id}/seating": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bind a seating plan version to an event session
+         * @description Binds the given `seating_plan_version_id` to the target event session
+         *     under an assigned-seats or hybrid admission mode. Materializes one
+         *     `session_seats` row per geometry seat in a single transaction,
+         *     applies the caller-supplied `category_tier_map` (optionally provisioning
+         *     missing tiers when `auto_create_tiers=true`), stamps
+         *     `seating_plan_versions.locked_at` on the first bind (idempotent for
+         *     later binds against the same version), and recomputes
+         *     `sessions.capacity_total` from the version's seated/standing capacity.
+         *
+         *     Rebind is only permitted when the session has zero reservations AND
+         *     zero tickets — any prior booking activity locks the current binding
+         *     and forces the operator to create a new session
+         *     (`seating.rebind_forbidden` on 409).
+         *
+         *     Requires JWT authentication and the
+         *     `event_session.assign_seating_plan` permission.
+         */
+        post: operations["bindSessionSeating"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/sessions/{id}/seats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Block or unblock seats for a session (operator control)
+         * @description Operator endpoint for closing individual seats, whole rows, or
+         *     whole sectors for sale (tech seats, camera platforms, blocked
+         *     sightlines, house holds) and reopening them per session. The
+         *     request combines any of three selectors — `seat_keys`,
+         *     `sectors`, and `rows` — which are expanded server-side to a
+         *     deduplicated set of `session_seats` rows. Only the two admin
+         *     transitions `available → blocked` and `blocked → available`
+         *     are attempted; seats in `held` / `sold` status are reported
+         *     per-seat as skipped with a reason and are never silently
+         *     mutated. Re-blocking / re-opening a seat that is already in the
+         *     target state is a documented no-op (idempotent).
+         *
+         *     Blocked seats surface as `blocked` in the SEAT-B3 seat-status
+         *     endpoint, map to BSS `0 INACCESSIBLE` in the Bil24 gateway, are
+         *     excluded from availability counters, and cannot be reserved
+         *     (409 `reservation.seats_conflict` in the seated checkout path).
+         *     Blocking does NOT shrink `sessions.capacity_total` — it is a
+         *     sales hold, not a capacity change.
+         *
+         *     The transaction bumps `sessions.seat_status_version` exactly
+         *     once so every mutated row in the batch shares one monotonic
+         *     cursor value; delta pollers observe the batch atomically.
+         *     Every request emits one audit event
+         *     (`v1.session.seats.block` / `.unblock`) with the effective
+         *     seat-key list, per-outcome counts, and the actor.
+         *
+         *     Requires JWT authentication and the
+         *     `event_session.assign_seating_plan` permission (same
+         *     operational role used for SEAT-B2 binding).
+         */
+        patch: operations["patchSessionSeats"];
+        trace?: never;
+    };
+    "/v1/event-sessions/{id}/schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public seating schema for a session
+         * @description Returns the canonical geometry of the seating plan version bound to
+         *     the given session, plus a `category_prices` overlay resolving each
+         *     geometry category to a live `ticket_tiers` row (name + fixed
+         *     price when applicable). Unauthenticated — mirrors the public feed
+         *     visibility gate: the parent event MUST be `published` and the
+         *     session admission mode MUST NOT be `general_admission`; otherwise
+         *     the endpoint returns 404 (indistinguishable to unauthenticated
+         *     callers by design).
+         *
+         *     The response carries a **strong ETag** equal to the plan version's
+         *     `geometry_checksum` and `Cache-Control: public, max-age=86400,
+         *     immutable`. A new plan version always produces a new checksum, so
+         *     caches can safely treat cached copies as immutable for the max-age
+         *     window. Matching `If-None-Match` short-circuits with a 304 before
+         *     any per-seat / per-tier query runs.
+         */
+        get: operations["getPublicSessionSchema"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/event-sessions/{id}/seat-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public seat status snapshot or delta for a session
+         * @description Returns per-seat status keyed by `seat_key`. Without a query
+         *     parameter, streams the **full snapshot** of every
+         *     `session_seats` row for the session. With
+         *     `?since_version=N`, returns only rows whose `status_version`
+         *     strictly exceeds `N` plus the live `status_version` cursor — the
+         *     SEAT-B3 delta-polling contract.
+         *
+         *     Unauthenticated with the same visibility rules as the schema
+         *     endpoint (published event + non-GA session). Responses are served
+         *     `Cache-Control: no-cache` because seat holds propagate promptly
+         *     and clients should never serve a stale seat map from the edge.
+         */
+        get: operations["getPublicSessionSeatStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/payment-configs": {
         parameters: {
             query?: never;
@@ -9008,6 +9155,302 @@ export interface components {
              */
             publications: components["schemas"]["EventPublication"][];
         };
+        /**
+         * @description Request body for the seating-bind endpoint. Assigns the given
+         *     seating_plan_version to the target session in an assigned-seats
+         *     or hybrid admission mode, materializes one session_seats row per
+         *     geometry seat, and applies the category → tier map. When
+         *     `auto_create_tiers` is true, unmapped categories are provisioned
+         *     as new ticket_tiers rows using the geometry category name /
+         *     price_hint / currency_hint.
+         */
+        BindSessionSeatingRequest: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the seating_plan_versions row to bind to the session.
+             */
+            seating_plan_version_id: string;
+            /**
+             * @description Admission mode to set on the session. GA sessions never reach this endpoint.
+             * @enum {string}
+             */
+            admission_mode: "assigned_seats" | "hybrid";
+            /**
+             * @description Map of category index (stringified) → ticket_tiers UUID. Every
+             *     geometry category MUST have an entry unless `auto_create_tiers`
+             *     is true. A `null` value asks the server to auto-provision a
+             *     tier for that category.
+             */
+            category_tier_map: {
+                [key: string]: string;
+            };
+            /** @description When true, categories without a mapping are provisioned as new tiers. */
+            auto_create_tiers?: boolean;
+        };
+        /**
+         * @description Response envelope for the seating-bind endpoint. Echoes the
+         *     updated session projection, the (possibly newly-locked) plan
+         *     version, and a summary of the materialization step.
+         */
+        BindSessionSeatingResponse: {
+            /** @description Projection of the updated session row. */
+            session: {
+                /**
+                 * Format: uuid
+                 * @description UUIDv7 of the session.
+                 */
+                id: string;
+                /**
+                 * Format: uuid
+                 * @description UUIDv7 of the parent event.
+                 */
+                event_id: string;
+                /** @description Post-bind admission mode. */
+                admission_mode: string;
+                /**
+                 * Format: uuid
+                 * @description UUIDv7 of the bound plan version, when set.
+                 */
+                seating_plan_version_id?: string;
+                /**
+                 * Format: int64
+                 * @description Live session-scoped monotonic cursor for seat status.
+                 */
+                seat_status_version: number;
+                /**
+                 * Format: int32
+                 * @description Recomputed session capacity (seated + standing).
+                 */
+                capacity_total: number;
+            };
+            /** @description Snapshot of the bound seating_plan_versions row (echoes locked_at, capacity, checksum). */
+            seating_plan_version: components["schemas"]["SeatingPlanVersion"];
+            /** @description Number of session_seats rows materialized in the bind transaction. */
+            materialized_seats: number;
+            /** @description Final category → tier UUID resolution, including any auto-created tiers. */
+            category_tier_map: {
+                [key: string]: string;
+            };
+            /** @description UUIDs of ticket_tiers rows auto-created for previously-unmapped categories. */
+            created_tier_ids?: string[];
+            /** @description True when the session already carried a binding and this call replaced it. */
+            rebound: boolean;
+        };
+        /**
+         * @description Selects every seat in a single `(sector, row)` pair. Both
+         *     components are matched exactly against
+         *     `session_seats.sector_name` and `session_seats.row_name` as
+         *     materialised by SEAT-B2 binding.
+         */
+        PatchSessionSeatsRowSelector: {
+            /** @description Sector / section name (must be non-empty). */
+            sector: string;
+            /** @description Row name (must be non-empty). */
+            row: string;
+        };
+        /**
+         * @description Request body for the operator seat block/unblock endpoint. At
+         *     least one of `seat_keys`, `sectors`, `rows` MUST be non-empty
+         *     (409 `seating.no_selectors` otherwise). Selectors are unioned
+         *     server-side into a deduplicated set of session_seats rows.
+         */
+        PatchSessionSeatsRequest: {
+            /**
+             * @description Admin transition to attempt. `block` moves available→blocked; `unblock` moves blocked→available.
+             * @enum {string}
+             */
+            action: "block" | "unblock";
+            /**
+             * @description Explicit list of `session_seats.seat_key` values to target.
+             *     Unknown keys are reported per-key in the response as
+             *     skipped with reason `seat_not_found` — never a 400.
+             */
+            seat_keys?: string[];
+            /**
+             * @description Whole-sector selectors. Every seat with
+             *     `session_seats.sector_name` equal to any listed value is
+             *     included. Empty sectors resolve to zero seats (silent no-op).
+             */
+            sectors?: string[];
+            /**
+             * @description Whole-row selectors, scoped by `(sector, row)`. Empty rows
+             *     resolve to zero seats (silent no-op).
+             */
+            rows?: components["schemas"]["PatchSessionSeatsRowSelector"][];
+        };
+        /**
+         * @description Per-seat outcome envelope. `outcome` is one of `blocked`,
+         *     `unblocked`, `noop`, `skipped`; `reason` is populated only
+         *     when `outcome == skipped` (values include `held`, `sold`,
+         *     `seat_not_found`, `concurrent_transition`, `unknown_status`).
+         *     `status` echoes the post-attempt seat status: `blocked` /
+         *     `available` for successful changes, the pre-existing status
+         *     for noop / skipped rows, and empty string for unknown seats.
+         */
+        PatchSessionSeatsSeatOutcome: {
+            /** @description Canonical seat_key. */
+            seat_key: string;
+            /**
+             * @description Effect of the attempted transition on this seat.
+             * @enum {string}
+             */
+            outcome: "blocked" | "unblocked" | "noop" | "skipped";
+            /** @description Populated for skipped outcomes; documents why the transition was refused. */
+            reason?: string;
+            /** @description Post-attempt `session_seats.status` (or empty when the seat was not found). */
+            status: string;
+        };
+        /** @description Roll-up counts across every entry in `outcomes`. */
+        PatchSessionSeatsSummary: {
+            /** @description Total number of per-seat outcomes returned (targets + unknown). */
+            requested: number;
+            /** @description Seats that transitioned successfully (blocked / unblocked). */
+            changed: number;
+            /** @description Seats that were already in the target status (idempotent no-op). */
+            noop: number;
+            /** @description Seats refused a transition (held / sold / unknown key / etc.). */
+            skipped: number;
+        };
+        /**
+         * @description Response envelope for the operator seat block/unblock endpoint.
+         *     `seat_status_version` is the post-transaction session cursor;
+         *     every mutated row shares this stamp so SEAT-B3 delta pollers
+         *     observe the whole batch atomically.
+         */
+        PatchSessionSeatsResponse: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the session the request targeted.
+             */
+            session_id: string;
+            /**
+             * @description Echoes the request `action`.
+             * @enum {string}
+             */
+            action: "block" | "unblock";
+            /**
+             * Format: int64
+             * @description Post-transaction `sessions.seat_status_version`.
+             */
+            seat_status_version: number;
+            /** @description One entry per resolved seat plus one entry per unknown seat_key. */
+            outcomes: components["schemas"]["PatchSessionSeatsSeatOutcome"][];
+            /** @description Aggregate counters for the operator batch (applied vs skipped). */
+            summary: components["schemas"]["PatchSessionSeatsSummary"];
+        };
+        /**
+         * @description Resolved category → tier / price projection returned inside
+         *     `SeatingSchemaResponse.category_prices`. `index`, `name`, `color`,
+         *     `price_hint`, `currency_hint` are copied verbatim from the stored
+         *     geometry (import-time authoring hints). The `tier_*` / `price_*`
+         *     fields are populated when the operator has already mapped the
+         *     category to a live `ticket_tiers` row through SEAT-B2 binding —
+         *     first-seat-wins so the resolution stays stable across renames.
+         */
+        SeatingCategoryPrice: {
+            /** @description 1-based category index from the imported geometry. */
+            index: number;
+            /** @description Human-readable category name (e.g. "First", "VIP"). */
+            name: string;
+            /** @description Authoring-time swatch color (`#RRGGBB`) used to bind seats to this category during SVG import. */
+            color?: string;
+            /** @description Import-time price hint from the source SVG. Advisory only — real prices come from the mapped tier. */
+            price_hint?: string;
+            /** @description Import-time currency hint from the source SVG. Advisory only. */
+            currency_hint?: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the ticket_tiers row this category resolves to when a binding exists.
+             */
+            tier_id?: string;
+            /** @description Display name of the mapped tier, when resolved. */
+            tier_name?: string;
+            /** @description Pricing mode of the mapped tier (e.g. `fixed`, `pay_what_you_want`), when resolved. */
+            pricing_mode?: string;
+            /**
+             * Format: int64
+             * @description Fixed-tier price amount in the smallest currency unit, when resolved.
+             */
+            price_amount?: number;
+            /** @description ISO 4217 currency code of the mapped tier, when resolved. */
+            currency?: string;
+        };
+        /**
+         * @description Response body for `GET /v1/event-sessions/{id}/schema`. Contains the
+         *     raw canonical geometry (byte-for-byte identical to the stored
+         *     `seating_plan_versions.geometry`) plus a `category_prices` overlay
+         *     with per-category tier / price resolution. The strong `ETag`
+         *     response header is set to `"<geometry_checksum>"` and the response
+         *     is served with `Cache-Control: public, max-age=86400, immutable`
+         *     because a new plan version always yields a new checksum.
+         */
+        SeatingSchemaResponse: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the event session this schema is bound to.
+             */
+            session_id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the parent event.
+             */
+            event_id: string;
+            /**
+             * @description Admission mode of the session. GA sessions do not expose a schema and receive 404.
+             * @enum {string}
+             */
+            admission_mode: "assigned_seats" | "hybrid";
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the seating_plan_versions row bound to the session, when set.
+             */
+            seating_plan_version_id?: string;
+            /**
+             * Format: int64
+             * @description Session-scoped monotonic version cursor for seat status. Also returned by seat-status endpoints so the client can resume with `since_version`.
+             */
+            seat_status_version: number;
+            /** @description sha256 hex digest of the canonicalised geometry JSON. Doubles as the strong ETag for this endpoint. */
+            geometry_checksum: string;
+            /** @description Seated capacity of the plan version (informational). */
+            capacity_seated: number;
+            /** @description Standing capacity of the plan version (informational). */
+            capacity_standing: number;
+            /** @description Canonical geometry JSON per seating_backlog.md §5.3. Opaque schema — clients render it directly. */
+            geometry: {
+                [key: string]: unknown;
+            };
+            /** @description Per-category tier / price resolution overlay, in geometry order. */
+            category_prices: components["schemas"]["SeatingCategoryPrice"][];
+        };
+        /**
+         * @description Response body for `GET /v1/event-sessions/{id}/seat-status`. When
+         *     called without a query, returns the full snapshot of every
+         *     `session_seats` row keyed by `seat_key`. When called with
+         *     `?since_version=N`, returns only rows whose `status_version`
+         *     strictly exceeds `N`, alongside the live `status_version` cursor
+         *     the client should resume from. Callers already at head receive an
+         *     empty `seats` map and the current cursor. Deltas are served with
+         *     `Cache-Control: no-cache` because seat holds propagate promptly.
+         */
+        SeatingSeatStatusResponse: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the event session.
+             */
+            session_id: string;
+            /**
+             * Format: int64
+             * @description Live session-scoped monotonic cursor. Callers should persist this and pass it back as `since_version` on the next call.
+             */
+            status_version: number;
+            /** @description Map of `seat_key` → seat status. Empty when the caller is already at head. Statuses are `available|held|sold|blocked`. */
+            seats: {
+                [key: string]: string;
+            };
+            /** @description `true` when the response is a since_version delta, `false` when it is a full snapshot. */
+            delta: boolean;
+        };
     };
     responses: never;
     parameters: never;
@@ -12926,6 +13369,357 @@ export interface operations {
                 };
             };
             /** @description Seating queries unavailable (database not wired) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    bindSessionSeating: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 primary key of the owning organization */
+                org_id: string;
+                /** @description UUIDv7 primary key of the parent event */
+                event_id: string;
+                /** @description UUIDv7 primary key of the session being bound */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BindSessionSeatingRequest"];
+            };
+        };
+        responses: {
+            /** @description Session bound; response summarizes the materialized state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BindSessionSeatingResponse"];
+                };
+            };
+            /**
+             * @description Bad request. Codes:
+             *       seating.invalid_body,
+             *       seating.invalid_admission_mode,
+             *       seating.version_not_found,
+             *       seating.invalid_category_key,
+             *       seating.unknown_category,
+             *       seating.invalid_category_tier_map,
+             *       seating.tier_not_found,
+             *       seating.category_tier_map_incomplete.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold event_session.assign_seating_plan */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found or belongs to a different event / org */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Rebind refused because the session already carries reservations
+             *     or tickets (`seating.rebind_forbidden`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Seating queries unavailable (database not wired) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    patchSessionSeats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 primary key of the owning organization */
+                org_id: string;
+                /** @description UUIDv7 primary key of the parent event */
+                event_id: string;
+                /** @description UUIDv7 primary key of the target session */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchSessionSeatsRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description Seats processed. Response lists a per-seat outcome for every
+             *     selector-resolved row (plus one entry per unknown seat_key)
+             *     and summarises the batch counts. Reaching 200 does NOT imply
+             *     every seat changed; inspect the `outcomes` array and the
+             *     `summary.changed` count.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PatchSessionSeatsResponse"];
+                };
+            };
+            /**
+             * @description Bad request. Codes:
+             *       seating.invalid_body,
+             *       seating.invalid_action,
+             *       seating.no_selectors,
+             *       seating.invalid_row_selector.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold event_session.assign_seating_plan */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found or belongs to a different event / org */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Seating queries unavailable (database not wired) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicSessionSchema: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Standard conditional-request header. When it matches the current `geometry_checksum` ETag the server responds 304 with no body. */
+                "If-None-Match"?: string;
+            };
+            path: {
+                /** @description UUIDv7 primary key of the event session. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Canonical geometry + category price resolution. */
+            200: {
+                headers: {
+                    /** @description Strong entity tag = `"<geometry_checksum>"`. */
+                    ETag?: string;
+                    /** @description Always `public, max-age=86400, immutable`. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatingSchemaResponse"];
+                };
+            };
+            /** @description Client's `If-None-Match` matches the current `geometry_checksum` ETag; body omitted. */
+            304: {
+                headers: {
+                    /** @description Strong entity tag = `"<geometry_checksum>"`. */
+                    ETag?: string;
+                    /** @description Always `public, max-age=86400, immutable`. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description Session is not published, is `general_admission`, has no
+             *     bound seating plan version, or does not exist
+             *     (`event_session.schema_not_found`).
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Seating queries unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicSessionSeatStatus: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Optional non-negative integer cursor. Present ⇒ delta mode
+                 *     (only seats with `status_version > since_version` are
+                 *     returned). Absent ⇒ full snapshot. Anything else is 400
+                 *     `event_session.invalid_since_version`.
+                 */
+                since_version?: number;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 primary key of the event session. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Seat status snapshot or delta. */
+            200: {
+                headers: {
+                    /** @description Always `no-cache`. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatingSeatStatusResponse"];
+                };
+            };
+            /**
+             * @description Malformed `since_version` cursor
+             *     (`event_session.invalid_since_version`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Session is not published, is `general_admission`, or does
+             *     not exist (`event_session.seat_status_not_found`).
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Seating queries unavailable (database not wired). */
             503: {
                 headers: {
                     [name: string]: unknown;

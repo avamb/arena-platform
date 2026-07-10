@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"math"
 	"net/http"
 	"strconv"
 
@@ -133,7 +134,19 @@ func (h *Handler) HandleCreateSeatingPlanVersion(w http.ResponseWriter, r *http.
 	if !capacityStandingPresent {
 		capacityStanding = 0
 	}
-	capacitySeated := int32(geometry.SeatCount())
+	// SeatCount() is derived from a validated Geometry payload whose seat
+	// count is bounded by the §5.3 canvas limits — well below math.MaxInt32
+	// — so the narrowing conversion is safe.
+	seatCount := geometry.SeatCount()
+	if seatCount < 0 || seatCount > math.MaxInt32 {
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+			"seating_plan_version.capacity_overflow",
+			"imported geometry exceeds the supported seat-count range",
+			r,
+		))
+		return
+	}
+	capacitySeated := int32(seatCount) //nolint:gosec // bound-checked above
 
 	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {

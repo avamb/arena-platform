@@ -120,12 +120,20 @@ func publicFeedTierFromRow(t gen.TicketTierRow) publicFeedTierResponse {
 }
 
 // publicFeedSessionResponse is the JSON shape for a session in the detail response.
+//
+// AdmissionMode, SchemaURL and SeatStatusURL are populated only when the
+// session is seated (admission_mode != 'general_admission'); they are
+// emitted as top-level fields so widget consumers can decide whether to
+// call the SEAT-B3 endpoints without pattern-matching the session shape.
 type publicFeedSessionResponse struct {
 	ID            string                   `json:"id"`
 	StartAt       string                   `json:"start_at"`
 	EndAt         string                   `json:"end_at"`
 	CapacityTotal int32                    `json:"capacity_total"`
 	Status        string                   `json:"status"`
+	AdmissionMode string                   `json:"admission_mode,omitempty"`
+	SchemaURL     string                   `json:"schema_url,omitempty"`
+	SeatStatusURL string                   `json:"seat_status_url,omitempty"`
 	Tiers         []publicFeedTierResponse `json:"tiers"`
 }
 
@@ -138,6 +146,20 @@ func publicFeedSessionFromRow(s gen.SessionRow) publicFeedSessionResponse {
 		Status:        s.Status,
 		Tiers:         []publicFeedTierResponse{},
 	}
+}
+
+// applySeatingLinks fills in schema_url / seat_status_url and
+// admission_mode when the underlying session is seated. Called by the
+// event detail serializer after ListSessionAdmissionModesByEvent has been
+// consulted. Keeps the visibility check (admission_mode != GA) in one
+// place so callers can't accidentally leak the links for GA sessions.
+func (r *publicFeedSessionResponse) applySeatingLinks(admissionMode string) {
+	if admissionMode == "" || admissionMode == "general_admission" {
+		return
+	}
+	r.AdmissionMode = admissionMode
+	r.SchemaURL = "/v1/event-sessions/" + r.ID + "/schema"
+	r.SeatStatusURL = "/v1/event-sessions/" + r.ID + "/seat-status"
 }
 
 // publicFeedPagination is the pagination metadata in the list response.
@@ -423,8 +445,27 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 			)
 			// Non-fatal: return the event without sessions.
 		} else {
+			// Fetch (id, admission_mode) for every session on this event
+			// so we can annotate seated sessions with schema_url /
+			// seat_status_url (feature #307, Wave SEAT-B3). A lookup
+			// failure is non-fatal: the payload degrades to GA-only.
+			admissionByID := map[string]string{}
+			if h.sessionQueries != nil {
+				modes, modeErr := h.sessionQueries.ListSessionAdmissionModesByEvent(ctx, eventID)
+				if modeErr != nil {
+					h.logger.Error("public_feed: list admission modes failed",
+						slog.String("event_id", eventID.String()),
+						slog.String("error", modeErr.Error()),
+					)
+				} else {
+					for _, m := range modes {
+						admissionByID[m.ID.String()] = m.AdmissionMode
+					}
+				}
+			}
 			for _, sess := range sessions {
 				sessResp := publicFeedSessionFromRow(sess)
+				sessResp.applySeatingLinks(admissionByID[sess.ID.String()])
 
 				// Fetch tiers for each session.
 				if h.tierQueries != nil {

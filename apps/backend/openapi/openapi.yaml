@@ -6656,7 +6656,9 @@ components:
               format: int32
               description: Recomputed session capacity (seated + standing).
         seating_plan_version:
-          $ref: "#/components/schemas/SeatingPlanVersion"
+          description: Snapshot of the bound seating_plan_versions row (echoes locked_at, capacity, checksum).
+          allOf:
+            - $ref: "#/components/schemas/SeatingPlanVersion"
         materialized_seats:
           type: integer
           description: Number of session_seats rows materialized in the bind transaction.
@@ -6677,6 +6679,140 @@ components:
         rebound:
           type: boolean
           description: True when the session already carried a binding and this call replaced it.
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Operator seat block/unblock — feature #308, Wave SEAT-B4
+    # ─────────────────────────────────────────────────────────────────────
+
+    PatchSessionSeatsRowSelector:
+      type: object
+      required: [sector, row]
+      description: |
+        Selects every seat in a single `(sector, row)` pair. Both
+        components are matched exactly against
+        `session_seats.sector_name` and `session_seats.row_name` as
+        materialised by SEAT-B2 binding.
+      properties:
+        sector:
+          type: string
+          description: Sector / section name (must be non-empty).
+        row:
+          type: string
+          description: Row name (must be non-empty).
+
+    PatchSessionSeatsRequest:
+      type: object
+      required: [action]
+      description: |
+        Request body for the operator seat block/unblock endpoint. At
+        least one of `seat_keys`, `sectors`, `rows` MUST be non-empty
+        (409 `seating.no_selectors` otherwise). Selectors are unioned
+        server-side into a deduplicated set of session_seats rows.
+      properties:
+        action:
+          type: string
+          enum: [block, unblock]
+          description: Admin transition to attempt. `block` moves available→blocked; `unblock` moves blocked→available.
+        seat_keys:
+          type: array
+          description: |
+            Explicit list of `session_seats.seat_key` values to target.
+            Unknown keys are reported per-key in the response as
+            skipped with reason `seat_not_found` — never a 400.
+          items:
+            type: string
+            description: Canonical seat_key ("<sector>|<row>|<number>").
+        sectors:
+          type: array
+          description: |
+            Whole-sector selectors. Every seat with
+            `session_seats.sector_name` equal to any listed value is
+            included. Empty sectors resolve to zero seats (silent no-op).
+          items:
+            type: string
+            description: Sector / section name.
+        rows:
+          type: array
+          description: |
+            Whole-row selectors, scoped by `(sector, row)`. Empty rows
+            resolve to zero seats (silent no-op).
+          items:
+            $ref: "#/components/schemas/PatchSessionSeatsRowSelector"
+
+    PatchSessionSeatsSeatOutcome:
+      type: object
+      required: [seat_key, outcome, status]
+      description: |
+        Per-seat outcome envelope. `outcome` is one of `blocked`,
+        `unblocked`, `noop`, `skipped`; `reason` is populated only
+        when `outcome == skipped` (values include `held`, `sold`,
+        `seat_not_found`, `concurrent_transition`, `unknown_status`).
+        `status` echoes the post-attempt seat status: `blocked` /
+        `available` for successful changes, the pre-existing status
+        for noop / skipped rows, and empty string for unknown seats.
+      properties:
+        seat_key:
+          type: string
+          description: Canonical seat_key.
+        outcome:
+          type: string
+          enum: [blocked, unblocked, noop, skipped]
+          description: Effect of the attempted transition on this seat.
+        reason:
+          type: string
+          description: Populated for skipped outcomes; documents why the transition was refused.
+        status:
+          type: string
+          description: Post-attempt `session_seats.status` (or empty when the seat was not found).
+
+    PatchSessionSeatsSummary:
+      type: object
+      required: [requested, changed, noop, skipped]
+      description: Roll-up counts across every entry in `outcomes`.
+      properties:
+        requested:
+          type: integer
+          description: Total number of per-seat outcomes returned (targets + unknown).
+        changed:
+          type: integer
+          description: Seats that transitioned successfully (blocked / unblocked).
+        noop:
+          type: integer
+          description: Seats that were already in the target status (idempotent no-op).
+        skipped:
+          type: integer
+          description: Seats refused a transition (held / sold / unknown key / etc.).
+
+    PatchSessionSeatsResponse:
+      type: object
+      required: [session_id, action, seat_status_version, outcomes, summary]
+      description: |
+        Response envelope for the operator seat block/unblock endpoint.
+        `seat_status_version` is the post-transaction session cursor;
+        every mutated row shares this stamp so SEAT-B3 delta pollers
+        observe the whole batch atomically.
+      properties:
+        session_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the session the request targeted.
+        action:
+          type: string
+          enum: [block, unblock]
+          description: Echoes the request `action`.
+        seat_status_version:
+          type: integer
+          format: int64
+          description: Post-transaction `sessions.seat_status_version`.
+        outcomes:
+          type: array
+          description: One entry per resolved seat plus one entry per unknown seat_key.
+          items:
+            $ref: "#/components/schemas/PatchSessionSeatsSeatOutcome"
+        summary:
+          description: Aggregate counters for the operator batch (applied vs skipped).
+          allOf:
+            - $ref: "#/components/schemas/PatchSessionSeatsSummary"
 
     # ─────────────────────────────────────────────────────────────────────
     # Public seating schema + seat-status — feature #307, Wave SEAT-B3
@@ -10403,6 +10539,129 @@ paths:
           description: |
             Rebind refused because the session already carries reservations
             or tickets (`seating.rebind_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Seating queries unavailable (database not wired)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Operator seat block/unblock — feature #308, Wave SEAT-B4
+  # ─────────────────────────────────────────────────────────────────────────
+
+  /v1/organizations/{org_id}/events/{event_id}/sessions/{id}/seats:
+    patch:
+      operationId: patchSessionSeats
+      summary: Block or unblock seats for a session (operator control)
+      description: |
+        Operator endpoint for closing individual seats, whole rows, or
+        whole sectors for sale (tech seats, camera platforms, blocked
+        sightlines, house holds) and reopening them per session. The
+        request combines any of three selectors — `seat_keys`,
+        `sectors`, and `rows` — which are expanded server-side to a
+        deduplicated set of `session_seats` rows. Only the two admin
+        transitions `available → blocked` and `blocked → available`
+        are attempted; seats in `held` / `sold` status are reported
+        per-seat as skipped with a reason and are never silently
+        mutated. Re-blocking / re-opening a seat that is already in the
+        target state is a documented no-op (idempotent).
+
+        Blocked seats surface as `blocked` in the SEAT-B3 seat-status
+        endpoint, map to BSS `0 INACCESSIBLE` in the Bil24 gateway, are
+        excluded from availability counters, and cannot be reserved
+        (409 `reservation.seats_conflict` in the seated checkout path).
+        Blocking does NOT shrink `sessions.capacity_total` — it is a
+        sales hold, not a capacity change.
+
+        The transaction bumps `sessions.seat_status_version` exactly
+        once so every mutated row in the batch shares one monotonic
+        cursor value; delta pollers observe the batch atomically.
+        Every request emits one audit event
+        (`v1.session.seats.block` / `.unblock`) with the effective
+        seat-key list, per-outcome counts, and the actor.
+
+        Requires JWT authentication and the
+        `event_session.assign_seating_plan` permission (same
+        operational role used for SEAT-B2 binding).
+      tags: [v1, seating]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the owning organization
+          schema:
+            type: string
+            format: uuid
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the parent event
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the target session
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchSessionSeatsRequest"
+      responses:
+        "200":
+          description: |
+            Seats processed. Response lists a per-seat outcome for every
+            selector-resolved row (plus one entry per unknown seat_key)
+            and summarises the batch counts. Reaching 200 does NOT imply
+            every seat changed; inspect the `outcomes` array and the
+            `summary.changed` count.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PatchSessionSeatsResponse"
+        "400":
+          description: |
+            Bad request. Codes:
+              seating.invalid_body,
+              seating.invalid_action,
+              seating.no_selectors,
+              seating.invalid_row_selector.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold event_session.assign_seating_plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found or belongs to a different event / org
           content:
             application/json:
               schema:

@@ -66,4 +66,17 @@ func (s *Server) mountSeatingRoutes(r chi.Router) {
 			s.handleBindSessionSeating,
 		)
 	})
+
+	// Operator seat block/unblock surface (feature #308, Wave SEAT-B4). Same
+	// permission family as the bind endpoint above — operators authorised to
+	// assign a seating plan to a session are the same population authorised
+	// to close individual seats / rows / sectors for sale (tech seats, house
+	// holds, blocked sightlines).
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "event_session.assign_seating_plan", "seating")
+		pr.Patch(
+			"/organizations/{org_id}/events/{event_id}/sessions/{id}/seats",
+			s.handlePatchSessionSeats,
+		)
+	})
 }

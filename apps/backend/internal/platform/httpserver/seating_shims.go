@@ -69,3 +69,9 @@ func (s *Server) handleGetPublicSessionSeatStatus(w http.ResponseWriter, r *http
 func (s *Server) handleBindSessionSeating(w http.ResponseWriter, r *http.Request) {
 	s.seatingHandler().HandleBindSessionSeating(w, r)
 }
+
+// ─── seats block/unblock handler shim (feature #308, Wave SEAT-B4) ───────────
+
+func (s *Server) handlePatchSessionSeats(w http.ResponseWriter, r *http.Request) {
+	s.seatingHandler().HandlePatchSessionSeats(w, r)
+}
