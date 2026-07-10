@@ -130,6 +130,10 @@ Impact if different: editor, scanner, seat selection UI, imports.
 
 Blocking level: blocking before seating editor/schema.
 
+**RESOLVED 2026-07-10 (owner):** hybrid confirmed — structured JSON is
+the source of truth; SVG is imported (Bil24 authoring conventions) /
+derived. Canonical model and import rules: `09_autoforge/seating_backlog.md` §5.3, §6.
+
 ### Q12. Можно ли использовать чужой seating plan без согласия владельца?
 
 Decision needed: visibility defaults.
@@ -315,6 +319,10 @@ Recommended default: schema JSON as source of truth; SVG/render assets can be pr
 Impact if different: seating editor, frontend renderer, cache and CDN design change.
 
 Blocking level: blocking before seating API/frontend implementation.
+
+**RESOLVED 2026-07-10 (owner):** both — JSON is canonical; SVG is
+accepted on import and emitted as a derived BSS-compatible layout for
+legacy Bil24 widgets. See `09_autoforge/seating_backlog.md` §6, §7 (SEAT-D3).
 
 ### Q29. Какой cache layer используем для dynamic seat status?
 
@@ -697,6 +705,10 @@ Recommended default: reserve assigned-seat architecture now; implement only if o
 Impact if different: first backlog grows significantly: seat map editor/import, seat status cache, seat-level holds, seat selection UI, accessibility testing and scanner mapping.
 
 Blocking level: blocking before inventory and checkout backlog.
+
+**RESOLVED 2026-07-10 (owner):** assigned seating is now in scope —
+launch venue Palác Akropolis requires it. Scope is import-first (no
+visual editor); full backlog: `09_autoforge/seating_backlog.md` (Wave SEAT).
 
 ### Q66. Какая форма owner approval нужна для master specification?
 
