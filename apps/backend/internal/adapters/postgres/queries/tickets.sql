@@ -27,3 +27,11 @@ WHERE  id = $1;
 SELECT COUNT(*)::bigint AS count
 FROM   tickets
 WHERE  checkout_session_id = $1;
+
+-- name: CountTicketsBySession :one
+-- CountTicketsBySession returns the number of tickets issued against a
+-- session. Powers the seating-plan rebind gate (feature #306, Wave SEAT-B2)
+-- alongside CountReservationsBySession.
+SELECT COUNT(*)::bigint AS count
+FROM   tickets
+WHERE  session_id = $1;

@@ -169,6 +169,99 @@ func (q *Queries) SoftDeleteSession(ctx context.Context, id, eventID uuid.UUID) 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SessionSeatingBindingRow — narrow result shape for the seating-binding
+// endpoint (feature #306, Wave SEAT-B2).
+//
+// Kept separate from SessionRow so the plain sessions CRUD queries remain
+// backward-compatible and callers reading the seating columns get a shape
+// that only surfaces those fields. AdmissionMode is one of
+// 'general_admission'|'assigned_seats'|'hybrid' (§5.1 constraint).
+// SeatingPlanVersionID is non-nil only when a seated version has been bound.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// SessionSeatingBindingRow is the projection returned by
+// GetSessionSeatingBinding and BindSessionSeatingPlan.
+type SessionSeatingBindingRow struct {
+	ID                   uuid.UUID  `json:"id"`
+	EventID              uuid.UUID  `json:"event_id"`
+	AdmissionMode        string     `json:"admission_mode"`
+	SeatingPlanVersionID *uuid.UUID `json:"seating_plan_version_id"`
+	SeatStatusVersion    int64      `json:"seat_status_version"`
+	CapacityTotal        int32      `json:"capacity_total"`
+}
+
+// scanSessionSeatingBindingRow scans a single sessions row projection.
+func scanSessionSeatingBindingRow(row interface {
+	Scan(dest ...any) error
+}) (SessionSeatingBindingRow, error) {
+	var s SessionSeatingBindingRow
+	err := row.Scan(
+		&s.ID,
+		&s.EventID,
+		&s.AdmissionMode,
+		&s.SeatingPlanVersionID,
+		&s.SeatStatusVersion,
+		&s.CapacityTotal,
+	)
+	return s, err
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GetSessionSeatingBinding
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getSessionSeatingBinding = `-- name: GetSessionSeatingBinding :one
+SELECT id, event_id, admission_mode, seating_plan_version_id,
+       seat_status_version, capacity_total
+FROM   sessions
+WHERE  id         = $1
+  AND  event_id   = $2
+  AND  deleted_at IS NULL`
+
+// GetSessionSeatingBinding fetches the seating-related columns for a session
+// scoped by event. Returns pgx.ErrNoRows when not found, already soft-deleted,
+// or belongs to a different event. Used by the bind endpoint (feature #306,
+// Wave SEAT-B2) to decide first-bind vs rebind.
+func (q *Queries) GetSessionSeatingBinding(ctx context.Context, id, eventID uuid.UUID) (SessionSeatingBindingRow, error) {
+	row := q.db.QueryRow(ctx, getSessionSeatingBinding, id, eventID)
+	return scanSessionSeatingBindingRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BindSessionSeatingPlan
+// ─────────────────────────────────────────────────────────────────────────────
+
+const bindSessionSeatingPlan = `-- name: BindSessionSeatingPlan :one
+UPDATE sessions
+SET    admission_mode          = $3,
+       seating_plan_version_id = $4,
+       capacity_total          = $5,
+       updated_at              = now()
+WHERE  id       = $1
+  AND  event_id = $2
+  AND  deleted_at IS NULL
+RETURNING id, event_id, admission_mode, seating_plan_version_id,
+          seat_status_version, capacity_total`
+
+// BindSessionSeatingPlan flips a session onto the (admissionMode, planVersionID)
+// tuple and recomputes capacity_total from the seat count computed by the
+// caller. seat_status_version is left untouched — bind is a metadata change,
+// not a seat-status transition. Returns pgx.ErrNoRows when the session does
+// not exist, belongs to a different event, or has been soft-deleted.
+func (q *Queries) BindSessionSeatingPlan(
+	ctx context.Context,
+	id, eventID uuid.UUID,
+	admissionMode string,
+	planVersionID *uuid.UUID,
+	capacityTotal int32,
+) (SessionSeatingBindingRow, error) {
+	row := q.db.QueryRow(ctx, bindSessionSeatingPlan,
+		id, eventID, admissionMode, planVersionID, capacityTotal,
+	)
+	return scanSessionSeatingBindingRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CountOverlappingSessions
 // ─────────────────────────────────────────────────────────────────────────────
 

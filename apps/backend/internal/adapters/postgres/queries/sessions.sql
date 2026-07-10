@@ -55,6 +55,37 @@ WHERE  id       = $1
   AND  deleted_at IS NULL
 RETURNING id, event_id, start_at, end_at, capacity_total, status, created_at, updated_at, deleted_at;
 
+-- name: GetSessionSeatingBinding :one
+-- GetSessionSeatingBinding fetches the seating-related columns for a session
+-- scoped by event. Returns pgx.ErrNoRows when not found, already soft-deleted,
+-- or belongs to a different event. Used by the seating-binding endpoint
+-- (feature #306, Wave SEAT-B2) to decide first-bind vs rebind and to know
+-- whether a rebind is safe.
+SELECT id, event_id, admission_mode, seating_plan_version_id,
+       seat_status_version, capacity_total
+FROM   sessions
+WHERE  id         = $1
+  AND  event_id   = $2
+  AND  deleted_at IS NULL;
+
+-- name: BindSessionSeatingPlan :one
+-- BindSessionSeatingPlan flips a session onto the (admission_mode,
+-- seating_plan_version_id) tuple and recomputes capacity_total from the
+-- materialized-seat count computed by the caller. seat_status_version is left
+-- untouched — bind is a metadata change, not a seat-status transition. The
+-- SET is guarded by the same event_id + soft-delete filter as the plain
+-- sessions CRUD to keep the mutation policy consistent across the domain.
+UPDATE sessions
+SET    admission_mode          = $3,
+       seating_plan_version_id = $4,
+       capacity_total          = $5,
+       updated_at              = now()
+WHERE  id       = $1
+  AND  event_id = $2
+  AND  deleted_at IS NULL
+RETURNING id, event_id, admission_mode, seating_plan_version_id,
+          seat_status_version, capacity_total;
+
 -- name: CountOverlappingSessions :one
 -- CountOverlappingSessions counts active sessions for the given event whose
 -- time range overlaps with [start_at, end_at). The session with id=exclude_id

@@ -231,3 +231,22 @@ func (q *Queries) ListReservationsByUser(ctx context.Context, userID uuid.UUID) 
 	}
 	return reservations, rows.Err()
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CountReservationsBySession
+// ─────────────────────────────────────────────────────────────────────────────
+
+const countReservationsBySession = `-- name: CountReservationsBySession :one
+SELECT COUNT(*)::bigint AS count
+FROM   reservations
+WHERE  session_id = $1`
+
+// CountReservationsBySession returns the number of reservations attached to
+// the given session. Powers the seating-plan rebind gate (feature #306,
+// Wave SEAT-B2): any non-zero count locks the session's current binding.
+func (q *Queries) CountReservationsBySession(ctx context.Context, sessionID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countReservationsBySession, sessionID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}

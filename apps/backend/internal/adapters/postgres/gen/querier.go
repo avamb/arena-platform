@@ -140,6 +140,8 @@ type Querier interface {
 	UpdateSession(ctx context.Context, id, eventID uuid.UUID, startAt, endAt *time.Time, capacityTotal *int32, status string) (SessionRow, error)
 	SoftDeleteSession(ctx context.Context, id, eventID uuid.UUID) (SessionRow, error)
 	CountOverlappingSessions(ctx context.Context, eventID, excludeID uuid.UUID, startAt, endAt time.Time) (int32, error)
+	GetSessionSeatingBinding(ctx context.Context, id, eventID uuid.UUID) (SessionSeatingBindingRow, error)
+	BindSessionSeatingPlan(ctx context.Context, id, eventID uuid.UUID, admissionMode string, planVersionID *uuid.UUID, capacityTotal int32) (SessionSeatingBindingRow, error)
 
 	// Ticket tiers — pricing modes for sessions (feature #127)
 	InsertTicketTier(ctx context.Context, sessionID uuid.UUID, name, pricingMode string, priceAmount int64, currency string, pwywMin, pwywMax *int64, capacity *int32, saleWindowStart, saleWindowEnd *time.Time, sortOrder int32) (TicketTierRow, error)
@@ -198,6 +200,7 @@ type Querier interface {
 	GetExpiredReservations(ctx context.Context, limit int32) ([]ReservationRow, error)
 	ListReservationsBySession(ctx context.Context, sessionID uuid.UUID) ([]ReservationRow, error)
 	ListReservationsByUser(ctx context.Context, userID uuid.UUID) ([]ReservationRow, error)
+	CountReservationsBySession(ctx context.Context, sessionID uuid.UUID) (int64, error)
 
 	// Promo codes — discount codes for checkout (feature #128)
 	InsertPromoCode(ctx context.Context, orgID uuid.UUID, code, discountType string, discountValue int64, appliesToTierIDs []string, maxUses, maxUsesPerCustomer *int32, validFrom, validUntil *time.Time, minOrderAmount int64, status string) (PromoCodeRow, error)
@@ -215,6 +218,7 @@ type Querier interface {
 	ListTicketsByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID) ([]TicketRow, error)
 	GetTicketByID(ctx context.Context, id uuid.UUID) (TicketRow, error)
 	CountTicketsByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID) (int64, error)
+	CountTicketsBySession(ctx context.Context, sessionID uuid.UUID) (int64, error)
 
 	// Ticket credentials — QR and PDF bearer artifacts (feature #140)
 	InsertTicketCredential(ctx context.Context, ticketID uuid.UUID, credType string, payload string) (TicketCredentialRow, error)
@@ -415,6 +419,11 @@ type Querier interface {
 	ListReservationSeats(ctx context.Context, reservationID uuid.UUID) ([]SessionSeatRow, error)
 	DeleteReservationSeats(ctx context.Context, reservationID uuid.UUID) error
 	CountReservationSeats(ctx context.Context, reservationID uuid.UUID) (int64, error)
+
+	// Public session seating — unauthenticated schema + seat-status endpoints (feature #307, Wave SEAT-B3)
+	GetPublicSessionSchema(ctx context.Context, sessionID uuid.UUID) (PublicSessionSchemaRow, error)
+	GetPublicSessionSeatStatusMeta(ctx context.Context, sessionID uuid.UUID) (PublicSessionSeatStatusMetaRow, error)
+	ListSessionAdmissionModesByEvent(ctx context.Context, eventID uuid.UUID) ([]SessionAdmissionModeRow, error)
 }
 
 // Compile-time assertion: *Queries must implement Querier.

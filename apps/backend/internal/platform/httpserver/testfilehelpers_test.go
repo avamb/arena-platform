@@ -1029,7 +1029,7 @@ func domainSubPackageFor(name string) (string, string) {
 		return "hpayments", "payments_shims.go"
 	case "bank_accounts.go", "bank_accounts_write.go", "bank_accounts_types.go":
 		return "hbankaccounts", "bank_accounts_shims.go"
-	case "plans.go", "versions.go":
+	case "plans.go", "versions.go", "public_schema.go":
 		return "hseating", "seating_shims.go"
 	// NOTE: hauth is deliberately absent — the refactor renamed its files
 	// (auth_login.go → hauth/login.go, …), so a same-name lookup cannot map

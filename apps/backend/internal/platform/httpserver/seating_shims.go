@@ -53,3 +53,19 @@ func (s *Server) handleCreateSeatingPlanVersion(w http.ResponseWriter, r *http.R
 func (s *Server) handleGetSeatingPlanVersion(w http.ResponseWriter, r *http.Request) {
 	s.seatingHandler().HandleGetSeatingPlanVersion(w, r)
 }
+
+// ─── public schema + seat-status shims (feature #307, Wave SEAT-B3) ──────────
+
+func (s *Server) handleGetPublicSessionSchema(w http.ResponseWriter, r *http.Request) {
+	s.seatingHandler().HandleGetPublicSessionSchema(w, r)
+}
+
+func (s *Server) handleGetPublicSessionSeatStatus(w http.ResponseWriter, r *http.Request) {
+	s.seatingHandler().HandleGetPublicSessionSeatStatus(w, r)
+}
+
+// ─── bind handler shim (feature #306, Wave SEAT-B2) ──────────────────────────
+
+func (s *Server) handleBindSessionSeating(w http.ResponseWriter, r *http.Request) {
+	s.seatingHandler().HandleBindSessionSeating(w, r)
+}

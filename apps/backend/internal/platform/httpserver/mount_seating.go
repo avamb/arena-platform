@@ -14,6 +14,14 @@ import (
 // on seatingQueries + pool so tests can compose a Server without a live DB;
 // individual handlers additionally return 503 when hit with a nil pool.
 func (s *Server) mountSeatingRoutes(r chi.Router) {
+	// Public unauthenticated read surface (feature #307, Wave SEAT-B3).
+	// These endpoints do not require the stub JWT provider — they mirror
+	// the public feed visibility gate at the SQL layer.
+	if s.seatingQueries != nil {
+		r.Get("/event-sessions/{id}/schema", s.handleGetPublicSessionSchema)
+		r.Get("/event-sessions/{id}/seat-status", s.handleGetPublicSessionSeatStatus)
+	}
+
 	if s.stub == nil || !s.stub.Enabled() || s.seatingQueries == nil || s.pool == nil {
 		return
 	}
@@ -43,5 +51,19 @@ func (s *Server) mountSeatingRoutes(r chi.Router) {
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "seating_plan.fork", "seating")
 		pr.Post("/seating-plans/{id}/fork", s.handleForkSeatingPlan)
+	})
+
+	// Bind surface (feature #306, Wave SEAT-B2). Binds a seating_plan_version
+	// to an event session, materializes session_seats under a single tx,
+	// applies the category → tier map, and recomputes capacity_total.
+	// Requires the dedicated event_session.assign_seating_plan permission
+	// (seeded in migration 0057). Distinct from seating_plan.* so an org can
+	// grant "operate seated inventory" without granting "edit plan geometry".
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "event_session.assign_seating_plan", "seating")
+		pr.Post(
+			"/organizations/{org_id}/events/{event_id}/sessions/{id}/seating",
+			s.handleBindSessionSeating,
+		)
 	})
 }

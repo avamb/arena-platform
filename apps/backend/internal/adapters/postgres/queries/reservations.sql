@@ -58,6 +58,15 @@ FROM   reservations
 WHERE  session_id = $1
 ORDER BY created_at DESC, id DESC;
 
+-- name: CountReservationsBySession :one
+-- CountReservationsBySession returns the number of reservations attached to
+-- a session. Powers the seating-plan rebind gate (feature #306, Wave SEAT-B2):
+-- a rebind is rejected with 409 when this count is non-zero, so any
+-- historical, cancelled, or expired reservation locks the current binding.
+SELECT COUNT(*)::bigint AS count
+FROM   reservations
+WHERE  session_id = $1;
+
 -- name: ListReservationsByUser :many
 -- Lists all reservations for the given user, newest first.
 SELECT id, org_id, channel_id, session_id, tier_id, user_id, quantity, state,

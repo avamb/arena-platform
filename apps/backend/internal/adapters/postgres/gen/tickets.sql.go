@@ -151,3 +151,21 @@ func (q *Queries) CountTicketsByCheckoutSession(ctx context.Context, checkoutSes
 	err := q.db.QueryRow(ctx, countTicketsByCheckoutSession, checkoutSessionID).Scan(&count)
 	return count, err
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CountTicketsBySession
+// ─────────────────────────────────────────────────────────────────────────────
+
+const countTicketsBySession = `-- name: CountTicketsBySession :one
+SELECT COUNT(*)::bigint AS count
+FROM   tickets
+WHERE  session_id = $1`
+
+// CountTicketsBySession returns the number of tickets issued against the
+// given (catalog) session. Powers the seating-plan rebind gate
+// (feature #306, Wave SEAT-B2) alongside CountReservationsBySession.
+func (q *Queries) CountTicketsBySession(ctx context.Context, sessionID uuid.UUID) (int64, error) {
+	var count int64
+	err := q.db.QueryRow(ctx, countTicketsBySession, sessionID).Scan(&count)
+	return count, err
+}
