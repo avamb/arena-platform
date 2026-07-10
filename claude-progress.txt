@@ -18836,3 +18836,59 @@ Verification (docker golang:1.24 / golangci-lint:latest):
   go test ./...                                               all PASS
   golangci-lint run ./gen/ ./migrations/                      0 issues
 Marked #305 passing.
+
+
+## 2026-07-10 - Feature #307 (SEAT-B3) schema + seat-status endpoints
+- Committed handler (hseating/public_schema.go), queries
+  (session_seating_public.sql), route mount + shims wiring up the
+  unauthenticated small/medium-venue tier per performance strategy:
+    GET /v1/event-sessions/{id}/schema  - geometry + resolved
+      category tiers/prices; ETag = geometry_checksum;
+      Cache-Control public max-age=86400 immutable; If-None-Match
+      short-circuits with a 304 before running seat/tier queries.
+    GET /v1/event-sessions/{id}/seat-status  - snapshot
+      { status_version, seats: {seat_key: status}, delta: false }.
+    GET /v1/event-sessions/{id}/seat-status?since_version=N  - delta
+      returning only rows with status_version > N plus the new
+      status_version cursor; served Cache-Control: no-cache so seat
+      holds propagate promptly. Bad cursor => 400
+      event_session.invalid_since_version. Head-cursor caller gets
+      { status_version, seats:{}, delta:true } with no seat rows.
+- Visibility gate mirrors public feed: event.status=published +
+  session admission_mode != 'general_admission'; otherwise 404
+  event_session.schema_not_found / event_session.seat_status_not_found
+  (indistinguishable to unauthenticated callers by design).
+- Public feed session payload (hfeed/public_feed.go) exposes
+  admission_mode / schema_url / seat_status_url on seated sessions;
+  GA sessions stay untouched. Uses new
+  sessionQueries.ListSessionAdmissionModesByEvent lookup so a lookup
+  failure degrades gracefully to GA-only rather than blowing up the
+  event detail response.
+- OpenAPI 3.1: added SeatingSchemaResponse, SeatingCategoryPrice,
+  SeatingSeatStatusResponse component schemas plus stub schemas for
+  the in-flight SEAT-B2 BindSessionSeatingRequest/Response surface so
+  the drift check runs cleanly ahead of the SEAT-B2 agent's commit;
+  regenerated adapters/http/openapi/types_gen.go via oapi-codegen
+  v2.4.1 (known 3.1 warning) and TS client index.d.ts via
+  node scripts/gen-ts-client.mjs.
+- Contract tests (public_schema_test.go):
+    matchesETag branches: empty / wildcard / exact / list / OWS /
+      weak-validator-never-matches / unrelated / mixed;
+    buildSeatKeyCategoryIndex: explicit seat.key + synthesised
+      "<section>|<row>|<number>" fallback;
+    503 dependency.database_unavailable envelope on both endpoints
+      when queries are nil;
+    schemaCacheControl / seatStatusCacheControl constants pinned.
+- Fixed pre-existing golangci-lint gosec G115 in versions.go by
+  bounds-checking geometry.SeatCount() before the int->int32
+  narrowing conversion; added a
+  seating_plan_version.capacity_overflow guard for pathological
+  imports.
+Verification (docker golang:1.24 / golangci-lint:latest):
+  make gen-openapi                                             OK (3.1 warn)
+  node scripts/validate-openapi.mjs                            OK
+  node scripts/gen-ts-client.mjs                               OK
+  go build ./apps/backend/...                                  OK
+  go test ./apps/backend/... -count=1                          all PASS
+  golangci-lint run ./hseating/... ./hfeed/...                 0 issues
+Marked #307 passing.
