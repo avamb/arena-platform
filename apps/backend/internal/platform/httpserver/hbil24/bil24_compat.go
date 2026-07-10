@@ -218,6 +218,8 @@ func (h *Handler) HandleBil24Command(w http.ResponseWriter, r *http.Request) {
 		h.handleBil24GetAllActions(w, r, req)
 	case "GET_SEAT_LIST":
 		h.handleBil24GetSeatList(w, r, req)
+	case "GET_SCHEMA":
+		h.handleBil24GetSchema(w, r, req)
 	case "RESERVATION":
 		h.handleBil24Reservation(w, r, req)
 	case "GET_ORDER_INFO":
@@ -324,10 +326,10 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 //     pre-#312 behavior:
 //
 //     {
-//       "categoryPriceId": "<uuid>", "categoryName": "...",
-//       "price": <cents>, "currency": "USD",
-//       "pricingMode": "fixed"|"free"|"pwyw",
-//       "availableCount": <int or null>
+//     "categoryPriceId": "<uuid>", "categoryName": "...",
+//     "price": <cents>, "currency": "USD",
+//     "pricingMode": "fixed"|"free"|"pwyw",
+//     "availableCount": <int or null>
 //     }
 //
 //   - assigned_seats / hybrid — one entry per session_seat, per ADR-005
@@ -335,14 +337,14 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 //     as a plain UUID string:
 //
 //     {
-//       "seatId":          "<uuid>",       // session_seats.id as string
-//       "categoryPriceId": "<uuid>",       // tier UUID (nullable)
-//       "sector":          "...",
-//       "row":             "...",
-//       "number":          "...",
-//       "price":           <cents>,        // 0 if no tier bound yet
-//       "currency":        "USD",
-//       "status":          <BSS int>       // 0 blocked, 1 available, 3 held, 4 sold
+//     "seatId":          "<uuid>",       // session_seats.id as string
+//     "categoryPriceId": "<uuid>",       // tier UUID (nullable)
+//     "sector":          "...",
+//     "row":             "...",
+//     "number":          "...",
+//     "price":           <cents>,        // 0 if no tier bound yet
+//     "currency":        "USD",
+//     "status":          <BSS int>       // 0 blocked, 1 available, 3 held, 4 sold
 //     }
 //
 // BSS status codes are the Bil24 seat-status wire values (§6 of the

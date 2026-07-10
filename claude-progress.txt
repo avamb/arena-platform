@@ -19156,3 +19156,52 @@ Verification (docker golang:1.24):
   go test ./internal/platform/httpserver/hbil24/... -count=1        OK 18/18
   go test ./... -count=1                                            all PASS
 Marked #312 passing.
+
+
+## 2026-07-10 - Feature #313 (SEAT-D2) Bil24 GET_SCHEMA seat coordinates
+- hbil24/handler.go: added SchemaQuerier interface
+  (GetPublicSessionSchema + ListSessionSeats). *gen.Queries already
+  satisfies it via queries/session_seating_public.sql. Handler struct
+  gained schemaQ; constructor gained a schemaQ parameter (nil-safe).
+- bil24_compat.go dispatcher: added "GET_SCHEMA" case (between
+  GET_SEAT_LIST and RESERVATION) + supported-commands docstring.
+- schema.go (new): handleBil24GetSchema. Flow:
+    (a) resolve session UUID from actionEventId (TranslateLegacyID),
+    (b) GetPublicSessionSchema -> row+geometry (pgx.ErrNoRows -> -3,
+        published+seated visibility gate inherited from the query),
+    (c) json.Unmarshal geometry into seating.Geometry,
+    (d) buildSeatKeyCoordinateIndex walks Sections/Rows/Seats and
+        emits seat_key -> (x,y,radius,category_index). Uses
+        seat.Key verbatim; falls back to seating.SeatKey(sec,row,num)
+        for hand-authored payloads without seat.Key,
+    (e) ListSessionSeats -> one wire entry per session_seat keyed by
+        seatId (session_seats.id.String(), ADR-005). Missing geometry
+        key -> zero-coordinate fallback + warn log (mid-rebind race).
+- Wire response (Bil24 envelope resultCode=0):
+  { admissionMode, geometryChecksum, seatStatusVersion,
+    canvas:{width,height},
+    seatSchema:[{seatId,seatKey,x,y,radius,categoryIndex}] }
+- Result codes: -99 when schemaQ nil, -2 for bad UUID, -3 when
+  PublicSessionSchema row missing, -99 on geometry decode failure.
+- Wired schemaQ in bil24_shims.go (s.seatingQueries feeds both seatQ
+  and schemaQ; nil-safe).
+- Tests (seat_d2_313_test.go, all pass):
+    TestBil24_313_GetSchema_ProjectsCoordinatesBySeatID
+    TestBil24_313_GetSchema_JoinsGetSeatListBySeatID (contract:
+      seatId zip between GET_SCHEMA and GET_SEAT_LIST -- the
+      "mirrors legacy API split" requirement from the feature spec)
+    TestBil24_313_GetSchema_NoSchemaQ_ServiceUnavailable
+    TestBil24_313_GetSchema_InvalidSessionID_InvalidRequest
+    TestBil24_313_GetSchema_MissingSession_NotFound
+    TestBil24_313_GetSchema_MalformedGeometry_InternalError
+    TestBil24_313_GetSchema_SeatMissingInGeometry_ZeroFallback
+    TestBil24_313_GetSchema_SeatKeyFallback (empty seat.Key path)
+    TestBil24_313_BuildSeatKeyCoordinateIndex_UsesKeyWhenPresent
+  Test helper newHandler in seat_d1_312_test.go extended with nil
+  schemaQ; SEAT-D1 tests remain green.
+Verification (docker golang:1.24 / golangci-lint:latest):
+  go build ./apps/backend/...                                     OK
+  go test ./apps/backend/internal/platform/httpserver/... -count=1 all PASS
+  golangci-lint run ./apps/backend/internal/platform/httpserver/hbil24/...
+                                                                   0 issues
+Marked #313 passing.
