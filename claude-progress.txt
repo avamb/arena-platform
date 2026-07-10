@@ -18672,3 +18672,48 @@ Verification (docker golang:1.24):
   go test -run TestS2_HandleScannerScanEvents (2 cases)         PASS
   go test -run TestS2_FileShapes (4 cases)                      PASS
 Marked #278 passing.
+
+
+## 2026-07-10 - Feature #303 (SEAT-A2) Geometry model + Bil24 SVG importer
+- New pure-domain package apps/backend/internal/domain/seating with
+  doc.go / geometry.go / errors.go / svg_import.go and
+  testdata/Palac_Akropolis.svg (copied verbatim from
+  06_venue_maps_and_seating/).
+- Canonical geometry JSON (schema_version=1) per seating_backlog.md
+  §5.3: Canvas / Category / Section / Row / Seat / StandingZone /
+  Table. SeatKey helper = "<section>|<row>|<number>" (§5.3 stable
+  identifier). Canonicalize sorts categories by Index, sections /
+  rows / seats by Key. CanonicalJSON = deterministic json.Marshal
+  on the canonicalised tree. Checksum = hex sha256 of CanonicalJSON
+  (§5.3 geometry_checksum contract).
+- encoding/xml token-walk parser (svg_import.go, ImportSVG) implementing
+  every §6 rule, each mapped to a stable ValidationError.Code:
+    rule 1 -> ErrCanvasTooLarge / ErrCanvasMissing
+    rule 2 -> ErrSeatNotCircle
+    rule 3 -> ErrRowMissingTitle + ErrRowMissingSectorLabel
+    rule 4 -> ErrSeatMissingNumber
+    rule 5 -> ErrPriceCategoryMissing / Empty / Unlabelled
+    rule 6 -> WarnLegendMissing (advisory, not hard-fail)
+    rule 7 -> ErrSeatColorUnmatched
+    rule 8 -> ErrDuplicateSeat + ErrEmptyRow / ErrEmptySection
+    rule 9 -> decor_svg = re-serialised SVG minus PriceCategory /
+              Legend / row-group subtrees
+- Table-driven tests: one negative fixture per error class + Sector-
+  prefix stripping + malformed-XML + Legend-missing warning path.
+- Palác Akropolis acceptance test (§7 SEAT-A2):
+    zero validation errors on the fixture,
+    sections Parter + Balcony left / center / right present,
+    15 categories (First..Fifteenth),
+    seat count = 260,
+    stable checksum across two consecutive imports.
+  Note re: seat-count. The seating_backlog headline is "279 seats";
+  that figure counts every <circle> element in the source SVG. §6
+  rules 5+6 say the 15 PriceCategory swatches and 4 Legend swatches
+  are NOT seats, so the correct authoring-format seat count is
+  279-19=260. Documented in the test with a code-linked comment so
+  a future maintainer sees the reasoning without re-deriving it.
+Verification (docker golang:1.24 / golangci-lint:latest):
+  go build ./...                                              OK
+  go test ./apps/backend/internal/domain/seating/             PASS
+  golangci-lint run ./apps/backend/internal/domain/seating/   0 issues
+Marked #303 passing.
