@@ -376,6 +376,22 @@ type Querier interface {
 	ListOrganizersByNetwork(ctx context.Context, networkID uuid.UUID) ([]NetworkOrganizationRow, error)
 	ListAgentsByNetwork(ctx context.Context, networkID uuid.UUID) ([]NetworkOrganizationRow, error)
 	ListNetworksByOrganization(ctx context.Context, organizationID uuid.UUID, assignmentKind *string) ([]NetworkByOrganizationRow, error)
+
+	// Seating plans — venue seating geometry + versioning (feature #302, Wave SEAT-A1)
+	InsertSeatingPlan(ctx context.Context, venueID, ownerOrgID uuid.UUID, name, planType, visibility, status string, sourceSeatingPlanID *uuid.UUID) (SeatingPlanRow, error)
+	GetSeatingPlanByID(ctx context.Context, id uuid.UUID) (SeatingPlanRow, error)
+	GetSeatingPlanByIDForOwner(ctx context.Context, id, ownerOrgID uuid.UUID) (SeatingPlanRow, error)
+	ListSeatingPlansByOwner(ctx context.Context, ownerOrgID uuid.UUID) ([]SeatingPlanRow, error)
+	ListSeatingPlansByVenue(ctx context.Context, venueID uuid.UUID) ([]SeatingPlanRow, error)
+	UpdateSeatingPlan(ctx context.Context, id, ownerOrgID uuid.UUID, name, planType, visibility, status string) (SeatingPlanRow, error)
+	SetSeatingPlanCurrentVersion(ctx context.Context, id, ownerOrgID uuid.UUID, currentVersionID *uuid.UUID) (SeatingPlanRow, error)
+	ArchiveSeatingPlan(ctx context.Context, id, ownerOrgID uuid.UUID) (SeatingPlanRow, error)
+	SoftDeleteSeatingPlan(ctx context.Context, id, ownerOrgID uuid.UUID) (SeatingPlanRow, error)
+	InsertSeatingPlanVersion(ctx context.Context, seatingPlanID uuid.UUID, versionNumber int32, geometry json.RawMessage, geometryChecksum string, svgAssetMediaID *uuid.UUID, capacitySeated, capacityStanding int32) (SeatingPlanVersionRow, error)
+	GetSeatingPlanVersionByID(ctx context.Context, id uuid.UUID) (SeatingPlanVersionRow, error)
+	ListSeatingPlanVersionsByPlan(ctx context.Context, seatingPlanID uuid.UUID) ([]SeatingPlanVersionRow, error)
+	GetLatestSeatingPlanVersionNumber(ctx context.Context, seatingPlanID uuid.UUID) (int32, error)
+	LockSeatingPlanVersion(ctx context.Context, id uuid.UUID) (SeatingPlanVersionRow, error)
 }
 
 // Compile-time assertion: *Queries must implement Querier.
