@@ -18998,3 +18998,51 @@ Verification (docker golang:1.24 / golangci-lint:latest):
     issues (3 pre-existing issues in seat_reservations.go /
     seat_reservations_test.go unchanged)
 Marked #310 passing.
+
+
+## 2026-07-10 - Feature #309 (SEAT-C1) Seat reservations
+- POST /v1/reservations now routes to a seated branch when the caller
+  supplies seats:[seat_key,...] instead of quantity (mutually exclusive;
+  reservation.seats_quantity_conflict on mix). Empty / duplicate keys
+  yield reservation.duplicate_seat / .invalid_seats.
+- Admission-mode gate uses new gen query GetSessionAdmissionModeByID
+  (queries/session_seats.sql). general_admission + seats -> 422
+  reservation.seats_not_supported; assigned_seats + quantity -> 422
+  reservation.quantity_not_supported; missing session -> 404
+  reservation.session_not_found. Hybrid accepts either branch.
+- Seated concurrency (seat_reservations.go, seating_backlog SS5.2):
+  in one tx (a) IncrementSessionSeatStatusVersion -> newVersion,
+  (b) LockSessionSeatsForHold SELECT ... FOR UPDATE in seat_key ASC,
+  (c) seatConflicts merges request set against SELECT result and
+  surfaces both unknown keys and non-available rows as a single 409
+  reservation.seats_conflict with details.conflicts array,
+  (d) ReserveCapacity enforces the ledger for len(seats),
+  (e) InsertReservation writes draft, (f) per-seat HoldSessionSeat
+  conditional UPDATE stamps held + reservation_id + newVersion,
+  (g) per-seat InsertReservationSeat links the join (23505 -> 409).
+  Every failure rolls back the whole tx.
+- TTL expiry (reservation_processor.expireReservation) and buyer cancel
+  (HandleCancelReservation) share releaseReservationSeatsTx: bump
+  seat_status_version once, iterate reservation_seats, conditional
+  ReleaseSessionSeat scoped by reservation_id (idempotent on
+  pgx.ErrNoRows), then DeleteReservationSeats. Seat-release failure is
+  non-fatal; the reservation still transitions and inventory ledger
+  release still runs.
+- reservationResponse.Seats populated on the seated path (omitempty on
+  GA-only holds).
+- OpenAPI 3.1: Reservation.seats added; CreateReservationRequest drops
+  quantity from required, adds seats (items:string, minItems:1,
+  uniqueItems:true), documents mutual exclusivity + admission_mode
+  gate. Regenerated adapters/http/openapi/types_gen.go via
+  oapi-codegen v2.4.1 and TS client index.d.ts via
+  scripts/gen-ts-client.mjs.
+- Unit tests (seat_reservations_test.go): normalizeSeatKeys nil / empty
+  / single / multi / empty-key / duplicate branches; seatConflicts
+  unknown vs non-available vs all-available; sentinel distinctness.
+Verification (docker golang:1.24 / golangci-lint:latest):
+  make gen-openapi                                             OK
+  node scripts/gen-ts-client.mjs                               OK
+  go build ./...                                               OK
+  go test ./apps/backend/... -count=1                          all PASS
+  golangci-lint run ./hcheckout/... ./gen/...                  0 issues
+Marked #309 passing.

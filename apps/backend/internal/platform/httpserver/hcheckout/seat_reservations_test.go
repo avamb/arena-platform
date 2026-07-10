@@ -6,9 +6,9 @@
 // under the migrations harness; the coverage here targets the deterministic
 // pieces that run outside a transaction so they exercise no PostgreSQL:
 //
-//   * normalizeSeatKeys — trim / reject-empty / dedupe / ASC sort
-//   * seatConflicts     — merges the requested set against the SELECT result
-//                         and surfaces both unknown and non-available seats
+//   - normalizeSeatKeys — trim / reject-empty / dedupe / ASC sort
+//   - seatConflicts     — merges the requested set against the SELECT result
+//     and surfaces both unknown and non-available seats
 package hcheckout
 
 import (
@@ -85,10 +85,10 @@ func TestSeatC1_NormalizeSeatKeys(t *testing.T) {
 
 // TestSeatC1_SeatConflicts covers the four states the merge can produce:
 //
-//   * all requested keys resolved + available → no conflicts;
-//   * a requested key missing from the SELECT result → "unknown";
-//   * a resolved row whose status is not 'available' → status echoed back;
-//   * mixed conflicts + available seats → conflicts still fully listed.
+//   - all requested keys resolved + available → no conflicts;
+//   - a requested key missing from the SELECT result → "unknown";
+//   - a resolved row whose status is not 'available' → status echoed back;
+//   - mixed conflicts + available seats → conflicts still fully listed.
 func TestSeatC1_SeatConflicts(t *testing.T) {
 	t.Parallel()
 
@@ -134,7 +134,7 @@ func TestSeatC1_SentinelDistinctness(t *testing.T) {
 	if errors.Is(errEmptySeatKey, errDuplicateSeatKey) {
 		t.Fatal("errEmptySeatKey and errDuplicateSeatKey must be distinct sentinels")
 	}
-	if errors.Is(admissionErrSessionNotFound, admissionErrQuantityNotSupported) {
-		t.Fatal("admissionErrSessionNotFound and admissionErrQuantityNotSupported must be distinct sentinels")
+	if errors.Is(errAdmissionSessionNotFound, errAdmissionQuantityNotSupported) {
+		t.Fatal("errAdmissionSessionNotFound and errAdmissionQuantityNotSupported must be distinct sentinels")
 	}
 }

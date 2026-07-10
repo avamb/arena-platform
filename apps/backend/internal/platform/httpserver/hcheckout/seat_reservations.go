@@ -3,26 +3,26 @@
 //
 // Concurrency contract (§5.2 of the seating backlog):
 //
-//   1. Deduplicate + sort seat_keys ASC — deterministic lock order avoids
-//      cross-request deadlocks.
-//   2. In one PostgreSQL transaction:
-//        a. Increment sessions.seat_status_version → new monotonic stamp.
-//        b. SELECT … FOR UPDATE on the target session_seats rows in seat_key
-//           order (LockSessionSeatsForHold).
-//        c. Verify every requested key was returned (missing → 409
-//           reservation.seats_conflict with the unknown keys listed) and
-//           every returned row has status = 'available' (non-available →
-//           409 reservation.seats_conflict with the conflicting keys and
-//           their current statuses).
-//        d. Reserve inventory_ledger capacity for len(seats).
-//        e. Insert the draft reservation.
-//        f. Conditional UPDATE session_seats.status='held' + reservation_id,
-//           stamped with the new status_version (HoldSessionSeat). Any 0-row
-//           result rolls back the tx with a 409.
-//        g. Insert one row per seat into reservation_seats. A duplicate key
-//           (23505) rolls back the tx with a 409.
-//   3. Commit → seats are held; TTL expiry / cancel / conversion paths take
-//      over from here.
+//  1. Deduplicate + sort seat_keys ASC — deterministic lock order avoids
+//     cross-request deadlocks.
+//  2. In one PostgreSQL transaction:
+//     a. Increment sessions.seat_status_version → new monotonic stamp.
+//     b. SELECT … FOR UPDATE on the target session_seats rows in seat_key
+//     order (LockSessionSeatsForHold).
+//     c. Verify every requested key was returned (missing → 409
+//     reservation.seats_conflict with the unknown keys listed) and
+//     every returned row has status = 'available' (non-available →
+//     409 reservation.seats_conflict with the conflicting keys and
+//     their current statuses).
+//     d. Reserve inventory_ledger capacity for len(seats).
+//     e. Insert the draft reservation.
+//     f. Conditional UPDATE session_seats.status='held' + reservation_id,
+//     stamped with the new status_version (HoldSessionSeat). Any 0-row
+//     result rolls back the tx with a 409.
+//     g. Insert one row per seat into reservation_seats. A duplicate key
+//     (23505) rolls back the tx with a 409.
+//  3. Commit → seats are held; TTL expiry / cancel / conversion paths take
+//     over from here.
 //
 // A partial conflict (some seats available, some not) rolls back the whole
 // transaction: the response lists ALL conflicting seat_keys so the client can
@@ -311,18 +311,18 @@ func seatConflicts(requested []string, locked []gen.SessionSeatRow) []map[string
 // rejectGAOnAssignedSeatsSession short-circuits the GA (quantity) branch when
 // the target session is strictly assigned_seats. Hybrid sessions accept both
 // modes and are allowed through. Sessions that do not exist / have been
-// soft-deleted return admissionErrSessionNotFound so the parent handler emits
+// soft-deleted return errAdmissionSessionNotFound so the parent handler emits
 // a 404 with the reservation.session_not_found code.
 func (h *Handler) rejectGAOnAssignedSeatsSession(ctx context.Context, q *gen.Queries, sessionID uuid.UUID) error {
 	mode, err := q.GetSessionAdmissionModeByID(ctx, sessionID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return admissionErrSessionNotFound
+			return errAdmissionSessionNotFound
 		}
 		return err
 	}
 	if mode.AdmissionMode == admissionAssignedSeats {
-		return admissionErrQuantityNotSupported
+		return errAdmissionQuantityNotSupported
 	}
 	return nil
 }
@@ -332,11 +332,11 @@ func (h *Handler) rejectGAOnAssignedSeatsSession(ctx context.Context, q *gen.Que
 // non-sentinel error surfaces as a 500 with reservation.admission_lookup_failed.
 func writeAdmissionModeError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
-	case errors.Is(err, admissionErrSessionNotFound):
+	case errors.Is(err, errAdmissionSessionNotFound):
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 			"reservation.session_not_found", "session not found", r,
 		))
-	case errors.Is(err, admissionErrQuantityNotSupported):
+	case errors.Is(err, errAdmissionQuantityNotSupported):
 		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
 			"reservation.quantity_not_supported",
 			"session is assigned_seats — pass seats[] instead of quantity",
@@ -401,8 +401,8 @@ var (
 	errEmptySeatKey     = errors.New("hcheckout: seats[] contains an empty seat_key")
 	errDuplicateSeatKey = errors.New("hcheckout: seats[] contains duplicate seat_keys")
 
-	admissionErrSessionNotFound       = errors.New("hcheckout: session not found")
-	admissionErrQuantityNotSupported  = errors.New("hcheckout: session is assigned_seats")
+	errAdmissionSessionNotFound      = errors.New("hcheckout: session not found")
+	errAdmissionQuantityNotSupported = errors.New("hcheckout: session is assigned_seats")
 )
 
 const (
