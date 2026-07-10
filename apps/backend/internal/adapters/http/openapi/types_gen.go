@@ -135,6 +135,29 @@ const (
 	CreatePromoCodeRequestStatusPaused CreatePromoCodeRequestStatus = "paused"
 )
 
+// Defines values for CreateSeatingPlanRequestPlanType.
+const (
+	CreateSeatingPlanRequestPlanTypeAssignedSeats    CreateSeatingPlanRequestPlanType = "assigned_seats"
+	CreateSeatingPlanRequestPlanTypeGeneralAdmission CreateSeatingPlanRequestPlanType = "general_admission"
+	CreateSeatingPlanRequestPlanTypeMixed            CreateSeatingPlanRequestPlanType = "mixed"
+	CreateSeatingPlanRequestPlanTypeTables           CreateSeatingPlanRequestPlanType = "tables"
+)
+
+// Defines values for CreateSeatingPlanRequestStatus.
+const (
+	CreateSeatingPlanRequestStatusActive   CreateSeatingPlanRequestStatus = "active"
+	CreateSeatingPlanRequestStatusArchived CreateSeatingPlanRequestStatus = "archived"
+	CreateSeatingPlanRequestStatusDraft    CreateSeatingPlanRequestStatus = "draft"
+)
+
+// Defines values for CreateSeatingPlanRequestVisibility.
+const (
+	CreateSeatingPlanRequestVisibilityOperatorVerified CreateSeatingPlanRequestVisibility = "operator_verified"
+	CreateSeatingPlanRequestVisibilityPrivate          CreateSeatingPlanRequestVisibility = "private"
+	CreateSeatingPlanRequestVisibilityPublicTemplate   CreateSeatingPlanRequestVisibility = "public_template"
+	CreateSeatingPlanRequestVisibilitySharedRead       CreateSeatingPlanRequestVisibility = "shared_read"
+)
+
 // Defines values for CreateSessionRequestStatus.
 const (
 	CreateSessionRequestStatusCancelled CreateSessionRequestStatus = "cancelled"
@@ -418,6 +441,29 @@ const (
 	ScannerValidateResponseStatusScanned ScannerValidateResponseStatus = "scanned"
 )
 
+// Defines values for SeatingPlanPlanType.
+const (
+	SeatingPlanPlanTypeAssignedSeats    SeatingPlanPlanType = "assigned_seats"
+	SeatingPlanPlanTypeGeneralAdmission SeatingPlanPlanType = "general_admission"
+	SeatingPlanPlanTypeMixed            SeatingPlanPlanType = "mixed"
+	SeatingPlanPlanTypeTables           SeatingPlanPlanType = "tables"
+)
+
+// Defines values for SeatingPlanStatus.
+const (
+	SeatingPlanStatusActive   SeatingPlanStatus = "active"
+	SeatingPlanStatusArchived SeatingPlanStatus = "archived"
+	SeatingPlanStatusDraft    SeatingPlanStatus = "draft"
+)
+
+// Defines values for SeatingPlanVisibility.
+const (
+	SeatingPlanVisibilityOperatorVerified SeatingPlanVisibility = "operator_verified"
+	SeatingPlanVisibilityPrivate          SeatingPlanVisibility = "private"
+	SeatingPlanVisibilityPublicTemplate   SeatingPlanVisibility = "public_template"
+	SeatingPlanVisibilitySharedRead       SeatingPlanVisibility = "shared_read"
+)
+
 // Defines values for SessionItemStatus.
 const (
 	SessionItemStatusCancelled SessionItemStatus = "cancelled"
@@ -501,6 +547,21 @@ const (
 	UpdatePromoCodeRequestStatusPaused UpdatePromoCodeRequestStatus = "paused"
 )
 
+// Defines values for UpdateSeatingPlanRequestStatus.
+const (
+	UpdateSeatingPlanRequestStatusActive   UpdateSeatingPlanRequestStatus = "active"
+	UpdateSeatingPlanRequestStatusArchived UpdateSeatingPlanRequestStatus = "archived"
+	UpdateSeatingPlanRequestStatusDraft    UpdateSeatingPlanRequestStatus = "draft"
+)
+
+// Defines values for UpdateSeatingPlanRequestVisibility.
+const (
+	UpdateSeatingPlanRequestVisibilityOperatorVerified UpdateSeatingPlanRequestVisibility = "operator_verified"
+	UpdateSeatingPlanRequestVisibilityPrivate          UpdateSeatingPlanRequestVisibility = "private"
+	UpdateSeatingPlanRequestVisibilityPublicTemplate   UpdateSeatingPlanRequestVisibility = "public_template"
+	UpdateSeatingPlanRequestVisibilitySharedRead       UpdateSeatingPlanRequestVisibility = "shared_read"
+)
+
 // Defines values for UpdateSessionRequestStatus.
 const (
 	UpdateSessionRequestStatusCancelled UpdateSessionRequestStatus = "cancelled"
@@ -530,17 +591,17 @@ const (
 
 // Defines values for VenueItemStatus.
 const (
-	Active   VenueItemStatus = "active"
-	Archived VenueItemStatus = "archived"
-	Draft    VenueItemStatus = "draft"
+	VenueItemStatusActive   VenueItemStatus = "active"
+	VenueItemStatusArchived VenueItemStatus = "archived"
+	VenueItemStatusDraft    VenueItemStatus = "draft"
 )
 
 // Defines values for ListEventsParamsVisibility.
 const (
-	ListEventsParamsVisibilityAll      ListEventsParamsVisibility = "all"
-	ListEventsParamsVisibilityPrivate  ListEventsParamsVisibility = "private"
-	ListEventsParamsVisibilityPublic   ListEventsParamsVisibility = "public"
-	ListEventsParamsVisibilityUnlisted ListEventsParamsVisibility = "unlisted"
+	All      ListEventsParamsVisibility = "all"
+	Private  ListEventsParamsVisibility = "private"
+	Public   ListEventsParamsVisibility = "public"
+	Unlisted ListEventsParamsVisibility = "unlisted"
 )
 
 // Defines values for PostV1MediaMultipartBodyOwnerType.
@@ -1440,6 +1501,51 @@ type CreateReservationRequest struct {
 	TierId *openapi_types.UUID `json:"tier_id,omitempty"`
 }
 
+// CreateSeatingPlanRequest Request body for POST /v1/venues/{venue_id}/seating-plans.
+type CreateSeatingPlanRequest struct {
+	// Name Human-facing plan name.
+	Name string `json:"name"`
+
+	// OwnerOrgId UUIDv7 of the organization that will own the new plan.
+	OwnerOrgId openapi_types.UUID `json:"owner_org_id"`
+
+	// PlanType Layout family — see SeatingPlan.plan_type.
+	PlanType CreateSeatingPlanRequestPlanType `json:"plan_type"`
+
+	// Status Optional lifecycle override (defaults to draft).
+	Status *CreateSeatingPlanRequestStatus `json:"status,omitempty"`
+
+	// Visibility Optional visibility override (defaults to private).
+	Visibility *CreateSeatingPlanRequestVisibility `json:"visibility,omitempty"`
+}
+
+// CreateSeatingPlanRequestPlanType Layout family — see SeatingPlan.plan_type.
+type CreateSeatingPlanRequestPlanType string
+
+// CreateSeatingPlanRequestStatus Optional lifecycle override (defaults to draft).
+type CreateSeatingPlanRequestStatus string
+
+// CreateSeatingPlanRequestVisibility Optional visibility override (defaults to private).
+type CreateSeatingPlanRequestVisibility string
+
+// CreateSeatingPlanVersionRequest Request body for POST /v1/seating-plans/{id}/versions. Exactly one of
+// `svg` or `geometry` must be supplied. The SVG importer canonicalises
+// and checksums the result; §6 rule violations surface as a 422 with
+// per-element details in ErrorEnvelope.details.errors.
+type CreateSeatingPlanVersionRequest struct {
+	// CapacityStanding Optional standing capacity override (defaults to 0).
+	CapacityStanding *int `json:"capacity_standing,omitempty"`
+
+	// Geometry Pre-built canonical geometry object (see §5.3 of the seating backlog).
+	Geometry *map[string]interface{} `json:"geometry,omitempty"`
+
+	// Svg Raw SVG document text following the Bil24 authoring conventions.
+	Svg *string `json:"svg,omitempty"`
+
+	// SvgAssetMediaId Optional media store FK carrying the source SVG asset.
+	SvgAssetMediaId *openapi_types.UUID `json:"svg_asset_media_id,omitempty"`
+}
+
 // CreateSessionRequest Create-time payload for POST
 // /v1/organizations/{org_id}/events/{event_id}/sessions. The owning
 // org_id and event_id are taken from the path; the body MUST NOT
@@ -1927,6 +2033,18 @@ type EventTranslations map[string]struct {
 
 	// Name Translated event name for this locale.
 	Name *string `json:"name,omitempty"`
+}
+
+// ForkSeatingPlanRequest Request body for POST /v1/seating-plans/{id}/fork.
+type ForkSeatingPlanRequest struct {
+	// Name Optional plan name override — defaults to "<source name> (fork)".
+	Name *string `json:"name,omitempty"`
+
+	// OwnerOrgId UUIDv7 of the organization that will own the forked plan.
+	OwnerOrgId openapi_types.UUID `json:"owner_org_id"`
+
+	// VenueId Optional venue override — defaults to the source plan's venue.
+	VenueId *openapi_types.UUID `json:"venue_id,omitempty"`
 }
 
 // GeoCitiesResponse defines model for GeoCitiesResponse.
@@ -3939,6 +4057,116 @@ type ScannerValidateResponseInvalidReason string
 // ScannerValidateResponseStatus Current barcode status (unchanged by this call).
 type ScannerValidateResponseStatus string
 
+// SeatingPlan A logical seating plan owned by one organization and attached to a
+// venue. Feature #302 seeded the storage; feature #304 (Wave SEAT-A3)
+// added the CRUD / fork surface documented here.
+type SeatingPlan struct {
+	// CreatedAt RFC 3339 UTC timestamp of row creation.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CurrentVersionId Pointer to the currently-published seating_plan_versions row.
+	// Null until the first version is created.
+	CurrentVersionId *openapi_types.UUID `json:"current_version_id"`
+
+	// Id UUIDv7 primary key of the seating_plans row.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Human-facing plan name.
+	Name string `json:"name"`
+
+	// OwnerOrgId Owning organization. Immutable — moving a plan between orgs is
+	// expressed as a fork (POST /v1/seating-plans/{id}/fork).
+	OwnerOrgId openapi_types.UUID `json:"owner_org_id"`
+
+	// PlanType Seating layout family — determines which geometry primitives are
+	// permitted in a version's canonical model.
+	PlanType SeatingPlanPlanType `json:"plan_type"`
+
+	// SourceSeatingPlanId Fork lineage. Null for originals; set to the source plan id when
+	// this row was created via POST /v1/seating-plans/{id}/fork.
+	SourceSeatingPlanId *openapi_types.UUID `json:"source_seating_plan_id"`
+
+	// Status Lifecycle. draft = mutable, no sessions may bind; active =
+	// published, sessions may bind; archived = soft-retired, no new
+	// session bindings (existing bindings are unaffected).
+	Status SeatingPlanStatus `json:"status"`
+
+	// UpdatedAt RFC 3339 UTC timestamp of last mutation.
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// VenueId UUIDv7 of the venue the plan is attached to.
+	VenueId openapi_types.UUID `json:"venue_id"`
+
+	// Visibility Share scope. Defaults to private on create; move to shared_read
+	// or public_template to enable cross-org read / fork.
+	Visibility SeatingPlanVisibility `json:"visibility"`
+}
+
+// SeatingPlanPlanType Seating layout family — determines which geometry primitives are
+// permitted in a version's canonical model.
+type SeatingPlanPlanType string
+
+// SeatingPlanStatus Lifecycle. draft = mutable, no sessions may bind; active =
+// published, sessions may bind; archived = soft-retired, no new
+// session bindings (existing bindings are unaffected).
+type SeatingPlanStatus string
+
+// SeatingPlanVisibility Share scope. Defaults to private on create; move to shared_read
+// or public_template to enable cross-org read / fork.
+type SeatingPlanVisibility string
+
+// SeatingPlanValidationIssue A single §6 rule violation returned by the SVG importer. `code` is a
+// stable identifier (e.g. `seat_not_circle`) that clients may key
+// off; `element` and `detail` are human-facing.
+type SeatingPlanValidationIssue struct {
+	// Code Stable machine-readable error / warning identifier.
+	Code string `json:"code"`
+
+	// Detail Free-form human explanation of the violation.
+	Detail *string `json:"detail,omitempty"`
+
+	// Element Offending SVG element identifier (id, label, or synthetic descriptor).
+	Element *string `json:"element,omitempty"`
+}
+
+// SeatingPlanVersion Immutable-once-bound snapshot of a seating plan's canonical geometry.
+// The `geometry` blob follows §5.3 of 09_autoforge/seating_backlog.md;
+// `geometry_checksum` is a hex sha256 over the canonical JSON encoding
+// used as the ETag on public schema endpoints.
+type SeatingPlanVersion struct {
+	// CapacitySeated Number of assigned seats in the geometry.
+	CapacitySeated int `json:"capacity_seated"`
+
+	// CapacityStanding Standing capacity (for tables / mixed / GA plans).
+	CapacityStanding int `json:"capacity_standing"`
+
+	// CreatedAt RFC 3339 UTC timestamp of row creation.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Geometry Canonical geometry blob (see §5.3 of the seating backlog).
+	Geometry map[string]interface{} `json:"geometry"`
+
+	// GeometryChecksum Lowercase hex sha256 of the canonical JSON encoding of `geometry`.
+	GeometryChecksum string `json:"geometry_checksum"`
+
+	// Id UUIDv7 primary key of the seating_plan_versions row.
+	Id openapi_types.UUID `json:"id"`
+
+	// LockedAt RFC 3339 UTC timestamp of the first session binding; null while
+	// no session has bound this version.
+	LockedAt *time.Time `json:"locked_at"`
+
+	// SeatingPlanId Parent seating plan.
+	SeatingPlanId openapi_types.UUID `json:"seating_plan_id"`
+
+	// SvgAssetMediaId Optional media store FK carrying the source SVG asset. Null for
+	// versions created from a pre-built geometry payload.
+	SvgAssetMediaId *openapi_types.UUID `json:"svg_asset_media_id"`
+
+	// VersionNumber 1-based positional version number scoped to the plan.
+	VersionNumber int `json:"version_number"`
+}
+
 // ServerInfoResponse defines model for ServerInfoResponse.
 type ServerInfoResponse struct {
 	// BuildSha Git commit SHA embedded at build time via runtime/debug.ReadBuildInfo
@@ -4581,6 +4809,26 @@ type UpdatePromoCodeRequestDiscountType string
 
 // UpdatePromoCodeRequestStatus New lifecycle status. `paused` codes fail promo-validate with 422.
 type UpdatePromoCodeRequestStatus string
+
+// UpdateSeatingPlanRequest Request body for PATCH /v1/seating-plans/{id}. Every field is
+// optional — omitted fields keep their existing value. Archive is
+// expressed as status="archived".
+type UpdateSeatingPlanRequest struct {
+	// Name New human-facing plan name.
+	Name *string `json:"name,omitempty"`
+
+	// Status New lifecycle state.
+	Status *UpdateSeatingPlanRequestStatus `json:"status,omitempty"`
+
+	// Visibility New share scope.
+	Visibility *UpdateSeatingPlanRequestVisibility `json:"visibility,omitempty"`
+}
+
+// UpdateSeatingPlanRequestStatus New lifecycle state.
+type UpdateSeatingPlanRequestStatus string
+
+// UpdateSeatingPlanRequestVisibility New share scope.
+type UpdateSeatingPlanRequestVisibility string
 
 // UpdateSessionRequest Partial update for PATCH
 // /v1/organizations/{org_id}/events/{event_id}/sessions/{id}. All
@@ -5427,6 +5675,18 @@ type PostScannerScanEventsJSONRequestBody = ScannerScanBatchRequest
 
 // ValidateScannerBarcodeJSONRequestBody defines body for ValidateScannerBarcode for application/json ContentType.
 type ValidateScannerBarcodeJSONRequestBody = ScannerValidateRequest
+
+// UpdateSeatingPlanJSONRequestBody defines body for UpdateSeatingPlan for application/json ContentType.
+type UpdateSeatingPlanJSONRequestBody = UpdateSeatingPlanRequest
+
+// ForkSeatingPlanJSONRequestBody defines body for ForkSeatingPlan for application/json ContentType.
+type ForkSeatingPlanJSONRequestBody = ForkSeatingPlanRequest
+
+// CreateSeatingPlanVersionJSONRequestBody defines body for CreateSeatingPlanVersion for application/json ContentType.
+type CreateSeatingPlanVersionJSONRequestBody = CreateSeatingPlanVersionRequest
+
+// CreateSeatingPlanJSONRequestBody defines body for CreateSeatingPlan for application/json ContentType.
+type CreateSeatingPlanJSONRequestBody = CreateSeatingPlanRequest
 
 // RegisterWebhookSubscriberJSONRequestBody defines body for RegisterWebhookSubscriber for application/json ContentType.
 type RegisterWebhookSubscriberJSONRequestBody = RegisterWebhookSubscriberRequest

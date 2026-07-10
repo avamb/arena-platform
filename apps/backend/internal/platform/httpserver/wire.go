@@ -66,6 +66,11 @@ type Options struct {
 	WebhookSubQueries     *gen.Queries
 	ReconciliationQueries *gen.Queries
 	NetworkQueries        *gen.Queries
+	// SeatingQueries backs the /v1/venues/{venue_id}/seating-plans and
+	// /v1/seating-plans/{id}[/versions[/{n}]|/fork] CRUD surface (feature
+	// #304, Wave SEAT-A3). When nil and PgxPool is non-nil the constructor
+	// falls back to gen.New(PgxPool).
+	SeatingQueries *gen.Queries
 	// MeQueries overrides the meQuerier used by the GET /v1/me handler
 	// (feature #211). When nil and PgxPool is non-nil, the constructor
 	// builds a default backed by gen.New(PgxPool). Tests inject a fake to
@@ -275,6 +280,7 @@ func New(opts Options) *Server {
 		webhookSubQueries:     pickQueries(opts.WebhookSubQueries, opts.PgxPool),
 		reconciliationQueries: pickQueries(opts.ReconciliationQueries, opts.PgxPool),
 		networkQueries:        pickQueries(opts.NetworkQueries, opts.PgxPool),
+		seatingQueries:        pickQueries(opts.SeatingQueries, opts.PgxPool),
 		meQueries:             pickMeQueries(opts.MeQueries, opts.PgxPool),
 		media:                 opts.Media,
 	}

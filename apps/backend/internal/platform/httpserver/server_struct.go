@@ -90,6 +90,10 @@ type Server struct {
 	webhookSubQueries     *gen.Queries
 	reconciliationQueries *gen.Queries
 	networkQueries        *gen.Queries
+	// seatingQueries backs the seating-plan CRUD + versions + fork surface
+	// (feature #304, Wave SEAT-A3). Nil when neither PgxPool nor an
+	// explicit override is supplied; the mount self-gates on nil.
+	seatingQueries *gen.Queries
 	meQueries             meQuerier
 	media                 *mediastore.Repo
 

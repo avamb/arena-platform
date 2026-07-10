@@ -396,6 +396,12 @@ func buildDriftTestServer(t *testing.T) *Server {
 		// routes (feature #255) under
 		// /v1/organizations/{org_id}/bank-accounts are mounted.
 		BankAccountQueries: gen.New(nil),
+		// Wire SeatingQueries so the seating-plan CRUD + versions + fork
+		// routes (feature #304, Wave SEAT-A3) under
+		// /v1/venues/{venue_id}/seating-plans and
+		// /v1/seating-plans/{id}[/versions[/{n}]|/fork] are mounted for the
+		// drift check.
+		SeatingQueries: gen.New(nil),
 		// Wire BarcodeQueries so the barcode federation + scanner routes
 		// (features #142/#144, documented under #275 and the follow-up
 		// full-surface documentation pass) are mounted: GET/POST

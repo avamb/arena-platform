@@ -1920,6 +1920,264 @@ components:
             demotes the previous primary). Setting false while no other
             primary exists is rejected with 409.
 
+    # Seating plan schemas — feature #304, Wave SEAT-A3
+    SeatingPlan:
+      type: object
+      required:
+        [
+          id,
+          venue_id,
+          owner_org_id,
+          name,
+          plan_type,
+          visibility,
+          status,
+          source_seating_plan_id,
+          current_version_id,
+          created_at,
+          updated_at,
+        ]
+      description: |
+        A logical seating plan owned by one organization and attached to a
+        venue. Feature #302 seeded the storage; feature #304 (Wave SEAT-A3)
+        added the CRUD / fork surface documented here.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the seating_plans row.
+          example: "01929d0e-0e47-7000-8000-000000000301"
+        venue_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the venue the plan is attached to.
+          example: "01929d0e-0e47-7000-8000-000000000201"
+        owner_org_id:
+          type: string
+          format: uuid
+          description: |
+            Owning organization. Immutable — moving a plan between orgs is
+            expressed as a fork (POST /v1/seating-plans/{id}/fork).
+          example: "01929d0e-0e47-7000-8000-000000000001"
+        name:
+          type: string
+          description: Human-facing plan name.
+          example: "Main Hall — Assigned Seating"
+        plan_type:
+          type: string
+          description: |
+            Seating layout family — determines which geometry primitives are
+            permitted in a version's canonical model.
+          enum: [assigned_seats, general_admission, tables, mixed]
+        visibility:
+          type: string
+          description: |
+            Share scope. Defaults to private on create; move to shared_read
+            or public_template to enable cross-org read / fork.
+          enum: [private, shared_read, public_template, operator_verified]
+        status:
+          type: string
+          description: |
+            Lifecycle. draft = mutable, no sessions may bind; active =
+            published, sessions may bind; archived = soft-retired, no new
+            session bindings (existing bindings are unaffected).
+          enum: [draft, active, archived]
+        source_seating_plan_id:
+          type: [string, "null"]
+          format: uuid
+          description: |
+            Fork lineage. Null for originals; set to the source plan id when
+            this row was created via POST /v1/seating-plans/{id}/fork.
+        current_version_id:
+          type: [string, "null"]
+          format: uuid
+          description: |
+            Pointer to the currently-published seating_plan_versions row.
+            Null until the first version is created.
+        created_at:
+          type: string
+          format: date-time
+          description: RFC 3339 UTC timestamp of row creation.
+        updated_at:
+          type: string
+          format: date-time
+          description: RFC 3339 UTC timestamp of last mutation.
+
+    SeatingPlanVersion:
+      type: object
+      required:
+        [
+          id,
+          seating_plan_id,
+          version_number,
+          geometry,
+          geometry_checksum,
+          svg_asset_media_id,
+          capacity_seated,
+          capacity_standing,
+          locked_at,
+          created_at,
+        ]
+      description: |
+        Immutable-once-bound snapshot of a seating plan's canonical geometry.
+        The `geometry` blob follows §5.3 of 09_autoforge/seating_backlog.md;
+        `geometry_checksum` is a hex sha256 over the canonical JSON encoding
+        used as the ETag on public schema endpoints.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the seating_plan_versions row.
+        seating_plan_id:
+          type: string
+          format: uuid
+          description: Parent seating plan.
+        version_number:
+          type: integer
+          minimum: 1
+          description: 1-based positional version number scoped to the plan.
+        geometry:
+          type: object
+          description: Canonical geometry blob (see §5.3 of the seating backlog).
+          additionalProperties: true
+        geometry_checksum:
+          type: string
+          description: Lowercase hex sha256 of the canonical JSON encoding of `geometry`.
+        svg_asset_media_id:
+          type: [string, "null"]
+          format: uuid
+          description: |
+            Optional media store FK carrying the source SVG asset. Null for
+            versions created from a pre-built geometry payload.
+        capacity_seated:
+          type: integer
+          minimum: 0
+          description: Number of assigned seats in the geometry.
+        capacity_standing:
+          type: integer
+          minimum: 0
+          description: Standing capacity (for tables / mixed / GA plans).
+        locked_at:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            RFC 3339 UTC timestamp of the first session binding; null while
+            no session has bound this version.
+        created_at:
+          type: string
+          format: date-time
+          description: RFC 3339 UTC timestamp of row creation.
+
+    SeatingPlanValidationIssue:
+      type: object
+      required: [code]
+      description: |
+        A single §6 rule violation returned by the SVG importer. `code` is a
+        stable identifier (e.g. `seat_not_circle`) that clients may key
+        off; `element` and `detail` are human-facing.
+      properties:
+        code:
+          type: string
+          description: Stable machine-readable error / warning identifier.
+        element:
+          type: string
+          description: Offending SVG element identifier (id, label, or synthetic descriptor).
+        detail:
+          type: string
+          description: Free-form human explanation of the violation.
+
+    CreateSeatingPlanRequest:
+      type: object
+      required: [owner_org_id, name, plan_type]
+      additionalProperties: false
+      description: Request body for POST /v1/venues/{venue_id}/seating-plans.
+      properties:
+        owner_org_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the organization that will own the new plan.
+        name:
+          type: string
+          minLength: 1
+          description: Human-facing plan name.
+        plan_type:
+          type: string
+          enum: [assigned_seats, general_admission, tables, mixed]
+          description: Layout family — see SeatingPlan.plan_type.
+        visibility:
+          type: string
+          enum: [private, shared_read, public_template, operator_verified]
+          description: Optional visibility override (defaults to private).
+        status:
+          type: string
+          enum: [draft, active, archived]
+          description: Optional lifecycle override (defaults to draft).
+
+    UpdateSeatingPlanRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Request body for PATCH /v1/seating-plans/{id}. Every field is
+        optional — omitted fields keep their existing value. Archive is
+        expressed as status="archived".
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: New human-facing plan name.
+        visibility:
+          type: string
+          enum: [private, shared_read, public_template, operator_verified]
+          description: New share scope.
+        status:
+          type: string
+          enum: [draft, active, archived]
+          description: New lifecycle state.
+
+    ForkSeatingPlanRequest:
+      type: object
+      required: [owner_org_id]
+      additionalProperties: false
+      description: Request body for POST /v1/seating-plans/{id}/fork.
+      properties:
+        owner_org_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the organization that will own the forked plan.
+        venue_id:
+          type: string
+          format: uuid
+          description: Optional venue override — defaults to the source plan's venue.
+        name:
+          type: string
+          minLength: 1
+          description: Optional plan name override — defaults to "<source name> (fork)".
+
+    CreateSeatingPlanVersionRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Request body for POST /v1/seating-plans/{id}/versions. Exactly one of
+        `svg` or `geometry` must be supplied. The SVG importer canonicalises
+        and checksums the result; §6 rule violations surface as a 422 with
+        per-element details in ErrorEnvelope.details.errors.
+      properties:
+        svg:
+          type: string
+          description: Raw SVG document text following the Bil24 authoring conventions.
+        geometry:
+          type: object
+          description: Pre-built canonical geometry object (see §5.3 of the seating backlog).
+          additionalProperties: true
+        svg_asset_media_id:
+          type: string
+          format: uuid
+          description: Optional media store FK carrying the source SVG asset.
+        capacity_standing:
+          type: integer
+          minimum: 0
+          description: Optional standing capacity override (defaults to 0).
+
     # Venue schemas — feature #124 / extended for admin UI consumption (#235)
     VenueItem:
       type: object
@@ -9280,6 +9538,523 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database pool or venue queries unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Seating plans (Wave SEAT-A3) — feature #304
+  # ─────────────────────────────────────────────────────────────────────────
+
+  /v1/venues/{venue_id}/seating-plans:
+    get:
+      operationId: listSeatingPlansByVenue
+      summary: List seating plans attached to a venue
+      description: |
+        Returns every non-deleted seating plan whose venue_id matches the
+        path parameter, newest first. Requires JWT authentication and the
+        seating_plan.read permission on the seating scope.
+      tags: [v1, seating]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: venue_id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the venue whose plans should be listed
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Seating plan collection
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [seating_plans]
+                properties:
+                  seating_plans:
+                    type: array
+                    description: Zero or more seating plans attached to the venue
+                    items:
+                      $ref: "#/components/schemas/SeatingPlan"
+        "400":
+          description: venue_id path parameter is not a valid UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (seating_plan.read)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Seating queries unavailable (database not wired)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: createSeatingPlan
+      summary: Create a new draft seating plan on a venue
+      description: |
+        Creates a new seating plan with status="draft" and the caller's
+        owner_org_id. The name and plan_type fields are required; visibility
+        defaults to "private" and status defaults to "draft" when omitted.
+        Requires JWT authentication and the seating_plan.create permission.
+      tags: [v1, seating]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: venue_id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the venue the plan is attached to
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSeatingPlanRequest"
+      responses:
+        "201":
+          description: Created seating plan
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [seating_plan]
+                properties:
+                  seating_plan:
+                    $ref: "#/components/schemas/SeatingPlan"
+        "400":
+          description: Request body was invalid (unknown field, wrong type, missing name)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (seating_plan.create)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or seating queries unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/seating-plans/{id}:
+    get:
+      operationId: getSeatingPlan
+      summary: Get a single seating plan by ID
+      description: |
+        Returns a single active seating plan regardless of owning organization.
+        Requires JWT authentication and the seating_plan.read permission.
+      tags: [v1, seating]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the seating plan
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Seating plan details
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [seating_plan]
+                properties:
+                  seating_plan:
+                    $ref: "#/components/schemas/SeatingPlan"
+        "400":
+          description: id path parameter is not a valid UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (seating_plan.read)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Seating plan not found or has been soft-deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Seating queries unavailable (database not wired)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      operationId: updateSeatingPlan
+      summary: Update seating plan metadata (name, visibility, status)
+      description: |
+        Applies a partial update to a seating plan's metadata. Only the
+        owning org may mutate; a mismatched owner receives 404 by design
+        to avoid leaking existence. Archive is expressed as status="archived".
+        Requires JWT authentication and the seating_plan.update.own permission.
+      tags: [v1, seating]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the seating plan
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSeatingPlanRequest"
+      responses:
+        "200":
+          description: Updated seating plan
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [seating_plan]
+                properties:
+                  seating_plan:
+                    $ref: "#/components/schemas/SeatingPlan"
+        "400":
+          description: Request body was invalid (unknown field, wrong type)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (seating_plan.update.own)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Seating plan not found or belongs to another org
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or seating queries unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/seating-plans/{id}/fork:
+    post:
+      operationId: forkSeatingPlan
+      summary: Fork a seating plan into a different owning organization
+      description: |
+        Guardrail #13. Forks a shared / public seating plan into a target
+        owner_org_id. The current version geometry (if any) is duplicated
+        into the new plan as version 1 in the same transaction. Forking a
+        plan the target org already owns returns 409 seating_plan.fork_own_plan.
+        Requires JWT authentication and the seating_plan.fork permission.
+      tags: [v1, seating]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the source seating plan
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForkSeatingPlanRequest"
+      responses:
+        "201":
+          description: Newly created fork
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [seating_plan]
+                properties:
+                  seating_plan:
+                    $ref: "#/components/schemas/SeatingPlan"
+        "400":
+          description: Request body was invalid (unknown field, wrong type, missing owner_org_id)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (seating_plan.fork)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Source seating plan not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Cannot fork a plan the target organization already owns
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or seating queries unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/seating-plans/{id}/versions:
+    post:
+      operationId: createSeatingPlanVersion
+      summary: Append a new canonical geometry version to a seating plan
+      description: |
+        Creates a new seating_plan_versions row from either raw SVG or a
+        pre-built canonical geometry object. The SVG importer canonicalises
+        + checksums the result; validation errors are returned with 422
+        including per-element details. The plan's current_version_id is
+        atomically bumped to the newly-created version in the same
+        transaction. Requires JWT authentication and the
+        seating_plan.update.own permission.
+      tags: [v1, seating]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the parent seating plan
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSeatingPlanVersionRequest"
+      responses:
+        "201":
+          description: Newly created seating plan version
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [seating_plan, seating_plan_version]
+                properties:
+                  seating_plan:
+                    $ref: "#/components/schemas/SeatingPlan"
+                  seating_plan_version:
+                    $ref: "#/components/schemas/SeatingPlanVersion"
+                  warnings:
+                    type: array
+                    description: Non-fatal advisories emitted by the SVG importer (e.g. missing Legend group)
+                    items:
+                      $ref: "#/components/schemas/SeatingPlanValidationIssue"
+        "400":
+          description: Request body was invalid (unknown field, wrong type, missing both svg and geometry, both supplied)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (seating_plan.update.own)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Parent seating plan not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: SVG geometry failed one or more §6 canonical-model validation rules
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or seating queries unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/seating-plans/{id}/versions/{n}:
+    get:
+      operationId: getSeatingPlanVersion
+      summary: Get a single seating plan version by positional version number
+      description: |
+        Reads a single seating_plan_versions row identified by its plan-scoped
+        1-based version_number (not the version UUID). Requires JWT
+        authentication and the seating_plan.read permission.
+      tags: [v1, seating]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the parent seating plan
+          schema:
+            type: string
+            format: uuid
+        - name: n
+          in: path
+          required: true
+          description: 1-based positional version number scoped to the plan
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Seating plan version details
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [seating_plan_version]
+                properties:
+                  seating_plan_version:
+                    $ref: "#/components/schemas/SeatingPlanVersion"
+        "400":
+          description: n path parameter is not a positive integer, or id is not a valid UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (seating_plan.read)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Seating plan or version not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Seating queries unavailable (database not wired)
           content:
             application/json:
               schema:
