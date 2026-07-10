@@ -18892,3 +18892,59 @@ Verification (docker golang:1.24 / golangci-lint:latest):
   go test ./apps/backend/... -count=1                          all PASS
   golangci-lint run ./hseating/... ./hfeed/...                 0 issues
 Marked #307 passing.
+
+
+## 2026-07-10 - Feature #308 SEAT-B4 Operator seat block/unblock endpoint
+- New apps/backend/internal/platform/httpserver/hseating/seats.go
+  implementing PATCH /v1/organizations/{org_id}/events/{event_id}/
+  sessions/{id}/seats. Body: {action: block|unblock,
+  seat_keys?: [], sectors?: [], rows?: [{sector,row}]}. Selectors
+  expand server-side against ListSessionSeats snapshot then dedupe.
+- Transition matrix per operator-control contract:
+    available -> blocked  (block)
+    blocked   -> available (unblock)
+    blocked (block) / available (unblock) -> noop (idempotent)
+    held  / sold -> skipped with reason=held / sold
+    unknown seat_key -> skipped with reason=seat_not_found
+    concurrent race (pgx.ErrNoRows on UPDATE) -> skipped with
+      reason=concurrent_transition so batch keeps making progress
+- Single IncrementSessionSeatStatusVersion call per tx so every row in
+  the batch shares one status_version stamp; delta pollers observe the
+  whole batch atomically.
+- Permission event_session.assign_seating_plan; audit event
+  v1.session.seats.block/.unblock includes actor, effective seat_keys,
+  per-outcome counts. sessions.capacity_total is NOT shrunk (contract:
+  sales hold, not capacity change).
+- Response envelope: {session_id, action, seat_status_version,
+  outcomes: [{seat_key, outcome, reason?, status}],
+  summary: {requested, changed, noop, skipped}}.
+- Shim + route mount added under seating_shims.go /
+  mount_seating.go. testfilehelpers_test.go domainSubPackageFor
+  extended so seats.go maps to hseating / seating_shims.go.
+- OpenAPI: added the PATCH path item + 5 component schemas
+  (PatchSessionSeatsRequest, PatchSessionSeatsRowSelector,
+  PatchSessionSeatsSeatOutcome, PatchSessionSeatsSummary,
+  PatchSessionSeatsResponse). Hand-added matching type stubs to
+  types_gen.go following the SEAT-B2 precedent (oapi-codegen v2.4.1
+  still fails on the pre-existing ApproveRefundRequest OAS 3.1
+  type: [string,"null"] pattern from an earlier wave).
+- Tests (hseating/seats_test.go, stdlib + fake state machine only):
+    TestSeatB4_ValidateSeatsPatchRequest      7 cases
+    TestSeatB4_ExpandSelectors                6 cases
+    TestSeatB4_ApplySeatBlock_StateMachine    4 pre-DB branches
+    TestSeatB4_ApplySeatUnblock_StateMachine  4 pre-DB branches
+    TestSeatB4_ApplySeatAction_Dispatch       top-level switch
+    TestSeatB4_ReadRequest_RejectsUnknownFields
+    TestSeatB4_ReadRequest_HappyPath
+    TestSeatB4_BlockedSeatIsReservationConflict — pins the invariant
+      the future seated-checkout path relies on: HoldSessionSeat
+      requires status=available, so a blocked seat's conditional
+      UPDATE returns 0 rows -> translated to 409
+      reservation.seats_conflict at the future hcheckout boundary.
+Verification (docker golang:1.24 / golangci-lint:latest):
+  go build ./apps/backend/...                                    OK
+  go vet   ./apps/backend/...                                    OK
+  go test  ./apps/backend/internal/platform/httpserver/hseating/ OK
+  go test  ./apps/backend/internal/platform/httpserver/          OK
+  golangci-lint run ./apps/backend/.../hseating/                 0 issues
+Marked #308 passing.

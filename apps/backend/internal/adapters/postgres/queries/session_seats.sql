@@ -185,6 +185,18 @@ FROM   session_seats
 WHERE  session_id = $1
   AND  status     = $2;
 
+-- name: GetSessionAdmissionModeByID :one
+-- Returns the admission_mode + seat_status_version + capacity_total for a
+-- session, without requiring the caller to know its event_id. Used by the
+-- seated-checkout path (§7 SEAT-C1) to decide whether a POST /v1/reservations
+-- request should route down the GA (quantity) branch or the seated (seats[])
+-- branch. Returns pgx.ErrNoRows if the session does not exist or has been
+-- soft-deleted.
+SELECT id, admission_mode, seat_status_version, capacity_total
+FROM   sessions
+WHERE  id         = $1
+  AND  deleted_at IS NULL;
+
 -- name: IncrementSessionSeatStatusVersion :one
 -- Atomically bumps sessions.seat_status_version and returns the new
 -- value. MUST be called at the start of every transaction that
