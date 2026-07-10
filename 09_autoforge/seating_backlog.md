@@ -439,6 +439,55 @@ email templates render "Sector / Row / Seat" lines for seated tickets
 payloads for ticket lifecycle events include the seat fields (additive,
 non-breaking).
 
+**SEAT-C4. Mobile-first ticket + human-readable credential code.**
+Owner decision 2026-07-10: the legacy print-oriented ticket layouts
+(bil24.pro/agents_tickets.html — stubs/корешки, A4 sheets) are
+obsolete; nobody prints tickets. The ticket is consumed on a phone
+screen.
+
+*Human code (Excel-safe by construction):*
+- New column `ticket_credentials.human_code TEXT UNIQUE NULL` +
+  migration (next free number). Generated for every `static_qr`
+  credential alongside the existing 64-hex QR token.
+- Format: 8 characters from the **Crockford Base32 alphabet**
+  (`0-9 A-Z` minus `I L O U` — no look-alikes), rendered grouped
+  `XXXX-XXXX`, **first character always a letter**. The always-a-letter
+  rule guarantees the code can never be parsed as a number (plain or
+  scientific notation) by Excel/CSV tooling — the owner has seen
+  numeric codes (EAN-13 style) silently turn into `1.23E+12` in
+  agent/organizer spreadsheets and break scanning. Document this rule
+  in the external-barcode-import docs too: the same corruption risk
+  applies to imported batches.
+- Collision handling: regenerate on unique violation (retry loop,
+  bounded). Lookup: scanner validate endpoints and hbil24 gateway
+  accept human_code as an alternative credential key (case-insensitive,
+  hyphens/spaces stripped; map Crockford aliases I→1, L→1, O→0 on
+  input).
+
+*Mobile-first PDF layout (replaces the US-Letter print layout in
+`delivery/pdf`):*
+- Page size ≈ phone aspect (portrait, e.g. 396×702 pt ≈ 9:16). No
+  stub, no tear-off, no duplicated blocks.
+- **QR code is the hero**: ≥ 55% of page width, centered, high error
+  correction; `human_code` printed directly under it in large
+  letter-spaced monospace type (the manual-entry fallback at the gate).
+- Above the QR, in large type: event name, date+time (venue-local),
+  venue name/city; for seated tickets Sector / Row / Seat as the
+  most prominent row (SEAT-C3 fields). Holder name if collected.
+- Keep org branding header and legal footer (feature #290 fields),
+  scaled to the narrow page.
+- Keep `Render` pure/deterministic (SetCatalogSort stays; fixed
+  timestamps); update pdf_test.go golden expectations accordingly.
+- Email HTML template: show the human code and seat line in the body
+  text too (works when attachments are stripped).
+
+Acceptance: PDF renders at phone aspect with QR ≥55% width;
+human_code appears under the QR and in the email body; codes are
+Crockford-Base32 with a leading letter (property test: 10k generated
+codes — none matches `^[0-9]+$` nor `^[0-9]+[eE][0-9]+$`); scanner
+validate accepts the human code with alias normalization; existing
+QR-token flow unchanged.
+
 ### Wave SEAT-D — integrations
 
 **SEAT-D1. Bil24 gateway real seats** (`hbil24`): for
