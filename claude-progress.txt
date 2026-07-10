@@ -19046,3 +19046,67 @@ Verification (docker golang:1.24 / golangci-lint:latest):
   go test ./apps/backend/... -count=1                          all PASS
   golangci-lint run ./hcheckout/... ./gen/...                  0 issues
 Marked #309 passing.
+
+
+## 2026-07-10 - Feature #311 (SEAT-C3) Tickets carry seats
+- tickets.sql / gen: extended InsertTicket + all SELECT lists with the
+  four denormalized seat columns (seat_key / seat_sector / seat_row /
+  seat_number) added by migration 0058. TicketRow gained *string fields
+  for each; gen Querier interface signature updated to 8 args.
+- htickets/tickets.go: IssueTicketsForCheckout now lists
+  reservation_seats after loading the reservation. If len(seats)>0 (an
+  assigned-seats reservation) it emits one ticket row per session_seat,
+  populating the four seat_* columns from the joined session_seats row
+  and using the per-seat tier_id (falling back to reservation.tier_id
+  when the seat has no tier binding yet). GA reservations keep the
+  quantity-based loop unchanged with all four seat pointers nil.
+- htickets response projection (TicketResponse / TicketFromRow) surfaces
+  the seat_* fields with omitempty so GA JSON payloads stay byte-
+  identical for pre-SEAT-C3 consumers.
+- delivery/templates: Data struct gained SeatSector / SeatRow /
+  SeatNumber; all four ticket.*.tmpl templates render Sector/Row/Seat
+  rows in HTML (labelled TD) and text (Label: value) via {{with}}
+  guards. All four invitation.*.tmpl templates gained a conditional
+  seat table + text lines. Localised labels:
+    en: Sector / Row / Seat
+    de: Sektor / Reihe / Platz
+    es: Sector / Fila / Asiento
+    he: aizor / shurah / makom (Hebrew rendered in the .tmpl)
+- delivery/pdf: pdf.Ticket gained SeatSector / SeatRow / SeatNumber;
+  drawDetails inserts three additional rows (Sector / Row / Seat)
+  between Tier and Holder when hasSeat(t) is true. Determinism
+  preserved (SetCompression false + SetCatalogSort true still hold).
+- delivery/handler.Payload gained SeatSector/SeatRow/SeatNumber json
+  fields; both the templates.Data render and pdf.Ticket construction
+  in renderTicketPDF wire them through. htickets/delivery_enqueue.go
+  copies the ticket's seat_* pointers onto the payload before
+  json.Marshal so the seat block survives the worker hop.
+- hscanner/scanner_events.BuildTicketIssuedPayload: additive-only -
+  seat_key / seat_sector / seat_row / seat_number are attached to the
+  Bil24-compatible v1.scanner.ticket.issued payload when non-nil, and
+  omitted entirely for GA tickets. Contract test pins both directions.
+- Tests (new, all pass in golang:1.24 docker):
+    delivery/templates/templates_seats_test.go - 3 subtests
+      (TicketTemplates_RenderSeatLines, InvitationTemplates_RenderSeatLines,
+       GATickets_OmitSeatLines) x 4 locales each.
+    delivery/pdf/pdf_seats_test.go - 4 tests (RendersSeatBlock,
+      GATicketOmitsSeatBlock, SeatedVsGA_DifferByteOutput,
+      SeatedRenderIsDeterministic).
+    hscanner/scanner_events_seats_test.go - 3 tests
+      (GATicket_OmitsSeatFields, SeatedTicket_IncludesSeatFields,
+       PartialSeatFields_IndependentlyEmitted).
+    htickets/tickets_seats_test.go - 2 tests (TicketFromRow_SeatedTicket,
+      TicketFromRow_GATicket) pinning JSON body shape + omitempty on GA
+      payloads.
+Verification (docker golang:1.24 / golangci-lint:latest):
+  go build ./...                                                   BUILD_OK
+  go vet ./apps/backend/internal/platform/delivery/...
+        ./apps/backend/internal/platform/httpserver/htickets/...
+        ./apps/backend/internal/platform/httpserver/hscanner/...
+        ./apps/backend/internal/adapters/postgres/gen/...          VET_OK
+  go test <touched packages>                                       all PASS
+  golangci-lint run <touched packages>                             0 issues
+Note: pre-existing uncommitted hbil24 in-flight work (from another
+  agent session) fails go vet on that package only; unrelated to #311.
+  Left untouched.
+Marked #311 passing.

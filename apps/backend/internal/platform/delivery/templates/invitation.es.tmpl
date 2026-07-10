@@ -20,6 +20,11 @@
   <p>Has recibido una entrada de cortesía para
      <strong>{{.EventName}}</strong>. El PDF está adjunto a este correo.</p>
   <p>Esta entrada es una invitación gratuita — no se requiere pago.</p>
+  {{if or .SeatSector .SeatRow .SeatNumber}}<table cellpadding="4" style="border-collapse:collapse;font-size:14px">
+    {{with .SeatSector}}<tr><td><strong>Sector</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatRow}}<tr><td><strong>Fila</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatNumber}}<tr><td><strong>Asiento</strong></td><td>{{.}}</td></tr>{{end}}
+  </table>{{end}}
   <p style="font-size:12px;color:#666">ID de entrada: {{.TicketID}}</p>
   <p style="font-size:12px;color:#666">Enviado a: {{.RecipientEmail}}</p>
   <hr>
@@ -46,7 +51,10 @@ El PDF está adjunto a este correo.
 
 Esta entrada es una invitación gratuita — no se requiere pago.
 
-ID de entrada: {{.TicketID}}
+{{with .SeatSector}}Sector: {{.}}
+{{end}}{{with .SeatRow}}Fila: {{.}}
+{{end}}{{with .SeatNumber}}Asiento: {{.}}
+{{end}}ID de entrada: {{.TicketID}}
 Enviado a: {{.RecipientEmail}}
 
 --

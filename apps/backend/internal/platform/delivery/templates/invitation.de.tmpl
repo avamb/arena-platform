@@ -20,6 +20,11 @@
   <p>Sie haben eine kostenlose Einladungs-Karte für
      <strong>{{.EventName}}</strong> erhalten. Das PDF finden Sie im Anhang.</p>
   <p>Diese Karte ist eine kostenlose Einladung — es ist keine Zahlung erforderlich.</p>
+  {{if or .SeatSector .SeatRow .SeatNumber}}<table cellpadding="4" style="border-collapse:collapse;font-size:14px">
+    {{with .SeatSector}}<tr><td><strong>Sektor</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatRow}}<tr><td><strong>Reihe</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatNumber}}<tr><td><strong>Platz</strong></td><td>{{.}}</td></tr>{{end}}
+  </table>{{end}}
   <p style="font-size:12px;color:#666">Ticket-ID: {{.TicketID}}</p>
   <p style="font-size:12px;color:#666">Zugestellt an: {{.RecipientEmail}}</p>
   <hr>
@@ -46,7 +51,10 @@ Das PDF finden Sie im Anhang.
 
 Diese Karte ist eine kostenlose Einladung — es ist keine Zahlung erforderlich.
 
-Ticket-ID: {{.TicketID}}
+{{with .SeatSector}}Sektor: {{.}}
+{{end}}{{with .SeatRow}}Reihe: {{.}}
+{{end}}{{with .SeatNumber}}Platz: {{.}}
+{{end}}Ticket-ID: {{.TicketID}}
 Zugestellt an: {{.RecipientEmail}}
 
 --

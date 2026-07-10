@@ -26,6 +26,12 @@ import (
 //
 // TierID is nil for GA / untiered reservations.
 // HolderEmail is nil for anonymous purchases or when email is not yet known.
+//
+// SEAT-C3 (feature #311): SeatKey / SeatSector / SeatRow / SeatNumber
+// are denormalized copies of session_seats.{seat_key,sector_name,row_name,
+// seat_number} taken at issuance time. All four are nil for
+// general-admission tickets; all four are populated together for tickets
+// issued from an assigned-seats reservation.
 type TicketRow struct {
 	ID                uuid.UUID  `json:"id"`
 	CheckoutSessionID uuid.UUID  `json:"checkout_session_id"`
@@ -36,6 +42,10 @@ type TicketRow struct {
 	IssuedAt          time.Time  `json:"issued_at"`
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
+	SeatKey           *string    `json:"seat_key"`
+	SeatSector        *string    `json:"seat_sector"`
+	SeatRow           *string    `json:"seat_row"`
+	SeatNumber        *string    `json:"seat_number"`
 }
 
 // scanTicketRow scans a single tickets row into a TicketRow.
@@ -53,6 +63,10 @@ func scanTicketRow(row interface {
 		&r.IssuedAt,
 		&r.CreatedAt,
 		&r.UpdatedAt,
+		&r.SeatKey,
+		&r.SeatSector,
+		&r.SeatRow,
+		&r.SeatNumber,
 	)
 	return r, err
 }
@@ -62,15 +76,22 @@ func scanTicketRow(row interface {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const insertTicket = `-- name: InsertTicket :one
-INSERT INTO tickets (checkout_session_id, session_id, tier_id, holder_email)
-VALUES ($1, $2, $3, $4)
+INSERT INTO tickets (
+    checkout_session_id, session_id, tier_id, holder_email,
+    seat_key, seat_sector, seat_row, seat_number
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING id, checkout_session_id, session_id, tier_id, holder_email,
-          status, issued_at, created_at, updated_at`
+          status, issued_at, created_at, updated_at,
+          seat_key, seat_sector, seat_row, seat_number`
 
 // InsertTicket creates a new ticket row for the given checkout session.
 //
 // Pass tierID = nil for a GA / untiered ticket.
 // Pass holderEmail = nil when the holder email is not yet known.
+// Pass seatKey/seatSector/seatRow/seatNumber = nil for a GA ticket; the
+// SEAT-C3 issuance path (feature #311) populates all four together from
+// the reservation's session_seats row.
 // Returns the created row including the uuidv7 PK assigned by the database.
 func (q *Queries) InsertTicket(
 	ctx context.Context,
@@ -78,9 +99,14 @@ func (q *Queries) InsertTicket(
 	sessionID uuid.UUID,
 	tierID *uuid.UUID,
 	holderEmail *string,
+	seatKey *string,
+	seatSector *string,
+	seatRow *string,
+	seatNumber *string,
 ) (TicketRow, error) {
 	row := q.db.QueryRow(ctx, insertTicket,
 		checkoutSessionID, sessionID, tierID, holderEmail,
+		seatKey, seatSector, seatRow, seatNumber,
 	)
 	return scanTicketRow(row)
 }
@@ -91,7 +117,8 @@ func (q *Queries) InsertTicket(
 
 const listTicketsByCheckoutSession = `-- name: ListTicketsByCheckoutSession :many
 SELECT id, checkout_session_id, session_id, tier_id, holder_email,
-       status, issued_at, created_at, updated_at
+       status, issued_at, created_at, updated_at,
+       seat_key, seat_sector, seat_row, seat_number
 FROM   tickets
 WHERE  checkout_session_id = $1
 ORDER BY issued_at ASC, id ASC`
@@ -123,7 +150,8 @@ func (q *Queries) ListTicketsByCheckoutSession(ctx context.Context, checkoutSess
 
 const getTicketByID = `-- name: GetTicketByID :one
 SELECT id, checkout_session_id, session_id, tier_id, holder_email,
-       status, issued_at, created_at, updated_at
+       status, issued_at, created_at, updated_at,
+       seat_key, seat_sector, seat_row, seat_number
 FROM   tickets
 WHERE  id = $1`
 

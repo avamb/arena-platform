@@ -114,6 +114,16 @@ type Ticket struct {
 	// HolderName is the printed ticket holder name.
 	HolderName string
 
+	// SeatSector / SeatRow / SeatNumber are the denormalized seat
+	// coordinates copied from tickets.seat_sector / seat_row / seat_number
+	// (SEAT-C3, feature #311). All three are empty for general-admission
+	// tickets, in which case drawDetails omits the Sector / Row / Seat
+	// rows entirely. For assigned-seat tickets the renderer prints
+	// dedicated Sector / Row / Seat rows in the details block.
+	SeatSector string
+	SeatRow    string
+	SeatNumber string
+
 	// OrgLogo is the organization logo image bytes (PNG or JPEG).
 	// Empty means "no logo available"; the renderer skips the logo slot
 	// and prints the event name in its place. This is the resolved output
@@ -387,14 +397,26 @@ func buildLegalLines(t Ticket) []string {
 }
 
 // drawDetails renders the labelled detail block.
+//
+// SEAT-C3 (feature #311): for tickets carrying denormalized seat
+// coordinates (SeatSector / SeatRow / SeatNumber all populated together),
+// three additional rows — Sector / Row / Seat — are inserted between
+// Tier and Holder. GA tickets skip the seat block entirely.
 func drawDetails(pdf *gofpdf.Fpdf, t Ticket, x, y float64) {
 	rows := [][2]string{
 		{"Event", t.EventName},
 		{"Session", formatSessionInVenueTZ(t.SessionStart, t.SessionTZ)},
 		{"Venue", joinNonEmpty(", ", t.VenueName, t.VenueCity)},
 		{"Tier", t.TierName},
-		{"Holder", t.HolderName},
 	}
+	if hasSeat(t) {
+		rows = append(rows,
+			[2]string{"Sector", t.SeatSector},
+			[2]string{"Row", t.SeatRow},
+			[2]string{"Seat", t.SeatNumber},
+		)
+	}
+	rows = append(rows, [2]string{"Holder", t.HolderName})
 
 	const (
 		labelW  = 80.0
@@ -409,6 +431,16 @@ func drawDetails(pdf *gofpdf.Fpdf, t Ticket, x, y float64) {
 		pdf.SetFont("Helvetica", "", valueFS)
 		pdf.CellFormat(380, rowH, r[1], "", 0, "L", false, 0, "")
 	}
+}
+
+// hasSeat reports whether the ticket carries denormalized seat
+// coordinates. All three fields must be non-empty (trimmed) for the seat
+// block to render — a partially populated set signals an issuance-time
+// data bug rather than a legitimate seated ticket.
+func hasSeat(t Ticket) bool {
+	return strings.TrimSpace(t.SeatSector) != "" &&
+		strings.TrimSpace(t.SeatRow) != "" &&
+		strings.TrimSpace(t.SeatNumber) != ""
 }
 
 // formatSessionInVenueTZ converts the UTC session start into the venue's

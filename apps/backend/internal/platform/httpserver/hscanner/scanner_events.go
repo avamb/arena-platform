@@ -110,6 +110,11 @@ const ScannerAggregateType = "scanner.ticket"
 //
 // Optional fields (tier_id, holder_email) are omitted when nil so that the
 // JSON payload stays minimal for external-platform and guest-list barcodes.
+//
+// SEAT-C3 (feature #311): seat_key / seat_sector / seat_row / seat_number
+// are additive fields populated for tickets issued from an assigned-seats
+// reservation. GA tickets omit all four keys so scanner subscribers that
+// don't understand seating keep working unchanged.
 func BuildTicketIssuedPayload(t gen.TicketRow) map[string]any {
 	payload := map[string]any{
 		"ticket_id":           t.ID.String(),
@@ -124,6 +129,18 @@ func BuildTicketIssuedPayload(t gen.TicketRow) map[string]any {
 	}
 	if t.HolderEmail != nil {
 		payload["holder_email"] = *t.HolderEmail
+	}
+	if t.SeatKey != nil {
+		payload["seat_key"] = *t.SeatKey
+	}
+	if t.SeatSector != nil {
+		payload["seat_sector"] = *t.SeatSector
+	}
+	if t.SeatRow != nil {
+		payload["seat_row"] = *t.SeatRow
+	}
+	if t.SeatNumber != nil {
+		payload["seat_number"] = *t.SeatNumber
 	}
 	return payload
 }

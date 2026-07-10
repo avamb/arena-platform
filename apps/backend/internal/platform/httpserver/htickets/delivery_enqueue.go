@@ -49,8 +49,20 @@ func (h *Handler) EnqueueDeliveryJobs(ctx context.Context, tickets []gen.TicketR
 			continue
 		}
 
-		// Build the worker job payload.
+		// Build the worker job payload. SEAT-C3 (feature #311): copy the
+		// denormalized seat coordinates into the payload so the delivery
+		// worker can render Sector / Row / Seat into the PDF and email
+		// without re-joining session_seats at delivery time.
 		p := delivery.Payload{TicketID: ticketID.String()}
+		if t.SeatSector != nil {
+			p.SeatSector = *t.SeatSector
+		}
+		if t.SeatRow != nil {
+			p.SeatRow = *t.SeatRow
+		}
+		if t.SeatNumber != nil {
+			p.SeatNumber = *t.SeatNumber
+		}
 		body, jsonErr := json.Marshal(p)
 		if jsonErr != nil {
 			h.logger.Warn("delivery: marshal payload failed",

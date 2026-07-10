@@ -24,6 +24,9 @@
     {{with .SessionStart}}<tr><td><strong>Termin</strong></td><td>{{.}}</td></tr>{{end}}
     {{with .VenueName}}<tr><td><strong>Veranstaltungsort</strong></td><td>{{.}}</td></tr>{{end}}
     {{with .TierName}}<tr><td><strong>Kategorie</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatSector}}<tr><td><strong>Sektor</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatRow}}<tr><td><strong>Reihe</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatNumber}}<tr><td><strong>Platz</strong></td><td>{{.}}</td></tr>{{end}}
   </table>
   <p style="font-size:12px;color:#666">Ticket-ID: {{.TicketID}}</p>
   <p style="font-size:12px;color:#666">Zugestellt an: {{.RecipientEmail}}</p>
@@ -53,6 +56,9 @@ Veranstaltung: {{.EventName}}
 {{with .SessionStart}}Termin: {{.}}
 {{end}}{{with .VenueName}}Veranstaltungsort: {{.}}
 {{end}}{{with .TierName}}Kategorie: {{.}}
+{{end}}{{with .SeatSector}}Sektor: {{.}}
+{{end}}{{with .SeatRow}}Reihe: {{.}}
+{{end}}{{with .SeatNumber}}Platz: {{.}}
 {{end}}
 Ticket-ID: {{.TicketID}}
 Zugestellt an: {{.RecipientEmail}}

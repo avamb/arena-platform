@@ -3,23 +3,34 @@
 -- Tickets are issued after payment.succeeded or free-checkout completion.
 -- Idempotency: before issuing, call ListTicketsByCheckoutSession — if non-empty,
 -- the checkout_session_id has already been issued tickets; return existing rows.
+--
+-- SEAT-C3 (feature #311): tickets carry denormalized seat coordinates
+-- (seat_key / seat_sector / seat_row / seat_number) copied from
+-- session_seats at issuance for assigned-seat sessions. GA tickets keep
+-- all four columns NULL.
 
 -- name: InsertTicket :one
-INSERT INTO tickets (checkout_session_id, session_id, tier_id, holder_email)
-VALUES ($1, $2, $3, $4)
+INSERT INTO tickets (
+    checkout_session_id, session_id, tier_id, holder_email,
+    seat_key, seat_sector, seat_row, seat_number
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING id, checkout_session_id, session_id, tier_id, holder_email,
-          status, issued_at, created_at, updated_at;
+          status, issued_at, created_at, updated_at,
+          seat_key, seat_sector, seat_row, seat_number;
 
 -- name: ListTicketsByCheckoutSession :many
 SELECT id, checkout_session_id, session_id, tier_id, holder_email,
-       status, issued_at, created_at, updated_at
+       status, issued_at, created_at, updated_at,
+       seat_key, seat_sector, seat_row, seat_number
 FROM   tickets
 WHERE  checkout_session_id = $1
 ORDER BY issued_at ASC, id ASC;
 
 -- name: GetTicketByID :one
 SELECT id, checkout_session_id, session_id, tier_id, holder_email,
-       status, issued_at, created_at, updated_at
+       status, issued_at, created_at, updated_at,
+       seat_key, seat_sector, seat_row, seat_number
 FROM   tickets
 WHERE  id = $1;
 

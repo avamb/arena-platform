@@ -82,6 +82,14 @@ type Payload struct {
 	VenueCity    string    `json:"venue_city,omitempty"`
 	TierName     string    `json:"tier_name,omitempty"`
 	HolderName   string    `json:"holder_name,omitempty"`
+	// SeatSector / SeatRow / SeatNumber (SEAT-C3, feature #311) are the
+	// denormalized seat coordinates copied from the ticket's
+	// seat_sector / seat_row / seat_number columns onto the delivery
+	// job. All three are empty for general-admission tickets, in which
+	// case the templates and the PDF renderer omit the seat block.
+	SeatSector string `json:"seat_sector,omitempty"`
+	SeatRow    string `json:"seat_row,omitempty"`
+	SeatNumber string `json:"seat_number,omitempty"`
 	// QRPayload is the value to encode into the PDF QR code. The handler
 	// falls back to TicketID if empty so existing enqueuers keep working.
 	QRPayload string `json:"qr_payload,omitempty"`
@@ -331,6 +339,9 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 				SessionStart:   formatSessionForEmail(p.SessionStart, p.SessionTZ),
 				VenueName:      joinNonEmpty(", ", p.VenueName, p.VenueCity),
 				TierName:       p.TierName,
+				SeatSector:     p.SeatSector,
+				SeatRow:        p.SeatRow,
+				SeatNumber:     p.SeatNumber,
 				Branding:       branding,
 			})
 			if rErr != nil {
@@ -502,6 +513,9 @@ func renderTicketPDF(ctx context.Context, ticketID uuid.UUID, p Payload, brandin
 		VenueCity:              p.VenueCity,
 		TierName:               p.TierName,
 		HolderName:             p.HolderName,
+		SeatSector:             p.SeatSector,
+		SeatRow:                p.SeatRow,
+		SeatNumber:             p.SeatNumber,
 		QRPayload:              qr,
 		OrgLogo:                logoBytes,
 		OrgName:                branding.OrgName,

@@ -20,6 +20,11 @@
   <p>You have been issued a complimentary invitation ticket for
      <strong>{{.EventName}}</strong>. Please find the PDF attached.</p>
   <p>This ticket is a complimentary invitation — no payment is required.</p>
+  {{if or .SeatSector .SeatRow .SeatNumber}}<table cellpadding="4" style="border-collapse:collapse;font-size:14px">
+    {{with .SeatSector}}<tr><td><strong>Sector</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatRow}}<tr><td><strong>Row</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatNumber}}<tr><td><strong>Seat</strong></td><td>{{.}}</td></tr>{{end}}
+  </table>{{end}}
   <p style="font-size:12px;color:#666">Ticket ID: {{.TicketID}}</p>
   <p style="font-size:12px;color:#666">Delivered to: {{.RecipientEmail}}</p>
   <hr>
@@ -46,7 +51,10 @@ Please find the PDF attached.
 
 This ticket is a complimentary invitation — no payment is required.
 
-Ticket ID: {{.TicketID}}
+{{with .SeatSector}}Sector: {{.}}
+{{end}}{{with .SeatRow}}Row: {{.}}
+{{end}}{{with .SeatNumber}}Seat: {{.}}
+{{end}}Ticket ID: {{.TicketID}}
 Delivered to: {{.RecipientEmail}}
 
 --

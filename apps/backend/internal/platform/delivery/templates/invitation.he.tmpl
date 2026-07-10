@@ -20,6 +20,11 @@
   <p>הונפקה עבורך הזמנה לכרטיס חינם עבור
      <strong>{{.EventName}}</strong>. קובץ ה-PDF מצורף להודעה זו.</p>
   <p>זוהי הזמנה אישית — אין צורך בתשלום.</p>
+  {{if or .SeatSector .SeatRow .SeatNumber}}<table cellpadding="4" style="border-collapse:collapse;font-size:14px;direction:rtl">
+    {{with .SeatSector}}<tr><td><strong>אזור</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatRow}}<tr><td><strong>שורה</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatNumber}}<tr><td><strong>מקום</strong></td><td>{{.}}</td></tr>{{end}}
+  </table>{{end}}
   <p style="font-size:12px;color:#666">מזהה כרטיס: {{.TicketID}}</p>
   <p style="font-size:12px;color:#666">נשלח אל: {{.RecipientEmail}}</p>
   <hr>
@@ -46,7 +51,10 @@
 
 זוהי הזמנה אישית — אין צורך בתשלום.
 
-מזהה כרטיס: {{.TicketID}}
+{{with .SeatSector}}אזור: {{.}}
+{{end}}{{with .SeatRow}}שורה: {{.}}
+{{end}}{{with .SeatNumber}}מקום: {{.}}
+{{end}}מזהה כרטיס: {{.TicketID}}
 נשלח אל: {{.RecipientEmail}}
 
 --

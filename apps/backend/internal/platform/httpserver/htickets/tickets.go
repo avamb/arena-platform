@@ -34,6 +34,10 @@ import (
 // ─────────────────────────────────────────────────────────────────────────────
 
 // TicketResponse is the JSON representation of a single tickets row.
+//
+// SeatKey / SeatSector / SeatRow / SeatNumber are populated for tickets
+// issued from an assigned-seats reservation (SEAT-C3, feature #311) and
+// omitted (nil pointers → null in JSON) for general-admission tickets.
 type TicketResponse struct {
 	ID                string  `json:"id"`
 	CheckoutSessionID string  `json:"checkout_session_id"`
@@ -44,6 +48,10 @@ type TicketResponse struct {
 	IssuedAt          string  `json:"issued_at"`
 	CreatedAt         string  `json:"created_at"`
 	UpdatedAt         string  `json:"updated_at"`
+	SeatKey           *string `json:"seat_key,omitempty"`
+	SeatSector        *string `json:"seat_sector,omitempty"`
+	SeatRow           *string `json:"seat_row,omitempty"`
+	SeatNumber        *string `json:"seat_number,omitempty"`
 }
 
 // TicketFromRow converts a gen.TicketRow to a TicketResponse.
@@ -57,6 +65,10 @@ func TicketFromRow(t gen.TicketRow) TicketResponse {
 		IssuedAt:          t.IssuedAt.UTC().Format(time.RFC3339),
 		CreatedAt:         t.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:         t.UpdatedAt.UTC().Format(time.RFC3339),
+		SeatKey:           t.SeatKey,
+		SeatSector:        t.SeatSector,
+		SeatRow:           t.SeatRow,
+		SeatNumber:        t.SeatNumber,
 	}
 	if t.TierID != nil {
 		s := t.TierID.String()
@@ -111,20 +123,73 @@ func (h *Handler) IssueTicketsForCheckout(ctx context.Context, cs gen.CheckoutSe
 			cs.ReservationID.String(), err)
 	}
 
-	// ── Issue one ticket per unit ────────────────────────────────────────────
-	tickets := make([]gen.TicketRow, 0, reservation.Quantity)
-	for i := int32(0); i < reservation.Quantity; i++ {
-		t, err := h.ticketQueries.InsertTicket(ctx,
-			cs.ID,
-			reservation.SessionID,
-			reservation.TierID,
-			nil, // holderEmail — not yet known at issuance time
-		)
+	// ── SEAT-C3 (feature #311): hydrate seat coordinates from reservation ──
+	// For assigned-seat reservations, list the reservation_seats join to get
+	// one row per held seat with the denormalized seat_key / sector_name /
+	// row_name / seat_number columns copied from session_seats. GA
+	// reservations have no reservation_seats rows so this returns an empty
+	// slice and the loop below falls back to the quantity-based path.
+	var seats []gen.SessionSeatRow
+	if h.reservationQueries != nil {
+		s, err := h.reservationQueries.ListReservationSeats(ctx, reservation.ID)
 		if err != nil {
-			return nil, fmt.Errorf("IssueTicketsForCheckout: insert ticket %d of %d: %w",
-				i+1, reservation.Quantity, err)
+			return nil, fmt.Errorf("IssueTicketsForCheckout: list reservation seats: %w", err)
 		}
-		tickets = append(tickets, t)
+		seats = s
+	}
+
+	// ── Issue one ticket per unit (GA) or one ticket per seat (assigned) ──
+	tickets := make([]gen.TicketRow, 0, max(int(reservation.Quantity), len(seats)))
+	if len(seats) > 0 {
+		// Assigned seats: one ticket per session_seats row, with the four
+		// seat_* denormalized columns populated. The per-seat tier_id
+		// overrides the reservation.tier_id so mixed-tier seated
+		// reservations (e.g. hybrid VIP + Standard) issue tickets with the
+		// correct tier per seat.
+		for i, s := range seats {
+			seatKey := s.SeatKey
+			seatSector := s.SectorName
+			seatRow := s.RowName
+			seatNumber := s.SeatNumber
+			tierID := s.TierID
+			if tierID == nil {
+				tierID = reservation.TierID
+			}
+			t, err := h.ticketQueries.InsertTicket(ctx,
+				cs.ID,
+				reservation.SessionID,
+				tierID,
+				nil, // holderEmail — not yet known at issuance time
+				&seatKey,
+				&seatSector,
+				&seatRow,
+				&seatNumber,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("IssueTicketsForCheckout: insert seated ticket %d of %d (seat_key=%s): %w",
+					i+1, len(seats), seatKey, err)
+			}
+			tickets = append(tickets, t)
+		}
+	} else {
+		// General-admission fallback: one ticket per unit of reservation.Quantity.
+		for i := int32(0); i < reservation.Quantity; i++ {
+			t, err := h.ticketQueries.InsertTicket(ctx,
+				cs.ID,
+				reservation.SessionID,
+				reservation.TierID,
+				nil, // holderEmail — not yet known at issuance time
+				nil, // seatKey — GA ticket
+				nil, // seatSector — GA ticket
+				nil, // seatRow — GA ticket
+				nil, // seatNumber — GA ticket
+			)
+			if err != nil {
+				return nil, fmt.Errorf("IssueTicketsForCheckout: insert ticket %d of %d: %w",
+					i+1, reservation.Quantity, err)
+			}
+			tickets = append(tickets, t)
+		}
 	}
 
 	h.logger.Info("tickets: issued",
@@ -132,6 +197,7 @@ func (h *Handler) IssueTicketsForCheckout(ctx context.Context, cs gen.CheckoutSe
 		slog.String("reservation_id", cs.ReservationID.String()),
 		slog.String("session_id", reservation.SessionID.String()),
 		slog.Int("quantity", int(reservation.Quantity)),
+		slog.Int("seat_count", len(seats)),
 		slog.Int("tickets_issued", len(tickets)),
 	)
 

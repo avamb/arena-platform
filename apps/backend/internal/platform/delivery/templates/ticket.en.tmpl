@@ -24,6 +24,9 @@
     {{with .SessionStart}}<tr><td><strong>Session</strong></td><td>{{.}}</td></tr>{{end}}
     {{with .VenueName}}<tr><td><strong>Venue</strong></td><td>{{.}}</td></tr>{{end}}
     {{with .TierName}}<tr><td><strong>Tier</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatSector}}<tr><td><strong>Sector</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatRow}}<tr><td><strong>Row</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatNumber}}<tr><td><strong>Seat</strong></td><td>{{.}}</td></tr>{{end}}
   </table>
   <p style="font-size:12px;color:#666">Ticket ID: {{.TicketID}}</p>
   <p style="font-size:12px;color:#666">Delivered to: {{.RecipientEmail}}</p>
@@ -53,6 +56,9 @@ Event: {{.EventName}}
 {{with .SessionStart}}Session: {{.}}
 {{end}}{{with .VenueName}}Venue: {{.}}
 {{end}}{{with .TierName}}Tier: {{.}}
+{{end}}{{with .SeatSector}}Sector: {{.}}
+{{end}}{{with .SeatRow}}Row: {{.}}
+{{end}}{{with .SeatNumber}}Seat: {{.}}
 {{end}}
 Ticket ID: {{.TicketID}}
 Delivered to: {{.RecipientEmail}}

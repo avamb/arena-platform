@@ -70,6 +70,16 @@ type Data struct {
 	// TierName may be empty for GA / untiered tickets.
 	TierName string
 
+	// SeatSector / SeatRow / SeatNumber are the denormalized seat
+	// coordinates copied from tickets.seat_sector / seat_row / seat_number
+	// (SEAT-C3, feature #311). All three are empty for general-admission
+	// tickets, in which case the templates omit the Sector / Row / Seat
+	// rows entirely via {{with}} guards. All three are populated together
+	// for tickets issued from an assigned-seats reservation.
+	SeatSector string
+	SeatRow    string
+	SeatNumber string
+
 	// Branding is the organisation branding block applied to the header
 	// (logo + display name + website) and footer (legal identification).
 	// Required for EU "commercial communications" minimum identification.
