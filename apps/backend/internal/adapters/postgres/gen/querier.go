@@ -392,6 +392,29 @@ type Querier interface {
 	ListSeatingPlanVersionsByPlan(ctx context.Context, seatingPlanID uuid.UUID) ([]SeatingPlanVersionRow, error)
 	GetLatestSeatingPlanVersionNumber(ctx context.Context, seatingPlanID uuid.UUID) (int32, error)
 	LockSeatingPlanVersion(ctx context.Context, id uuid.UUID) (SeatingPlanVersionRow, error)
+
+	// Session seats — per-seat state for assigned-seats sessions (feature #305, Wave SEAT-B1)
+	InsertSessionSeat(ctx context.Context, sessionID uuid.UUID, seatKey, sectorName, rowName, seatNumber string, tierID *uuid.UUID) (SessionSeatRow, error)
+	GetSessionSeatByID(ctx context.Context, id, sessionID uuid.UUID) (SessionSeatRow, error)
+	GetSessionSeatByKey(ctx context.Context, sessionID uuid.UUID, seatKey string) (SessionSeatRow, error)
+	ListSessionSeats(ctx context.Context, sessionID uuid.UUID) ([]SessionSeatRow, error)
+	ListSessionSeatsByStatus(ctx context.Context, sessionID uuid.UUID, status string) ([]SessionSeatRow, error)
+	ListSessionSeatsChangedSince(ctx context.Context, sessionID uuid.UUID, sinceVersion int64) ([]SessionSeatRow, error)
+	LockSessionSeatsForHold(ctx context.Context, sessionID uuid.UUID, seatKeys []string) ([]SessionSeatRow, error)
+	HoldSessionSeat(ctx context.Context, id, reservationID uuid.UUID, statusVersion int64) (SessionSeatRow, error)
+	ReleaseSessionSeat(ctx context.Context, id, reservationID uuid.UUID, statusVersion int64) (SessionSeatRow, error)
+	SellSessionSeat(ctx context.Context, id, reservationID uuid.UUID, statusVersion int64) (SessionSeatRow, error)
+	BlockSessionSeat(ctx context.Context, id uuid.UUID, statusVersion int64) (SessionSeatRow, error)
+	UnblockSessionSeat(ctx context.Context, id uuid.UUID, statusVersion int64) (SessionSeatRow, error)
+	SetSessionSeatTier(ctx context.Context, id, sessionID uuid.UUID, tierID *uuid.UUID) (SessionSeatRow, error)
+	CountSessionSeatsByStatus(ctx context.Context, sessionID uuid.UUID, status string) (int64, error)
+	IncrementSessionSeatStatusVersion(ctx context.Context, sessionID uuid.UUID) (int64, error)
+
+	// Reservation seats — reservation ↔ session_seats join (feature #305, Wave SEAT-B1)
+	InsertReservationSeat(ctx context.Context, reservationID, sessionSeatID uuid.UUID) error
+	ListReservationSeats(ctx context.Context, reservationID uuid.UUID) ([]SessionSeatRow, error)
+	DeleteReservationSeats(ctx context.Context, reservationID uuid.UUID) error
+	CountReservationSeats(ctx context.Context, reservationID uuid.UUID) (int64, error)
 }
 
 // Compile-time assertion: *Queries must implement Querier.

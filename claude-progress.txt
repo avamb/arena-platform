@@ -18769,3 +18769,70 @@ Verification (docker golang:1.24):
   npx tsc --noEmit apps/backend/openapi/clients/ts/index.d.ts OK
   go test ./apps/backend/internal/platform/httpserver/...     OK (19.6s)
 Marked #304 passing.
+
+
+## 2026-07-10 - Feature #305 (SEAT-B1) Migration 0058 session seating + gen queries
+- New migration apps/backend/internal/migrations/sql/0058_session_seating.sql
+  implementing seating_backlog §5.2:
+    ALTER sessions to include admission_mode text NOT NULL DEFAULT
+      'general_admission' CHECK IN (general_admission|assigned_seats|
+      hybrid), seating_plan_version_id uuid NULL REFERENCES
+      seating_plan_versions(id), seat_status_version bigint NOT NULL
+      DEFAULT 0, and CONSTRAINT sessions_seated_requires_plan CHECK
+      (admission_mode='general_admission' OR seating_plan_version_id
+      IS NOT NULL).
+    CREATE TABLE session_seats (uuidv7 PK, session_id FK, seat_key,
+      sector_name, row_name, seat_number, tier_id FK NULL,
+      status default 'available' CHECK IN available|held|sold|blocked,
+      reservation_id FK NULL, status_version bigint, updated_at
+      timestamptz, UNIQUE (session_id, seat_key)) plus
+      session_seats_status_idx  (session_id, status) and
+      session_seats_version_idx (session_id, status_version).
+    CREATE TABLE reservation_seats (reservation_id FK,
+      session_seat_id FK, PK(reservation_id, session_seat_id)) — pure
+      join, no id column.
+    Extend tickets with seat_key / seat_sector / seat_row /
+      seat_number text NULL — denormalized seat snapshot copied at
+      issuance.
+  Down section drops everything in reverse dependency order (tickets
+  columns first, then join, then session_seats + indexes, then
+  sessions constraint + columns). All timestamp columns declared
+  timestamptz per feature #69 gate.
+- New apps/backend/internal/adapters/postgres/queries/session_seats.sql
+  with 14 sqlc-style query definitions covering the full seat
+  lifecycle: InsertSessionSeat, GetSessionSeatByID /
+  GetSessionSeatByKey, ListSessionSeats / ListSessionSeatsByStatus /
+  ListSessionSeatsChangedSince (delta polling on status_version),
+  LockSessionSeatsForHold (SELECT … FOR UPDATE in seat_key ASC order
+  per §5.2 deadlock-free contract), HoldSessionSeat /
+  ReleaseSessionSeat / SellSessionSeat (conditional transitions
+  scoped by reservation_id), BlockSessionSeat / UnblockSessionSeat
+  (admin transitions), SetSessionSeatTier,
+  CountSessionSeatsByStatus, IncrementSessionSeatStatusVersion
+  (bumps sessions.seat_status_version and returns the new value,
+  called once at tx start).
+- New queries/reservation_seats.sql with 4 queries: Insert (unique-PK
+  idempotency; dup raises 23505 -> 409 conflict at handler layer),
+  ListReservationSeats (JOIN session_seats for issuance-time ticket
+  hydration, ordered by seat_key), DeleteReservationSeats (cancel /
+  expire paths), CountReservationSeats.
+- Companion hand-written gen files matching the seating_plans.sql.go
+  style precedent (Wave SEAT-A1):
+    gen/session_seats.sql.go: SessionSeatRow (11 fields, *uuid.UUID
+      nulls for TierID / ReservationID), shared scanSessionSeatRow,
+      one const + wrapper per query with per-query GoDoc explaining
+      the §5.2 concurrency contract.
+    gen/reservation_seats.sql.go: reuses SessionSeatRow via the
+      JOIN in ListReservationSeats; Insert / Delete are :exec so
+      they return only error.
+- gen/querier.go: added 15 SessionSeat methods and 4
+  ReservationSeat methods under the existing Querier interface;
+  compile-time assertion `var _ Querier = (*Queries)(nil)` still
+  holds.
+Verification (docker golang:1.24 / golangci-lint:latest):
+  go build ./...                                              OK
+  go test ./apps/backend/internal/migrations/...              PASS
+  go test ./apps/backend/internal/adapters/postgres/gen/...   PASS
+  go test ./...                                               all PASS
+  golangci-lint run ./gen/ ./migrations/                      0 issues
+Marked #305 passing.
