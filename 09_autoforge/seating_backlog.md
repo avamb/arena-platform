@@ -481,12 +481,26 @@ screen.
 - Email HTML template: show the human code and seat line in the body
   text too (works when attachments are stripped).
 
-Acceptance: PDF renders at phone aspect with QR ≥55% width;
-human_code appears under the QR and in the email body; codes are
-Crockford-Base32 with a leading letter (property test: 10k generated
-codes — none matches `^[0-9]+$` nor `^[0-9]+[eE][0-9]+$`); scanner
-validate accepts the human code with alias normalization; existing
-QR-token flow unchanged.
+*A4 print variant (owner addition 2026-07-10):* some organizers still
+want a printable ticket. The renderer therefore supports **two
+layouts behind one API**: `FormatMobile` (default, phone aspect,
+described above) and `FormatA4Print` (A4 portrait, same content
+blocks scaled up, QR ~70mm with the human code beneath, generous
+margins for home printers; still NO stub/tear-off). Which format(s)
+the delivery email attaches is an organizer-level flag
+(`ticket_pdf_format: mobile | a4 | both`, default `mobile`) on the
+same configuration surface as the buyer-field flags (name/phone).
+Both layouts share one content-projection struct so fields can never
+diverge; both stay pure/deterministic.
+
+Acceptance: mobile PDF renders at phone aspect with QR ≥55% width and
+the A4 variant renders the same content on A4 with QR ≈70mm (golden
+tests for both); the organizer flag switches the email attachment set
+(mobile / a4 / both); human_code appears under the QR in both layouts
+and in the email body; codes are Crockford-Base32 with a leading
+letter (property test: 10k generated codes — none matches `^[0-9]+$`
+nor `^[0-9]+[eE][0-9]+$`); scanner validate accepts the human code
+with alias normalization; existing QR-token flow unchanged.
 
 ### Wave SEAT-D — integrations
 
