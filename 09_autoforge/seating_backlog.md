@@ -386,6 +386,29 @@ Both unauthenticated for published sessions (same visibility rules as
 the public feed), included in the public feed session payload as
 `schema_url`/`seat_status_url` when `admission_mode != 'general_admission'`.
 
+**SEAT-B4. Manual seat open/close (operator control).** Bil24 parity:
+an operator can close individual seats or whole rows/sectors for sale
+and reopen them per session (tech seats, camera platforms, blocked
+sightlines, house holds).
+- `PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{id}/seats`
+  with `{"action": "block"|"unblock", "seat_keys": [...]}` and/or
+  `{"sectors": [...], "rows": [{"sector": ..., "row": ...}]}` selectors
+  (selectors expand server-side; response reports per-seat outcome).
+- Transitions allowed: `available → blocked` and `blocked → available`
+  only. Seats currently `held` or `sold` are rejected per-seat (listed
+  in the response as skipped with a reason), never silently.
+- Permission: `event_session.assign_seating_plan` holders (same
+  operational role); every call emits an audit event with the seat-key
+  list and actor; idempotent (re-blocking a blocked seat is a no-op
+  success).
+- Blocked seats surface as `blocked` in seat-status endpoints, map to
+  BSS `0 INACCESSIBLE` in the Bil24 gateway, are excluded from
+  availability counters, and cannot be reserved (409
+  `reservation.seats_conflict`).
+- Capacity semantics: blocking does NOT shrink
+  `sessions.capacity_total` (it is a sales hold, not a capacity
+  change); available-count metrics derive from live status.
+
 ### Wave SEAT-C — commerce path with seats
 
 **SEAT-C1. Seat reservations.** Extend `POST /v1/reservations`
@@ -442,7 +465,20 @@ endpoint), show validation errors per element, preview the imported
 scheme (render geometry JSON to SVG client-side), fork/archive actions.
 **SEAT-E2.** Session editor: admission-mode selector, plan-version
 picker, category→tier mapping table (with auto-create option), seat
-counters. Both respect the Wave M responsive rules for organizer
+counters.
+**SEAT-E3. Interactive seat management on the session.** Render the
+session's seat map (geometry JSON → SVG client-side, colored by live
+status: available / held / sold / blocked, with the category legend).
+Operator interactions backed by SEAT-B4: click a seat to toggle
+block/unblock; multi-select via sector/row picker for bulk block;
+skipped seats (held/sold) are reported inline. Read-only live counters
+per sector and per category. This screen is the operational
+"обменка"-equivalent: prices are edited on the mapped ticket tiers
+(existing tier editor), seat availability is edited here, and category
+layout changes are done by importing a new plan version (re-colored
+SVG) — not by per-seat repainting (that is visual-editor scope, out of
+this wave).
+All three screens respect the Wave M responsive rules for organizer
 presets.
 
 ## 8. Out of scope (this wave)
@@ -468,6 +504,10 @@ presets.
    (test provider) → 2 tickets issued each carrying sector/row/number →
    seat-status shows them `sold` → refund releases per refund policy.
 3. Reservation expiry returns seats to `available` (TTL worker test).
+3a. Operator blocks a row via SEAT-B4 → seats show `blocked` in
+   seat-status and BSS `0` in the gateway → reservation attempt on a
+   blocked seat gets 409 → unblock restores sale; blocking a sold seat
+   is rejected per-seat and audited.
 4. `GET_SEAT_LIST`/`GET_SCHEMA`/`RESERVATION(seatList)` in the Bil24
    gateway behave per §6/§7 for a seated session; GA sessions unchanged.
 5. Existing full test suite stays green: `go test ./...`,
