@@ -20,6 +20,11 @@ func (s *Server) mountSeatingRoutes(r chi.Router) {
 	if s.seatingQueries != nil {
 		r.Get("/event-sessions/{id}/schema", s.handleGetPublicSessionSchema)
 		r.Get("/event-sessions/{id}/seat-status", s.handleGetPublicSessionSeatStatus)
+		// SEAT-D3 (feature #314): BSS-compatible SVG export served
+		// as image/svg+xml so legacy Bil24 widgets can consume the
+		// plan verbatim. Same public visibility gate as the two
+		// endpoints above.
+		r.Get("/event-sessions/{id}/layout.svg", s.handleGetPublicSessionLayoutSVG)
 	}
 
 	if s.stub == nil || !s.stub.Enabled() || s.seatingQueries == nil || s.pool == nil {

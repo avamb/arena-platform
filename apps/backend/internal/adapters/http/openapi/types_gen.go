@@ -5680,6 +5680,13 @@ type PostV1EchoParams struct {
 	IdempotencyKey openapi_types.UUID `json:"Idempotency-Key"`
 }
 
+// GetPublicSessionLayoutSVGParams defines parameters for GetPublicSessionLayoutSVG.
+type GetPublicSessionLayoutSVGParams struct {
+	// IfNoneMatch Standard conditional-request header. When it matches the
+	// current composite ETag the server responds 304 with no body.
+	IfNoneMatch *string `json:"If-None-Match,omitempty"`
+}
+
 // GetPublicSessionSchemaParams defines parameters for GetPublicSessionSchema.
 type GetPublicSessionSchemaParams struct {
 	// IfNoneMatch Standard conditional-request header. When it matches the current `geometry_checksum` ETag the server responds 304 with no body.

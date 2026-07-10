@@ -64,6 +64,12 @@ func (s *Server) handleGetPublicSessionSeatStatus(w http.ResponseWriter, r *http
 	s.seatingHandler().HandleGetPublicSessionSeatStatus(w, r)
 }
 
+// ─── layout.svg shim (feature #314, Wave SEAT-D3) ────────────────────────────
+
+func (s *Server) handleGetPublicSessionLayoutSVG(w http.ResponseWriter, r *http.Request) {
+	s.seatingHandler().HandleGetPublicSessionLayoutSVG(w, r)
+}
+
 // ─── bind handler shim (feature #306, Wave SEAT-B2) ──────────────────────────
 
 func (s *Server) handleBindSessionSeating(w http.ResponseWriter, r *http.Request) {

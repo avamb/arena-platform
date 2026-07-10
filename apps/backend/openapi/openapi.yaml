@@ -10800,6 +10800,115 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/event-sessions/{id}/layout.svg:
+    get:
+      operationId: getPublicSessionLayoutSVG
+      summary: Public BSS-compatible SVG export for a seated session
+      description: |
+        Renders a Bil24-style seating scheme (BSS) SVG for a published
+        seated session so legacy Bil24 widgets can consume the plan
+        verbatim. Every seat-carrying element uses the `sbt:` attribute
+        namespace documented in
+        `09_autoforge/seating_backlog.md` §6:
+
+          * seats carry `sbt:seat` (seat number), `sbt:id`
+            (`session_seats.id` string), `sbt:cat` (1-based category
+            index), and `sbt:state` (BSS status code).
+          * row groups carry `sbt:row` (row name) and `sbt:sect`
+            (sector name).
+          * category swatches (inside `<g id="PriceCategory">`) carry
+            `sbt:index`, `sbt:name`, `sbt:color`, `sbt:price`,
+            `sbt:currency`, `sbt:sold`, and `sbt:used`.
+
+        The root `<svg>` element additionally carries
+        `sbt:statusVersion="<seat_status_version>"` so consumers can
+        correlate a downloaded map with the SEAT-B3 delta seat-status
+        stream.
+
+        Status wire codes (§6):
+          * `0 INACCESSIBLE`   ← internal `blocked`
+          * `1 AVAILABLE`      ← internal `available`
+          * `2 PRE_RESERVED`   (reserved for future flows, never emitted)
+          * `3 RESERVED`       ← internal `held`
+          * `4 OCCUPIED`       ← internal `sold`
+          * `5 REFUND`         (reserved for future flows, never emitted)
+
+        Unauthenticated with the same visibility rules as the sibling
+        `/schema` + `/seat-status` endpoints (published event + non-GA
+        session). Responses carry a composite strong ETag of the form
+        `"<geometry_checksum>:<seat_status_version>"` and
+        `Cache-Control: no-cache` — the live seat map turns over on
+        every reservation, so edge caches MUST NOT store the payload
+        without revalidation. Matching `If-None-Match` short-circuits
+        with a 304.
+      tags: [v1, seating]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the event session.
+          schema:
+            type: string
+            format: uuid
+        - name: If-None-Match
+          in: header
+          required: false
+          description: |
+            Standard conditional-request header. When it matches the
+            current composite ETag the server responds 304 with no body.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: BSS-compatible SVG document.
+          headers:
+            ETag:
+              description: Composite strong tag `"<geometry_checksum>:<seat_status_version>"`.
+              schema:
+                type: string
+            Cache-Control:
+              description: Always `no-cache`.
+              schema:
+                type: string
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+                format: binary
+                description: SVG document with `sbt:*` attributes per §6.
+        "304":
+          description: Client's `If-None-Match` matches the current composite ETag; body omitted.
+          headers:
+            ETag:
+              description: Composite strong tag `"<geometry_checksum>:<seat_status_version>"`.
+              schema:
+                type: string
+            Cache-Control:
+              description: Always `no-cache`.
+              schema:
+                type: string
+        "404":
+          description: |
+            Session is not published, is `general_admission`, has no
+            bound seating plan version, or does not exist
+            (`event_session.layout_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Seating queries unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/event-sessions/{id}/seat-status:
     get:
       operationId: getPublicSessionSeatStatus

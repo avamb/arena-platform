@@ -19205,3 +19205,102 @@ Verification (docker golang:1.24 / golangci-lint:latest):
   golangci-lint run ./apps/backend/internal/platform/httpserver/hbil24/...
                                                                    0 issues
 Marked #313 passing.
+
+
+## 2026-07-11 - Feature #315 (SEAT-E1) Admin venue seating-plans tab
+- New apps/admin-web/src/routes/venueSeatingPlans.tsx module:
+  VenueSeatingPlansDrawer (ResponsiveDrawer + Details / Seating-plans
+  tabs), SeatingPlansPanel (list + create form), UploadSVGForm (POST
+  /v1/seating-plans/{id}/versions with FileReader-driven svg body,
+  parses 422 details.errors[] via parseVersionValidationErrors and
+  renders each {code,element,detail} inline; also surfaces server
+  warnings[]), PlanPreview (fetches versions/1 and renders geometry
+  via GeometrySVG), PlanActions (Fork w/ owner_org_id input + Archive
+  via PATCH status=archived).
+- Pure helpers exported for tests: renderGeometryToSVG (viewBox from
+  canvas, circle-per-seat, category-index -> color map, safe HTML
+  escaping, opts.includeDecor gate, coord rounding to 2dp, NaN/Inf
+  -> 0), parseVersionValidationErrors (status===422 gate + malformed
+  entry drop), readFileAsText (FileReader Promise wrapper).
+- venues.tsx wires it up: onOpenPlans prop through VenuesBody, per-row
+  "Seating plans" button in the actions cell (data-testid
+  venues-plans-<id>), plansVenue state renders the drawer.
+- Unit tests venueSeatingPlans.test.ts: 14 tests, all pass.
+  renderGeometryToSVG: viewBox, per-seat circles + fills, unknown-
+  category fallback, HTML-escape of section/row/seat keys, canvas
+  defaults, decor gate on/off, empty geometry, coord rounding,
+  non-finite substitution.
+  parseVersionValidationErrors: happy path, non-422 gate, missing
+  or malformed details, drop non-object / non-string-code entries.
+Verification:
+  tsc -p apps/admin-web/tsconfig.app.json --noEmit       OK
+  vitest run src/routes/venueSeatingPlans.test.ts        14/14 PASS
+  vitest run src/routes/venues.test.ts                   63/63 PASS
+Marked #315 passing.
+
+
+## 2026-07-11 - Feature #314 (SEAT-D3) BSS-compatible SVG export
+- hseating/layout_svg.go: GET /v1/event-sessions/{id}/layout.svg renders
+  a Bil24-style seating scheme SVG. Content-Type image/svg+xml; charset=utf-8.
+  Composite ETag "<geometry_checksum>:<seat_status_version>" plus 304
+  short-circuit against If-None-Match; Cache-Control: no-cache since the
+  live seat map turns over on every reservation.
+- Public visibility gate mirrors sibling /schema + /seat-status:
+  GetPublicSessionSchema returns pgx.ErrNoRows for unpublished / GA /
+  missing sessions -> 404 event_session.layout_not_found envelope. Nil
+  queries -> 503 dependency.database_unavailable.
+- Pure RenderBSSLayoutSVG(g, seats, tiers, seatStatusVersion) shared by
+  handler + tests. Emits, in order:
+    * XML preamble
+    * <svg xmlns=... xmlns:sbt="http://bil24.pro/sbt" viewBox="0 0 W H"
+      width height sbt:statusVersion="N">
+    * <g id="Decor"> ... </g> when g.DecorSVG non-empty (spliced verbatim)
+    * <g id="PriceCategory"> with one <circle> per category carrying
+      sbt:index / sbt:name / sbt:color / sbt:price / sbt:currency /
+      sbt:sold / sbt:used. Price+currency resolved by joining
+      session_seats.tier_id -> ticket_tiers via categoryToTier index
+      (first-seat-wins). sold = count(status=sold); used = count(status
+      != available) so blocked/held/sold roll into used.
+    * <g id="Seats"> walks g.Sections->Rows in canonical order; each row
+      is a <g sbt:sect="..." sbt:row="..."> group; each seat is a
+      <circle sbt:seat sbt:id sbt:cat sbt:state cx cy r fill>.
+- statusToBSS wire codes per seating_backlog.md section 6:
+    blocked    -> 0 INACCESSIBLE
+    available  -> 1 AVAILABLE
+    held       -> 3 RESERVED
+    sold       -> 4 OCCUPIED
+    unknown/"" -> 0 INACCESSIBLE (defensive collapse)
+  Codes 2 PRE_RESERVED / 5 REFUND are reserved and never emitted here.
+- Missing session_seat row (plan preview before bind) -> sbt:id=""
+  sbt:state="1"; keeps preview behaviour identical for widgets.
+- XML attribute values pass through xml.EscapeText via xmlAttrString, so
+  markup inside sector / row names (e.g. Balcony <left>, A "special")
+  encodes cleanly. Coordinates use strconv.FormatFloat 'f' -1 64 for the
+  shortest round-trippable decimal, keeping output byte-stable.
+- Route wired in mount_seating.go: r.Get(
+    "/event-sessions/{id}/layout.svg", s.handleGetPublicSessionLayoutSVG)
+  inside the public seatingQueries-gated block; shim added to
+  seating_shims.go alongside the /schema + /seat-status shims.
+- OpenAPI 3.1: /v1/event-sessions/{id}/layout.svg operation
+  getPublicSessionLayoutSVG added with 200 image/svg+xml + 304 + 404 +
+  503 responses, If-None-Match request header, ETag + Cache-Control
+  response headers. types_gen.go regenerated via oapi-codegen v2.4.1;
+  TS client regenerated via scripts/gen-ts-client.mjs; tsc --noEmit OK.
+- Tests (layout_svg_test.go, all pass in golang:1.24 docker):
+    TestSeatD3_StatusToBSS (6 status cases)
+    TestSeatD3_LayoutSVGETag
+    TestSeatD3_RenderEmitsBSSAttributes (pins full sbt:* surface,
+      XML escaping of sector/row names, decor splice, price/sold/used
+      rollup, per-status seat state)
+    TestSeatD3_RenderIsDeterministic
+    TestSeatD3_RenderNoDecor (empty decor + no session_seats fallback)
+    TestSeatD3_HandlerReturns503WhenQueriesUnwired
+    TestSeatD3_CacheControlContract
+Verification (docker golang:1.24 / golangci-lint:latest):
+  make gen-openapi                                                 OK
+  node scripts/gen-ts-client.mjs                                   OK
+  npx tsc --noEmit apps/backend/openapi/clients/ts/index.d.ts      OK
+  go test ./apps/backend/... -count=1                              all PASS
+  golangci-lint run ./apps/backend/internal/platform/httpserver/hseating/...
+                                                                   0 issues
+Marked #314 passing.

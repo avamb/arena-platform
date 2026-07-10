@@ -1248,6 +1248,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/event-sessions/{id}/layout.svg": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public BSS-compatible SVG export for a seated session
+         * @description Renders a Bil24-style seating scheme (BSS) SVG for a published
+         *     seated session so legacy Bil24 widgets can consume the plan
+         *     verbatim. Every seat-carrying element uses the `sbt:` attribute
+         *     namespace documented in
+         *     `09_autoforge/seating_backlog.md` §6:
+         *
+         *       * seats carry `sbt:seat` (seat number), `sbt:id`
+         *         (`session_seats.id` string), `sbt:cat` (1-based category
+         *         index), and `sbt:state` (BSS status code).
+         *       * row groups carry `sbt:row` (row name) and `sbt:sect`
+         *         (sector name).
+         *       * category swatches (inside `<g id="PriceCategory">`) carry
+         *         `sbt:index`, `sbt:name`, `sbt:color`, `sbt:price`,
+         *         `sbt:currency`, `sbt:sold`, and `sbt:used`.
+         *
+         *     The root `<svg>` element additionally carries
+         *     `sbt:statusVersion="<seat_status_version>"` so consumers can
+         *     correlate a downloaded map with the SEAT-B3 delta seat-status
+         *     stream.
+         *
+         *     Status wire codes (§6):
+         *       * `0 INACCESSIBLE`   ← internal `blocked`
+         *       * `1 AVAILABLE`      ← internal `available`
+         *       * `2 PRE_RESERVED`   (reserved for future flows, never emitted)
+         *       * `3 RESERVED`       ← internal `held`
+         *       * `4 OCCUPIED`       ← internal `sold`
+         *       * `5 REFUND`         (reserved for future flows, never emitted)
+         *
+         *     Unauthenticated with the same visibility rules as the sibling
+         *     `/schema` + `/seat-status` endpoints (published event + non-GA
+         *     session). Responses carry a composite strong ETag of the form
+         *     `"<geometry_checksum>:<seat_status_version>"` and
+         *     `Cache-Control: no-cache` — the live seat map turns over on
+         *     every reservation, so edge caches MUST NOT store the payload
+         *     without revalidation. Matching `If-None-Match` short-circuits
+         *     with a 304.
+         */
+        get: operations["getPublicSessionLayoutSVG"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/event-sessions/{id}/seat-status": {
         parameters: {
             query?: never;
@@ -13653,6 +13708,81 @@ export interface operations {
              * @description Session is not published, is `general_admission`, has no
              *     bound seating plan version, or does not exist
              *     (`event_session.schema_not_found`).
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Seating queries unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicSessionLayoutSVG: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Standard conditional-request header. When it matches the
+                 *     current composite ETag the server responds 304 with no body.
+                 */
+                "If-None-Match"?: string;
+            };
+            path: {
+                /** @description UUIDv7 primary key of the event session. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description BSS-compatible SVG document. */
+            200: {
+                headers: {
+                    /** @description Composite strong tag `"<geometry_checksum>:<seat_status_version>"`. */
+                    ETag?: string;
+                    /** @description Always `no-cache`. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/svg+xml": string;
+                };
+            };
+            /** @description Client's `If-None-Match` matches the current composite ETag; body omitted. */
+            304: {
+                headers: {
+                    /** @description Composite strong tag `"<geometry_checksum>:<seat_status_version>"`. */
+                    ETag?: string;
+                    /** @description Always `no-cache`. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description Session is not published, is `general_admission`, has no
+             *     bound seating plan version, or does not exist
+             *     (`event_session.layout_not_found`).
              */
             404: {
                 headers: {

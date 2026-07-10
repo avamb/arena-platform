@@ -58,6 +58,7 @@ import {
   mobileFormBarStyle,
   singleColumnFormStyle,
 } from "@/components/layout";
+import { VenueSeatingPlansDrawer } from "./venueSeatingPlans";
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -427,6 +428,7 @@ function VenuesModule() {
 
   const [form, setForm] = useState<FormMode>({ kind: "closed" });
   const [pendingDelete, setPendingDelete] = useState<Venue | null>(null);
+  const [plansVenue, setPlansVenue] = useState<Venue | null>(null);
 
   const query = useQuery<VenueListEnvelope, ApiError>({
     queryKey: ["venues", "list"],
@@ -504,7 +506,16 @@ function VenuesModule() {
         canDelete={canDelete}
         onEdit={(venue) => setForm({ kind: "edit", venue })}
         onDelete={(venue) => setPendingDelete(venue)}
+        onOpenPlans={(venue) => setPlansVenue(venue)}
       />
+
+      {plansVenue !== null ? (
+        <VenueSeatingPlansDrawer
+          venue={plansVenue}
+          open={true}
+          onClose={() => setPlansVenue(null)}
+        />
+      ) : null}
 
       {form.kind !== "closed" ? (
         <VenueFormDialog
@@ -535,9 +546,18 @@ interface BodyProps {
   canDelete: boolean;
   onEdit: (venue: Venue) => void;
   onDelete: (venue: Venue) => void;
+  onOpenPlans: (venue: Venue) => void;
 }
 
-function VenuesBody({ query, rows, canUpdate, canDelete, onEdit, onDelete }: BodyProps) {
+function VenuesBody({
+  query,
+  rows,
+  canUpdate,
+  canDelete,
+  onEdit,
+  onDelete,
+  onOpenPlans,
+}: BodyProps) {
   if (query.isPending) {
     return (
       <div style={statusBoxStyle} role="status" aria-live="polite">
@@ -609,6 +629,14 @@ function VenuesBody({ query, rows, canUpdate, canDelete, onEdit, onDelete }: Bod
       hideOnMobile: true,
       renderCell: (v) => (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            style={rowActionButtonStyle}
+            onClick={() => onOpenPlans(v)}
+            data-testid={`venues-plans-${v.id}`}
+          >
+            Seating plans
+          </button>
           {canUpdate ? (
             <button
               type="button"
