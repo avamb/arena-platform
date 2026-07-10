@@ -7415,6 +7415,12 @@ export interface components {
              * @description UTC timestamp when the hold expired; null unless state is `expired`.
              */
             expired_at: string | null;
+            /**
+             * @description Canonical (deterministic ASC) list of `seat_key` values held by
+             *     this reservation. Populated on the seated / hybrid path only
+             *     (feature #309, Wave SEAT-C1); omitted for GA-only holds.
+             */
+            seats?: string[];
         };
         /** @description Single-reservation response envelope. */
         ReservationEnvelope: {
@@ -7441,6 +7447,15 @@ export interface components {
          *     atomically with a `ReserveCapacity` call against the session
          *     inventory ledger row; returns 409 `reservation.over_capacity`
          *     when there is insufficient capacity.
+         *
+         *     Exactly one of `quantity` or `seats` must be provided. General-
+         *     admission sessions require `quantity`; assigned-seats sessions
+         *     require `seats`; hybrid sessions accept either. Requests that
+         *     mix the two return 400 `reservation.seats_quantity_conflict`.
+         *     The seated path follows §5.2 of the seating backlog:
+         *     deterministic seat_key-ordered `SELECT … FOR UPDATE`, monotonic
+         *     `seat_status_version` stamps, and a rolled-back 409
+         *     `reservation.seats_conflict` listing the conflicting seats.
          */
         CreateReservationRequest: {
             /**
@@ -7468,8 +7483,20 @@ export interface components {
              * Format: int32
              * @description Number of capacity units to hold; must be strictly positive
              *     (`reservation.invalid_quantity` is returned otherwise).
+             *     Mutually exclusive with `seats`. Required on general-
+             *     admission sessions.
              */
-            quantity: number;
+            quantity?: number;
+            /**
+             * @description List of `seat_key` values to hold on a seated / hybrid
+             *     session (feature #309, Wave SEAT-C1). Mutually exclusive
+             *     with `quantity`. Duplicate keys yield 400
+             *     `reservation.duplicate_seat`; unknown or non-available keys
+             *     roll back the transaction with 409
+             *     `reservation.seats_conflict` and a `details.conflicts`
+             *     array listing every offending seat.
+             */
+            seats?: string[];
         };
         /**
          * @description A promo code is a discount voucher scoped to one organization. It

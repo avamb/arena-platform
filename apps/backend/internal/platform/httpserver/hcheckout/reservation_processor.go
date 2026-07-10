@@ -129,6 +129,26 @@ func (p *ReservationProcessor) expireReservation(ctx context.Context, r gen.Rese
 
 	q := gen.New(tx)
 
+	// Release held seats (seated / hybrid reservations) atomically with the
+	// state transition. GA-only reservations have no reservation_seats rows,
+	// so this is a cheap no-op for them. A seat-release failure is non-fatal
+	// so the TTL worker still transitions the reservation to 'expired' and
+	// the ledger release below still runs (feature #309 §5.2 contract).
+	if released, err := releaseReservationSeatsTx(ctx, q, r.SessionID, r.ID); err != nil {
+		p.logger.Warn("reservation_processor: release seats failed (non-fatal)",
+			slog.String("reservation_id", r.ID.String()),
+			slog.String("session_id", r.SessionID.String()),
+			slog.Int("released", released),
+			slog.String("error", err.Error()),
+		)
+	} else if released > 0 {
+		p.logger.Info("reservation_processor: seats released",
+			slog.String("reservation_id", r.ID.String()),
+			slog.String("session_id", r.SessionID.String()),
+			slog.Int("released", released),
+		)
+	}
+
 	// Release held capacity — non-fatal if it fails (inventory may already be
 	// inconsistent, but the reservation must still be marked expired).
 	if _, err := q.ReleaseCapacity(ctx, r.SessionID, r.TierID, r.Quantity); err != nil {

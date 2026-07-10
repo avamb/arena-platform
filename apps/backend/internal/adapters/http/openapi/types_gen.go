@@ -1582,6 +1582,15 @@ type CreateRefundRequest struct {
 // atomically with a `ReserveCapacity` call against the session
 // inventory ledger row; returns 409 `reservation.over_capacity`
 // when there is insufficient capacity.
+//
+// Exactly one of `quantity` or `seats` must be provided. General-
+// admission sessions require `quantity`; assigned-seats sessions
+// require `seats`; hybrid sessions accept either. Requests that
+// mix the two return 400 `reservation.seats_quantity_conflict`.
+// The seated path follows §5.2 of the seating backlog:
+// deterministic seat_key-ordered `SELECT … FOR UPDATE`, monotonic
+// `seat_status_version` stamps, and a rolled-back 409
+// `reservation.seats_conflict` listing the conflicting seats.
 type CreateReservationRequest struct {
 	// ChannelId Sales channel used by the buyer.
 	ChannelId openapi_types.UUID `json:"channel_id"`
@@ -1591,7 +1600,18 @@ type CreateReservationRequest struct {
 
 	// Quantity Number of capacity units to hold; must be strictly positive
 	// (`reservation.invalid_quantity` is returned otherwise).
-	Quantity int32 `json:"quantity"`
+	// Mutually exclusive with `seats`. Required on general-
+	// admission sessions.
+	Quantity *int32 `json:"quantity,omitempty"`
+
+	// Seats List of `seat_key` values to hold on a seated / hybrid
+	// session (feature #309, Wave SEAT-C1). Mutually exclusive
+	// with `quantity`. Duplicate keys yield 400
+	// `reservation.duplicate_seat`; unknown or non-available keys
+	// roll back the transaction with 409
+	// `reservation.seats_conflict` and a `details.conflicts`
+	// array listing every offending seat.
+	Seats *[]string `json:"seats,omitempty"`
 
 	// SessionId Session whose capacity should be held.
 	SessionId openapi_types.UUID `json:"session_id"`
@@ -3923,6 +3943,11 @@ type Reservation struct {
 
 	// Quantity Number of capacity units held by the reservation.
 	Quantity int32 `json:"quantity"`
+
+	// Seats Canonical (deterministic ASC) list of `seat_key` values held by
+	// this reservation. Populated on the seated / hybrid path only
+	// (feature #309, Wave SEAT-C1); omitted for GA-only holds.
+	Seats *[]string `json:"seats,omitempty"`
 
 	// SessionId Session whose capacity is held by the reservation.
 	SessionId openapi_types.UUID `json:"session_id"`

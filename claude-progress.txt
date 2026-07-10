@@ -18948,3 +18948,53 @@ Verification (docker golang:1.24 / golangci-lint:latest):
   go test  ./apps/backend/internal/platform/httpserver/          OK
   golangci-lint run ./apps/backend/.../hseating/                 0 issues
 Marked #308 passing.
+
+
+## 2026-07-10 - Feature #310 (SEAT-C2) Checkout & pricing with seats
+- hcheckout/handler.go: extended PricingBreakdown with optional
+  Lines []PricingLineItem and added ComputePricingLines(lines,
+  discount, currency, rules). Multi-line path aggregates Subtotal =
+  Σ line.UnitPrice × line.Quantity, feeds the same discount / fee /
+  tax pipeline as single-tier ComputePricing, and preserves the
+  (Subtotal − Discount) + PlatformFee + ProviderFee + Tax == Total
+  accounting invariant. UnitPrice on the top-level breakdown is the
+  weighted-average unit price (informational; per-line UnitPrice is
+  the source of truth).
+- hcheckout/seat_checkout.go: new sellReservationSeatsTx helper
+  implementing the §5.2 held→sold transition. Contract: one
+  IncrementSessionSeatStatusVersion bump per batch; conditional
+  SellSessionSeat per seat; idempotent for seats already in sold
+  state (webhook replay); errSeatDoubleSell (exported as
+  ErrSeatDoubleSell) on any seat found in available / blocked state
+  or on concurrent-transition (pgx.ErrNoRows) mid-batch. GA
+  reservations (no reservation_seats rows) are a no-op. Sits behind
+  a narrow seatSellQuerier interface so unit tests can substitute
+  an in-memory fake state machine.
+- hcheckout/seat_checkout.go: buildSeatedPricingLines groups
+  reservation_seats by (tier_id, unit_price) using a caller-supplied
+  tier→price map and returns deterministic (TierID ASC)
+  []PricingLineInput ready for ComputePricingLines. Seats with nil
+  tier_id group under the empty string.
+- hcheckout/seat_checkout_test.go: 16 unit tests across three areas.
+    Pricing math: single-line parity with ComputePricing, multi-tier
+      aggregation (VIP 2×1000 + STD 3×500 → 3500 subtotal, 500
+      discount, 3720 total at 5/2/17 %), accounting-invariant sweep,
+      discount-cap and negative-discount clamp branches.
+    buildSeatedPricingLines: multi-tier grouping, nil-tier fallback
+      to empty-string, empty-seats no-op.
+    Sell state machine (in-memory fake): HappyPath (all seats flip,
+      exactly one status_version bump), IdempotentReplay (all-sold
+      replay, no bump), PartialReplay (mixed held/sold — only held
+      flip), DoubleSellAttempt_Available + _Blocked (errSeatDoubleSell,
+      no bump), ExpiryRace (SellSessionSeat returns pgx.ErrNoRows
+      mid-batch → partial-conflict rollback with errSeatDoubleSell),
+      GAReservation_NoOp, ListFails / IncrementFails error-propagation
+      guards.
+Verification (docker golang:1.24 / golangci-lint:latest):
+  go build ./apps/backend/...                                       OK
+  go test  ./apps/backend/internal/platform/httpserver/hcheckout/   OK 16/16
+  go test  ./apps/backend/internal/platform/httpserver/             OK
+  golangci-lint run ./hcheckout/...                                 0 new
+    issues (3 pre-existing issues in seat_reservations.go /
+    seat_reservations_test.go unchanged)
+Marked #310 passing.

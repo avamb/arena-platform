@@ -60,16 +60,46 @@ type PricingRules struct {
 //	Discount + PlatformFee + ProviderFee + Tax + (Total - Subtotal) == 0
 //
 // In other words: Subtotal - Discount + PlatformFee + ProviderFee + Tax == Total.
+//
+// Multi-line breakdown (feature #310, SEAT-C2): when a checkout covers more
+// than one ticket tier (e.g. a seated reservation whose seats resolve to
+// different tiers), Lines carries one entry per tier group and the top-level
+// UnitPrice / Quantity fields are populated with the weighted-average unit
+// price and total quantity so single-tier callers keep the same shape.
 type PricingBreakdown struct {
-	UnitPrice   int64  `json:"unit_price"`   // price per single ticket
-	Quantity    int32  `json:"quantity"`     // number of tickets
-	Subtotal    int64  `json:"subtotal"`     // UnitPrice × Quantity
-	Discount    int64  `json:"discount"`     // promo discount (≥ 0, ≤ Subtotal)
-	PlatformFee int64  `json:"platform_fee"` // platform service charge
-	ProviderFee int64  `json:"provider_fee"` // payment-provider processing fee
-	Tax         int64  `json:"tax"`          // sales / VAT tax
-	Total       int64  `json:"total"`        // all-in amount the customer pays
-	Currency    string `json:"currency"`     // ISO 4217 currency code
+	UnitPrice   int64             `json:"unit_price"`   // price per single ticket (weighted avg on multi-line)
+	Quantity    int32             `json:"quantity"`     // number of tickets (sum across lines)
+	Subtotal    int64             `json:"subtotal"`     // Σ (line.UnitPrice × line.Quantity)
+	Discount    int64             `json:"discount"`     // promo discount (≥ 0, ≤ Subtotal)
+	PlatformFee int64             `json:"platform_fee"` // platform service charge
+	ProviderFee int64             `json:"provider_fee"` // payment-provider processing fee
+	Tax         int64             `json:"tax"`          // sales / VAT tax
+	Total       int64             `json:"total"`        // all-in amount the customer pays
+	Currency    string            `json:"currency"`     // ISO 4217 currency code
+	Lines       []PricingLineItem `json:"lines,omitempty"`
+}
+
+// PricingLineItem is one row of a multi-line pricing breakdown. Every seated
+// reservation produces one line per (tier_id, unit_price) group; the sum of
+// line subtotals equals the top-level Subtotal.
+//
+// TierID is the string form of the tier UUID; on general-admission checkouts
+// the single line uses the reservation's tier_id (or an empty string when
+// tier_id is nil).
+type PricingLineItem struct {
+	TierID    string `json:"tier_id"`
+	Quantity  int32  `json:"quantity"`
+	UnitPrice int64  `json:"unit_price"`
+	Subtotal  int64  `json:"subtotal"`
+}
+
+// PricingLineInput is a caller-provided (tier_id, quantity, unit_price) tuple
+// consumed by ComputePricingLines. The caller is responsible for grouping
+// seats by tier before invocation — ComputePricingLines does no grouping.
+type PricingLineInput struct {
+	TierID    string
+	Quantity  int32
+	UnitPrice int64
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -119,6 +149,85 @@ func ComputePricing(unitPrice int64, quantity int32, discount int64, currency st
 		Tax:         tax,
 		Total:       total,
 		Currency:    currency,
+	}
+}
+
+// ComputePricingLines runs the pricing pipeline over a set of tier-group lines
+// (feature #310, SEAT-C2). Each PricingLineInput is one (tier_id, quantity,
+// unit_price) group; the sum of line subtotals feeds the same discount / fee /
+// tax pipeline used by single-tier ComputePricing.
+//
+// Contract:
+//
+//   - lines must be non-empty; every line.Quantity must be > 0 and
+//     every line.UnitPrice must be ≥ 0. Invariants outside that range are the
+//     caller's responsibility (this matches the ComputePricing contract).
+//
+//   - The returned PricingBreakdown.Lines echoes back the input lines with a
+//     computed Subtotal per line (Quantity × UnitPrice) so the API surface can
+//     serialise the tier group breakdown verbatim.
+//
+//   - Top-level Subtotal is Σ line.Subtotal; Quantity is Σ line.Quantity; and
+//     UnitPrice is the integer floor of Subtotal / Quantity (weighted-average
+//     unit price — informational only; per-line UnitPrice is the source of
+//     truth). Discount, PlatformFee, ProviderFee, Tax and Total are computed
+//     over the aggregate the exact same way as the single-tier path so the
+//     accounting invariant still holds:
+//
+//     (Subtotal − Discount) + PlatformFee + ProviderFee + Tax == Total
+//
+// Guardrail #15 (financial totals computed platform-side): the caller supplies
+// only unit prices and quantities; discount / fees / tax are always derived
+// server-side from the pricing rules.
+func ComputePricingLines(lines []PricingLineInput, discount int64, currency string, rules PricingRules) PricingBreakdown {
+	out := make([]PricingLineItem, 0, len(lines))
+	var subtotal int64
+	var quantity int32
+	for _, l := range lines {
+		lineSubtotal := l.UnitPrice * int64(l.Quantity)
+		subtotal += lineSubtotal
+		quantity += l.Quantity
+		out = append(out, PricingLineItem{
+			TierID:    l.TierID,
+			Quantity:  l.Quantity,
+			UnitPrice: l.UnitPrice,
+			Subtotal:  lineSubtotal,
+		})
+	}
+
+	// Cap discount so it never exceeds the subtotal.
+	if discount > subtotal {
+		discount = subtotal
+	}
+	if discount < 0 {
+		discount = 0
+	}
+
+	discounted := subtotal - discount
+	platformFee := discounted * rules.PlatformFeeRate / 10_000
+	providerFee := discounted * rules.ProviderFeeRate / 10_000
+	tax := discounted * rules.TaxRate / 10_000
+	total := discounted + platformFee + providerFee + tax
+
+	// Weighted-average unit price (informational — per-line UnitPrice is
+	// source of truth). Zero quantity is degenerate (no lines) so we leave
+	// UnitPrice at zero rather than panicking.
+	var avgUnit int64
+	if quantity > 0 {
+		avgUnit = subtotal / int64(quantity)
+	}
+
+	return PricingBreakdown{
+		UnitPrice:   avgUnit,
+		Quantity:    quantity,
+		Subtotal:    subtotal,
+		Discount:    discount,
+		PlatformFee: platformFee,
+		ProviderFee: providerFee,
+		Tax:         tax,
+		Total:       total,
+		Currency:    currency,
+		Lines:       out,
 	}
 }
 

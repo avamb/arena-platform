@@ -175,20 +175,21 @@ var ValidReservationTransitions = validReservationTransitions
 
 // reservationResponse is the JSON representation of a single reservation.
 type reservationResponse struct {
-	ID          string  `json:"id"`
-	OrgID       string  `json:"org_id"`
-	ChannelID   string  `json:"channel_id"`
-	SessionID   string  `json:"session_id"`
-	TierID      *string `json:"tier_id"`
-	UserID      *string `json:"user_id"`
-	Quantity    int32   `json:"quantity"`
-	State       string  `json:"state"`
-	ExpiresAt   string  `json:"expires_at"`
-	CreatedAt   string  `json:"created_at"`
-	UpdatedAt   string  `json:"updated_at"`
-	CancelledAt *string `json:"cancelled_at"`
-	ConvertedAt *string `json:"converted_at"`
-	ExpiredAt   *string `json:"expired_at"`
+	ID          string   `json:"id"`
+	OrgID       string   `json:"org_id"`
+	ChannelID   string   `json:"channel_id"`
+	SessionID   string   `json:"session_id"`
+	TierID      *string  `json:"tier_id"`
+	UserID      *string  `json:"user_id"`
+	Quantity    int32    `json:"quantity"`
+	State       string   `json:"state"`
+	ExpiresAt   string   `json:"expires_at"`
+	CreatedAt   string   `json:"created_at"`
+	UpdatedAt   string   `json:"updated_at"`
+	CancelledAt *string  `json:"cancelled_at"`
+	ConvertedAt *string  `json:"converted_at"`
+	ExpiredAt   *string  `json:"expired_at"`
+	Seats       []string `json:"seats,omitempty"` // populated on the seated path (§7 SEAT-C1)
 }
 
 // reservationFromRow converts a ReservationRow to a reservationResponse.
@@ -232,12 +233,26 @@ func reservationFromRow(r gen.ReservationRow) reservationResponse {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // createReservationRequest is the request body for POST /v1/reservations.
+//
+// The request may target either the general-admission path (quantity only) or
+// the assigned-seats path (seats only). Hybrid sessions accept either — the
+// caller signals intent by populating one field or the other. Seats and
+// quantity are mutually exclusive:
+//
+//   - assigned_seats session → seats[] is required, quantity is rejected;
+//   - general_admission session → quantity is required, seats[] is rejected;
+//   - hybrid session → exactly one of seats[] or quantity must be provided.
+//
+// See §5.2 of the seating backlog for the concurrency contract implemented by
+// the seated path (deterministic seat_key-ordered locking + conditional
+// UPDATEs + monotonic seat_status_version stamping).
 type createReservationRequest struct {
-	SessionID string `json:"session_id"`
-	ChannelID string `json:"channel_id"`
-	OrgID     string `json:"org_id"`
-	TierID    string `json:"tier_id"`  // optional; empty = session-level GA
-	Quantity  int32  `json:"quantity"` // must be >= 1
+	SessionID string   `json:"session_id"`
+	ChannelID string   `json:"channel_id"`
+	OrgID     string   `json:"org_id"`
+	TierID    string   `json:"tier_id"`  // optional; empty = session-level GA
+	Quantity  int32    `json:"quantity"` // must be >= 1 on the GA path
+	Seats     []string `json:"seats"`    // non-empty on the seated path
 }
 
 // HandleCreateReservation serves POST /v1/reservations.
@@ -332,7 +347,30 @@ func (h *Handler) HandleCreateReservation(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if req.Quantity <= 0 {
+	// Mutually-exclusive seats / quantity validation. The admission_mode
+	// gate is enforced later (once we know it) so the caller still gets a
+	// deterministic 400 for structurally invalid bodies here.
+	hasSeats := len(req.Seats) > 0
+	hasQuantity := req.Quantity > 0
+	if hasSeats && hasQuantity {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			"reservation.seats_quantity_conflict",
+			"exactly one of seats or quantity must be provided",
+			r,
+			map[string]any{"fields": []string{"seats", "quantity"}},
+		))
+		return
+	}
+	if !hasSeats && !hasQuantity {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			"reservation.invalid_quantity",
+			"either quantity (>= 1) or seats[] must be provided",
+			r,
+			map[string]any{"fields": []string{"seats", "quantity"}},
+		))
+		return
+	}
+	if req.Quantity < 0 {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"reservation.invalid_quantity", "quantity must be greater than 0", r,
 			map[string]any{"field": "quantity"},
@@ -375,6 +413,19 @@ func (h *Handler) HandleCreateReservation(w http.ResponseWriter, r *http.Request
 	ttl := resolveReservationTTL(ctx, channelQ, orgQ, channelID, orgID)
 	expiresAt := time.Now().UTC().Add(ttl)
 
+	if hasSeats {
+		h.createSeatedReservation(w, r, seatedReservationInput{
+			sessionID: sessionID,
+			channelID: channelID,
+			orgID:     orgID,
+			tierID:    tierID,
+			userID:    userID,
+			seats:     req.Seats,
+			expiresAt: expiresAt,
+		})
+		return
+	}
+
 	// Begin transaction: ReserveCapacity + InsertReservation atomically.
 	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -387,6 +438,14 @@ func (h *Handler) HandleCreateReservation(w http.ResponseWriter, r *http.Request
 
 	invQ := h.inventoryQueries.WithTx(tx)
 	resQ := h.reservationQueries.WithTx(tx)
+
+	// GA path guardrail: reject when the target session is assigned-seats.
+	// Reads happen inside the tx so a concurrent rebind still sees the mode
+	// the ledger row belongs to.
+	if err := h.rejectGAOnAssignedSeatsSession(ctx, resQ, sessionID); err != nil {
+		writeAdmissionModeError(w, r, err)
+		return
+	}
 
 	// Reserve capacity — returns pgx.ErrNoRows when over-capacity.
 	if _, err := invQ.ReserveCapacity(ctx, sessionID, tierID, req.Quantity); err != nil {
@@ -605,6 +664,21 @@ func (h *Handler) HandleCancelReservation(w http.ResponseWriter, r *http.Request
 
 	resQ := h.reservationQueries.WithTx(tx)
 	invQ := h.inventoryQueries.WithTx(tx)
+
+	// Release held seats atomically with the state transition. GA
+	// reservations have no reservation_seats rows and this call is a
+	// cheap no-op; seated / hybrid reservations get their session_seats
+	// flipped back to 'available' with a bumped seat_status_version so
+	// the delta seat-status endpoints observe the release immediately
+	// (feature #309 §5.2 contract).
+	if _, err := releaseReservationSeatsTx(ctx, resQ, current.SessionID, current.ID); err != nil {
+		h.logger.Warn("reservation: release seats on cancel failed (non-fatal)",
+			slog.String("reservation_id", id.String()),
+			slog.String("error", err.Error()),
+		)
+		// Non-fatal: cancel still proceeds. The TTL worker will eventually
+		// clean up any leftover seat holds.
+	}
 
 	cancelled, err := resQ.UpdateReservationState(ctx, id, "cancelled")
 	if err != nil {

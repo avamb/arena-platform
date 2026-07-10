@@ -415,6 +415,38 @@ func (q *Queries) CountSessionSeatsByStatus(ctx context.Context, sessionID uuid.
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GetSessionAdmissionModeByID
+// ─────────────────────────────────────────────────────────────────────────────
+
+// SessionAdmissionRow is the narrow projection returned by
+// GetSessionAdmissionModeByID (feature #309, Wave SEAT-C1). Callers of the
+// seated-checkout path need to know a session's admission_mode without also
+// knowing its event_id.
+type SessionAdmissionRow struct {
+	ID                uuid.UUID `json:"id"`
+	AdmissionMode     string    `json:"admission_mode"`
+	SeatStatusVersion int64     `json:"seat_status_version"`
+	CapacityTotal     int32     `json:"capacity_total"`
+}
+
+const getSessionAdmissionModeByID = `-- name: GetSessionAdmissionModeByID :one
+SELECT id, admission_mode, seat_status_version, capacity_total
+FROM   sessions
+WHERE  id         = $1
+  AND  deleted_at IS NULL`
+
+// GetSessionAdmissionModeByID resolves the admission_mode of a session so
+// POST /v1/reservations can route to the GA (quantity) or seated (seats[])
+// branch. Returns pgx.ErrNoRows when the session does not exist or has been
+// soft-deleted.
+func (q *Queries) GetSessionAdmissionModeByID(ctx context.Context, sessionID uuid.UUID) (SessionAdmissionRow, error) {
+	row := q.db.QueryRow(ctx, getSessionAdmissionModeByID, sessionID)
+	var r SessionAdmissionRow
+	err := row.Scan(&r.ID, &r.AdmissionMode, &r.SeatStatusVersion, &r.CapacityTotal)
+	return r, err
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // IncrementSessionSeatStatusVersion
 // ─────────────────────────────────────────────────────────────────────────────
 
