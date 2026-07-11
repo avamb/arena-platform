@@ -63,9 +63,9 @@ type Handler struct {
 	reservationQueries *gen.Queries
 	inventoryQueries   *gen.Queries
 	promoQueries       *gen.Queries
-	ticketQueries      *gen.Queries  // for WID-0b order-status paid tickets
-	credentialQueries  *gen.Queries  // for WID-0b human_code + PDF lookup
-	funnelQueries      *gen.Queries  // for WID-0e funnel telemetry sink
+	ticketQueries      *gen.Queries // for WID-0b order-status paid tickets
+	credentialQueries  *gen.Queries // for WID-0b human_code + PDF lookup
+	funnelQueries      *gen.Queries // for WID-0e funnel telemetry sink
 	pool               TxStarter
 	logger             *slog.Logger
 	audit              audit.Writer

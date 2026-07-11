@@ -415,6 +415,9 @@ func TestWID0d321_RequestStruct_HasBuyerField(t *testing.T) {
 		GaItems:     []publicGAItem{{TierID: "00000000-0000-0000-0000-000000000001", Quantity: 1}},
 		Buyer:       &buyer,
 	}
+	if req.SessionID == "" || req.HolderEmail == "" || len(req.GaItems) != 1 {
+		t.Error("existing request fields must remain settable alongside the Buyer field")
+	}
 	if req.Buyer == nil {
 		t.Error("publicFeedCheckoutStartRequest.Buyer field not accessible")
 	}
@@ -440,8 +443,10 @@ func TestWID0d321_OpenAPIHasBuyerFieldItem(t *testing.T) {
 	}
 }
 
-// Alias keeps test code aligned with the type alias in feed_shims.go.
-// publicBuyerInfo is exported via the alias in feed_shims.go; reference it here.
+// feed_shims.go keeps the unexported request-type aliases live in package
+// httpserver so the older feed tests compile without importing hfeed.
+// (The former publicBuyerInfo alias was removed as unused — tests use
+// hfeed.PublicBuyerInfo directly.)
 func TestWID0d321_FeedShimsAlias(t *testing.T) {
 	content := findFileByName(t, "feed_shims.go")
 	if !strings.Contains(content, "publicFeedCheckoutStartRequest") {

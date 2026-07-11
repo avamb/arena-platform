@@ -27,8 +27,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/humancode"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/humancode"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────

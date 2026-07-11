@@ -356,6 +356,9 @@ func TestWID0a318_RequestTypeFields_NewWID0aFields(t *testing.T) {
 		Seats:       []string{"Main-A-1", "Main-A-2"},
 		GaItems:     []publicGAItem{{TierID: "00000000-0000-0000-0000-000000000001", Quantity: 2}},
 	}
+	if req.SessionID == "" || req.HolderEmail == "" {
+		t.Error("existing #153 fields must remain settable alongside the WID-0a fields")
+	}
 	if len(req.Seats) != 2 {
 		t.Errorf("Seats field: expected 2 entries, got %d", len(req.Seats))
 	}

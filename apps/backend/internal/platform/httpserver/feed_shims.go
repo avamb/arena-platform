@@ -126,7 +126,6 @@ func (s *Server) feedHandler() *hfeed.Handler {
 type feedTokenResponse = hfeed.FeedTokenResponse
 type publicFeedCheckoutStartRequest = hfeed.PublicFeedCheckoutStartRequest
 type publicGAItem = hfeed.PublicGAItem
-type publicBuyerInfo = hfeed.PublicBuyerInfo // WID-0d #321
 
 // ─── pure-function forwarders ─────────────────────────────────────────────────
 // feed_tokens_test.go calls these unqualified — keep the original lowercase
@@ -202,4 +201,3 @@ func (s *Server) handlePublicCheckoutRecover(w http.ResponseWriter, r *http.Requ
 func (s *Server) handlePublicFeedFunnelEvents(w http.ResponseWriter, r *http.Request) {
 	s.feedHandler().HandlePostFunnelEvents(w, r)
 }
-

@@ -560,7 +560,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		}
 
 		// Insert reservation row.
-		var totalQty int32 = seatQty
+		totalQty := seatQty
 		for _, g := range req.GaItems {
 			totalQty += g.Quantity
 		}
