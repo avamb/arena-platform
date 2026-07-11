@@ -413,3 +413,24 @@ const (
 
 	int32Max = 2147483647
 )
+
+// ─── exported aliases for hfeed ───────────────────────────────────────────────
+
+// NormalizeSeatKeys is the exported alias of normalizeSeatKeys for use by hfeed.
+func NormalizeSeatKeys(in []string) (out []string, dupKey string, err error) {
+	return normalizeSeatKeys(in)
+}
+
+// SeatConflicts is the exported alias of seatConflicts for use by hfeed.
+func SeatConflicts(requested []string, locked []gen.SessionSeatRow) []map[string]string {
+	return seatConflicts(requested, locked)
+}
+
+// Int32Max is the exported alias of int32Max for use by hfeed.
+const Int32Max = int32Max
+
+// AdmissionGeneralAdmission is the exported constant for the general_admission mode.
+const AdmissionGeneralAdmission = admissionGeneralAdmission
+
+// AdmissionAssignedSeats is the exported constant for the assigned_seats mode.
+const AdmissionAssignedSeats = admissionAssignedSeats

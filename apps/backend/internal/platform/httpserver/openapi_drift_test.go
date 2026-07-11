@@ -283,6 +283,10 @@ func buildDriftTestServer(t *testing.T) *Server {
 		Idem:           &noopIdemStore{},
 		Pool:           &fakePoolDB{tx: &fakeTx{}},
 		MetricsHandler: noopHandler,
+		// Wire PublicFeedQueries so the public feed checkout start route is mounted
+		// for the drift check: POST /v1/public/feeds/{feed_token}/checkout/start
+		// (feature #318, WID-0a). The route is gated on publicFeedQueries != nil.
+		PublicFeedQueries: gen.New(nil),
 		// Wire geo queries so /v1/geo/* and /v1/admin/geo/* routes are mounted.
 		GeoQueries: gen.New(nil),
 		// Wire org queries so /v1/organizations/* routes are mounted (feature #119).

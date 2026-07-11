@@ -6050,3 +6050,59 @@ type RegisterWebhookSubscriberJSONRequestBody = RegisterWebhookSubscriberRequest
 
 // UpdateWebhookSubscriberJSONRequestBody defines body for UpdateWebhookSubscriber for application/json ContentType.
 type UpdateWebhookSubscriberJSONRequestBody UpdateWebhookSubscriberJSONBody
+
+// PublicGAItem is a GA ticket item in the WID-0a mixed-cart checkout
+// (feature #318). Each entry selects a specific ticket tier and quantity.
+type PublicGAItem struct {
+	// Quantity Number of GA tickets for this tier. Must be >= 1.
+	Quantity int32 `json:"quantity"`
+
+	// TierId UUID of the ticket tier.
+	TierId openapi_types.UUID `json:"tier_id"`
+}
+
+// PublicFeedCheckoutStartRequest is the JSON body for
+// POST /v1/public/feeds/{feed_token}/checkout/start (feature #318, WID-0a).
+// Supports legacy GA (tier_id + qty), pure GA (ga_items[]), pure seated
+// (seats[]), and mixed (seats[] + ga_items[]) checkout modes.
+type PublicFeedCheckoutStartRequest struct {
+	// GaItems GA items for GA or hybrid sessions.
+	GaItems *[]PublicGAItem `json:"ga_items,omitempty"`
+
+	// HolderEmail Email address of the ticket holder.
+	HolderEmail string `json:"holder_email"`
+
+	// PromoCode Optional promotional code to apply.
+	PromoCode *string `json:"promo_code,omitempty"`
+
+	// Qty Deprecated: use ga_items instead.
+	Qty *int32 `json:"qty,omitempty"`
+
+	// Seats Seat keys for seated or hybrid sessions.
+	Seats *[]string `json:"seats,omitempty"`
+
+	// SessionId UUID of the event session to check out.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// TierId Deprecated: use ga_items instead.
+	TierId *openapi_types.UUID `json:"tier_id,omitempty"`
+}
+
+// PublicFeedCheckoutStartResponse is the response for
+// POST /v1/public/feeds/{feed_token}/checkout/start (feature #318, WID-0a).
+type PublicFeedCheckoutStartResponse struct {
+	// CheckoutSession The newly created checkout session.
+	CheckoutSession CheckoutSessionItem `json:"checkout_session"`
+
+	// CheckoutToken Opaque high-entropy token for WID-0b anonymous order lookup.
+	CheckoutToken string `json:"checkout_token"`
+
+	// ExpiresAt Reservation expiry (RFC 3339 UTC).
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// RedirectUrl URL to redirect the buyer to for payment or completion.
+	RedirectUrl string `json:"redirect_url"`
+}
+
+// StartPublicFeedCheckoutJSONRequestBody defines body for StartPublicFeedCheckout for application/json ContentType.
+type StartPublicFeedCheckoutJSONRequestBody = PublicFeedCheckoutStartRequest

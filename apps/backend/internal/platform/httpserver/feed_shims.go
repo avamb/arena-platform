@@ -106,6 +106,8 @@ func (s *Server) feedHandler() *hfeed.Handler {
 		s.reservationQueries,
 		s.inventoryQueries,
 		s.promoQueries,
+		s.ticketQueries,
+		s.credentialQueries,
 		s.pool,
 		s.logger,
 		s.audit,
@@ -122,6 +124,7 @@ func (s *Server) feedHandler() *hfeed.Handler {
 
 type feedTokenResponse = hfeed.FeedTokenResponse
 type publicFeedCheckoutStartRequest = hfeed.PublicFeedCheckoutStartRequest
+type publicGAItem = hfeed.PublicGAItem
 
 // ─── pure-function forwarders ─────────────────────────────────────────────────
 // feed_tokens_test.go calls these unqualified — keep the original lowercase
@@ -175,3 +178,14 @@ func (s *Server) handlePublicFeedEvent(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.Request) {
 	s.feedHandler().HandlePublicFeedCheckoutStart(w, r)
 }
+
+// ─── public checkout status handler shims (feature #319 WID-0b) ──────────────
+
+func (s *Server) handlePublicCheckoutStatus(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandleGetPublicCheckoutStatus(w, r)
+}
+
+func (s *Server) handlePublicTicketPDF(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandleGetPublicTicketPDF(w, r)
+}
+

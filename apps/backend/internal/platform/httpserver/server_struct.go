@@ -94,8 +94,8 @@ type Server struct {
 	// (feature #304, Wave SEAT-A3). Nil when neither PgxPool nor an
 	// explicit override is supplied; the mount self-gates on nil.
 	seatingQueries *gen.Queries
-	meQueries             meQuerier
-	media                 *mediastore.Repo
+	meQueries      meQuerier
+	media          *mediastore.Repo
 
 	// Dev / test toggles.
 	faultInjectOutboxAfterAudit bool

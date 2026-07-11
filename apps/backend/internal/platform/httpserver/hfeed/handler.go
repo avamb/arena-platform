@@ -63,6 +63,8 @@ type Handler struct {
 	reservationQueries *gen.Queries
 	inventoryQueries   *gen.Queries
 	promoQueries       *gen.Queries
+	ticketQueries      *gen.Queries    // for WID-0b order-status paid tickets
+	credentialQueries  *gen.Queries    // for WID-0b human_code + PDF lookup
 	pool               TxStarter
 	logger             *slog.Logger
 	audit              audit.Writer
@@ -84,6 +86,8 @@ func New(
 	reservationQ *gen.Queries,
 	inventoryQ *gen.Queries,
 	promoQ *gen.Queries,
+	ticketQ *gen.Queries,
+	credentialQ *gen.Queries,
 	pool TxStarter,
 	logger *slog.Logger,
 	auditW audit.Writer,
@@ -100,6 +104,8 @@ func New(
 		reservationQueries: reservationQ,
 		inventoryQueries:   inventoryQ,
 		promoQueries:       promoQ,
+		ticketQueries:      ticketQ,
+		credentialQueries:  credentialQ,
 		pool:               pool,
 		logger:             logger,
 		audit:              auditW,

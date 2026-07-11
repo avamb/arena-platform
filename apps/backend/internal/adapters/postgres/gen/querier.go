@@ -51,6 +51,7 @@ type Querier interface {
 	ListOrganizations(ctx context.Context) ([]OrganizationRow, error)
 	UpdateOrganization(ctx context.Context, id uuid.UUID, name, slug, country, defaultLocale string, reservationTTL int32) (OrganizationRow, error)
 	SoftDeleteOrganization(ctx context.Context, id uuid.UUID) (OrganizationRow, error)
+	GetTicketPDFFormatByTicketID(ctx context.Context, ticketID uuid.UUID) (string, error)
 
 	// Payment provider configs — per-org provider credentials + public config (feature #237)
 	InsertPaymentProviderConfig(ctx context.Context, orgID uuid.UUID, provider, mode string, providerAccountID *string, publicConfig, secrets json.RawMessage, status string, isActive bool) (PaymentProviderConfigRow, error)
@@ -141,6 +142,7 @@ type Querier interface {
 	SoftDeleteSession(ctx context.Context, id, eventID uuid.UUID) (SessionRow, error)
 	CountOverlappingSessions(ctx context.Context, eventID, excludeID uuid.UUID, startAt, endAt time.Time) (int32, error)
 	GetSessionSeatingBinding(ctx context.Context, id, eventID uuid.UUID) (SessionSeatingBindingRow, error)
+	GetSessionSeatingBindingForUpdate(ctx context.Context, id, eventID uuid.UUID) (SessionSeatingBindingRow, error)
 	BindSessionSeatingPlan(ctx context.Context, id, eventID uuid.UUID, admissionMode string, planVersionID *uuid.UUID, capacityTotal int32) (SessionSeatingBindingRow, error)
 
 	// Ticket tiers — pricing modes for sessions (feature #127)
@@ -163,6 +165,8 @@ type Querier interface {
 	AbandonCheckoutSession(ctx context.Context, id uuid.UUID) (CheckoutSessionRow, error)
 	ExpireCheckoutSession(ctx context.Context, id uuid.UUID) (CheckoutSessionRow, error)
 	ListCheckoutSessionsByReservation(ctx context.Context, reservationID uuid.UUID) ([]CheckoutSessionRow, error)
+	GetCheckoutSessionByToken(ctx context.Context, token string) (CheckoutSessionRow, error)
+	InsertCheckoutSessionWithToken(ctx context.Context, orgID, channelID, reservationID uuid.UUID, userID *uuid.UUID, checkoutToken string) (CheckoutSessionRow, error)
 
 	// Payment intents — SCA-aware payment state machine (feature #137)
 	InsertPaymentIntent(ctx context.Context, checkoutSessionID *uuid.UUID, orgID uuid.UUID, provider string, providerPaymentID *string, amount int64, currency string, initialState string, scaRedirectURL *string, clientSecret *string) (PaymentIntentRow, error)
@@ -220,9 +224,13 @@ type Querier interface {
 	CountTicketsByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID) (int64, error)
 	CountTicketsBySession(ctx context.Context, sessionID uuid.UUID) (int64, error)
 
-	// Ticket credentials — QR and PDF bearer artifacts (feature #140)
+	// Ticket credentials — QR and PDF bearer artifacts (feature #140);
+	// human-readable code lookups (SEAT-C4)
 	InsertTicketCredential(ctx context.Context, ticketID uuid.UUID, credType string, payload string) (TicketCredentialRow, error)
+	InsertTicketCredentialWithHumanCode(ctx context.Context, ticketID uuid.UUID, credType string, payload string, humanCode string) (TicketCredentialRow, error)
 	GetCredentialByTicketID(ctx context.Context, ticketID uuid.UUID, credType string) (TicketCredentialRow, error)
+	GetCredentialByHumanCode(ctx context.Context, humanCode string) (TicketCredentialRow, error)
+	SetTicketCredentialHumanCode(ctx context.Context, ticketID uuid.UUID, credType string, humanCode string) (TicketCredentialRow, error)
 	RevokeCredential(ctx context.Context, ticketID uuid.UUID, credType string) (TicketCredentialRow, error)
 	ListCredentialsByTicketID(ctx context.Context, ticketID uuid.UUID) ([]TicketCredentialRow, error)
 
@@ -393,12 +401,15 @@ type Querier interface {
 	SoftDeleteSeatingPlan(ctx context.Context, id, ownerOrgID uuid.UUID) (SeatingPlanRow, error)
 	InsertSeatingPlanVersion(ctx context.Context, seatingPlanID uuid.UUID, versionNumber int32, geometry json.RawMessage, geometryChecksum string, svgAssetMediaID *uuid.UUID, capacitySeated, capacityStanding int32) (SeatingPlanVersionRow, error)
 	GetSeatingPlanVersionByID(ctx context.Context, id uuid.UUID) (SeatingPlanVersionRow, error)
+	GetSeatingPlanVersionByNumber(ctx context.Context, seatingPlanID uuid.UUID, versionNumber int32) (SeatingPlanVersionRow, error)
 	ListSeatingPlanVersionsByPlan(ctx context.Context, seatingPlanID uuid.UUID) ([]SeatingPlanVersionRow, error)
 	GetLatestSeatingPlanVersionNumber(ctx context.Context, seatingPlanID uuid.UUID) (int32, error)
 	LockSeatingPlanVersion(ctx context.Context, id uuid.UUID) (SeatingPlanVersionRow, error)
 
 	// Session seats — per-seat state for assigned-seats sessions (feature #305, Wave SEAT-B1)
 	InsertSessionSeat(ctx context.Context, sessionID uuid.UUID, seatKey, sectorName, rowName, seatNumber string, tierID *uuid.UUID) (SessionSeatRow, error)
+	InsertSessionSeats(ctx context.Context, sessionID uuid.UUID, seatKeys, sectorNames, rowNames, seatNumbers []string, tierIDs []*string) (int64, error)
+	DeleteSessionSeatsBySession(ctx context.Context, sessionID uuid.UUID) (int64, error)
 	GetSessionSeatByID(ctx context.Context, id, sessionID uuid.UUID) (SessionSeatRow, error)
 	GetSessionSeatByKey(ctx context.Context, sessionID uuid.UUID, seatKey string) (SessionSeatRow, error)
 	ListSessionSeats(ctx context.Context, sessionID uuid.UUID) ([]SessionSeatRow, error)
@@ -419,6 +430,7 @@ type Querier interface {
 	InsertReservationSeat(ctx context.Context, reservationID, sessionSeatID uuid.UUID) error
 	ListReservationSeats(ctx context.Context, reservationID uuid.UUID) ([]SessionSeatRow, error)
 	DeleteReservationSeats(ctx context.Context, reservationID uuid.UUID) error
+	DeleteReservationSeatsBySession(ctx context.Context, sessionID uuid.UUID) (int64, error)
 	CountReservationSeats(ctx context.Context, reservationID uuid.UUID) (int64, error)
 
 	// Public session seating — unauthenticated schema + seat-status endpoints (feature #307, Wave SEAT-B3)

@@ -48,6 +48,7 @@ type CheckoutSessionRow struct {
 	ExpiredAt       *time.Time `json:"expired_at"`
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
+	CheckoutToken   string     `json:"checkout_token"`
 }
 
 // scanCheckoutSessionRow scans a single checkout_sessions row.
@@ -77,6 +78,7 @@ func scanCheckoutSessionRow(row interface {
 		&cs.ExpiredAt,
 		&cs.CreatedAt,
 		&cs.UpdatedAt,
+		&cs.CheckoutToken,
 	)
 	return cs, err
 }
@@ -84,7 +86,8 @@ func scanCheckoutSessionRow(row interface {
 const selectCheckoutSessionColumns = `id, org_id, channel_id, reservation_id, user_id,
        state, subtotal, discount, platform_fee, provider_fee, tax, total, currency,
        promo_code_id, payment_intent_id, payment_provider,
-       completed_at, abandoned_at, expired_at, created_at, updated_at`
+       completed_at, abandoned_at, expired_at, created_at, updated_at,
+       checkout_token`
 
 // ─────────────────────────────────────────────────────────────────────────────
 // InsertCheckoutSession
@@ -104,6 +107,29 @@ func (q *Queries) InsertCheckoutSession(
 	userID *uuid.UUID,
 ) (CheckoutSessionRow, error) {
 	row := q.db.QueryRow(ctx, insertCheckoutSession, orgID, channelID, reservationID, userID)
+	return scanCheckoutSessionRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// InsertCheckoutSessionWithToken
+// ─────────────────────────────────────────────────────────────────────────────
+
+const insertCheckoutSessionWithToken = `-- name: InsertCheckoutSessionWithToken :one
+INSERT INTO checkout_sessions (org_id, channel_id, reservation_id, user_id, checkout_token)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING ` + selectCheckoutSessionColumns
+
+// InsertCheckoutSessionWithToken creates a new checkout session in state 'created'
+// with an explicitly supplied checkout_token (minted by the caller via crypto/rand).
+// This is used by the public feed checkout start endpoint (feature #318, WID-0a) so
+// the token is known before the DB round-trip and can be returned to the widget.
+func (q *Queries) InsertCheckoutSessionWithToken(
+	ctx context.Context,
+	orgID, channelID, reservationID uuid.UUID,
+	userID *uuid.UUID,
+	checkoutToken string,
+) (CheckoutSessionRow, error) {
+	row := q.db.QueryRow(ctx, insertCheckoutSessionWithToken, orgID, channelID, reservationID, userID, checkoutToken)
 	return scanCheckoutSessionRow(row)
 }
 
@@ -281,4 +307,24 @@ func (q *Queries) ListCheckoutSessionsByReservation(ctx context.Context, reserva
 		result = append(result, cs)
 	}
 	return result, rows.Err()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GetCheckoutSessionByToken
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getCheckoutSessionByToken = `-- name: GetCheckoutSessionByToken :one
+SELECT id, org_id, channel_id, reservation_id, user_id,
+       state, subtotal, discount, platform_fee, provider_fee, tax, total, currency,
+       promo_code_id, payment_intent_id, payment_provider,
+       completed_at, abandoned_at, expired_at, created_at, updated_at,
+       checkout_token
+FROM   checkout_sessions
+WHERE  checkout_token = $1`
+
+// GetCheckoutSessionByToken looks up a checkout session by its opaque checkout_token.
+// Returns pgx.ErrNoRows when the token is not found.
+func (q *Queries) GetCheckoutSessionByToken(ctx context.Context, token string) (CheckoutSessionRow, error) {
+	row := q.db.QueryRow(ctx, getCheckoutSessionByToken, token)
+	return scanCheckoutSessionRow(row)
 }

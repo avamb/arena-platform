@@ -5271,6 +5271,193 @@ components:
           description: The checkout-session row.
           $ref: "#/components/schemas/CheckoutSessionItem"
 
+    CheckoutStatusItem:
+      type: object
+      description: |
+        A single cart item (seat or general-admission) included in the
+        anonymous order-status response (feature #319 WID-0b).
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [seat, general_admission]
+          description: Item kind.
+        seat_key:
+          type: [string, "null"]
+          description: Canonical seat key (sector-row-number), present for assigned seats.
+        sector:
+          type: [string, "null"]
+          description: Sector/section name for display.
+        row:
+          type: [string, "null"]
+          description: Row label for display.
+        number:
+          type: [string, "null"]
+          description: Seat number within the row for display.
+        unit_price:
+          type: [integer, "null"]
+          description: Unit price in smallest currency unit.
+        quantity:
+          type: [integer, "null"]
+          description: Number of GA tickets held (only for general_admission items).
+
+    CheckoutStatusTicketItem:
+      type: object
+      description: |
+        A single issued ticket included in the anonymous order-status response
+        when the checkout has reached the `paid` state (feature #319 WID-0b).
+      required: [ticket_id]
+      properties:
+        ticket_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the issued ticket.
+        sector:
+          type: [string, "null"]
+          description: Sector/section name denormalized at issuance time.
+        row:
+          type: [string, "null"]
+          description: Row label denormalized at issuance time.
+        number:
+          type: [string, "null"]
+          description: Seat number denormalized at issuance time.
+        human_code:
+          type: [string, "null"]
+          description: |
+            SEAT-C4 human-readable fallback code in display form (e.g. "M7KT-2QV9").
+            Null when the credential has not yet been generated.
+        pdf_url:
+          type: [string, "null"]
+          description: |
+            Path to download the PDF e-ticket:
+            `GET /v1/public/checkout/{checkout_token}/tickets/{ticket_id}/pdf`.
+
+    PublicGAItem:
+      type: object
+      required: [tier_id, quantity]
+      properties:
+        tier_id:
+          type: string
+          format: uuid
+          description: UUID of the ticket tier.
+        quantity:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Number of GA tickets for this tier.
+
+    PublicFeedCheckoutStartRequest:
+      type: object
+      required: [session_id, holder_email]
+      properties:
+        session_id:
+          type: string
+          format: uuid
+          description: UUID of the event session to check out.
+        holder_email:
+          type: string
+          format: email
+          description: Email address of the ticket holder.
+        promo_code:
+          type: [string, "null"]
+          description: Optional promotional code to apply.
+        seats:
+          type: array
+          items:
+            type: string
+          description: Seat keys for seated or hybrid sessions.
+        ga_items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicGAItem"
+          description: GA items for GA or hybrid sessions.
+        tier_id:
+          type: string
+          format: uuid
+          description: "Deprecated: use ga_items instead."
+        qty:
+          type: integer
+          format: int32
+          description: "Deprecated: use ga_items instead."
+
+    PublicFeedCheckoutStartResponse:
+      type: object
+      required: [checkout_session, redirect_url, checkout_token, expires_at]
+      properties:
+        checkout_session:
+          description: The created checkout session with pricing snapshot and state.
+          $ref: "#/components/schemas/CheckoutSessionItem"
+        redirect_url:
+          type: string
+          description: URL to redirect the buyer to for payment or completion.
+        checkout_token:
+          type: string
+          description: Opaque high-entropy token for WID-0b anonymous order lookup.
+        expires_at:
+          type: string
+          format: date-time
+          description: Reservation expiry (RFC 3339 UTC).
+
+    CheckoutStatusResponse:
+      type: object
+      description: |
+        Response body for `GET /v1/public/checkout/{checkout_token}`.
+        Returns the current order status and cart contents for an anonymous buyer.
+        No JWT required — the opaque `checkout_token` in the path is the credential.
+      required: [status, checkout_token, checkout_session_id, items, tickets]
+      properties:
+        status:
+          type: string
+          enum: [pending, paid, expired, failed]
+          description: |
+            Public order status derived from the checkout_session.state:
+            - `pending`: created | pricing_confirmed | payment_started | manual_review
+            - `paid`: completed
+            - `expired`: expired
+            - `failed`: abandoned
+        checkout_token:
+          type: string
+          description: The opaque token identifying this checkout (echoed from path).
+        checkout_session_id:
+          type: string
+          format: uuid
+          description: Internal UUIDv7 of the checkout_sessions row.
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: RFC3339 timestamp when the underlying reservation expires.
+        subtotal:
+          type: [integer, "null"]
+          description: Order subtotal in smallest currency unit; null until pricing_confirmed.
+        discount:
+          type: [integer, "null"]
+          description: Total discount applied; null until pricing_confirmed.
+        platform_fee:
+          type: [integer, "null"]
+          description: Platform service fee; null until pricing_confirmed.
+        provider_fee:
+          type: [integer, "null"]
+          description: Payment provider fee; null until pricing_confirmed.
+        tax:
+          type: [integer, "null"]
+          description: Tax amount; null until pricing_confirmed.
+        total:
+          type: [integer, "null"]
+          description: Final total charged to the buyer; null until pricing_confirmed.
+        currency:
+          type: [string, "null"]
+          description: ISO 4217 three-letter currency code; null until pricing_confirmed.
+        items:
+          type: array
+          description: Cart items held at the time of the request.
+          items:
+            $ref: "#/components/schemas/CheckoutStatusItem"
+        tickets:
+          type: array
+          description: Issued tickets; non-empty only when status is `paid`.
+          items:
+            $ref: "#/components/schemas/CheckoutStatusTicketItem"
+
     StartCheckoutRequest:
       type: object
       required: [org_id, channel_id, reservation_id]
@@ -19285,6 +19472,412 @@ paths:
             route is always mounted so the openapi-drift coverage
             check can see it; the handler self-gates on the
             missing dependency.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Public feed — event browse (feature #152)
+  # ─────────────────────────────────────────────────────────────────────────
+
+  /v1/public/feeds/{feed_token}/events:
+    get:
+      operationId: listPublicFeedEvents
+      summary: List events published to a feed token
+      description: |
+        Returns published events that are actively published to the given
+        feed token. No JWT required — the feed token in the path is the
+        credential (ADR-013 federated feeds).
+
+        Rate-limited per token and per IP.
+      tags: [PublicFeed]
+      parameters:
+        - name: feed_token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Opaque feed token (from `agent_feed_tokens.token`).
+        - name: city_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Optional filter by publication city scope.
+        - name: date_from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Optional lower bound on `event.start_at` (inclusive).
+        - name: date_to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Optional upper bound on `event.end_at` (inclusive).
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+          description: Page size.
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+          description: Pagination offset.
+      responses:
+        "200":
+          description: Paginated list of published events for this feed token.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events, total, limit, offset]
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/EventItem"
+                  total:
+                    type: integer
+                    description: Total count of matching events (for pagination).
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        "429":
+          description: Rate limited.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/public/feeds/{feed_token}/events/{event_id}:
+    get:
+      operationId: getPublicFeedEvent
+      summary: Get a single event published to a feed token
+      description: |
+        Returns a single published event that is actively published to the
+        given feed token. No JWT required.
+
+        Rate-limited per token and per IP.
+      tags: [PublicFeed]
+      parameters:
+        - name: feed_token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Opaque feed token (from `agent_feed_tokens.token`).
+        - name: event_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The UUID of the event.
+      responses:
+        "200":
+          description: The requested event.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [event]
+                properties:
+                  event:
+                    $ref: "#/components/schemas/EventItem"
+        "404":
+          description: Event not found or not published to this feed token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limited.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/public/feeds/{feed_token}/checkout/start:
+    post:
+      operationId: startPublicFeedCheckout
+      summary: Start a public (anonymous) checkout via a feed token
+      description: |
+        Extends the public checkout start endpoint to accept seated (seats[]),
+        GA (ga_items[]), or mixed (seats[] + ga_items[]) carts in any
+        combination valid for the session's admission_mode.
+
+        No JWT required — the feed token in the path is the credential.
+        Rate-limited per token and per IP.
+
+        Response includes checkout_token (opaque high-entropy token, NOT UUID)
+        and expires_at so the widget can display a countdown and later recover
+        the order via WID-0b.
+      tags: [v1, public]
+      parameters:
+        - name: feed_token
+          in: path
+          required: true
+          description: Public feed token that scopes the available sessions.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublicFeedCheckoutStartRequest"
+      responses:
+        "201":
+          description: Checkout started.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicFeedCheckoutStartResponse"
+        "400":
+          description: Invalid body or field.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Session not published to this feed token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            Seat conflict (reservation.seats_conflict with conflicts[])
+            or capacity exceeded (reservation.over_capacity).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Admission mode mismatch or unsupported pricing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limited (feed.rate_limited).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable (dependency.database_unavailable).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/public/checkout/{checkout_token}:
+    get:
+      operationId: getPublicCheckoutStatus
+      summary: Anonymous order-status lookup
+      description: |
+        Returns the current status of a checkout session identified by its
+        opaque `checkout_token`. No JWT is required — the token in the path
+        is the credential. Used by the widget's cart-restore, success-page,
+        and payment-return deep-link flows (feature #319 WID-0b).
+
+        Rate-limited per-token and per-IP using the shared public-feed
+        rate limiter (`publicFeedRL`).
+      tags: [v1]
+      parameters:
+        - name: checkout_token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: |
+            Opaque high-entropy hex token minted at checkout session creation.
+            64 lowercase hex characters (32 random bytes).
+      responses:
+        "200":
+          description: Checkout status returned successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutStatusResponse"
+              examples:
+                pending:
+                  summary: Pending checkout with two assigned seats
+                  value:
+                    status: pending
+                    checkout_token: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+                    checkout_session_id: "018f4f00-0000-7000-8000-000000000001"
+                    expires_at: "2024-06-01T15:00:00Z"
+                    subtotal: null
+                    discount: null
+                    platform_fee: null
+                    provider_fee: null
+                    tax: null
+                    total: null
+                    currency: null
+                    items:
+                      - type: seat
+                        seat_key: "Main Hall-A-1"
+                        sector: "Main Hall"
+                        row: "A"
+                        number: "1"
+                      - type: seat
+                        seat_key: "Main Hall-A-2"
+                        sector: "Main Hall"
+                        row: "A"
+                        number: "2"
+                    tickets: []
+                paid:
+                  summary: Paid checkout with tickets
+                  value:
+                    status: paid
+                    checkout_token: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+                    checkout_session_id: "018f4f00-0000-7000-8000-000000000001"
+                    expires_at: "2024-06-01T15:00:00Z"
+                    subtotal: 1000
+                    discount: 0
+                    platform_fee: 50
+                    provider_fee: 30
+                    tax: 0
+                    total: 1080
+                    currency: EUR
+                    items: []
+                    tickets:
+                      - ticket_id: "018f4f00-0000-7000-8000-000000000099"
+                        sector: "Main Hall"
+                        row: "A"
+                        number: "1"
+                        human_code: "M7KT-2QV9"
+                        pdf_url: "/v1/public/checkout/a1b2c3d4.../tickets/018f4f00-.../pdf"
+        "404":
+          description: |
+            No checkout session found for the given `checkout_token`
+            (`checkout.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: |
+            Rate limit exceeded (`checkout.rate_limited`). The caller
+            has exceeded the per-token or per-IP request limit.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error while retrieving the checkout session or
+            reservation (`checkout.lookup_failed`, `checkout.reservation_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Database unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/public/checkout/{checkout_token}/tickets/{ticket_id}/pdf:
+    get:
+      operationId: getPublicTicketPdf
+      summary: Download PDF e-ticket for an anonymous buyer
+      description: |
+        Returns the PDF bytes for the given ticket, verifying that the ticket
+        belongs to the checkout session identified by `checkout_token`.
+        No JWT is required. Intended for the widget's "Download Ticket" button
+        and post-payment deep-link (feature #319 WID-0b).
+
+        Rate-limited per-token and per-IP using the shared public-feed
+        rate limiter.
+      tags: [v1]
+      parameters:
+        - name: checkout_token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Opaque checkout token identifying the session.
+        - name: ticket_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUIDv7 of the ticket whose PDF to retrieve.
+      responses:
+        "200":
+          description: PDF bytes returned successfully.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: |
+            `ticket_id` is not a valid UUID (`checkout.invalid_ticket_id`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: |
+            Checkout session not found (`checkout.not_found`), ticket does
+            not belong to this checkout (`checkout.ticket_not_found`), or
+            PDF has not yet been generated (`checkout.pdf_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: |
+            Rate limit exceeded (`checkout.rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error (`checkout.lookup_failed`,
+            `checkout.tickets_failed`, `checkout.credential_failed`,
+            `checkout.credential_malformed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Database unavailable (`dependency.database_unavailable`).
           content:
             application/json:
               schema:

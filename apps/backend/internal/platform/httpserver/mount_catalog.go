@@ -129,7 +129,7 @@ func (s *Server) mountPublicationRoutes(r chi.Router) {
 }
 
 // mountPublicFeedRoutes mounts the unauthenticated public feed event +
-// checkout endpoints (features #152, #153).
+// checkout endpoints (features #152, #153, #319 WID-0b).
 func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 	if s.publicFeedQueries != nil {
 		r.Get("/public/feeds/{feed_token}/events", s.handlePublicFeedEvents)
@@ -137,5 +137,14 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 	}
 	if s.publicFeedQueries != nil && s.checkoutQueries != nil && s.reservationQueries != nil {
 		r.Post("/public/feeds/{feed_token}/checkout/start", s.handlePublicFeedCheckoutStart)
+	}
+	// Anonymous order-status endpoint — WID-0b (feature #319).
+	// Gated on checkoutQueries + reservationQueries; ticket/credential queries
+	// are optional (handler self-gates for the paid-tickets section).
+	if s.checkoutQueries != nil && s.reservationQueries != nil {
+		r.Get("/public/checkout/{checkout_token}", s.handlePublicCheckoutStatus)
+	}
+	if s.checkoutQueries != nil && s.ticketQueries != nil && s.credentialQueries != nil {
+		r.Get("/public/checkout/{checkout_token}/tickets/{ticket_id}/pdf", s.handlePublicTicketPDF)
 	}
 }
