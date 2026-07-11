@@ -19573,3 +19573,115 @@ Verification:
   npm --prefix apps/widget run type-check    OK (0 errors)
   npm --prefix apps/widget run build    33.99 kB gzip vs 150 kB gate - PASS
 Marked #325 passing. (324/329 features passing, 98.5%)
+
+
+## 2026-07-11 - Feature #326 (WID-D) Checkout handoff + result + recovery
+
+New files:
+- apps/widget/src/lib/checkout.ts: Pure helpers for checkout flow.
+  editDistance (Levenshtein DP, O(mn) time, O(min(m,n)) space).
+  suggestEmailFix: typo detection against 24 known provider domains
+  (gmail/outlook/hotmail/yahoo/icloud/yandex/seznam/mail.ru etc.),
+  edit-distance threshold 2, null when domain already known or no close
+  match. isValidEmail: lightweight local+domain check. validateBuyerForm:
+  driven by buyer_fields[] flags; addr field always validated, name/phone
+  only when enabled+required; returns per-field errors in locale.
+  isBuyerFormValid, buildCheckoutPayload, formatPrice (Intl.NumberFormat),
+  isCheckoutPending, isCheckoutRecoverable. CHECKOUT_I18N: complete string
+  tables for en/ru/cs/he covering buyer form, order status, CTAs.
+  interpolate({key}) template helper. getCheckoutI18n with en fallback.
+- apps/widget/src/lib/checkout.test.ts: 75 unit tests covering editDistance
+  (7 cases), suggestEmailFix (16 cases incl. gmail/outlook/yahoo/yandex/
+  seznam/hotmail typos, already-known domains, no-match, whitespace trim),
+  isValidEmail (7), validateBuyerForm (10 incl. locale-specific messages),
+  isBuyerFormValid (4), buildCheckoutPayload (8), formatPrice (4),
+  isCheckoutPending/Recoverable (8), CHECKOUT_I18N completeness (4 locales),
+  getCheckoutI18n (3), interpolate (4).
+- apps/widget/src/components/BuyerForm.svelte: Buyer form component.
+  Driven by buyer_fields flags (name/phone shown only when enabled).
+  Real-time typo suggestions appear inline; clicking accepts it.
+  Inline validation on submit with per-field errors. Spinner during
+  submission. CSS custom property theming.
+- apps/widget/src/components/OrderStatus.svelte: Order status view for
+  ?checkout_token=... deep-link. Handles paid (success panel with order
+  ref, ticket list, human_code, PDF download links, Send-Again CTA),
+  expired (warning panel + Reclaim-seats CTA calling WID-0c), failed
+  (error panel + Try-again CTA), pending (spinner + processing copy).
+  Error banner for failed recovery/resend actions.
+Modified files:
+- apps/widget/src/api.ts: Added postCheckoutStart, getCheckoutStatus,
+  postCheckoutRecover wrapping the three public checkout endpoints.
+- apps/widget/src/index.ts: Re-exports checkout helpers + API functions.
+
+Verification:
+  npm --prefix apps/widget run type-check    OK (0 errors)
+  npm --prefix apps/widget test              265/265 PASS (7 test files)
+  npm --prefix apps/widget run build         37.22 kB gzip vs 150 kB gate
+Marked #326 passing. (326/329 features passing, 99.1%)
+
+
+## 2026-07-11 - Feature #327 (WID-E) Theming, i18n, a11y hardening
+
+### CSS Design Token System
+- New apps/widget/src/lib/tokens.ts: TOKEN_DEFAULTS (all 8 tokens with JSDoc
+  including new --arena-focus-ring), TYPOGRAPHY/COLOR/SHAPE token groups,
+  ALL_TOKENS array, three built-in presets (arenaThemeIndigo/Rose/Neutral),
+  ARENA_THEMES map, DesignToken + ArenaThemeName types.
+- src/utils.ts: --arena-focus-ring added to THEME_CSS_VARS with JSDoc.
+- Exported from src/index.ts (TOKEN_DEFAULTS, token groups, presets, types).
+
+### RTL Layout Audit for he locale
+- src/utils.ts: added "he" to SUPPORTED_LOCALES; new RTL_LOCALES constant
+  ["he","ar","fa","ur"]; new isRtlLocale(locale) helper (checks 2-char lang
+  subtag against RTL_LOCALES).
+- ArenaTickets.svelte: derives dir = isRtlLocale(normLocale) ? "rtl" : "ltr";
+  binds dir={dir} on .arena-tickets-root; CSS [dir="rtl"] rules for
+  text-align:start + direction:rtl.
+- demo/index.html: added example 7 (Hebrew/RTL) before the no-token example.
+
+### Focus Ring / WCAG 2.2 AA Hardening
+- ArenaTickets.svelte: :host *:focus-visible global rule with 3px solid
+  var(--_focus-ring) + 2px outline-offset; --_focus-ring resolved from
+  --arena-focus-ring with --arena-accent fallback.
+- BuyerForm.svelte: :focus-visible on field inputs (outline + border + shadow),
+  .submit-btn:focus-visible (3px, 3px offset), .suggestion-btn:focus-visible.
+- SessionList.svelte: .chip:focus-visible (3px, 2px offset).
+
+### axe-core Playwright E2E (WCAG 2.2 AA gate)
+- Installed @axe-core/playwright 4.12.1 as devDependency.
+- tests/a11y.e2e.ts: AxeBuilder scans on demo/index.html (lang, h1 count,
+  table headers, no critical/serious violations) and demo/a11y-keyboard.html
+  (landmark regions, dir=rtl in shadow DOM for he locale, aria-hidden
+  placeholder verification). Tags: wcag2a,wcag2aa,wcag21aa,wcag22aa.
+- tests/keyboard.e2e.ts: Tab/Shift+Tab no-trap heuristic, Enter no-crash,
+  heading structure, section aria-labelledby, shadow DOM role=region +
+  aria-label assertions via page.evaluate() into shadow root.
+- demo/a11y-keyboard.html: 4-state fixture page (no-token, feed-token,
+  he RTL locale, rose custom theme).
+
+### Playwright Infrastructure
+- scripts/serve-demo.js: Node CommonJS static server; serves apps/widget root
+  at localhost:4173; demo/ and dist/v1/ accessible; path traversal guard;
+  MIME types for html/js/css/svg/json.
+- playwright.config.ts: webServer updated to "node scripts/serve-demo.js";
+  testDir ./tests; chromium project; retries in CI.
+- package.json: serve-demo script; @axe-core/playwright in devDeps.
+
+### CI Gate
+- ci.yml widget job: after Size gate, added:
+    Install Playwright browsers (Chromium only) - npx playwright install
+    E2E tests axe-core WCAG 2.2 AA + keyboard navigation - npm run test:e2e
+    Upload Playwright report artifact (playwright-report-widget, 14 days)
+
+### Unit Tests
+- ArenaTickets.test.ts: 16 new tests for he in SUPPORTED_LOCALES, RTL_LOCALES
+  (non-empty, includes he, 2-char codes), isRtlLocale (11 cases: he/ar/fa/ur,
+  he-IL, HE uppercase, en/ru/de false, empty string, RTL_LOCALES coverage),
+  --arena-focus-ring in THEME_CSS_VARS.
+
+Verification:
+  npm --prefix apps/widget run type-check    OK (0 errors)
+  npm --prefix apps/widget test              281/281 PASS (7 test files)
+  npm --prefix apps/widget run build         38.73 kB gzip vs 150 kB gate - PASS
+  npm --prefix apps/widget run size          38.53 kB gzip - PASS
+Marked #327 passing. (326/329 features passing, 99.1%)
