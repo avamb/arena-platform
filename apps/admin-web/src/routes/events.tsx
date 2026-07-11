@@ -85,6 +85,7 @@ import {
   mobileFormBarStyle,
   singleColumnFormStyle,
 } from "@/components/layout";
+import { SessionSeatingBindPanel } from "@/routes/sessionSeatingBind";
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -2132,6 +2133,20 @@ function SessionEditor({
               : "Save changes"}
         </button>
       </div>
+
+      {/* SEAT-E2 (#316): seating bind sub-form. Only rendered when
+          editing an existing session — bind requires a session id and
+          the associated org / event / venue context. */}
+      {mode.kind === "edit" ? (
+        <SessionSeatingBindPanel
+          orgId={event.org_id}
+          eventId={event.id}
+          sessionId={mode.session.id}
+          venueId={event.venue_id}
+          onSaved={(msg) => onSaved(msg)}
+          onError={(msg) => onError(msg)}
+        />
+      ) : null}
     </form>
   );
 }
