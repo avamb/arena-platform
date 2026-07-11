@@ -185,6 +185,9 @@ jobs:
     name: Widget
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+
     defaults:
       run:
         working-directory: apps/widget
@@ -214,3 +217,46 @@ jobs:
 
       - name: Size gate (<150 KB gzip)
         run: npm run size
+
+      # ── WCAG 2.2 AA gate: axe-core + keyboard E2E via Playwright ───────────
+      # Mirrors the ops/accessibility gate used for the WP plugin.
+      # Runs after build so dist/v1/arena-tickets.js exists for the demo server.
+      - name: Install Playwright browsers (Chromium only)
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E tests — axe-core WCAG 2.2 AA + keyboard navigation
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-widget
+          path: apps/widget/playwright-report/
+          retention-days: 14
+
+      - name: Upload widget artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: arena-tickets-widget-v1
+          path: apps/widget/dist/v1/
+          retention-days: 30
+
+      # Publish to GitHub Release on master push.
+      # Chosen path: GH Release (tag: widget-v1, rolling) rather than
+      # extending build-and-push, because the widget is a static asset
+      # not a Docker image. The rolling tag widget-v1 always points to the
+      # latest v1 build; CDN (e.g. jsDelivr) can pin to a commit SHA.
+      - name: Publish to GitHub Release (master only)
+        if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: widget-v1
+          name: "Arena Tickets Widget v1 (latest)"
+          prerelease: false
+          make_latest: false
+          files: |
+            apps/widget/dist/v1/arena-tickets.js
+            apps/widget/dist/v1/iframe.html
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

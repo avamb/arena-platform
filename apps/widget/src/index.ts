@@ -20,11 +20,29 @@ export {
   parseFeedToken,
   parseSessionId,
   buildThemeStyle,
+  isRtlLocale,
   THEME_CSS_VARS,
   SUPPORTED_LOCALES,
+  RTL_LOCALES,
   type SupportedLocale,
   type ThemeCssVar,
+  type RtlLocale,
 } from './utils.js';
+
+// WID-E: CSS design token system documentation.
+export {
+  TOKEN_DEFAULTS,
+  TYPOGRAPHY_TOKENS,
+  COLOR_TOKENS,
+  SHAPE_TOKENS,
+  ALL_TOKENS,
+  arenaThemeIndigo,
+  arenaThemeRose,
+  arenaThemeNeutral,
+  ARENA_THEMES,
+  type DesignToken,
+  type ArenaThemeName,
+} from './lib/tokens.js';
 
 // WID-C: selection, cart, and hold-timer utilities.
 export {

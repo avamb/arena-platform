@@ -11,6 +11,8 @@ import {
   buildThemeStyle,
   SUPPORTED_LOCALES,
   THEME_CSS_VARS,
+  isRtlLocale,
+  RTL_LOCALES,
 } from './utils.js';
 
 // ─── parseLocale ─────────────────────────────────────────────────────────────
@@ -154,6 +156,10 @@ describe('SUPPORTED_LOCALES', () => {
   it('includes "ru"', () => {
     expect(SUPPORTED_LOCALES).toContain('ru');
   });
+
+  it('includes "he" (Hebrew RTL)', () => {
+    expect(SUPPORTED_LOCALES).toContain('he');
+  });
 });
 
 describe('THEME_CSS_VARS', () => {
@@ -169,5 +175,77 @@ describe('THEME_CSS_VARS', () => {
 
   it('includes --arena-bg', () => {
     expect(THEME_CSS_VARS).toContain('--arena-bg');
+  });
+
+  it('includes --arena-focus-ring (a11y token)', () => {
+    expect(THEME_CSS_VARS).toContain('--arena-focus-ring');
+  });
+});
+
+// ─── isRtlLocale ─────────────────────────────────────────────────────────────
+
+describe('isRtlLocale', () => {
+  it('returns true for "he" (Hebrew)', () => {
+    expect(isRtlLocale('he')).toBe(true);
+  });
+
+  it('returns true for "ar" (Arabic)', () => {
+    expect(isRtlLocale('ar')).toBe(true);
+  });
+
+  it('returns true for "fa" (Farsi)', () => {
+    expect(isRtlLocale('fa')).toBe(true);
+  });
+
+  it('returns true for "ur" (Urdu)', () => {
+    expect(isRtlLocale('ur')).toBe(true);
+  });
+
+  it('returns true for "he-IL" (region tag)', () => {
+    expect(isRtlLocale('he-IL')).toBe(true);
+  });
+
+  it('returns true for uppercase "HE"', () => {
+    expect(isRtlLocale('HE')).toBe(true);
+  });
+
+  it('returns false for "en"', () => {
+    expect(isRtlLocale('en')).toBe(false);
+  });
+
+  it('returns false for "ru"', () => {
+    expect(isRtlLocale('ru')).toBe(false);
+  });
+
+  it('returns false for "de"', () => {
+    expect(isRtlLocale('de')).toBe(false);
+  });
+
+  it('returns false for empty string', () => {
+    expect(isRtlLocale('')).toBe(false);
+  });
+
+  it('covers all RTL_LOCALES entries', () => {
+    for (const locale of RTL_LOCALES) {
+      expect(isRtlLocale(locale)).toBe(true);
+    }
+  });
+});
+
+// ─── RTL_LOCALES ─────────────────────────────────────────────────────────────
+
+describe('RTL_LOCALES', () => {
+  it('is non-empty', () => {
+    expect(RTL_LOCALES.length).toBeGreaterThan(0);
+  });
+
+  it('includes "he"', () => {
+    expect(RTL_LOCALES).toContain('he');
+  });
+
+  it('all entries are 2-char ISO 639-1 codes', () => {
+    for (const code of RTL_LOCALES) {
+      expect(code).toHaveLength(2);
+    }
   });
 });

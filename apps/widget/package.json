@@ -6,8 +6,9 @@
   "description": "Arena Tickets embeddable widget — Shadow DOM custom element (arena-tickets)",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/postbuild.mjs",
     "preview": "vite preview",
+    "serve-demo": "node scripts/serve-demo.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
@@ -16,7 +17,7 @@
   },
   "size-limit": [
     {
-      "path": "./dist/arena-tickets.js",
+      "path": "./dist/v1/arena-tickets.js",
       "limit": "150 kB",
       "gzip": true
     }
@@ -25,6 +26,7 @@
     "svelte": "^5.0.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@playwright/test": "^1.48.0",
     "@size-limit/file": "^11.0.0",
     "@sveltejs/vite-plugin-svelte": "^4.0.0",

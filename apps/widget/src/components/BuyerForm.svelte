@@ -204,9 +204,12 @@
     transition: border-color 0.15s;
   }
 
-  .field-input:focus {
+  .field-input:focus,
+  .field-input:focus-visible {
     border-color: var(--arena-accent, #6366f1);
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--arena-accent, #6366f1) 20%, transparent);
+    outline: 3px solid var(--arena-focus-ring, var(--arena-accent, #6366f1));
+    outline-offset: 2px;
   }
 
   .has-error .field-input {
@@ -254,10 +257,24 @@
     transition: opacity 0.15s;
   }
 
+  .submit-btn:focus-visible {
+    outline: 3px solid var(--arena-focus-ring, var(--arena-accent, #6366f1));
+    outline-offset: 3px;
+  }
+
   .submit-btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
   }
+
+  .suggestion-btn:focus-visible {
+    outline: 2px solid var(--arena-focus-ring, var(--arena-accent, #6366f1));
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  /* RTL: form fields stack the same way, so no directional changes needed.
+   * Text alignment inherits from the widget root direction. */
 
   .spinner {
     display: inline-block;

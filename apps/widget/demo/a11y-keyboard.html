@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Arena Tickets — Accessibility &amp; Keyboard Test Fixture</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        margin: 0;
+        padding: 2rem;
+        background: #f8fafc;
+        color: #1a1a1a;
+      }
+      h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 1rem; }
+      h2 { font-size: 1rem; font-weight: 600; margin: 2rem 0 0.5rem; }
+      section { margin-bottom: 2rem; }
+      .card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 1.5rem;
+      }
+      p { color: #374151; font-size: 0.9rem; margin-bottom: 1rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Arena Tickets — Accessibility &amp; Keyboard Test Fixture</h1>
+      <p>
+        This page provides stable states for axe-core WCAG 2.2 AA scans and
+        keyboard-only purchase flow verification.
+      </p>
+
+      <!-- ── Section 1: Widget placeholder (no token) ─────────────────── -->
+      <section aria-labelledby="s1-heading">
+        <h2 id="s1-heading">1 — Placeholder state (no feed-token)</h2>
+        <div class="card">
+          <arena-tickets id="widget-no-token"></arena-tickets>
+        </div>
+      </section>
+
+      <!-- ── Section 2: Widget with token, no session (loading) ──────── -->
+      <section aria-labelledby="s2-heading">
+        <h2 id="s2-heading">2 — Feed-token provided (session list state)</h2>
+        <div class="card">
+          <arena-tickets
+            id="widget-with-token"
+            feed-token="demo-ft-axe-001"
+          ></arena-tickets>
+        </div>
+      </section>
+
+      <!-- ── Section 3: RTL / Hebrew locale ──────────────────────────── -->
+      <section aria-labelledby="s3-heading">
+        <h2 id="s3-heading">3 — Hebrew locale (RTL layout)</h2>
+        <div class="card">
+          <arena-tickets
+            id="widget-rtl"
+            feed-token="demo-ft-axe-rtl"
+            locale="he"
+          ></arena-tickets>
+        </div>
+      </section>
+
+      <!-- ── Section 4: Custom theme ─────────────────────────────────── -->
+      <section aria-labelledby="s4-heading">
+        <h2 id="s4-heading">4 — Rose theme</h2>
+        <div class="card">
+          <arena-tickets
+            id="widget-rose"
+            feed-token="demo-ft-axe-rose"
+            style="
+              --arena-accent: #e11d48;
+              --arena-bg: #fff1f2;
+              --arena-border-color: #fecdd3;
+              --arena-color-primary: #881337;
+            "
+          ></arena-tickets>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="../dist/v1/arena-tickets.js"></script>
+  </body>
+</html>

@@ -17,7 +17,7 @@
    * and status polling.  Seat-map and session list are sub-components.
    */
   import { onMount } from 'svelte';
-  import { parseLocale, parseFeedToken, parseSessionId } from './utils.js';
+  import { parseLocale, parseFeedToken, parseSessionId, isRtlLocale } from './utils.js';
   import { fetchFeedEvent } from './api.js';
   import type { FeedSession, FeedEvent } from './types.js';
   import SessionList from './components/SessionList.svelte';
@@ -38,6 +38,7 @@
   const normFeedToken = $derived(parseFeedToken(feedToken));
   const normSessionId = $derived(parseSessionId(sessionId));
   const hasToken = $derived(normFeedToken !== '');
+  const dir = $derived(isRtlLocale(normLocale) ? 'rtl' : 'ltr');
 
   // ── Event data ─────────────────────────────────────────────────────────────
 
@@ -148,6 +149,7 @@
   data-session-id={normSessionId}
   aria-label="Arena Tickets"
   role="region"
+  dir={dir}
 >
   {#if hasToken}
     <div class="arena-tickets-frame">
@@ -192,6 +194,14 @@
     --_radius: var(--arena-radius, 8px);
     --_border: var(--arena-border-color, #e5e7eb);
     --_text-muted: var(--arena-color-secondary, #6b7280);
+    /* Focus ring — defaults to accent colour. Override with --arena-focus-ring. */
+    --_focus-ring: var(--arena-focus-ring, var(--arena-accent, #6366f1));
+  }
+
+  /* Global focus-visible rule for all focusable children. */
+  :host *:focus-visible {
+    outline: 3px solid var(--_focus-ring);
+    outline-offset: 2px;
   }
 
   .arena-tickets-root {
@@ -234,5 +244,20 @@
 
   .arena-tickets-placeholder {
     display: none;
+  }
+
+  /* ── RTL layout adjustments ────────────────────────────────────────────────
+   * When locale="he" (or any RTL locale), dir="rtl" is set on
+   * .arena-tickets-root, flipping text alignment and flex order.
+   * CSS logical properties (margin-inline-start, padding-inline-end, etc.)
+   * are used in sub-components to automatically adapt to the writing direction.
+   */
+  [dir='rtl'] {
+    text-align: start; /* logical: maps to right for RTL */
+    direction: rtl;
+  }
+
+  [dir='rtl'] .arena-tickets-frame {
+    /* Flex direction and border radius are direction-agnostic; no change needed. */
   }
 </style>

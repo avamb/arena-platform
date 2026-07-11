@@ -265,15 +265,27 @@
       ></arena-tickets>
     </div>
 
-    <!-- ─── Example 7: no feed-token (placeholder) ────────────── -->
-    <h2>7 — no feed-token (renders placeholder)</h2>
+    <!-- ─── Example 7: locale he (Hebrew RTL) ───────────────────── -->
+    <h2>7 — locale: he (Hebrew, right-to-left)</h2>
+    <div class="demo-card">
+      <pre>&lt;arena-tickets feed-token="demo-ft-006" locale="he"&gt;&lt;/arena-tickets&gt;</pre>
+      <p style="font-size:0.85rem;color:#6b7280;margin:0 0 0.75rem">
+        RTL layout: <code>dir="rtl"</code> is automatically set by the widget when
+        <code>locale="he"</code> (or any RTL locale). Text aligns to the right and
+        flex ordering is reversed.
+      </p>
+      <arena-tickets feed-token="demo-ft-006" locale="he"></arena-tickets>
+    </div>
+
+    <!-- ─── Example 8: no feed-token (placeholder) ────────────── -->
+    <h2>8 — no feed-token (renders placeholder)</h2>
     <div class="demo-card">
       <pre>&lt;arena-tickets&gt;&lt;/arena-tickets&gt;</pre>
       <arena-tickets></arena-tickets>
     </div>
 
-    <!-- ─── Example 8: with slot content ──────────────────────── -->
-    <h2>8 — slotted loading content</h2>
+    <!-- ─── Example 9: with slot content ──────────────────────── -->
+    <h2>9 — slotted loading content</h2>
     <div class="demo-card">
       <pre>&lt;arena-tickets feed-token="demo-ft-006"&gt;
   &lt;p style="padding:1rem;color:#6b7280"&gt;Loading tickets…&lt;/p&gt;
@@ -284,6 +296,6 @@
     </div>
 
     <!-- The widget script — loaded after all elements so custom elements upgrade -->
-    <script type="module" src="../dist/arena-tickets.js"></script>
+    <script type="module" src="../dist/v1/arena-tickets.js"></script>
   </body>
 </html>

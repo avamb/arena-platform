@@ -130,6 +130,11 @@
     border-color: var(--_accent, #6366f1);
   }
 
+  .chip:focus-visible {
+    outline: 3px solid var(--arena-focus-ring, var(--_accent, #6366f1));
+    outline-offset: 2px;
+  }
+
   .chip--selected {
     background: var(--_accent, #6366f1);
     border-color: var(--_accent, #6366f1);
