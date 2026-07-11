@@ -5,9 +5,8 @@ export default defineConfig({
   plugins: [
     svelte({
       hot: false,
-      compilerOptions: {
-        customElement: true,
-      },
+      // Do not set customElement: true globally — sub-components would need
+      // explicit tag names.  ArenaTickets.svelte declares via <svelte:options>.
     }),
   ],
   test: {

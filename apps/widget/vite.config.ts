@@ -7,6 +7,10 @@ export default defineConfig({
   plugins: [
     svelte({
       compilerOptions: {
+        // Required for ArenaTickets.svelte's <svelte:options customElement>.
+        // Sub-components (SessionList.svelte, SeatMapView.svelte) must NOT
+        // include <svelte:options customElement> — they are regular Svelte
+        // components compiled with this flag set and do not need a tag.
         customElement: true,
       },
     }),
