@@ -2,6 +2,71 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+=== Session 2026-07-11 (feature #324) ===
+WID-B: Event/session view + SVG seat map render (Svelte 5 widget)
+
+NEW FILES:
+  apps/widget/src/types.ts
+    All TypeScript types for feed/session/schema API responses:
+    Canvas, GeometryCategory, Seat, Row, Section, StandingZone, Geometry,
+    CategoryPrice, SchemaResponse, SchemaCacheEntry, SeatStatusValue,
+    SeatStatusResponse, BuyerField, Tier, FeedSession, FeedEvent,
+    FeedEventDetailResponse.
+
+  apps/widget/src/api.ts
+    Typed API client:
+    - fetchFeedEvent(), fetchSessionSchema() with ETag caching (If-None-Match /
+      304 → returns cached entry; immutable per geometry_checksum)
+    - fetchSeatStatus() (full snapshot), fetchSeatStatusDelta() (delta)
+    - Module-level schemaCache Map; clearSchemaCache() for tests.
+
+  apps/widget/src/lib/seatmap-render.ts
+    Pure SVG renderer + keyed DOM recolor:
+    - buildSeatMapSVG(geometry, categoryPrices, seatStatuses) → SVG string
+    - applySeatStatusUpdate(container, delta, catColorMap) — querySelector by
+      data-seat-key, sets fill/data-status/aria-label in place (no re-render)
+    - xmlAttr(), cssAttrEscape(), buildCategoryColorMap(), seatFillColor()
+
+  apps/widget/src/lib/pan-zoom.ts
+    Pure transform helpers (no layout reflow):
+    - PanZoomState { x, y, scale }, IDENTITY, MIN_SCALE=0.1, MAX_SCALE=20
+    - fitTransform, wheelZoom, pan, pinchZoom, pointerDist, pointerMid
+    - toCSSTransform, toSVGTransform
+
+  apps/widget/src/lib/poller.ts
+    SeatStatusPoller class:
+    - First tick: full snapshot via fetchSeatStatus()
+    - Subsequent ticks: delta via fetchSeatStatusDelta() with version cursor
+    - Page Visibility API: hiddenInterval (30s) when tab hidden, normalInterval
+      (3s) when visible; restores immediately on visibilitychange
+    - start() idempotent, stop() clears timer + removes listener
+
+  apps/widget/src/components/SessionList.svelte
+    Horizontal scrollable date chips (one per session) + price-category legend.
+    Cancelled sessions shown with strikethrough + disabled. CSS custom props.
+
+  apps/widget/src/components/SeatMapView.svelte
+    Interactive seat map: loadSchema() → ETag fetch → SVG render → startPoller()
+    Pointer events: drag (1 finger), pinch (2 fingers), wheel zoom.
+    ResizeObserver auto-fit. Non-passive wheel listener. fit/reset toolbar.
+
+TESTS:
+  apps/widget/src/lib/seatmap-render.test.ts — 41 tests
+  apps/widget/src/lib/pan-zoom.test.ts       — 29 tests
+  apps/widget/src/lib/poller.test.ts         —  8 tests (vi.useFakeTimers)
+  Total new: 78 tests; overall suite: 190/190 pass.
+
+MODIFIED:
+  apps/widget/src/ArenaTickets.svelte — wired SessionList + SeatMapView
+  apps/widget/vite.config.ts — restored customElement: true with comment
+  apps/widget/vitest.config.ts — removed customElement from test config
+
+SIZE GATE: 33.81 KB gzip vs 150 KB limit. tsc clean.
+
+Commit: 10d3dd3. Marked #324 passing.
+
+================================================================================
+
 === Session 2026-06-25 (feature #176) ===
 Audit + static-analysis gate for panic() in production code.
 
