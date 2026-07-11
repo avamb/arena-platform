@@ -19390,3 +19390,34 @@ Verification (docker golang:1.24):
   go test ./... -count=1                                     all PASS (40 pkgs)
   20/20 WID-0c tests pass
 Marked #320 passing.
+
+
+## 2026-07-11 - Feature #322 (WID-0e) Widget funnel telemetry sink
+
+POST /v1/public/feeds/{feed_token}/events — batch funnel events from
+embedded widget. Fire-and-forget, rate-limited, no PII.
+
+New files:
+- 0062_widget_funnel_events.sql: audit table (feed_token, event_type,
+  session_id UUID nullable, occurred_at, received_at). No PII columns.
+- widget_funnel_events.sql + widget_funnel_events.sql.go: InsertWidgetFunnelEvent.
+- hfeed/public_funnel_events.go: HandlePostFunnelEvents handler.
+  Validates 5 event types, caps batch at 50, rate limits per token+IP,
+  fire-and-forget inserts (errors logged, 204 returned on valid batch).
+- wid_0e_322_test.go: 23 unit tests (static analysis + HTTP behavior).
+
+Modified files:
+- querier.go: InsertWidgetFunnelEvent in Querier interface.
+- hfeed/handler.go: funnelQueries field; New() signature updated.
+- server_struct.go + wire.go: FunnelQueries option wired.
+- feed_shims.go: feedHandler() passes funnelQueries; new shim method.
+- mount_catalog.go: POST /public/feeds/{feed_token}/events (always mounted).
+- testfilehelpers_test.go: file mappings for new files.
+- openapi.yaml: WidgetFunnelEventsBatch + WidgetFunnelEventInput schemas;
+  postPublicFeedFunnelEvents operation.
+
+Verification (docker golang:1.24):
+  go build ./apps/backend/...                    OK
+  go test ./apps/backend/... -count=1            all PASS (40 pkgs)
+  23/23 WID-0e tests pass
+Marked #322 passing. (321/329 features passing, 97.5%)
