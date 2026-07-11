@@ -54,3 +54,38 @@ export {
   type CartLineItem,
   type CartState,
 } from './lib/cart.js';
+
+// WID-D: checkout handoff + result + recovery utilities.
+export {
+  editDistance,
+  suggestEmailFix,
+  isValidEmail,
+  validateBuyerForm,
+  isBuyerFormValid,
+  buildCheckoutPayload,
+  formatPrice,
+  isCheckoutPending,
+  isCheckoutRecoverable,
+  interpolate,
+  getCheckoutI18n,
+  CHECKOUT_I18N,
+  type BuyerFieldConfig,
+  type BuyerFormValues,
+  type BuyerFormErrors,
+  type PublicGAItem,
+  type CheckoutStartPayload,
+  type CheckoutStartResponse,
+  type CheckoutStatusItem,
+  type CheckoutStatusTicketItem,
+  type CheckoutPublicStatus,
+  type CheckoutStatusResponse,
+  type CheckoutRecoverResponse,
+  type CheckoutLocale,
+  type CheckoutI18nStrings,
+} from './lib/checkout.js';
+
+export {
+  postCheckoutStart,
+  getCheckoutStatus,
+  postCheckoutRecover,
+} from './api.js';

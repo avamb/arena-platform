@@ -5,6 +5,9 @@
  *   GET /v1/public/feeds/{feed_token}/events/{event_id}
  *   GET /v1/event-sessions/{id}/schema   (ETag-cached, immutable per checksum)
  *   GET /v1/event-sessions/{id}/seat-status[?since_version=N]
+ *   POST /v1/public/feeds/{token}/checkout/start   (WID-D)
+ *   GET  /v1/public/checkout/{token}               (WID-D)
+ *   POST /v1/public/checkout/{token}/recover       (WID-D, wraps WID-0c)
  *
  * The schema cache is module-level so a single widget instance does not
  * re-download the geometry on every re-render.  It is keyed by session ID
@@ -17,6 +20,12 @@ import type {
   SchemaCacheEntry,
   SeatStatusResponse,
 } from './types.js';
+import type {
+  CheckoutStartPayload,
+  CheckoutStartResponse,
+  CheckoutStatusResponse,
+  CheckoutRecoverResponse,
+} from './lib/checkout.js';
 
 // ─── Schema ETag cache ───────────────────────────────────────────────────────
 
@@ -118,4 +127,84 @@ export async function fetchSeatStatusDelta(
     throw new Error(`fetchSeatStatusDelta HTTP ${res.status}: ${res.statusText}`);
   }
   return res.json() as Promise<SeatStatusResponse>;
+}
+
+// ─── Checkout (WID-D) ────────────────────────────────────────────────────────
+
+/**
+ * POST /v1/public/feeds/{feedToken}/checkout/start
+ *
+ * Creates a new anonymous checkout session, reserves seats / GA capacity,
+ * and returns a `redirect_url` for the payment provider plus a `checkout_token`
+ * for subsequent status / recovery calls.
+ *
+ * @throws Error when the response is non-2xx.
+ */
+export async function postCheckoutStart(
+  feedToken: string,
+  payload: CheckoutStartPayload,
+): Promise<CheckoutStartResponse> {
+  const url = `/v1/public/feeds/${encodeURIComponent(feedToken)}/checkout/start`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const body = (await res.json()) as { error?: string; message?: string };
+      detail = body.error ?? body.message ?? '';
+    } catch { /* ignore */ }
+    throw new Error(
+      `postCheckoutStart HTTP ${res.status}${detail ? `: ${detail}` : ''}`,
+    );
+  }
+  return res.json() as Promise<CheckoutStartResponse>;
+}
+
+/**
+ * GET /v1/public/checkout/{checkoutToken}
+ *
+ * Poll the anonymous order status.  No JWT required — the `checkout_token` in
+ * the URL is the bearer credential.
+ *
+ * Possible statuses:
+ *   pending  — payment in progress (keep polling)
+ *   paid     — order complete; `tickets` array is populated
+ *   expired  — hold expired; call `postCheckoutRecover` if recoverable
+ *   failed   — payment abandoned; terminal
+ *
+ * @throws Error when the response is non-2xx.
+ */
+export async function getCheckoutStatus(
+  checkoutToken: string,
+): Promise<CheckoutStatusResponse> {
+  const url = `/v1/public/checkout/${encodeURIComponent(checkoutToken)}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`getCheckoutStatus HTTP ${res.status}: ${res.statusText}`);
+  }
+  return res.json() as Promise<CheckoutStatusResponse>;
+}
+
+/**
+ * POST /v1/public/checkout/{checkoutToken}/recover
+ *
+ * Attempt to re-capture the same seats/GA when the hold has expired (WID-0c).
+ * Returns a fresh `expires_at` timestamp when successful.
+ *
+ * Should only be called when `getCheckoutStatus` returns `expired`.
+ *
+ * @throws Error when the response is non-2xx (409 = seats no longer available).
+ */
+export async function postCheckoutRecover(
+  checkoutToken: string,
+): Promise<CheckoutRecoverResponse> {
+  const url = `/v1/public/checkout/${encodeURIComponent(checkoutToken)}/recover`;
+  const res = await fetch(url, { method: 'POST' });
+  if (!res.ok) {
+    throw new Error(`postCheckoutRecover HTTP ${res.status}: ${res.statusText}`);
+  }
+  return res.json() as Promise<CheckoutRecoverResponse>;
 }
