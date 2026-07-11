@@ -19346,3 +19346,47 @@ Verification:
   tsc -p apps/admin-web/tsconfig.app.json --noEmit                 OK
   npm --prefix apps/admin-web test  (830 tests / 35 files)   all PASS
 Marked #317 passing.
+
+
+## 2026-07-11 - Feature #320 (WID-0c) Hold-expiry recovery endpoint
+
+POST /v1/public/checkout/{checkout_token}/recover -- one-click re-capture
+of the SAME seats/zones if still available; conflict response with per-seat
+availability map otherwise. Kills the fluwid dead-end from design note s4.4.
+
+Changes:
+- gen/checkout_sessions.sql.go: UpdateCheckoutSessionReservationAndReset --
+  updates reservation_id, resets state to 'created', NULLs all pricing
+  snapshot columns so ConfirmCheckoutSession can be re-called.
+- gen/querier.go: added UpdateCheckoutSessionReservationAndReset to Querier.
+- hfeed/public_checkout_recover.go (new): full handler.
+  Flow: rate-limit, GetCheckoutSessionByToken, guard completed/abandoned,
+  GetReservationByID, idempotency check (reservation still active -> 200),
+  ListReservationSeats -> seated vs GA branch.
+  Seated: NormalizeSeatKeys, IncrementSeatStatusVersion,
+  LockSessionSeatsForHold, SeatConflicts (conflict -> conflict response),
+  ReserveCapacity, InsertReservation, HoldSessionSeat x seat,
+  InsertReservationSeat x seat, Commit, UpdateCheckoutSession...Reset,
+  ConfirmCheckoutSession, 200.
+  GA: ReserveCapacity(TierID, Quantity) (over capacity -> conflict response),
+  InsertReservation, Commit, UpdateCheckoutSession...Reset,
+  ConfirmCheckoutSession, 200.
+  Response: {checkout_session, checkout_token (same), expires_at (fresh)}.
+- feed_shims.go: handlePublicCheckoutRecover shim added.
+- mount_catalog.go: POST /public/checkout/{checkout_token}/recover registered
+  inside checkoutQueries+reservationQueries gate.
+- openapi.yaml: /v1/public/checkout/{checkout_token}/recover POST path
+  (operationId: recoverPublicCheckout) + CheckoutRecoverResponse schema.
+- types_gen.go: CheckoutRecoverResponse Go struct added.
+- wid_0c_320_test.go (new): 20 unit tests covering static analysis
+  (handler, gen, querier, mount, shim, OpenAPI), HTTP routing, and logic paths
+  (full recovery, partial unavailable, fully unavailable, GA path).
+- testfilehelpers_test.go: public_checkout_recover.go mapped to hfeed in
+  domainSubPackageFor; mount_catalog.go, feed_shims.go, types_gen.go added
+  to resolveFileInRepo.
+
+Verification (docker golang:1.24):
+  go build ./...                                             OK
+  go test ./... -count=1                                     all PASS (40 pkgs)
+  20/20 WID-0c tests pass
+Marked #320 passing.
