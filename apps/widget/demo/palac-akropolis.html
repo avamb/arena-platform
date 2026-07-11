@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Arena Tickets — Palác Akropolis Hybrid Session (E2E Fixture)</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        margin: 0;
+        padding: 1.5rem;
+        background: #f8fafc;
+        color: #1a1a1a;
+      }
+
+      h1 {
+        font-size: 1.25rem;
+        font-weight: 700;
+        margin: 0 0 0.25rem;
+      }
+
+      .subtitle {
+        font-size: 0.875rem;
+        color: #6b7280;
+        margin: 0 0 1.5rem;
+      }
+
+      .widget-section {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+      }
+
+      .widget-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #9ca3af;
+        margin-bottom: 0.5rem;
+      }
+
+      arena-tickets {
+        display: block;
+        height: 520px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Palác Akropolis — Hybrid Session E2E Fixture</h1>
+    <p class="subtitle">
+      260-seat Parket + Galérie standing zone (100 cap) + geometry-less GA tier.
+      API responses are intercepted by Playwright <code>page.route()</code>.
+    </p>
+
+    <!-- ── 1. Hybrid session widget (default locale en) ─────────────────────── -->
+    <section class="widget-section" aria-labelledby="lbl-hybrid">
+      <div class="widget-label" id="lbl-hybrid">Hybrid session — en locale</div>
+      <arena-tickets
+        id="widget-hybrid-en"
+        feed-token="palac-feed-token"
+        session-id="palac-session-1"
+        locale="en"
+      ></arena-tickets>
+    </section>
+
+    <!-- ── 2. Same session — RTL locale he ──────────────────────────────────── -->
+    <section class="widget-section" aria-labelledby="lbl-rtl">
+      <div class="widget-label" id="lbl-rtl">Hybrid session — he (RTL) locale</div>
+      <arena-tickets
+        id="widget-hybrid-he"
+        feed-token="palac-feed-token"
+        session-id="palac-session-1"
+        locale="he"
+      ></arena-tickets>
+    </section>
+
+    <!-- ── 3. No-token placeholder (axe sanity control) ─────────────────────── -->
+    <section class="widget-section" aria-labelledby="lbl-no-token">
+      <div class="widget-label" id="lbl-no-token">No token — placeholder control</div>
+      <arena-tickets id="widget-no-token"></arena-tickets>
+    </section>
+
+    <script type="module" src="../dist/v1/arena-tickets.js"></script>
+  </body>
+</html>
