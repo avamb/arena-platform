@@ -37,6 +37,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hscanner"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
@@ -456,6 +457,18 @@ func (h *Handler) HandleScan(w http.ResponseWriter, r *http.Request) {
 
 	// ── Step 2: Look up barcode by (authority_id, external_ref) ───────────────
 	barcode, err := h.barcodeQueries.GetBarcodeByRef(ctx, authority.ID, body.ExternalRef)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// SEAT-C4 fallback: platform-authority barcodes store the static_qr
+		// credential payload as external_ref, so a human code typed at the
+		// gate resolves through its credential and retries the lookup. See
+		// hscanner/human_code.go. Non-platform authorities never take this
+		// path.
+		if payload, ok := hscanner.ResolveHumanCodeExternalRef(
+			ctx, h.barcodeQueries, h.logger, authority.Type, body.ExternalRef,
+		); ok {
+			barcode, err = h.barcodeQueries.GetBarcodeByRef(ctx, authority.ID, payload)
+		}
+	}
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(

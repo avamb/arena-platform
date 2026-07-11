@@ -80,6 +80,13 @@ type Data struct {
 	SeatRow    string
 	SeatNumber string
 
+	// HumanCode is the SEAT-C4 human-readable credential code in grouped
+	// display form ("XXXX-XXXX") — the manual-entry fallback at the gate.
+	// Shown in the email body text so the code survives attachment
+	// stripping. Empty for legacy credentials without a code, in which
+	// case the templates omit the row via {{with}} guards.
+	HumanCode string
+
 	// Branding is the organisation branding block applied to the header
 	// (logo + display name + website) and footer (legal identification).
 	// Required for EU "commercial communications" minimum identification.

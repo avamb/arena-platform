@@ -36,6 +36,18 @@ WHERE  id = $1
   AND  deleted_at IS NULL
 RETURNING id, name, slug, country, default_locale, reservation_ttl_seconds, created_at, updated_at, deleted_at;
 
+-- name: GetTicketPDFFormatByTicketID :one
+-- SEAT-C4: resolve the organizer-level ticket_pdf_format flag
+-- ('mobile' | 'a4' | 'both') for the organization that owns a ticket.
+-- Read at delivery-enqueue time so the ticket.deliver worker payload
+-- carries the flag without re-joining at send time.
+SELECT o.ticket_pdf_format
+FROM   tickets       t
+JOIN   sessions      s ON s.id = t.session_id
+JOIN   events        e ON e.id = s.event_id
+JOIN   organizations o ON o.id = e.org_id
+WHERE  t.id = $1;
+
 -- name: SoftDeleteOrganization :one
 UPDATE organizations
 SET    deleted_at = now(),

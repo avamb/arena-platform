@@ -157,6 +157,29 @@ func (q *Queries) UpdateOrganization(ctx context.Context, id uuid.UUID, name, sl
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GetTicketPDFFormatByTicketID
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getTicketPDFFormatByTicketID = `-- name: GetTicketPDFFormatByTicketID :one
+SELECT o.ticket_pdf_format
+FROM   tickets       t
+JOIN   sessions      s ON s.id = t.session_id
+JOIN   events        e ON e.id = s.event_id
+JOIN   organizations o ON o.id = e.org_id
+WHERE  t.id = $1`
+
+// GetTicketPDFFormatByTicketID resolves the organizer-level
+// ticket_pdf_format flag ('mobile' | 'a4' | 'both', SEAT-C4) for the
+// organization that owns the given ticket. Read at delivery-enqueue time
+// so the ticket.deliver worker payload carries the flag without
+// re-joining at send time. Returns pgx.ErrNoRows for an unknown ticket.
+func (q *Queries) GetTicketPDFFormatByTicketID(ctx context.Context, ticketID uuid.UUID) (string, error) {
+	var format string
+	err := q.db.QueryRow(ctx, getTicketPDFFormatByTicketID, ticketID).Scan(&format)
+	return format, err
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SoftDeleteOrganization
 // ─────────────────────────────────────────────────────────────────────────────
 

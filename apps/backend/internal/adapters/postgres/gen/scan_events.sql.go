@@ -223,6 +223,44 @@ func (q *Queries) ResolveScanCredentialByTicketQR(ctx context.Context, credentia
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ResolveScanCredentialByHumanCode
+// ─────────────────────────────────────────────────────────────────────────────
+
+const resolveScanCredentialByHumanCode = `-- name: ResolveScanCredentialByHumanCode :one
+SELECT t.id          AS ticket_id,
+       t.session_id  AS session_id,
+       s.event_id    AS event_id,
+       e.org_id      AS org_id,
+       t.status      AS ticket_status,
+       t.used_at     AS ticket_used_at
+FROM   ticket_credentials tc
+JOIN   tickets  t ON t.id = tc.ticket_id
+JOIN   sessions s ON s.id = t.session_id
+JOIN   events   e ON e.id = s.event_id
+WHERE  tc.type       = 'static_qr'
+  AND  tc.human_code = $1`
+
+// ResolveScanCredentialByHumanCode resolves a SEAT-C4 human-readable
+// credential code to its ticket + session + event + org lineage — the
+// same projection as ResolveScanCredentialByTicketQR but keyed on
+// ticket_credentials.human_code. Callers MUST pass the canonical form
+// (humancode.Normalize: uppercase, hyphens/spaces stripped, Crockford
+// aliases I→1 L→1 O→0). Returns pgx.ErrNoRows when no static_qr
+// credential carries the code.
+func (q *Queries) ResolveScanCredentialByHumanCode(ctx context.Context, humanCode string) (ResolveScanCredentialRow, error) {
+	var r ResolveScanCredentialRow
+	err := q.db.QueryRow(ctx, resolveScanCredentialByHumanCode, humanCode).Scan(
+		&r.TicketID,
+		&r.SessionID,
+		&r.EventID,
+		&r.OrgID,
+		&r.TicketStatus,
+		&r.TicketUsedAt,
+	)
+	return r, err
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ListScanEventsByTicketID
 // ─────────────────────────────────────────────────────────────────────────────
 

@@ -1,4 +1,4 @@
-// Package pdf renders a printable e-ticket PDF for a single issued ticket.
+// Package pdf renders the e-ticket PDF for a single issued ticket.
 //
 // This package is intentionally a pure renderer: Render performs no IO and
 // has no global state. The caller is responsible for resolving any
@@ -7,63 +7,41 @@
 // timezone, ticket credential code, etc.) and passing them in via the
 // Ticket struct.
 //
+// # Layouts (SEAT-C4)
+//
+// The legacy US-Letter print layout is gone: nobody prints tickets, the
+// ticket is consumed on a phone screen (owner decision 2026-07-10). The
+// renderer supports two layouts behind one API, both fed by the same
+// content-projection struct (Ticket) so the printed fields can never
+// diverge between them:
+//
+//   - FormatMobile (default) — portrait phone aspect (396×702 pt ≈ 9:16).
+//     The QR code is the hero: ≥55% of the page width, centered, high
+//     error correction, with the human-readable credential code printed
+//     directly under it in large letter-spaced monospace type (the
+//     manual-entry fallback at the gate). Above the QR: event name in
+//     large type, date+time (venue-local), venue name/city, and — for
+//     seated tickets — Sector / Row / Seat as the most prominent rows.
+//     Org branding header and legal footer (feature #290 fields) are
+//     kept, scaled to the narrow page. No stub, no tear-off, no
+//     duplicated blocks.
+//
+//   - FormatA4Print — A4 portrait for the organizers that still want a
+//     printable ticket. Same content blocks scaled up, QR ≈70 mm with
+//     the human code beneath, generous margins for home printers. Still
+//     no stub/tear-off.
+//
+// Which format(s) the delivery email attaches is the organizer-level
+// organizations.ticket_pdf_format flag ('mobile' | 'a4' | 'both'),
+// threaded through delivery.Payload.TicketPDFFormat.
+//
 // # Library choice
 //
 // The renderer uses github.com/jung-kurt/gofpdf, pinned in the repo's
-// go.mod. The two libraries the feature spec proposes are:
-//
-//   - github.com/jung-kurt/gofpdf
-//   - github.com/signintech/gopdf
-//
-// We chose gofpdf because:
-//
-//  1. gofpdf ships PDF Core 14 fonts (Helvetica, Times, Courier, Symbol,
-//     ZapfDingbats) built in, while gopdf requires every text glyph to come
-//     from an external TTF that the renderer must read from disk. The
-//     "no IO" requirement of this feature is therefore satisfiable with
-//     gofpdf out-of-the-box; gopdf would force us to embed a TTF via
-//     //go:embed and burn ~250 KiB of font data into the binary just to
-//     print one line of text.
-//
-//  2. gofpdf accepts in-memory image sources (RegisterImageOptionsReader),
-//     so the org logo we receive as a []byte from the media adapter can be
-//     embedded without writing it to a temp file.
-//
-//  3. gofpdf's API surface is small, mature, and frozen. Its single
-//     dependency tree is itself a single non-transitive package
-//     (no headless browser, no Cgo, no font shaper). The package is in
-//     "low-activity maintenance" but the PDF/1.4 output it produces is
-//     stable and renders correctly in every reader we target. We do not
-//     need any of gopdf's newer features (PDF/A, form fields, encryption).
-//
-// QR code rasterisation uses github.com/skip2/go-qrcode, also a pure-Go
-// in-memory implementation with no IO. The PNG bytes it returns are
-// embedded into the PDF via RegisterImageOptionsReader the same way the
-// org logo is.
-//
-// # Layout (US-Letter, portrait, 612x792 points)
-//
-//	┌────────────────────────────────────────────────────────────┐
-//	│ [ORG LOGO]                                Arena Ticket     │
-//	├────────────────────────────────────────────────────────────┤
-//	│                                                            │
-//	│  Event:    {event name}                                    │
-//	│  Session:  {YYYY-MM-DD HH:MM} (venue local, {tz})          │
-//	│  Venue:    {venue name}, {venue city}                      │
-//	│  Tier:     {tier name}                                     │
-//	│  Holder:   {holder name}                                   │
-//	│                                                            │
-//	│  Ticket ID: {ticket id printable}                          │
-//	│                                                            │
-//	│             ┌─────────────┐                                │
-//	│             │             │                                │
-//	│             │   QR CODE   │                                │
-//	│             │             │                                │
-//	│             └─────────────┘                                │
-//	│                                                            │
-//	│  {fine print}                                              │
-//	│                                                            │
-//	└────────────────────────────────────────────────────────────┘
+// go.mod: it ships the PDF Core 14 fonts built in (no font IO), accepts
+// in-memory image sources (RegisterImageOptionsReader), and its API
+// surface is small, mature, and frozen. QR code rasterisation uses
+// github.com/skip2/go-qrcode, also a pure-Go in-memory implementation.
 //
 // The renderer deliberately omits any fiscal-receipt block. Issuing a
 // fiscal receipt (Russian Federation 54-FZ workflow) is a downstream
@@ -81,14 +59,26 @@ import (
 	_ "image/png"  // register PNG decoder for logo type-detection
 	"strings"
 	"time"
+)
 
-	"github.com/jung-kurt/gofpdf"
-	"github.com/skip2/go-qrcode"
+// Format selects one of the two SEAT-C4 page layouts. Both layouts render
+// the same Ticket content projection.
+type Format string
+
+const (
+	// FormatMobile is the default phone-aspect layout (396×702 pt) with
+	// the QR code as the hero element.
+	FormatMobile Format = "mobile"
+	// FormatA4Print is the A4 portrait variant for organizers that still
+	// want a printable ticket.
+	FormatA4Print Format = "a4"
 )
 
 // Ticket carries every datum the PDF renderer needs. It is intentionally
 // flat and serialisable: callers project this from their domain models
 // (and resolve logo bytes via the media adapter) before calling Render.
+// It is the single content-projection struct shared by both layouts —
+// FormatMobile and FormatA4Print can never print diverging field sets.
 type Ticket struct {
 	// TicketID is the printable canonical ticket identifier (UUID string).
 	TicketID string
@@ -119,7 +109,8 @@ type Ticket struct {
 	// (SEAT-C3, feature #311). All three are empty for general-admission
 	// tickets, in which case drawDetails omits the Sector / Row / Seat
 	// rows entirely. For assigned-seat tickets the renderer prints
-	// dedicated Sector / Row / Seat rows in the details block.
+	// dedicated Sector / Row / Seat rows as the most prominent rows of
+	// the details block.
 	SeatSector string
 	SeatRow    string
 	SeatNumber string
@@ -131,8 +122,16 @@ type Ticket struct {
 	OrgLogo []byte
 
 	// QRPayload is the string encoded into the QR code; this MUST be the
-	// value of ticket_credentials.code for the ticket being rendered.
+	// value of ticket_credentials.payload (static_qr) for the ticket
+	// being rendered.
 	QRPayload string
+
+	// HumanCode is the SEAT-C4 human-readable manual-entry fallback
+	// printed under the QR code in large letter-spaced monospace type.
+	// The renderer prints exactly what it is given — callers pass the
+	// grouped display form ("XXXX-XXXX", see humancode.Format). Empty
+	// omits the code line (legacy credentials without a code).
+	HumanCode string
 
 	// FinePrint is the small disclaimer printed at the bottom of the
 	// ticket. Empty string falls back to DefaultFinePrint.
@@ -183,119 +182,51 @@ const DefaultFinePrint = "This e-ticket is valid only when the QR code above sca
 // id, or event name).
 var ErrInvalidTicket = errors.New("pdf: ticket missing required fields")
 
-// Render returns the bytes of a single-page PDF e-ticket. The function is
-// pure: it performs no network or filesystem IO, holds no global state,
-// and returns the same bytes for the same input every time it is called.
+// ErrUnknownFormat is returned by RenderFormat for a Format value other
+// than FormatMobile or FormatA4Print.
+var ErrUnknownFormat = errors.New("pdf: unknown render format")
+
+// Render returns the bytes of a single-page e-ticket PDF in the default
+// FormatMobile layout. See RenderFormat for the two-layout contract.
+func Render(ctx context.Context, ticket Ticket) ([]byte, error) {
+	return RenderFormat(ctx, ticket, FormatMobile)
+}
+
+// RenderFormat renders the ticket in the requested layout. The function
+// is pure: it performs no network or filesystem IO, holds no global
+// state, and returns the same bytes for the same (ticket, format) pair
+// every time it is called.
 //
 // ctx is honoured for cancellation only — it is checked once before the
 // (cheap) layout pass starts so that callers can abort a batch render
 // before this ticket's work begins.
-func Render(ctx context.Context, ticket Ticket) ([]byte, error) {
+func RenderFormat(ctx context.Context, ticket Ticket, format Format) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	if err := validate(ticket); err != nil {
 		return nil, err
 	}
-
-	const (
-		pageW  = 612.0 // US Letter width  in points
-		pageH  = 792.0 // US Letter height in points
-		margin = 54.0  // 0.75 inch margin
-	)
-
-	pdf := gofpdf.New("P", "pt", "Letter", "")
-	pdf.SetMargins(margin, margin, margin)
-	pdf.SetAutoPageBreak(false, margin)
-	pdf.SetCompression(false) // deterministic byte output for tests
-	// gofpdf emits resource dictionaries (fonts, images) by iterating Go
-	// maps, whose order is randomized per process; sorting them keeps two
-	// renders of the same Ticket byte-identical.
-	pdf.SetCatalogSort(true)
-	// gofpdf treats a zero time as "use time.Now() at render time". To keep
-	// Render's output deterministic (the same Ticket renders to byte-identical
-	// PDFs) we pin both timestamps to a fixed sentinel.
-	pinned := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
-	pdf.SetCreationDate(pinned)
-	pdf.SetModificationDate(pinned)
-	pdf.SetProducer("arena-ticketing", true)
-	pdf.SetCreator("arena-ticketing", true)
-	pdf.SetTitle(fmt.Sprintf("Ticket %s", ticket.TicketID), true)
-	pdf.AddPage()
-
-	// ── Header band ───────────────────────────────────────────────────
-	drawHeader(pdf, ticket, margin, pageW)
-
-	// ── Body: labelled detail lines ───────────────────────────────────
-	bodyTop := margin + 110.0
-	drawDetails(pdf, ticket, margin, bodyTop)
-
-	// ── QR code (centered) ────────────────────────────────────────────
-	qrPNG, err := qrcode.Encode(ticket.QRPayload, qrcode.Medium, 512)
+	spec, err := specFor(format)
 	if err != nil {
-		return nil, fmt.Errorf("pdf: encode qr: %w", err)
+		return nil, err
 	}
-	const qrSize = 180.0
-	qrX := (pageW - qrSize) / 2
-	qrY := bodyTop + 180.0
-	pdf.RegisterImageOptionsReader(
-		"qr-"+ticket.TicketID,
-		gofpdf.ImageOptions{ImageType: "PNG", ReadDpi: false},
-		bytes.NewReader(qrPNG),
-	)
-	pdf.ImageOptions(
-		"qr-"+ticket.TicketID,
-		qrX, qrY, qrSize, qrSize,
-		false, gofpdf.ImageOptions{ImageType: "PNG"},
-		0, "",
-	)
+	return renderWithSpec(ticket, spec)
+}
 
-	// ── Ticket ID under the QR ────────────────────────────────────────
-	pdf.SetFont("Helvetica", "", 10)
-	pdf.SetXY(margin, qrY+qrSize+8)
-	pdf.CellFormat(pageW-2*margin, 14,
-		"Ticket ID: "+ticket.TicketID, "", 0, "C", false, 0, "")
-
-	// ── Footer: legal-identification block ────────────────────────────
-	// EU "commercial communications" minimum identification: the
-	// organisation's legal name + registered address + a contact
-	// channel. Drawn above the fine-print disclaimer.
-	footerY := pageH - margin - 44
-	legalLines := buildLegalLines(ticket)
-	if len(legalLines) > 0 {
-		// Reserve ~10pt per legal line above the fine print.
-		legalHeight := float64(len(legalLines)) * 10
-		legalTop := footerY - legalHeight - 6
-		pdf.SetFont("Helvetica", "", 8)
-		pdf.SetTextColor(102, 102, 102)
-		pdf.SetXY(margin, legalTop)
-		for _, ln := range legalLines {
-			pdf.CellFormat(pageW-2*margin, 10, ln, "", 2, "C", false, 0, "")
-		}
-		pdf.SetTextColor(0, 0, 0)
-	}
-
-	// ── Fine print ────────────────────────────────────────────────────
-	fine := ticket.FinePrint
-	if strings.TrimSpace(fine) == "" {
-		fine = DefaultFinePrint
-	}
-	pdf.SetFont("Helvetica", "I", 8)
-	pdf.SetXY(margin, footerY)
-	pdf.MultiCell(pageW-2*margin, 10, fine, "", "C", false)
-
-	var buf bytes.Buffer
-	if err := pdf.Output(&buf); err != nil {
-		return nil, fmt.Errorf("pdf: output: %w", err)
-	}
-	return buf.Bytes(), nil
+// pinnedTimestamp is the fixed sentinel stamped into every render as the
+// PDF creation/modification date. gofpdf substitutes time.Now() for a
+// zero time, which would break the byte-determinism contract.
+func pinnedTimestamp() time.Time {
+	return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 }
 
 // validate enforces the must-have fields for a sane e-ticket render.
 //
-// Cosmetic fields (venue city, tier, holder name) are not required —
-// they are printed as the empty string if missing, which is preferable
-// to refusing to issue a ticket because a tier name is blank.
+// Cosmetic fields (venue city, tier, holder name, human code) are not
+// required — they are omitted or printed as the empty string if missing,
+// which is preferable to refusing to issue a ticket because a tier name
+// is blank.
 func validate(t Ticket) error {
 	switch {
 	case strings.TrimSpace(t.TicketID) == "":
@@ -308,55 +239,6 @@ func validate(t Ticket) error {
 		return fmt.Errorf("%w: session_start", ErrInvalidTicket)
 	}
 	return nil
-}
-
-// drawHeader prints the org logo (if present) on the left and the
-// "Arena Ticket" wordmark on the right of the header band.
-func drawHeader(pdf *gofpdf.Fpdf, t Ticket, margin, pageW float64) {
-	const headerHeight = 80.0
-
-	if len(t.OrgLogo) > 0 {
-		imgType, ok := detectImageType(t.OrgLogo)
-		if ok {
-			name := "logo-" + t.TicketID
-			pdf.RegisterImageOptionsReader(
-				name,
-				gofpdf.ImageOptions{ImageType: imgType, ReadDpi: false},
-				bytes.NewReader(t.OrgLogo),
-			)
-			// Box: 120pt wide, 60pt tall — gofpdf preserves aspect when one dim is 0.
-			pdf.ImageOptions(
-				name,
-				margin, margin, 120, 0,
-				false, gofpdf.ImageOptions{ImageType: imgType},
-				0, "",
-			)
-		}
-	}
-
-	// Right-aligned org branding wordmark stack. When OrgName is empty
-	// we fall back to the generic "Arena E-Ticket" label so the header
-	// always carries an identifier.
-	orgName := strings.TrimSpace(t.OrgName)
-	if orgName == "" {
-		orgName = "Arena E-Ticket"
-	}
-	pdf.SetFont("Helvetica", "B", 18)
-	pdf.SetXY(margin, margin+18)
-	pdf.CellFormat(pageW-2*margin, 22, orgName, "", 0, "R", false, 0, "")
-
-	if site := strings.TrimSpace(t.OrgWebsiteURL); site != "" {
-		pdf.SetFont("Helvetica", "", 10)
-		pdf.SetTextColor(85, 85, 85)
-		pdf.SetXY(margin, margin+42)
-		pdf.CellFormat(pageW-2*margin, 12, site, "", 0, "R", false, 0, "")
-		pdf.SetTextColor(0, 0, 0)
-	}
-
-	// Divider underneath the header band.
-	y := margin + headerHeight + 8
-	pdf.SetLineWidth(0.5)
-	pdf.Line(margin, y, pageW-margin, y)
 }
 
 // buildLegalLines composes the footer legal-identification block from
@@ -394,43 +276,6 @@ func buildLegalLines(t Ticket) []string {
 		out = append(out, "Contact: "+v)
 	}
 	return out
-}
-
-// drawDetails renders the labelled detail block.
-//
-// SEAT-C3 (feature #311): for tickets carrying denormalized seat
-// coordinates (SeatSector / SeatRow / SeatNumber all populated together),
-// three additional rows — Sector / Row / Seat — are inserted between
-// Tier and Holder. GA tickets skip the seat block entirely.
-func drawDetails(pdf *gofpdf.Fpdf, t Ticket, x, y float64) {
-	rows := [][2]string{
-		{"Event", t.EventName},
-		{"Session", formatSessionInVenueTZ(t.SessionStart, t.SessionTZ)},
-		{"Venue", joinNonEmpty(", ", t.VenueName, t.VenueCity)},
-		{"Tier", t.TierName},
-	}
-	if hasSeat(t) {
-		rows = append(rows,
-			[2]string{"Sector", t.SeatSector},
-			[2]string{"Row", t.SeatRow},
-			[2]string{"Seat", t.SeatNumber},
-		)
-	}
-	rows = append(rows, [2]string{"Holder", t.HolderName})
-
-	const (
-		labelW  = 80.0
-		rowH    = 18.0
-		valueFS = 12.0
-	)
-	for i, r := range rows {
-		ry := y + float64(i)*rowH
-		pdf.SetXY(x, ry)
-		pdf.SetFont("Helvetica", "B", valueFS)
-		pdf.CellFormat(labelW, rowH, r[0]+":", "", 0, "L", false, 0, "")
-		pdf.SetFont("Helvetica", "", valueFS)
-		pdf.CellFormat(380, rowH, r[1], "", 0, "L", false, 0, "")
-	}
 }
 
 // hasSeat reports whether the ticket carries denormalized seat

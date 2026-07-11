@@ -339,6 +339,16 @@ func (h *Handler) HandleScannerValidate(w http.ResponseWriter, r *http.Request) 
 
 	// ── Look up barcode ───────────────────────────────────────────────────────
 	barcode, err := h.barcodeQueries.GetBarcodeByRef(ctx, authority.ID, body.ExternalRef)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// SEAT-C4 fallback: for the platform authority the presented value may
+		// be the human code printed under the QR; retry with the credential
+		// payload (== the registered external_ref). See human_code.go.
+		if payload, ok := ResolveHumanCodeExternalRef(
+			ctx, h.barcodeQueries, h.logger, authority.Type, body.ExternalRef,
+		); ok {
+			barcode, err = h.barcodeQueries.GetBarcodeByRef(ctx, authority.ID, payload)
+		}
+	}
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(

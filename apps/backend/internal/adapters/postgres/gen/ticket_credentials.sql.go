@@ -22,10 +22,14 @@ import (
 // ticket. Two types are supported:
 //
 //   - "static_qr": Payload is a 64-char lowercase hex string (32 crypto/rand
-//     bytes). The scanner resolves the token server-side.
+//     bytes). The scanner resolves the token server-side. HumanCode carries
+//     the SEAT-C4 manual-entry fallback in canonical form (8 Crockford
+//     Base32 chars, leading letter, no hyphen); nil for legacy rows that
+//     predate SEAT-C4 until backfilled.
 //
 //   - "pdf": Payload is the PDF document bytes encoded as standard base64.
-//     Rendered server-side using a pure Go minimal PDF generator.
+//     Rendered server-side using a pure Go minimal PDF generator. HumanCode
+//     is always nil for pdf-type rows.
 //
 // There is at most one row per (TicketID, Type) pair, enforced by a UNIQUE
 // constraint. RevokedAt is non-nil when the credential has been invalidated
@@ -35,6 +39,7 @@ type TicketCredentialRow struct {
 	TicketID  uuid.UUID  `json:"ticket_id"`
 	Type      string     `json:"type"`
 	Payload   string     `json:"payload"`
+	HumanCode *string    `json:"human_code"`
 	IssuedAt  time.Time  `json:"issued_at"`
 	RevokedAt *time.Time `json:"revoked_at"`
 }
@@ -49,6 +54,7 @@ func scanTicketCredentialRow(row interface {
 		&r.TicketID,
 		&r.Type,
 		&r.Payload,
+		&r.HumanCode,
 		&r.IssuedAt,
 		&r.RevokedAt,
 	)
@@ -65,7 +71,7 @@ VALUES ($1, $2, $3)
 ON CONFLICT (ticket_id, type) DO UPDATE
     SET payload    = EXCLUDED.payload,
         revoked_at = NULL
-RETURNING id, ticket_id, type, payload, issued_at, revoked_at`
+RETURNING id, ticket_id, type, payload, human_code, issued_at, revoked_at`
 
 // InsertTicketCredential creates or regenerates a credential for the given ticket.
 //
@@ -83,11 +89,42 @@ func (q *Queries) InsertTicketCredential(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// InsertTicketCredentialWithHumanCode
+// ─────────────────────────────────────────────────────────────────────────────
+
+const insertTicketCredentialWithHumanCode = `-- name: InsertTicketCredentialWithHumanCode :one
+INSERT INTO ticket_credentials (ticket_id, type, payload, human_code)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (ticket_id, type) DO UPDATE
+    SET payload    = EXCLUDED.payload,
+        human_code = EXCLUDED.human_code,
+        revoked_at = NULL
+RETURNING id, ticket_id, type, payload, human_code, issued_at, revoked_at`
+
+// InsertTicketCredentialWithHumanCode creates or regenerates a static_qr
+// credential together with its SEAT-C4 human-readable code (canonical
+// 8-char Crockford Base32 form, no hyphen).
+//
+// Returns pgconn.PgError with code 23505 (unique_violation) on the
+// ticket_credentials_human_code_unique constraint when the generated code
+// collides with an existing one — callers regenerate and retry (bounded).
+func (q *Queries) InsertTicketCredentialWithHumanCode(
+	ctx context.Context,
+	ticketID uuid.UUID,
+	credType string,
+	payload string,
+	humanCode string,
+) (TicketCredentialRow, error) {
+	row := q.db.QueryRow(ctx, insertTicketCredentialWithHumanCode, ticketID, credType, payload, humanCode)
+	return scanTicketCredentialRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GetCredentialByTicketID
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getCredentialByTicketID = `-- name: GetCredentialByTicketID :one
-SELECT id, ticket_id, type, payload, issued_at, revoked_at
+SELECT id, ticket_id, type, payload, human_code, issued_at, revoked_at
 FROM   ticket_credentials
 WHERE  ticket_id = $1
   AND  type      = $2`
@@ -104,6 +141,57 @@ func (q *Queries) GetCredentialByTicketID(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GetCredentialByHumanCode
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getCredentialByHumanCode = `-- name: GetCredentialByHumanCode :one
+SELECT id, ticket_id, type, payload, human_code, issued_at, revoked_at
+FROM   ticket_credentials
+WHERE  type       = 'static_qr'
+  AND  human_code = $1`
+
+// GetCredentialByHumanCode resolves a canonical human code (SEAT-C4) to
+// its static_qr credential row. Callers MUST normalize user input to the
+// canonical form first (humancode.Normalize: uppercase, hyphens/spaces
+// stripped, Crockford aliases I→1 L→1 O→0). Returns pgx.ErrNoRows when
+// no credential carries the code.
+func (q *Queries) GetCredentialByHumanCode(
+	ctx context.Context,
+	humanCode string,
+) (TicketCredentialRow, error) {
+	row := q.db.QueryRow(ctx, getCredentialByHumanCode, humanCode)
+	return scanTicketCredentialRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SetTicketCredentialHumanCode
+// ─────────────────────────────────────────────────────────────────────────────
+
+const setTicketCredentialHumanCode = `-- name: SetTicketCredentialHumanCode :one
+UPDATE ticket_credentials
+SET    human_code = $3
+WHERE  ticket_id  = $1
+  AND  type       = $2
+  AND  human_code IS NULL
+RETURNING id, ticket_id, type, payload, human_code, issued_at, revoked_at`
+
+// SetTicketCredentialHumanCode backfills a SEAT-C4 human code onto a
+// legacy credential row that predates the human_code column. The
+// human_code IS NULL guard makes concurrent backfills race-safe: the
+// loser observes pgx.ErrNoRows and re-reads the row. Returns
+// pgconn.PgError 23505 on a code collision — callers regenerate and
+// retry (bounded).
+func (q *Queries) SetTicketCredentialHumanCode(
+	ctx context.Context,
+	ticketID uuid.UUID,
+	credType string,
+	humanCode string,
+) (TicketCredentialRow, error) {
+	row := q.db.QueryRow(ctx, setTicketCredentialHumanCode, ticketID, credType, humanCode)
+	return scanTicketCredentialRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // RevokeCredential
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -112,7 +200,7 @@ UPDATE ticket_credentials
 SET    revoked_at = now()
 WHERE  ticket_id  = $1
   AND  type       = $2
-RETURNING id, ticket_id, type, payload, issued_at, revoked_at`
+RETURNING id, ticket_id, type, payload, human_code, issued_at, revoked_at`
 
 // RevokeCredential invalidates a specific credential for a ticket by setting
 // revoked_at. Called when the ticket is cancelled, refunded, or transferred.
@@ -131,7 +219,7 @@ func (q *Queries) RevokeCredential(
 // ─────────────────────────────────────────────────────────────────────────────
 
 const listCredentialsByTicketID = `-- name: ListCredentialsByTicketID :many
-SELECT id, ticket_id, type, payload, issued_at, revoked_at
+SELECT id, ticket_id, type, payload, human_code, issued_at, revoked_at
 FROM   ticket_credentials
 WHERE  ticket_id = $1
 ORDER BY issued_at ASC`
