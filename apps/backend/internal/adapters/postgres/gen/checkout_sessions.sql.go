@@ -328,3 +328,36 @@ func (q *Queries) GetCheckoutSessionByToken(ctx context.Context, token string) (
 	row := q.db.QueryRow(ctx, getCheckoutSessionByToken, token)
 	return scanCheckoutSessionRow(row)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UpdateCheckoutSessionReservationAndReset (WID-0c #320)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const updateCheckoutSessionReservationAndReset = `-- name: UpdateCheckoutSessionReservationAndReset :one
+UPDATE checkout_sessions
+SET    reservation_id = $2,
+       state          = 'created',
+       subtotal       = NULL,
+       discount       = NULL,
+       platform_fee   = NULL,
+       provider_fee   = NULL,
+       tax            = NULL,
+       total          = NULL,
+       currency       = NULL,
+       promo_code_id  = NULL,
+       updated_at     = now()
+WHERE  id = $1
+RETURNING ` + selectCheckoutSessionColumns
+
+// UpdateCheckoutSessionReservationAndReset replaces the reservation pointer on a
+// checkout session and resets all pricing snapshot columns back to NULL so the
+// session can be re-confirmed against the new reservation.  Used by the
+// WID-0c hold-expiry recovery endpoint (feature #320).
+func (q *Queries) UpdateCheckoutSessionReservationAndReset(
+	ctx context.Context,
+	id uuid.UUID,
+	reservationID uuid.UUID,
+) (CheckoutSessionRow, error) {
+	row := q.db.QueryRow(ctx, updateCheckoutSessionReservationAndReset, id, reservationID)
+	return scanCheckoutSessionRow(row)
+}

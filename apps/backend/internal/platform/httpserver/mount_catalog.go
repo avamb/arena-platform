@@ -129,7 +129,7 @@ func (s *Server) mountPublicationRoutes(r chi.Router) {
 }
 
 // mountPublicFeedRoutes mounts the unauthenticated public feed event +
-// checkout endpoints (features #152, #153, #319 WID-0b).
+// checkout endpoints (features #152, #153, #319 WID-0b, #320 WID-0c).
 func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 	if s.publicFeedQueries != nil {
 		r.Get("/public/feeds/{feed_token}/events", s.handlePublicFeedEvents)
@@ -143,6 +143,8 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 	// are optional (handler self-gates for the paid-tickets section).
 	if s.checkoutQueries != nil && s.reservationQueries != nil {
 		r.Get("/public/checkout/{checkout_token}", s.handlePublicCheckoutStatus)
+		// Hold-expiry recovery endpoint — WID-0c (feature #320).
+		r.Post("/public/checkout/{checkout_token}/recover", s.handlePublicCheckoutRecover)
 	}
 	if s.checkoutQueries != nil && s.ticketQueries != nil && s.credentialQueries != nil {
 		r.Get("/public/checkout/{checkout_token}/tickets/{ticket_id}/pdf", s.handlePublicTicketPDF)

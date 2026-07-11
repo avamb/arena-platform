@@ -189,3 +189,9 @@ func (s *Server) handlePublicTicketPDF(w http.ResponseWriter, r *http.Request) {
 	s.feedHandler().HandleGetPublicTicketPDF(w, r)
 }
 
+// ─── hold-expiry recovery handler shim (feature #320 WID-0c) ─────────────────
+
+func (s *Server) handlePublicCheckoutRecover(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandlePublicCheckoutRecover(w, r)
+}
+

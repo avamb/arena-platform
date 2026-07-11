@@ -5346,6 +5346,45 @@ components:
           minimum: 1
           description: Number of GA tickets for this tier.
 
+    BuyerFieldItem:
+      type: object
+      description: |
+        Describes a single buyer-form field exposed by the sales channel.
+        The widget uses the `enabled` flag to decide whether to render the
+        field and `required` to enforce client-side validation.
+        Feature #321 WID-0d.
+      required: [key, required, enabled]
+      properties:
+        key:
+          type: string
+          description: Field identifier — one of `email`, `name`, `phone`.
+          enum: [email, name, phone]
+        required:
+          type: boolean
+          description: When true the field must be filled before submission.
+        enabled:
+          type: boolean
+          description: When false the field should not be shown or submitted.
+
+    PublicBuyerInfo:
+      type: object
+      description: |
+        Structured buyer contact info for `POST checkout/start` (feature #321 WID-0d).
+        `email` supersedes the top-level `holder_email` when both are present.
+        `name` and `phone` are validated against the channel's `buyer_fields` flags.
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          description: Buyer's email address (ticket holder).
+        name:
+          type: [string, "null"]
+          description: Buyer's full name; required when the channel has collect_name enabled.
+        phone:
+          type: [string, "null"]
+          description: Buyer's phone number; required when the channel has collect_phone enabled.
+
     PublicFeedCheckoutStartRequest:
       type: object
       required: [session_id, holder_email]
@@ -5357,7 +5396,9 @@ components:
         holder_email:
           type: string
           format: email
-          description: Email address of the ticket holder.
+          description: |
+            Email address of the ticket holder. Superseded by `buyer.email`
+            when the `buyer` object is present.
         promo_code:
           type: [string, "null"]
           description: Optional promotional code to apply.
@@ -5371,6 +5412,12 @@ components:
           items:
             $ref: "#/components/schemas/PublicGAItem"
           description: GA items for GA or hybrid sessions.
+        buyer:
+          $ref: "#/components/schemas/PublicBuyerInfo"
+          description: |
+            Structured buyer contact info (WID-0d). When present `buyer.email`
+            supersedes `holder_email`; name and phone are validated against the
+            channel's `buyer_fields` flags.
         tier_id:
           type: string
           format: uuid
@@ -5397,6 +5444,32 @@ components:
           type: string
           format: date-time
           description: Reservation expiry (RFC 3339 UTC).
+
+    CheckoutRecoverResponse:
+      type: object
+      description: |
+        Response body for `POST /v1/public/checkout/{checkout_token}/recover`
+        (feature #320 WID-0c).  Returned when a fresh reservation was
+        successfully created for the same seats/zones.
+      required: [checkout_session, checkout_token, expires_at]
+      properties:
+        checkout_session:
+          description: |
+            The updated checkout session.  State is `pricing_confirmed` because
+            the pricing snapshot is re-applied immediately after the new
+            reservation is linked.
+          $ref: "#/components/schemas/CheckoutSessionItem"
+        checkout_token:
+          type: string
+          description: |
+            The same opaque token that was supplied in the path (echoed back
+            for convenience so the widget does not need to re-parse the URL).
+        expires_at:
+          type: string
+          format: date-time
+          description: |
+            RFC 3339 UTC timestamp of the new reservation expiry.  The widget
+            MUST restart its countdown timer from this value.
 
     CheckoutStatusResponse:
       type: object
@@ -19796,6 +19869,133 @@ paths:
           description: |
             Internal server error while retrieving the checkout session or
             reservation (`checkout.lookup_failed`, `checkout.reservation_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Database unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/public/checkout/{checkout_token}/recover:
+    post:
+      operationId: recoverPublicCheckout
+      summary: Re-capture expired hold for a public checkout session
+      description: |
+        One-click re-capture of the SAME seats or GA capacity that were
+        originally reserved under the checkout session identified by
+        `checkout_token`.
+
+        Intended for the widget's "Try again" / countdown-expired recovery
+        path (design note §4.4 WID-0c, feature #320).
+
+        If **all** original seats/zones are still available a fresh
+        reservation is created, the checkout session is reset to
+        `created` state, re-confirmed with the original pricing snapshot,
+        and the new `expires_at` is returned.
+
+        If **any** original seat is no longer available the endpoint returns
+        `409 Conflict` with a per-seat availability map so the widget can
+        highlight the unavailable seats to the buyer.
+
+        No JWT is required — the opaque `checkout_token` in the path is
+        the credential.  Rate-limited via the shared public-feed limiter.
+      tags: [v1]
+      parameters:
+        - name: checkout_token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: |
+            Opaque high-entropy hex token (64 lowercase hex characters)
+            minted at checkout session creation.
+      responses:
+        "200":
+          description: |
+            Hold recovered successfully.  A fresh reservation was created and
+            the checkout session now points to it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutRecoverResponse"
+              examples:
+                seated_recovery:
+                  summary: Seated recovery — two seats re-captured
+                  value:
+                    checkout_session:
+                      id: "018f4f00-0000-7000-8000-000000000001"
+                      state: pricing_confirmed
+                    checkout_token: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+                    expires_at: "2024-06-01T15:15:00Z"
+        "400":
+          description: |
+            Checkout is in a non-recoverable terminal state:
+
+            * `checkout.already_completed` — the order was already paid.
+            * `checkout.abandoned` — the session was explicitly abandoned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: |
+            No checkout session found for the given `checkout_token`
+            (`checkout.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            One or more original seats are no longer available
+            (`reservation.seats_conflict`) or GA capacity is exhausted
+            (`reservation.over_capacity`).  The `details.conflicts` array
+            lists every requested seat_key with its current status so the
+            widget can highlight which seats are taken.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                partial_conflict:
+                  summary: One seat taken, one still available
+                  value:
+                    error: reservation.seats_conflict
+                    message: "one or more original seats are no longer available"
+                    details:
+                      conflicts:
+                        - seat_key: "Main Hall-A-1"
+                          status: sold
+                        - seat_key: "Main Hall-A-2"
+                          status: available
+                fully_unavailable:
+                  summary: All seats taken
+                  value:
+                    error: reservation.seats_conflict
+                    message: "one or more original seats are no longer available"
+                    details:
+                      conflicts:
+                        - seat_key: "Main Hall-A-1"
+                          status: sold
+                        - seat_key: "Main Hall-A-2"
+                          status: held
+        "429":
+          description: |
+            Rate limit exceeded (`checkout.rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error (`checkout.lookup_failed`,
+            `reservation.insert_failed`, `checkout.update_failed`,
+            `checkout.confirm_failed`).
           content:
             application/json:
               schema:

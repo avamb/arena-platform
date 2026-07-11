@@ -6104,5 +6104,18 @@ type PublicFeedCheckoutStartResponse struct {
 	RedirectUrl string `json:"redirect_url"`
 }
 
+// CheckoutRecoverResponse is the response for
+// POST /v1/public/checkout/{checkout_token}/recover (feature #320, WID-0c).
+type CheckoutRecoverResponse struct {
+	// CheckoutSession The updated checkout session with re-confirmed pricing.
+	CheckoutSession CheckoutSessionItem `json:"checkout_session"`
+
+	// CheckoutToken The same opaque token supplied in the path (echoed back).
+	CheckoutToken string `json:"checkout_token"`
+
+	// ExpiresAt RFC 3339 UTC timestamp of the new reservation expiry.
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
 // StartPublicFeedCheckoutJSONRequestBody defines body for StartPublicFeedCheckout for application/json ContentType.
 type StartPublicFeedCheckoutJSONRequestBody = PublicFeedCheckoutStartRequest

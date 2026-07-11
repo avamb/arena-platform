@@ -167,6 +167,7 @@ type Querier interface {
 	ListCheckoutSessionsByReservation(ctx context.Context, reservationID uuid.UUID) ([]CheckoutSessionRow, error)
 	GetCheckoutSessionByToken(ctx context.Context, token string) (CheckoutSessionRow, error)
 	InsertCheckoutSessionWithToken(ctx context.Context, orgID, channelID, reservationID uuid.UUID, userID *uuid.UUID, checkoutToken string) (CheckoutSessionRow, error)
+	UpdateCheckoutSessionReservationAndReset(ctx context.Context, id uuid.UUID, reservationID uuid.UUID) (CheckoutSessionRow, error)
 
 	// Payment intents — SCA-aware payment state machine (feature #137)
 	InsertPaymentIntent(ctx context.Context, checkoutSessionID *uuid.UUID, orgID uuid.UUID, provider string, providerPaymentID *string, amount int64, currency string, initialState string, scaRedirectURL *string, clientSecret *string) (PaymentIntentRow, error)
@@ -270,6 +271,8 @@ type Querier interface {
 	GetPublishedEventByFeedToken(ctx context.Context, token string, eventID uuid.UUID) (EventRow, error)
 	// GetPublicCheckoutContext validates a session belongs to a published event on the feed (feature #153)
 	GetPublicCheckoutContext(ctx context.Context, token string, sessionID uuid.UUID) (PublicCheckoutContextRow, error)
+	// GetFeedTokenBuyerFlags returns collect_name/collect_phone flags for the channel linked to a feed token (feature #321 WID-0d)
+	GetFeedTokenBuyerFlags(ctx context.Context, feedToken string) (FeedTokenBuyerFlagsRow, error)
 
 	// Event reports — post-event aggregated financial reports (feature #159)
 	InsertEventReport(ctx context.Context, eventID uuid.UUID, orgID uuid.UUID, reportWindowStart *time.Time, reportWindowEnd *time.Time) (EventReportRow, error)

@@ -841,6 +841,19 @@ func resolveFileInRepo(repoRoot, name string) string {
 			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "bank_accounts.sql.go"),
 		}
 	// External reconciliation (feature #147)
+	// WID-0c recovery endpoint (feature #320) structural files
+	case "mount_catalog.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "mount_catalog.go"),
+		}
+	case "feed_shims.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "feed_shims.go"),
+		}
+	case "types_gen.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "http", "openapi", "types_gen.go"),
+		}
 	case "0041_reconciliation_reports.sql":
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0041_reconciliation_reports.sql"),
@@ -1019,7 +1032,8 @@ func domainSubPackageFor(name string) (string, string) {
 		return "hgeo", "geo_shims.go"
 	case "gdpr.go", "gdpr_processor.go":
 		return "hgdpr", "gdpr_shims.go"
-	case "feed_tokens.go", "public_feed.go", "public_feed_checkout.go":
+	case "feed_tokens.go", "public_feed.go", "public_feed_checkout.go",
+		"public_checkout_status.go", "public_checkout_recover.go":
 		return "hfeed", "feed_shims.go"
 	case "inventory.go", "inventory_ledger.go", "external_allocations.go":
 		return "hinventory", "inventory_shims.go"
