@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Arena Tickets Widget — Demo</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        margin: 0;
+        padding: 2rem;
+        background: #f8fafc;
+        color: #1a1a1a;
+      }
+
+      h1 {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+      }
+
+      h2 {
+        font-size: 1rem;
+        font-weight: 600;
+        margin: 2rem 0 0.5rem;
+        color: #374151;
+        border-bottom: 1px solid #e5e7eb;
+        padding-bottom: 0.25rem;
+      }
+
+      .subtitle {
+        color: #6b7280;
+        margin-bottom: 2rem;
+      }
+
+      .demo-card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+      }
+
+      .demo-card pre {
+        background: #f1f5f9;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        padding: 0.75rem 1rem;
+        font-size: 0.8rem;
+        overflow-x: auto;
+        margin: 0.75rem 0 1rem;
+      }
+
+      .attr-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+        margin-bottom: 1rem;
+      }
+
+      .attr-table th {
+        text-align: left;
+        padding: 0.4rem 0.75rem;
+        background: #f8fafc;
+        border: 1px solid #e5e7eb;
+        font-weight: 600;
+        color: #374151;
+      }
+
+      .attr-table td {
+        padding: 0.4rem 0.75rem;
+        border: 1px solid #e5e7eb;
+        vertical-align: top;
+      }
+
+      .attr-table code {
+        font-family: 'Courier New', monospace;
+        background: #f1f5f9;
+        padding: 0.1rem 0.3rem;
+        border-radius: 3px;
+        font-size: 0.8em;
+      }
+
+      .theme-swatch {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        margin-right: 4px;
+        vertical-align: middle;
+        border: 1px solid rgba(0,0,0,0.1);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Arena Tickets Widget — Attribute Matrix</h1>
+    <p class="subtitle">
+      Demonstrates all supported attributes and CSS custom properties for the
+      <code>&lt;arena-tickets&gt;</code> custom element.
+    </p>
+
+    <!-- ─── Attribute reference table ─────────────────────────── -->
+    <h2>Supported Attributes</h2>
+    <div class="demo-card">
+      <table class="attr-table">
+        <thead>
+          <tr>
+            <th>Attribute</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>feed-token</code></td>
+            <td>string</td>
+            <td><code>""</code></td>
+            <td>Public feed token identifying the event catalogue. Required to load data.</td>
+          </tr>
+          <tr>
+            <td><code>session-id</code></td>
+            <td>string</td>
+            <td><code>""</code></td>
+            <td>Optional UUID of a specific event session to deep-link into.</td>
+          </tr>
+          <tr>
+            <td><code>locale</code></td>
+            <td>string (BCP-47)</td>
+            <td><code>"en"</code></td>
+            <td>Language/locale tag. Supported: en, ru, de, fr, es, uk.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <table class="attr-table">
+        <thead>
+          <tr>
+            <th>CSS Variable</th>
+            <th>Default</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>--arena-font-family</code></td>
+            <td><code>system-ui</code></td>
+            <td>Widget font family.</td>
+          </tr>
+          <tr>
+            <td><code>--arena-color-primary</code></td>
+            <td><code>#1a1a1a</code></td>
+            <td>Primary text colour.</td>
+          </tr>
+          <tr>
+            <td><code>--arena-color-secondary</code></td>
+            <td><code>#6b7280</code></td>
+            <td>Secondary / muted text colour.</td>
+          </tr>
+          <tr>
+            <td><code>--arena-accent</code></td>
+            <td><span class="theme-swatch" style="background:#6366f1"></span><code>#6366f1</code></td>
+            <td>Accent / brand colour (buttons, links).</td>
+          </tr>
+          <tr>
+            <td><code>--arena-bg</code></td>
+            <td><code>transparent</code></td>
+            <td>Widget background colour.</td>
+          </tr>
+          <tr>
+            <td><code>--arena-radius</code></td>
+            <td><code>8px</code></td>
+            <td>Border radius for cards/buttons.</td>
+          </tr>
+          <tr>
+            <td><code>--arena-border-color</code></td>
+            <td><code>#e5e7eb</code></td>
+            <td>Border / divider colour.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ─── Example 1: minimal (feed-token only) ──────────────── -->
+    <h2>1 — feed-token only (minimum required)</h2>
+    <div class="demo-card">
+      <pre>&lt;arena-tickets feed-token="demo-ft-001"&gt;&lt;/arena-tickets&gt;</pre>
+      <arena-tickets feed-token="demo-ft-001"></arena-tickets>
+    </div>
+
+    <!-- ─── Example 2: feed-token + session-id ────────────────── -->
+    <h2>2 — feed-token + session-id</h2>
+    <div class="demo-card">
+      <pre>&lt;arena-tickets
+  feed-token="demo-ft-001"
+  session-id="01930000-0000-7000-8000-000000000042"
+&gt;&lt;/arena-tickets&gt;</pre>
+      <arena-tickets
+        feed-token="demo-ft-001"
+        session-id="01930000-0000-7000-8000-000000000042"
+      ></arena-tickets>
+    </div>
+
+    <!-- ─── Example 3: locale ru ──────────────────────────────── -->
+    <h2>3 — locale: ru</h2>
+    <div class="demo-card">
+      <pre>&lt;arena-tickets feed-token="demo-ft-002" locale="ru"&gt;&lt;/arena-tickets&gt;</pre>
+      <arena-tickets feed-token="demo-ft-002" locale="ru"></arena-tickets>
+    </div>
+
+    <!-- ─── Example 4: locale de ──────────────────────────────── -->
+    <h2>4 — locale: de</h2>
+    <div class="demo-card">
+      <pre>&lt;arena-tickets feed-token="demo-ft-003" locale="de"&gt;&lt;/arena-tickets&gt;</pre>
+      <arena-tickets feed-token="demo-ft-003" locale="de"></arena-tickets>
+    </div>
+
+    <!-- ─── Example 5: custom theme (indigo) ──────────────────── -->
+    <h2>5 — custom theme: indigo accent</h2>
+    <div class="demo-card">
+      <pre>&lt;arena-tickets
+  feed-token="demo-ft-004"
+  style="
+    --arena-accent: #6366f1;
+    --arena-bg: #eef2ff;
+    --arena-radius: 12px;
+    --arena-border-color: #c7d2fe;
+    --arena-color-primary: #312e81;
+  "
+&gt;&lt;/arena-tickets&gt;</pre>
+      <arena-tickets
+        feed-token="demo-ft-004"
+        style="
+          --arena-accent: #6366f1;
+          --arena-bg: #eef2ff;
+          --arena-radius: 12px;
+          --arena-border-color: #c7d2fe;
+          --arena-color-primary: #312e81;
+        "
+      ></arena-tickets>
+    </div>
+
+    <!-- ─── Example 6: custom theme (rose) ────────────────────── -->
+    <h2>6 — custom theme: rose accent</h2>
+    <div class="demo-card">
+      <pre>&lt;arena-tickets
+  feed-token="demo-ft-005"
+  style="
+    --arena-accent: #e11d48;
+    --arena-bg: #fff1f2;
+    --arena-border-color: #fecdd3;
+    --arena-color-primary: #881337;
+  "
+&gt;&lt;/arena-tickets&gt;</pre>
+      <arena-tickets
+        feed-token="demo-ft-005"
+        style="
+          --arena-accent: #e11d48;
+          --arena-bg: #fff1f2;
+          --arena-border-color: #fecdd3;
+          --arena-color-primary: #881337;
+        "
+      ></arena-tickets>
+    </div>
+
+    <!-- ─── Example 7: no feed-token (placeholder) ────────────── -->
+    <h2>7 — no feed-token (renders placeholder)</h2>
+    <div class="demo-card">
+      <pre>&lt;arena-tickets&gt;&lt;/arena-tickets&gt;</pre>
+      <arena-tickets></arena-tickets>
+    </div>
+
+    <!-- ─── Example 8: with slot content ──────────────────────── -->
+    <h2>8 — slotted loading content</h2>
+    <div class="demo-card">
+      <pre>&lt;arena-tickets feed-token="demo-ft-006"&gt;
+  &lt;p style="padding:1rem;color:#6b7280"&gt;Loading tickets…&lt;/p&gt;
+&lt;/arena-tickets&gt;</pre>
+      <arena-tickets feed-token="demo-ft-006">
+        <p style="padding:1rem;color:#6b7280">Loading tickets…</p>
+      </arena-tickets>
+    </div>
+
+    <!-- The widget script — loaded after all elements so custom elements upgrade -->
+    <script type="module" src="../dist/arena-tickets.js"></script>
+  </body>
+</html>

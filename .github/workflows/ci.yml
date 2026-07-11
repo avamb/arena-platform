@@ -174,3 +174,43 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # ─────────────────────────────────────────────────────────────────
+  # Job 5: Widget — Svelte 5 custom element (arena-tickets)
+  #
+  # Runs on every push/PR (additive; does not gate build-and-push).
+  # Steps: install → unit tests (vitest) → build → size gate (<150 KB gzip).
+  # ─────────────────────────────────────────────────────────────────
+  widget:
+    name: Widget
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: apps/widget
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: apps/widget/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run type-check
+
+      - name: Unit tests (vitest)
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Size gate (<150 KB gzip)
+        run: npm run size

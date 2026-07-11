@@ -183,7 +183,7 @@ func TestCIWorkflow108_OpenAPICheckUsesDiffToDetectDrift(t *testing.T) {
 
 func TestCIWorkflow108_AllRequiredJobsPresent(t *testing.T) {
 	content := ciWorkflowContent(t)
-	requiredJobs := []string{"lint", "test", "openapi-check", "build-and-push"}
+	requiredJobs := []string{"lint", "test", "openapi-check", "build-and-push", "widget"}
 	for _, job := range requiredJobs {
 		if !strings.Contains(content, job) {
 			t.Errorf("ci.yml missing required job: %s", job)
@@ -249,7 +249,7 @@ func TestCIWorkflow108_FullVerification(t *testing.T) {
 	})
 
 	t.Run("Step6_AllJobsPresent", func(t *testing.T) {
-		for _, job := range []string{"lint", "test", "openapi-check", "build-and-push"} {
+		for _, job := range []string{"lint", "test", "openapi-check", "build-and-push", "widget"} {
 			if !strings.Contains(content, job) {
 				t.Errorf("missing job: %s", job)
 			}

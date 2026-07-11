@@ -1,0 +1,36 @@
+{
+  "name": "@arena/widget",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Arena Tickets embeddable widget — Shadow DOM custom element (arena-tickets)",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "type-check": "tsc --noEmit",
+    "size": "size-limit"
+  },
+  "size-limit": [
+    {
+      "path": "./dist/arena-tickets.js",
+      "limit": "150 kB",
+      "gzip": true
+    }
+  ],
+  "dependencies": {
+    "svelte": "^5.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "@size-limit/file": "^11.0.0",
+    "@sveltejs/vite-plugin-svelte": "^4.0.0",
+    "size-limit": "^11.0.0",
+    "typescript": "^5.8.3",
+    "vite": "^5.4.8",
+    "vitest": "^2.1.2"
+  }
+}
