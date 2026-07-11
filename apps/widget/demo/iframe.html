@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arena Tickets</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+    body {
+      display: flex;
+      align-items: stretch;
+      justify-content: stretch;
+    }
+    arena-tickets {
+      flex: 1;
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    #loading {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+      color: #666;
+      background: #fff;
+      z-index: 10;
+      transition: opacity 0.3s;
+    }
+    #loading.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">Loading…</div>
+  <arena-tickets id="widget"></arena-tickets>
+
+  <script type="module" src="./arena-tickets.js"></script>
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var widget = document.getElementById('widget');
+      var loading = document.getElementById('loading');
+
+      var feedToken = params.get('feed-token') || params.get('feedToken') || '';
+      var sessionId = params.get('session-id') || params.get('sessionId') || '';
+      var locale = params.get('locale') || 'en';
+
+      if (feedToken) widget.setAttribute('feed-token', feedToken);
+      if (sessionId) widget.setAttribute('session-id', sessionId);
+      widget.setAttribute('locale', locale);
+
+      // Hide loading indicator once the custom element has upgraded.
+      // Use a short rAF loop so we don't depend on a custom event from the element.
+      function hideLoading() {
+        if (customElements.get('arena-tickets')) {
+          loading.classList.add('hidden');
+        } else {
+          customElements.whenDefined('arena-tickets').then(function () {
+            loading.classList.add('hidden');
+          });
+        }
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', hideLoading);
+      } else {
+        hideLoading();
+      }
+    })();
+  </script>
+</body>
+</html>

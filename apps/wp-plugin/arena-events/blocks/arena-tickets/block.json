@@ -1,0 +1,22 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "arena-events/arena-tickets",
+  "version": "0.1.0",
+  "title": "Arena Tickets",
+  "category": "embed",
+  "description": "Embed the Arena Tickets widget to let visitors browse sessions and purchase tickets.",
+  "keywords": ["tickets", "events", "arena", "checkout"],
+  "textdomain": "arena-events",
+  "attributes": {
+    "feedToken": { "type": "string", "default": "" },
+    "sessionId": { "type": "string", "default": "" },
+    "locale":    { "type": "string", "default": "en" },
+    "cdnBase":   { "type": "string", "default": "" }
+  },
+  "editorScript": "file:./index.js",
+  "supports": {
+    "html": false,
+    "align": ["wide", "full"]
+  }
+}
