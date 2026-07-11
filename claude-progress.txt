@@ -19458,3 +19458,53 @@ Verification:
   npm --prefix apps/widget run size           22.62 KB gzip vs 150 KB - PASS
   All ci_workflow_test.go string assertions verified against ci.yml - PASS
 Marked #323 passing. (323/329 features passing, 98.2%)
+
+
+## 2026-07-11 - Feature #325 (WID-C) Selection, hybrid, cart, hold timer
+
+Implemented the WID-C selection/cart/hold-timer pure-logic layer for the widget.
+
+New files:
+- apps/widget/src/lib/selection.ts: pure seat-selection helpers
+    toggleSeatSelection(selected, seatKey, status) - new Set<string>
+      (only available seats may be added; removing always works)
+    clearSelection() - new empty Set
+    bestAvailableSeats(geometry, seatStatuses, categoryIndex, count)
+      row-rank heuristic: score rows by available-seat count in category,
+      pick leftmost consecutive run of count seats in top-ranked row
+    detectSingleSeatGaps(geometry, seatStatuses, selected)
+      finds available+unselected seats isolated by occupied neighbours
+      on both sides (or row edge) - returns seat keys for gap-hint UI
+    GA helpers: clampGaQuantity, incrementGaQuantity, decrementGaQuantity,
+      GA_MIN_QUANTITY=1, GA_MAX_QUANTITY=20
+
+- apps/widget/src/lib/cart.ts: cart state + countdown helpers
+    CartLineItem { type, tierId, tierName, quantity, priceAmount, currency,
+                   seatKeys, zoneKey }
+    CartState { checkoutToken, expiresAt, lines }
+    emptyCart() - factory
+    buildSeatedLines(seatKeys, catMap, tierMap, seatCatMap) - groups seats
+      by tier, one CartLineItem per tierId group
+    buildGaLine(zoneKey, tierId, ...) - single GA line
+    removeCartLine(state, idx) - pure removal, out-of-range is no-op
+    applyHoldResponse(state, token, expiresAt) - attach hold response
+    cartTotal(lines) - {amount, currency} using platform prices
+    cartItemCount(lines) - sum of quantities
+    countdownSeconds(expiresAt, nowMs?) - whole seconds to expiry, clamped >= 0
+    isTwoMinWarning(secondsLeft) - true when 0 < secondsLeft <= 120
+    formatCountdown(secondsLeft) - "M:SS" display string
+
+- apps/widget/src/lib/selection.test.ts: 40 unit tests
+- apps/widget/src/lib/cart.test.ts: 44 unit tests
+
+Modified files:
+- apps/widget/src/index.ts: re-exports all new selection + cart public API
+
+Also fixed pre-existing build error in SeatMapView.svelte and SessionList.svelte
+(invalid customElement={false} not valid in Svelte 5; removed those lines).
+
+Verification:
+  npm --prefix apps/widget test         190/190 PASS (6 test files)
+  npm --prefix apps/widget run type-check    OK (0 errors)
+  npm --prefix apps/widget run build    33.99 kB gzip vs 150 kB gate - PASS
+Marked #325 passing. (324/329 features passing, 98.5%)
