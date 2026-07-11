@@ -9,7 +9,9 @@ import { ApiError } from "@/lib/api/client";
 import {
   parseVersionValidationErrors,
   renderGeometryToSVG,
+  resolveCurrentVersionNumber,
   type SeatingGeometry,
+  type SeatingPlan,
 } from "@/routes/venueSeatingPlans";
 
 const geometry: SeatingGeometry = {
@@ -121,26 +123,15 @@ describe("renderGeometryToSVG", () => {
     expect(svg).toContain('viewBox="0 0 800 600"');
   });
 
-  it("omits decor_svg by default (opts.includeDecor=false)", () => {
+  it("never emits decor_svg (raw markup is an XSS channel)", () => {
     const svg = renderGeometryToSVG({
       canvas: { width: 10, height: 10 },
-      decor_svg: '<rect data-danger="x"/>',
+      decor_svg: '<rect data-danger="x"/><script>alert(1)</script>',
       sections: [],
     });
     expect(svg).not.toContain("data-danger");
-  });
-
-  it("emits decor_svg only when explicitly opted in", () => {
-    const svg = renderGeometryToSVG(
-      {
-        canvas: { width: 10, height: 10 },
-        decor_svg: '<rect x="0"/>',
-        sections: [],
-      },
-      { includeDecor: true },
-    );
-    expect(svg).toContain('data-role="decor"');
-    expect(svg).toContain('<rect x="0"/>');
+    expect(svg).not.toContain("script");
+    expect(svg).not.toContain('data-role="decor"');
   });
 
   it("handles empty geometry without throwing", () => {
@@ -211,6 +202,68 @@ describe("renderGeometryToSVG", () => {
     });
     expect(svg).toContain('viewBox="0 0 0 50"');
     expect(svg).toContain('cx="0"');
+  });
+});
+
+describe("resolveCurrentVersionNumber", () => {
+  const basePlan: SeatingPlan = {
+    id: "01929d0e-0e47-7000-8000-000000000301",
+    venue_id: "01929d0e-0e47-7000-8000-000000000201",
+    owner_org_id: "01929d0e-0e47-7000-8000-000000000001",
+    name: "Main Hall",
+    plan_type: "assigned_seats",
+    visibility: "private",
+    status: "draft",
+    source_seating_plan_id: null,
+    current_version_id: null,
+    current_version_number: null,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  };
+
+  it("returns null when the plan has no current version", () => {
+    expect(resolveCurrentVersionNumber(basePlan)).toBeNull();
+    // A version number without a version id is nonsensical — the id is
+    // the source of truth for "does a version exist".
+    expect(
+      resolveCurrentVersionNumber({ ...basePlan, current_version_number: 3 }),
+    ).toBeNull();
+  });
+
+  it("returns the payload's current_version_number", () => {
+    const plan: SeatingPlan = {
+      ...basePlan,
+      current_version_id: "01929d0e-0e47-7000-8000-000000000401",
+      current_version_number: 4,
+    };
+    expect(resolveCurrentVersionNumber(plan)).toBe(4);
+  });
+
+  it("falls back to 1 when the server omits current_version_number", () => {
+    const { current_version_number: _omitted, ...withoutNumber } = {
+      ...basePlan,
+      current_version_id: "01929d0e-0e47-7000-8000-000000000401",
+    };
+    expect(resolveCurrentVersionNumber(withoutNumber)).toBe(1);
+    expect(
+      resolveCurrentVersionNumber({
+        ...basePlan,
+        current_version_id: "01929d0e-0e47-7000-8000-000000000401",
+        current_version_number: null,
+      }),
+    ).toBe(1);
+  });
+
+  it("falls back to 1 on malformed version numbers", () => {
+    for (const bad of [0, -2, 1.5, Number.NaN]) {
+      expect(
+        resolveCurrentVersionNumber({
+          ...basePlan,
+          current_version_id: "01929d0e-0e47-7000-8000-000000000401",
+          current_version_number: bad,
+        }),
+      ).toBe(1);
+    }
   });
 });
 

@@ -33,16 +33,11 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
-	"time"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
 // seatsBodyLimit caps the JSON payload for the block/unblock endpoint.
@@ -154,8 +149,7 @@ func (h *Handler) HandlePatchSessionSeats(w http.ResponseWriter, r *http.Request
 	// materialized session_seats rows so the "no seats matched" branch
 	// naturally returns an empty outcome set with a stable 200 rather
 	// than surprising the operator with a 404.
-	binding, err := h.queries.GetSessionSeatingBinding(ctx, sessionID, eventID)
-	if err != nil {
+	if _, err := h.queries.GetSessionSeatingBinding(ctx, sessionID, eventID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 				"session.not_found", "session not found", r,
@@ -269,7 +263,14 @@ func (h *Handler) HandlePatchSessionSeats(w http.ResponseWriter, r *http.Request
 	// 15:04:05" whether or not any seat was already blocked. The metadata
 	// carries the effective + skipped seat lists so a reviewer can
 	// reconstruct the outcome without re-issuing the seat-status snapshot.
-	if err := h.writeSeatsPatchAuditTx(ctx, tx, r, sessionID, map[string]any{
+	// The action name (`v1.session.seats.block` / `.unblock`) mirrors the
+	// SEAT-B2 `v1.session.seating.bind` convention so forensic queries can
+	// filter on the `v1.session.seats.*` prefix.
+	auditAction := "v1.session.seats.block"
+	if req.Action == seatsActionUnblock {
+		auditAction = "v1.session.seats.unblock"
+	}
+	if err := h.writeSessionAuditTx(ctx, tx, r, auditAction, sessionID, map[string]any{
 		"event_id":            eventID.String(),
 		"action":              req.Action,
 		"seat_status_version": newVersion,
@@ -291,8 +292,6 @@ func (h *Handler) HandlePatchSessionSeats(w http.ResponseWriter, r *http.Request
 		))
 		return
 	}
-
-	_ = binding // referenced only to prove session existence above
 
 	httputil.WriteJSON(w, http.StatusOK, seatsPatchResponse{
 		SessionID:         sessionID.String(),
@@ -562,45 +561,6 @@ func applySeatUnblock(
 	}
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Audit
-// ─────────────────────────────────────────────────────────────────────────────
-
-// writeSeatsPatchAuditTx emits the SEAT-B4 audit trail entry inside the
-// caller's transaction. The action name (`v1.session.seats.block` /
-// `.unblock`) mirrors the SEAT-B2 `v1.session.seating.bind` convention so
-// downstream forensic queries can filter on the `v1.session.seats.*`
-// prefix to see every operator-driven seat mutation for a session.
-func (h *Handler) writeSeatsPatchAuditTx(
-	ctx context.Context,
-	tx pgx.Tx,
-	r *http.Request,
-	sessionID uuid.UUID,
-	metadata map[string]any,
-) error {
-	if h.audit == nil {
-		return nil
-	}
-	actor, _ := auth.ActorFromContext(ctx)
-	action := "v1.session.seats.block"
-	if a, ok := metadata["action"].(string); ok && a == seatsActionUnblock {
-		action = "v1.session.seats.unblock"
-	}
-	ev := audit.Event{
-		OccurredAt:   time.Now().UTC(),
-		ActorType:    "user",
-		ActorID:      actor.ID,
-		Action:       action,
-		ResourceType: "session",
-		ResourceID:   sessionID.String(),
-		RequestID:    logging.RequestID(ctx),
-		TraceID:      logging.TraceID(ctx),
-		IP:           httputil.ExtractClientIP(r),
-		Metadata:     metadata,
-	}
-	if err := h.audit.WriteTx(ctx, tx, ev); err != nil {
-		h.logger.Error("seating: seats patch audit write failed", slog.String("error", err.Error()))
-		return err
-	}
-	return nil
-}
+// Audit note: the SEAT-B4 audit trail entry is emitted via the shared
+// session-scoped writeSessionAuditTx helper (bind.go) with an explicit
+// action of `v1.session.seats.block` / `v1.session.seats.unblock`.

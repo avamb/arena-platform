@@ -228,6 +228,32 @@ func (q *Queries) GetSessionSeatingBinding(ctx context.Context, id, eventID uuid
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GetSessionSeatingBindingForUpdate
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getSessionSeatingBindingForUpdate = `-- name: GetSessionSeatingBindingForUpdate :one
+SELECT id, event_id, admission_mode, seating_plan_version_id,
+       seat_status_version, capacity_total
+FROM   sessions
+WHERE  id         = $1
+  AND  event_id   = $2
+  AND  deleted_at IS NULL
+FOR UPDATE`
+
+// GetSessionSeatingBindingForUpdate is the row-locking variant of
+// GetSessionSeatingBinding. Taken at the top of the seating-bind transaction
+// (feature #306, Wave SEAT-B2) so binds serialize against any concurrent
+// transaction that mutates the session's seat inventory — the seated
+// reservation path locks the same sessions row via
+// IncrementSessionSeatStatusVersion, which closes the TOCTOU window between
+// the rebind zero-reservations check and the session_seats wipe. MUST be
+// called inside a transaction; the lock releases on commit / rollback.
+func (q *Queries) GetSessionSeatingBindingForUpdate(ctx context.Context, id, eventID uuid.UUID) (SessionSeatingBindingRow, error) {
+	row := q.db.QueryRow(ctx, getSessionSeatingBindingForUpdate, id, eventID)
+	return scanSessionSeatingBindingRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // BindSessionSeatingPlan
 // ─────────────────────────────────────────────────────────────────────────────
 

@@ -68,6 +68,23 @@ WHERE  id         = $1
   AND  event_id   = $2
   AND  deleted_at IS NULL;
 
+-- name: GetSessionSeatingBindingForUpdate :one
+-- GetSessionSeatingBindingForUpdate is the row-locking variant of
+-- GetSessionSeatingBinding. Taken at the top of the seating-bind transaction
+-- (feature #306, Wave SEAT-B2) so binds serialize against any concurrent
+-- transaction that mutates the session's seat inventory — the seated
+-- reservation path locks the same sessions row via
+-- IncrementSessionSeatStatusVersion, which closes the TOCTOU window between
+-- the rebind zero-reservations check and the session_seats wipe. MUST be
+-- called inside a transaction; the lock releases on commit / rollback.
+SELECT id, event_id, admission_mode, seating_plan_version_id,
+       seat_status_version, capacity_total
+FROM   sessions
+WHERE  id         = $1
+  AND  event_id   = $2
+  AND  deleted_at IS NULL
+FOR UPDATE;
+
 -- name: BindSessionSeatingPlan :one
 -- BindSessionSeatingPlan flips a session onto the (admission_mode,
 -- seating_plan_version_id) tuple and recomputes capacity_total from the

@@ -28,6 +28,32 @@ VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, session_id, seat_key, sector_name, row_name, seat_number,
           tier_id, status, reservation_id, status_version, updated_at;
 
+-- name: InsertSessionSeats :execrows
+-- Batch variant of InsertSessionSeat: materializes every seat of a
+-- version geometry in a single multi-row INSERT via parallel unnest
+-- arrays (one round-trip instead of one per seat). All five arrays MUST
+-- have the same length; tier_ids entries are UUID strings and may be
+-- NULL for seats without a resolved tier (they travel as text[] and are
+-- cast per-row, matching the promo_codes uuid[] text-codec precedent).
+-- Same column defaults as InsertSessionSeat (status 'available',
+-- reservation_id NULL, status_version 0).
+INSERT INTO session_seats (
+    session_id, seat_key, sector_name, row_name, seat_number, tier_id
+)
+SELECT $1, u.seat_key, u.sector_name, u.row_name, u.seat_number, u.tier_id::uuid
+FROM unnest(
+    $2::text[], $3::text[], $4::text[], $5::text[], $6::text[]
+) AS u(seat_key, sector_name, row_name, seat_number, tier_id);
+
+-- name: DeleteSessionSeatsBySession :execrows
+-- Wipes every materialized seat for a session. Called on the SEAT-B2
+-- rebind path after the zero-reservations / zero-tickets guardrail has
+-- passed (under the same transaction) so the new bind starts from a
+-- clean slate. Any reservation_seats links MUST be removed first via
+-- DeleteReservationSeatsBySession — session_seats is the FK target.
+DELETE FROM session_seats
+WHERE  session_id = $1;
+
 -- name: GetSessionSeatByID :one
 -- Fetches a single seat by id, scoped to its session so a caller with
 -- a mismatched session_id receives pgx.ErrNoRows instead of leaking

@@ -90,6 +90,63 @@ func (q *Queries) InsertSessionSeat(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// InsertSessionSeats
+// ─────────────────────────────────────────────────────────────────────────────
+
+const insertSessionSeats = `-- name: InsertSessionSeats :execrows
+INSERT INTO session_seats (
+    session_id, seat_key, sector_name, row_name, seat_number, tier_id
+)
+SELECT $1, u.seat_key, u.sector_name, u.row_name, u.seat_number, u.tier_id::uuid
+FROM unnest(
+    $2::text[], $3::text[], $4::text[], $5::text[], $6::text[]
+) AS u(seat_key, sector_name, row_name, seat_number, tier_id)`
+
+// InsertSessionSeats is the batch variant of InsertSessionSeat: it
+// materializes every seat of a version geometry in a single multi-row
+// INSERT via parallel unnest arrays (one round-trip instead of one per
+// seat). All five slices MUST have the same length; tierIDs entries are
+// UUID strings and may be nil for seats without a resolved tier (they
+// travel as text[] and are cast per-row, matching the promo_codes uuid[]
+// text-codec precedent). Returns the number of rows inserted.
+func (q *Queries) InsertSessionSeats(
+	ctx context.Context,
+	sessionID uuid.UUID,
+	seatKeys, sectorNames, rowNames, seatNumbers []string,
+	tierIDs []*string,
+) (int64, error) {
+	tag, err := q.db.Exec(ctx, insertSessionSeats,
+		sessionID, seatKeys, sectorNames, rowNames, seatNumbers, tierIDs,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DeleteSessionSeatsBySession
+// ─────────────────────────────────────────────────────────────────────────────
+
+const deleteSessionSeatsBySession = `-- name: DeleteSessionSeatsBySession :execrows
+DELETE FROM session_seats
+WHERE  session_id = $1`
+
+// DeleteSessionSeatsBySession wipes every materialized seat for a session.
+// Called on the SEAT-B2 rebind path after the zero-reservations /
+// zero-tickets guardrail has passed (under the same transaction) so the
+// new bind starts from a clean slate. Any reservation_seats links MUST be
+// removed first via DeleteReservationSeatsBySession — session_seats is
+// the FK target. Returns the number of rows deleted.
+func (q *Queries) DeleteSessionSeatsBySession(ctx context.Context, sessionID uuid.UUID) (int64, error) {
+	tag, err := q.db.Exec(ctx, deleteSessionSeatsBySession, sessionID)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GetSessionSeatByID
 // ─────────────────────────────────────────────────────────────────────────────
 

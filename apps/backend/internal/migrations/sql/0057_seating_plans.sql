@@ -176,6 +176,13 @@ COMMENT ON COLUMN seating_plan_versions.locked_at IS
 -- ─────────────────────────────────────────────────────────────────────
 -- Seed RBAC permissions for seating plans
 -- ─────────────────────────────────────────────────────────────────────
+-- NOTE: seating_plan.share, seating_plan.verify, and
+-- seating_plan.archive.own are deliberately forward-seeded — no route is
+-- gated on them yet. Share / verify surfaces arrive in a later SEAT
+-- wave; archive is currently expressed as a status="archived" PATCH on
+-- /v1/seating-plans/{id}, which is gated by seating_plan.update.own.
+-- Seeding them now keeps the permission catalog (and the role grants
+-- below) stable so the future routes need no follow-up migration.
 
 INSERT INTO permissions (name, description) VALUES
     ('seating_plan.read',                'Read seating plans and their versions'),

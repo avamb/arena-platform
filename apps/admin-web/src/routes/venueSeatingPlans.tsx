@@ -69,6 +69,12 @@ export interface SeatingPlan {
   readonly status: SeatingPlanStatus;
   readonly source_seating_plan_id: string | null;
   readonly current_version_id: string | null;
+  /**
+   * 1-based positional number of the version current_version_id points
+   * at (null until the first version exists). Optional because servers
+   * predating the field omit it — see resolveCurrentVersionNumber.
+   */
+  readonly current_version_number?: number | null;
   readonly created_at: string;
   readonly updated_at: string;
 }
@@ -155,17 +161,13 @@ const DEFAULT_SEAT_COLOR = "#94a3b8";
 /**
  * Render a canonical geometry object into an inline SVG string suitable
  * for injection via dangerouslySetInnerHTML. Deliberately restricted to
- * primitives the backend importer emits (circle seats) so we do not
- * evaluate arbitrary decor SVG here — the raw decor_svg is emitted as-is
- * inside a <g> wrapper (opt-in: only when the geometry originates from
- * the trusted server response). We do NOT include decor_svg in this
- * function because pre-render sanitisation would be required; callers
- * that trust the server response can pass includeDecor=true.
+ * primitives the backend importer emits (circle seats) with every
+ * interpolated string escaped, so no server- or author-supplied markup
+ * ever reaches the DOM. decor_svg is intentionally NEVER emitted: raw
+ * decor markup injected through dangerouslySetInnerHTML would be an XSS
+ * channel, and pre-render sanitisation is out of scope for this preview.
  */
-export function renderGeometryToSVG(
-  g: SeatingGeometry,
-  opts?: { includeDecor?: boolean },
-): string {
+export function renderGeometryToSVG(g: SeatingGeometry): string {
   const width = g.canvas?.width ?? 800;
   const height = g.canvas?.height ?? 600;
   const catByIndex = new Map<number, string>();
@@ -189,15 +191,10 @@ export function renderGeometryToSVG(
       }
     }
   }
-  const decor =
-    opts?.includeDecor === true && typeof g.decor_svg === "string"
-      ? `<g data-role="decor">${g.decor_svg}</g>`
-      : "";
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${round(width)} ${round(
       height,
     )}" role="img" aria-label="Seating plan preview">` +
-    decor +
     `<g data-role="seats">${seatCircles.join("")}</g>` +
     `</svg>`
   );
@@ -268,6 +265,21 @@ export function readFileAsText(file: File): Promise<string> {
 /** Convert a status to an operator-facing label. */
 export function statusLabel(s: SeatingPlanStatus): string {
   return s;
+}
+
+/**
+ * Resolve which /versions/{n} slot holds the plan's CURRENT version.
+ * Returns null when the plan has no version yet (nothing to preview).
+ * Falls back to 1 when the server payload predates the
+ * current_version_number field — versions are append-only and version 1
+ * always exists once current_version_id is set, so the fallback renders
+ * the oldest geometry rather than nothing.
+ */
+export function resolveCurrentVersionNumber(plan: SeatingPlan): number | null {
+  if (plan.current_version_id === null) return null;
+  const n = plan.current_version_number;
+  if (typeof n === "number" && Number.isInteger(n) && n >= 1) return n;
+  return 1;
 }
 
 // ---------------------------------------------------------------------------
@@ -648,20 +660,21 @@ function UploadSVGForm({ plan, venue }: { plan: SeatingPlan; venue: Venue }) {
 // ---------------------------------------------------------------------------
 
 function PlanPreview({ plan }: { plan: SeatingPlan }) {
-  // We rely on version 1 as a stable slot; when a new version is
-  // uploaded, the query is invalidated (see UploadSVGForm.onSuccess).
-  // A dedicated "current-version-by-plan" endpoint would be nicer but is
-  // not in scope for SEAT-E1. We fetch the highest-numbered version by
-  // requesting /versions/{n} incrementally until 404; for the initial
-  // wave we hard-code n=1 and rely on future SEAT-E waves to expose a
-  // /current shortcut.
+  // Fetch the plan's CURRENT version: the list payload carries
+  // current_version_number alongside current_version_id, so the preview
+  // addresses /versions/{n} directly instead of hard-coding n=1 (which
+  // silently rendered stale geometry once a second version was
+  // uploaded). When a new version is uploaded the plans list query is
+  // invalidated (see UploadSVGForm.onSuccess), the plan re-renders with
+  // the bumped number, and this query keys off it.
+  const versionN = resolveCurrentVersionNumber(plan);
   const query = useQuery<SeatingPlanVersionEnvelope, ApiError>({
-    queryKey: ["seating-plan-version", plan.id, 1],
-    enabled: plan.current_version_id !== null,
+    queryKey: ["seating-plan-version", plan.id, versionN],
+    enabled: versionN !== null,
     queryFn: () =>
       authedFetch<SeatingPlanVersionEnvelope>({
         method: "GET",
-        path: `/v1/seating-plans/${plan.id}/versions/1`,
+        path: `/v1/seating-plans/${plan.id}/versions/${versionN}`,
       }),
     retry: false,
     refetchOnWindowFocus: false,

@@ -217,35 +217,17 @@ func RenderBSSLayoutSVG(
 	// Pre-index geometry lookups. seat_key → geometry Seat for
 	// coordinates + category index; category_index → Category for the
 	// PriceCategory swatches.
-	seatGeomByKey := buildSeatKeyGeometryIndex(g)
+	seatGeomByKey := seatKeyIndex(g)
 	categoryByIndex := make(map[int]seating.Category, len(g.Categories))
 	for _, c := range g.Categories {
 		categoryByIndex[c.Index] = c
 	}
 
 	// Resolve category → tier by inspecting the live session_seats
-	// snapshot: any seat carrying a non-nil tier_id anchors its category
-	// bucket. First-seat-wins keeps resolution stable across renames.
-	tierByID := make(map[string]gen.TicketTierRow, len(tiers))
-	for _, t := range tiers {
-		tierByID[t.ID.String()] = t
-	}
-	categoryToTier := make(map[int]gen.TicketTierRow, len(g.Categories))
-	for _, s := range seats {
-		if s.TierID == nil {
-			continue
-		}
-		cat, ok := seatGeomByKey[s.SeatKey]
-		if !ok {
-			continue
-		}
-		if _, already := categoryToTier[cat.CategoryIndex]; already {
-			continue
-		}
-		if tier, ok := tierByID[s.TierID.String()]; ok {
-			categoryToTier[cat.CategoryIndex] = tier
-		}
-	}
+	// snapshot: any seat carrying a resolvable tier_id anchors its
+	// category bucket. First-seat-wins keeps resolution stable across
+	// renames (shared helper in types.go, also used by /schema).
+	categoryToTier := resolveCategoryTiers(g, seats, tiers, seatGeomByKey)
 
 	// Roll up per-category live counters. sold = seats currently in
 	// status="sold"; used = seats not in status="available" (i.e. any of
@@ -396,31 +378,6 @@ func statusToBSS(status string) int {
 	default:
 		return bssStateInaccessible
 	}
-}
-
-// buildSeatKeyGeometryIndex builds a seat_key → Seat lookup so the renderer
-// can join session_seats rows to their geometry coordinates without
-// walking the categories again.
-func buildSeatKeyGeometryIndex(g seating.Geometry) map[string]seating.Seat {
-	estimate := 0
-	for _, sec := range g.Sections {
-		for _, row := range sec.Rows {
-			estimate += len(row.Seats)
-		}
-	}
-	out := make(map[string]seating.Seat, estimate)
-	for _, sec := range g.Sections {
-		for _, row := range sec.Rows {
-			for _, seat := range row.Seats {
-				key := seat.Key
-				if key == "" {
-					key = seating.SeatKey(sec.Key, row.Key, seat.Number)
-				}
-				out[key] = seat
-			}
-		}
-	}
-	return out
 }
 
 // xmlAttrString returns the value formatted as a quoted, XML-escaped

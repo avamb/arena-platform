@@ -92,6 +92,15 @@ type Table struct {
 // seating_plan_versions.geometry (§5.3). DecorSVG carries every SVG
 // element that is not a seat / category swatch / legend, so the client
 // can render the backdrop.
+//
+// Note on DecorSVG fidelity: the importer re-serialises the decor
+// fragment deterministically, and attributes / element names from
+// namespaces outside the fixed knownNamespacePrefixes table (svg,
+// inkscape, sodipodi — see svg_import.go qname) are intentionally
+// dropped to their local names. Round-tripping arbitrary
+// author-supplied xmlns prefixes would make the serialisation (and
+// therefore geometry_checksum) non-deterministic. Stored checksums
+// depend on this behaviour — do not change it.
 type Geometry struct {
 	SchemaVersion int            `json:"schema_version"`
 	Canvas        Canvas         `json:"canvas"`
@@ -99,7 +108,10 @@ type Geometry struct {
 	Sections      []Section      `json:"sections"`
 	StandingZones []StandingZone `json:"standing_zones"`
 	Tables        []Table        `json:"tables"`
-	DecorSVG      string         `json:"decor_svg"`
+	// DecorSVG holds the deterministically re-serialised decor fragment;
+	// unknown-namespace attributes/elements are intentionally dropped for
+	// output determinism (stored checksums) — see svg_import.go qname.
+	DecorSVG string `json:"decor_svg"`
 }
 
 // SeatKey builds the canonical "<section>|<row>|<number>" identifier

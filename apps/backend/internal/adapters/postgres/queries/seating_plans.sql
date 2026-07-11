@@ -26,12 +26,18 @@ INSERT INTO seating_plans (
 VALUES ($1, $2, $3, $4, $5, $6, $7)
 RETURNING id, venue_id, owner_org_id, name, plan_type, visibility, status,
           source_seating_plan_id, current_version_id,
-          created_at, updated_at, deleted_at;
+          created_at, updated_at, deleted_at,
+          (SELECT v.version_number
+           FROM   seating_plan_versions v
+           WHERE  v.id = seating_plans.current_version_id) AS current_version_number;
 
 -- name: GetSeatingPlanByID :one
 SELECT id, venue_id, owner_org_id, name, plan_type, visibility, status,
        source_seating_plan_id, current_version_id,
-       created_at, updated_at, deleted_at
+       created_at, updated_at, deleted_at,
+       (SELECT v.version_number
+        FROM   seating_plan_versions v
+        WHERE  v.id = seating_plans.current_version_id) AS current_version_number
 FROM   seating_plans
 WHERE  id = $1
   AND  deleted_at IS NULL;
@@ -39,7 +45,10 @@ WHERE  id = $1
 -- name: GetSeatingPlanByIDForOwner :one
 SELECT id, venue_id, owner_org_id, name, plan_type, visibility, status,
        source_seating_plan_id, current_version_id,
-       created_at, updated_at, deleted_at
+       created_at, updated_at, deleted_at,
+       (SELECT v.version_number
+        FROM   seating_plan_versions v
+        WHERE  v.id = seating_plans.current_version_id) AS current_version_number
 FROM   seating_plans
 WHERE  id = $1
   AND  owner_org_id = $2
@@ -48,7 +57,10 @@ WHERE  id = $1
 -- name: ListSeatingPlansByOwner :many
 SELECT id, venue_id, owner_org_id, name, plan_type, visibility, status,
        source_seating_plan_id, current_version_id,
-       created_at, updated_at, deleted_at
+       created_at, updated_at, deleted_at,
+       (SELECT v.version_number
+        FROM   seating_plan_versions v
+        WHERE  v.id = seating_plans.current_version_id) AS current_version_number
 FROM   seating_plans
 WHERE  owner_org_id = $1
   AND  deleted_at IS NULL
@@ -57,7 +69,10 @@ ORDER  BY created_at DESC, id DESC;
 -- name: ListSeatingPlansByVenue :many
 SELECT id, venue_id, owner_org_id, name, plan_type, visibility, status,
        source_seating_plan_id, current_version_id,
-       created_at, updated_at, deleted_at
+       created_at, updated_at, deleted_at,
+       (SELECT v.version_number
+        FROM   seating_plan_versions v
+        WHERE  v.id = seating_plans.current_version_id) AS current_version_number
 FROM   seating_plans
 WHERE  venue_id = $1
   AND  deleted_at IS NULL
@@ -75,7 +90,10 @@ WHERE  id = $1
   AND  deleted_at IS NULL
 RETURNING id, venue_id, owner_org_id, name, plan_type, visibility, status,
           source_seating_plan_id, current_version_id,
-          created_at, updated_at, deleted_at;
+          created_at, updated_at, deleted_at,
+          (SELECT v.version_number
+           FROM   seating_plan_versions v
+           WHERE  v.id = seating_plans.current_version_id) AS current_version_number;
 
 -- name: SetSeatingPlanCurrentVersion :one
 UPDATE seating_plans
@@ -86,7 +104,10 @@ WHERE  id = $1
   AND  deleted_at IS NULL
 RETURNING id, venue_id, owner_org_id, name, plan_type, visibility, status,
           source_seating_plan_id, current_version_id,
-          created_at, updated_at, deleted_at;
+          created_at, updated_at, deleted_at,
+          (SELECT v.version_number
+           FROM   seating_plan_versions v
+           WHERE  v.id = seating_plans.current_version_id) AS current_version_number;
 
 -- name: ArchiveSeatingPlan :one
 UPDATE seating_plans
@@ -97,7 +118,10 @@ WHERE  id = $1
   AND  deleted_at IS NULL
 RETURNING id, venue_id, owner_org_id, name, plan_type, visibility, status,
           source_seating_plan_id, current_version_id,
-          created_at, updated_at, deleted_at;
+          created_at, updated_at, deleted_at,
+          (SELECT v.version_number
+           FROM   seating_plan_versions v
+           WHERE  v.id = seating_plans.current_version_id) AS current_version_number;
 
 -- name: SoftDeleteSeatingPlan :one
 UPDATE seating_plans
@@ -108,7 +132,10 @@ WHERE  id = $1
   AND  deleted_at IS NULL
 RETURNING id, venue_id, owner_org_id, name, plan_type, visibility, status,
           source_seating_plan_id, current_version_id,
-          created_at, updated_at, deleted_at;
+          created_at, updated_at, deleted_at,
+          (SELECT v.version_number
+           FROM   seating_plan_versions v
+           WHERE  v.id = seating_plans.current_version_id) AS current_version_number;
 
 -- ─────────────────────────────────────────────────────────────────────
 -- seating_plan_versions
@@ -130,6 +157,17 @@ SELECT id, seating_plan_id, version_number, geometry, geometry_checksum,
        locked_at, created_at
 FROM   seating_plan_versions
 WHERE  id = $1;
+
+-- name: GetSeatingPlanVersionByNumber :one
+-- Fetches a single version by its 1-based positional number scoped to
+-- the plan. Uses the seating_plan_versions_plan_recent index — replaces
+-- the list-and-scan pattern in the GET /versions/{n} handler.
+SELECT id, seating_plan_id, version_number, geometry, geometry_checksum,
+       svg_asset_media_id, capacity_seated, capacity_standing,
+       locked_at, created_at
+FROM   seating_plan_versions
+WHERE  seating_plan_id = $1
+  AND  version_number  = $2;
 
 -- name: ListSeatingPlanVersionsByPlan :many
 SELECT id, seating_plan_id, version_number, geometry, geometry_checksum,

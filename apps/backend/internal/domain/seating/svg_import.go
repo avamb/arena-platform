@@ -735,6 +735,14 @@ func writeElement(buf *bytes.Buffer, n *xmlNode, skip map[*xmlNode]bool) {
 	buf.WriteByte('>')
 }
 
+// qname renders an xml.Name for re-serialisation into decor_svg.
+//
+// NOTE: attribute / element names from namespaces outside the fixed
+// knownNamespacePrefixes table are intentionally dropped to their bare
+// local name (the namespace qualification is discarded). Round-tripping
+// arbitrary author-supplied xmlns prefixes would make the decor_svg
+// output — and therefore the stored geometry checksums — non-
+// deterministic. Do not change this without a checksum migration.
 func qname(name xml.Name) string {
 	if name.Space == "" {
 		return name.Local

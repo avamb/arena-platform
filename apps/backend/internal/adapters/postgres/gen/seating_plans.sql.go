@@ -24,19 +24,25 @@ import (
 // non-nil once at least one seating_plan_versions row has been created and
 // designated the plan's current version; DeletedAt is non-nil for
 // soft-deleted rows (write queries filter these out at the SQL layer).
+// CurrentVersionNumber is the version_number of the row CurrentVersionID
+// points at (resolved via a scalar subquery in every seating_plans query);
+// nil while CurrentVersionID is nil. Exposed so API consumers can address
+// the current version through GET /v1/seating-plans/{id}/versions/{n}
+// without probing.
 type SeatingPlanRow struct {
-	ID                  uuid.UUID  `json:"id"`
-	VenueID             uuid.UUID  `json:"venue_id"`
-	OwnerOrgID          uuid.UUID  `json:"owner_org_id"`
-	Name                string     `json:"name"`
-	PlanType            string     `json:"plan_type"`
-	Visibility          string     `json:"visibility"`
-	Status              string     `json:"status"`
-	SourceSeatingPlanID *uuid.UUID `json:"source_seating_plan_id"`
-	CurrentVersionID    *uuid.UUID `json:"current_version_id"`
-	CreatedAt           time.Time  `json:"created_at"`
-	UpdatedAt           time.Time  `json:"updated_at"`
-	DeletedAt           *time.Time `json:"deleted_at"`
+	ID                   uuid.UUID  `json:"id"`
+	VenueID              uuid.UUID  `json:"venue_id"`
+	OwnerOrgID           uuid.UUID  `json:"owner_org_id"`
+	Name                 string     `json:"name"`
+	PlanType             string     `json:"plan_type"`
+	Visibility           string     `json:"visibility"`
+	Status               string     `json:"status"`
+	SourceSeatingPlanID  *uuid.UUID `json:"source_seating_plan_id"`
+	CurrentVersionID     *uuid.UUID `json:"current_version_id"`
+	CreatedAt            time.Time  `json:"created_at"`
+	UpdatedAt            time.Time  `json:"updated_at"`
+	DeletedAt            *time.Time `json:"deleted_at"`
+	CurrentVersionNumber *int32     `json:"current_version_number"`
 }
 
 // scanSeatingPlanRow scans a single seating_plans row.
@@ -57,6 +63,7 @@ func scanSeatingPlanRow(row interface {
 		&p.CreatedAt,
 		&p.UpdatedAt,
 		&p.DeletedAt,
+		&p.CurrentVersionNumber,
 	)
 	return p, err
 }
@@ -118,7 +125,10 @@ INSERT INTO seating_plans (
 VALUES ($1, $2, $3, $4, $5, $6, $7)
 RETURNING id, venue_id, owner_org_id, name, plan_type, visibility, status,
           source_seating_plan_id, current_version_id,
-          created_at, updated_at, deleted_at`
+          created_at, updated_at, deleted_at,
+          (SELECT v.version_number
+           FROM   seating_plan_versions v
+           WHERE  v.id = seating_plans.current_version_id) AS current_version_number`
 
 // InsertSeatingPlan creates a new active seating_plans row. Pass
 // sourceSeatingPlanID = nil for originals; set it to the source plan id for
@@ -145,7 +155,10 @@ func (q *Queries) InsertSeatingPlan(
 const getSeatingPlanByID = `-- name: GetSeatingPlanByID :one
 SELECT id, venue_id, owner_org_id, name, plan_type, visibility, status,
        source_seating_plan_id, current_version_id,
-       created_at, updated_at, deleted_at
+       created_at, updated_at, deleted_at,
+       (SELECT v.version_number
+        FROM   seating_plan_versions v
+        WHERE  v.id = seating_plans.current_version_id) AS current_version_number
 FROM   seating_plans
 WHERE  id = $1
   AND  deleted_at IS NULL`
@@ -165,7 +178,10 @@ func (q *Queries) GetSeatingPlanByID(ctx context.Context, id uuid.UUID) (Seating
 const getSeatingPlanByIDForOwner = `-- name: GetSeatingPlanByIDForOwner :one
 SELECT id, venue_id, owner_org_id, name, plan_type, visibility, status,
        source_seating_plan_id, current_version_id,
-       created_at, updated_at, deleted_at
+       created_at, updated_at, deleted_at,
+       (SELECT v.version_number
+        FROM   seating_plan_versions v
+        WHERE  v.id = seating_plans.current_version_id) AS current_version_number
 FROM   seating_plans
 WHERE  id = $1
   AND  owner_org_id = $2
@@ -186,7 +202,10 @@ func (q *Queries) GetSeatingPlanByIDForOwner(ctx context.Context, id, ownerOrgID
 const listSeatingPlansByOwner = `-- name: ListSeatingPlansByOwner :many
 SELECT id, venue_id, owner_org_id, name, plan_type, visibility, status,
        source_seating_plan_id, current_version_id,
-       created_at, updated_at, deleted_at
+       created_at, updated_at, deleted_at,
+       (SELECT v.version_number
+        FROM   seating_plan_versions v
+        WHERE  v.id = seating_plans.current_version_id) AS current_version_number
 FROM   seating_plans
 WHERE  owner_org_id = $1
   AND  deleted_at IS NULL
@@ -219,7 +238,10 @@ func (q *Queries) ListSeatingPlansByOwner(ctx context.Context, ownerOrgID uuid.U
 const listSeatingPlansByVenue = `-- name: ListSeatingPlansByVenue :many
 SELECT id, venue_id, owner_org_id, name, plan_type, visibility, status,
        source_seating_plan_id, current_version_id,
-       created_at, updated_at, deleted_at
+       created_at, updated_at, deleted_at,
+       (SELECT v.version_number
+        FROM   seating_plan_versions v
+        WHERE  v.id = seating_plans.current_version_id) AS current_version_number
 FROM   seating_plans
 WHERE  venue_id = $1
   AND  deleted_at IS NULL
@@ -262,7 +284,10 @@ WHERE  id = $1
   AND  deleted_at IS NULL
 RETURNING id, venue_id, owner_org_id, name, plan_type, visibility, status,
           source_seating_plan_id, current_version_id,
-          created_at, updated_at, deleted_at`
+          created_at, updated_at, deleted_at,
+          (SELECT v.version_number
+           FROM   seating_plan_versions v
+           WHERE  v.id = seating_plans.current_version_id) AS current_version_number`
 
 // UpdateSeatingPlan replaces every mutable metadata column of an active
 // owned plan with the supplied final values (the HTTP layer merges the PATCH
@@ -293,7 +318,10 @@ WHERE  id = $1
   AND  deleted_at IS NULL
 RETURNING id, venue_id, owner_org_id, name, plan_type, visibility, status,
           source_seating_plan_id, current_version_id,
-          created_at, updated_at, deleted_at`
+          created_at, updated_at, deleted_at,
+          (SELECT v.version_number
+           FROM   seating_plan_versions v
+           WHERE  v.id = seating_plans.current_version_id) AS current_version_number`
 
 // SetSeatingPlanCurrentVersion updates the current_version_id pointer on an
 // owned active plan. Call this after inserting a new seating_plan_versions
@@ -321,7 +349,10 @@ WHERE  id = $1
   AND  deleted_at IS NULL
 RETURNING id, venue_id, owner_org_id, name, plan_type, visibility, status,
           source_seating_plan_id, current_version_id,
-          created_at, updated_at, deleted_at`
+          created_at, updated_at, deleted_at,
+          (SELECT v.version_number
+           FROM   seating_plan_versions v
+           WHERE  v.id = seating_plans.current_version_id) AS current_version_number`
 
 // ArchiveSeatingPlan flips status to 'archived' on an owned active plan.
 // Archived plans still exist (rows are not soft-deleted) so live sessions
@@ -344,7 +375,10 @@ WHERE  id = $1
   AND  deleted_at IS NULL
 RETURNING id, venue_id, owner_org_id, name, plan_type, visibility, status,
           source_seating_plan_id, current_version_id,
-          created_at, updated_at, deleted_at`
+          created_at, updated_at, deleted_at,
+          (SELECT v.version_number
+           FROM   seating_plan_versions v
+           WHERE  v.id = seating_plans.current_version_id) AS current_version_number`
 
 // SoftDeleteSeatingPlan marks an owned plan as deleted. Returns
 // pgx.ErrNoRows when the row does not exist, belongs to another org, or
@@ -403,6 +437,28 @@ WHERE  id = $1`
 // authorization is applied at the handler layer via the parent plan.
 func (q *Queries) GetSeatingPlanVersionByID(ctx context.Context, id uuid.UUID) (SeatingPlanVersionRow, error) {
 	row := q.db.QueryRow(ctx, getSeatingPlanVersionByID, id)
+	return scanSeatingPlanVersionRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GetSeatingPlanVersionByNumber
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getSeatingPlanVersionByNumber = `-- name: GetSeatingPlanVersionByNumber :one
+SELECT id, seating_plan_id, version_number, geometry, geometry_checksum,
+       svg_asset_media_id, capacity_seated, capacity_standing,
+       locked_at, created_at
+FROM   seating_plan_versions
+WHERE  seating_plan_id = $1
+  AND  version_number  = $2`
+
+// GetSeatingPlanVersionByNumber fetches a single version by its 1-based
+// positional number scoped to the plan. Uses the
+// seating_plan_versions_plan_recent index — replaces the list-and-scan
+// pattern in the GET /v1/seating-plans/{id}/versions/{n} handler. Returns
+// pgx.ErrNoRows when the plan has no version with that number.
+func (q *Queries) GetSeatingPlanVersionByNumber(ctx context.Context, seatingPlanID uuid.UUID, versionNumber int32) (SeatingPlanVersionRow, error) {
+	row := q.db.QueryRow(ctx, getSeatingPlanVersionByNumber, seatingPlanID, versionNumber)
 	return scanSeatingPlanVersionRow(row)
 }
 

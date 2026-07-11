@@ -63,8 +63,12 @@ func (h *Handler) HandleListSeatingPlansByVenue(w http.ResponseWriter, r *http.R
 // ─────────────────────────────────────────────────────────────────────────────
 
 // HandleCreateSeatingPlan serves the create endpoint. The request body carries
-// owner_org_id (required — the caller's active organization), name, and
-// plan_type; visibility defaults to "private" and status to "draft".
+// owner_org_id (required by the openapi schema — the caller's active
+// organization), name, and plan_type; visibility defaults to "private" and
+// status to "draft". owner_org_id is NOT trusted from the body alone: it must
+// name an organization the authenticated actor holds an active membership in
+// (see authz.go), otherwise the request is rejected with 403 — an operator
+// must not be able to park plans under a foreign org.
 func (h *Handler) HandleCreateSeatingPlan(w http.ResponseWriter, r *http.Request) {
 	if h.queries == nil || h.pool == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
@@ -89,6 +93,22 @@ func (h *Handler) HandleCreateSeatingPlan(w http.ResponseWriter, r *http.Request
 	ownerOrgID, err := uuid.Parse(*ownerOrgStr)
 	if err != nil {
 		invalidField(w, r, "owner_org_id", "a UUID string")
+		return
+	}
+	member, err := actorIsMemberOfOrg(ctx, h.queries, ownerOrgID)
+	if err != nil {
+		h.logger.Error("seating_plan: create membership lookup failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"seating_plan.create_failed", "failed to create seating plan", r,
+		))
+		return
+	}
+	if !member {
+		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelopeWithDetails(
+			"seating_plan.owner_org_forbidden",
+			"owner_org_id must be an organization the caller belongs to", r,
+			map[string]any{"field": "owner_org_id"},
+		))
 		return
 	}
 	name, _, ok := stringField(fields, "name")
@@ -282,6 +302,25 @@ func (h *Handler) HandleUpdateSeatingPlan(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Ownership gate (guardrail #13): only the owning org may mutate. The
+	// actor's org scope is its active memberships (authz.go); a caller
+	// outside existing.OwnerOrgID gets the same 404 as a missing plan so
+	// foreign plan ids do not leak existence.
+	member, err := actorIsMemberOfOrg(ctx, qtx, existing.OwnerOrgID)
+	if err != nil {
+		h.logger.Error("seating_plan: update membership lookup failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"seating_plan.update_failed", "failed to update seating plan", r,
+		))
+		return
+	}
+	if !member {
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+			"seating_plan.not_found", "seating plan not found", r,
+		))
+		return
+	}
+
 	finalName := existing.Name
 	if namePresent && name != nil {
 		finalName = *name
@@ -365,6 +404,25 @@ func (h *Handler) HandleForkSeatingPlan(w http.ResponseWriter, r *http.Request) 
 		invalidField(w, r, "owner_org_id", "a UUID string")
 		return
 	}
+	// The fork target org is NOT trusted from the body alone: it must be an
+	// organization the authenticated actor holds an active membership in
+	// (authz.go), otherwise a caller could fork plans into a foreign org.
+	member, err := actorIsMemberOfOrg(ctx, h.queries, ownerOrgID)
+	if err != nil {
+		h.logger.Error("seating_plan: fork membership lookup failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"seating_plan.fork_failed", "failed to fork seating plan", r,
+		))
+		return
+	}
+	if !member {
+		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelopeWithDetails(
+			"seating_plan.owner_org_forbidden",
+			"owner_org_id must be an organization the caller belongs to", r,
+			map[string]any{"field": "owner_org_id"},
+		))
+		return
+	}
 	// venue_id and name are both optional; fall back to the source values.
 	var venueOverride *uuid.UUID
 	if s, _, sOK := stringField(fields, "venue_id"); sOK && s != nil {
@@ -405,6 +463,10 @@ func (h *Handler) HandleForkSeatingPlan(w http.ResponseWriter, r *http.Request) 
 		))
 		return
 	}
+	// Own-plan guard: ownerOrgID has been validated above as one of the
+	// actor's orgs, so this comparison rejects forking a plan the acting
+	// organization already owns (there is nothing to fork — edit it or
+	// create a new version instead).
 	if source.OwnerOrgID == ownerOrgID {
 		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 			"seating_plan.fork_own_plan",

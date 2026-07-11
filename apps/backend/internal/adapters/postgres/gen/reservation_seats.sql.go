@@ -80,6 +80,29 @@ func (q *Queries) DeleteReservationSeats(ctx context.Context, reservationID uuid
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// DeleteReservationSeatsBySession
+// ─────────────────────────────────────────────────────────────────────────────
+
+const deleteReservationSeatsBySession = `-- name: DeleteReservationSeatsBySession :execrows
+DELETE FROM reservation_seats
+WHERE  session_seat_id IN (
+    SELECT id FROM session_seats WHERE session_id = $1
+)`
+
+// DeleteReservationSeatsBySession removes every reservation_seats link
+// whose seat belongs to the given session. Called on the SEAT-B2 rebind
+// path (after the zero-reservations / zero-tickets guardrail) immediately
+// before DeleteSessionSeatsBySession so the FK from reservation_seats to
+// session_seats never dangles. Returns the number of rows deleted.
+func (q *Queries) DeleteReservationSeatsBySession(ctx context.Context, sessionID uuid.UUID) (int64, error) {
+	tag, err := q.db.Exec(ctx, deleteReservationSeatsBySession, sessionID)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CountReservationSeats
 // ─────────────────────────────────────────────────────────────────────────────
 

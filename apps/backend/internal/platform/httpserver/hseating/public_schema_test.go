@@ -58,11 +58,12 @@ func TestSeatB3_MatchesETag(t *testing.T) {
 	}
 }
 
-// TestSeatB3_BuildSeatKeyCategoryIndex confirms the geometry walker maps
-// every seat.key to its category_index, and falls back to a synthesised
-// "<section>|<row>|<number>" key when the imported version omits seat.key
-// (e.g. hand-authored geometry payloads that predate the canonicaliser).
-func TestSeatB3_BuildSeatKeyCategoryIndex(t *testing.T) {
+// TestSeatB3_SeatKeyIndex confirms the shared geometry walker maps every
+// seat.key to its Seat (carrying the category_index), and falls back to a
+// synthesised "<section>|<row>|<number>" key when the imported version
+// omits seat.key (e.g. hand-authored geometry payloads that predate the
+// canonicaliser).
+func TestSeatB3_SeatKeyIndex(t *testing.T) {
 	t.Parallel()
 
 	g := seating.Geometry{
@@ -86,11 +87,11 @@ func TestSeatB3_BuildSeatKeyCategoryIndex(t *testing.T) {
 			},
 		},
 	}
-	idx := buildSeatKeyCategoryIndex(g)
-	if got, want := idx["parter|1|5"], 1; got != want {
+	idx := seatKeyIndex(g)
+	if got, want := idx["parter|1|5"].CategoryIndex, 1; got != want {
 		t.Fatalf("explicit seat.key mapping = %d, want %d", got, want)
 	}
-	if got, want := idx["parter|1|7"], 2; got != want {
+	if got, want := idx["parter|1|7"].CategoryIndex, 2; got != want {
 		t.Fatalf("fallback seat.key mapping = %d, want %d", got, want)
 	}
 	if len(idx) != 2 {

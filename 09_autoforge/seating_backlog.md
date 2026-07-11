@@ -15,7 +15,7 @@ both modes must coexist per session via `admission_mode`.
 
 **First production venue: Palác Akropolis (Prague).** Its author-format
 scheme already exists at
-`06_venue_maps_and_seating/Palac_Akropolis.svg` (279 seats; sections
+`06_venue_maps_and_seating/Palac_Akropolis.svg` (260 seats — the SVG contains 279 <circle> elements, of which 15 are PriceCategory swatches and 4 are Legend swatches; sections
 `Parter`, `Balcony left`, `Balcony center`, `Balcony right`; 15 price
 categories `First`…`Fifteenth`; valid `PriceCategory`/`Legend` groups).
 It is the acceptance fixture for the whole wave. The source PDF from the
@@ -327,7 +327,7 @@ types for the §5.3 JSON, canonicalization + checksum, and the §6 SVG
 parser/validator built on `encoding/xml`. Table-driven tests: the full
 rule list of §6, one fixture per error class, and the **Palác Akropolis
 acceptance fixture** — copy `06_venue_maps_and_seating/Palac_Akropolis.svg`
-to testdata; import must yield exactly **279 seats**, sections
+to testdata; import must yield exactly **260 seats** (279 circles minus 15 category and 4 legend swatches), sections
 `Parter`, `Balcony left`, `Balcony center`, `Balcony right`, **15
 categories**, zero validation errors, and a stable checksum across two
 runs (determinism).
@@ -366,7 +366,8 @@ with `{seating_plan_version_id, admission_mode, category_tier_map:
 - **materializes `session_seats`** (one row per seat, status
   `available`, tier from the map) in a single transaction;
 - sets `locked_at` on the version (first use);
-- recomputes `sessions.capacity_total` = seated capacity (reuse the
+- recomputes `sessions.capacity_total` = seated capacity, plus the
+  plan's standing capacity when `admission_mode = 'hybrid'` (reuse the
   documented capacity-propagation hook from `0016_sessions.sql:58`);
 - rebinding is allowed only while the session has zero
   reservations/tickets; otherwise 409.
@@ -567,7 +568,7 @@ presets.
 
 ## 9. Acceptance for the whole wave (Definition of Done)
 
-1. `Palac_Akropolis.svg` imports with zero errors: 279 seats, 4
+1. `Palac_Akropolis.svg` imports with zero errors: 260 seats, 4
    sections, 15 categories; checksum deterministic.
 2. Full API E2E (no UI needed): create plan → upload SVG version → bind
    to a session with a category→tier map → public schema + seat-status

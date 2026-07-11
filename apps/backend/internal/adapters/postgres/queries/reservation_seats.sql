@@ -35,6 +35,17 @@ ORDER  BY ss.seat_key ASC, ss.id ASC;
 DELETE FROM reservation_seats
 WHERE  reservation_id = $1;
 
+-- name: DeleteReservationSeatsBySession :execrows
+-- Removes every reservation_seats link whose seat belongs to the given
+-- session. Called on the SEAT-B2 rebind path (after the
+-- zero-reservations / zero-tickets guardrail) immediately before
+-- DeleteSessionSeatsBySession so the FK from reservation_seats to
+-- session_seats never dangles.
+DELETE FROM reservation_seats
+WHERE  session_seat_id IN (
+    SELECT id FROM session_seats WHERE session_id = $1
+);
+
 -- name: CountReservationSeats :one
 -- Returns the number of seats currently linked to a reservation.
 SELECT COUNT(*)::bigint AS count

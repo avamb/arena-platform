@@ -44,6 +44,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -167,10 +168,16 @@ func (h *Handler) HandleBindSessionSeating(w http.ResponseWriter, r *http.Reques
 	defer func() { _ = tx.Rollback(ctx) }()
 	qtx := h.queries.WithTx(tx)
 
-	// Load the session binding scoped by (id, event_id). The GA sanity
-	// projection returns the current admission_mode + seating_plan_version_id
-	// which drives the rebind guardrail below.
-	binding, err := qtx.GetSessionSeatingBinding(ctx, sessionID, eventID)
+	// Load the session binding scoped by (id, event_id) and take a row
+	// lock on the sessions row for the remainder of the transaction. The
+	// seated-reservation path locks the same row (via its
+	// IncrementSessionSeatStatusVersion UPDATE), so the FOR UPDATE here
+	// serializes binds against in-flight seat holds and closes the TOCTOU
+	// window between the rebind zero-reservations check below and the
+	// session_seats wipe. The projection also returns the current
+	// admission_mode + seating_plan_version_id which drives the rebind
+	// guardrail.
+	binding, err := qtx.GetSessionSeatingBindingForUpdate(ctx, sessionID, eventID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
@@ -272,23 +279,14 @@ func (h *Handler) HandleBindSessionSeating(w http.ResponseWriter, r *http.Reques
 	// seat_key) UNIQUE — leaving stale rows around risks silent capacity
 	// drift on the assigned_seats/hybrid inventory paths.
 	if rebound {
-		if _, err := tx.Exec(ctx,
-			`DELETE FROM reservation_seats
-			 WHERE session_seat_id IN (
-			     SELECT id FROM session_seats WHERE session_id = $1
-			 )`,
-			sessionID,
-		); err != nil {
+		if _, err := qtx.DeleteReservationSeatsBySession(ctx, sessionID); err != nil {
 			h.logger.Error("seating: bind reservation_seats wipe failed", slog.String("error", err.Error()))
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"seating.bind_failed", "failed to prepare session for rebind", r,
 			))
 			return
 		}
-		if _, err := tx.Exec(ctx,
-			`DELETE FROM session_seats WHERE session_id = $1`,
-			sessionID,
-		); err != nil {
+		if _, err := qtx.DeleteSessionSeatsBySession(ctx, sessionID); err != nil {
 			h.logger.Error("seating: bind session_seats wipe failed", slog.String("error", err.Error()))
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"seating.bind_failed", "failed to prepare session for rebind", r,
@@ -298,9 +296,16 @@ func (h *Handler) HandleBindSessionSeating(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Materialize one session_seats row per geometry seat under the same
-	// transaction. seat_key is copied verbatim from the geometry
-	// (§5.3 stable identifier); tier_id comes from the resolved map.
-	materialized := 0
+	// transaction, batched into a single multi-row INSERT (unnest arrays)
+	// so a large plan costs one round-trip instead of one per seat.
+	// seat_key is copied verbatim from the geometry (§5.3 stable
+	// identifier); tier_id comes from the resolved map.
+	seatCount := geometry.SeatCount()
+	seatKeys := make([]string, 0, seatCount)
+	sectorNames := make([]string, 0, seatCount)
+	rowNames := make([]string, 0, seatCount)
+	seatNumbers := make([]string, 0, seatCount)
+	tierIDs := make([]*string, 0, seatCount)
 	for _, section := range geometry.Sections {
 		for _, row := range section.Rows {
 			for _, seat := range row.Seats {
@@ -317,24 +322,30 @@ func (h *Handler) HandleBindSessionSeating(w http.ResponseWriter, r *http.Reques
 					))
 					return
 				}
-				tierPtr := tierID // copy so &tierPtr is stable per iteration
-				if _, err := qtx.InsertSessionSeat(
-					ctx, sessionID,
-					seat.Key, section.Name, row.Name, seat.Number,
-					&tierPtr,
-				); err != nil {
-					h.logger.Error("seating: bind seat materialize failed",
-						slog.String("error", err.Error()),
-						slog.String("seat_key", seat.Key),
-					)
-					httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-						"seating.bind_failed", "failed to materialize session seats", r,
-					))
-					return
-				}
-				materialized++
+				tierStr := tierID.String()
+				seatKeys = append(seatKeys, seat.Key)
+				sectorNames = append(sectorNames, section.Name)
+				rowNames = append(rowNames, row.Name)
+				seatNumbers = append(seatNumbers, seat.Number)
+				tierIDs = append(tierIDs, &tierStr)
 			}
 		}
+	}
+	materialized := 0
+	if len(seatKeys) > 0 {
+		inserted, err := qtx.InsertSessionSeats(
+			ctx, sessionID, seatKeys, sectorNames, rowNames, seatNumbers, tierIDs,
+		)
+		if err != nil {
+			h.logger.Error("seating: bind seat materialize failed",
+				slog.String("error", err.Error()),
+			)
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"seating.bind_failed", "failed to materialize session seats", r,
+			))
+			return
+		}
+		materialized = int(inserted)
 	}
 
 	// Lock the version's locked_at on first bind (idempotent for later
@@ -376,19 +387,22 @@ func (h *Handler) HandleBindSessionSeating(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Stringify the resolved category → tier map once; the same map feeds
+	// both the audit metadata and the response envelope.
+	catStr := make(map[string]string, len(resolvedMap))
+	for idx, id := range resolvedMap {
+		catStr[strconv.Itoa(idx)] = id.String()
+	}
+
 	// Audit event on the session resource. The seating_plan_version_id and
 	// materialization counts land in metadata so a post-hoc trace of the
 	// binding is possible without walking session_seats.
-	auditMap := map[string]string{}
-	for k, v := range resolvedMap {
-		auditMap[strconv.Itoa(k)] = v.String()
-	}
-	if err := h.writeBindAuditTx(ctx, tx, r, sessionID, map[string]any{
+	if err := h.writeSessionAuditTx(ctx, tx, r, "v1.session.seating.bind", sessionID, map[string]any{
 		"event_id":                eventID.String(),
 		"seating_plan_version_id": planVersionID.String(),
 		"admission_mode":          req.AdmissionMode,
 		"materialized_seats":      materialized,
-		"category_tier_map":       auditMap,
+		"category_tier_map":       catStr,
 		"rebound":                 rebound,
 		"capacity_total":          newCapacity,
 	}); err != nil {
@@ -404,10 +418,6 @@ func (h *Handler) HandleBindSessionSeating(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	catStr := make(map[string]string, len(resolvedMap))
-	for idx, id := range resolvedMap {
-		catStr[strconv.Itoa(idx)] = id.String()
-	}
 	createdStr := make([]string, 0, len(createdTierIDs))
 	for _, id := range createdTierIDs {
 		createdStr = append(createdStr, id.String())
@@ -680,12 +690,7 @@ func sortedInts(set map[int]bool) []int {
 	for k := range set {
 		out = append(out, k)
 	}
-	// tiny slice — insertion sort keeps this allocation-free.
-	for i := 1; i < len(out); i++ {
-		for j := i; j > 0 && out[j-1] > out[j]; j-- {
-			out[j-1], out[j] = out[j], out[j-1]
-		}
-	}
+	sort.Ints(out)
 	return out
 }
 
@@ -693,12 +698,17 @@ func sortedInts(set map[int]bool) []int {
 // Audit
 // ─────────────────────────────────────────────────────────────────────────────
 
-// writeBindAuditTx emits the audit trail entry for a successful bind under
-// the caller's transaction.
-func (h *Handler) writeBindAuditTx(
+// writeSessionAuditTx emits a session-scoped audit trail entry under the
+// caller's transaction. It is the session-resource counterpart of the
+// plan-scoped writeAuditTx (plans.go) and is shared by the SEAT-B2 bind
+// endpoint ("v1.session.seating.bind") and the SEAT-B4 seat block /
+// unblock endpoint ("v1.session.seats.block" / ".unblock") — callers pass
+// the action explicitly.
+func (h *Handler) writeSessionAuditTx(
 	ctx context.Context,
 	tx pgx.Tx,
 	r *http.Request,
+	action string,
 	sessionID uuid.UUID,
 	metadata map[string]any,
 ) error {
@@ -710,7 +720,7 @@ func (h *Handler) writeBindAuditTx(
 		OccurredAt:   time.Now().UTC(),
 		ActorType:    "user",
 		ActorID:      actor.ID,
-		Action:       "v1.session.seating.bind",
+		Action:       action,
 		ResourceType: "session",
 		ResourceID:   sessionID.String(),
 		RequestID:    logging.RequestID(ctx),
@@ -719,7 +729,7 @@ func (h *Handler) writeBindAuditTx(
 		Metadata:     metadata,
 	}
 	if err := h.audit.WriteTx(ctx, tx, ev); err != nil {
-		h.logger.Error("seating: bind audit write failed", slog.String("error", err.Error()))
+		h.logger.Error("seating: session audit write failed", slog.String("error", err.Error()))
 		return err
 	}
 	return nil

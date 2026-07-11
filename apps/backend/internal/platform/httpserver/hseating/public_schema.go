@@ -26,7 +26,6 @@ package hseating
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -107,8 +106,9 @@ func (h *Handler) HandleGetPublicSessionSchema(w http.ResponseWriter, r *http.Re
 	}
 
 	// Resolve category -> tier by inspecting session_seats: any seat that
-	// carries a non-nil tier_id anchors the category. First-seat-wins
-	// keeps the resolution stable across renames.
+	// carries a resolvable tier_id anchors the category. First-seat-wins
+	// keeps the resolution stable across renames (shared helper in
+	// types.go, also used by the BSS layout.svg renderer).
 	seats, err := h.queries.ListSessionSeats(ctx, sessionID)
 	if err != nil {
 		h.logger.Error("seating_public: list session seats failed",
@@ -119,21 +119,6 @@ func (h *Handler) HandleGetPublicSessionSchema(w http.ResponseWriter, r *http.Re
 			"event_session.schema_failed", "failed to load session seats", r,
 		))
 		return
-	}
-	seatKeyToCategory := buildSeatKeyCategoryIndex(geom)
-	categoryToTier := make(map[int]string, len(geom.Categories))
-	for _, seat := range seats {
-		if seat.TierID == nil {
-			continue
-		}
-		catIdx, found := seatKeyToCategory[seat.SeatKey]
-		if !found {
-			continue
-		}
-		if _, already := categoryToTier[catIdx]; already {
-			continue
-		}
-		categoryToTier[catIdx] = seat.TierID.String()
 	}
 
 	// Load tiers for the session so we can attach names + prices to the
@@ -149,10 +134,7 @@ func (h *Handler) HandleGetPublicSessionSchema(w http.ResponseWriter, r *http.Re
 		))
 		return
 	}
-	tierByID := make(map[string]gen.TicketTierRow, len(tiers))
-	for _, t := range tiers {
-		tierByID[t.ID.String()] = t
-	}
+	categoryToTier := resolveCategoryTiers(geom, seats, tiers, seatKeyIndex(geom))
 
 	categories := make([]map[string]any, 0, len(geom.Categories))
 	for _, cat := range geom.Categories {
@@ -163,14 +145,12 @@ func (h *Handler) HandleGetPublicSessionSchema(w http.ResponseWriter, r *http.Re
 			"price_hint":    cat.PriceHint,
 			"currency_hint": cat.CurrencyHint,
 		}
-		if tierID, hasTier := categoryToTier[cat.Index]; hasTier {
-			if tier, hasRow := tierByID[tierID]; hasRow {
-				entry["tier_id"] = tier.ID.String()
-				entry["tier_name"] = tier.Name
-				entry["pricing_mode"] = tier.PricingMode
-				entry["price_amount"] = tier.PriceAmount
-				entry["currency"] = tier.Currency
-			}
+		if tier, hasTier := categoryToTier[cat.Index]; hasTier {
+			entry["tier_id"] = tier.ID.String()
+			entry["tier_name"] = tier.Name
+			entry["pricing_mode"] = tier.PricingMode
+			entry["price_amount"] = tier.PriceAmount
+			entry["currency"] = tier.Currency
 		}
 		categories = append(categories, entry)
 	}
@@ -296,34 +276,6 @@ func (h *Handler) HandleGetPublicSessionSeatStatus(w http.ResponseWriter, r *htt
 		"delta":          isDelta,
 	}
 	httputil.WriteJSON(w, http.StatusOK, response)
-}
-
-// buildSeatKeyCategoryIndex walks the geometry once and returns a map from
-// seat_key to the seat's category_index. Used by the schema handler to
-// project session_seats.tier_id back onto category buckets.
-func buildSeatKeyCategoryIndex(g seating.Geometry) map[string]int {
-	// Rough capacity estimate; keys are dense per section.
-	estimate := 0
-	for _, sec := range g.Sections {
-		for _, row := range sec.Rows {
-			estimate += len(row.Seats)
-		}
-	}
-	out := make(map[string]int, estimate)
-	for _, sec := range g.Sections {
-		for _, row := range sec.Rows {
-			for _, seat := range row.Seats {
-				key := seat.Key
-				if key == "" {
-					// Fallback for versions that predate the seat.key
-					// serializer, e.g. hand-authored geometry payloads.
-					key = fmt.Sprintf("%s|%s|%s", sec.Key, row.Key, seat.Number)
-				}
-				out[key] = seat.CategoryIndex
-			}
-		}
-	}
-	return out
 }
 
 // matchesETag reports whether the raw If-None-Match header value contains

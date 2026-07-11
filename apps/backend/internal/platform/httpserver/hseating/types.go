@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/domain/seating"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -44,18 +45,23 @@ var validStatuses = map[string]bool{
 // ─────────────────────────────────────────────────────────────────────────────
 
 // SeatingPlanResponse is the JSON representation of a seating_plans row.
+// CurrentVersionNumber mirrors CurrentVersionID as a 1-based positional
+// version number (null until the first version exists) so clients can
+// address the current version through GET
+// /v1/seating-plans/{id}/versions/{n} without probing.
 type SeatingPlanResponse struct {
-	ID                  string  `json:"id"`
-	VenueID             string  `json:"venue_id"`
-	OwnerOrgID          string  `json:"owner_org_id"`
-	Name                string  `json:"name"`
-	PlanType            string  `json:"plan_type"`
-	Visibility          string  `json:"visibility"`
-	Status              string  `json:"status"`
-	SourceSeatingPlanID *string `json:"source_seating_plan_id"`
-	CurrentVersionID    *string `json:"current_version_id"`
-	CreatedAt           string  `json:"created_at"`
-	UpdatedAt           string  `json:"updated_at"`
+	ID                   string  `json:"id"`
+	VenueID              string  `json:"venue_id"`
+	OwnerOrgID           string  `json:"owner_org_id"`
+	Name                 string  `json:"name"`
+	PlanType             string  `json:"plan_type"`
+	Visibility           string  `json:"visibility"`
+	Status               string  `json:"status"`
+	SourceSeatingPlanID  *string `json:"source_seating_plan_id"`
+	CurrentVersionID     *string `json:"current_version_id"`
+	CurrentVersionNumber *int32  `json:"current_version_number"`
+	CreatedAt            string  `json:"created_at"`
+	UpdatedAt            string  `json:"updated_at"`
 }
 
 // SeatingPlanFromRow renders a seating_plans row into the response shape.
@@ -78,6 +84,10 @@ func SeatingPlanFromRow(p gen.SeatingPlanRow) SeatingPlanResponse {
 	if p.CurrentVersionID != nil {
 		s := p.CurrentVersionID.String()
 		out.CurrentVersionID = &s
+	}
+	if p.CurrentVersionNumber != nil {
+		n := *p.CurrentVersionNumber
+		out.CurrentVersionNumber = &n
 	}
 	return out
 }
@@ -209,4 +219,63 @@ func intField(fields map[string]json.RawMessage, key string) (value int32, prese
 		return 0, true, false
 	}
 	return n, true, true
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared geometry helpers (public schema + BSS layout.svg endpoints)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// seatKeyIndex walks the geometry once and returns a seat_key → Seat
+// lookup. Seats whose Key is empty (hand-authored geometry payloads that
+// predate the seat.key serializer) fall back to the canonical
+// "<section>|<row>|<number>" derivation via seating.SeatKey.
+func seatKeyIndex(g seating.Geometry) map[string]seating.Seat {
+	out := make(map[string]seating.Seat, g.SeatCount())
+	for _, sec := range g.Sections {
+		for _, row := range sec.Rows {
+			for _, seat := range row.Seats {
+				key := seat.Key
+				if key == "" {
+					key = seating.SeatKey(sec.Key, row.Key, seat.Number)
+				}
+				out[key] = seat
+			}
+		}
+	}
+	return out
+}
+
+// resolveCategoryTiers projects session_seats.tier_id back onto geometry
+// category buckets: the first seat (in ListSessionSeats seat_key order)
+// whose tier_id resolves to a live ticket_tiers row anchors its category.
+// First-seat-wins keeps the resolution stable across renames; seats whose
+// tier_id does not match any row in tiers (e.g. a tier soft-deleted after
+// bind) are skipped so a later seat can still anchor the category.
+func resolveCategoryTiers(
+	g seating.Geometry,
+	seats []gen.SessionSeatRow,
+	tiers []gen.TicketTierRow,
+	seatIdx map[string]seating.Seat,
+) map[int]gen.TicketTierRow {
+	tierByID := make(map[string]gen.TicketTierRow, len(tiers))
+	for _, t := range tiers {
+		tierByID[t.ID.String()] = t
+	}
+	out := make(map[int]gen.TicketTierRow, len(g.Categories))
+	for _, s := range seats {
+		if s.TierID == nil {
+			continue
+		}
+		seat, ok := seatIdx[s.SeatKey]
+		if !ok {
+			continue
+		}
+		if _, already := out[seat.CategoryIndex]; already {
+			continue
+		}
+		if tier, ok := tierByID[s.TierID.String()]; ok {
+			out[seat.CategoryIndex] = tier
+		}
+	}
+	return out
 }

@@ -140,7 +140,7 @@ func (h *Handler) HandleCreateSeatingPlanVersion(w http.ResponseWriter, r *http.
 	seatCount := geometry.SeatCount()
 	if seatCount < 0 || seatCount > math.MaxInt32 {
 		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
-			"seating_plan_version.capacity_overflow",
+			"seating_plan.capacity_overflow",
 			"imported geometry exceeds the supported seat-count range",
 			r,
 		))
@@ -272,23 +272,29 @@ func (h *Handler) HandleGetSeatingPlanVersion(w http.ResponseWriter, r *http.Req
 		))
 		return
 	}
-	versions, err := h.queries.ListSeatingPlanVersionsByPlan(ctx, planID)
+	if n > math.MaxInt32 {
+		// version_number is an int32 column; anything above the range
+		// cannot exist, so answer 404 without touching the database.
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+			"seating_plan.version_not_found", "seating plan version not found", r,
+		))
+		return
+	}
+	v, err := h.queries.GetSeatingPlanVersionByNumber(ctx, planID, int32(n)) //nolint:gosec // G109 false positive: n is bounded by the math.MaxInt32 guard above
 	if err != nil {
-		h.logger.Error("seating_plan: version list failed", slog.String("error", err.Error()))
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+				"seating_plan.version_not_found", "seating plan version not found", r,
+			))
+			return
+		}
+		h.logger.Error("seating_plan: version get failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"seating_plan.version_get_failed", "failed to get seating plan version", r,
 		))
 		return
 	}
-	for _, v := range versions {
-		if int(v.VersionNumber) == n {
-			httputil.WriteJSON(w, http.StatusOK, map[string]any{
-				"seating_plan_version": SeatingPlanVersionFromRow(v),
-			})
-			return
-		}
-	}
-	httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
-		"seating_plan.version_not_found", "seating plan version not found", r,
-	))
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
+		"seating_plan_version": SeatingPlanVersionFromRow(v),
+	})
 }
