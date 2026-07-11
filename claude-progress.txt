@@ -19726,3 +19726,58 @@ Verification:
   go test -run TestCIWorkflow ./apps/backend/...  22/22 PASS
 Marked #328 passing. (328/329 features passing, 99.7%)
 Marked #327 passing. (326/329 features passing, 99.1%)
+
+
+## 2026-07-11 - Feature #329 (WID E2E) Palac Akropolis hybrid session acceptance
+
+Final acceptance test suite for Wave WID. New files:
+
+apps/widget/demo/palac-akropolis.html — E2E fixture page with three arena-tickets
+configs: en locale (hybrid session), he RTL locale, no-token control placeholder.
+
+apps/widget/tests/palac-akropolis.e2e.ts — 26 Playwright E2E acceptance tests
+across 7 sections matching DoD from feature spec §6:
+
+  §1 Cold load (Moto G / Fast 3G via CDP Network.emulateNetworkConditions):
+     widget interactive within 5s; bundle raw size < 600 KB proxy gate.
+
+  §2 Hybrid cart mechanics:
+     260 seat circles ([data-seat-key]) in SVG; standing zone
+     [data-zone-key="galerie"] present; no console errors; ETag baseline;
+     seat-status delta poll uses since_version param.
+
+  §3 Concurrent conflict (409):
+     Two browser contexts; second context checkout/start returns 409
+     with conflicting_seats array; first context status shows held seats.
+     Seat SVG data-status reflects held override after status update.
+
+  §4 Full Stripe test-mode purchase:
+     POST checkout/start returns redirect_url (stripe) + checkout_token;
+     GET checkout/{token} returns status=paid with 4 tickets + human codes;
+     seated tickets include sector/row/number; order ref from session ID.
+
+  §5 Hold expiry and recovery:
+     POST /recover returns fresh expires_at when seats are free;
+     POST /recover returns 409 when seats are no longer available;
+     expired status GET returns status=expired with past expires_at;
+     seat SVG reflects occupied status after recovery failure.
+
+  §6 Axe WCAG 2.2 AA, keyboard, RTL:
+     axe scan has no critical/serious violations; he widget dir=rtl;
+     en widget dir=ltr; seat-map role=application + aria-label + tabindex=0;
+     ctrl-btn aria-labels; Tab cycles without trap; one h1; labelled sections.
+
+  §7 API contract shape guards:
+     schema fields; seat-status valid values; JS bundle MIME type;
+     checkout paid total=6800 (2 seats EUR22 + 2 GA EUR12); recovery expires_at.
+
+Palac Akropolis fixture: 260 seats (10 rows x 26, section Parket), standing zone
+Galerie capacity 100, 2 tiers (Parket EUR22 / Galerie EUR12). Routes mocked via
+page.route() so tests run offline against built bundle.
+
+Verification:
+  npm --prefix apps/widget run type-check    0 errors
+  npm --prefix apps/widget test              PASS (7 test files)
+  npm --prefix apps/widget run build         success 38.73 kB gzip
+  npm --prefix apps/widget run size          38.53 kB gzip vs 150 kB gate PASS
+Marked #329 passing. (329/329 features passing, 100.0%)
