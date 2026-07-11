@@ -25,3 +25,32 @@ export {
   type SupportedLocale,
   type ThemeCssVar,
 } from './utils.js';
+
+// WID-C: selection, cart, and hold-timer utilities.
+export {
+  toggleSeatSelection,
+  clearSelection,
+  bestAvailableSeats,
+  detectSingleSeatGaps,
+  clampGaQuantity,
+  incrementGaQuantity,
+  decrementGaQuantity,
+  GA_MIN_QUANTITY,
+  GA_MAX_QUANTITY,
+  type SelectedKeys,
+} from './lib/selection.js';
+
+export {
+  emptyCart,
+  removeCartLine,
+  applyHoldResponse,
+  buildSeatedLines,
+  buildGaLine,
+  cartTotal,
+  cartItemCount,
+  countdownSeconds,
+  isTwoMinWarning,
+  formatCountdown,
+  type CartLineItem,
+  type CartState,
+} from './lib/cart.js';
