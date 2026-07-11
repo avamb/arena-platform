@@ -51,6 +51,10 @@
   let canvasW = $state(800);
   let canvasH = $state(600);
 
+  // Category-color lookup, memoized: rebuilt only when categoryPrices changes,
+  // NOT on every seat-status poll tick (2–5 s cadence).
+  const catColorMap = $derived(buildCategoryColorMap(categoryPrices, []));
+
   // ── Schema fetch ────────────────────────────────────────────────────────────
 
   async function loadSchema(sessionId: string): Promise<void> {
@@ -82,10 +86,9 @@
       hiddenInterval: 30_000,
       onUpdate(seats, _version) {
         seatStatuses = { ...seatStatuses, ...seats };
-        // Keyed DOM update — no re-render.
+        // Keyed DOM update — no re-render, no per-tick map allocation.
         if (svgContainer) {
-          const catMap = buildCategoryColorMap(categoryPrices, []);
-          applySeatStatusUpdate(svgContainer, seats, catMap);
+          applySeatStatusUpdate(svgContainer, seats, catColorMap);
         }
       },
       onError(err) {
@@ -257,8 +260,11 @@
     {:else if schemaError}
       <div class="seat-map-state seat-map-error" role="alert">{schemaError}</div>
     {:else if svgHTML}
-      <!-- Wrap SVG in a transform group so zoom never triggers layout reflow. -->
-      <div class="seat-map-inner" style="transform: {svgTransform}" aria-hidden="true">
+      <!-- Wrap SVG in a transform group so zoom never triggers layout reflow.
+           NOT aria-hidden: the SVG inside carries interactive, focusable seats
+           (role="button"/tabindex) and an accessible group name; only the
+           decorative decor layer inside the SVG is aria-hidden. -->
+      <div class="seat-map-inner" style="transform: {svgTransform}">
         {@html svgHTML}
       </div>
     {/if}

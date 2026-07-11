@@ -27,6 +27,36 @@ import type {
   CheckoutRecoverResponse,
 } from './lib/checkout.js';
 
+// ─── Structured API error ────────────────────────────────────────────────────
+
+/**
+ * Error thrown by API helpers when the backend returns a non-2xx response
+ * with a structured error body.
+ *
+ * Still an `Error` (message format is unchanged), but carries the machine-
+ * readable fields so UI code can branch on them, e.g. read
+ * `err.details.conflicts` after a 409 from `postCheckoutStart`.
+ */
+export class ApiError extends Error {
+  /** HTTP status code of the failed response. */
+  readonly status: number;
+  /** Machine-readable error code from the response body (or `http_<status>`). */
+  readonly code: string;
+  /** Structured error details from the response body (e.g. `conflicts`). */
+  readonly details: Record<string, unknown>;
+
+  constructor(
+    message: string,
+    opts: { status: number; code?: string; details?: Record<string, unknown> },
+  ) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = opts.status;
+    this.code = opts.code ?? `http_${opts.status}`;
+    this.details = opts.details ?? {};
+  }
+}
+
 // ─── Schema ETag cache ───────────────────────────────────────────────────────
 
 /** Module-level cache: session_id → { etag, schema }. */
@@ -138,7 +168,8 @@ export async function fetchSeatStatusDelta(
  * and returns a `redirect_url` for the payment provider plus a `checkout_token`
  * for subsequent status / recovery calls.
  *
- * @throws Error when the response is non-2xx.
+ * @throws ApiError when the response is non-2xx — carries `status`, `code`,
+ *         and `details` (e.g. `details.conflicts` on a 409 seat conflict).
  */
 export async function postCheckoutStart(
   feedToken: string,
@@ -152,12 +183,22 @@ export async function postCheckoutStart(
   });
   if (!res.ok) {
     let detail = '';
+    let code: string | undefined;
+    let details: Record<string, unknown> | undefined;
     try {
-      const body = (await res.json()) as { error?: string; message?: string };
+      const body = (await res.json()) as {
+        error?: string;
+        message?: string;
+        code?: string;
+        details?: Record<string, unknown>;
+      };
       detail = body.error ?? body.message ?? '';
-    } catch { /* ignore */ }
-    throw new Error(
+      code = body.code ?? (body.error || undefined);
+      details = body.details;
+    } catch { /* ignore non-JSON error bodies */ }
+    throw new ApiError(
       `postCheckoutStart HTTP ${res.status}${detail ? `: ${detail}` : ''}`,
+      { status: res.status, code, details },
     );
   }
   return res.json() as Promise<CheckoutStartResponse>;

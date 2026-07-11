@@ -30,6 +30,7 @@
     "@playwright/test": "^1.48.0",
     "@size-limit/file": "^11.0.0",
     "@sveltejs/vite-plugin-svelte": "^4.0.0",
+    "jsdom": "^29.1.1",
     "size-limit": "^11.0.0",
     "typescript": "^5.8.3",
     "vite": "^5.4.8",

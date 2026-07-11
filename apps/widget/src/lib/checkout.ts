@@ -386,7 +386,18 @@ export function isCheckoutRecoverable(status: CheckoutPublicStatus): boolean {
 
 // ─── Internationalization ─────────────────────────────────────────────────────
 
-export type CheckoutLocale = 'en' | 'ru' | 'cs' | 'he';
+/**
+ * Single source of truth for the widget's supported locales.
+ *
+ * These are exactly the locales with complete translations in
+ * `CHECKOUT_I18N` below (spec set: en / ru / cs / he, with `he` RTL).
+ * `utils.ts` re-exports this set for host-attribute parsing; do not add a
+ * locale here without adding its translation table.
+ */
+export const SUPPORTED_LOCALES = ['en', 'ru', 'cs', 'he'] as const;
+export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
+
+export type CheckoutLocale = SupportedLocale;
 
 export interface CheckoutI18nStrings {
   // Buyer form

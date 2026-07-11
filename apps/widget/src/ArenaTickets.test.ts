@@ -8,12 +8,12 @@ import {
   parseLocale,
   parseFeedToken,
   parseSessionId,
-  buildThemeStyle,
   SUPPORTED_LOCALES,
   THEME_CSS_VARS,
   isRtlLocale,
   RTL_LOCALES,
 } from './utils.js';
+import { SUPPORTED_LOCALES as CHECKOUT_SUPPORTED_LOCALES, CHECKOUT_I18N } from './lib/checkout.js';
 
 // ─── parseLocale ─────────────────────────────────────────────────────────────
 
@@ -101,60 +101,28 @@ describe('parseSessionId', () => {
   });
 });
 
-// ─── buildThemeStyle ─────────────────────────────────────────────────────────
-
-describe('buildThemeStyle', () => {
-  it('returns empty string for empty record', () => {
-    expect(buildThemeStyle({})).toBe('');
-  });
-
-  it('builds a CSS var style fragment', () => {
-    const result = buildThemeStyle({ '--arena-accent': '#e11d48' });
-    expect(result).toBe('--arena-accent:#e11d48');
-  });
-
-  it('joins multiple vars with semicolons', () => {
-    const result = buildThemeStyle({
-      '--arena-accent': '#e11d48',
-      '--arena-bg': '#fff',
-    });
-    expect(result).toContain('--arena-accent:#e11d48');
-    expect(result).toContain('--arena-bg:#fff');
-    expect(result).toContain(';');
-  });
-
-  it('skips keys that do not start with --', () => {
-    const result = buildThemeStyle({
-      'color': '#000',
-      '--arena-accent': '#e11d48',
-    } as Record<string, string>);
-    expect(result).not.toContain('color:#000');
-    expect(result).toContain('--arena-accent:#e11d48');
-  });
-
-  it('skips blank values', () => {
-    const result = buildThemeStyle({
-      '--arena-accent': '',
-      '--arena-bg': '  ',
-      '--arena-radius': '8px',
-    });
-    expect(result).toBe('--arena-radius:8px');
-  });
-});
-
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 describe('SUPPORTED_LOCALES', () => {
-  it('is a non-empty tuple', () => {
-    expect(SUPPORTED_LOCALES.length).toBeGreaterThan(0);
+  it('is exactly the spec set en / ru / cs / he', () => {
+    expect([...SUPPORTED_LOCALES]).toEqual(['en', 'ru', 'cs', 'he']);
   });
 
-  it('includes "en"', () => {
-    expect(SUPPORTED_LOCALES).toContain('en');
+  it('is the same object as the checkout translation source of truth', () => {
+    expect(SUPPORTED_LOCALES).toBe(CHECKOUT_SUPPORTED_LOCALES);
   });
 
-  it('includes "ru"', () => {
-    expect(SUPPORTED_LOCALES).toContain('ru');
+  it('every supported locale has a complete translation table', () => {
+    for (const locale of SUPPORTED_LOCALES) {
+      expect(CHECKOUT_I18N[locale]).toBeDefined();
+      expect(CHECKOUT_I18N[locale].submit_label.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('does not list locales without translations (de/fr/es/uk dropped)', () => {
+    for (const dropped of ['de', 'fr', 'es', 'uk']) {
+      expect(SUPPORTED_LOCALES).not.toContain(dropped);
+    }
   });
 
   it('includes "he" (Hebrew RTL)', () => {
@@ -189,16 +157,10 @@ describe('isRtlLocale', () => {
     expect(isRtlLocale('he')).toBe(true);
   });
 
-  it('returns true for "ar" (Arabic)', () => {
-    expect(isRtlLocale('ar')).toBe(true);
-  });
-
-  it('returns true for "fa" (Farsi)', () => {
-    expect(isRtlLocale('fa')).toBe(true);
-  });
-
-  it('returns true for "ur" (Urdu)', () => {
-    expect(isRtlLocale('ur')).toBe(true);
+  it('returns false for unsupported RTL languages (no translations shipped)', () => {
+    expect(isRtlLocale('ar')).toBe(false);
+    expect(isRtlLocale('fa')).toBe(false);
+    expect(isRtlLocale('ur')).toBe(false);
   });
 
   it('returns true for "he-IL" (region tag)', () => {
@@ -235,12 +197,14 @@ describe('isRtlLocale', () => {
 // ─── RTL_LOCALES ─────────────────────────────────────────────────────────────
 
 describe('RTL_LOCALES', () => {
-  it('is non-empty', () => {
-    expect(RTL_LOCALES.length).toBeGreaterThan(0);
+  it('is exactly ["he"] (spec: Hebrew is the only supported RTL locale)', () => {
+    expect([...RTL_LOCALES]).toEqual(['he']);
   });
 
-  it('includes "he"', () => {
-    expect(RTL_LOCALES).toContain('he');
+  it('every RTL locale is a supported locale', () => {
+    for (const code of RTL_LOCALES) {
+      expect(SUPPORTED_LOCALES).toContain(code);
+    }
   });
 
   it('all entries are 2-char ISO 639-1 codes', () => {

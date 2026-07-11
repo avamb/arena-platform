@@ -1,8 +1,10 @@
+// @vitest-environment jsdom
 /**
  * seatmap-render.test.ts — unit tests for the pure SVG seat-map builder.
  *
- * All tests run in Node.js (no DOM required) except `applySeatStatusUpdate`
- * which is tested via a lightweight mock container.
+ * Runs under jsdom because `buildSeatMapSVG` sanitizes the untrusted decor
+ * fragment with `DOMParser`.  `applySeatStatusUpdate` is still tested via a
+ * lightweight mock container.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -229,16 +231,45 @@ describe('buildSeatMapSVG', () => {
     expect(svg).toContain(`fill="${STATUS_COLORS['blocked']}"`);
   });
 
-  it('includes decor_svg inside decor group', () => {
+  it('includes sanitized decor_svg inside an aria-hidden decor group', () => {
     const geo = makeGeometry({ decor_svg: '<rect x="0" y="0" width="100" height="50"/>' });
     const svg = buildSeatMapSVG(geo, categoryPrices, {});
-    expect(svg).toContain('<g id="decor">');
+    expect(svg).toContain('<g id="decor" aria-hidden="true">');
     expect(svg).toContain('<rect x="0"');
   });
 
   it('omits decor group when decor_svg is empty', () => {
     const svg = buildSeatMapSVG(makeGeometry(), categoryPrices, {});
-    expect(svg).not.toContain('<g id="decor">');
+    expect(svg).not.toContain('id="decor"');
+  });
+
+  it('strips XSS payloads from decor_svg (script, onload, href)', () => {
+    const geo = makeGeometry({
+      decor_svg:
+        '<rect x="0" y="0" width="10" height="10" onload="alert(1)"/>' +
+        '<script>alert(2)</script>' +
+        '<a href="javascript:alert(3)"><circle cx="1" cy="1" r="1"/></a>',
+    });
+    const svg = buildSeatMapSVG(geo, categoryPrices, {});
+    expect(svg).toContain('<g id="decor"');
+    expect(svg).toContain('<rect');
+    expect(svg).not.toContain('onload');
+    expect(svg).not.toContain('<script');
+    expect(svg).not.toContain('alert(');
+    expect(svg).not.toContain('javascript:');
+  });
+
+  it('omits decor group entirely when decor_svg is malformed', () => {
+    const geo = makeGeometry({ decor_svg: '<rect x="0"' });
+    const svg = buildSeatMapSVG(geo, categoryPrices, {});
+    expect(svg).not.toContain('id="decor"');
+  });
+
+  it('exposes the map root to AT with role=group and a section-context label', () => {
+    const svg = buildSeatMapSVG(makeGeometry(), categoryPrices, {});
+    expect(svg).toContain('role="group"');
+    expect(svg).toContain('aria-label="Seat map — sections: Parter, Balkon"');
+    expect(svg).not.toContain('role="img"');
   });
 
   it('includes standing-zones group when zones present', () => {

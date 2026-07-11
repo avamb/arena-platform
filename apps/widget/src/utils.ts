@@ -2,14 +2,17 @@
  * Locale utilities for the Arena Tickets widget.
  */
 
-export const SUPPORTED_LOCALES = ['en', 'ru', 'de', 'fr', 'es', 'uk', 'he'] as const;
-export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
+// Single source of truth: the supported-locale set lives next to the
+// translation tables in lib/checkout.ts — a locale is "supported" iff it has
+// a complete translation table there.
+export { SUPPORTED_LOCALES, type SupportedLocale } from './lib/checkout.js';
 
 /**
- * Locales that use right-to-left text direction (ISO 639-1 codes).
+ * Supported locales that use right-to-left text direction (ISO 639-1 codes).
  * Used to set `dir="rtl"` on the widget host element.
+ * Per spec, Hebrew is the only RTL locale the widget ships translations for.
  */
-export const RTL_LOCALES = ['he', 'ar', 'fa', 'ur'] as const;
+export const RTL_LOCALES = ['he'] as const;
 export type RtlLocale = (typeof RTL_LOCALES)[number];
 
 /**
@@ -50,20 +53,6 @@ export function parseFeedToken(raw: string | null | undefined): string {
  */
 export function parseSessionId(raw: string | null | undefined): string {
   return raw?.trim() ?? '';
-}
-
-/**
- * Build a CSS variable declaration string from a theme map.
- * Used to inject custom CSS properties into the Shadow DOM host.
- *
- * @param vars - Record of CSS variable name to value, e.g. { '--arena-accent': '#e11d48' }
- * @returns A valid inline style fragment like '--arena-accent:#e11d48;'
- */
-export function buildThemeStyle(vars: Record<string, string>): string {
-  return Object.entries(vars)
-    .filter(([k, v]) => k.startsWith('--') && v.trim() !== '')
-    .map(([k, v]) => `${k}:${v}`)
-    .join(';');
 }
 
 /**

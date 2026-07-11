@@ -19,7 +19,6 @@ export {
   parseLocale,
   parseFeedToken,
   parseSessionId,
-  buildThemeStyle,
   isRtlLocale,
   THEME_CSS_VARS,
   SUPPORTED_LOCALES,
@@ -28,6 +27,9 @@ export {
   type ThemeCssVar,
   type RtlLocale,
 } from './utils.js';
+
+// Strict allowlist sanitizer for untrusted decor SVG fragments.
+export { sanitizeDecorSvg } from './lib/svg-sanitize.js';
 
 // WID-E: CSS design token system documentation.
 export {
@@ -106,4 +108,5 @@ export {
   postCheckoutStart,
   getCheckoutStatus,
   postCheckoutRecover,
+  ApiError,
 } from './api.js';

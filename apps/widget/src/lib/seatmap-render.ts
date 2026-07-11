@@ -2,9 +2,11 @@
  * seatmap-render.ts — pure SVG builder for the Arena seat map.
  *
  * WID-B performance contract:
- *   • `buildSeatMapSVG()` is a pure function — no DOM, no side-effects.
+ *   • `buildSeatMapSVG()` is a pure, side-effect-free string builder.
  *     It runs synchronously and returns a complete SVG string for 1 500 seats
- *     well under 100 ms on current hardware.
+ *     well under 100 ms on current hardware.  (The only DOM API it touches is
+ *     `DOMParser`, used read-only to sanitize the untrusted decor fragment;
+ *     without a DOM the decor layer is omitted — fail closed.)
  *   • `applySeatStatusUpdate()` does keyed DOM mutations: it locates each
  *     changed seat by `data-seat-key` attribute and updates only the `fill`
  *     and `data-status` attributes.  This avoids a full re-render cycle for
@@ -13,11 +15,16 @@
  * Standing zones are rendered as labeled rectangle groups (bounds to be
  * extended in a future wave once the geometry model adds zone coordinates).
  *
- * Decor SVG is spliced verbatim inside `<g id="decor">` — the backend
- * stores it with deterministic, non-name-spaced serialisation.
+ * Decor SVG originates from organizer uploads and is UNTRUSTED: it is passed
+ * through the strict allowlist sanitizer (`sanitizeDecorSvg`) before being
+ * placed inside `<g id="decor">`.  The decor layer is purely decorative and
+ * is marked `aria-hidden` individually; the map root itself stays exposed to
+ * assistive technology (`role="group"` + accessible name) so the interactive
+ * seat nodes remain reachable.
  */
 
 import type { Geometry, CategoryPrice, SeatStatusValue } from '../types.js';
+import { sanitizeDecorSvg } from './svg-sanitize.js';
 
 // ─── Status color palette ─────────────────────────────────────────────────────
 
@@ -128,18 +135,30 @@ export function buildSeatMapSVG(
 
   const parts: string[] = [];
 
-  // ── SVG root ──
+  // Accessible name for the map root: include section context so screen-reader
+  // users know what the group contains before diving into individual seats.
+  const sectionNames = sections.map((s) => s.name).filter((n) => n.trim() !== '');
+  const shownSections = sectionNames.slice(0, 5).join(', ');
+  const mapLabel =
+    sectionNames.length > 0
+      ? `Seat map — sections: ${shownSections}${sectionNames.length > 5 ? ', …' : ''}`
+      : 'Seat map';
+
+  // ── SVG root (exposed to AT: interactive seats live inside) ──
   parts.push(
     `<svg xmlns="http://www.w3.org/2000/svg"` +
       ` viewBox="0 0 ${w} ${h}"` +
       ` width="${w}" height="${h}"` +
-      ` role="img" aria-label="Seat map"` +
+      ` role="group" aria-label="${xmlAttr(mapLabel)}"` +
       `>`,
   );
 
-  // ── Decor backdrop (verbatim splice) ──
+  // ── Decor backdrop (untrusted organizer upload — sanitized, decorative) ──
   if (decor_svg) {
-    parts.push(`<g id="decor">${decor_svg}</g>`);
+    const safeDecor = sanitizeDecorSvg(decor_svg);
+    if (safeDecor) {
+      parts.push(`<g id="decor" aria-hidden="true">${safeDecor}</g>`);
+    }
   }
 
   // ── Standing zones as labeled placeholder groups ──
