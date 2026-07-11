@@ -19304,3 +19304,45 @@ Verification (docker golang:1.24 / golangci-lint:latest):
   golangci-lint run ./apps/backend/internal/platform/httpserver/hseating/...
                                                                    0 issues
 Marked #314 passing.
+
+
+## 2026-07-11 - Feature #317 (SEAT-E3) Admin interactive seat management
+- apps/admin-web/src/routes/sessionSeats.tsx (new): SessionSeatsScreen
+  route at
+  /organizations/$orgId/events/$eventId/sessions/$sessionId/seats.
+  Composes public reads (GET .../schema, GET .../seat-status) with the
+  operator write (PATCH .../sessions/{id}/seats). Two-column desktop
+  layout, collapses to a stack via a forceLayout escape hatch.
+- Pure helpers exported for tests:
+    renderSeatMapSVG   status-coloured circles + red selection stroke;
+                       neutral fallback for unknown status; non-finite
+                       canvas guard.
+    collectSeatKeysForSector / collectSeatKeysForRow  selector expansion.
+    computeSectorCounters / computeCategoryCounters   read-only roll-ups
+                       (Uncategorised bucket surfaces orphan seats).
+    buildSectorRowIndex first-appearance order, deduped rows.
+    summariseOutcomes  splits blocked/unblocked/noop/skipped and groups
+                       skipped by reason (sold/held/seat_not_found/
+                       concurrent_transition/unknown_status; missing
+                       reason -> "unknown").
+    mergeSeatStatus    snapshot resets, delta layers, drops unknown
+                       status values as a defence-in-depth guard.
+- SEAT_STATUS_COLOURS + SEAT_STATUS_LABELS drive the legend and the
+  counters (available=green, held=amber, sold=blue, blocked=slate).
+- Selection panel wires sector/row picker + Block/Unblock buttons.
+  Click a seat in the SVG to toggle single-seat selection. Selection
+  clears on a successful mutation; banner reports batch counters and
+  an outcome summary panel groups skipped seats by reason with a
+  "first 8 seat_keys + N more" collapse.
+- Route registered in routeTree.ts; smoke check saui14 updated:
+  SessionSeatsRoute added to NON_NAV_ROUTE_IDS (detail route inherits
+  its permission gate from the backend PATCH endpoint requirement
+  event_session.assign_seating_plan).
+- Tests: sessionSeats.test.ts, 19 tests covering renderSeatMapSVG
+  (fills, selection stroke, unknown-status fallback, non-finite
+  canvas), sector/row collectors, sector + category counters,
+  buildSectorRowIndex, summariseOutcomes, mergeSeatStatus.
+Verification:
+  tsc -p apps/admin-web/tsconfig.app.json --noEmit                 OK
+  npm --prefix apps/admin-web test  (830 tests / 35 files)   all PASS
+Marked #317 passing.

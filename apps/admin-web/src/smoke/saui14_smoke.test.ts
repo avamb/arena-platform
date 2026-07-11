@@ -234,6 +234,11 @@ const NON_NAV_ROUTE_IDS: ReadonlySet<string> = new Set([
   // backend endpoints enforce token validity).
   "PasswordResetRoute",
   "AcceptInviteRoute",
+  // Wave SEAT-E3, feature #317: interactive seat management detail
+  // route. Inherits its permission gate (event_session.assign_seating_plan)
+  // from the backend PATCH endpoint; direct URLs 403 with the standard
+  // envelope when the operator lacks the permission.
+  "SessionSeatsRoute",
 ]);
 
 /**
