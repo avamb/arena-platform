@@ -93,6 +93,16 @@ type Payload struct {
 	// QRPayload is the value to encode into the PDF QR code. The handler
 	// falls back to TicketID if empty so existing enqueuers keep working.
 	QRPayload string `json:"qr_payload,omitempty"`
+	// HumanCode is the SEAT-C4 human-readable manual-entry fallback code
+	// printed under the QR on the PDF and shown in email bodies.
+	// Eight Crockford Base32 characters in canonical form (no hyphen).
+	// Empty for pre-SEAT-C4 tickets; the PDF renderer omits the code block
+	// when this field is empty.
+	HumanCode string `json:"human_code,omitempty"`
+	// TicketPDFFormat controls the PDF layout: "mobile" (default),
+	// "a4", or "both". Resolved from the owning org's ticket_pdf_format
+	// flag at enqueue time. Empty → delivery worker defaults to "mobile".
+	TicketPDFFormat string `json:"ticket_pdf_format,omitempty"`
 
 	// ── Organisation branding (feature #290, T-3) ─────────────────────
 	// These mirror the organizations table columns the email header and
