@@ -195,3 +195,54 @@ Canvas/large-venue renderer, waiting room, embedded Stripe Elements,
 buyer cabinet, Telegram Mini App variant and messenger delivery
 (design note §7.1 — next wave), seat-map visual editor, custom buyer
 fields beyond name/phone, offline/PWA.
+
+## 8. Wave WID-R — remediation (added 2026-07-11 after implementation review)
+
+The WID-A..F/E2E delivery (#318-#329) was reviewed. The backend
+foundation (WID-0) is solid and stays. The following gaps MUST be
+closed before the widget can be called done. Read the review context
+in git history (commits 6fe94be..b5a1ecd fixed the immediate backend
+and safety defects); this wave is the remaining product work.
+
+**WID-R1. Wire the purchase loop into the running element.** The
+WID-C/D modules exist and are unit-tested but are NOT part of
+`<arena-tickets>`: ArenaTickets.svelte imports only SessionList +
+SeatMapView; BuyerForm.svelte and OrderStatus.svelte are orphaned;
+cart.ts/selection.ts/checkout.ts are exported but unconsumed;
+SeatMapView has no seat click/keyboard selection handlers; the feed
+is not fetched (loadFromFeed is a no-op and admission_mode is
+hardcoded). Deliver the assembled flow per the design note §4:
+seat tap/keyboard selection → floating mini-cart → cart bottom sheet
+with ONE hold timer (mixed seat+GA lines) → buyer form per
+buyer_fields flags → checkout/start → redirect → `?checkout_token=`
+deep-link restore → order status (paid: order ref, seats, human codes,
+PDF links; expired: recovery CTA hitting the recover endpoint; failed:
+retry). Persist checkout_token (sessionStorage) for the deep link.
+Totals come ONLY from the checkout/start response (the platform now
+returns the priced breakdown — guardrail #15; delete cartTotal-style
+arithmetic).
+
+**WID-R2. Surface conflict details.** Use the structured error from
+api.ts (code + details.conflicts with real backend codes
+`reservation.seats_conflict` and per-seat statuses) to highlight
+conflicting seats on the map and keep the rest of the cart intact.
+
+**WID-R3. Real acceptance E2E.** Rewrite #329: Playwright drives the
+ACTUAL rendered element against the LOCAL COMPOSE BACKEND seeded with
+the Palác Akropolis plan (260 seats) on a hybrid session — no
+page.route mocks for платформенные endpoints, no fetch()-in-evaluate
+tautologies, no test-computed expectations. Cover widget_backlog §6
+items 1-7 for real: cold-load budget asserted on gzip transfer, mixed
+cart one-timer, concurrent 409 from a second context, full purchase
+through the payment flow in test mode, hold-expiry recovery,
+keyboard-only purchase, RTL. The static-server mock config may remain
+as a separate fast smoke suite, clearly named as such — it is not
+acceptance. claude-progress.txt must stop counting mocked flows as
+passing acceptance.
+
+**WID-R4. A11y completion.** With the map no longer aria-hidden
+(fixed), implement the design-note §3 keyboard model (arrows within a
+row, tab between rows/zones) and ensure aria-labels carry price+status
+live updates; axe gate must run against a POPULATED map state.
+
+Out of scope for WID-R: everything in §7 above.
