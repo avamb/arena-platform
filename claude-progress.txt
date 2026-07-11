@@ -19421,3 +19421,40 @@ Verification (docker golang:1.24):
   go test ./apps/backend/... -count=1            all PASS (40 pkgs)
   23/23 WID-0e tests pass
 Marked #322 passing. (321/329 features passing, 97.5%)
+
+
+## 2026-07-11 - Feature #323 (WID-A) apps/widget scaffold + toolchain
+
+Scaffolded apps/widget with Vite + Svelte 5 + TypeScript strict.
+
+New directory apps/widget containing:
+- package.json: @arena/widget; size-limit config (150 kB gzip gate); svelte^5,
+  @sveltejs/vite-plugin-svelte^4, vitest, playwright, size-limit deps.
+- vite.config.ts: lib mode, entry src/index.ts, format es, fileName 'arena-tickets'
+  -> dist/arena-tickets.js; compilerOptions.customElement=true; minify=true.
+- vitest.config.ts: node environment, src/*.test.ts.
+- playwright.config.ts: chromium project, baseURL localhost:4173, webServer preview.
+- tsconfig.json + tsconfig.app.json: strict, ES2022, Bundler moduleResolution.
+- src/ArenaTickets.svelte: arena-tickets Shadow DOM custom element; svelte:options
+  customElement with props mapping (feed-token/session-id/locale); CSS custom
+  property theme API (--arena-accent, --arena-bg, --arena-font-family, etc.).
+- src/utils.ts: parseLocale, parseFeedToken, parseSessionId, buildThemeStyle,
+  SUPPORTED_LOCALES, THEME_CSS_VARS.
+- src/index.ts: re-exports ArenaTickets component + all utils.
+- src/ArenaTickets.test.ts: 28 vitest unit tests covering all utils.
+- demo/index.html: 8-example attribute matrix (feed-token, session-id,
+  locales en/ru/de, themed indigo/rose, no-token placeholder, slotted content).
+
+Modified files:
+- .github/workflows/ci.yml: additive widget job (Node 20, npm ci, type-check,
+  test, build, size gate). Does not gate build-and-push.
+- ci_workflow_test.go: "widget" added to AllRequiredJobsPresent list (lines
+  186 and 252) so ci_workflow_test.go stays green.
+
+Verification:
+  npm --prefix apps/widget run type-check     OK (0 errors)
+  npm --prefix apps/widget test               28/28 PASS
+  npm --prefix apps/widget run build          dist/arena-tickets.js 76.97 KB
+  npm --prefix apps/widget run size           22.62 KB gzip vs 150 KB - PASS
+  All ci_workflow_test.go string assertions verified against ci.yml - PASS
+Marked #323 passing. (323/329 features passing, 98.2%)
