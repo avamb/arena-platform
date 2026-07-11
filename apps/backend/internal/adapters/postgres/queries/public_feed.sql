@@ -87,3 +87,19 @@ WHERE ft.token     = $1
   AND e.status      = 'published'
   AND e.deleted_at  IS NULL
   AND s.deleted_at  IS NULL;
+
+-- name: GetFeedTokenBuyerFlags :one
+-- GetFeedTokenBuyerFlags returns the buyer-field collection flags for the
+-- sales channel linked to the given active feed token.  Widgets call this
+-- (indirectly, via the public feed session payload) to build the buyer form.
+-- Returns pgx.ErrNoRows when the token is unknown, revoked, or its linked
+-- sales channel has been soft-deleted.
+-- Feature #321 WID-0d.
+SELECT
+    sc.collect_name,
+    sc.collect_phone
+FROM agent_feed_tokens ft
+JOIN sales_channels sc ON sc.id = ft.sales_channel_id
+WHERE ft.token     = $1
+  AND ft.is_active  = true
+  AND sc.deleted_at IS NULL;

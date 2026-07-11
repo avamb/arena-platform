@@ -157,3 +157,38 @@ func (q *Queries) GetPublicCheckoutContext(ctx context.Context, token string, se
 	err := row.Scan(&r.SessionID, &r.EventID, &r.OrgID, &r.SalesChannelID)
 	return r, err
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GetFeedTokenBuyerFlags (feature #321 WID-0d — hand-written, not sqlc-generated)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// FeedTokenBuyerFlagsRow holds the buyer-field collection flags for the sales
+// channel linked to a feed token.  Exposed as buyer_fields in the public feed
+// session payload and validated during checkout/start.
+type FeedTokenBuyerFlagsRow struct {
+	CollectName  bool `json:"collect_name"`
+	CollectPhone bool `json:"collect_phone"`
+}
+
+const getFeedTokenBuyerFlags = `-- name: GetFeedTokenBuyerFlags :one
+SELECT
+    sc.collect_name,
+    sc.collect_phone
+FROM agent_feed_tokens ft
+JOIN sales_channels sc ON sc.id = ft.sales_channel_id
+WHERE ft.token     = $1
+  AND ft.is_active  = true
+  AND sc.deleted_at IS NULL`
+
+// GetFeedTokenBuyerFlags returns the buyer-field collection flags for the
+// sales channel linked to the given active feed token.
+//
+// Returns pgx.ErrNoRows when:
+//   - the token is unknown or revoked (is_active = false)
+//   - the linked sales channel has been soft-deleted
+func (q *Queries) GetFeedTokenBuyerFlags(ctx context.Context, feedToken string) (FeedTokenBuyerFlagsRow, error) {
+	row := q.db.QueryRow(ctx, getFeedTokenBuyerFlags, feedToken)
+	var r FeedTokenBuyerFlagsRow
+	err := row.Scan(&r.CollectName, &r.CollectPhone)
+	return r, err
+}

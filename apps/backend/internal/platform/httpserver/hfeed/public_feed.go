@@ -119,12 +119,26 @@ func publicFeedTierFromRow(t gen.TicketTierRow) publicFeedTierResponse {
 	return resp
 }
 
+// BuyerFieldItem describes a single buyer-form field that the widget should
+// render.  Emitted as buyer_fields:[{key,required,enabled}] in the session
+// payload so the widget can build the checkout form from the API response
+// without any hard-coded assumptions (feature #321 WID-0d).
+type BuyerFieldItem struct {
+	Key      string `json:"key"`
+	Required bool   `json:"required"`
+	Enabled  bool   `json:"enabled"`
+}
+
 // publicFeedSessionResponse is the JSON shape for a session in the detail response.
 //
 // AdmissionMode, SchemaURL and SeatStatusURL are populated only when the
 // session is seated (admission_mode != 'general_admission'); they are
 // emitted as top-level fields so widget consumers can decide whether to
 // call the SEAT-B3 endpoints without pattern-matching the session shape.
+//
+// BuyerFields exposes the channel-level buyer-form configuration (feature
+// #321 WID-0d) so the widget can render and validate the buyer form fields
+// without hard-coding assumptions.
 type publicFeedSessionResponse struct {
 	ID            string                   `json:"id"`
 	StartAt       string                   `json:"start_at"`
@@ -134,16 +148,35 @@ type publicFeedSessionResponse struct {
 	AdmissionMode string                   `json:"admission_mode,omitempty"`
 	SchemaURL     string                   `json:"schema_url,omitempty"`
 	SeatStatusURL string                   `json:"seat_status_url,omitempty"`
+	BuyerFields   []BuyerFieldItem         `json:"buyer_fields"`
 	Tiers         []publicFeedTierResponse `json:"tiers"`
 }
 
-func publicFeedSessionFromRow(s gen.SessionRow) publicFeedSessionResponse {
+// BuildBuyerFields constructs the buyer_fields list from channel flags.
+// The email field is always required and enabled; name and phone follow
+// the channel's collect_name / collect_phone flags.
+// Exported so tests can invoke it directly without a live DB.
+func BuildBuyerFields(collectName, collectPhone bool) []BuyerFieldItem {
+	return []BuyerFieldItem{
+		{Key: "email", Required: true, Enabled: true},
+		{Key: "name", Required: collectName, Enabled: collectName},
+		{Key: "phone", Required: collectPhone, Enabled: collectPhone},
+	}
+}
+
+// buildBuyerFields is the unexported alias used within this package.
+func buildBuyerFields(collectName, collectPhone bool) []BuyerFieldItem {
+	return BuildBuyerFields(collectName, collectPhone)
+}
+
+func publicFeedSessionFromRow(s gen.SessionRow, buyerFields []BuyerFieldItem) publicFeedSessionResponse {
 	return publicFeedSessionResponse{
 		ID:            s.ID.String(),
 		StartAt:       s.StartAt.UTC().Format(time.RFC3339),
 		EndAt:         s.EndAt.UTC().Format(time.RFC3339),
 		CapacityTotal: s.CapacityTotal,
 		Status:        s.Status,
+		BuyerFields:   buyerFields,
 		Tiers:         []publicFeedTierResponse{},
 	}
 }
@@ -436,6 +469,21 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 		Sessions:                []publicFeedSessionResponse{},
 	}
 
+	// Fetch buyer-field flags from the channel linked to this feed token
+	// (feature #321 WID-0d). Non-fatal: defaults to email-only on error.
+	defaultBuyerFields := buildBuyerFields(false, false)
+	if h.publicFeedQueries != nil {
+		flags, flagsErr := h.publicFeedQueries.GetFeedTokenBuyerFlags(ctx, feedToken)
+		if flagsErr == nil {
+			defaultBuyerFields = buildBuyerFields(flags.CollectName, flags.CollectPhone)
+		} else if !errors.Is(flagsErr, pgx.ErrNoRows) {
+			h.logger.Error("public_feed: get buyer flags failed",
+				slog.String("feed_token", feedToken),
+				slog.String("error", flagsErr.Error()),
+			)
+		}
+	}
+
 	if h.sessionQueries != nil {
 		sessions, err := h.sessionQueries.ListSessionsByEvent(ctx, eventID)
 		if err != nil {
@@ -464,7 +512,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 				}
 			}
 			for _, sess := range sessions {
-				sessResp := publicFeedSessionFromRow(sess)
+				sessResp := publicFeedSessionFromRow(sess, defaultBuyerFields)
 				sessResp.applySeatingLinks(admissionByID[sess.ID.String()])
 
 				// Fetch tiers for each session.

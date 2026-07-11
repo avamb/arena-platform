@@ -74,6 +74,16 @@ type PublicGAItem struct {
 	Quantity int32  `json:"quantity"`
 }
 
+// PublicBuyerInfo carries the buyer's contact details for the checkout form
+// (feature #321 WID-0d).  Email supersedes holder_email when both are present.
+// Name and phone are collected only when the sales channel has the
+// corresponding collect_name / collect_phone flag enabled.
+type PublicBuyerInfo struct {
+	Email string  `json:"email"`
+	Name  *string `json:"name,omitempty"`
+	Phone *string `json:"phone,omitempty"`
+}
+
 // PublicFeedCheckoutStartRequest is the JSON body for
 // POST /v1/public/feeds/{feed_token}/checkout/start.
 type PublicFeedCheckoutStartRequest struct {
@@ -86,6 +96,9 @@ type PublicFeedCheckoutStartRequest struct {
 	// New WID-0a fields (feature #318):
 	Seats   []string       `json:"seats,omitempty"`
 	GaItems []PublicGAItem `json:"ga_items,omitempty"`
+	// New WID-0d field (feature #321): structured buyer info.
+	// When present, Buyer.Email supersedes HolderEmail.
+	Buyer *PublicBuyerInfo `json:"buyer,omitempty"`
 }
 
 // mintCheckoutToken generates a 32-byte crypto-random hex string (64 chars).
@@ -163,7 +176,14 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// ── 4. Validate holder_email ──────────────────────────────────────────────
+	// ── 4. Merge buyer.email into holder_email (WID-0d, feature #321) ──────────
+	// Do this before the holder_email empty-check so that callers using the new
+	// buyer object don't need to repeat the email in the top-level field.
+	if req.Buyer != nil && req.Buyer.Email != "" {
+		req.HolderEmail = req.Buyer.Email
+	}
+
+	// ── 4b. Validate holder_email ─────────────────────────────────────────────
 	if req.HolderEmail == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"checkout.missing_holder_email", "holder_email is required", r,
@@ -260,6 +280,58 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			"checkout.context_failed", "failed to validate checkout context", r,
 		))
 		return
+	}
+
+	// ── 6b. Validate buyer fields against channel flags (WID-0d) ────────────────
+	// Fetch the buyer-field flags for this feed token and enforce them.
+	// A flag-lookup failure is treated as "flags all off" (non-blocking)
+	// so that a missing row (token had no linked channel, unlikely but
+	// defensive) degrades to email-only rather than hard-failing all
+	// checkouts.
+	var collectName, collectPhone bool
+	if h.publicFeedQueries != nil {
+		flags, flagsErr := h.publicFeedQueries.GetFeedTokenBuyerFlags(ctx, feedToken)
+		if flagsErr == nil {
+			collectName = flags.CollectName
+			collectPhone = flags.CollectPhone
+		} else if !errors.Is(flagsErr, pgx.ErrNoRows) {
+			h.logger.Error("public_feed_checkout: get buyer flags failed",
+				slog.String("feed_token", feedToken),
+				slog.String("error", flagsErr.Error()),
+			)
+		}
+	}
+
+	if collectName {
+		var name string
+		if req.Buyer != nil && req.Buyer.Name != nil {
+			name = *req.Buyer.Name
+		}
+		if name == "" {
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+				"checkout.buyer_name_required",
+				"buyer.name is required by this sales channel",
+				r,
+				map[string]any{"field": "buyer.name"},
+			))
+			return
+		}
+	}
+
+	if collectPhone {
+		var phone string
+		if req.Buyer != nil && req.Buyer.Phone != nil {
+			phone = *req.Buyer.Phone
+		}
+		if phone == "" {
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+				"checkout.buyer_phone_required",
+				"buyer.phone is required by this sales channel",
+				r,
+				map[string]any{"field": "buyer.phone"},
+			))
+			return
+		}
 	}
 
 	// ── 7. Validate GA tier(s) exist in this session ──────────────────────────

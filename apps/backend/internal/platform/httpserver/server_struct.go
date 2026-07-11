@@ -72,6 +72,7 @@ type Server struct {
 	paymentIntentQueries  *gen.Queries
 	ticketQueries         *gen.Queries
 	credentialQueries     *gen.Queries
+	funnelQueries         *gen.Queries
 	refundQueries         *gen.Queries
 	barcodeQueries        *gen.Queries
 	reportQueries         *gen.Queries

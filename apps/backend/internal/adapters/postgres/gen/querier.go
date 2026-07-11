@@ -440,6 +440,9 @@ type Querier interface {
 	GetPublicSessionSchema(ctx context.Context, sessionID uuid.UUID) (PublicSessionSchemaRow, error)
 	GetPublicSessionSeatStatusMeta(ctx context.Context, sessionID uuid.UUID) (PublicSessionSeatStatusMetaRow, error)
 	ListSessionAdmissionModesByEvent(ctx context.Context, eventID uuid.UUID) ([]SessionAdmissionModeRow, error)
+
+	// Widget funnel events — telemetry sink (feature #322 WID-0e)
+	InsertWidgetFunnelEvent(ctx context.Context, feedToken, eventType string, checkoutToken *string, sessionID *uuid.UUID, occurredAt time.Time) error
 }
 
 // Compile-time assertion: *Queries must implement Querier.

@@ -5445,6 +5445,62 @@ components:
           format: date-time
           description: Reservation expiry (RFC 3339 UTC).
 
+    WidgetFunnelEventInput:
+      type: object
+      description: |
+        A single widget funnel telemetry event.  No PII is stored — the only
+        linkage to a checkout journey is the opaque `checkout_token`.
+        Feature #322 WID-0e.
+      required: [event_type]
+      properties:
+        event_type:
+          type: string
+          enum:
+            - schema_viewed
+            - seat_selected
+            - cart_opened
+            - payment_started
+            - recovered
+          description: |
+            The funnel step that triggered this event:
+            - `schema_viewed`: the seating plan was displayed to the user.
+            - `seat_selected`: the user selected one or more seats.
+            - `cart_opened`: the user opened the checkout cart.
+            - `payment_started`: the user advanced to the payment step.
+            - `recovered`: a previously expired hold was recovered.
+        checkout_token:
+          type: string
+          description: |
+            Opaque checkout token — present when a checkout journey has been
+            started.  Not PII: it is a random 256-bit hex string with no
+            personally identifiable information attached.
+        session_id:
+          type: string
+          format: uuid
+          description: UUID of the event session the user is browsing.
+        occurred_at:
+          type: string
+          format: date-time
+          description: |
+            RFC 3339 client-side timestamp of when the event occurred.
+            Defaults to the server's `now()` when absent or unparseable.
+
+    WidgetFunnelEventsBatch:
+      type: object
+      description: |
+        Request body for `POST /v1/public/feeds/{feed_token}/events`
+        (feature #322 WID-0e).  Contains a batch of funnel telemetry events
+        from the embedded widget.
+      required: [events]
+      properties:
+        events:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/WidgetFunnelEventInput"
+          description: Batch of funnel telemetry events (1–50 items).
+
     CheckoutRecoverResponse:
       type: object
       description: |
@@ -19629,6 +19685,55 @@ paths:
                     type: integer
                   offset:
                     type: integer
+        "429":
+          description: Rate limited.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: postPublicFeedFunnelEvents
+      summary: Submit batched widget funnel telemetry events
+      description: |
+        Accepts a batch of funnel telemetry events from the embedded ticket
+        widget (feature #322 WID-0e).  Fire-and-forget: the server persists
+        each event to an audit-grade table and returns 204 regardless of
+        individual insert outcomes.
+
+        No PII is stored — the only linkage to a checkout journey is the
+        opaque `checkout_token` (a random 256-bit hex string).
+
+        Heavily rate-limited (shared per-token + per-IP bucket with the
+        browse endpoints).  No JWT required.
+      tags: [PublicFeed]
+      parameters:
+        - name: feed_token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Opaque feed token (from `agent_feed_tokens.token`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WidgetFunnelEventsBatch"
+      responses:
+        "204":
+          description: Batch accepted (all valid events persisted; unknown types skipped).
+        "400":
+          description: Invalid JSON body, empty batch, or batch exceeds maximum size.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "429":
           description: Rate limited.
           content:

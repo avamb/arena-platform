@@ -108,6 +108,7 @@ func (s *Server) feedHandler() *hfeed.Handler {
 		s.promoQueries,
 		s.ticketQueries,
 		s.credentialQueries,
+		s.funnelQueries,
 		s.pool,
 		s.logger,
 		s.audit,
@@ -125,6 +126,7 @@ func (s *Server) feedHandler() *hfeed.Handler {
 type feedTokenResponse = hfeed.FeedTokenResponse
 type publicFeedCheckoutStartRequest = hfeed.PublicFeedCheckoutStartRequest
 type publicGAItem = hfeed.PublicGAItem
+type publicBuyerInfo = hfeed.PublicBuyerInfo // WID-0d #321
 
 // ─── pure-function forwarders ─────────────────────────────────────────────────
 // feed_tokens_test.go calls these unqualified — keep the original lowercase
@@ -193,5 +195,11 @@ func (s *Server) handlePublicTicketPDF(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePublicCheckoutRecover(w http.ResponseWriter, r *http.Request) {
 	s.feedHandler().HandlePublicCheckoutRecover(w, r)
+}
+
+// ─── widget funnel telemetry shim (feature #322 WID-0e) ──────────────────────
+
+func (s *Server) handlePublicFeedFunnelEvents(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandlePostFunnelEvents(w, r)
 }
 

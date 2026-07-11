@@ -560,6 +560,19 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "public_feed.sql.go"),
 		}
+	// Widget funnel events telemetry sink (feature #322 WID-0e)
+	case "widget_funnel_events.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "widget_funnel_events.sql"),
+		}
+	case "widget_funnel_events.sql.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "widget_funnel_events.sql.go"),
+		}
+	case "0062_widget_funnel_events.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0062_widget_funnel_events.sql"),
+		}
 	case "public_feed.go":
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hfeed", "public_feed.go"),
@@ -854,6 +867,10 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "http", "openapi", "types_gen.go"),
 		}
+	case "0061_buyer_field_flags.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0061_buyer_field_flags.sql"),
+		}
 	case "0041_reconciliation_reports.sql":
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0041_reconciliation_reports.sql"),
@@ -1033,7 +1050,8 @@ func domainSubPackageFor(name string) (string, string) {
 	case "gdpr.go", "gdpr_processor.go":
 		return "hgdpr", "gdpr_shims.go"
 	case "feed_tokens.go", "public_feed.go", "public_feed_checkout.go",
-		"public_checkout_status.go", "public_checkout_recover.go":
+		"public_checkout_status.go", "public_checkout_recover.go",
+		"public_funnel_events.go":
 		return "hfeed", "feed_shims.go"
 	case "inventory.go", "inventory_ledger.go", "external_allocations.go":
 		return "hinventory", "inventory_shims.go"
@@ -1056,6 +1074,57 @@ func domainSubPackageFor(name string) (string, string) {
 		return "hbil24", "bil24_shims.go"
 	}
 	return "", ""
+}
+
+// findFileByPattern locates a file at a path relative to the repo root
+// (e.g. findFileByPattern(t, "apps/backend/openapi", "openapi.yaml"))
+// and returns its content. Uses the same two-strategy approach as findFileByName.
+func findFileByPattern(t *testing.T, relDir, filename string) string {
+	t.Helper()
+
+	locate := func(repoRoot string) string {
+		candidate := filepath.Join(repoRoot, filepath.FromSlash(relDir), filename)
+		data, err := os.ReadFile(candidate)
+		if err == nil {
+			return string(data)
+		}
+		return ""
+	}
+
+	// Strategy 1: compile-time absolute path via runtime.Caller.
+	_, thisFile, _, ok := runtime.Caller(0)
+	if ok && filepath.IsAbs(thisFile) {
+		dir := filepath.Dir(thisFile)
+		repoRoot := dir
+		for i := 0; i < 5; i++ {
+			repoRoot = filepath.Dir(repoRoot)
+		}
+		if content := locate(repoRoot); content != "" {
+			return content
+		}
+	}
+
+	// Strategy 2: CWD-based fallback for -trimpath / Docker environments.
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("findFileByPattern: cannot determine working directory: %v", err)
+	}
+	dir := cwd
+	for i := 0; i < 10; i++ {
+		if _, statErr := os.Stat(filepath.Join(dir, "go.mod")); statErr == nil {
+			if content := locate(dir); content != "" {
+				return content
+			}
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+
+	t.Fatalf("findFileByPattern: cannot locate %q in %q; cwd=%s", filename, relDir, cwd)
+	return ""
 }
 
 // endsWith is a tiny strings.HasSuffix-equivalent kept here so the helper

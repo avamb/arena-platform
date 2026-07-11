@@ -129,12 +129,16 @@ func (s *Server) mountPublicationRoutes(r chi.Router) {
 }
 
 // mountPublicFeedRoutes mounts the unauthenticated public feed event +
-// checkout endpoints (features #152, #153, #319 WID-0b, #320 WID-0c).
+// checkout endpoints (features #152, #153, #319 WID-0b, #320 WID-0c,
+// #322 WID-0e).
 func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 	if s.publicFeedQueries != nil {
 		r.Get("/public/feeds/{feed_token}/events", s.handlePublicFeedEvents)
 		r.Get("/public/feeds/{feed_token}/events/{event_id}", s.handlePublicFeedEvent)
 	}
+	// Funnel telemetry sink — WID-0e (feature #322).
+	// Always mounted; handler self-gates with 503 when funnelQueries is nil.
+	r.Post("/public/feeds/{feed_token}/events", s.handlePublicFeedFunnelEvents)
 	if s.publicFeedQueries != nil && s.checkoutQueries != nil && s.reservationQueries != nil {
 		r.Post("/public/feeds/{feed_token}/checkout/start", s.handlePublicFeedCheckoutStart)
 	}

@@ -104,6 +104,7 @@ type Options struct {
 	PaymentIntentQueries *gen.Queries
 	TicketQueries        *gen.Queries
 	CredentialQueries    *gen.Queries
+	FunnelQueries        *gen.Queries
 	RefundQueries        *gen.Queries
 	BarcodeQueries       *gen.Queries
 	ReportQueries        *gen.Queries
@@ -262,6 +263,7 @@ func New(opts Options) *Server {
 		paymentIntentQueries:  pickQueries(opts.PaymentIntentQueries, opts.PgxPool),
 		ticketQueries:         pickQueries(opts.TicketQueries, opts.PgxPool),
 		credentialQueries:     pickQueries(opts.CredentialQueries, opts.PgxPool),
+		funnelQueries:         pickQueries(opts.FunnelQueries, opts.PgxPool),
 		refundQueries:         pickQueries(opts.RefundQueries, opts.PgxPool),
 		barcodeQueries:        pickQueries(opts.BarcodeQueries, opts.PgxPool),
 		deliveryJobQueries:    pickQueries(opts.DeliveryJobQueries, opts.PgxPool),
