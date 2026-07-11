@@ -19684,4 +19684,45 @@ Verification:
   npm --prefix apps/widget test              281/281 PASS (7 test files)
   npm --prefix apps/widget run build         38.73 kB gzip vs 150 kB gate - PASS
   npm --prefix apps/widget run size          38.53 kB gzip - PASS
+Marked #327 passing. (327/329 features passing, 99.4%)
+
+
+## 2026-07-11 - Feature #328 (WID-F) Distribution (embed, WP, CDN)
+
+New files:
+- apps/widget/demo/iframe.html: Standalone iframe fallback page. Reads feed-token,
+  session-id, locale from URLSearchParams; sets them on <arena-tickets>; shows
+  loading state while the custom element upgrades. Served from same dist layout
+  (dist/v1/iframe.html via postbuild.mjs).
+- apps/wp-plugin/arena-events/includes/class-widget.php: Arena_Events_Widget class.
+  [arena_tickets feed_token="..." session_id="..." locale="en"] shortcode renders
+  <arena-tickets> and enqueues widget JS from configurable CDN (defaults to
+  jsdelivr.net pointing at master branch dist/v1/). Also registers Gutenberg
+  block arena-events/arena-tickets via block.json with server-side render.
+- apps/wp-plugin/arena-events/blocks/arena-tickets/block.json: block metadata
+  (apiVersion 3, embed category, server-side rendered, 4 attrs: feedToken,
+  sessionId, locale, cdnBase).
+- apps/wp-plugin/arena-events/blocks/arena-tickets/index.js: Plain-JS Gutenberg
+  editor block (no JSX/build step). InspectorControls panel for all 4 attributes;
+  editor preview shows feed-token/session-id summary or error if empty.
+- docs/widget-embed.md: Full embed docs covering script tag, attributes table,
+  CSP note (script-src, style-src unsafe-inline for Shadow DOM), iframe fallback,
+  WP shortcode usage, Gutenberg block, CDN versioning strategy (v1 rolling vs
+  pinned SHA), and self-hosting instructions.
+
+Modified files:
+- apps/wp-plugin/arena-events/arena-events.php: added require_once class-widget.php
+  and Arena_Events_Widget::init() call.
+
+Note: vite.config.ts outDir->dist/v1, package.json build/size-limit,
+scripts/postbuild.mjs, and ci.yml widget job publish steps were committed in the
+WID-E session (commit 39773bd).
+
+Verification:
+  npm --prefix apps/widget run build         dist/v1/arena-tickets.js + iframe.html OK
+  npm --prefix apps/widget run type-check    0 errors
+  npm --prefix apps/widget test              281/281 PASS
+  npm --prefix apps/widget run size          38.53 kB gzip < 150 kB gate
+  go test -run TestCIWorkflow ./apps/backend/...  22/22 PASS
+Marked #328 passing. (328/329 features passing, 99.7%)
 Marked #327 passing. (326/329 features passing, 99.1%)
