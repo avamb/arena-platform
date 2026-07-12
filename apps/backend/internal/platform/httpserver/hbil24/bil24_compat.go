@@ -42,11 +42,22 @@
 //	                   status / price lives in GET_SEAT_LIST. seatId format
 //	                   matches GET_SEAT_LIST (session_seats.id AS STRING,
 //	                   ADR-005) so callers can join the two responses.
-//	RESERVATION      → create a reservation (seated: seatList; GA:
-//	                   categoryList) — feature #312 Wave SEAT-D1. Routes
-//	                   the seated branch through the SEAT-C1 concurrency
-//	                   contract (deterministic seat_key locking + monotonic
-//	                   seat_status_version stamping).
+//	RESERVATION      → create a REAL hold (seated: seatList; GA:
+//	                   categoryList) — feature #312 Wave SEAT-D1, wired to
+//	                   the hcheckout hold API. The seated branch routes
+//	                   through the SEAT-C1 concurrency contract
+//	                   (deterministic seat_key locking + monotonic
+//	                   seat_status_version stamping); the GA branch takes
+//	                   per-tier capacity and records reservation_ga_items
+//	                   lines. Responds with the real reservationId,
+//	                   cartTimeout (seconds until expiry) and the platform-
+//	                   computed sum/discount/charge/totalSum financial
+//	                   fields (legacy contract §5.1; totalSum = sum -
+//	                   discount + charge).
+//	UN_RESERVE       → release a hold previously created by RESERVATION
+//	                   (legacy contract §5.1 cancel semantics): seats flip
+//	                   back to 'available', reserved capacity is returned,
+//	                   and the reservation transitions to 'cancelled'.
 //	GET_ORDER_INFO   → get checkout session + tickets (GetTicket)
 //	CREATE_ORDER_EXT → create a checkout session (CreateOrder) — scaffold stub
 //	SCAN_TICKET      → validate and record a barcode scan (ScanTicket)
@@ -80,6 +91,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -222,6 +234,8 @@ func (h *Handler) HandleBil24Command(w http.ResponseWriter, r *http.Request) {
 		h.handleBil24GetSchema(w, r, req)
 	case "RESERVATION":
 		h.handleBil24Reservation(w, r, req)
+	case "UN_RESERVE":
+		h.handleBil24UnReserve(w, r, req)
 	case "GET_ORDER_INFO":
 		h.handleBil24GetOrderInfo(w, r, req)
 	case "CREATE_ORDER_EXT":
@@ -930,15 +944,17 @@ func (h *Handler) handleBil24CancelOrder(w http.ResponseWriter, _ *http.Request,
 //   - general_admission session + seatList   → -2 quantity.required
 //   - hybrid session                         → either mode is accepted
 //
-// Once the wire contract passes, the seated branch documents the
-// SEAT-C1 concurrency contract it will route through (deterministic
-// seat_key-ordered locking + monotonic seat_status_version stamping —
-// see hcheckout/seat_reservations.go). Because the SEAT-C1 code path
-// requires a JWT actor and a channel/org resolution not yet plumbed
-// through the Bil24 fid/token surface, the current wire response is a
-// structured scaffold that echoes the parsed request back to the caller.
-// Callers migrated to the platform API can use POST /v1/reservations
-// directly for a full reservation lifecycle.
+// Once the wire contract passes, both branches create a REAL hold via
+// the hcheckout hold API (injected as callbacks by bil24_shims.go — the
+// gateway never imports package httpserver). The tenant context is
+// resolved from the request itself: the owning organization via the
+// session (sessions → events join) and the sales channel via the fid
+// credential (fid → sales_channel per the gateway ID mapping; until the
+// compatibility_id_map lands, fid must be the platform sales_channel
+// UUID). The response carries the real reservationId, cartTimeout
+// (whole seconds until the hold expires — legacy contract §5.1) and the
+// platform-computed financial fields (sum / discount / charge /
+// totalSum; totalSum = sum - discount + charge, guardrail #15).
 func (h *Handler) handleBil24Reservation(w http.ResponseWriter, r *http.Request, req bil24Request) {
 	if strings.TrimSpace(req.ActionEventID) == "" {
 		writeBil24JSON(w, http.StatusOK, bil24Error(
@@ -1017,28 +1033,181 @@ func (h *Handler) handleBil24Reservation(w http.ResponseWriter, r *http.Request,
 	}
 
 	if hasSeats {
-		h.reservationSeated(w, req, sessionID, admissionMode)
+		h.reservationSeated(w, r.Context(), req, sessionID, admissionMode)
 		return
 	}
-	h.reservationGA(w, req, sessionID, admissionMode)
+	h.reservationGA(w, r.Context(), req, sessionID, admissionMode)
 }
 
-// reservationSeated is the SEAT-C1-facing branch of the RESERVATION
-// dispatcher. See handleBil24Reservation for the response contract.
+// reservationContext resolves the tenant context of a RESERVATION request:
+// the owning organization via the session (sessions → events join) and the
+// sales channel addressed by the fid credential (fid → sales_channel per
+// the gateway ID mapping; until the compatibility_id_map lands, fid must be
+// the platform sales_channel UUID). The hold TTL honours the channel's
+// reservation_ttl_override and falls back to the platform default.
 //
-// Full end-to-end reservation creation is the responsibility of the
-// SEAT-C1 code path at POST /v1/reservations (seated branch). Wiring the
-// Bil24 fid/token surface into that path requires channel + org
-// resolution not yet built for the gateway; this scaffold documents the
-// seatList contract (session_seat.id strings, ADR-005) and echoes the
-// parsed request so contract tests can pin the wire shape.
-func (h *Handler) reservationSeated(w http.ResponseWriter, req bil24Request, sessionID uuid.UUID, admissionMode string) {
-	// Deduplicate + validate seat identifiers (each entry must be a
-	// non-empty string; ADR-005 does not require them to parse as UUID
-	// on the wire, but the platform's SEAT-C1 lock path uses the
-	// session_seat.id — full routing lands in a follow-up feature).
+// On failure the Bil24 error envelope has already been written and
+// ok=false is returned.
+func (h *Handler) reservationContext(
+	ctx context.Context,
+	w http.ResponseWriter,
+	req bil24Request,
+	sessionID uuid.UUID,
+) (orgID, channelID uuid.UUID, expiresAt time.Time, ok bool) {
+	orgCtx, err := h.resDeps.CtxQ.GetSessionOrgContext(ctx, sessionID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeNotFound, "session not found",
+			))
+			return uuid.Nil, uuid.Nil, time.Time{}, false
+		}
+		h.logger.Error("bil24_compat: RESERVATION: session org lookup failed",
+			slog.String("session_id", sessionID.String()),
+			slog.String("error", err.Error()),
+		)
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInternalError, "failed to resolve session",
+		))
+		return uuid.Nil, uuid.Nil, time.Time{}, false
+	}
+
+	if strings.TrimSpace(req.FID) == "" {
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInvalidRequest,
+			"fid is required for RESERVATION (sales channel credential)",
+		))
+		return uuid.Nil, uuid.Nil, time.Time{}, false
+	}
+	chID, err := TranslateLegacyID(req.FID)
+	if err != nil {
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInvalidRequest,
+			"fid must be a valid sales channel identifier",
+		))
+		return uuid.Nil, uuid.Nil, time.Time{}, false
+	}
+	channel, err := h.resDeps.CtxQ.GetSalesChannelByID(ctx, chID, orgCtx.OrgID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeNotFound,
+				"sales channel not found for fid in this session's organization",
+			))
+			return uuid.Nil, uuid.Nil, time.Time{}, false
+		}
+		h.logger.Error("bil24_compat: RESERVATION: sales channel lookup failed",
+			slog.String("fid", req.FID),
+			slog.String("error", err.Error()),
+		)
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInternalError, "failed to resolve sales channel",
+		))
+		return uuid.Nil, uuid.Nil, time.Time{}, false
+	}
+
+	ttl := hcheckout.DefaultReservationTTL
+	if channel.ReservationTTLOverride != nil && *channel.ReservationTTLOverride > 0 {
+		ttl = time.Duration(*channel.ReservationTTLOverride) * time.Second
+	}
+	return orgCtx.OrgID, channel.ID, time.Now().UTC().Add(ttl), true
+}
+
+// bil24FinancialFields projects a platform pricing breakdown onto the
+// legacy Bil24 financial fields (08_architecture/01_api_compatibility_
+// gateway_ru.md): sum = subtotal, discount = discount, charge = service
+// charge, and the invariant totalSum = sum - discount + charge is
+// preserved by deriving charge from the pipeline total.
+func bil24FinancialFields(bd hcheckout.PricingBreakdown) map[string]any {
+	charge := bd.Total - (bd.Subtotal - bd.Discount)
+	fields := map[string]any{
+		"sum":      bd.Subtotal,
+		"discount": bd.Discount,
+		"charge":   charge,
+		"totalSum": bd.Total,
+	}
+	if bd.Currency != "" {
+		fields["currency"] = bd.Currency
+	}
+	return fields
+}
+
+// cartTimeoutSeconds converts an absolute hold deadline into the legacy
+// cartTimeout wire field (whole seconds remaining, clamped at zero).
+func cartTimeoutSeconds(expiresAt time.Time) int64 {
+	secs := int64(time.Until(expiresAt).Seconds())
+	if secs < 0 {
+		secs = 0
+	}
+	return secs
+}
+
+// writeHoldError translates the typed errors of the hcheckout hold API into
+// Bil24 envelopes. Seat conflicts and over-capacity carry structured detail
+// alongside the description so migrated clients can highlight the exact
+// seats / zones.
+func (h *Handler) writeHoldError(w http.ResponseWriter, command string, err error) {
+	var conflicts *hcheckout.SeatConflictsError
+	var capErr *hcheckout.CapacityError
+	switch {
+	case errors.Is(err, hcheckout.ErrHoldSessionNotFound):
+		writeBil24JSON(w, http.StatusOK, bil24Error(command, ResultCodeNotFound, "session not found"))
+	case errors.Is(err, hcheckout.ErrHoldSeatsNotSupported):
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			command, ResultCodeInvalidRequest,
+			"seatList is not supported on general_admission sessions; use categoryList",
+		))
+	case errors.Is(err, hcheckout.ErrHoldQuantityNotSupported):
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			command, ResultCodeInvalidRequest,
+			"categoryList is not supported on assigned_seats sessions; use seatList",
+		))
+	case errors.Is(err, hcheckout.ErrHoldInvalidInput):
+		writeBil24JSON(w, http.StatusOK, bil24Error(command, ResultCodeInvalidRequest, "invalid reservation payload"))
+	case errors.As(err, &conflicts):
+		resp := bil24Error(command, ResultCodeInvalidRequest, "one or more requested seats are not available")
+		resp.Data = map[string]any{"conflicts": conflicts.Conflicts}
+		writeBil24JSON(w, http.StatusOK, resp)
+	case errors.As(err, &capErr):
+		resp := bil24Error(command, ResultCodeInvalidRequest, "insufficient capacity for this reservation")
+		detail := map[string]any{"requested": capErr.Requested}
+		if capErr.TierID != nil {
+			detail["categoryPriceId"] = TranslatePlatformID(*capErr.TierID)
+		}
+		resp.Data = map[string]any{"capacity": detail}
+		writeBil24JSON(w, http.StatusOK, resp)
+	default:
+		h.logger.Error("bil24_compat: RESERVATION: hold failed",
+			slog.String("command", command),
+			slog.String("error", err.Error()),
+		)
+		writeBil24JSON(w, http.StatusOK, bil24Error(command, ResultCodeInternalError, "failed to create reservation"))
+	}
+}
+
+// reservationSeated is the seated branch of the RESERVATION dispatcher —
+// feature #312 second half. It translates the ADR-005 seatList entries
+// (session_seats.id AS STRING) into canonical seat_keys, creates a REAL
+// hold through the injected hcheckout seated-reservation callback (SEAT-C1
+// concurrency contract), prices the held seats through the platform
+// pipeline, and responds with the legacy contract fields:
+//
+//	{
+//	  "resultCode": 0, "command": "RESERVATION",
+//	  "reservationId":  "<uuid>",                     // real id (string)
+//	  "sessionId":      "<uuid>",
+//	  "seatList":       ["<session_seat.id>", ...],   // held seats
+//	  "seatCount":      N,
+//	  "admissionMode":  "assigned_seats" | "hybrid",
+//	  "cartTimeout":    <seconds until expiry>,
+//	  "sum": <subtotal>, "discount": 0, "charge": <fees>,
+//	  "totalSum": <sum - discount + charge>, "currency": "..."
+//	}
+func (h *Handler) reservationSeated(w http.ResponseWriter, ctx context.Context, req bil24Request, sessionID uuid.UUID, admissionMode string) {
+	// Deduplicate + validate seat identifiers. Per ADR-005 each entry is
+	// the platform session_seats.id serialised as a plain UUID string.
 	seen := make(map[string]struct{}, len(req.SeatList))
-	seats := make([]string, 0, len(req.SeatList))
+	seatIDs := make([]uuid.UUID, 0, len(req.SeatList))
 	for _, s := range req.SeatList {
 		s = strings.TrimSpace(s)
 		if s == "" {
@@ -1056,7 +1225,96 @@ func (h *Handler) reservationSeated(w http.ResponseWriter, req bil24Request, ses
 			return
 		}
 		seen[s] = struct{}{}
-		seats = append(seats, s)
+		id, err := uuid.Parse(s)
+		if err != nil {
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeInvalidRequest,
+				fmt.Sprintf("seatList entry %q is not a valid session_seat identifier (ADR-005)", s),
+			))
+			return
+		}
+		seatIDs = append(seatIDs, id)
+	}
+
+	// Self-gate: the real hold path needs the reservation wiring plus the
+	// seat id → seat_key translation surface.
+	if h.resDeps.SeatedReserve == nil || h.resDeps.CtxQ == nil || h.seatQ == nil {
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInternalError, "reservation service unavailable",
+		))
+		return
+	}
+
+	orgID, channelID, expiresAt, ok := h.reservationContext(ctx, w, req, sessionID)
+	if !ok {
+		return
+	}
+
+	// Translate seat ids → seat_keys (the SEAT-C1 lock path orders and
+	// locks by seat_key).
+	seatKeys := make([]string, 0, len(seatIDs))
+	for _, id := range seatIDs {
+		seat, err := h.seatQ.GetSessionSeatByID(ctx, id, sessionID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				resp := bil24Error(req.Command, ResultCodeNotFound, "seat not found in this session")
+				resp.Data = map[string]any{"seatId": id.String()}
+				writeBil24JSON(w, http.StatusOK, resp)
+				return
+			}
+			h.logger.Error("bil24_compat: RESERVATION: seat lookup failed",
+				slog.String("seat_id", id.String()),
+				slog.String("error", err.Error()),
+			)
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeInternalError, "failed to resolve seat",
+			))
+			return
+		}
+		seatKeys = append(seatKeys, seat.SeatKey)
+	}
+
+	result, err := h.resDeps.SeatedReserve(ctx, hcheckout.SeatedHoldInput{
+		OrgID:     orgID,
+		ChannelID: channelID,
+		SessionID: sessionID,
+		SeatKeys:  seatKeys,
+		ExpiresAt: expiresAt,
+	})
+	if err != nil {
+		h.writeHoldError(w, req.Command, err)
+		return
+	}
+
+	// Price the held seats through the platform pipeline (guardrail #15).
+	// Tier prices come from the session's tier snapshot; seats without a
+	// bound tier price at 0. A missing tier snapshot degrades to zero
+	// prices rather than failing the hold (mirrors GET_SEAT_LIST).
+	tierPrice := make(map[string]int64)
+	currency := ""
+	if h.resDeps.TierQ != nil {
+		if tiers, terr := h.resDeps.TierQ.ListTicketTiersBySession(ctx, sessionID); terr == nil {
+			for _, t := range tiers {
+				tierPrice[t.ID.String()] = t.PriceAmount
+				if currency == "" {
+					currency = t.Currency
+				}
+			}
+		} else {
+			h.logger.Warn("bil24_compat: RESERVATION: tier snapshot failed; pricing seats at zero",
+				slog.String("session_id", sessionID.String()),
+				slog.String("error", terr.Error()),
+			)
+		}
+	}
+	bd := hcheckout.ComputePricingLines(
+		hcheckout.BuildSeatedPricingLines(result.Seats, tierPrice),
+		0, currency, h.resDeps.PricingRules,
+	)
+
+	heldSeatIDs := make([]string, 0, len(result.Seats))
+	for _, s := range result.Seats {
+		heldSeatIDs = append(heldSeatIDs, s.ID.String())
 	}
 
 	responseAdmission := admissionMode
@@ -1064,30 +1322,43 @@ func (h *Handler) reservationSeated(w http.ResponseWriter, req bil24Request, ses
 		responseAdmission = "assigned_seats"
 	}
 
-	h.logger.Info("bil24_compat: RESERVATION: seated scaffold",
+	h.logger.Info("bil24_compat: RESERVATION: seated hold created",
+		slog.String("reservation_id", result.Reservation.ID.String()),
 		slog.String("session_id", sessionID.String()),
-		slog.Int("seat_count", len(seats)),
-		slog.String("admission_mode", responseAdmission),
+		slog.Int("seat_count", len(result.Seats)),
+		slog.Int64("total_sum", bd.Total),
 	)
 
-	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
-		"reservationId": "pending",
+	extra := map[string]any{
+		"reservationId": TranslatePlatformID(result.Reservation.ID),
 		"sessionId":     TranslatePlatformID(sessionID),
-		"seatCount":     len(seats),
-		"seatList":      seats,
+		"seatCount":     len(result.Seats),
+		"seatList":      heldSeatIDs,
 		"admissionMode": responseAdmission,
-		"status":        "scaffold_stub",
-		"route":         "POST /v1/reservations (seated branch, SEAT-C1)",
-	}))
+		"cartTimeout":   cartTimeoutSeconds(result.Reservation.ExpiresAt),
+	}
+	for k, v := range bil24FinancialFields(bd) {
+		extra[k] = v
+	}
+	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, extra))
 }
 
-// reservationGA is the general_admission / tier-facade branch of the
-// RESERVATION dispatcher. It validates the categoryList shape and echoes
-// the parsed payload; the full quantity-mode reservation lifecycle is
-// exposed at POST /v1/reservations.
-func (h *Handler) reservationGA(w http.ResponseWriter, req bil24Request, sessionID uuid.UUID, admissionMode string) {
-	total := 0
-	echoed := make([]map[string]any, 0, len(req.CategoryList))
+// reservationGA is the general-admission branch of the RESERVATION
+// dispatcher. It validates the categoryList shape, prices every tier
+// platform-side (guardrail #15 — pwyw tiers are rejected because the
+// legacy wire has no chosen-price field), creates a REAL hold through the
+// injected hcheckout GA callback (per-tier capacity + reservation_ga_items
+// lines), and responds with the same financial contract as the seated
+// branch.
+func (h *Handler) reservationGA(w http.ResponseWriter, ctx context.Context, req bil24Request, sessionID uuid.UUID, admissionMode string) {
+	// Validate + aggregate the categoryList (duplicate tiers are summed so
+	// the per-tier hold lines stay unique).
+	type gaLine struct {
+		tierID uuid.UUID
+		qty    int32
+	}
+	order := make([]uuid.UUID, 0, len(req.CategoryList))
+	byTier := make(map[uuid.UUID]*gaLine, len(req.CategoryList))
 	for i, c := range req.CategoryList {
 		if strings.TrimSpace(c.CategoryPriceID) == "" {
 			writeBil24JSON(w, http.StatusOK, bil24Error(
@@ -1096,7 +1367,8 @@ func (h *Handler) reservationGA(w http.ResponseWriter, req bil24Request, session
 			))
 			return
 		}
-		if _, err := TranslateLegacyID(c.CategoryPriceID); err != nil {
+		tierID, err := TranslateLegacyID(c.CategoryPriceID)
+		if err != nil {
 			writeBil24JSON(w, http.StatusOK, bil24Error(
 				req.Command, ResultCodeInvalidRequest,
 				fmt.Sprintf("categoryList[%d].categoryPriceId must be a valid tier identifier", i),
@@ -1110,10 +1382,94 @@ func (h *Handler) reservationGA(w http.ResponseWriter, req bil24Request, session
 			))
 			return
 		}
-		total += c.Quantity
+		if line, exists := byTier[tierID]; exists {
+			line.qty += int32(c.Quantity) //nolint:gosec // validated > 0 above
+		} else {
+			byTier[tierID] = &gaLine{tierID: tierID, qty: int32(c.Quantity)} //nolint:gosec // validated > 0
+			order = append(order, tierID)
+		}
+	}
+
+	// Self-gate: the real hold path needs the reservation wiring plus the
+	// tier pricing surface.
+	if h.resDeps.GAReserve == nil || h.resDeps.CtxQ == nil || h.resDeps.TierQ == nil {
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInternalError, "reservation service unavailable",
+		))
+		return
+	}
+
+	orgID, channelID, expiresAt, ok := h.reservationContext(ctx, w, req, sessionID)
+	if !ok {
+		return
+	}
+
+	// Price every tier platform-side.
+	items := make([]hcheckout.GAHoldItem, 0, len(order))
+	lines := make([]hcheckout.PricingLineInput, 0, len(order))
+	currency := ""
+	for _, tierID := range order {
+		line := byTier[tierID]
+		tier, err := h.resDeps.TierQ.GetTicketTierByID(ctx, tierID, sessionID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				resp := bil24Error(req.Command, ResultCodeNotFound, "categoryPriceId not found in this session")
+				resp.Data = map[string]any{"categoryPriceId": TranslatePlatformID(tierID)}
+				writeBil24JSON(w, http.StatusOK, resp)
+				return
+			}
+			h.logger.Error("bil24_compat: RESERVATION: tier lookup failed",
+				slog.String("tier_id", tierID.String()),
+				slog.String("error", err.Error()),
+			)
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeInternalError, "failed to resolve ticket tier",
+			))
+			return
+		}
+		var unitPrice int64
+		switch tier.PricingMode {
+		case "free":
+			unitPrice = 0
+		case "fixed":
+			unitPrice = tier.PriceAmount
+		default:
+			// pwyw (no chosen-price field on the legacy wire) and unknown
+			// modes cannot be priced by the gateway.
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeInvalidRequest,
+				fmt.Sprintf("tier %s pricing mode %q is not supported via the compatibility gateway", tierID, tier.PricingMode),
+			))
+			return
+		}
+		if currency == "" {
+			currency = tier.Currency
+		}
+		items = append(items, hcheckout.GAHoldItem{TierID: tierID, Quantity: line.qty, UnitPrice: unitPrice})
+		lines = append(lines, hcheckout.PricingLineInput{TierID: tierID.String(), Quantity: line.qty, UnitPrice: unitPrice})
+	}
+
+	res, err := h.resDeps.GAReserve(ctx, hcheckout.GAHoldInput{
+		OrgID:     orgID,
+		ChannelID: channelID,
+		SessionID: sessionID,
+		Items:     items,
+		ExpiresAt: expiresAt,
+	})
+	if err != nil {
+		h.writeHoldError(w, req.Command, err)
+		return
+	}
+
+	bd := hcheckout.ComputePricingLines(lines, 0, currency, h.resDeps.PricingRules)
+
+	echoed := make([]map[string]any, 0, len(items))
+	var total int32
+	for _, it := range items {
+		total += it.Quantity
 		echoed = append(echoed, map[string]any{
-			"categoryPriceId": c.CategoryPriceID,
-			"quantity":        c.Quantity,
+			"categoryPriceId": TranslatePlatformID(it.TierID),
+			"quantity":        it.Quantity,
 		})
 	}
 
@@ -1122,19 +1478,98 @@ func (h *Handler) reservationGA(w http.ResponseWriter, req bil24Request, session
 		responseAdmission = "general_admission"
 	}
 
-	h.logger.Info("bil24_compat: RESERVATION: GA scaffold",
+	h.logger.Info("bil24_compat: RESERVATION: GA hold created",
+		slog.String("reservation_id", res.ID.String()),
 		slog.String("session_id", sessionID.String()),
-		slog.Int("total_quantity", total),
-		slog.String("admission_mode", responseAdmission),
+		slog.Int("total_quantity", int(total)),
+		slog.Int64("total_sum", bd.Total),
 	)
 
-	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
-		"reservationId": "pending",
+	extra := map[string]any{
+		"reservationId": TranslatePlatformID(res.ID),
 		"sessionId":     TranslatePlatformID(sessionID),
 		"categoryList":  echoed,
 		"totalQuantity": total,
 		"admissionMode": responseAdmission,
-		"status":        "scaffold_stub",
-		"route":         "POST /v1/reservations (GA branch)",
+		"cartTimeout":   cartTimeoutSeconds(res.ExpiresAt),
+	}
+	for k, v := range bil24FinancialFields(bd) {
+		extra[k] = v
+	}
+	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, extra))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UN_RESERVE — release a hold created by RESERVATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+// handleBil24UnReserve maps the legacy cancel semantics of the RESERVATION
+// flow (§5.1 of the ticket-agent notes) onto the platform hold release:
+// held seats flip back to 'available' (with a seat_status_version bump),
+// reserved capacity is returned (session-level for seats, per-tier for GA
+// lines), and the reservation transitions to 'cancelled'.
+//
+// Bil24 request fields used:
+//   - reservationId: the id returned by a successful RESERVATION
+//
+// Response:
+//
+//	{ "resultCode": 0, "command": "UN_RESERVE",
+//	  "reservationId": "<uuid>", "status": "cancelled" }
+func (h *Handler) handleBil24UnReserve(w http.ResponseWriter, r *http.Request, req bil24Request) {
+	if strings.TrimSpace(req.ReservationID) == "" {
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInvalidRequest, "reservationId is required",
+		))
+		return
+	}
+	reservationID, err := TranslateLegacyID(req.ReservationID)
+	if err != nil {
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInvalidRequest,
+			"reservationId must be a valid reservation identifier",
+		))
+		return
+	}
+
+	if h.resDeps.Release == nil {
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInternalError, "reservation service unavailable",
+		))
+		return
+	}
+
+	cancelled, err := h.resDeps.Release(r.Context(), reservationID)
+	if err != nil {
+		var notReleasable *hcheckout.NotReleasableError
+		switch {
+		case errors.Is(err, hcheckout.ErrHoldNotFound):
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeNotFound, "reservation not found",
+			))
+		case errors.As(err, &notReleasable):
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeInvalidRequest,
+				fmt.Sprintf("reservation cannot be released from state %q", notReleasable.State),
+			))
+		default:
+			h.logger.Error("bil24_compat: UN_RESERVE: release failed",
+				slog.String("reservation_id", reservationID.String()),
+				slog.String("error", err.Error()),
+			)
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeInternalError, "failed to release reservation",
+			))
+		}
+		return
+	}
+
+	h.logger.Info("bil24_compat: UN_RESERVE: hold released",
+		slog.String("reservation_id", cancelled.ID.String()),
+	)
+
+	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
+		"reservationId": TranslatePlatformID(cancelled.ID),
+		"status":        "cancelled",
 	}))
 }

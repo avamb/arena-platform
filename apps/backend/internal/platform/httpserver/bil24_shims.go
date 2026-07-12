@@ -15,13 +15,16 @@
 package httpserver
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hbil24"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 )
 
 // bil24Handler constructs an hbil24.Handler from the server's dependencies.
@@ -61,8 +64,45 @@ func (s *Server) bil24Handler() *hbil24.Handler {
 		admissionQ,
 		seatQ,
 		schemaQ,
+		s.bil24ReservationDeps(),
 		s.logger,
 	)
+}
+
+// bil24ReservationDeps wires the REAL RESERVATION / UN_RESERVE machinery
+// (feature #312 second half) into hbil24 as callbacks over the hcheckout
+// hold API, following the cross-domain callback precedent of
+// feed_shims.go (PromoValidator). hbil24 never imports package httpserver;
+// the closures below capture the *Server query handles instead.
+//
+// Every dependency is nil-safe: when the reservation / inventory queries
+// or the pool are not wired the callbacks stay nil and the commands
+// self-gate with resultCode=-99.
+func (s *Server) bil24ReservationDeps() hbil24.ReservationDeps {
+	deps := hbil24.ReservationDeps{
+		PricingRules: hcheckout.PricingRules(s.pricingRules),
+	}
+	if s.sessionQueries != nil {
+		deps.CtxQ = s.sessionQueries
+	}
+	if s.tierQueries != nil {
+		deps.TierQ = s.tierQueries
+	}
+	if s.reservationQueries == nil || s.inventoryQueries == nil || s.pool == nil {
+		return deps
+	}
+	resQ := s.reservationQueries
+	pool := s.pool
+	deps.SeatedReserve = func(ctx context.Context, in hcheckout.SeatedHoldInput) (hcheckout.SeatedHoldResult, error) {
+		return hcheckout.CreateSeatedHold(ctx, pool, resQ, in)
+	}
+	deps.GAReserve = func(ctx context.Context, in hcheckout.GAHoldInput) (gen.ReservationRow, error) {
+		return hcheckout.CreateGAHold(ctx, pool, resQ, in)
+	}
+	deps.Release = func(ctx context.Context, reservationID uuid.UUID) (gen.ReservationRow, error) {
+		return hcheckout.ReleaseHold(ctx, pool, resQ, reservationID)
+	}
+	return deps
 }
 
 // ─── result codes (re-exported from the adapter package) ─────────────────────

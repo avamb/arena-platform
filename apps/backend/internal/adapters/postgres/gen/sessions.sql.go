@@ -311,3 +311,35 @@ func (q *Queries) CountOverlappingSessions(ctx context.Context, eventID, exclude
 	err := row.Scan(&count)
 	return count, err
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GetSessionOrgContext
+// ─────────────────────────────────────────────────────────────────────────────
+
+// SessionOrgContextRow is the narrow projection returned by
+// GetSessionOrgContext: the session id and the owning organization resolved
+// via the sessions → events join.
+type SessionOrgContextRow struct {
+	SessionID uuid.UUID `json:"session_id"`
+	OrgID     uuid.UUID `json:"org_id"`
+}
+
+const getSessionOrgContext = `-- name: GetSessionOrgContext :one
+SELECT s.id AS session_id, e.org_id
+FROM   sessions s
+JOIN   events   e ON e.id = s.event_id
+WHERE  s.id         = $1
+  AND  s.deleted_at IS NULL
+  AND  e.deleted_at IS NULL`
+
+// GetSessionOrgContext resolves the owning organization of a session by
+// walking the sessions → events join. Used by the Bil24 compatibility
+// gateway (RESERVATION wiring) to anchor a reservation to the correct
+// tenant. Returns pgx.ErrNoRows when the session or its event does not
+// exist or has been soft-deleted.
+func (q *Queries) GetSessionOrgContext(ctx context.Context, sessionID uuid.UUID) (SessionOrgContextRow, error) {
+	row := q.db.QueryRow(ctx, getSessionOrgContext, sessionID)
+	var r SessionOrgContextRow
+	err := row.Scan(&r.SessionID, &r.OrgID)
+	return r, err
+}

@@ -54,6 +54,11 @@ type Request struct {
 	OrderID string
 	// TicketID is the Bil24 barcode / ticket identifier (SCAN_TICKET).
 	TicketID string
+	// ReservationID is the platform reservation identifier returned by a
+	// successful RESERVATION command. Consumed by UN_RESERVE to release
+	// the hold. Like the other ID fields it travels as a string (the
+	// legacy wire key "reservationId" matches case-insensitively).
+	ReservationID string
 
 	// SeatList is the seated-mode RESERVATION payload (feature #312,
 	// Wave SEAT-D1). Each entry is a session_seat.id string (ADR-005 —

@@ -5041,6 +5041,47 @@ components:
           minLength: 3
           maxLength: 3
           description: ISO 4217 currency code (e.g. `USD`, `ILS`, `EUR`).
+        lines:
+          type: array
+          description: |
+            Multi-line breakdown (feature #310, SEAT-C2): one entry per
+            (tier, unit_price) group when a checkout spans several
+            ticket tiers — e.g. a seated reservation whose seats resolve
+            to different tiers, or a mixed seats+GA cart. Omitted for
+            single-tier checkouts. The sum of line subtotals equals the
+            top-level `subtotal`; the top-level `unit_price` is the
+            weighted average and `quantity` the sum across lines.
+          items:
+            $ref: "#/components/schemas/PricingLineItem"
+
+    PricingLineItem:
+      type: object
+      description: |
+        One row of a multi-line pricing breakdown: a (tier, unit_price)
+        group priced by the platform pipeline (feature #310).
+      required: [tier_id, quantity, unit_price, subtotal]
+      properties:
+        tier_id:
+          type: string
+          description: |
+            Ticket tier UUID as a string. Empty string on
+            general-admission checkouts whose reservation carries no
+            tier.
+        quantity:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Number of tickets in this tier group.
+        unit_price:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Per-ticket price of this group in minor units.
+        subtotal:
+          type: integer
+          format: int64
+          minimum: 0
+          description: "`unit_price * quantity` for this group."
 
     QuoteResponseItem:
       type: object
@@ -5434,6 +5475,13 @@ components:
         checkout_session:
           description: The created checkout session with pricing snapshot and state.
           $ref: "#/components/schemas/CheckoutSessionItem"
+        pricing:
+          description: |
+            Platform-computed pricing breakdown for the hold (guardrail:
+            totals always come from the platform — widgets must render
+            these numbers verbatim and never perform price arithmetic).
+            Carries per-tier `lines` for seated and mixed carts.
+          $ref: "#/components/schemas/PricingBreakdownItem"
         redirect_url:
           type: string
           description: URL to redirect the buyer to for payment or completion.

@@ -56,14 +56,18 @@ func checkoutStatusToPublic(state string) string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // checkoutStatusItemResponse represents a single item held in the cart.
-// For assigned-seat reservations the seat_key, sector, row, number fields are
-// populated. For GA reservations only type + quantity are set.
+// For assigned-seat items the seat_key, sector, row, number fields are
+// populated. For GA items tier_id / tier_name label the zone and quantity
+// carries the ticket count. unit_price is the per-ticket price snapshot in
+// smallest currency units (WID-0b requires labels + prices on every item).
 type checkoutStatusItemResponse struct {
 	Type      string  `json:"type"` // "seat" or "general_admission"
 	SeatKey   *string `json:"seat_key,omitempty"`
 	Sector    *string `json:"sector,omitempty"`
 	Row       *string `json:"row,omitempty"`
 	Number    *string `json:"number,omitempty"`
+	TierID    *string `json:"tier_id,omitempty"`
+	TierName  *string `json:"tier_name,omitempty"`
 	UnitPrice *int64  `json:"unit_price,omitempty"`
 	Quantity  *int32  `json:"quantity,omitempty"`
 }
@@ -184,7 +188,10 @@ func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.R
 		Tickets:           []checkoutStatusTicketResponse{},
 	}
 
-	// ── 4. Load held seats (pending only) ────────────────────────────────────
+	// ── 4. Load held cart items (pending only) ────────────────────────────────
+	// A mixed hold carries BOTH assigned seats (reservation_seats) and GA
+	// lines (reservation_ga_items, migration 0063); the response includes
+	// every item with its label + unit price (WID-0b contract).
 	if publicStatus == "pending" {
 		seats, seatErr := h.reservationQueries.ListReservationSeats(ctx, reservation.ID)
 		if seatErr != nil {
@@ -195,38 +202,96 @@ func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.R
 			)
 		}
 
-		if len(seats) > 0 {
-			// Assigned-seat reservation: one item per seat.
-			items := make([]checkoutStatusItemResponse, 0, len(seats))
-			for _, s := range seats {
-				item := checkoutStatusItemResponse{
-					Type:    "seat",
-					SeatKey: &s.SeatKey,
-				}
-				if s.SectorName != "" {
-					sn := s.SectorName
-					item.Sector = &sn
-				}
-				if s.RowName != "" {
-					rn := s.RowName
-					item.Row = &rn
-				}
-				if s.SeatNumber != "" {
-					num := s.SeatNumber
-					item.Number = &num
-				}
-				items = append(items, item)
+		gaItems, gaErr := h.reservationQueries.ListReservationGAItems(ctx, reservation.ID)
+		if gaErr != nil {
+			// Non-fatal for the same reason.
+			h.logger.Warn("public_checkout_status: list reservation GA lines failed",
+				slog.String("reservation_id", reservation.ID.String()),
+				slog.String("error", gaErr.Error()),
+			)
+		}
+
+		items := make([]checkoutStatusItemResponse, 0, len(seats)+len(gaItems)+1)
+
+		// Seat items — labelled by seat_key/sector/row/number and priced from
+		// the seat's tier binding (best-effort; seats without a tier or with an
+		// unresolvable tier omit unit_price rather than failing the status).
+		seatTierPrice := make(map[string]*int64)
+		for _, s := range seats {
+			item := checkoutStatusItemResponse{
+				Type:    "seat",
+				SeatKey: &s.SeatKey,
 			}
-			resp.Items = items
-		} else {
-			// GA reservation: one item with quantity.
+			if s.SectorName != "" {
+				sn := s.SectorName
+				item.Sector = &sn
+			}
+			if s.RowName != "" {
+				rn := s.RowName
+				item.Row = &rn
+			}
+			if s.SeatNumber != "" {
+				num := s.SeatNumber
+				item.Number = &num
+			}
+			if s.TierID != nil {
+				key := s.TierID.String()
+				item.TierID = &key
+				price, cached := seatTierPrice[key]
+				if !cached && h.tierQueries != nil {
+					if tier, terr := h.tierQueries.GetTicketTierByID(ctx, *s.TierID, reservation.SessionID); terr == nil {
+						if unit, errCode := resolvePublicTierUnitPrice(tier); errCode == "" {
+							price = &unit
+						}
+					}
+					seatTierPrice[key] = price
+				}
+				item.UnitPrice = price
+			}
+			items = append(items, item)
+		}
+
+		// GA items — one line per tier with name, quantity, and the unit-price
+		// snapshot taken when the hold was priced.
+		for i := range gaItems {
+			g := gaItems[i]
+			tierID := g.TierID.String()
+			tierName := g.TierName
+			qty := g.Quantity
+			unit := g.UnitPrice
+			items = append(items, checkoutStatusItemResponse{
+				Type:      "general_admission",
+				TierID:    &tierID,
+				TierName:  &tierName,
+				Quantity:  &qty,
+				UnitPrice: &unit,
+			})
+		}
+
+		// Legacy fallback: pre-0063 GA reservations have neither seats nor GA
+		// lines — expose the aggregate quantity (label/price best-effort from
+		// the reservation's tier when one is recorded).
+		if len(items) == 0 {
 			qty := reservation.Quantity
 			item := checkoutStatusItemResponse{
 				Type:     "general_admission",
 				Quantity: &qty,
 			}
-			resp.Items = []checkoutStatusItemResponse{item}
+			if reservation.TierID != nil && h.tierQueries != nil {
+				if tier, terr := h.tierQueries.GetTicketTierByID(ctx, *reservation.TierID, reservation.SessionID); terr == nil {
+					tid := tier.ID.String()
+					name := tier.Name
+					item.TierID = &tid
+					item.TierName = &name
+					if unit, errCode := resolvePublicTierUnitPrice(tier); errCode == "" {
+						item.UnitPrice = &unit
+					}
+				}
+			}
+			items = append(items, item)
 		}
+
+		resp.Items = items
 	}
 
 	// ── 5. Load tickets when paid ─────────────────────────────────────────────

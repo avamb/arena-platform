@@ -116,3 +116,17 @@ WHERE  event_id    = $1
   AND  deleted_at  IS NULL
   AND  start_at    < $4
   AND  end_at      > $3;
+
+-- name: GetSessionOrgContext :one
+-- GetSessionOrgContext resolves the owning organization of a session by
+-- walking the sessions → events join. Used by the Bil24 compatibility
+-- gateway (RESERVATION, feature #312 wiring) to anchor a reservation to
+-- the correct tenant without requiring the caller to know the event_id.
+-- Returns pgx.ErrNoRows when the session or its event does not exist or
+-- has been soft-deleted.
+SELECT s.id AS session_id, e.org_id
+FROM   sessions s
+JOIN   events   e ON e.id = s.event_id
+WHERE  s.id         = $1
+  AND  s.deleted_at IS NULL
+  AND  e.deleted_at IS NULL;

@@ -70,6 +70,7 @@ func newHandlerWithSchema(admQ AdmissionQuerier, seatQ SeatQuerier, schemaQ Sche
 		admQ,
 		seatQ,
 		schemaQ,
+		ReservationDeps{},
 		slog.New(slog.NewJSONHandler(io.Discard, nil)),
 	)
 }

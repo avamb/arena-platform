@@ -26,6 +26,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 )
 
 // AdmissionQuerier is the narrow contract handleBil24GetSeatList and
@@ -39,10 +40,61 @@ type AdmissionQuerier interface {
 
 // SeatQuerier is the narrow contract handleBil24GetSeatList uses to load
 // the real assigned-seat rows for a session (branch when admission_mode
-// != general_admission). Kept behind an interface so unit tests can
-// substitute an in-memory fake. *gen.Queries satisfies this interface.
+// != general_admission) and the RESERVATION seated branch uses to
+// translate ADR-005 seatId values (session_seats.id strings) into the
+// canonical seat_keys the SEAT-C1 lock path consumes. Kept behind an
+// interface so unit tests can substitute an in-memory fake. *gen.Queries
+// satisfies this interface.
 type SeatQuerier interface {
 	ListSessionSeats(ctx context.Context, sessionID uuid.UUID) ([]gen.SessionSeatRow, error)
+	GetSessionSeatByID(ctx context.Context, id, sessionID uuid.UUID) (gen.SessionSeatRow, error)
+}
+
+// ReservationContextQuerier resolves the tenant context a Bil24 RESERVATION
+// needs: the session's owning organization (sessions → events join) and the
+// sales channel addressed by the request's fid credential. *gen.Queries
+// satisfies this interface.
+type ReservationContextQuerier interface {
+	GetSessionOrgContext(ctx context.Context, sessionID uuid.UUID) (gen.SessionOrgContextRow, error)
+	GetSalesChannelByID(ctx context.Context, id, orgID uuid.UUID) (gen.SalesChannelRow, error)
+}
+
+// TierPriceQuerier resolves ticket-tier unit prices for the RESERVATION
+// totalSum computation (guardrail #15 — the gateway never trusts client
+// prices). *gen.Queries satisfies this interface.
+type TierPriceQuerier interface {
+	GetTicketTierByID(ctx context.Context, id, sessionID uuid.UUID) (gen.TicketTierRow, error)
+	ListTicketTiersBySession(ctx context.Context, sessionID uuid.UUID) ([]gen.TicketTierRow, error)
+}
+
+// SeatedReserveFunc creates a real seated hold. Production wiring
+// (bil24_shims.go) injects a closure over hcheckout.CreateSeatedHold; tests
+// inject in-memory fakes. Never import package httpserver from here — the
+// callback direction follows the PromoValidator precedent in feed_shims.go.
+type SeatedReserveFunc func(ctx context.Context, in hcheckout.SeatedHoldInput) (hcheckout.SeatedHoldResult, error)
+
+// GAReserveFunc creates a real general-admission hold (per-tier capacity +
+// reservation_ga_items lines). Production wiring injects a closure over
+// hcheckout.CreateGAHold.
+type GAReserveFunc func(ctx context.Context, in hcheckout.GAHoldInput) (gen.ReservationRow, error)
+
+// ReleaseHoldFunc releases a hold created by the RESERVATION command
+// (UN_RESERVE). Production wiring injects a closure over
+// hcheckout.ReleaseHold.
+type ReleaseHoldFunc func(ctx context.Context, reservationID uuid.UUID) (gen.ReservationRow, error)
+
+// ReservationDeps bundles the dependencies of the real RESERVATION /
+// UN_RESERVE wiring (feature #312 second half). Every field is optional:
+// when the reserve callbacks are missing the commands self-gate with a
+// Bil24 envelope resultCode=-99 ("reservation service unavailable"),
+// matching the nil-query precedent of the other commands.
+type ReservationDeps struct {
+	CtxQ          ReservationContextQuerier
+	TierQ         TierPriceQuerier
+	SeatedReserve SeatedReserveFunc
+	GAReserve     GAReserveFunc
+	Release       ReleaseHoldFunc
+	PricingRules  hcheckout.PricingRules
 }
 
 // SchemaQuerier is the narrow contract handleBil24GetSchema uses to load
@@ -72,6 +124,7 @@ type Handler struct {
 	admissionQ      AdmissionQuerier
 	seatQ           SeatQuerier
 	schemaQ         SchemaQuerier
+	resDeps         ReservationDeps
 	logger          *slog.Logger
 }
 
@@ -79,10 +132,13 @@ type Handler struct {
 //
 // admissionQ, seatQ, and schemaQ are optional (may be nil): when omitted,
 // GET_SEAT_LIST silently falls back to the pre-#312 tier-facade behavior
-// for every session, RESERVATION reports the seating service as
-// unavailable (resultCode=-99), and GET_SCHEMA (§SEAT-D2, feature #313)
-// returns resultCode=-99 ("schema service unavailable"). Production
-// wiring passes *gen.Queries values that satisfy the interfaces.
+// for every session and GET_SCHEMA (§SEAT-D2, feature #313) returns
+// resultCode=-99 ("schema service unavailable"). resDeps carries the real
+// RESERVATION / UN_RESERVE wiring (feature #312 second half); when its
+// callbacks are nil those commands self-gate with resultCode=-99
+// ("reservation service unavailable"). Production wiring passes
+// *gen.Queries values that satisfy the interfaces plus closures over the
+// hcheckout hold API.
 func New(
 	eventQ *gen.Queries,
 	tierQ *gen.Queries,
@@ -92,6 +148,7 @@ func New(
 	admissionQ AdmissionQuerier,
 	seatQ SeatQuerier,
 	schemaQ SchemaQuerier,
+	resDeps ReservationDeps,
 	logger *slog.Logger,
 ) *Handler {
 	return &Handler{
@@ -103,6 +160,7 @@ func New(
 		admissionQ:      admissionQ,
 		seatQ:           seatQ,
 		schemaQ:         schemaQ,
+		resDeps:         resDeps,
 		logger:          logger,
 	}
 }

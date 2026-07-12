@@ -45,6 +45,7 @@
 package hfeed
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -60,6 +61,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
@@ -398,19 +400,26 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		})
 	}
 
-	// ── 8. Promo code lookup ───────────────────────────────────────────────────
-	// Compute subtotal from GA items (seated items are free for promo purposes
-	// in this initial implementation).
-	var gaSubtotal int64
+	// GA pricing lines (guardrail #15 — every line is priced platform-side
+	// and fed through the shared pricing pipeline). The seated branch appends
+	// its per-tier seat lines to these before computing the breakdown.
+	gaLines := make([]hcheckout.PricingLineInput, 0, len(pricedGA))
 	for _, g := range pricedGA {
-		gaSubtotal += g.unitPrice * int64(g.qty)
+		gaLines = append(gaLines, hcheckout.PricingLineInput{
+			TierID:    g.tierID.String(),
+			Quantity:  g.qty,
+			UnitPrice: g.unitPrice,
+		})
 	}
 
-	var discount int64
-	var promoCodeID *uuid.UUID
+	// ── 8. Promo code lookup ───────────────────────────────────────────────────
+	// Only the row fetch happens here; validation (min-order-amount etc.) runs
+	// once the FULL platform-computed subtotal is known — for seated carts that
+	// includes the seat prices resolved inside the hold transaction.
+	var promoRow *gen.PromoCodeRow
 
 	if req.PromoCode != nil && *req.PromoCode != "" && h.promoQueries != nil {
-		promoRow, err := h.promoQueries.GetPromoCodeByCode(ctx, checkCtx.OrgID, *req.PromoCode)
+		row, err := h.promoQueries.GetPromoCodeByCode(ctx, checkCtx.OrgID, *req.PromoCode)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
@@ -427,13 +436,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			))
 			return
 		}
-		d, errCode := h.validatePromo(promoRow, gaSubtotal, time.Now().UTC())
-		if errCode != "" {
-			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(errCode, "promo code is not applicable", r))
-			return
-		}
-		discount = d
-		promoCodeID = &promoRow.ID
+		promoRow = &row
 	}
 
 	// ── 9. Mint checkout_token ────────────────────────────────────────────────
@@ -618,14 +621,18 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			}
 		}
 
-		// Reserve GA capacity for each ga_item (if any in mixed mode).
+		// Reserve GA capacity + persist the per-tier GA lines (migration 0063)
+		// for each ga_item (if any in mixed mode). The lines are written in the
+		// SAME transaction as the seat holds so the order-status and recovery
+		// endpoints can reconstruct the full cart later (WID-0b / WID-0c).
 		for i, item := range req.GaItems {
 			tierID := parsedGATierIDs[i]
 			tierIDPtr := &tierID
 			if _, err := invQ.ReserveCapacity(ctx, sessionID, tierIDPtr, item.Quantity); err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
-					httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
+					httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
 						"reservation.over_capacity", "insufficient capacity for this reservation", r,
+						map[string]any{"tier_id": tierID.String(), "requested": item.Quantity},
 					))
 					return
 				}
@@ -636,6 +643,49 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 				))
 				return
 			}
+			if err := resQ.InsertReservationGAItem(ctx, res.ID, tierID, item.Quantity, pricedGA[i].unitPrice); err != nil {
+				h.logger.Error("public_feed_checkout: insert GA line failed",
+					slog.String("tier_id", tierID.String()), slog.String("error", err.Error()))
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+					"reservation.insert_failed", "failed to record GA line", r,
+				))
+				return
+			}
+		}
+
+		// Price the held seats through the platform pipeline (guardrail #15):
+		// one line per (tier, unit_price) group resolved from the seats'
+		// session_seats.tier_id bindings, plus the GA lines. Seats without a
+		// bound tier price at 0. Runs inside the hold transaction so a pricing
+		// rejection (e.g. pwyw tier) rolls the holds back cleanly.
+		seatLines, seatCurrency, errCode := h.seatPricingLines(ctx, sessionID, locked)
+		if errCode != "" {
+			h.writePricingError(w, r, errCode)
+			return
+		}
+		lines := append(seatLines, gaLines...)
+
+		currency := seatCurrency
+		if len(pricedGA) > 0 {
+			currency = pricedGA[0].currency
+		}
+		if currency == "" {
+			currency = "EUR" // defensive default: no tier bound anywhere
+		}
+
+		// Validate the promo against the FULL subtotal (seats + GA) now that
+		// every line is priced. A rejection rolls back the holds via the
+		// deferred tx.Rollback.
+		var subtotal int64
+		for _, l := range lines {
+			subtotal += l.UnitPrice * int64(l.Quantity)
+		}
+		discount, promoCodeID, promoErrCode := h.applyPromoDiscount(promoRow, subtotal)
+		if promoErrCode != "" {
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+				promoErrCode, "promo code is not applicable", r,
+			))
+			return
 		}
 
 		// Commit the reservation transaction before creating the checkout session
@@ -648,77 +698,18 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			return
 		}
 
-		// Insert checkout session with pre-minted token (outside tx).
-		cs, err := h.checkoutQueries.InsertCheckoutSessionWithToken(
-			ctx, checkCtx.OrgID, checkCtx.SalesChannelID, res.ID, nil, checkoutToken,
-		)
-		if err != nil {
-			h.logger.Error("public_feed_checkout: insert checkout session failed",
-				slog.String("reservation_id", res.ID.String()),
-				slog.String("error", err.Error()),
-			)
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"checkout.start_failed", "failed to create checkout session", r,
-			))
-			return
-		}
+		bd := hcheckout.ComputePricingLines(lines, discount, currency, h.pricingRules)
 
-		// Pricing for seated/mixed: seats are free in this initial implementation;
-		// GA items contribute their unit prices.
-		currency := "EUR" // default for seated-only; override if GA item present
-		if len(pricedGA) > 0 {
-			currency = pricedGA[0].currency
-		}
-		var bd hcheckout.PricingBreakdown
-		if len(pricedGA) == 0 {
-			// Pure seated: free
-			bd = hcheckout.ComputePricing(0, totalQty, discount, currency, h.pricingRules)
-		} else if len(pricedGA) == 1 {
-			bd = hcheckout.ComputePricing(pricedGA[0].unitPrice, pricedGA[0].qty, discount, currency, h.pricingRules)
-		} else {
-			lines := make([]hcheckout.PricingLineInput, len(pricedGA))
-			for i, g := range pricedGA {
-				lines[i] = hcheckout.PricingLineInput{UnitPrice: g.unitPrice, Quantity: g.qty}
-			}
-			bd = hcheckout.ComputePricingLines(lines, discount, currency, h.pricingRules)
-		}
-
-		cs, err = h.checkoutQueries.ConfirmCheckoutSession(
-			ctx, cs.ID,
-			bd.Subtotal, bd.Discount, bd.PlatformFee, bd.ProviderFee, bd.Tax, bd.Total,
-			bd.Currency, promoCodeID,
-		)
-		if err != nil {
-			h.logger.Error("public_feed_checkout: confirm checkout session failed",
-				slog.String("checkout_session_id", cs.ID.String()),
-				slog.String("error", err.Error()),
-			)
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"checkout.confirm_failed", "failed to confirm checkout session", r,
-			))
-			return
-		}
-
-		redirectURL := fmt.Sprintf("/checkout/%s", cs.ID.String())
-		if bd.Total == 0 {
-			redirectURL = fmt.Sprintf("/checkout/%s/complete", cs.ID.String())
-		}
-
-		h.logger.Info("public_feed_checkout: seated session created",
+		h.logger.Info("public_feed_checkout: seated session priced",
 			slog.String("feed_token", feedToken),
-			slog.String("checkout_session_id", cs.ID.String()),
 			slog.String("session_id", sessionID.String()),
 			slog.String("holder_email", req.HolderEmail),
 			slog.Int("seat_count", len(normalizedSeats)),
 			slog.Int64("total", bd.Total),
+			slog.String("currency", bd.Currency),
 		)
 
-		httputil.WriteJSON(w, http.StatusCreated, map[string]any{
-			"checkout_session": hcheckout.CheckoutSessionFromRow(cs),
-			"redirect_url":     redirectURL,
-			"checkout_token":   checkoutToken,
-			"expires_at":       expiresAt.Format(time.RFC3339),
-		})
+		h.confirmPublicCheckout(ctx, w, r, checkCtx, res.ID, checkoutToken, bd, promoCodeID, expiresAt)
 		return
 	}
 
@@ -731,14 +722,28 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		totalQty += g.Quantity
 	}
 
+	// Validate the promo against the platform-computed GA subtotal.
+	var gaSubtotal int64
+	for _, l := range gaLines {
+		gaSubtotal += l.UnitPrice * int64(l.Quantity)
+	}
+	discount, promoCodeID, promoErrCode := h.applyPromoDiscount(promoRow, gaSubtotal)
+	if promoErrCode != "" {
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+			promoErrCode, "promo code is not applicable", r,
+		))
+		return
+	}
+
 	// Reserve capacity for each GA item.
 	for i, item := range req.GaItems {
 		tierID := parsedGATierIDs[i]
 		tierIDPtr := &tierID
 		if _, err := invQ.ReserveCapacity(ctx, sessionID, tierIDPtr, item.Quantity); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
+				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
 					"reservation.over_capacity", "insufficient capacity for this reservation", r,
+					map[string]any{"tier_id": tierID.String(), "requested": item.Quantity},
 				))
 				return
 			}
@@ -779,6 +784,21 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// Persist the per-tier GA lines (migration 0063) in the same transaction
+	// so the order-status and recovery endpoints can reconstruct the cart.
+	for i, item := range req.GaItems {
+		if err := resQ.InsertReservationGAItem(ctx, reservation.ID, parsedGATierIDs[i], item.Quantity, pricedGA[i].unitPrice); err != nil {
+			h.logger.Error("public_feed_checkout: insert GA line failed",
+				slog.String("tier_id", parsedGATierIDs[i].String()),
+				slog.String("error", err.Error()),
+			)
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"reservation.insert_failed", "failed to record GA line", r,
+			))
+			return
+		}
+	}
+
 	// Commit the reservation transaction before creating the checkout session
 	// (matches the original #153 pattern: reservation tx committed first).
 	if err := tx.Commit(ctx); err != nil {
@@ -788,13 +808,153 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Insert checkout session with pre-minted token (outside tx).
+	// Pricing for GA items — always through the multi-line pipeline. A single
+	// line produces totals identical to the original feature #153 single-tier
+	// path (see TestSeatC2_ComputePricingLines_SingleLine_MatchesSingleTier).
+	currency := ""
+	if len(pricedGA) > 0 {
+		currency = pricedGA[0].currency
+	}
+	bd := hcheckout.ComputePricingLines(gaLines, discount, currency, h.pricingRules)
+
+	h.logger.Info("public_feed_checkout: GA session priced",
+		slog.String("feed_token", feedToken),
+		slog.String("session_id", sessionID.String()),
+		slog.String("holder_email", req.HolderEmail),
+		slog.Int64("total", bd.Total),
+		slog.String("currency", bd.Currency),
+	)
+
+	h.confirmPublicCheckout(ctx, w, r, checkCtx, reservation.ID, checkoutToken, bd, promoCodeID, expiresAt)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pricing + confirmation helpers (shared by the seated and GA branches)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// resolvePublicTierUnitPrice maps a tier's pricing mode onto a unit price for
+// the public (anonymous) checkout. Returns ("" errCode) on success. pwyw is
+// rejected — it requires the authenticated flow (matching the GA validation
+// in step 7).
+func resolvePublicTierUnitPrice(tier gen.TicketTierRow) (int64, string) {
+	switch tier.PricingMode {
+	case "free":
+		return 0, ""
+	case "fixed":
+		return tier.PriceAmount, ""
+	case "pwyw":
+		return 0, "checkout.pwyw_not_supported"
+	default:
+		return 0, "checkout.unknown_pricing_mode"
+	}
+}
+
+// seatPricingLines resolves the unit price of every tier bound to the given
+// (locked) seats and groups the seats into pricing lines — one line per
+// (tier_id, unit_price) group, via the shared SEAT-C2 helper. Seats without
+// a bound tier price at 0. Also returns the currency of the first priced
+// tier ("" when no seat has a tier) and an error code ("" on success).
+func (h *Handler) seatPricingLines(
+	ctx context.Context,
+	sessionID uuid.UUID,
+	seats []gen.SessionSeatRow,
+) ([]hcheckout.PricingLineInput, string, string) {
+	tierPrice := make(map[string]int64)
+	currency := ""
+	for _, s := range seats {
+		if s.TierID == nil {
+			continue
+		}
+		key := s.TierID.String()
+		if _, done := tierPrice[key]; done {
+			continue
+		}
+		if h.tierQueries == nil {
+			return nil, "", "dependency.tier_unavailable"
+		}
+		tier, err := h.tierQueries.GetTicketTierByID(ctx, *s.TierID, sessionID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil, "", "checkout.tier_not_found"
+			}
+			h.logger.Error("public_feed_checkout: seat tier lookup failed",
+				slog.String("tier_id", key),
+				slog.String("error", err.Error()),
+			)
+			return nil, "", "checkout.tier_lookup_failed"
+		}
+		unit, errCode := resolvePublicTierUnitPrice(tier)
+		if errCode != "" {
+			return nil, "", errCode
+		}
+		tierPrice[key] = unit
+		if currency == "" {
+			currency = tier.Currency
+		}
+	}
+	return hcheckout.BuildSeatedPricingLines(seats, tierPrice), currency, ""
+}
+
+// writePricingError translates a pricing-resolution error code from
+// seatPricingLines into the canonical HTTP envelope.
+func (h *Handler) writePricingError(w http.ResponseWriter, r *http.Request, code string) {
+	switch code {
+	case "dependency.tier_unavailable":
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			code, "tier service is not available", r,
+		))
+	case "checkout.tier_not_found":
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+			code, "ticket tier not found in this session", r,
+		))
+	case "checkout.pwyw_not_supported":
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+			code, "pay-what-you-want tiers require the authenticated checkout flow", r,
+		))
+	default:
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			code, "failed to price the reservation", r,
+		))
+	}
+}
+
+// applyPromoDiscount validates the pre-fetched promo row against the
+// platform-computed subtotal. Returns (discount, promoCodeID, errCode);
+// errCode is "" when no promo was supplied or the promo is applicable.
+func (h *Handler) applyPromoDiscount(promoRow *gen.PromoCodeRow, subtotal int64) (int64, *uuid.UUID, string) {
+	if promoRow == nil {
+		return 0, nil, ""
+	}
+	d, errCode := h.validatePromo(*promoRow, subtotal, time.Now().UTC())
+	if errCode != "" {
+		return 0, nil, errCode
+	}
+	return d, &promoRow.ID, ""
+}
+
+// confirmPublicCheckout inserts the checkout session with the pre-minted
+// token, stores the platform-computed pricing snapshot (created →
+// pricing_confirmed), and writes the 201 response. The response includes
+// the full pricing breakdown (subtotal / fees / total / currency plus the
+// per-line tier groups) so the widget can display totals without doing any
+// money arithmetic client-side (guardrail #15).
+func (h *Handler) confirmPublicCheckout(
+	ctx context.Context,
+	w http.ResponseWriter,
+	r *http.Request,
+	checkCtx gen.PublicCheckoutContextRow,
+	reservationID uuid.UUID,
+	checkoutToken string,
+	bd hcheckout.PricingBreakdown,
+	promoCodeID *uuid.UUID,
+	expiresAt time.Time,
+) {
 	cs, err := h.checkoutQueries.InsertCheckoutSessionWithToken(
-		ctx, checkCtx.OrgID, checkCtx.SalesChannelID, reservation.ID, nil, checkoutToken,
+		ctx, checkCtx.OrgID, checkCtx.SalesChannelID, reservationID, nil, checkoutToken,
 	)
 	if err != nil {
 		h.logger.Error("public_feed_checkout: insert checkout session failed",
-			slog.String("reservation_id", reservation.ID.String()),
+			slog.String("reservation_id", reservationID.String()),
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
@@ -803,36 +963,10 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Pricing for GA items.
-	var currency string
-	if len(pricedGA) > 0 {
-		currency = pricedGA[0].currency
-	}
-	// For single GA item (including legacy tier_id+qty), use ComputePricing which
-	// matches the original feature #153 behaviour. For multiple GA tiers, use
-	// ComputePricingLines to preserve per-line breakdown accuracy.
-	var bd hcheckout.PricingBreakdown
-	if len(pricedGA) == 1 {
-		bd = hcheckout.ComputePricing(pricedGA[0].unitPrice, pricedGA[0].qty, discount, currency, h.pricingRules)
-	} else {
-		lines := make([]hcheckout.PricingLineInput, len(pricedGA))
-		for i, g := range pricedGA {
-			lines[i] = hcheckout.PricingLineInput{UnitPrice: g.unitPrice, Quantity: g.qty}
-		}
-		bd = hcheckout.ComputePricingLines(lines, discount, currency, h.pricingRules)
-	}
-
 	cs, err = h.checkoutQueries.ConfirmCheckoutSession(
-		ctx,
-		cs.ID,
-		bd.Subtotal,
-		bd.Discount,
-		bd.PlatformFee,
-		bd.ProviderFee,
-		bd.Tax,
-		bd.Total,
-		bd.Currency,
-		promoCodeID,
+		ctx, cs.ID,
+		bd.Subtotal, bd.Discount, bd.PlatformFee, bd.ProviderFee, bd.Tax, bd.Total,
+		bd.Currency, promoCodeID,
 	)
 	if err != nil {
 		h.logger.Error("public_feed_checkout: confirm checkout session failed",
@@ -845,25 +979,16 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Construct redirect URL.
 	redirectURL := fmt.Sprintf("/checkout/%s", cs.ID.String())
 	if bd.Total == 0 {
 		redirectURL = fmt.Sprintf("/checkout/%s/complete", cs.ID.String())
 	}
-
-	h.logger.Info("public_feed_checkout: GA session created",
-		slog.String("feed_token", feedToken),
-		slog.String("checkout_session_id", cs.ID.String()),
-		slog.String("session_id", sessionID.String()),
-		slog.String("holder_email", req.HolderEmail),
-		slog.Int64("total", bd.Total),
-		slog.String("currency", bd.Currency),
-	)
 
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
 		"checkout_session": hcheckout.CheckoutSessionFromRow(cs),
 		"redirect_url":     redirectURL,
 		"checkout_token":   checkoutToken,
 		"expires_at":       expiresAt.Format(time.RFC3339),
+		"pricing":          bd,
 	})
 }

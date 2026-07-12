@@ -82,6 +82,20 @@ const (
 	CheckoutSessionItemStatePricingConfirmed CheckoutSessionItemState = "pricing_confirmed"
 )
 
+// Defines values for CheckoutStatusItemType.
+const (
+	CheckoutStatusItemTypeGeneralAdmission CheckoutStatusItemType = "general_admission"
+	CheckoutStatusItemTypeSeat             CheckoutStatusItemType = "seat"
+)
+
+// Defines values for CheckoutStatusResponseStatus.
+const (
+	CheckoutStatusResponseStatusExpired CheckoutStatusResponseStatus = "expired"
+	CheckoutStatusResponseStatusFailed  CheckoutStatusResponseStatus = "failed"
+	CheckoutStatusResponseStatusPaid    CheckoutStatusResponseStatus = "paid"
+	CheckoutStatusResponseStatusPending CheckoutStatusResponseStatus = "pending"
+)
+
 // Defines values for CreateBarcodeAuthorityRequestType.
 const (
 	CreateBarcodeAuthorityRequestTypeExternalPlatform CreateBarcodeAuthorityRequestType = "external_platform"
@@ -492,8 +506,8 @@ const (
 
 // Defines values for SeatingSchemaResponseAdmissionMode.
 const (
-	SeatingSchemaResponseAdmissionModeAssignedSeats SeatingSchemaResponseAdmissionMode = "assigned_seats"
-	SeatingSchemaResponseAdmissionModeHybrid        SeatingSchemaResponseAdmissionMode = "hybrid"
+	AssignedSeats SeatingSchemaResponseAdmissionMode = "assigned_seats"
+	Hybrid        SeatingSchemaResponseAdmissionMode = "hybrid"
 )
 
 // Defines values for SessionItemStatus.
@@ -526,13 +540,13 @@ const (
 
 // Defines values for TransitionPaymentIntentRequestState.
 const (
-	Authorized     TransitionPaymentIntentRequestState = "authorized"
-	Created        TransitionPaymentIntentRequestState = "created"
-	Failed         TransitionPaymentIntentRequestState = "failed"
-	ManualReview   TransitionPaymentIntentRequestState = "manual_review"
-	Processing     TransitionPaymentIntentRequestState = "processing"
-	RequiresAction TransitionPaymentIntentRequestState = "requires_action"
-	Succeeded      TransitionPaymentIntentRequestState = "succeeded"
+	TransitionPaymentIntentRequestStateAuthorized     TransitionPaymentIntentRequestState = "authorized"
+	TransitionPaymentIntentRequestStateCreated        TransitionPaymentIntentRequestState = "created"
+	TransitionPaymentIntentRequestStateFailed         TransitionPaymentIntentRequestState = "failed"
+	TransitionPaymentIntentRequestStateManualReview   TransitionPaymentIntentRequestState = "manual_review"
+	TransitionPaymentIntentRequestStateProcessing     TransitionPaymentIntentRequestState = "processing"
+	TransitionPaymentIntentRequestStateRequiresAction TransitionPaymentIntentRequestState = "requires_action"
+	TransitionPaymentIntentRequestStateSucceeded      TransitionPaymentIntentRequestState = "succeeded"
 )
 
 // Defines values for UpdateEventRequestVisibility.
@@ -626,6 +640,15 @@ const (
 	VenueItemStatusActive   VenueItemStatus = "active"
 	VenueItemStatusArchived VenueItemStatus = "archived"
 	VenueItemStatusDraft    VenueItemStatus = "draft"
+)
+
+// Defines values for WidgetFunnelEventInputEventType.
+const (
+	CartOpened     WidgetFunnelEventInputEventType = "cart_opened"
+	PaymentStarted WidgetFunnelEventInputEventType = "payment_started"
+	Recovered      WidgetFunnelEventInputEventType = "recovered"
+	SchemaViewed   WidgetFunnelEventInputEventType = "schema_viewed"
+	SeatSelected   WidgetFunnelEventInputEventType = "seat_selected"
 )
 
 // Defines values for ListEventsParamsVisibility.
@@ -1082,6 +1105,33 @@ type BindSessionSeatingResponse struct {
 	} `json:"session"`
 }
 
+// CheckoutRecoverResponse Response body for `POST /v1/public/checkout/{checkout_token}/recover`
+// (feature #320 WID-0c).  Returned when a fresh reservation was
+// successfully created for the same seats/zones.
+type CheckoutRecoverResponse struct {
+	// CheckoutSession Canonical representation of a `checkout_sessions` row, returned by
+	// every endpoint in the checkout session state machine implemented in
+	// `apps/backend/internal/platform/httpserver/checkout.go`. Pricing
+	// snapshot fields (`subtotal`, `discount`, `platform_fee`,
+	// `provider_fee`, `tax`, `total`, `currency`, `promo_code_id`) are
+	// populated once the session transitions out of `created` via
+	// `POST /v1/checkout/{id}/confirm`. Payment fields
+	// (`payment_intent_id`, `payment_provider`) are populated when the
+	// session is completed via the paid path; the free path (total = 0)
+	// leaves them `null`. Terminal-state timestamps are mutually
+	// exclusive: exactly one of `completed_at`, `abandoned_at`,
+	// `expired_at` is set when the session is terminal.
+	CheckoutSession CheckoutSessionItem `json:"checkout_session"`
+
+	// CheckoutToken The same opaque token that was supplied in the path (echoed back
+	// for convenience so the widget does not need to re-parse the URL).
+	CheckoutToken string `json:"checkout_token"`
+
+	// ExpiresAt RFC 3339 UTC timestamp of the new reservation expiry.  The widget
+	// MUST restart its countdown timer from this value.
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
 // CheckoutSessionEnvelope Top-level response envelope returned by every checkout-session
 // endpoint. Wraps a single `CheckoutSessionItem` under the
 // `checkout_session` key, matching the convention used by other
@@ -1208,6 +1258,113 @@ type CheckoutSessionItem struct {
 // `manual_review` → {`completed`, `abandoned`};
 // `completed`, `abandoned`, `expired` are terminal.
 type CheckoutSessionItemState string
+
+// CheckoutStatusItem A single cart item (seat or general-admission) included in the
+// anonymous order-status response (feature #319 WID-0b).
+type CheckoutStatusItem struct {
+	// Number Seat number within the row for display.
+	Number *string `json:"number"`
+
+	// Quantity Number of GA tickets held (only for general_admission items).
+	Quantity *int `json:"quantity"`
+
+	// Row Row label for display.
+	Row *string `json:"row"`
+
+	// SeatKey Canonical seat key (sector-row-number), present for assigned seats.
+	SeatKey *string `json:"seat_key"`
+
+	// Sector Sector/section name for display.
+	Sector *string `json:"sector"`
+
+	// Type Item kind.
+	Type CheckoutStatusItemType `json:"type"`
+
+	// UnitPrice Unit price in smallest currency unit.
+	UnitPrice *int `json:"unit_price"`
+}
+
+// CheckoutStatusItemType Item kind.
+type CheckoutStatusItemType string
+
+// CheckoutStatusResponse Response body for `GET /v1/public/checkout/{checkout_token}`.
+// Returns the current order status and cart contents for an anonymous buyer.
+// No JWT required — the opaque `checkout_token` in the path is the credential.
+type CheckoutStatusResponse struct {
+	// CheckoutSessionId Internal UUIDv7 of the checkout_sessions row.
+	CheckoutSessionId openapi_types.UUID `json:"checkout_session_id"`
+
+	// CheckoutToken The opaque token identifying this checkout (echoed from path).
+	CheckoutToken string `json:"checkout_token"`
+
+	// Currency ISO 4217 three-letter currency code; null until pricing_confirmed.
+	Currency *string `json:"currency"`
+
+	// Discount Total discount applied; null until pricing_confirmed.
+	Discount *int `json:"discount"`
+
+	// ExpiresAt RFC3339 timestamp when the underlying reservation expires.
+	ExpiresAt *time.Time `json:"expires_at"`
+
+	// Items Cart items held at the time of the request.
+	Items []CheckoutStatusItem `json:"items"`
+
+	// PlatformFee Platform service fee; null until pricing_confirmed.
+	PlatformFee *int `json:"platform_fee"`
+
+	// ProviderFee Payment provider fee; null until pricing_confirmed.
+	ProviderFee *int `json:"provider_fee"`
+
+	// Status Public order status derived from the checkout_session.state:
+	// - `pending`: created | pricing_confirmed | payment_started | manual_review
+	// - `paid`: completed
+	// - `expired`: expired
+	// - `failed`: abandoned
+	Status CheckoutStatusResponseStatus `json:"status"`
+
+	// Subtotal Order subtotal in smallest currency unit; null until pricing_confirmed.
+	Subtotal *int `json:"subtotal"`
+
+	// Tax Tax amount; null until pricing_confirmed.
+	Tax *int `json:"tax"`
+
+	// Tickets Issued tickets; non-empty only when status is `paid`.
+	Tickets []CheckoutStatusTicketItem `json:"tickets"`
+
+	// Total Final total charged to the buyer; null until pricing_confirmed.
+	Total *int `json:"total"`
+}
+
+// CheckoutStatusResponseStatus Public order status derived from the checkout_session.state:
+// - `pending`: created | pricing_confirmed | payment_started | manual_review
+// - `paid`: completed
+// - `expired`: expired
+// - `failed`: abandoned
+type CheckoutStatusResponseStatus string
+
+// CheckoutStatusTicketItem A single issued ticket included in the anonymous order-status response
+// when the checkout has reached the `paid` state (feature #319 WID-0b).
+type CheckoutStatusTicketItem struct {
+	// HumanCode SEAT-C4 human-readable fallback code in display form (e.g. "M7KT-2QV9").
+	// Null when the credential has not yet been generated.
+	HumanCode *string `json:"human_code"`
+
+	// Number Seat number denormalized at issuance time.
+	Number *string `json:"number"`
+
+	// PdfUrl Path to download the PDF e-ticket:
+	// `GET /v1/public/checkout/{checkout_token}/tickets/{ticket_id}/pdf`.
+	PdfUrl *string `json:"pdf_url"`
+
+	// Row Row label denormalized at issuance time.
+	Row *string `json:"row"`
+
+	// Sector Sector/section name denormalized at issuance time.
+	Sector *string `json:"sector"`
+
+	// TicketId UUIDv7 of the issued ticket.
+	TicketId openapi_types.UUID `json:"ticket_id"`
+}
 
 // CompleteCheckoutRequest Request body for `POST /v1/checkout/{id}/complete`. Two completion
 // modes:
@@ -3425,6 +3582,15 @@ type PricingBreakdownItem struct {
 	// negative.
 	Discount int64 `json:"discount"`
 
+	// Lines Multi-line breakdown (feature #310, SEAT-C2): one entry per
+	// (tier, unit_price) group when a checkout spans several
+	// ticket tiers — e.g. a seated reservation whose seats resolve
+	// to different tiers, or a mixed seats+GA cart. Omitted for
+	// single-tier checkouts. The sum of line subtotals equals the
+	// top-level `subtotal`; the top-level `unit_price` is the
+	// weighted average and `quantity` the sum across lines.
+	Lines *[]PricingLineItem `json:"lines,omitempty"`
+
 	// PlatformFee Platform service charge computed as
 	// `(subtotal - discount) * PlatformFeeRate / 10_000` using
 	// integer (floor) arithmetic. Rate is configured in
@@ -3455,6 +3621,24 @@ type PricingBreakdownItem struct {
 	// this is 0; for `fixed` tiers it equals the tier's
 	// `price_amount`; for `pwyw` tiers it equals the buyer's
 	// `chosen_price` query parameter.
+	UnitPrice int64 `json:"unit_price"`
+}
+
+// PricingLineItem One row of a multi-line pricing breakdown: a (tier, unit_price)
+// group priced by the platform pipeline (feature #310).
+type PricingLineItem struct {
+	// Quantity Number of tickets in this tier group.
+	Quantity int32 `json:"quantity"`
+
+	// Subtotal `unit_price * quantity` for this group.
+	Subtotal int64 `json:"subtotal"`
+
+	// TierId Ticket tier UUID as a string. Empty string on
+	// general-admission checkouts whose reservation carries no
+	// tier.
+	TierId string `json:"tier_id"`
+
+	// UnitPrice Per-ticket price of this group in minor units.
 	UnitPrice int64 `json:"unit_price"`
 }
 
@@ -3571,6 +3755,94 @@ type PromoCodeListResponse struct {
 	PromoCodes []PromoCodeItem `json:"promo_codes"`
 }
 
+// PublicBuyerInfo Structured buyer contact info for `POST checkout/start` (feature #321 WID-0d).
+// `email` supersedes the top-level `holder_email` when both are present.
+// `name` and `phone` are validated against the channel's `buyer_fields` flags.
+type PublicBuyerInfo struct {
+	// Email Buyer's email address (ticket holder).
+	Email openapi_types.Email `json:"email"`
+
+	// Name Buyer's full name; required when the channel has collect_name enabled.
+	Name *string `json:"name"`
+
+	// Phone Buyer's phone number; required when the channel has collect_phone enabled.
+	Phone *string `json:"phone"`
+}
+
+// PublicFeedCheckoutStartRequest defines model for PublicFeedCheckoutStartRequest.
+type PublicFeedCheckoutStartRequest struct {
+	// Buyer Structured buyer contact info for `POST checkout/start` (feature #321 WID-0d).
+	// `email` supersedes the top-level `holder_email` when both are present.
+	// `name` and `phone` are validated against the channel's `buyer_fields` flags.
+	Buyer *PublicBuyerInfo `json:"buyer,omitempty"`
+
+	// GaItems GA items for GA or hybrid sessions.
+	GaItems *[]PublicGAItem `json:"ga_items,omitempty"`
+
+	// HolderEmail Email address of the ticket holder. Superseded by `buyer.email`
+	// when the `buyer` object is present.
+	HolderEmail openapi_types.Email `json:"holder_email"`
+
+	// PromoCode Optional promotional code to apply.
+	PromoCode *string `json:"promo_code"`
+
+	// Qty Deprecated: use ga_items instead.
+	Qty *int32 `json:"qty,omitempty"`
+
+	// Seats Seat keys for seated or hybrid sessions.
+	Seats *[]string `json:"seats,omitempty"`
+
+	// SessionId UUID of the event session to check out.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// TierId Deprecated: use ga_items instead.
+	TierId *openapi_types.UUID `json:"tier_id,omitempty"`
+}
+
+// PublicFeedCheckoutStartResponse defines model for PublicFeedCheckoutStartResponse.
+type PublicFeedCheckoutStartResponse struct {
+	// CheckoutSession Canonical representation of a `checkout_sessions` row, returned by
+	// every endpoint in the checkout session state machine implemented in
+	// `apps/backend/internal/platform/httpserver/checkout.go`. Pricing
+	// snapshot fields (`subtotal`, `discount`, `platform_fee`,
+	// `provider_fee`, `tax`, `total`, `currency`, `promo_code_id`) are
+	// populated once the session transitions out of `created` via
+	// `POST /v1/checkout/{id}/confirm`. Payment fields
+	// (`payment_intent_id`, `payment_provider`) are populated when the
+	// session is completed via the paid path; the free path (total = 0)
+	// leaves them `null`. Terminal-state timestamps are mutually
+	// exclusive: exactly one of `completed_at`, `abandoned_at`,
+	// `expired_at` is set when the session is terminal.
+	CheckoutSession CheckoutSessionItem `json:"checkout_session"`
+
+	// CheckoutToken Opaque high-entropy token for WID-0b anonymous order lookup.
+	CheckoutToken string `json:"checkout_token"`
+
+	// ExpiresAt Reservation expiry (RFC 3339 UTC).
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// Pricing Itemized result of running the deterministic pricing pipeline
+	// (`ComputePricing`, feature #129). Every monetary field is
+	// expressed in the smallest currency unit (integer cents/agorot).
+	//
+	// Invariant enforced by `ComputePricing`:
+	//
+	//     (subtotal - discount) + platform_fee + provider_fee + tax == total
+	Pricing *PricingBreakdownItem `json:"pricing,omitempty"`
+
+	// RedirectUrl URL to redirect the buyer to for payment or completion.
+	RedirectUrl string `json:"redirect_url"`
+}
+
+// PublicGAItem defines model for PublicGAItem.
+type PublicGAItem struct {
+	// Quantity Number of GA tickets for this tier.
+	Quantity int32 `json:"quantity"`
+
+	// TierId UUID of the ticket tier.
+	TierId openapi_types.UUID `json:"tier_id"`
+}
+
 // PublishEventRequest Request body for `POST /v1/events/{event_id}/publications`.
 // `feed_token_id` is required; `city_id` is optional and
 // defaults to `null` (= visible in all geographies).
@@ -3606,6 +3878,15 @@ type QuoteResponseItem struct {
 	// handler caps this so `discount <= subtotal` and never goes
 	// negative.
 	Discount int64 `json:"discount"`
+
+	// Lines Multi-line breakdown (feature #310, SEAT-C2): one entry per
+	// (tier, unit_price) group when a checkout spans several
+	// ticket tiers — e.g. a seated reservation whose seats resolve
+	// to different tiers, or a mixed seats+GA cart. Omitted for
+	// single-tier checkouts. The sum of line subtotals equals the
+	// top-level `subtotal`; the top-level `unit_price` is the
+	// weighted average and `quantity` the sum across lines.
+	Lines *[]PricingLineItem `json:"lines,omitempty"`
 
 	// PlatformFee Platform service charge computed as
 	// `(subtotal - discount) * PlatformFeeRate / 10_000` using
@@ -5513,6 +5794,47 @@ type WebhookSubscriberSummary struct {
 	SubscriberId openapi_types.UUID `json:"subscriber_id"`
 }
 
+// WidgetFunnelEventInput A single widget funnel telemetry event.  No PII is stored — the only
+// linkage to a checkout journey is the opaque `checkout_token`.
+// Feature #322 WID-0e.
+type WidgetFunnelEventInput struct {
+	// CheckoutToken Opaque checkout token — present when a checkout journey has been
+	// started.  Not PII: it is a random 256-bit hex string with no
+	// personally identifiable information attached.
+	CheckoutToken *string `json:"checkout_token,omitempty"`
+
+	// EventType The funnel step that triggered this event:
+	// - `schema_viewed`: the seating plan was displayed to the user.
+	// - `seat_selected`: the user selected one or more seats.
+	// - `cart_opened`: the user opened the checkout cart.
+	// - `payment_started`: the user advanced to the payment step.
+	// - `recovered`: a previously expired hold was recovered.
+	EventType WidgetFunnelEventInputEventType `json:"event_type"`
+
+	// OccurredAt RFC 3339 client-side timestamp of when the event occurred.
+	// Defaults to the server's `now()` when absent or unparseable.
+	OccurredAt *time.Time `json:"occurred_at,omitempty"`
+
+	// SessionId UUID of the event session the user is browsing.
+	SessionId *openapi_types.UUID `json:"session_id,omitempty"`
+}
+
+// WidgetFunnelEventInputEventType The funnel step that triggered this event:
+// - `schema_viewed`: the seating plan was displayed to the user.
+// - `seat_selected`: the user selected one or more seats.
+// - `cart_opened`: the user opened the checkout cart.
+// - `payment_started`: the user advanced to the payment step.
+// - `recovered`: a previously expired hold was recovered.
+type WidgetFunnelEventInputEventType string
+
+// WidgetFunnelEventsBatch Request body for `POST /v1/public/feeds/{feed_token}/events`
+// (feature #322 WID-0e).  Contains a batch of funnel telemetry events
+// from the embedded widget.
+type WidgetFunnelEventsBatch struct {
+	// Events Batch of funnel telemetry events (1–50 items).
+	Events []WidgetFunnelEventInput `json:"events"`
+}
+
 // AttachNetworkAgentParams defines parameters for AttachNetworkAgent.
 type AttachNetworkAgentParams struct {
 	// XAdminReason SAUI-09 audit-reason header. The trimmed value is stamped
@@ -5794,6 +6116,24 @@ type ListOrgEventsParams struct {
 	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
 }
 
+// ListPublicFeedEventsParams defines parameters for ListPublicFeedEvents.
+type ListPublicFeedEventsParams struct {
+	// CityId Optional filter by publication city scope.
+	CityId *openapi_types.UUID `form:"city_id,omitempty" json:"city_id,omitempty"`
+
+	// DateFrom Optional lower bound on `event.start_at` (inclusive).
+	DateFrom *time.Time `form:"date_from,omitempty" json:"date_from,omitempty"`
+
+	// DateTo Optional upper bound on `event.end_at` (inclusive).
+	DateTo *time.Time `form:"date_to,omitempty" json:"date_to,omitempty"`
+
+	// Limit Page size.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Pagination offset.
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // GetScannerSnapshotParams defines parameters for GetScannerSnapshot.
 type GetScannerSnapshotParams struct {
 	// SessionId UUID of the event session whose barcodes to retrieve.
@@ -6009,6 +6349,12 @@ type PaymentIntentWebhookJSONRequestBody = PaymentIntentWebhookRequest
 // TransitionPaymentIntentJSONRequestBody defines body for TransitionPaymentIntent for application/json ContentType.
 type TransitionPaymentIntentJSONRequestBody = TransitionPaymentIntentRequest
 
+// StartPublicFeedCheckoutJSONRequestBody defines body for StartPublicFeedCheckout for application/json ContentType.
+type StartPublicFeedCheckoutJSONRequestBody = PublicFeedCheckoutStartRequest
+
+// PostPublicFeedFunnelEventsJSONRequestBody defines body for PostPublicFeedFunnelEvents for application/json ContentType.
+type PostPublicFeedFunnelEventsJSONRequestBody = WidgetFunnelEventsBatch
+
 // CreateRefundJSONRequestBody defines body for CreateRefund for application/json ContentType.
 type CreateRefundJSONRequestBody = CreateRefundRequest
 
@@ -6050,72 +6396,3 @@ type RegisterWebhookSubscriberJSONRequestBody = RegisterWebhookSubscriberRequest
 
 // UpdateWebhookSubscriberJSONRequestBody defines body for UpdateWebhookSubscriber for application/json ContentType.
 type UpdateWebhookSubscriberJSONRequestBody UpdateWebhookSubscriberJSONBody
-
-// PublicGAItem is a GA ticket item in the WID-0a mixed-cart checkout
-// (feature #318). Each entry selects a specific ticket tier and quantity.
-type PublicGAItem struct {
-	// Quantity Number of GA tickets for this tier. Must be >= 1.
-	Quantity int32 `json:"quantity"`
-
-	// TierId UUID of the ticket tier.
-	TierId openapi_types.UUID `json:"tier_id"`
-}
-
-// PublicFeedCheckoutStartRequest is the JSON body for
-// POST /v1/public/feeds/{feed_token}/checkout/start (feature #318, WID-0a).
-// Supports legacy GA (tier_id + qty), pure GA (ga_items[]), pure seated
-// (seats[]), and mixed (seats[] + ga_items[]) checkout modes.
-type PublicFeedCheckoutStartRequest struct {
-	// GaItems GA items for GA or hybrid sessions.
-	GaItems *[]PublicGAItem `json:"ga_items,omitempty"`
-
-	// HolderEmail Email address of the ticket holder.
-	HolderEmail string `json:"holder_email"`
-
-	// PromoCode Optional promotional code to apply.
-	PromoCode *string `json:"promo_code,omitempty"`
-
-	// Qty Deprecated: use ga_items instead.
-	Qty *int32 `json:"qty,omitempty"`
-
-	// Seats Seat keys for seated or hybrid sessions.
-	Seats *[]string `json:"seats,omitempty"`
-
-	// SessionId UUID of the event session to check out.
-	SessionId openapi_types.UUID `json:"session_id"`
-
-	// TierId Deprecated: use ga_items instead.
-	TierId *openapi_types.UUID `json:"tier_id,omitempty"`
-}
-
-// PublicFeedCheckoutStartResponse is the response for
-// POST /v1/public/feeds/{feed_token}/checkout/start (feature #318, WID-0a).
-type PublicFeedCheckoutStartResponse struct {
-	// CheckoutSession The newly created checkout session.
-	CheckoutSession CheckoutSessionItem `json:"checkout_session"`
-
-	// CheckoutToken Opaque high-entropy token for WID-0b anonymous order lookup.
-	CheckoutToken string `json:"checkout_token"`
-
-	// ExpiresAt Reservation expiry (RFC 3339 UTC).
-	ExpiresAt time.Time `json:"expires_at"`
-
-	// RedirectUrl URL to redirect the buyer to for payment or completion.
-	RedirectUrl string `json:"redirect_url"`
-}
-
-// CheckoutRecoverResponse is the response for
-// POST /v1/public/checkout/{checkout_token}/recover (feature #320, WID-0c).
-type CheckoutRecoverResponse struct {
-	// CheckoutSession The updated checkout session with re-confirmed pricing.
-	CheckoutSession CheckoutSessionItem `json:"checkout_session"`
-
-	// CheckoutToken The same opaque token supplied in the path (echoed back).
-	CheckoutToken string `json:"checkout_token"`
-
-	// ExpiresAt RFC 3339 UTC timestamp of the new reservation expiry.
-	ExpiresAt time.Time `json:"expires_at"`
-}
-
-// StartPublicFeedCheckoutJSONRequestBody defines body for StartPublicFeedCheckout for application/json ContentType.
-type StartPublicFeedCheckoutJSONRequestBody = PublicFeedCheckoutStartRequest

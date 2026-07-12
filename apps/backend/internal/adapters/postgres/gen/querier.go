@@ -436,6 +436,14 @@ type Querier interface {
 	DeleteReservationSeatsBySession(ctx context.Context, sessionID uuid.UUID) (int64, error)
 	CountReservationSeats(ctx context.Context, reservationID uuid.UUID) (int64, error)
 
+	// Reservation GA items — per-tier GA lines of a hold (migration 0063)
+	InsertReservationGAItem(ctx context.Context, reservationID, tierID uuid.UUID, quantity int32, unitPrice int64) error
+	ListReservationGAItems(ctx context.Context, reservationID uuid.UUID) ([]ReservationGAItemRow, error)
+	DeleteReservationGAItems(ctx context.Context, reservationID uuid.UUID) error
+
+	// Session → owning-org resolution (Bil24 RESERVATION wiring)
+	GetSessionOrgContext(ctx context.Context, sessionID uuid.UUID) (SessionOrgContextRow, error)
+
 	// Public session seating — unauthenticated schema + seat-status endpoints (feature #307, Wave SEAT-B3)
 	GetPublicSessionSchema(ctx context.Context, sessionID uuid.UUID) (PublicSessionSchemaRow, error)
 	GetPublicSessionSeatStatusMeta(ctx context.Context, sessionID uuid.UUID) (PublicSessionSeatStatusMetaRow, error)
