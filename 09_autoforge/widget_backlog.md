@@ -243,6 +243,37 @@ passing acceptance.
 **WID-R4. A11y completion.** With the map no longer aria-hidden
 (fixed), implement the design-note §3 keyboard model (arrows within a
 row, tab between rows/zones) and ensure aria-labels carry price+status
-live updates; axe gate must run against a POPULATED map state.
+live updates; axe gate must run against a POPULATED map state. When
+the roving tabindex lands, update the no-trap E2E in keyboard.e2e.ts
+accordingly (it currently tolerates per-seat tabbing by design).
+
+### Prerequisites ALREADY LANDED (state as of 2026-07-12, master 1753e1c) — do not redo
+
+- `POST …/checkout/start` returns the platform pricing breakdown
+  (`pricing` with per-tier `lines`) and prices seats correctly;
+  documented in openapi (`PublicFeedCheckoutStartResponse.pricing`).
+- `api.ts postCheckoutStart` throws typed `ApiError{status, code,
+  details}` (409 carries `details.conflicts`).
+- `reservation_ga_items` (migration 0063): order-status returns GA
+  lines with labels+prices; recovery re-captures seats AND GA.
+- decor_svg passes through the strict `svg-sanitize` module; seat map
+  is AT-visible (labeled group, focusable seats); accent/error colors
+  are WCAG-AA (#4f46e5 / #b91c1c) — do not reintroduce #6366f1/#dc2626.
+- The mocked Palac suite is excluded via `testIgnore` in
+  playwright.config.ts; the Playwright webServer script is
+  `scripts/serve-demo.cjs` (CommonJS — the package is ESM).
+- Bil24 gateway RESERVATION is real (hcheckout hold API); human codes
+  (SEAT-C4) are live — the paid order-status payload already carries
+  them.
+
+### CI note for WID-R3
+
+The Widget CI job must run the real-backend E2E in CI, not only
+locally: boot the backend inside the job (docker compose services or
+postgres service-container + the Go binaries — your choice), seed the
+Akropolis plan + hybrid session via arena-seed or the API, then run
+Playwright against it. Keep the job wall-clock reasonable (parallelize
+with the existing unit/size steps if needed). The mock smoke suite may
+stay as a separate fast step, clearly labeled.
 
 Out of scope for WID-R: everything in §7 above.
