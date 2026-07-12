@@ -39,6 +39,13 @@ export const STATUS_COLORS: Readonly<Record<string, string>> = {
 /** Fallback color when a seat's category index is not resolved. */
 export const FALLBACK_COLOR = '#d1d5db';
 
+/**
+ * Fill color used to highlight seats that are in conflict (from a 409
+ * `reservation.seats_conflict` response).  WCAG-AA red — the same value
+ * used for inline error text throughout the widget UI.
+ */
+export const CONFLICT_COLOR = '#b91c1c';
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
@@ -249,6 +256,71 @@ export function applySeatStatusUpdate(
 
     // Update the aria-label status suffix so screen readers announce the change.
     const prev = el.getAttribute('aria-label') ?? '';
-    el.setAttribute('aria-label', prev.replace(/,\s+\w+$/, `, ${status}`));
+    el.setAttribute('aria-label', prev.replace(/,\s+[\w -]+$/, `, ${status}`));
+  }
+}
+
+// ─── Conflict highlight ───────────────────────────────────────────────────────
+
+/**
+ * Highlight seats that are in conflict after a 409 `reservation.seats_conflict`
+ * response from `checkout/start` or `recover`.
+ *
+ * Marks each conflicting seat circle with:
+ *  - `fill`          → `CONFLICT_COLOR` (#b91c1c, WCAG-AA error red)
+ *  - `data-status`   → `"conflict"` (widget-only overlay value)
+ *  - `aria-label`    → trailing status replaced with "conflict — not available"
+ *
+ * This is a keyed DOM mutation that does not trigger a full SVG re-render.
+ *
+ * @param container    DOM element wrapping the rendered SVG.
+ * @param conflictKeys Set of seat_key strings that are in conflict.
+ */
+export function applyConflictHighlight(
+  container: Element,
+  conflictKeys: ReadonlySet<string>,
+): void {
+  for (const key of conflictKeys) {
+    const selector = `circle[data-seat-key="${cssAttrEscape(key)}"]`;
+    const el = container.querySelector<SVGCircleElement>(selector);
+    if (!el) continue;
+
+    el.setAttribute('fill', CONFLICT_COLOR);
+    el.setAttribute('data-status', 'conflict');
+
+    // Update aria-label so assistive technology announces the conflict state.
+    const prev = el.getAttribute('aria-label') ?? '';
+    const updated = prev.replace(/,\s+[\w -]+$/, ', conflict — not available');
+    el.setAttribute(
+      'aria-label',
+      updated !== prev ? updated : `${prev}, conflict — not available`,
+    );
+  }
+}
+
+/**
+ * Clear a previously-applied conflict highlight by restoring each seat's
+ * real status from the live `seatStatuses` map.
+ *
+ * Call this when the user dismisses the conflict notice or removes conflicting
+ * lines from the cart so the seats return to their normal visual state.
+ *
+ * @param container    DOM element wrapping the rendered SVG.
+ * @param conflictKeys Set of seat_key strings whose highlight should be cleared.
+ * @param catColorMap  Category-index → hex-color for "available" fills.
+ * @param seatStatuses Current seat_key → SeatStatusValue snapshot.
+ */
+export function clearConflictHighlight(
+  container: Element,
+  conflictKeys: ReadonlySet<string>,
+  catColorMap: ReadonlyMap<number, string>,
+  seatStatuses: Record<string, SeatStatusValue>,
+): void {
+  const delta: Record<string, SeatStatusValue> = {};
+  for (const key of conflictKeys) {
+    delta[key] = seatStatuses[key] ?? 'available';
+  }
+  if (Object.keys(delta).length > 0) {
+    applySeatStatusUpdate(container, delta, catColorMap);
   }
 }

@@ -11,12 +11,15 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   buildSeatMapSVG,
   applySeatStatusUpdate,
+  applyConflictHighlight,
+  clearConflictHighlight,
   buildCategoryColorMap,
   seatFillColor,
   xmlAttr,
   cssAttrEscape,
   STATUS_COLORS,
   FALLBACK_COLOR,
+  CONFLICT_COLOR,
 } from './seatmap-render.js';
 import type { Geometry, CategoryPrice, SeatStatusValue } from '../types.js';
 
@@ -413,5 +416,140 @@ describe('applySeatStatusUpdate', () => {
     );
     const selector = (container.querySelector as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as string;
     expect(selector).toContain('P|1|1');
+  });
+});
+
+// ─── CONFLICT_COLOR export ────────────────────────────────────────────────────
+
+describe('CONFLICT_COLOR', () => {
+  it('is a WCAG-AA compliant hex string (error red)', () => {
+    expect(CONFLICT_COLOR).toBe('#b91c1c');
+  });
+
+  it('is not in STATUS_COLORS (widget-only overlay, not a backend status)', () => {
+    // STATUS_COLORS keys are backend SeatStatusValue values.
+    expect(Object.values(STATUS_COLORS)).not.toContain(CONFLICT_COLOR);
+  });
+});
+
+// ─── applyConflictHighlight ───────────────────────────────────────────────────
+
+describe('applyConflictHighlight', () => {
+  /**
+   * Create a minimal DOM container with one SVG seat circle, rendered via
+   * buildSeatMapSVG so the test uses the real SVG structure.
+   */
+  function makeContainer(seatKey: string, ariaLabel: string): HTMLDivElement {
+    const div = document.createElement('div');
+    div.innerHTML = `<svg><circle data-seat-key="${seatKey}" data-status="available" data-cat="1" fill="#ff0000" aria-label="${ariaLabel}" /></svg>`;
+    return div;
+  }
+
+  it('sets fill to CONFLICT_COLOR on the conflicting seat', () => {
+    const container = makeContainer('P|1|1', 'Parter, row 1, seat 1, available');
+    applyConflictHighlight(container, new Set(['P|1|1']));
+    const circle = container.querySelector('circle[data-seat-key="P|1|1"]') as SVGCircleElement;
+    expect(circle.getAttribute('fill')).toBe(CONFLICT_COLOR);
+  });
+
+  it('sets data-status to "conflict"', () => {
+    const container = makeContainer('P|1|2', 'Parter, row 1, seat 2, available');
+    applyConflictHighlight(container, new Set(['P|1|2']));
+    const circle = container.querySelector('circle[data-seat-key="P|1|2"]') as SVGCircleElement;
+    expect(circle.getAttribute('data-status')).toBe('conflict');
+  });
+
+  it('updates aria-label to end with "conflict — not available"', () => {
+    const container = makeContainer('P|1|3', 'Parter, row 1, seat 3, available');
+    applyConflictHighlight(container, new Set(['P|1|3']));
+    const circle = container.querySelector('circle[data-seat-key="P|1|3"]') as SVGCircleElement;
+    expect(circle.getAttribute('aria-label')).toContain('conflict — not available');
+  });
+
+  it('highlights multiple seats', () => {
+    const div = document.createElement('div');
+    div.innerHTML = `<svg>
+      <circle data-seat-key="A|1" data-status="available" data-cat="1" fill="#f00" aria-label="A, row 1, seat 1, available"/>
+      <circle data-seat-key="A|2" data-status="available" data-cat="1" fill="#f00" aria-label="A, row 1, seat 2, available"/>
+      <circle data-seat-key="A|3" data-status="available" data-cat="1" fill="#f00" aria-label="A, row 1, seat 3, available"/>
+    </svg>`;
+    applyConflictHighlight(div, new Set(['A|1', 'A|3']));
+    expect(div.querySelector('[data-seat-key="A|1"]')!.getAttribute('data-status')).toBe('conflict');
+    expect(div.querySelector('[data-seat-key="A|2"]')!.getAttribute('data-status')).toBe('available');
+    expect(div.querySelector('[data-seat-key="A|3"]')!.getAttribute('data-status')).toBe('conflict');
+  });
+
+  it('skips seat keys not found in the DOM (no throw)', () => {
+    const container = makeContainer('P|1|1', 'Parter, row 1, seat 1, available');
+    expect(() =>
+      applyConflictHighlight(container, new Set(['GHOST|0|0'])),
+    ).not.toThrow();
+    // The real seat should be untouched.
+    expect(
+      container.querySelector('[data-seat-key="P|1|1"]')!.getAttribute('data-status'),
+    ).toBe('available');
+  });
+
+  it('does nothing for empty conflictKeys', () => {
+    const container = makeContainer('P|1|1', 'Parter, row 1, seat 1, available');
+    applyConflictHighlight(container, new Set());
+    expect(
+      container.querySelector('[data-seat-key="P|1|1"]')!.getAttribute('fill'),
+    ).toBe('#ff0000'); // unchanged
+  });
+
+  it('works on a seat with multi-word status in aria-label (e.g. "held")', () => {
+    const div = document.createElement('div');
+    div.innerHTML = `<svg><circle data-seat-key="P|1|5" data-status="held" data-cat="1" fill="${STATUS_COLORS['held']}" aria-label="Parter, row 1, seat 5, held"/></svg>`;
+    applyConflictHighlight(div, new Set(['P|1|5']));
+    const el = div.querySelector('[data-seat-key="P|1|5"]') as SVGCircleElement;
+    expect(el.getAttribute('fill')).toBe(CONFLICT_COLOR);
+    expect(el.getAttribute('aria-label')).toContain('conflict — not available');
+  });
+});
+
+// ─── clearConflictHighlight ───────────────────────────────────────────────────
+
+describe('clearConflictHighlight', () => {
+  it('restores the previous status fill and data-status', () => {
+    const div = document.createElement('div');
+    // Simulate a seat already highlighted as conflict.
+    div.innerHTML = `<svg><circle data-seat-key="P|1|1" data-status="conflict" data-cat="1" fill="${CONFLICT_COLOR}" aria-label="Parter, row 1, seat 1, conflict — not available"/></svg>`;
+
+    const catColorMap = new Map([[1, '#ff0000']]);
+    clearConflictHighlight(div, new Set(['P|1|1']), catColorMap, {});
+
+    const el = div.querySelector('[data-seat-key="P|1|1"]') as SVGCircleElement;
+    // Status falls back to 'available' (not in seatStatuses) → category color.
+    expect(el.getAttribute('data-status')).toBe('available');
+    expect(el.getAttribute('fill')).toBe('#ff0000');
+  });
+
+  it('restores "held" status when seat is now held in seatStatuses', () => {
+    const div = document.createElement('div');
+    div.innerHTML = `<svg><circle data-seat-key="B|2|1" data-status="conflict" data-cat="2" fill="${CONFLICT_COLOR}" aria-label="Balkon, row 2, seat 1, conflict — not available"/></svg>`;
+
+    const catColorMap = new Map([[2, '#0000ff']]);
+    clearConflictHighlight(div, new Set(['B|2|1']), catColorMap, { 'B|2|1': 'held' });
+
+    const el = div.querySelector('[data-seat-key="B|2|1"]') as SVGCircleElement;
+    expect(el.getAttribute('data-status')).toBe('held');
+    expect(el.getAttribute('fill')).toBe(STATUS_COLORS['held']);
+  });
+
+  it('does nothing for empty conflictKeys', () => {
+    const div = document.createElement('div');
+    div.innerHTML = `<svg><circle data-seat-key="P|1|1" data-status="available" data-cat="1" fill="#f00" aria-label="Parter, row 1, seat 1, available"/></svg>`;
+    expect(() =>
+      clearConflictHighlight(div, new Set(), new Map(), {}),
+    ).not.toThrow();
+  });
+
+  it('skips keys not in the DOM', () => {
+    const div = document.createElement('div');
+    div.innerHTML = '<svg></svg>';
+    expect(() =>
+      clearConflictHighlight(div, new Set(['GHOST|0|0']), new Map(), {}),
+    ).not.toThrow();
   });
 });

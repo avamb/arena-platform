@@ -14,6 +14,107 @@
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+// ─── Conflict types (WID-R2) ──────────────────────────────────────────────────
+
+/**
+ * One entry from the `details.conflicts` array in a 409
+ * `reservation.seats_conflict` error response.
+ *
+ * Backend contract (seat_reservations.go `seatConflicts`):
+ *  - `seat_key`: the requested seat key that could not be held
+ *  - `status`:   why the seat is unavailable:
+ *      "held"        — another session currently holds this seat
+ *      "sold"        — seat has been converted to a ticket
+ *      "blocked"     — seat is administratively blocked
+ *      "unknown"     — seat_key does not exist in the seating plan
+ *      "unavailable" — catch-all used by the defensive hold/link guard
+ */
+export interface ConflictDetail {
+  seat_key: string;
+  status: string;
+}
+
+/**
+ * Parse seat conflicts from an unknown error value that may be an ApiError
+ * thrown by `postCheckoutStart` or `postCheckoutRecover`.
+ *
+ * Uses duck typing so `checkout.ts` stays free of circular imports
+ * (ApiError is defined in `api.ts`).  An `ApiError` sets `name = 'ApiError'`
+ * and carries `status`, `code`, and `details` — these three fields are
+ * sufficient to identify and unpack the conflict payload.
+ *
+ * Returns an empty array when:
+ *  - `err` is not an object (null, string, etc.)
+ *  - `name` is not `'ApiError'`
+ *  - `status` is not 409
+ *  - `code` is not `'reservation.seats_conflict'`
+ *  - `details.conflicts` is missing or not an array
+ *  - Individual items fail the `{ seat_key: string, status: string }` shape guard
+ *
+ * @example
+ * try {
+ *   await postCheckoutStart(token, payload);
+ * } catch (err) {
+ *   const conflicts = parseConflictsFromApiError(err);
+ *   if (conflicts.length > 0) {
+ *     // highlight conflicting seats and show inline notice
+ *   }
+ * }
+ */
+export function parseConflictsFromApiError(err: unknown): ConflictDetail[] {
+  if (err === null || typeof err !== 'object') return [];
+  const e = err as Record<string, unknown>;
+  if (e['name'] !== 'ApiError') return [];
+  if (e['status'] !== 409) return [];
+  if (e['code'] !== 'reservation.seats_conflict') return [];
+
+  const details = e['details'];
+  if (details === null || typeof details !== 'object') return [];
+  const raw = (details as Record<string, unknown>)['conflicts'];
+  if (!Array.isArray(raw)) return [];
+
+  const conflicts: ConflictDetail[] = [];
+  for (const item of raw) {
+    if (
+      item !== null &&
+      typeof item === 'object' &&
+      typeof (item as Record<string, unknown>)['seat_key'] === 'string' &&
+      typeof (item as Record<string, unknown>)['status'] === 'string'
+    ) {
+      conflicts.push({
+        seat_key: (item as Record<string, unknown>)['seat_key'] as string,
+        status: (item as Record<string, unknown>)['status'] as string,
+      });
+    }
+  }
+  return conflicts;
+}
+
+/**
+ * Build a `Set<string>` of the conflicting seat keys from a `ConflictDetail[]`
+ * array (convenience helper for keyed DOM lookups and Set-based filtering).
+ */
+export function conflictKeySet(conflicts: ConflictDetail[]): Set<string> {
+  return new Set(conflicts.map((c) => c.seat_key));
+}
+
+/**
+ * Return the elements of `seats` that are NOT in `conflictKeys`.
+ *
+ * Call this to produce the trimmed seat list for a "continue without
+ * conflicting seats" one-click action — the remaining non-conflicting
+ * seats are passed back to `buildCheckoutPayload` for a fresh attempt.
+ *
+ * @param seats        Current cart seat keys (from the selection or payload).
+ * @param conflictKeys Set of keys to exclude (typically from `conflictKeySet`).
+ */
+export function filterCartWithoutConflicts(
+  seats: ReadonlyArray<string>,
+  conflictKeys: ReadonlySet<string>,
+): string[] {
+  return seats.filter((k) => !conflictKeys.has(k));
+}
+
 /** One buyer_fields entry returned by the public feed session. */
 export interface BuyerFieldConfig {
   key: 'email' | 'name' | 'phone';
@@ -430,6 +531,11 @@ export interface CheckoutI18nStrings {
   // Generic
   loading: string;
   error_generic: string;
+  // Seat conflict (WID-R2)
+  /** Inline notice shown when checkout/start or recover returns 409 seat conflict. */
+  conflict_notice: string;
+  /** CTA label for the one-click "continue without unavailable seats" action. */
+  continue_without_conflicts: string;
 }
 
 /** Interpolate {key} placeholders in an i18n string. */
@@ -465,6 +571,8 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     download_pdf: 'Download PDF',
     loading: 'Loading…',
     error_generic: 'Something went wrong. Please try again.',
+    conflict_notice: 'Some seats in your cart are no longer available.',
+    continue_without_conflicts: 'Continue without unavailable seats',
   },
   ru: {
     email_label: 'Email',
@@ -493,6 +601,8 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     download_pdf: 'Скачать PDF',
     loading: 'Загрузка…',
     error_generic: 'Произошла ошибка. Пожалуйста, попробуйте ещё раз.',
+    conflict_notice: 'Некоторые места в вашей корзине больше недоступны.',
+    continue_without_conflicts: 'Продолжить без недоступных мест',
   },
   cs: {
     email_label: 'E-mail',
@@ -521,6 +631,8 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     download_pdf: 'Stáhnout PDF',
     loading: 'Načítání…',
     error_generic: 'Něco se pokazilo. Zkuste to prosím znovu.',
+    conflict_notice: 'Některá místa ve vašem košíku již nejsou dostupná.',
+    continue_without_conflicts: 'Pokračovat bez nedostupných míst',
   },
   he: {
     email_label: 'דוא"ל',
@@ -549,6 +661,8 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     download_pdf: 'הורד PDF',
     loading: 'טוען…',
     error_generic: 'משהו השתבש. אנא נסה שוב.',
+    conflict_notice: 'חלק מהמקומות בסל שלך אינם זמינים יותר.',
+    continue_without_conflicts: 'המשך ללא המקומות הלא זמינים',
   },
 };
 

@@ -237,7 +237,10 @@ export async function getCheckoutStatus(
  *
  * Should only be called when `getCheckoutStatus` returns `expired`.
  *
- * @throws Error when the response is non-2xx (409 = seats no longer available).
+ * @throws ApiError when the response is non-2xx.  A 409 carries:
+ *   - `code = 'reservation.seats_conflict'` with `details.conflicts` (per-seat list)
+ *   - `code = 'reservation.over_capacity'`  with `details.tier_id` / `details.requested`
+ * These structured errors can be inspected with `parseConflictsFromApiError()`.
  */
 export async function postCheckoutRecover(
   checkoutToken: string,
@@ -245,7 +248,24 @@ export async function postCheckoutRecover(
   const url = `/v1/public/checkout/${encodeURIComponent(checkoutToken)}/recover`;
   const res = await fetch(url, { method: 'POST' });
   if (!res.ok) {
-    throw new Error(`postCheckoutRecover HTTP ${res.status}: ${res.statusText}`);
+    let detail = '';
+    let code: string | undefined;
+    let details: Record<string, unknown> | undefined;
+    try {
+      const body = (await res.json()) as {
+        error?: string;
+        message?: string;
+        code?: string;
+        details?: Record<string, unknown>;
+      };
+      detail = body.error ?? body.message ?? '';
+      code = body.code ?? (body.error || undefined);
+      details = body.details;
+    } catch { /* ignore non-JSON error bodies */ }
+    throw new ApiError(
+      `postCheckoutRecover HTTP ${res.status}${detail ? `: ${detail}` : ''}`,
+      { status: res.status, code, details },
+    );
   }
   return res.json() as Promise<CheckoutRecoverResponse>;
 }

@@ -102,7 +102,19 @@ export {
   type CheckoutRecoverResponse,
   type CheckoutLocale,
   type CheckoutI18nStrings,
+  // WID-R2: conflict parsing and cart filtering
+  parseConflictsFromApiError,
+  filterCartWithoutConflicts,
+  conflictKeySet,
+  type ConflictDetail,
 } from './lib/checkout.js';
+
+// WID-R2: seat conflict highlight (DOM mutation, no re-render).
+export {
+  applyConflictHighlight,
+  clearConflictHighlight,
+  CONFLICT_COLOR,
+} from './lib/seatmap-render.js';
 
 export {
   postCheckoutStart,

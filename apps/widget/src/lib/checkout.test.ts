@@ -28,8 +28,12 @@ import {
   interpolate,
   getCheckoutI18n,
   CHECKOUT_I18N,
+  parseConflictsFromApiError,
+  conflictKeySet,
+  filterCartWithoutConflicts,
   type BuyerFieldConfig,
   type BuyerFormValues,
+  type ConflictDetail,
 } from './checkout.js';
 
 // ─── editDistance ─────────────────────────────────────────────────────────────
@@ -413,4 +417,264 @@ describe('interpolate', () => {
   test('no placeholders → unchanged', () => {
     expect(interpolate('No change', { suggestion: 'gmail.com' })).toBe('No change');
   });
+});
+
+// ─── WID-R2: parseConflictsFromApiError ──────────────────────────────────────
+
+/**
+ * Minimal duck-typed ApiError factory matching the real class contract.
+ * (ApiError is in api.ts; we use a plain object with the same shape so
+ *  checkout.ts stays free of circular imports and the test stays pure.)
+ */
+function makeApiError(opts: {
+  status: number;
+  code?: string;
+  details?: Record<string, unknown>;
+  message?: string;
+}): Record<string, unknown> {
+  return {
+    name: 'ApiError',
+    message: opts.message ?? `HTTP ${opts.status}`,
+    status: opts.status,
+    code: opts.code ?? `http_${opts.status}`,
+    details: opts.details ?? {},
+  };
+}
+
+describe('parseConflictsFromApiError', () => {
+  // ── Happy-path: real backend 409 reservation.seats_conflict ──
+
+  test('parses a 2-seat conflict from checkout/start 409', () => {
+    const err = makeApiError({
+      status: 409,
+      code: 'reservation.seats_conflict',
+      details: {
+        conflicts: [
+          { seat_key: 'P|1|3', status: 'held' },
+          { seat_key: 'P|1|4', status: 'sold' },
+        ],
+      },
+    });
+    const conflicts = parseConflictsFromApiError(err);
+    expect(conflicts).toHaveLength(2);
+    expect(conflicts[0]).toEqual({ seat_key: 'P|1|3', status: 'held' });
+    expect(conflicts[1]).toEqual({ seat_key: 'P|1|4', status: 'sold' });
+  });
+
+  test('parses unknown seat_key (does not exist in seating plan)', () => {
+    const err = makeApiError({
+      status: 409,
+      code: 'reservation.seats_conflict',
+      details: {
+        conflicts: [{ seat_key: 'GHOST|0|0', status: 'unknown' }],
+      },
+    });
+    const conflicts = parseConflictsFromApiError(err);
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]!.status).toBe('unknown');
+  });
+
+  test('parses "unavailable" status (defensive hold/link guard)', () => {
+    const err = makeApiError({
+      status: 409,
+      code: 'reservation.seats_conflict',
+      details: {
+        conflicts: [{ seat_key: 'P|2|7', status: 'unavailable' }],
+      },
+    });
+    const [c] = parseConflictsFromApiError(err);
+    expect(c!.status).toBe('unavailable');
+  });
+
+  test('parses blocked seat (admin block)', () => {
+    const err = makeApiError({
+      status: 409,
+      code: 'reservation.seats_conflict',
+      details: {
+        conflicts: [{ seat_key: 'B|3|1', status: 'blocked' }],
+      },
+    });
+    expect(parseConflictsFromApiError(err)[0]!.status).toBe('blocked');
+  });
+
+  test('parses recovery 409 (same code + shape as checkout/start)', () => {
+    const err = makeApiError({
+      status: 409,
+      code: 'reservation.seats_conflict',
+      details: {
+        conflicts: [
+          { seat_key: 'P|1|5', status: 'held' },
+          { seat_key: 'P|1|6', status: 'held' },
+        ],
+      },
+    });
+    expect(parseConflictsFromApiError(err)).toHaveLength(2);
+  });
+
+  // ── Negative cases: wrong code / wrong status / missing fields ──
+
+  test('returns [] for 409 with wrong code (over_capacity)', () => {
+    const err = makeApiError({
+      status: 409,
+      code: 'reservation.over_capacity',
+      details: { tier_id: 'abc', requested: 3 },
+    });
+    expect(parseConflictsFromApiError(err)).toHaveLength(0);
+  });
+
+  test('returns [] for 400 (non-409)', () => {
+    const err = makeApiError({
+      status: 400,
+      code: 'reservation.seats_conflict',
+      details: { conflicts: [{ seat_key: 'X', status: 'held' }] },
+    });
+    expect(parseConflictsFromApiError(err)).toHaveLength(0);
+  });
+
+  test('returns [] for 500 (server error)', () => {
+    expect(parseConflictsFromApiError(makeApiError({ status: 500 }))).toHaveLength(0);
+  });
+
+  test('returns [] when name is not ApiError', () => {
+    const notApiErr = { name: 'Error', status: 409, code: 'reservation.seats_conflict', details: { conflicts: [{ seat_key: 'A', status: 'held' }] } };
+    expect(parseConflictsFromApiError(notApiErr)).toHaveLength(0);
+  });
+
+  test('returns [] for plain Error', () => {
+    expect(parseConflictsFromApiError(new Error('oops'))).toHaveLength(0);
+  });
+
+  test('returns [] for null', () => {
+    expect(parseConflictsFromApiError(null)).toHaveLength(0);
+  });
+
+  test('returns [] for undefined', () => {
+    expect(parseConflictsFromApiError(undefined)).toHaveLength(0);
+  });
+
+  test('returns [] for string', () => {
+    expect(parseConflictsFromApiError('error')).toHaveLength(0);
+  });
+
+  test('returns [] when details.conflicts is missing', () => {
+    const err = makeApiError({ status: 409, code: 'reservation.seats_conflict', details: {} });
+    expect(parseConflictsFromApiError(err)).toHaveLength(0);
+  });
+
+  test('returns [] when details.conflicts is not an array', () => {
+    const err = makeApiError({
+      status: 409,
+      code: 'reservation.seats_conflict',
+      details: { conflicts: 'P|1|1' },
+    });
+    expect(parseConflictsFromApiError(err)).toHaveLength(0);
+  });
+
+  test('skips items that do not have seat_key: string', () => {
+    const err = makeApiError({
+      status: 409,
+      code: 'reservation.seats_conflict',
+      details: {
+        conflicts: [
+          { seat_key: 'P|1|1', status: 'held' },  // valid
+          { seat_key: 123, status: 'held' },        // invalid — seat_key is number
+          { status: 'held' },                       // invalid — no seat_key
+          null,                                     // invalid — null item
+        ],
+      },
+    });
+    const parsed = parseConflictsFromApiError(err);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]!.seat_key).toBe('P|1|1');
+  });
+
+  test('returns [] when details is missing entirely (empty details {})', () => {
+    const err = makeApiError({
+      status: 409,
+      code: 'reservation.seats_conflict',
+      details: {},
+    });
+    expect(parseConflictsFromApiError(err)).toHaveLength(0);
+  });
+});
+
+// ─── conflictKeySet ───────────────────────────────────────────────────────────
+
+describe('conflictKeySet', () => {
+  test('builds a Set of seat_key strings', () => {
+    const conflicts: ConflictDetail[] = [
+      { seat_key: 'P|1|1', status: 'held' },
+      { seat_key: 'P|1|2', status: 'sold' },
+    ];
+    const ks = conflictKeySet(conflicts);
+    expect(ks.size).toBe(2);
+    expect(ks.has('P|1|1')).toBe(true);
+    expect(ks.has('P|1|2')).toBe(true);
+  });
+
+  test('empty input → empty Set', () => {
+    expect(conflictKeySet([])).toEqual(new Set());
+  });
+
+  test('duplicate seat_keys are deduplicated', () => {
+    const conflicts: ConflictDetail[] = [
+      { seat_key: 'A|1', status: 'held' },
+      { seat_key: 'A|1', status: 'sold' },
+    ];
+    expect(conflictKeySet(conflicts).size).toBe(1);
+  });
+});
+
+// ─── filterCartWithoutConflicts ───────────────────────────────────────────────
+
+describe('filterCartWithoutConflicts', () => {
+  test('removes conflicting keys from seats array', () => {
+    const seats = ['P|1|1', 'P|1|2', 'P|1|3', 'P|1|4'];
+    const conflictKeys = new Set(['P|1|2', 'P|1|4']);
+    expect(filterCartWithoutConflicts(seats, conflictKeys)).toEqual(['P|1|1', 'P|1|3']);
+  });
+
+  test('returns all seats when no conflicts', () => {
+    const seats = ['A|1', 'A|2'];
+    expect(filterCartWithoutConflicts(seats, new Set())).toEqual(['A|1', 'A|2']);
+  });
+
+  test('returns empty array when all seats are conflicting', () => {
+    const seats = ['X|1', 'X|2'];
+    expect(filterCartWithoutConflicts(seats, new Set(['X|1', 'X|2']))).toEqual([]);
+  });
+
+  test('ignores conflict keys not in the cart', () => {
+    const seats = ['A|1'];
+    expect(filterCartWithoutConflicts(seats, new Set(['B|1', 'C|1']))).toEqual(['A|1']);
+  });
+
+  test('preserves order of non-conflicting seats', () => {
+    const seats = ['A', 'B', 'C', 'D', 'E'];
+    const result = filterCartWithoutConflicts(seats, new Set(['B', 'D']));
+    expect(result).toEqual(['A', 'C', 'E']);
+  });
+
+  test('empty seats array → empty result', () => {
+    expect(filterCartWithoutConflicts([], new Set(['X|1']))).toEqual([]);
+  });
+});
+
+// ─── WID-R2: conflict i18n strings present in all locales ────────────────────
+
+describe('CHECKOUT_I18N conflict strings', () => {
+  const LOCALES: Array<keyof typeof CHECKOUT_I18N> = ['en', 'ru', 'cs', 'he'];
+  const CONFLICT_KEYS: Array<'conflict_notice' | 'continue_without_conflicts'> = [
+    'conflict_notice',
+    'continue_without_conflicts',
+  ];
+
+  for (const locale of LOCALES) {
+    for (const key of CONFLICT_KEYS) {
+      test(`${locale}.${key} is a non-empty string`, () => {
+        expect(CHECKOUT_I18N[locale][key]).toBeTruthy();
+        expect(typeof CHECKOUT_I18N[locale][key]).toBe('string');
+      });
+    }
+  }
 });

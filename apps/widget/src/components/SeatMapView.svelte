@@ -17,6 +17,8 @@
   import {
     buildSeatMapSVG,
     applySeatStatusUpdate,
+    applyConflictHighlight,
+    clearConflictHighlight,
     buildCategoryColorMap,
   } from '../lib/seatmap-render.js';
   import {
@@ -35,9 +37,16 @@
   interface Props {
     session: FeedSession;
     locale?: string;
+    /**
+     * Set of seat_key strings that are in conflict (from a 409
+     * `reservation.seats_conflict` response).  When provided, those seats are
+     * highlighted with the WCAG-AA error red overlay via `applyConflictHighlight`.
+     * Pass an empty Set or `undefined` to clear the conflict highlight.
+     */
+    conflictKeys?: ReadonlySet<string>;
   }
 
-  const { session, locale = 'en' }: Props = $props();
+  const { session, locale = 'en', conflictKeys }: Props = $props();
 
   // ── State ──────────────────────────────────────────────────────────────────
 
@@ -225,6 +234,25 @@
 
   // Computed SVG transform attribute.
   const svgTransform = $derived(toSVGTransform(transform));
+
+  // ── Conflict highlight (WID-R2) ─────────────────────────────────────────────
+  // Track previous conflict keys so we can clear the highlight when they change.
+  let prevConflictKeys = $state<ReadonlySet<string>>(new Set());
+
+  // When conflictKeys changes, apply or clear the seat conflict overlay.
+  // Runs after the SVG has been inserted into the DOM (svgHTML is already set).
+  $effect(() => {
+    if (!svgContainer || schemaLoading) return;
+    const keys = conflictKeys ?? (new Set<string>());
+    if (keys.size > 0) {
+      // Apply the error-red highlight to newly conflicting seats.
+      applyConflictHighlight(svgContainer, keys);
+    } else if (prevConflictKeys.size > 0) {
+      // Conflicts were cleared (empty set passed) — restore real seat statuses.
+      clearConflictHighlight(svgContainer, prevConflictKeys, catColorMap, seatStatuses);
+    }
+    prevConflictKeys = keys;
+  });
 </script>
 
 <div class="seat-map-wrap" data-locale={locale}>
