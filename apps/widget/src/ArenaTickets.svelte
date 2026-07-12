@@ -13,15 +13,38 @@
   /**
    * ArenaTickets — root Web Component for the Arena ticket-purchase widget.
    *
-   * WID-B: orchestrates feed loading, session selection, seat-map render
-   * and status polling.  Seat-map and session list are sub-components.
+   * WID-R1: wires the full purchase loop:
+   *   selecting → (mini-cart) → cart sheet / buyer form → redirecting → order-status
    */
   import { onMount } from 'svelte';
   import { parseLocale, parseFeedToken, parseSessionId, isRtlLocale } from './utils.js';
-  import { fetchFeedEvent } from './api.js';
-  import type { FeedSession, FeedEvent } from './types.js';
+  import { fetchFeedEvent, postCheckoutStart, getCheckoutStatus, postCheckoutRecover } from './api.js';
+  import type { FeedSession, FeedEvent, Geometry, CategoryPrice, SeatStatusValue } from './types.js';
+  import type { BuyerFormValues } from './lib/checkout.js';
+  import { buildCheckoutPayload } from './lib/checkout.js';
+  import { removeCartLine, applyHoldResponse } from './lib/cart.js';
+  import { toggleSeatSelection } from './lib/selection.js';
+  import {
+    saveCheckoutToken,
+    restoreCheckoutToken,
+    clearCheckoutToken,
+    getCheckoutTokenFromSearch,
+    buildCartFromSelection,
+    buildSeatCategoryIndex,
+    buildCategoryByIndex,
+    buildTierById,
+    identifyGaTiers,
+    buildGaItems,
+    totalSelectionCount,
+    type WidgetStage,
+  } from './lib/store.js';
+  import type { CheckoutStatusResponse } from './lib/checkout.js';
   import SessionList from './components/SessionList.svelte';
   import SeatMapView from './components/SeatMapView.svelte';
+  import MiniCart from './components/MiniCart.svelte';
+  import CartSheet from './components/CartSheet.svelte';
+  import GaTierCard from './components/GaTierCard.svelte';
+  import OrderStatus from './components/OrderStatus.svelte';
 
   interface Props {
     /** The public feed token identifying the event/catalogue. */
@@ -47,6 +70,51 @@
   let loading = $state(false);
   let loadError = $state<string | null>(null);
 
+  // ── Widget stage ───────────────────────────────────────────────────────────
+
+  let stage = $state<WidgetStage>('selecting');
+  let cartSheetOpen = $state(false);
+
+  // ── Selection state ────────────────────────────────────────────────────────
+
+  let selectedSeatKeys = $state<ReadonlySet<string>>(new Set());
+  let gaQuantities = $state<ReadonlyMap<string, number>>(new Map());
+
+  // ── Schema index maps (built from onSchemaLoaded) ──────────────────────────
+
+  let seatCategoryIndex = $state<ReadonlyMap<string, number>>(new Map());
+  let categoryByCategoryIndex = $state<ReadonlyMap<number, CategoryPrice>>(new Map());
+  let tierById = $state<ReadonlyMap<string, Tier>>(new Map());
+  let gaTiers = $state<import('./types.js').Tier[]>([]);
+
+  // ── Checkout state ─────────────────────────────────────────────────────────
+
+  let checkoutToken = $state<string | null>(null);
+  let checkoutSubmitting = $state(false);
+  let checkoutError = $state<string | null>(null);
+  let orderStatus = $state<CheckoutStatusResponse | null>(null);
+  let orderActionLoading = $state(false);
+  let orderActionError = $state<string | null>(null);
+
+  // ── Derived cart ───────────────────────────────────────────────────────────
+
+  const cart = $derived(
+    selectedSession
+      ? buildCartFromSelection({
+          selectedSeatKeys,
+          gaQuantities,
+          session: selectedSession,
+          seatCategoryIndex,
+          categoryByCategoryIndex,
+          tierById,
+        })
+      : { checkoutToken: null, expiresAt: null, lines: [] }
+  );
+
+  const cartCount = $derived(totalSelectionCount(selectedSeatKeys, gaQuantities));
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
   /**
    * Pick the initial session when the event loads.
    * Prefers the deep-linked sessionId, then the first non-cancelled upcoming session.
@@ -65,20 +133,24 @@
   // ── Feed loading ────────────────────────────────────────────────────────────
 
   onMount(() => {
-    // The feed requires both a token and an event ID.  The token alone isn't
-    // enough to know which event to show — for now the widget expects a
-    // session-id that can be used to back-derive the event (future: feed
-    // browsing with event list will use the feed list endpoint).
+    // Check for checkout_token in URL or sessionStorage first.
+    const urlToken = getCheckoutTokenFromSearch(window.location.search);
+    const storedToken = restoreCheckoutToken();
+    const resumeToken = urlToken ?? storedToken;
+
+    if (resumeToken) {
+      // Restore order status view.
+      checkoutToken = resumeToken;
+      stage = 'order-status';
+      loadOrderStatus(resumeToken);
+      return;
+    }
+
     if (!normFeedToken || !normSessionId) return;
 
     loading = true;
     loadError = null;
 
-    // Derive eventId from sessionId for the public feed endpoint.
-    // The session ID IS used as the route (we call /schema directly).
-    // For now, if session-id is provided, we use it directly with the
-    // schema endpoint (no event detail needed for the seated view).
-    // The full event-detail flow (date chips) requires an event-id attribute.
     // Set a minimal synthetic event so the seat map still renders.
     event = {
       id: normSessionId,
@@ -110,7 +182,6 @@
   });
 
   // If an event-id is ever added as an attribute, load via the feed.
-  // (kept as a no-op hook so WID-C can extend without refactoring the mount)
   async function loadFromFeed(token: string, eventId: string): Promise<void> {
     loading = true;
     loadError = null;
@@ -125,22 +196,137 @@
     }
   }
 
-  // Expose for future use (suppresses noUnusedLocals via void-assignment in template).
+  // Expose for future use.
   void loadFromFeed;
+
+  // ── Schema loaded callback ─────────────────────────────────────────────────
+
+  function onSchemaLoaded(geometry: Geometry, categoryPrices: CategoryPrice[]): void {
+    seatCategoryIndex = buildSeatCategoryIndex(geometry);
+    categoryByCategoryIndex = buildCategoryByIndex(categoryPrices);
+    tierById = selectedSession ? buildTierById(selectedSession.tiers) : new Map();
+    gaTiers = selectedSession ? identifyGaTiers(selectedSession.tiers, categoryPrices) : [];
+  }
+
+  // ── Seat tap handler ───────────────────────────────────────────────────────
+
+  function onSeatTap(seatKey: string, status: SeatStatusValue): void {
+    selectedSeatKeys = toggleSeatSelection(selectedSeatKeys, seatKey, status);
+  }
+
+  // ── GA quantity handler ────────────────────────────────────────────────────
+
+  function onGaQuantityChange(tierId: string, qty: number): void {
+    const next = new Map(gaQuantities);
+    next.set(tierId, qty);
+    gaQuantities = next;
+  }
+
+  // ── Cart sheet handlers ────────────────────────────────────────────────────
+
+  function openCartSheet(): void {
+    cartSheetOpen = true;
+  }
+
+  function closeCartSheet(): void {
+    cartSheetOpen = false;
+  }
+
+  function handleRemoveLine(idx: number): void {
+    // Remove from cart lines — requires rebuilding selection/ga state accordingly.
+    // For simplicity, we remove the line from the cart.lines concept by adjusting
+    // the underlying state (clear the corresponding seats or GA entry).
+    const line = cart.lines[idx];
+    if (!line) return;
+    if (line.type === 'seated') {
+      // Remove these specific seat keys from selection.
+      const next = new Set(selectedSeatKeys);
+      for (const key of line.seatKeys) next.delete(key);
+      selectedSeatKeys = next;
+    } else if (line.type === 'ga') {
+      const next = new Map(gaQuantities);
+      next.delete(line.tierId);
+      gaQuantities = next;
+    }
+  }
+
+  // ── Checkout ───────────────────────────────────────────────────────────────
+
+  async function handleCheckout(values: BuyerFormValues): Promise<void> {
+    if (!selectedSession || !normFeedToken) return;
+    checkoutSubmitting = true;
+    checkoutError = null;
+    try {
+      const seats = [...selectedSeatKeys];
+      const gaItems = buildGaItems(gaQuantities);
+      const payload = buildCheckoutPayload(
+        selectedSession.id,
+        values,
+        seats,
+        gaItems,
+        selectedSession.buyer_fields as import('./lib/checkout.js').BuyerFieldConfig[],
+      );
+      const response = await postCheckoutStart(normFeedToken, payload);
+      // Save token in case user returns.
+      saveCheckoutToken(response.checkout_token);
+      checkoutToken = response.checkout_token;
+      stage = 'redirecting';
+      // Apply hold response to cart state for consistency.
+      // Note: we redirect immediately, so this is mostly for state tracking.
+      applyHoldResponse(cart, response.checkout_token, response.expires_at);
+      // Redirect to payment provider.
+      window.location.href = response.redirect_url;
+    } catch (err) {
+      checkoutError = err instanceof Error ? err.message : 'Checkout failed. Please try again.';
+    } finally {
+      checkoutSubmitting = false;
+    }
+  }
+
+  // ── Order status ───────────────────────────────────────────────────────────
+
+  async function loadOrderStatus(token: string): Promise<void> {
+    try {
+      orderStatus = await getCheckoutStatus(token);
+    } catch (err) {
+      loadError = err instanceof Error ? err.message : 'Failed to load order status';
+      stage = 'selecting';
+    }
+  }
+
+  async function handleRecover(): Promise<void> {
+    if (!checkoutToken) return;
+    orderActionLoading = true;
+    orderActionError = null;
+    try {
+      await postCheckoutRecover(checkoutToken);
+      // Re-load status after recovery attempt.
+      orderStatus = await getCheckoutStatus(checkoutToken);
+    } catch (err) {
+      orderActionError = err instanceof Error ? err.message : 'Recovery failed. Please try again.';
+    } finally {
+      orderActionLoading = false;
+    }
+  }
+
+  function handleRetry(): void {
+    // Clear token and return to selecting stage.
+    clearCheckoutToken();
+    checkoutToken = null;
+    orderStatus = null;
+    selectedSeatKeys = new Set();
+    gaQuantities = new Map();
+    stage = 'selecting';
+    cartSheetOpen = false;
+  }
+
+  // Import Tier type for use inside the script
+  type Tier = import('./types.js').Tier;
 </script>
 
 <!--
   Arena Tickets Widget — Shadow DOM root.
-  Theme is controlled via CSS custom properties on the host:
-
-    arena-tickets {
-      --arena-font-family: 'Inter', sans-serif;
-      --arena-color-primary: #1a1a1a;
-      --arena-accent: #4f46e5;
-      --arena-bg: #fff;
-      --arena-radius: 8px;
-      --arena-border-color: #e5e7eb;
-    }
+  Theme is controlled via CSS custom properties on the host.
 -->
 <div
   class="arena-tickets-root"
@@ -151,7 +337,27 @@
   role="region"
   dir={dir}
 >
-  {#if hasToken}
+  {#if stage === 'order-status' && orderStatus}
+    <!-- ── Order status view ──────────────────────────────────────────────── -->
+    <div class="arena-tickets-frame">
+      <OrderStatus
+        status={orderStatus}
+        locale={normLocale}
+        onRecover={handleRecover}
+        onRetry={handleRetry}
+        actionLoading={orderActionLoading}
+        actionError={orderActionError}
+      />
+    </div>
+
+  {:else if stage === 'redirecting'}
+    <!-- ── Redirecting to payment ─────────────────────────────────────────── -->
+    <div class="arena-tickets-frame">
+      <div class="arena-tickets-loading" aria-live="polite" aria-busy="true">Redirecting to payment…</div>
+    </div>
+
+  {:else if hasToken}
+    <!-- ── Selecting / cart stage ─────────────────────────────────────────── -->
     <div class="arena-tickets-frame">
       {#if loading}
         <div class="arena-tickets-loading" aria-live="polite" aria-busy="true">Loading…</div>
@@ -166,16 +372,61 @@
         />
         <!-- Seat map (only for sessions with schema_url) -->
         {#if selectedSession && selectedSession.schema_url}
-          <SeatMapView session={selectedSession} locale={normLocale} />
+          <SeatMapView
+            session={selectedSession}
+            locale={normLocale}
+            selectedKeys={selectedSeatKeys}
+            {onSeatTap}
+            {onSchemaLoaded}
+          />
         {:else if selectedSession}
           <div class="arena-tickets-ga" aria-label="General admission session">
-            <!-- GA tier list will be rendered by WID-C -->
+            <!-- GA tier list -->
           </div>
         {/if}
+
+        <!-- GA tier cards (shown below the map for hybrid/GA sessions) -->
+        {#if gaTiers.length > 0}
+          <div class="ga-tiers-section">
+            {#each gaTiers as tier (tier.id)}
+              <GaTierCard
+                {tier}
+                quantity={gaQuantities.get(tier.id) ?? 0}
+                {onGaQuantityChange}
+              />
+            {/each}
+          </div>
+        {/if}
+
+        <!-- Mini cart bar -->
+        {#if selectedSession}
+          <MiniCart
+            lines={cart.lines}
+            expiresAt={cart.expiresAt}
+            locale={normLocale}
+            onOpen={openCartSheet}
+          />
+        {/if}
+
       {:else if !normSessionId}
         <div class="arena-tickets-placeholder" aria-hidden="true"></div>
       {/if}
     </div>
+
+    <!-- Cart sheet (bottom drawer) -->
+    {#if cartSheetOpen && selectedSession}
+      <CartSheet
+        {cart}
+        buyerFields={selectedSession.buyer_fields as import('./lib/checkout.js').BuyerFieldConfig[]}
+        locale={normLocale}
+        submitting={checkoutSubmitting}
+        submitError={checkoutError}
+        onClose={closeCartSheet}
+        onRemoveLine={handleRemoveLine}
+        onCheckout={handleCheckout}
+      />
+    {/if}
+
   {:else}
     <div class="arena-tickets-placeholder" aria-hidden="true">
       <!-- No feed-token provided -->
@@ -246,14 +497,17 @@
     display: none;
   }
 
-  /* ── RTL layout adjustments ────────────────────────────────────────────────
-   * When locale="he" (or any RTL locale), dir="rtl" is set on
-   * .arena-tickets-root, flipping text alignment and flex order.
-   * CSS logical properties (margin-inline-start, padding-inline-end, etc.)
-   * are used in sub-components to automatically adapt to the writing direction.
-   */
+  .ga-tiers-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-top: 1px solid var(--_border);
+  }
+
+  /* ── RTL layout adjustments ─────────────────────────────────────────────── */
   [dir='rtl'] {
-    text-align: start; /* logical: maps to right for RTL */
+    text-align: start;
     direction: rtl;
   }
 

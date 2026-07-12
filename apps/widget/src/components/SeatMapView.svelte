@@ -137,6 +137,11 @@
   const activePointers = new Map<number, { x: number; y: number }>();
   let lastPinchDist = 0;
 
+  // Tap vs drag discrimination.
+  let pointerDownX = 0;
+  let pointerDownY = 0;
+  const DRAG_THRESHOLD = 8;
+
   function onPointerDown(e: PointerEvent): void {
     if (!svgContainer) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -145,11 +150,38 @@
       dragActive = true;
       lastDragX = e.clientX;
       lastDragY = e.clientY;
+      pointerDownX = e.clientX;
+      pointerDownY = e.clientY;
     } else if (activePointers.size === 2) {
       dragActive = false;
       const pts = [...activePointers.values()];
       lastPinchDist = pointerDist(pts[0]!, pts[1]!);
     }
+  }
+
+  function onContainerClick(e: MouseEvent): void {
+    const dx = e.clientX - pointerDownX;
+    const dy = e.clientY - pointerDownY;
+    if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) return;
+    if (!onSeatTap) return;
+    const target = e.target as Element;
+    const seatEl = target.closest('[data-seat-key]');
+    if (!seatEl) return;
+    const key = seatEl.getAttribute('data-seat-key') ?? '';
+    const status = (seatEl.getAttribute('data-status') ?? 'available') as SeatStatusValue;
+    if (key) onSeatTap(key, status);
+  }
+
+  function onContainerKeydown(e: KeyboardEvent): void {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    if (!onSeatTap) return;
+    const target = e.target as Element;
+    const seatEl = target.closest('[data-seat-key]');
+    if (!seatEl) return;
+    e.preventDefault();
+    const key = seatEl.getAttribute('data-seat-key') ?? '';
+    const status = (seatEl.getAttribute('data-status') ?? 'available') as SeatStatusValue;
+    if (key) onSeatTap(key, status);
   }
 
   function onPointerMove(e: PointerEvent): void {
@@ -243,6 +275,15 @@
   // Computed SVG transform attribute.
   const svgTransform = $derived(toSVGTransform(transform));
 
+  // ── Selection highlights ────────────────────────────────────────────────────
+  let prevSelectedKeys = $state<ReadonlySet<string>>(new Set());
+
+  $effect(() => {
+    if (!svgContainer || !svgHTML) return;
+    applySelectionHighlights(svgContainer, selectedKeys, prevSelectedKeys);
+    prevSelectedKeys = selectedKeys;
+  });
+
   // ── Conflict highlight (WID-R2) ─────────────────────────────────────────────
   // Track previous conflict keys so we can clear the highlight when they change.
   let prevConflictKeys = $state<ReadonlySet<string>>(new Set());
@@ -279,7 +320,7 @@
   </div>
 
   <!-- ── Map container ── -->
-  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex a11y_no_noninteractive_element_interactions -->
   <div
     class="seat-map-container"
     bind:this={svgContainer}
@@ -287,6 +328,8 @@
     onpointermove={onPointerMove}
     onpointerup={onPointerUp}
     onpointercancel={onPointerUp}
+    onclick={onContainerClick}
+    onkeydown={onContainerKeydown}
     aria-label="Interactive seat map"
     role="application"
     tabindex="0"

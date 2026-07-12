@@ -122,3 +122,23 @@ export {
   postCheckoutRecover,
   ApiError,
 } from './api.js';
+
+// WID-R1: purchase-loop wiring helpers.
+export {
+  saveCheckoutToken,
+  restoreCheckoutToken,
+  clearCheckoutToken,
+  getCheckoutTokenFromSearch,
+  totalSelectionCount,
+  buildGaItems,
+  buildCartFromSelection,
+  buildSeatCategoryIndex,
+  buildCategoryByIndex,
+  buildTierById,
+  identifyGaTiers,
+  type WidgetStage,
+  type BuildCartParams,
+} from './lib/store.js';
+
+// WID-R1: selection highlight DOM mutation.
+export { applySelectionHighlights } from './lib/seatmap-render.js';
