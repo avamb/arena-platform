@@ -6,7 +6,7 @@
  *   /demo/a11y-keyboard.html → accessibility / keyboard test fixture
  *   /dist/arena-tickets.js  → the built widget bundle
  *
- * Run: node scripts/serve-demo.js
+ * Run: node scripts/serve-demo.cjs
  * The dist/ folder must be built first: npm run build
  */
 

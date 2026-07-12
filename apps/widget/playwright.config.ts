@@ -36,7 +36,7 @@ export default defineConfig({
   // Start a static demo server that serves demo/ and dist/ from the widget root.
   // The server is a plain Node HTTP server — no Vite, no hot reload.
   webServer: {
-    command: 'node scripts/serve-demo.js',
+    command: 'node scripts/serve-demo.cjs',
     url: 'http://localhost:4173',
     reuseExistingServer: !process.env['CI'],
     timeout: 30_000,

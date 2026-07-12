@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "vite build && node scripts/postbuild.mjs",
     "preview": "vite preview",
-    "serve-demo": "node scripts/serve-demo.js",
+    "serve-demo": "node scripts/serve-demo.cjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
