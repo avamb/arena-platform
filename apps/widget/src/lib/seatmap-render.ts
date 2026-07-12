@@ -298,6 +298,49 @@ export function applyConflictHighlight(
   }
 }
 
+// ─── Selection highlight ──────────────────────────────────────────────────────
+
+/**
+ * Apply or remove the selection highlight stroke on seat circles.
+ * Diffs previous vs current selection to only mutate changed elements.
+ */
+export function applySelectionHighlights(
+  container: Element,
+  current: ReadonlySet<string>,
+  previous: ReadonlySet<string>,
+  accentColor = '#4f46e5',
+): void {
+  // Remove highlights from deselected seats
+  for (const key of previous) {
+    if (!current.has(key)) {
+      const el = container.querySelector<Element>(`circle[data-seat-key="${cssAttrEscape(key)}"]`);
+      if (el) {
+        el.removeAttribute('stroke');
+        el.removeAttribute('stroke-width');
+        el.setAttribute('data-selected', 'false');
+        // restore aria-label status suffix
+        const prev = el.getAttribute('aria-label') ?? '';
+        el.setAttribute('aria-label', prev.replace(/,\s+selected$/, ''));
+      }
+    }
+  }
+  // Add highlights to newly selected seats
+  for (const key of current) {
+    if (!previous.has(key)) {
+      const el = container.querySelector<Element>(`circle[data-seat-key="${cssAttrEscape(key)}"]`);
+      if (el) {
+        el.setAttribute('stroke', accentColor);
+        el.setAttribute('stroke-width', '2.5');
+        el.setAttribute('data-selected', 'true');
+        const prev = el.getAttribute('aria-label') ?? '';
+        if (!prev.endsWith(', selected')) {
+          el.setAttribute('aria-label', `${prev}, selected`);
+        }
+      }
+    }
+  }
+}
+
 /**
  * Clear a previously-applied conflict highlight by restoring each seat's
  * real status from the live `seatStatuses` map.

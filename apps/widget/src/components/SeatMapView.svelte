@@ -19,6 +19,7 @@
     applySeatStatusUpdate,
     applyConflictHighlight,
     clearConflictHighlight,
+    applySelectionHighlights,
     buildCategoryColorMap,
   } from '../lib/seatmap-render.js';
   import {
@@ -44,9 +45,15 @@
      * Pass an empty Set or `undefined` to clear the conflict highlight.
      */
     conflictKeys?: ReadonlySet<string>;
+    /** Set of currently selected seat keys for highlight rendering. */
+    selectedKeys?: ReadonlySet<string>;
+    /** Called when user taps/clicks a seat circle. */
+    onSeatTap?: (seatKey: string, status: SeatStatusValue) => void;
+    /** Called after the seat map schema is loaded with geometry + category prices. */
+    onSchemaLoaded?: (geometry: import('../types.js').Geometry, categoryPrices: import('../types.js').CategoryPrice[]) => void;
   }
 
-  const { session, locale = 'en', conflictKeys }: Props = $props();
+  const { session, locale = 'en', conflictKeys, selectedKeys = new Set(), onSeatTap, onSchemaLoaded }: Props = $props();
 
   // ── State ──────────────────────────────────────────────────────────────────
 
@@ -76,6 +83,7 @@
       categoryPrices = schema.category_prices;
       // Initial render with empty statuses (status poll follows immediately).
       svgHTML = buildSeatMapSVG(schema.geometry, schema.category_prices, seatStatuses);
+      onSchemaLoaded?.(schema.geometry, schema.category_prices);
     } catch (err) {
       schemaError = err instanceof Error ? err.message : 'Failed to load seat map';
     } finally {

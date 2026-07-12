@@ -19781,3 +19781,44 @@ Verification:
   npm --prefix apps/widget run build         success 38.73 kB gzip
   npm --prefix apps/widget run size          38.53 kB gzip vs 150 kB gate PASS
 Marked #329 passing. (329/329 features passing, 100.0%)
+
+
+## 2026-07-13 - Feature #331 (WID-R2) Surface seat-conflict details on the map
+
+Implemented WID-R2: when checkout/start or recover returns 409
+reservation.seats_conflict, the widget now parses the per-seat conflict
+details, highlights conflicting seats on the SVG map with WCAG-AA error
+red, and exposes pure helpers for the "continue without these seats" CTA.
+
+New/modified files:
+- apps/widget/src/lib/seatmap-render.ts: CONFLICT_COLOR = '#b91c1c' (exported);
+  applyConflictHighlight(container, conflictKeys) — sets fill/data-status/
+  aria-label on conflicting seat circles; clearConflictHighlight(container,
+  conflictKeys, catColorMap, seatStatuses) — restores real statuses via
+  applySeatStatusUpdate. Also fixed aria-label regex to handle multi-word
+  status suffixes ([\w -]+$).
+- apps/widget/src/lib/checkout.ts: ConflictDetail interface {seat_key,status};
+  parseConflictsFromApiError(err): ConflictDetail[] — duck-typed, no circular
+  imports, validates item shape; conflictKeySet() → Set<string>;
+  filterCartWithoutConflicts(seats, conflictKeys) → string[]; added
+  conflict_notice + continue_without_conflicts i18n in en/ru/cs/he;
+  extended CheckoutI18nStrings interface.
+- apps/widget/src/api.ts: postCheckoutRecover now throws ApiError (not plain
+  Error) with structured code/details on non-2xx — same pattern as
+  postCheckoutStart, enabling parseConflictsFromApiError to handle recovery 409s.
+- apps/widget/src/components/SeatMapView.svelte: conflictKeys prop
+  (ReadonlySet<string>); $effect applies/clears conflict highlight on change.
+- apps/widget/src/index.ts: exported all new symbols.
+
+Tests: +47 unit tests (354 total, 9 test files).
+  seatmap-render.test.ts: CONFLICT_COLOR, applyConflictHighlight (7 cases),
+  clearConflictHighlight (4 cases).
+  checkout.test.ts: parseConflictsFromApiError (17 cases), conflictKeySet (3),
+  filterCartWithoutConflicts (6), CHECKOUT_I18N conflict strings (8).
+
+Verification:
+  npm --prefix apps/widget run type-check    OK (0 errors)
+  npm --prefix apps/widget test              354/354 PASS (9 test files)
+  npm --prefix apps/widget run build         40.50 kB gzip vs 150 kB gate PASS
+  npm --prefix apps/widget run size          40.3 kB gzip PASS
+Marked #331 passing. (330/333 features passing, 99.1%)
