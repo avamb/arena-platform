@@ -346,7 +346,11 @@ func TestWorkerBoot109_WorkerClaimsAndCompletesJob(t *testing.T) {
 		t.Fatalf("step 3: %v", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// 30s is deliberately generous: under -race on a loaded CI runner the
+	// 10ms-poll claim can take several seconds of wall-clock (observed: a
+	// 5s deadline flaked in CI while passing in ~10ms locally). The happy
+	// path still finishes almost instantly.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	go func() { _ = w.Run(ctx) }()
@@ -354,7 +358,7 @@ func TestWorkerBoot109_WorkerClaimsAndCompletesJob(t *testing.T) {
 	select {
 	case <-done:
 	case <-ctx.Done():
-		t.Fatal("step 3: job was not consumed within 5s")
+		t.Fatal("step 3: job was not consumed within 30s")
 	}
 
 	// Verify the job reached status='done' in the in-memory queue.

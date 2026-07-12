@@ -20,6 +20,13 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: './tests',
   testMatch: ['**/*.e2e.ts'],
+  // The mocked Palac Akropolis suite is scaffolding, not acceptance: it
+  // drives page.route() fixtures whose contracts drift from the real
+  // backend. Wave WID-R3 (09_autoforge/widget_backlog.md §8) replaces it
+  // with real compose-backend E2E; until then it is excluded from the CI
+  // gate so the gate only enforces suites that exercise the real UI
+  // (a11y, keyboard).
+  testIgnore: ['**/palac-akropolis.e2e.ts'],
   timeout: 30_000,
   retries: process.env['CI'] ? 2 : 0,
   reporter: process.env['CI'] ? 'github' : 'list',

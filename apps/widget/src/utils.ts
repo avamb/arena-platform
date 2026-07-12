@@ -78,7 +78,7 @@ export const THEME_CSS_VARS = [
   '--arena-color-secondary',
   /** Widget background colour (default: transparent). */
   '--arena-bg',
-  /** Accent / brand colour used for buttons, links, and selected states (default: #6366f1). */
+  /** Accent / brand colour used for buttons, links, and selected states (default: #4f46e5). */
   '--arena-accent',
   /** Border radius for cards, buttons, and inputs (default: 8px). */
   '--arena-radius',

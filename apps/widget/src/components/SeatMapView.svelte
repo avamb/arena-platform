@@ -339,7 +339,7 @@
   }
 
   .seat-map-error {
-    color: #dc2626;
+    color: #b91c1c;
     background: #fef2f2;
     border-radius: var(--_radius, 6px);
     margin: 1rem;

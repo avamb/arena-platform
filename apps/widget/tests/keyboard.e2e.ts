@@ -62,11 +62,14 @@ test.describe('Demo page keyboard navigation', () => {
     await page.goto('/demo/index.html');
     await page.waitForLoadState('networkidle');
 
-    // Navigate to body and press Enter — should be a no-op, no crash.
+    // Focus the first interactive element and press Enter. Activation may
+    // legitimately navigate (links) — the page must simply stay alive.
+    // Note: `.not.toThrow()` around an async fn does not await the promise
+    // (the rejection lands after the test ends), so we await directly and
+    // let a real failure fail the test.
     await page.keyboard.press('Tab');
-    await expect(async () => {
-      await page.keyboard.press('Enter');
-    }).not.toThrow();
+    await page.keyboard.press('Enter');
+    expect(await page.evaluate(() => document.readyState)).toBeTruthy();
   });
 });
 
@@ -74,31 +77,44 @@ test.describe('Demo page keyboard navigation', () => {
 
 test.describe('A11y fixture keyboard navigation', () => {
   test('page is navigable by keyboard (no trap)', async ({ page }) => {
-    await page.goto('/demo/a11y-keyboard.html');
+    // The a11y-keyboard.html fixture contains no focusable elements at all,
+    // so a Tab-walk there is vacuous — run the no-trap check against the
+    // real demo page, where the widget exposes chips and focusable seats.
+    await page.goto('/demo/index.html');
     await page.waitForLoadState('networkidle');
 
-    // Tab 15 times and collect focused element tags.
-    const tags: string[] = [];
+    // Tab 15 times and collect the DEEP focused element identity.
+    // document.activeElement stops at the shadow host (ARENA-TICKETS), so a
+    // tagName heuristic would see one repeating tag while focus is in fact
+    // advancing through hundreds of focusable seats inside the shadow root
+    // (each with a unique aria-label). Resolve through shadowRoot and track
+    // element identity instead.
+    const identities: string[] = [];
     for (let i = 0; i < 15; i++) {
       await page.keyboard.press('Tab');
-      const tag = await page.evaluate(() => document.activeElement?.tagName ?? 'BODY');
-      tags.push(tag);
+      const id = await page.evaluate(() => {
+        let el: Element | null = document.activeElement;
+        while (el && el.shadowRoot && el.shadowRoot.activeElement) {
+          el = el.shadowRoot.activeElement;
+        }
+        if (!el) return 'BODY';
+        return (
+          el.tagName +
+          '|' +
+          (el.getAttribute('aria-label') ?? el.id ?? el.textContent?.slice(0, 24) ?? '')
+        );
+      });
+      identities.push(id);
     }
 
-    // No keyboard trap: the same tag should not repeat more than ~3 consecutive
-    // times (body wrapping is OK). This is a heuristic, not a strict count.
-    let maxConsecutive = 1;
-    let consecutive = 1;
-    for (let i = 1; i < tags.length; i++) {
-      if (tags[i] === tags[i - 1]) {
-        consecutive++;
-        maxConsecutive = Math.max(maxConsecutive, consecutive);
-      } else {
-        consecutive = 1;
-      }
-    }
-    // Allow up to 5 consecutive same-tag hits (body wrap-around).
-    expect(maxConsecutive).toBeLessThanOrEqual(5);
+    // No keyboard trap: a trap means focus is STUCK on one element. Seeing
+    // several distinct focused elements across 15 Tabs proves movement; the
+    // exact count depends on how many demo instances render focusable
+    // content (error-state instances contribute none). (Per-seat arrow-key
+    // navigation with a roving tabindex is Wave WID-R4; until then seats
+    // are individually tabbable, which is verbose but not a trap.)
+    const distinct = new Set(identities).size;
+    expect(distinct).toBeGreaterThanOrEqual(3);
   });
 
   test('headings are reachable semantically (h1/h2 present)', async ({ page }) => {

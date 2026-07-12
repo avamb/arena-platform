@@ -37,7 +37,7 @@
  * All default token values are chosen to meet WCAG 2.2 AA contrast requirements:
  *  - `--arena-color-primary` (#1a1a1a) on white → ≥18:1
  *  - `--arena-color-secondary` (#6b7280) on white → ≥4.6:1
- *  - White text on `--arena-accent` (#6366f1) → ≥4.9:1
+ *  - White text on `--arena-accent` (#4f46e5) → ≥6.3:1
  *  - `--arena-focus-ring` provides a clearly visible 3px offset outline
  *
  * When overriding token values, ensure the new combination maintains at least
@@ -83,9 +83,9 @@ export const TOKEN_DEFAULTS = {
    *  - Hovered chip borders
    *
    * White text is rendered on this colour; ensure ≥4.5:1 contrast.
-   * @default #6366f1  (indigo-500)
+   * @default #4f46e5  (indigo-600)
    */
-  '--arena-accent': '#6366f1',
+  '--arena-accent': '#4f46e5',
 
   /**
    * Border radius applied to cards, buttons, inputs, and chip elements.
@@ -108,9 +108,9 @@ export const TOKEN_DEFAULTS = {
    * ```css
    * arena-tickets { --arena-focus-ring: #0ea5e9; }
    * ```
-   * @default var(--arena-accent, #6366f1)
+   * @default var(--arena-accent, #4f46e5)
    */
-  '--arena-focus-ring': 'var(--arena-accent, #6366f1)',
+  '--arena-focus-ring': 'var(--arena-accent, #4f46e5)',
 } as const satisfies Record<string, string>;
 
 /** Union of every design-token property name. */
@@ -152,7 +152,7 @@ export const ALL_TOKENS: ReadonlyArray<DesignToken> = [
  * Apply via: `arena-tickets { ...arenaThemeIndigo }` or spread into a style attr.
  */
 export const arenaThemeIndigo: Partial<Record<DesignToken, string>> = {
-  '--arena-accent': '#6366f1',
+  '--arena-accent': '#4f46e5',
   '--arena-bg': '#eef2ff',
   '--arena-radius': '12px',
   '--arena-border-color': '#c7d2fe',

@@ -217,7 +217,7 @@
 
   .status-icon.success { background: #dcfce7; color: #16a34a; }
   .status-icon.warning { background: #fef9c3; color: #ca8a04; }
-  .status-icon.error   { background: #fee2e2; color: #dc2626; }
+  .status-icon.error   { background: #fee2e2; color: #b91c1c; }
 
   .status-title {
     font-size: 1.25rem;
@@ -293,7 +293,7 @@
   .pdf-link {
     display: inline-block;
     font-size: 0.8125rem;
-    color: var(--arena-accent, #6366f1);
+    color: var(--arena-accent, #4f46e5);
     text-decoration: underline;
     cursor: pointer;
   }
@@ -317,7 +317,7 @@
   .action-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
   .action-btn.primary {
-    background: var(--arena-accent, #6366f1);
+    background: var(--arena-accent, #4f46e5);
     color: #fff;
   }
 
@@ -329,7 +329,7 @@
 
   .action-error {
     font-size: 0.875rem;
-    color: #dc2626;
+    color: #b91c1c;
     background: #fef2f2;
     padding: 0.5rem 0.75rem;
     border-radius: var(--arena-radius, 8px);

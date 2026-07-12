@@ -81,7 +81,7 @@
     <div class="legend" aria-label="Price categories">
       {#each legendTiers as tier (tier.id)}
         <div class="legend-item">
-          <span class="legend-dot" style="background:{tier.currency ? '#6366f1' : '#d1d5db'}"></span>
+          <span class="legend-dot" style="background:{tier.currency ? '#4f46e5' : '#d1d5db'}"></span>
           <span class="legend-name">{tier.name}</span>
           <span class="legend-price">{formatPrice(tier)}</span>
         </div>
@@ -126,18 +126,18 @@
   }
 
   .chip:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--_accent, #6366f1) 10%, transparent);
-    border-color: var(--_accent, #6366f1);
+    background: color-mix(in srgb, var(--_accent, #4f46e5) 10%, transparent);
+    border-color: var(--_accent, #4f46e5);
   }
 
   .chip:focus-visible {
-    outline: 3px solid var(--arena-focus-ring, var(--_accent, #6366f1));
+    outline: 3px solid var(--arena-focus-ring, var(--_accent, #4f46e5));
     outline-offset: 2px;
   }
 
   .chip--selected {
-    background: var(--_accent, #6366f1);
-    border-color: var(--_accent, #6366f1);
+    background: var(--_accent, #4f46e5);
+    border-color: var(--_accent, #4f46e5);
     color: #fff;
   }
 

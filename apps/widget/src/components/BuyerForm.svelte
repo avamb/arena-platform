@@ -206,19 +206,19 @@
 
   .field-input:focus,
   .field-input:focus-visible {
-    border-color: var(--arena-accent, #6366f1);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--arena-accent, #6366f1) 20%, transparent);
-    outline: 3px solid var(--arena-focus-ring, var(--arena-accent, #6366f1));
+    border-color: var(--arena-accent, #4f46e5);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--arena-accent, #4f46e5) 20%, transparent);
+    outline: 3px solid var(--arena-focus-ring, var(--arena-accent, #4f46e5));
     outline-offset: 2px;
   }
 
   .has-error .field-input {
-    border-color: #dc2626;
+    border-color: #b91c1c;
   }
 
   .field-error {
     font-size: 0.8125rem;
-    color: #dc2626;
+    color: #b91c1c;
     margin: 0;
   }
 
@@ -231,7 +231,7 @@
   .suggestion-btn {
     background: none;
     border: none;
-    color: var(--arena-accent, #6366f1);
+    color: var(--arena-accent, #4f46e5);
     cursor: pointer;
     font-size: inherit;
     font-family: inherit;
@@ -246,7 +246,7 @@
     justify-content: center;
     gap: 0.5rem;
     padding: 0.625rem 1.25rem;
-    background: var(--arena-accent, #6366f1);
+    background: var(--arena-accent, #4f46e5);
     color: #fff;
     border: none;
     border-radius: var(--arena-radius, 8px);
@@ -258,7 +258,7 @@
   }
 
   .submit-btn:focus-visible {
-    outline: 3px solid var(--arena-focus-ring, var(--arena-accent, #6366f1));
+    outline: 3px solid var(--arena-focus-ring, var(--arena-accent, #4f46e5));
     outline-offset: 3px;
   }
 
@@ -268,7 +268,7 @@
   }
 
   .suggestion-btn:focus-visible {
-    outline: 2px solid var(--arena-focus-ring, var(--arena-accent, #6366f1));
+    outline: 2px solid var(--arena-focus-ring, var(--arena-accent, #4f46e5));
     outline-offset: 2px;
     border-radius: 2px;
   }

@@ -136,7 +136,7 @@
     arena-tickets {
       --arena-font-family: 'Inter', sans-serif;
       --arena-color-primary: #1a1a1a;
-      --arena-accent: #6366f1;
+      --arena-accent: #4f46e5;
       --arena-bg: #fff;
       --arena-radius: 8px;
       --arena-border-color: #e5e7eb;
@@ -190,12 +190,12 @@
     font-family: var(--arena-font-family, system-ui, -apple-system, sans-serif);
     color: var(--arena-color-primary, #1a1a1a);
     background: var(--arena-bg, transparent);
-    --_accent: var(--arena-accent, #6366f1);
+    --_accent: var(--arena-accent, #4f46e5);
     --_radius: var(--arena-radius, 8px);
     --_border: var(--arena-border-color, #e5e7eb);
     --_text-muted: var(--arena-color-secondary, #6b7280);
     /* Focus ring — defaults to accent colour. Override with --arena-focus-ring. */
-    --_focus-ring: var(--arena-focus-ring, var(--arena-accent, #6366f1));
+    --_focus-ring: var(--arena-focus-ring, var(--arena-accent, #4f46e5));
   }
 
   /* Global focus-visible rule for all focusable children. */
@@ -231,7 +231,7 @@
 
   .arena-tickets-error {
     padding: 1rem;
-    color: #dc2626;
+    color: #b91c1c;
     background: #fef2f2;
     border-radius: var(--_radius);
     margin: 1rem;
