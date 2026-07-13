@@ -12,6 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:e2e:smoke": "playwright test --config playwright.config.ts",
+    "test:e2e:real": "playwright test --config playwright.config.real.ts",
     "type-check": "tsc --noEmit",
     "size": "size-limit"
   },

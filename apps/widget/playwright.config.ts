@@ -20,13 +20,15 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: './tests',
   testMatch: ['**/*.e2e.ts'],
-  // The mocked Palac Akropolis suite is scaffolding, not acceptance: it
-  // drives page.route() fixtures whose contracts drift from the real
-  // backend. Wave WID-R3 (09_autoforge/widget_backlog.md §8) replaces it
-  // with real compose-backend E2E; until then it is excluded from the CI
-  // gate so the gate only enforces suites that exercise the real UI
-  // (a11y, keyboard).
-  testIgnore: ['**/palac-akropolis.e2e.ts'],
+  // palac-akropolis.e2e.ts — MOCK SMOKE SUITE ONLY.
+  // All /v1/* calls are intercepted via page.route() fixtures.
+  // This is NOT acceptance: it was replaced by palac-akropolis-real.e2e.ts
+  // (WID-R3, feature #332) which drives the ACTUAL rendered element against
+  // the LOCAL COMPOSE BACKEND. The real suite runs via playwright.config.real.ts
+  // in the widget-acceptance CI job. This mock suite stays as a fast offline
+  // smoke check (run manually with --config playwright.config.ts if needed)
+  // but is excluded from the CI gate.
+  testIgnore: ['**/palac-akropolis.e2e.ts', '**/palac-akropolis-real.e2e.ts'],
   timeout: 30_000,
   retries: process.env['CI'] ? 2 : 0,
   reporter: process.env['CI'] ? 'github' : 'list',

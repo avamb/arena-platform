@@ -260,3 +260,125 @@ jobs:
             apps/widget/dist/v1/iframe.html
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ─────────────────────────────────────────────────────────────────
+  # Job 6: Widget Acceptance — real-backend Palác Akropolis E2E
+  #
+  # Boots a Postgres + Redis service container, builds the Go backend,
+  # runs migrations + arena-seed + Akropolis SQL seed, starts arena-api,
+  # builds the widget, then runs Playwright against the proxy server
+  # (serve-demo-real.cjs) so no page.route() mocks intercept /v1/* calls.
+  #
+  # WID-R3 (feature #332): real acceptance E2E against compose backend.
+  # ─────────────────────────────────────────────────────────────────
+  widget-acceptance:
+    name: Widget Acceptance (real backend)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: arena
+          POSTGRES_PASSWORD: arena_secret
+          POSTGRES_DB: arena_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U arena"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://arena:arena_secret@localhost:5432/arena_e2e?sslmode=disable
+      REDIS_URL: redis://localhost:6379/0
+      APP_ENV: development
+      JWT_SECRET: ci-test-jwt-secret-at-least-32-bytes-long
+      APP_PORT: "8080"
+
+    defaults:
+      run:
+        working-directory: apps/widget
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: true
+
+      - name: Build Go binaries
+        working-directory: .
+        run: |
+          go build -o /tmp/arena-migrate ./apps/backend/cmd/arena-migrate
+          go build -o /tmp/arena-seed    ./apps/backend/cmd/arena-seed
+          go build -o /tmp/arena-api     ./apps/backend/cmd/arena-api
+
+      - name: Run database migrations
+        working-directory: .
+        run: /tmp/arena-migrate up
+
+      - name: Seed base fixtures (arena-seed)
+        working-directory: .
+        run: /tmp/arena-seed
+
+      - name: Seed Palác Akropolis E2E fixture
+        working-directory: .
+        run: |
+          psql "$DATABASE_URL" -f apps/widget/scripts/seed-palac-e2e.sql
+
+      - name: Start arena-api in background
+        working-directory: .
+        run: |
+          /tmp/arena-api &
+          # Wait until /healthz returns 200 (up to 30 s)
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/healthz; then
+              echo "arena-api is up"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: apps/widget/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build widget
+        run: npm run build
+
+      - name: Install Playwright browsers (Chromium only)
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E tests — real backend acceptance (WID-R3)
+        run: npm run test:e2e:real
+        env:
+          ARENA_API_URL: http://localhost:8080
+
+      - name: Upload Playwright report (acceptance)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-widget-acceptance
+          path: apps/widget/playwright-report/
+          retention-days: 14

@@ -19822,3 +19822,68 @@ Verification:
   npm --prefix apps/widget run build         40.50 kB gzip vs 150 kB gate PASS
   npm --prefix apps/widget run size          40.3 kB gzip PASS
 Marked #331 passing. (330/333 features passing, 99.1%)
+
+
+## 2026-07-13 - Feature #330 (WID-R1) Wire purchase loop into arena-tickets
+
+Wired the full purchase loop into the arena-tickets Svelte custom element.
+
+New: apps/widget/src/lib/store.ts
+  Pure wiring helpers: getCheckoutTokenFromSearch (URL param extraction),
+  saveCheckoutToken / restoreCheckoutToken / clearCheckoutToken (sessionStorage),
+  totalSelectionCount (seats + GA quantities), buildGaItems (PublicGAItem array),
+  buildCartFromSelection (CartState from platform tier prices verbatim),
+  buildSeatCategoryIndex / buildCategoryByIndex / buildTierById (index maps
+  from schema geometry), identifyGaTiers (GA tiers not in category_prices),
+  WidgetStage type ('selecting' | 'buyer-form' | 'redirecting' | 'order-status').
+
+New: apps/widget/src/lib/store.test.ts
+  40 unit tests covering all store helpers.
+
+New: apps/widget/src/components/MiniCart.svelte
+  Sticky bottom bar: count + total + countdown timer. Visible only when items
+  in cart. Amber warning at T-2min. Opens CartSheet on click.
+
+New: apps/widget/src/components/CartSheet.svelte
+  Bottom sheet with line review (seated + GA), per-line remove, total row,
+  hold countdown with T-2min warning. Continue advances to embedded BuyerForm
+  inside the same sheet. Overlay closes sheet.
+
+New: apps/widget/src/components/GaTierCard.svelte
+  GA tier card with decrement/increment quantity stepper. Clamped to
+  GA_MAX_QUANTITY and tier.capacity.
+
+Modified: apps/widget/src/lib/seatmap-render.ts
+  Added applySelectionHighlights(): diff-based stroke mutation on seat circles.
+  Adds stroke+data-selected to newly selected; removes from deselected.
+  Updates aria-label with selected suffix for screen readers.
+
+Modified: apps/widget/src/components/SeatMapView.svelte
+  New props: selectedKeys, onSeatTap, onSchemaLoaded.
+  Click delegation on container (drag threshold 8px distinguishes tap vs pan).
+  Enter/Space keydown handler on [data-seat-key] elements for keyboard access.
+  Reactive effect: applySelectionHighlights called on selection changes.
+  onSchemaLoaded fires after SVG renders with geometry + categoryPrices.
+
+Modified: apps/widget/src/ArenaTickets.svelte
+  Full purchase loop:
+    Mount: ?checkout_token= from URL or sessionStorage -> order-status stage.
+    Selection: toggleSeatSelection for seats; GA quantity stepper via map.
+    Index maps rebuilt on onSchemaLoaded callback.
+    GA tier cards: identifyGaTiers -> always-visible cards under the seat map.
+    MiniCart: visible when cartCount > 0; click opens CartSheet.
+    CartSheet: line removal, proceed transitions to BuyerForm.
+    BuyerForm submit: buildCheckoutPayload -> postCheckoutStart ->
+      saveCheckoutToken to sessionStorage -> redirect to redirect_url.
+    OrderStatus: onRecover calls postCheckoutRecover; onRetry resets to selecting.
+    Totals in OrderStatus come from API response (status.total), not cartTotal.
+
+Modified: apps/widget/src/index.ts
+  Exports all new store helpers and applySelectionHighlights.
+
+Verification:
+  npm --prefix apps/widget run type-check    OK (0 errors)
+  npm --prefix apps/widget test              394/394 PASS (10 test files)
+  npm --prefix apps/widget run build         52.12 kB gzip vs 150 kB gate PASS
+  npm --prefix apps/widget run size          51.81 kB gzip PASS
+Marked #330 passing.
