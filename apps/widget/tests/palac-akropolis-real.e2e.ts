@@ -347,6 +347,96 @@ test.describe('3 — Concurrent 409 from second browser context (REAL)', () => {
       await ctx2.close();
     }
   });
+
+  test('ctx2 409 response carries nested error envelope with conflictKeys (WID-S2)', async ({
+    browser,
+  }: { browser: Browser }) => {
+    /**
+     * Verifies that the real backend sends {"error": {"code": "...", "details": {"conflicts": [...]}}}
+     * (nested envelope, NOT flat {"error": "...", "code": "...", "details": {...}}).
+     * The widget's api.ts must parse the nested envelope to extract seat-level conflict data.
+     * This validates the WID-S2 fix: parseConflictsFromApiError now reads from error.details.conflicts.
+     *
+     * Uses fresh seats E01, E02 to avoid races with the B01/B02 test above.
+     */
+    const ctx1: BrowserContext = await browser.newContext();
+    const ctx2: BrowserContext = await browser.newContext();
+
+    try {
+      const page1 = await ctx1.newPage();
+      const page2 = await ctx2.newPage();
+
+      await Promise.all([page1.goto(DEMO_PAGE), page2.goto(DEMO_PAGE)]);
+      await Promise.all([waitForSVG(page1), waitForSVG(page2)]);
+
+      // ctx1 holds E01+E02.
+      const ctx1Status = await page1.evaluate(
+        async ({ feedToken, sessionId }: { feedToken: string; sessionId: string }) => {
+          const res = await fetch(`/v1/public/feeds/${feedToken}/checkout/start`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              session_id:   sessionId,
+              holder_email: 'e2e-ctx1-e@arena-e2e.test',
+              buyer: { email: 'e2e-ctx1-e@arena-e2e.test', name: 'WID-S2 Buyer 1' },
+              seats: ['E01', 'E02'],
+            }),
+          });
+          return res.status;
+        },
+        { feedToken: FEED_TOKEN, sessionId: SESSION_ID },
+      );
+      expect(ctx1Status).toBe(201);
+
+      // ctx2 tries the same seats — expects a 409 with nested error envelope.
+      const ctx2Body = await page2.evaluate(
+        async ({ feedToken, sessionId }: { feedToken: string; sessionId: string }) => {
+          const res = await fetch(`/v1/public/feeds/${feedToken}/checkout/start`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              session_id:   sessionId,
+              holder_email: 'e2e-ctx2-e@arena-e2e.test',
+              buyer: { email: 'e2e-ctx2-e@arena-e2e.test', name: 'WID-S2 Buyer 2' },
+              seats: ['E01', 'E02'],
+            }),
+          });
+          const body = (await res.json()) as Record<string, unknown>;
+          return { status: res.status, body };
+        },
+        { feedToken: FEED_TOKEN, sessionId: SESSION_ID },
+      );
+
+      expect(ctx2Body.status).toBe(409);
+
+      // Verify the nested envelope shape: {"error": {"code": "...", "details": {"conflicts": [...]}}}
+      const errEnv = ctx2Body.body['error'] as Record<string, unknown> | undefined;
+      expect(errEnv, '409 body must have "error" key as object').toBeTruthy();
+      expect(typeof errEnv).toBe('object');
+      expect(errEnv?.['code']).toBe('reservation.seats_conflict');
+      const conflictsArr = (errEnv?.['details'] as Record<string, unknown>)?.['conflicts'];
+      expect(Array.isArray(conflictsArr), 'details.conflicts must be an array').toBe(true);
+      const conflicts = conflictsArr as Array<Record<string, string>>;
+      expect(conflicts.length).toBeGreaterThan(0);
+      expect(typeof conflicts[0]?.['seat_key']).toBe('string');
+      expect(typeof conflicts[0]?.['status']).toBe('string');
+
+      // Verify seats show up as "held" in the status endpoint (conflict is real).
+      const statusSnapshot = await page1.evaluate(
+        async ({ sessionId }: { sessionId: string }) => {
+          const res  = await fetch(`/v1/event-sessions/${sessionId}/seat-status`);
+          const data = (await res.json()) as { seats: Record<string, string> };
+          return { e01: data.seats['E01'], e02: data.seats['E02'] };
+        },
+        { sessionId: SESSION_ID },
+      );
+      expect(statusSnapshot.e01).toBe('held');
+      expect(statusSnapshot.e02).toBe('held');
+    } finally {
+      await ctx1.close();
+      await ctx2.close();
+    }
+  });
 });
 
 // ─── 4. Checkout start contract (real backend) ────────────────────────────────

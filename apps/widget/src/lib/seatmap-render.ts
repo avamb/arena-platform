@@ -238,10 +238,17 @@ export function buildSeatMapSVG(
         const tabIdx = seatIndexInRow === 0 ? '0' : '-1';
         // Build aria-label: section, row, seat, price (if available), status.
         const priceLabel = buildPriceLabel(seat.category_index, categoryPrices);
-        const rawLabel = priceLabel
-          ? `${section.name}, row ${row.name}, seat ${seat.number}, ${priceLabel}, ${status}`
-          : `${section.name}, row ${row.name}, seat ${seat.number}, ${status}`;
+        // Base label: section + row + seat + price (no status suffix).
+        // Stored in data-base-label so that applySeatStatusUpdate,
+        // applyConflictHighlight, and applySelectionHighlights can restore
+        // the full label from the stable base instead of running regex over
+        // a potentially-modified live aria-label string (WID-S2 / WID-S4).
+        const baseLabel = priceLabel
+          ? `${section.name}, row ${row.name}, seat ${seat.number}, ${priceLabel}`
+          : `${section.name}, row ${row.name}, seat ${seat.number}`;
+        const rawLabel = `${baseLabel}, ${status}`;
         const ariaLabel = xmlAttr(rawLabel);
+        const dataBaseLabel = xmlAttr(baseLabel);
         parts.push(
           `<circle` +
             ` data-seat-key="${xmlAttr(seat.key)}"` +
@@ -249,6 +256,7 @@ export function buildSeatMapSVG(
             ` fill="${fill}"` +
             ` data-status="${status}"` +
             ` data-cat="${seat.category_index}"` +
+            ` data-base-label="${dataBaseLabel}"` +
             ` role="button"` +
             ` tabindex="${tabIdx}"` +
             ` aria-label="${ariaLabel}"` +
@@ -295,9 +303,13 @@ export function applySeatStatusUpdate(
     el.setAttribute('fill', fill);
     el.setAttribute('data-status', status);
 
-    // Update the aria-label status suffix so screen readers announce the change.
-    const prev = el.getAttribute('aria-label') ?? '';
-    el.setAttribute('aria-label', prev.replace(/,\s+[\w -]+$/, `, ${status}`));
+    // Restore aria-label from the stable base label stored in data-base-label
+    // (set at build time by buildSeatMapSVG).  This avoids brittle regex
+    // surgery over a potentially-modified live aria-label string — e.g. one
+    // that also has ", selected" appended by applySelectionHighlights, or
+    // ", conflict — not available" from a prior applyConflictHighlight call.
+    const baseLabel = el.getAttribute('data-base-label') ?? '';
+    el.setAttribute('aria-label', baseLabel ? `${baseLabel}, ${status}` : status);
   }
 }
 
@@ -329,12 +341,13 @@ export function applyConflictHighlight(
     el.setAttribute('fill', CONFLICT_COLOR);
     el.setAttribute('data-status', 'conflict');
 
-    // Update aria-label so assistive technology announces the conflict state.
-    const prev = el.getAttribute('aria-label') ?? '';
-    const updated = prev.replace(/,\s+[\w -]+$/, ', conflict — not available');
+    // Restore aria-label from the stable data-base-label attribute so the
+    // conflict suffix is appended to the canonical label (not to a live
+    // string that may already carry ", selected" or a previous status suffix).
+    const baseLabel = el.getAttribute('data-base-label') ?? '';
     el.setAttribute(
       'aria-label',
-      updated !== prev ? updated : `${prev}, conflict — not available`,
+      baseLabel ? `${baseLabel}, conflict — not available` : 'conflict — not available',
     );
   }
 }
@@ -359,9 +372,11 @@ export function applySelectionHighlights(
         el.removeAttribute('stroke');
         el.removeAttribute('stroke-width');
         el.setAttribute('data-selected', 'false');
-        // restore aria-label status suffix
-        const prev = el.getAttribute('aria-label') ?? '';
-        el.setAttribute('aria-label', prev.replace(/,\s+selected$/, ''));
+        // Restore aria-label from data-base-label + current data-status,
+        // removing the ", selected" suffix cleanly without regex surgery.
+        const baseLabel = el.getAttribute('data-base-label') ?? '';
+        const status = el.getAttribute('data-status') ?? 'available';
+        el.setAttribute('aria-label', baseLabel ? `${baseLabel}, ${status}` : status);
       }
     }
   }
@@ -373,10 +388,11 @@ export function applySelectionHighlights(
         el.setAttribute('stroke', accentColor);
         el.setAttribute('stroke-width', '2.5');
         el.setAttribute('data-selected', 'true');
-        const prev = el.getAttribute('aria-label') ?? '';
-        if (!prev.endsWith(', selected')) {
-          el.setAttribute('aria-label', `${prev}, selected`);
-        }
+        // Build aria-label from data-base-label + current data-status + "selected".
+        const baseLabel = el.getAttribute('data-base-label') ?? '';
+        const status = el.getAttribute('data-status') ?? 'available';
+        const base = baseLabel ? `${baseLabel}, ${status}` : status;
+        el.setAttribute('aria-label', `${base}, selected`);
       }
     }
   }

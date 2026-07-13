@@ -352,22 +352,35 @@
     prevSelectedKeys = selectedKeys;
   });
 
-  // ── Conflict highlight (WID-R2) ─────────────────────────────────────────────
-  // Track previous conflict keys so we can clear the highlight when they change.
-  let prevConflictKeys = $state<ReadonlySet<string>>(new Set());
+  // ── Conflict highlight (WID-S2) ─────────────────────────────────────────────
+  // Plain (non-reactive) reference to the previous conflict key set used for
+  // diff-based clearing.  NOT $state — assigning it inside the $effect must
+  // not re-trigger the effect (which would create an infinite loop).
+  let prevConflictKeys: ReadonlySet<string> = new Set();
 
-  // When conflictKeys changes, apply or clear the seat conflict overlay.
-  // Runs after the SVG has been inserted into the DOM (svgHTML is already set).
+  // When conflictKeys changes, apply the error-red overlay to newly-conflicting
+  // seats and clear it from seats that are no longer in conflict.
+  // Uses diff-based logic so partial resolution (user removes some conflicting
+  // seats from cart) un-highlights only the resolved seats.
   $effect(() => {
     if (!svgContainer || schemaLoading) return;
-    const keys = conflictKeys ?? (new Set<string>());
+    const keys = conflictKeys ?? new Set<string>();
+
+    // Apply highlight to all currently-conflicting seats.
     if (keys.size > 0) {
-      // Apply the error-red highlight to newly conflicting seats.
       applyConflictHighlight(svgContainer, keys);
-    } else if (prevConflictKeys.size > 0) {
-      // Conflicts were cleared (empty set passed) — restore real seat statuses.
-      clearConflictHighlight(svgContainer, prevConflictKeys, catColorMap, seatStatuses);
     }
+
+    // Clear highlight from seats that left the conflict set since last run.
+    const toRestore = new Set<string>();
+    for (const k of prevConflictKeys) {
+      if (!keys.has(k)) toRestore.add(k);
+    }
+    if (toRestore.size > 0) {
+      clearConflictHighlight(svgContainer, toRestore, catColorMap, seatStatuses);
+    }
+
+    // Update the diff baseline (plain write — does NOT re-trigger the effect).
     prevConflictKeys = keys;
   });
 </script>

@@ -113,4 +113,29 @@ describe('postCheckoutStart — structured errors', () => {
     expect(err.message).toBe('postCheckoutStart HTTP 400: bad payload');
     expect(err.code).toBe('http_400');
   });
+
+  it('parses real arena-backend nested envelope {"error": {...}} on 409 (WID-S2)', async () => {
+    // Backend sends: {"error": {"code": "...", "message": "...", "details": {...}}}
+    // NOT flat {"error": "...", "code": "...", "details": {...}}
+    mockFetchResponse({
+      ok: false,
+      status: 409,
+      body: {
+        error: {
+          code: 'reservation.seats_conflict',
+          message: 'one or more requested seats are not available',
+          request_id: 'req-abc-123',
+          trace_id:   'trace-xyz',
+          details: { conflicts: [{ seat_key: 'B01', status: 'held' }, { seat_key: 'B02', status: 'held' }] },
+        },
+      },
+    });
+    const err = (await postCheckoutStart('ft', payload).catch((e: unknown) => e)) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.status).toBe(409);
+    expect(err.code).toBe('reservation.seats_conflict');
+    expect(err.message).toContain('one or more requested seats are not available');
+    expect(Array.isArray(err.details['conflicts'])).toBe(true);
+    expect((err.details['conflicts'] as unknown[]).length).toBe(2);
+  });
 });

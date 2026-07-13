@@ -21,9 +21,9 @@
   import { fetchFeedEvent, postCheckoutStart, getCheckoutStatus, postCheckoutRecover, ApiError } from './api.js';
   import type { FeedSession, FeedEvent, Geometry, CategoryPrice, SeatStatusValue } from './types.js';
   import type { BuyerFormValues } from './lib/checkout.js';
-  import { buildCheckoutPayload, getCheckoutI18n } from './lib/checkout.js';
-  import { removeCartLine } from './lib/cart.js';
+  import { buildCheckoutPayload, getCheckoutI18n, parseConflictsFromApiError, conflictKeySet } from './lib/checkout.js';
   import { toggleSeatSelection } from './lib/selection.js';
+  import { dispatchWidgetEvent, ARENA_EVENTS } from './lib/events.js';
   import {
     saveCheckoutToken,
     restoreCheckoutToken,
@@ -56,6 +56,14 @@
   }
 
   const { feedToken = '', sessionId = '', locale = 'en' }: Props = $props();
+
+  /**
+   * Host element reference for CustomEvent dispatch (WID-S5).
+   * $host() returns the <arena-tickets> DOM node when compiled as a custom
+   * element; events dispatched from it with composed:true are observable
+   * by host pages outside the Shadow DOM.
+   */
+  const host = $host<HTMLElement>();
 
   const normLocale = $derived(parseLocale(locale));
   const normFeedToken = $derived(parseFeedToken(feedToken));
@@ -99,6 +107,12 @@
   let holdExpiresAt = $state<string | null>(null);
   let checkoutSubmitting = $state(false);
   let checkoutError = $state<string | null>(null);
+  /**
+   * Set of seat keys that are in conflict after a 409 `reservation.seats_conflict`
+   * response from checkout/start or recover (WID-S2).  Passed into SeatMapView
+   * so it can apply the WCAG-AA error-red conflict highlight overlay.
+   */
+  let conflictKeys = $state<ReadonlySet<string>>(new Set());
   let orderStatus = $state<CheckoutStatusResponse | null>(null);
   let orderActionLoading = $state(false);
   let orderActionError = $state<string | null>(null);
@@ -226,7 +240,17 @@
   // ── Seat tap handler ───────────────────────────────────────────────────────
 
   function onSeatTap(seatKey: string, status: SeatStatusValue): void {
-    selectedSeatKeys = toggleSeatSelection(selectedSeatKeys, seatKey, status);
+    const prev = selectedSeatKeys;
+    const next = toggleSeatSelection(prev, seatKey, status);
+    selectedSeatKeys = next;
+
+    // WID-S5: emit seat lifecycle events so host pages can track selection.
+    const sessionId = selectedSession?.id ?? '';
+    if (next.has(seatKey) && !prev.has(seatKey)) {
+      dispatchWidgetEvent(host, ARENA_EVENTS.SEAT_SELECTED, { seatKey, sessionId });
+    } else if (!next.has(seatKey) && prev.has(seatKey)) {
+      dispatchWidgetEvent(host, ARENA_EVENTS.SEAT_RELEASED, { seatKey, sessionId });
+    }
   }
 
   // ── GA quantity handler ────────────────────────────────────────────────────
@@ -253,10 +277,15 @@
     // the underlying state (clear the corresponding seats or GA entry).
     const line = cart.lines[idx];
     if (!line) return;
+    const sessionId = selectedSession?.id ?? '';
     if (line.type === 'seated') {
       // Remove these specific seat keys from selection.
       const next = new Set(selectedSeatKeys);
-      for (const key of line.seatKeys) next.delete(key);
+      for (const key of line.seatKeys) {
+        next.delete(key);
+        // WID-S5: notify host page that seat was released via cart removal.
+        dispatchWidgetEvent(host, ARENA_EVENTS.SEAT_RELEASED, { seatKey: key, sessionId });
+      }
       selectedSeatKeys = next;
     } else if (line.type === 'ga') {
       const next = new Map(gaQuantities);
@@ -289,10 +318,24 @@
       // during the brief redirecting stage (WID-S1 fix #3 + #4).
       holdExpiresAt = response.expires_at;
       stage = 'redirecting';
+      // WID-S5: notify host page that payment flow has started.
+      dispatchWidgetEvent(host, ARENA_EVENTS.PAYMENT_STARTED, {
+        checkoutToken: response.checkout_token,
+        sessionId: selectedSession.id,
+      });
       // Redirect to payment provider.
       window.location.href = response.redirect_url;
     } catch (err) {
-      checkoutError = err instanceof Error ? err.message : 'Checkout failed. Please try again.';
+      // WID-S2: parse nested envelope 409 seat conflicts and surface them on
+      // the seat map via the conflictKeys prop (SeatMapView → applyConflictHighlight).
+      const conflicts = parseConflictsFromApiError(err);
+      if (conflicts.length > 0) {
+        conflictKeys = conflictKeySet(conflicts);
+        checkoutError = t.conflict_notice;
+      } else {
+        conflictKeys = new Set();
+        checkoutError = err instanceof Error ? err.message : 'Checkout failed. Please try again.';
+      }
     } finally {
       checkoutSubmitting = false;
     }
@@ -303,6 +346,21 @@
   async function loadOrderStatus(token: string): Promise<void> {
     try {
       orderStatus = await getCheckoutStatus(token);
+      // WID-S5: notify host page about terminal order outcomes.
+      const status = orderStatus.status;
+      if (status === 'paid') {
+        dispatchWidgetEvent(host, ARENA_EVENTS.ORDER_PAID, {
+          checkoutToken: token,
+          orderRef: null,           // arena API v1 does not surface order_ref yet
+          totalMinorUnits: orderStatus.total ?? null,
+          currency: orderStatus.currency ?? null,
+        });
+      } else if (status === 'failed' || status === 'expired') {
+        dispatchWidgetEvent(host, ARENA_EVENTS.ORDER_FAILED, {
+          checkoutToken: token,
+          reason: status,
+        });
+      }
     } catch (err) {
       // Stale / invalid checkout token (401 or 404) → clear it from storage so
       // the widget doesn't brick on the next page refresh (WID-S1 fix #5).
@@ -327,7 +385,16 @@
       // Re-load status after recovery attempt.
       orderStatus = await getCheckoutStatus(checkoutToken);
     } catch (err) {
-      orderActionError = err instanceof Error ? err.message : 'Recovery failed. Please try again.';
+      // WID-S2: parse nested envelope 409 seat conflicts from recovery and
+      // surface them on the seat map so the user sees which seats are gone.
+      const conflicts = parseConflictsFromApiError(err);
+      if (conflicts.length > 0) {
+        conflictKeys = conflictKeySet(conflicts);
+        orderActionError = t.conflict_notice;
+      } else {
+        conflictKeys = new Set();
+        orderActionError = err instanceof Error ? err.message : 'Recovery failed. Please try again.';
+      }
     } finally {
       orderActionLoading = false;
     }
@@ -340,6 +407,7 @@
     orderStatus = null;
     selectedSeatKeys = new Set();
     gaQuantities = new Map();
+    conflictKeys = new Set(); // WID-S2: clear conflict highlights on retry
     stage = 'selecting';
     cartSheetOpen = false;
   }
@@ -410,6 +478,7 @@
             session={selectedSession}
             locale={normLocale}
             selectedKeys={selectedSeatKeys}
+            {conflictKeys}
             {onSeatTap}
             {onSchemaLoaded}
           />

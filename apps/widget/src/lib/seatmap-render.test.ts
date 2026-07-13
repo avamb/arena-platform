@@ -470,6 +470,19 @@ describe('buildSeatMapSVG', () => {
     const s2 = buildSeatMapSVG(geo, categoryPrices, { 'P|1|1': 'held' });
     expect(s1).toBe(s2);
   });
+
+  it('emits data-base-label attribute (without status suffix) on seat circles (WID-S2)', () => {
+    const svg = buildSeatMapSVG(makeGeometry(), categoryPrices, {});
+    // Base label for Parter row 1 seat 1 with price 50.00 CZK — no status suffix.
+    expect(svg).toContain('data-base-label="Parter, row 1, seat 1, 50.00 CZK"');
+  });
+
+  it('data-base-label and aria-label are consistent (base + status = full label)', () => {
+    const svg = buildSeatMapSVG(makeGeometry(), categoryPrices, {});
+    // aria-label should be base-label + ", " + status.
+    expect(svg).toContain('data-base-label="Parter, row 1, seat 1, 50.00 CZK"');
+    expect(svg).toContain('aria-label="Parter, row 1, seat 1, 50.00 CZK, available"');
+  });
 });
 
 // ─── applySeatStatusUpdate ────────────────────────────────────────────────────
@@ -534,6 +547,19 @@ describe('applySeatStatusUpdate', () => {
     );
     const selector = (container.querySelector as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as string;
     expect(selector).toContain('P|1|1');
+  });
+
+  it('restores aria-label from data-base-label when present (WID-S2)', () => {
+    // Simulate a seat circle produced by buildSeatMapSVG (has data-base-label).
+    const div = document.createElement('div');
+    div.innerHTML = `<svg><circle data-seat-key="P|1|1" data-cat="1" data-status="conflict"
+      data-base-label="Parter, row 1, seat 1, 50.00 CZK"
+      aria-label="Parter, row 1, seat 1, 50.00 CZK, conflict — not available" fill="#b91c1c" /></svg>`;
+    const catMap = new Map([[1, '#ff0000']]);
+    applySeatStatusUpdate(div, { 'P|1|1': 'available' as SeatStatusValue }, catMap);
+    const el = div.querySelector('[data-seat-key="P|1|1"]') as SVGCircleElement;
+    // aria-label should now be base-label + ", available" (no regex, no leftover suffix).
+    expect(el.getAttribute('aria-label')).toBe('Parter, row 1, seat 1, 50.00 CZK, available');
   });
 });
 
@@ -669,5 +695,35 @@ describe('clearConflictHighlight', () => {
     expect(() =>
       clearConflictHighlight(div, new Set(['GHOST|0|0']), new Map(), {}),
     ).not.toThrow();
+  });
+
+  it('restores full aria-label from data-base-label when clearing conflict (WID-S2)', () => {
+    const div = document.createElement('div');
+    // Seat produced by buildSeatMapSVG has data-base-label.
+    div.innerHTML = `<svg><circle
+      data-seat-key="P|1|1" data-cat="1" data-status="conflict"
+      data-base-label="Parter, row 1, seat 1, 50.00 CZK"
+      fill="${CONFLICT_COLOR}"
+      aria-label="Parter, row 1, seat 1, 50.00 CZK, conflict — not available"
+    /></svg>`;
+    const catColorMap = new Map([[1, '#ff0000']]);
+    clearConflictHighlight(div, new Set(['P|1|1']), catColorMap, {});
+    const el = div.querySelector('[data-seat-key="P|1|1"]') as SVGCircleElement;
+    // Full label must be restored from base-label + status, not regex over live label.
+    expect(el.getAttribute('aria-label')).toBe('Parter, row 1, seat 1, 50.00 CZK, available');
+  });
+
+  it('applyConflictHighlight uses data-base-label to build conflict aria-label (WID-S2)', () => {
+    const div = document.createElement('div');
+    div.innerHTML = `<svg><circle
+      data-seat-key="P|1|1" data-cat="1" data-status="available"
+      data-base-label="Parter, row 1, seat 1, 50.00 CZK"
+      fill="#ff0000"
+      aria-label="Parter, row 1, seat 1, 50.00 CZK, available"
+    /></svg>`;
+    applyConflictHighlight(div, new Set(['P|1|1']));
+    const el = div.querySelector('[data-seat-key="P|1|1"]') as SVGCircleElement;
+    // Should be built from data-base-label, not regex over the live aria-label.
+    expect(el.getAttribute('aria-label')).toBe('Parter, row 1, seat 1, 50.00 CZK, conflict — not available');
   });
 });
