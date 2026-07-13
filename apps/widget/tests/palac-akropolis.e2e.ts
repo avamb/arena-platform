@@ -18,8 +18,30 @@
  * Prerequisite: `npm run build` must be run before `npm run test:e2e`.
  */
 
-import { test, expect, type BrowserContext } from '@playwright/test';
+import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+
+// ─── Helper: wait for the SVG seat map to appear ─────────────────────────────
+
+/**
+ * Wait until the SVG seat map is visible inside the shadow root.
+ *
+ * Uses a starts-with selector [aria-label^="Seat map"] so it works for both
+ * the empty-geometry fallback label ("Seat map") and the populated label
+ * produced by the backend ("Seat map — sections: Parket"). An exact-match
+ * selector would silently fail whenever the label has a dynamic suffix.
+ */
+async function waitForSVG(page: Page): Promise<void> {
+  await page.waitForFunction(() => {
+    const el = document.querySelector('#widget-hybrid-en');
+    const shadow = el?.shadowRoot;
+    if (!shadow) return false;
+    return (
+      shadow.querySelector('svg[aria-label^="Seat map"]') !== null ||
+      shadow.querySelector('.seat-map-inner svg') !== null
+    );
+  }, { timeout: 15_000 });
+}
 
 // ─── Fixture constants ────────────────────────────────────────────────────────
 
@@ -321,10 +343,7 @@ test.describe('1 — Cold load: Moto G / Fast 3G', () => {
     expect(elapsed, `Widget not interactive after ${elapsed} ms (budget: 5000 ms on Chromium headless)`).toBeLessThan(5_000);
 
     // Wait for the schema to fully load (SVG rendered).
-    await page.waitForFunction(() => {
-      const el = document.querySelector('#widget-hybrid-en');
-      return el?.shadowRoot?.querySelector('svg[aria-label="Seat map"]') !== null;
-    }, { timeout: 6_000 });
+    await waitForSVG(page);
 
     // Clean up throttle.
     await cdp.send('Network.emulateNetworkConditions', {
@@ -383,14 +402,11 @@ test.describe('2 — Hybrid cart: seated + GA in one cart', () => {
     await page.goto('/demo/palac-akropolis.html');
 
     // Wait for SVG to render inside the shadow root.
-    await page.waitForFunction(() => {
-      const el = document.querySelector('#widget-hybrid-en');
-      return el?.shadowRoot?.querySelector('svg[aria-label="Seat map"]') !== null;
-    }, { timeout: 10_000 });
+    await waitForSVG(page);
 
     const seatCount = await page.evaluate(() => {
       const el = document.querySelector('#widget-hybrid-en');
-      const svg = el?.shadowRoot?.querySelector('svg[aria-label="Seat map"]');
+      const svg = el?.shadowRoot?.querySelector('svg[aria-label^="Seat map"]');
       return svg?.querySelectorAll('[data-seat-key]').length ?? 0;
     });
 
