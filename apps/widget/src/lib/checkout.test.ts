@@ -375,6 +375,7 @@ describe('CHECKOUT_I18N', () => {
     'name_label', 'name_required', 'phone_label', 'phone_required',
     'submit_label', 'status_paid', 'status_expired', 'status_failed',
     'status_pending', 'recover_label', 'retry_label', 'send_again',
+    'error_load_event', 'error_checkout', 'error_order_status', 'error_recovery',
     // WID-S1 cart / MiniCart strings
     'cart_title', 'cart_details_title', 'cart_empty', 'cart_total_label',
     'cart_back', 'expires_warn', 'ticket_singular', 'ticket_plural',

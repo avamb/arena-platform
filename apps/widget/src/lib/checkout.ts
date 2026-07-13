@@ -531,6 +531,10 @@ export interface CheckoutI18nStrings {
   // Generic
   loading: string;
   error_generic: string;
+  error_load_event: string;
+  error_checkout: string;
+  error_order_status: string;
+  error_recovery: string;
   // Seat conflict (WID-R2)
   /** Inline notice shown when checkout/start or recover returns 409 seat conflict. */
   conflict_notice: string;
@@ -594,6 +598,10 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     download_pdf: 'Download PDF',
     loading: 'Loading…',
     error_generic: 'Something went wrong. Please try again.',
+    error_load_event: 'Failed to load event.',
+    error_checkout: 'Checkout failed. Please try again.',
+    error_order_status: 'Failed to load order status.',
+    error_recovery: 'Recovery failed. Please try again.',
     conflict_notice: 'Some seats in your cart are no longer available.',
     continue_without_conflicts: 'Continue without unavailable seats',
     cart_title: 'Your cart',
@@ -634,6 +642,10 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     download_pdf: 'Скачать PDF',
     loading: 'Загрузка…',
     error_generic: 'Произошла ошибка. Пожалуйста, попробуйте ещё раз.',
+    error_load_event: 'Не удалось загрузить событие.',
+    error_checkout: 'Не удалось перейти к оплате. Попробуйте ещё раз.',
+    error_order_status: 'Не удалось загрузить статус заказа.',
+    error_recovery: 'Не удалось восстановить бронирование. Попробуйте ещё раз.',
     conflict_notice: 'Некоторые места в вашей корзине больше недоступны.',
     continue_without_conflicts: 'Продолжить без недоступных мест',
     cart_title: 'Ваша корзина',
@@ -675,6 +687,10 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     download_pdf: 'Stáhnout PDF',
     loading: 'Načítání…',
     error_generic: 'Něco se pokazilo. Zkuste to prosím znovu.',
+    error_load_event: 'Nepodařilo se načíst událost.',
+    error_checkout: 'Platbu se nepodařilo zahájit. Zkuste to prosím znovu.',
+    error_order_status: 'Nepodařilo se načíst stav objednávky.',
+    error_recovery: 'Rezervaci se nepodařilo obnovit. Zkuste to prosím znovu.',
     conflict_notice: 'Některá místa ve vašem košíku již nejsou dostupná.',
     continue_without_conflicts: 'Pokračovat bez nedostupných míst',
     cart_title: 'Váš košík',
@@ -716,6 +732,10 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     download_pdf: 'הורד PDF',
     loading: 'טוען…',
     error_generic: 'משהו השתבש. אנא נסה שוב.',
+    error_load_event: 'אירעה שגיאה בטעינת האירוע.',
+    error_checkout: 'לא ניתן היה להתחיל את התשלום. נסו שוב.',
+    error_order_status: 'לא ניתן היה לטעון את מצב ההזמנה.',
+    error_recovery: 'לא ניתן היה לשחזר את ההזמנה. נסו שוב.',
     conflict_notice: 'חלק מהמקומות בסל שלך אינם זמינים יותר.',
     continue_without_conflicts: 'המשך ללא המקומות הלא זמינים',
     cart_title: 'הסל שלך',

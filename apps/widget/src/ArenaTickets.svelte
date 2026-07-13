@@ -219,7 +219,7 @@
       event = data.event;
       selectedSession = pickInitialSession(data.event, normSessionId);
     } catch (err) {
-      loadError = err instanceof Error ? err.message : 'Failed to load event';
+      loadError = err instanceof Error ? err.message : t.error_load_event;
     } finally {
       loading = false;
     }
@@ -342,7 +342,7 @@
         checkoutError = t.conflict_notice;
       } else {
         conflictKeys = new Set();
-        checkoutError = err instanceof Error ? err.message : 'Checkout failed. Please try again.';
+        checkoutError = err instanceof Error ? err.message : t.error_checkout;
       }
     } finally {
       checkoutSubmitting = false;
@@ -401,7 +401,7 @@
         clearCheckoutToken();
         checkoutToken = null;
       }
-      loadError = err instanceof Error ? err.message : 'Failed to load order status';
+      loadError = err instanceof Error ? err.message : t.error_order_status;
       stage = 'selecting';
     }
   }
@@ -430,7 +430,7 @@
         orderActionError = t.conflict_notice;
       } else {
         conflictKeys = new Set();
-        orderActionError = err instanceof Error ? err.message : 'Recovery failed. Please try again.';
+        orderActionError = err instanceof Error ? err.message : t.error_recovery;
       }
     } finally {
       orderActionLoading = false;
@@ -458,6 +458,7 @@
     orderStatus = null;
     selectedSeatKeys = new Set();
     gaQuantities = new Map();
+    holdExpiresAt = null;
     conflictKeys = new Set(); // WID-S2: clear conflict highlights on retry
     stage = 'selecting';
     cartSheetOpen = false;
