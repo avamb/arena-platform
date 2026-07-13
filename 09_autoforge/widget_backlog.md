@@ -432,3 +432,142 @@ selector+seed fixes FIRST so every later feature can be proven
 against the real suite.
 
 Out of scope for WID-S: everything in §7 above.
+
+## 10. Wave WID-T — trust the gate (added 2026-07-13 after WID-S review)
+
+The WID-S delivery (#334-#338, commits 02433d0..2d96ed1) was reviewed.
+The core fixes are real this time (GA prop, nested error envelope in
+start/recover, conflict $effect loop, conflictKeys wiring,
+data-base-label, event_publications seed row, waitForSVG selector,
+container tab stop). BUT the "passing only after a real E2E run" rule
+was violated for all five features again, and it was not a formality:
+a local `npm run test:e2e` run shows **13/43 tests failing** — all 12
+WID-S5 custom-events tests and 1 WID-S4 test call `.click()` on SVG
+elements, a method that does not exist on SVGElement, so they have
+never passed anywhere. The widget-acceptance CI job still cannot even
+boot: `config.Validate()` hard-fails at the migration step because
+`JWT_SIGNING_SECRET` is absent (the job still sets the nonexistent
+`JWT_SECRET`, and `APP_ENV=development` turns dev-auth on, which
+requires the signing secret).
+
+**Process rule (tightened): a WID-T feature may be marked passing ONLY
+if the progress note pastes the actual pass summary of BOTH
+`npm --prefix apps/widget run test:e2e` (mock suite) AND — for T1/T4 —
+`npm --prefix apps/widget run test:e2e:real` against the compose
+backend or a link to a green widget-acceptance CI run. A note listing
+only type-check/unit/build/size is an automatic fail.**
+
+**WID-T1. First green run of widget-acceptance (do FIRST — this is
+the gate everything else is proven against).**
+- .github/workflows/ci.yml (~:307): replace `JWT_SECRET` with
+  `JWT_SIGNING_SECRET` (required because APP_ENV=development enables
+  dev-auth — config.go:248-253, :380-385); delete the dead `APP_PORT`
+  (HTTP_LISTEN_ADDR defaults to :8080).
+- Redirect arena-api stdout/stderr to a file and upload it as an
+  artifact on failure (currently only the Playwright report is
+  uploaded — a backend crash leaves nothing to inspect).
+- playwright.config.real.ts: drop `retries: 1` — the stateful seat
+  tests hard-code single-use seats (B01/B02, C0x, D0x) with ~15-min
+  hold TTLs, so a retry always hits 409 where 201 is expected.
+- ETag test (palac-akropolis-real.e2e.ts:227-257): actually perform a
+  second request/navigation and assert the If-None-Match/304 round
+  trip (secondRequestHadIfNoneMatch is captured but never asserted;
+  the test name is still false advertising).
+- Fix the stale exact selector `svg[aria-label="Seat map"]` left in
+  the MOCKED suite palac-akropolis.e2e.ts (:326, :388, :393) — same
+  bug that broke the real suite, latent because the file is
+  testIgnored.
+- DoD: green widget-acceptance run in CI, link pasted in the progress
+  note. Expect and budget for follow-up flakes on first boot (the 5 s
+  Fast-3G cold-load assertion is the most likely one — tune it with
+  data from the actual run, do not delete it).
+
+**WID-T2. Repair the broken E2E helpers + first real mouse coverage.**
+- custom-events.e2e.ts and keyboard.e2e.ts:715/:735/:750: `.click()`
+  on `[data-seat-key]` elements throws (SVGElement has no .click()).
+  Replace with `el.dispatchEvent(new MouseEvent('click',
+  {bubbles:true, composed:true}))` or Playwright locator clicks. All
+  13 currently-failing tests must pass; also guard getCapturedEvents
+  against undefined (custom-events.e2e.ts:544 block).
+- Add a REAL mouse-click seat-selection test using Playwright
+  hit-testing (locator.click() / page.mouse at seat coordinates
+  through the shadow DOM), not synthetic dispatch. This adjudicates
+  the WID-R1 defect that was dismissed without a test: onPointerDown
+  calls setPointerCapture on the container, and per the pointer-events
+  spec Chrome retargets the subsequent `click` to the capturing
+  element, so onContainerClick's `e.target.closest('[data-seat-key]')`
+  may never match. If the test fails, fix onContainerClick (e.g.
+  remember the pointerdown hit-target, or
+  releasePointerCapture before click synthesis) — do NOT delete the
+  test.
+- Add the two events the WID-S5 spec named but the implementation
+  skipped: `arena:cart_opened` (cart sheet opened) and
+  `arena:recovery` (recover endpoint invoked), with docs updates in
+  apps/widget/docs/custom-events.md.
+
+**WID-T3. Make the hold countdown actually exist for users (S1
+completion).**
+- holdExpiresAt is set microseconds before `window.location.href`
+  navigates away (ArenaTickets.svelte:319) — no reachable UI state
+  ever shows the countdown; the T-2min warning machinery is still
+  dead. Wire expires_at where users actually are: (a) the
+  order-status payload already returns expires_at for pending orders —
+  feed it into the countdown on the return/deep-link view with the
+  recovery CTA, and (b) show the remaining-time chip during the
+  'redirecting' stage. If a pre-payment in-cart countdown is wanted,
+  that requires holding seats before form submit — a backend contract
+  question; do NOT hack it client-side, note it for the owner instead.
+- handleRetry (:403-413) must reset holdExpiresAt; expiry should
+  drive a state change (expired → recovery CTA), not a frozen 0:00
+  with a live interval.
+- Stale-token path: after clearing the token on 401/404, load the
+  feed in-session (invoke the normal init path) instead of rendering
+  the raw error string until a manual refresh; localize the error
+  fallbacks (ArenaTickets :222/:337/:372/:396).
+- Localize the leftovers: GaTierCard "Free" + aria-labels (component
+  doesn't even receive locale), MiniCart/CartSheet aria-labels,
+  and replace the 2-form singular/plural with a proper plural
+  function (ru needs 3 forms: билет/билета/билетов).
+
+**WID-T4. Conflict UX completion (S2 completion).**
+- Poller precedence: applySeatStatusUpdate stomps conflict paint on
+  the next delta tick (the conflicting seat becomes `held` within
+  ~3 s, repainting red → amber). Skip seats whose data-status is
+  'conflict' in poller updates (statuses reapply on conflict clear,
+  which already passes live seatStatuses), and add a unit test for
+  delta-after-conflict.
+- Wire the "continue without conflicts" CTA: filterCartWithoutConflicts
+  + continue_without_conflicts i18n are still dead exports; render the
+  button in the conflict notice, dropping conflicting lines and
+  clearing their highlight.
+- Clear conflictKeys on seat deselect of a conflicting seat and on
+  session switch (currently only handleRetry clears).
+- Label rebuilds must preserve the selected marker:
+  applySeatStatusUpdate (seatmap-render.ts:312) and
+  applyConflictHighlight (:350) rebuild `base, status` and silently
+  drop ", selected" for seats with data-selected="true". Append it;
+  unit-test the two sequences (selected+delta, conflict apply→clear on
+  selected seat).
+- getCheckoutStatus (api.ts:238-250) still parses the flat envelope —
+  port the nested parser used by start/recover.
+- Real E2E: upgrade the two-context 409 test from fetch-contract to
+  UI-level — ctx2 selects the same seats by clicking, submits checkout
+  through the UI, and asserts data-status="conflict" paint on the map
+  plus an intact cart.
+
+**WID-T5. Decide and enforce ONE keyboard tab-stop model (small).**
+- Current model collapses: leaving a row via ArrowUp/Down strips its
+  tab stop permanently (navigateSeat resets the target row but never
+  restores the source row), so Tab coverage shrinks as the user
+  navigates — and keyboard.e2e.ts now codifies the drift ("row B = 0"
+  assertion). Pick one: canonical single-stop roving tabindex for the
+  whole map (recommended; drop per-row stops at init), or strict
+  one-per-row (restore the source row's stop to its first seat on
+  leave). Update the render, navigateSeat, and ALL keyboard.e2e.ts
+  assertions to the chosen model.
+- Optional polish: aria-disabled on non-available seats; an aria-live
+  polite region announcing the focused seat's status changes.
+
+Ordering: T1 first (the gate), then T2 (repairs the mock-suite gate) —
+after T1+T2 both suites are trustworthy; T3/T4 in any order, proven
+against both suites; T5 last. Out of scope: everything in §7 above.
