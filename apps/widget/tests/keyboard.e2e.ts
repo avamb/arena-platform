@@ -972,10 +972,9 @@ test.describe('WID-T5: canonical single-stop tab navigation', () => {
       { timeout: 3_000 },
     );
 
-    // Now move focus AWAY from the widget (blur the current seat).
-    await page.evaluate(() => {
-      (document.body as HTMLElement).focus();
-    });
+    // A real Tab keypress must leave the composite widget. Unlike body.focus(),
+    // this exercises Chromium's actual Tab order and triggers focusout.
+    await page.keyboard.press('Tab');
 
     // Container should be restored to tabindex=0 (focusout handler fires).
     await page.waitForFunction(
@@ -994,6 +993,14 @@ test.describe('WID-T5: canonical single-stop tab navigation', () => {
     });
 
     expect(containerTab).toBe('0');
+
+    const focusIsOutsideContainer = await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      const container = host?.shadowRoot?.querySelector('.seat-map-container');
+      const active = host?.shadowRoot?.activeElement ?? document.activeElement;
+      return !!container && !container.contains(active);
+    });
+    expect(focusIsOutsideContainer).toBe(true);
   });
 
   test('ArrowRight navigates after Tab-into-container (one-stop entry)', async ({ page }) => {
@@ -1049,8 +1056,8 @@ test.describe('WID-T5: canonical single-stop tab navigation', () => {
     await page.keyboard.press('ArrowRight'); // A1 → A2
     await page.keyboard.press('ArrowRight'); // A2 → A3
 
-    // Leave the widget.
-    await page.evaluate(() => { (document.body as HTMLElement).focus(); });
+    // Leave the composite through the browser's real Tab order.
+    await page.keyboard.press('Tab');
 
     // Wait for container to be restored.
     await page.waitForFunction(
