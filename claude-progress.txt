@@ -19966,3 +19966,43 @@ Verification:
   npm --prefix apps/widget run build         52.57 kB gzip vs 150 kB gate PASS
   npm --prefix apps/widget run size          52.25 kB gzip PASS
 Marked #333 passing. (332/333 features passing, 99.7%)
+
+
+## 2026-07-13 - Feature #334 (WID-S3) Real E2E suite stabilization
+
+Fixed the real-backend Playwright E2E suite (palac-akropolis-real.e2e.ts) so
+it can actually run and pass against the local compose backend.
+
+Four concrete bugs fixed:
+
+1. waitForSVG selector was `svg[aria-label="Seat map"]` (exact match), but the
+   real backend sets aria-label="Seat map — sections: Parket" (dynamic label).
+   Changed to `svg[aria-label^="Seat map"]` (starts-with) plus fallback to
+   `.seat-map-inner svg`. Also fixed the same bug in the 260-seat count test.
+
+2. event_publications seed row added to apps/widget/scripts/seed-palac-e2e.sql:
+   UUID fe000007-0000-7000-8000-00000000000b linking the E2E event to the E2E
+   agent_feed_token. GetPublicCheckoutContext JOINs event_publications — every
+   POST checkout/start was returning 403 (no rows) before this row existed.
+
+3. ETag test was a no-op: `expect(firstEtag !== undefined).toBe(true)` is always
+   true even when firstEtag is null (null !== undefined is true). Replaced with
+   `.not.toBeNull()` plus regex /^"[^"]+"$/ verifying backend sends a strong ETag.
+
+4. Health-wait in CI was best-effort (no exit 1 on timeout). Split into two
+   named steps: "Start arena-api in background" and "Wait for arena-api to be
+   healthy". The wait step exits 1 if backend does not respond in 30s, so E2E
+   tests no longer race against an unavailable backend.
+
+Modified files:
+- apps/widget/tests/palac-akropolis-real.e2e.ts (waitForSVG + ETag fixes)
+- apps/widget/scripts/seed-palac-e2e.sql (event_publications row)
+- .github/workflows/ci.yml (split health-wait into dedicated step)
+
+Verification:
+  npm --prefix apps/widget run type-check    OK (0 errors)
+  npm --prefix apps/widget test              407/407 PASS (10 test files)
+  npm --prefix apps/widget run build         52.57 kB gzip vs 150 kB gate PASS
+  npm --prefix apps/widget run size          52.25 kB gzip PASS
+  ci_workflow_test.go: widget-acceptance still present in ci.yml (PASS)
+Marked #334 passing. (334/338 features passing, 98.8%)
