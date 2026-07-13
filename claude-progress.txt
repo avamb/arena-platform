@@ -20393,3 +20393,64 @@ Verification:
   npm --prefix apps/widget run build         54.48 kB gzip vs 150 kB gate PASS
 Commit: 6e8d754
 Marked #339 passing.
+
+
+## 2026-07-13 - Feature #343 (WID-T5) Canonical single-stop tab navigation
+
+Implemented WID-T5: replaced the "leaky" N-per-row tabindex=0 model with the
+canonical ARIA composite widget single-stop pattern for the seat map.
+
+### Problem with old model (WID-R4 / WID-S4):
+- buildSeatMapSVG gave tabindex="0" to the FIRST seat of each row
+- With N rows, there were N Tab stops inside the seat map widget
+- Users had to Tab through every row to get past the widget
+- This is the "leaky" (схлопывающейся) model mentioned in WID-T5 spec
+
+### New model (WID-T5 canonical single-stop):
+1. .seat-map-container gets tabindex="0" — the SOLE Tab stop for the widget
+2. ALL seat circles rendered with tabindex="-1" initially
+3. When container receives focus (user Tabs in):
+   - onContainerFocus fires, finds current seat (last visited or first)
+   - Promotes that seat to tabindex="0", moves browser focus to it
+   - Sets container to tabindex="-1" (exits Tab order while focus is inside)
+4. Arrow keys navigate via roving tabindex (navigateSeat, unchanged logic)
+5. When focus leaves the composite widget (onContainerFocusOut):
+   - Checks if relatedTarget is outside the container
+   - Restores container to tabindex="0" for next Tab entry
+6. On SVG reload (session change): $effect restores container to tabindex="0"
+
+### Files modified:
+- apps/widget/src/lib/seatmap-render.ts:
+  Changed tabIdx from seatIndexInRow===0?'0':'-1' to always '-1'
+  Updated comment block explaining canonical single-stop model
+
+- apps/widget/src/components/SeatMapView.svelte:
+  Container: tabindex="-1" -> tabindex="0"
+  Added onfocus, onfocusout attributes on container
+  Implemented onContainerFocus() and onContainerFocusOut() functions
+  Added $effect to restore container tabindex on SVG reload
+
+- apps/widget/src/lib/seatmap-render.test.ts:
+  2 tests updated: "first seat per row has tabindex=0" -> "all seats at -1"
+  Expected zeros: 2->0, minusOnes: 1->3
+
+- apps/widget/tests/keyboard.e2e.ts:
+  WID-S4 container test: expect "-1" -> "0" (container IS now Tab stop)
+  WID-R4 roving test: expect zeroCount=3 -> 0, minusOneCount=9 -> 12
+  Updated comment in a11y nav test to reflect single-stop model
+  +5 new WID-T5 tests:
+    - container tabindex=0, all seats tabindex=-1 initially
+    - programmatic focus on container delegates to A1, container->"-1"
+    - after exit, container restored to tabindex=0
+    - ArrowRight works after single-stop entry
+    - re-entry restores last-visited seat (A3 after A1->A2->A3 nav)
+
+- apps/widget/tests/palac-akropolis.e2e.ts:
+  Updated tabindex assertion: "-1" -> "0" (in testIgnore file)
+
+Verification:
+  npm --prefix apps/widget run type-check    OK (0 errors)
+  npm --prefix apps/widget test              455/455 PASS (11 test files)
+  npm --prefix apps/widget run build         55.68 kB gzip vs 150 kB gate PASS
+Commit: 26f2636
+Marked #343 passing. (343/343 features passing, 100.0%)
