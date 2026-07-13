@@ -304,8 +304,7 @@ jobs:
       DATABASE_URL: postgres://arena:arena_secret@localhost:5432/arena_e2e?sslmode=disable
       REDIS_URL: redis://localhost:6379/0
       APP_ENV: development
-      JWT_SECRET: ci-test-jwt-secret-at-least-32-bytes-long
-      APP_PORT: "8080"
+      JWT_SIGNING_SECRET: ci-test-jwt-secret-at-least-32-bytes-long
 
     defaults:
       run:
@@ -344,8 +343,9 @@ jobs:
       - name: Start arena-api in background
         working-directory: .
         run: |
-          /tmp/arena-api &
+          /tmp/arena-api > /tmp/arena-api.log 2>&1 &
           ARENA_PID=$!
+          echo "ARENA_PID=${ARENA_PID}" >> "$GITHUB_ENV"
           echo "arena-api started with PID ${ARENA_PID}"
 
       - name: Wait for arena-api to be healthy
@@ -393,3 +393,11 @@ jobs:
           name: playwright-report-widget-acceptance
           path: apps/widget/playwright-report/
           retention-days: 14
+
+      - name: Upload arena-api logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arena-api-logs
+          path: /tmp/arena-api.log
+          retention-days: 7
