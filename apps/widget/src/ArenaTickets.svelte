@@ -18,11 +18,11 @@
    */
   import { onMount } from 'svelte';
   import { parseLocale, parseFeedToken, parseSessionId, isRtlLocale } from './utils.js';
-  import { fetchFeedEvent, postCheckoutStart, getCheckoutStatus, postCheckoutRecover } from './api.js';
+  import { fetchFeedEvent, postCheckoutStart, getCheckoutStatus, postCheckoutRecover, ApiError } from './api.js';
   import type { FeedSession, FeedEvent, Geometry, CategoryPrice, SeatStatusValue } from './types.js';
   import type { BuyerFormValues } from './lib/checkout.js';
-  import { buildCheckoutPayload } from './lib/checkout.js';
-  import { removeCartLine, applyHoldResponse } from './lib/cart.js';
+  import { buildCheckoutPayload, getCheckoutI18n } from './lib/checkout.js';
+  import { removeCartLine } from './lib/cart.js';
   import { toggleSeatSelection } from './lib/selection.js';
   import {
     saveCheckoutToken,
@@ -62,6 +62,7 @@
   const normSessionId = $derived(parseSessionId(sessionId));
   const hasToken = $derived(normFeedToken !== '');
   const dir = $derived(isRtlLocale(normLocale) ? 'rtl' : 'ltr');
+  const t = $derived(getCheckoutI18n(normLocale));
 
   // ── Event data ─────────────────────────────────────────────────────────────
 
@@ -90,6 +91,12 @@
   // ── Checkout state ─────────────────────────────────────────────────────────
 
   let checkoutToken = $state<string | null>(null);
+  /**
+   * ISO-8601 expiry from the last successful postCheckoutStart or
+   * postCheckoutRecover response.  Used to drive the hold countdown timer
+   * in MiniCart and CartSheet while the user fills in their details.
+   */
+  let holdExpiresAt = $state<string | null>(null);
   let checkoutSubmitting = $state(false);
   let checkoutError = $state<string | null>(null);
   let orderStatus = $state<CheckoutStatusResponse | null>(null);
@@ -110,6 +117,14 @@
         })
       : { checkoutToken: null, expiresAt: null, lines: [] }
   );
+
+  /**
+   * Cart with the hold expiry merged in.  `buildCartFromSelection` always
+   * returns `expiresAt: null`; `holdExpiresAt` is set after a successful
+   * postCheckoutStart / postCheckoutRecover so the countdown timer in
+   * MiniCart and CartSheet has a real value to tick down from.
+   */
+  const effectiveCart = $derived({ ...cart, expiresAt: holdExpiresAt });
 
   const cartCount = $derived(totalSelectionCount(selectedSeatKeys, gaQuantities));
 
@@ -267,13 +282,13 @@
         selectedSession.buyer_fields as import('./lib/checkout.js').BuyerFieldConfig[],
       );
       const response = await postCheckoutStart(normFeedToken, payload);
-      // Save token in case user returns.
+      // Save token in case user returns after the payment page.
       saveCheckoutToken(response.checkout_token);
       checkoutToken = response.checkout_token;
+      // Store the hold expiry so MiniCart/CartSheet can show the countdown
+      // during the brief redirecting stage (WID-S1 fix #3 + #4).
+      holdExpiresAt = response.expires_at;
       stage = 'redirecting';
-      // Apply hold response to cart state for consistency.
-      // Note: we redirect immediately, so this is mostly for state tracking.
-      applyHoldResponse(cart, response.checkout_token, response.expires_at);
       // Redirect to payment provider.
       window.location.href = response.redirect_url;
     } catch (err) {
@@ -289,6 +304,13 @@
     try {
       orderStatus = await getCheckoutStatus(token);
     } catch (err) {
+      // Stale / invalid checkout token (401 or 404) → clear it from storage so
+      // the widget doesn't brick on the next page refresh (WID-S1 fix #5).
+      const apiErr = err as ApiError;
+      if (apiErr?.status === 401 || apiErr?.status === 404) {
+        clearCheckoutToken();
+        checkoutToken = null;
+      }
       loadError = err instanceof Error ? err.message : 'Failed to load order status';
       stage = 'selecting';
     }
@@ -299,7 +321,9 @@
     orderActionLoading = true;
     orderActionError = null;
     try {
-      await postCheckoutRecover(checkoutToken);
+      const recovered = await postCheckoutRecover(checkoutToken);
+      // Update hold expiry with the fresh timestamp from recovery (WID-S1 fix #3).
+      holdExpiresAt = recovered.expires_at;
       // Re-load status after recovery attempt.
       orderStatus = await getCheckoutStatus(checkoutToken);
     } catch (err) {
@@ -353,14 +377,14 @@
   {:else if stage === 'redirecting'}
     <!-- ── Redirecting to payment ─────────────────────────────────────────── -->
     <div class="arena-tickets-frame">
-      <div class="arena-tickets-loading" aria-live="polite" aria-busy="true">Redirecting to payment…</div>
+      <div class="arena-tickets-loading" aria-live="polite" aria-busy="true">{t.redirecting_to_payment}</div>
     </div>
 
   {:else if hasToken}
     <!-- ── Selecting / cart stage ─────────────────────────────────────────── -->
     <div class="arena-tickets-frame">
       {#if loading}
-        <div class="arena-tickets-loading" aria-live="polite" aria-busy="true">Loading…</div>
+        <div class="arena-tickets-loading" aria-live="polite" aria-busy="true">{t.loading}</div>
       {:else if loadError}
         <div class="arena-tickets-error" role="alert">{loadError}</div>
       {:else if event && event.sessions.length > 0}
@@ -368,7 +392,17 @@
         <SessionList
           sessions={event.sessions}
           {selectedSession}
-          onSelectSession={(s) => { selectedSession = s; }}
+          onSelectSession={(s) => {
+            // Reset seat/GA selection when switching sessions so stale keys
+            // from a different session don't carry over (WID-S1 fix #6).
+            if (s?.id !== selectedSession?.id) {
+              selectedSeatKeys = new Set();
+              gaQuantities = new Map();
+              holdExpiresAt = null;
+              cartSheetOpen = false;
+            }
+            selectedSession = s;
+          }}
         />
         <!-- Seat map (only for sessions with schema_url) -->
         {#if selectedSession && selectedSession.schema_url}
@@ -392,7 +426,7 @@
               <GaTierCard
                 {tier}
                 quantity={gaQuantities.get(tier.id) ?? 0}
-                {onGaQuantityChange}
+                onQuantityChange={onGaQuantityChange}
               />
             {/each}
           </div>
@@ -402,7 +436,7 @@
         {#if selectedSession}
           <MiniCart
             lines={cart.lines}
-            expiresAt={cart.expiresAt}
+            expiresAt={holdExpiresAt}
             locale={normLocale}
             onOpen={openCartSheet}
           />
@@ -416,7 +450,7 @@
     <!-- Cart sheet (bottom drawer) -->
     {#if cartSheetOpen && selectedSession}
       <CartSheet
-        {cart}
+        cart={effectiveCart}
         buyerFields={selectedSession.buyer_fields as import('./lib/checkout.js').BuyerFieldConfig[]}
         locale={normLocale}
         submitting={checkoutSubmitting}

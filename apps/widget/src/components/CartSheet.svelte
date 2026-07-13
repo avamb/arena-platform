@@ -53,24 +53,24 @@
 
 <div class="sheet" role="dialog" aria-modal="true" aria-label="Your cart">
   <div class="sheet-header">
-    <button class="back-btn" onclick={showBuyerForm ? handleBackToCart : onClose} aria-label="Close">
-      {#if showBuyerForm}← Back{:else}✕{/if}
+    <button class="back-btn" onclick={showBuyerForm ? handleBackToCart : onClose} aria-label={showBuyerForm ? t.cart_back : t.cart_title}>
+      {#if showBuyerForm}← {t.cart_back}{:else}✕{/if}
     </button>
-    <h2 class="sheet-title">{showBuyerForm ? 'Your details' : 'Your cart'}</h2>
+    <h2 class="sheet-title">{showBuyerForm ? t.cart_details_title : t.cart_title}</h2>
   </div>
 
   {#if !showBuyerForm}
     <!-- Cart lines -->
     {#if countdownStr}
       <div class="countdown-bar" class:warning={isWarning} role="timer" aria-live="polite">
-        ⏱ {countdownStr} remaining
-        {#if isWarning} — your seats expire soon!{/if}
+        ⏱ {countdownStr} {t.remaining}
+        {#if isWarning} — {t.expires_warn}{/if}
       </div>
     {/if}
 
     <div class="sheet-body">
       {#if cart.lines.length === 0}
-        <p class="empty-msg">Your cart is empty.</p>
+        <p class="empty-msg">{t.cart_empty}</p>
       {:else}
         <ul class="line-list" role="list">
           {#each cart.lines as line, idx (idx)}
@@ -91,7 +91,7 @@
 
         {#if total.currency}
           <div class="total-row">
-            <span class="total-label">Total</span>
+            <span class="total-label">{t.cart_total_label}</span>
             <span class="total-value">{formatPrice(total.amount, total.currency)}</span>
           </div>
         {/if}

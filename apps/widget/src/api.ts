@@ -224,7 +224,17 @@ export async function getCheckoutStatus(
   const url = `/v1/public/checkout/${encodeURIComponent(checkoutToken)}`;
   const res = await fetch(url);
   if (!res.ok) {
-    throw new Error(`getCheckoutStatus HTTP ${res.status}: ${res.statusText}`);
+    let detail = '';
+    let code: string | undefined;
+    try {
+      const body = (await res.json()) as { error?: string; message?: string; code?: string };
+      detail = body.error ?? body.message ?? '';
+      code = body.code ?? (body.error || undefined);
+    } catch { /* ignore non-JSON bodies */ }
+    throw new ApiError(
+      `getCheckoutStatus HTTP ${res.status}${detail ? `: ${detail}` : ''}`,
+      { status: res.status, code },
+    );
   }
   return res.json() as Promise<CheckoutStatusResponse>;
 }

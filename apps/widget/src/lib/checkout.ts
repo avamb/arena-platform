@@ -536,6 +536,27 @@ export interface CheckoutI18nStrings {
   conflict_notice: string;
   /** CTA label for the one-click "continue without unavailable seats" action. */
   continue_without_conflicts: string;
+  // Cart / MiniCart (WID-S1)
+  /** Cart sheet title when reviewing items. */
+  cart_title: string;
+  /** Cart sheet title when buyer details form is shown. */
+  cart_details_title: string;
+  /** Shown when the cart has no items. */
+  cart_empty: string;
+  /** Total row label in the cart summary. */
+  cart_total_label: string;
+  /** Back button label inside the cart sheet (goes back to item list). */
+  cart_back: string;
+  /** Warning suffix shown on the countdown when hold is under 2 min. */
+  expires_warn: string;
+  /** Singular ticket label in MiniCart bar (e.g. "1 ticket"). */
+  ticket_singular: string;
+  /** Plural ticket label in MiniCart bar (e.g. "3 tickets"). */
+  ticket_plural: string;
+  /** Full-screen message shown while the widget redirects to the payment page. */
+  redirecting_to_payment: string;
+  /** Countdown suffix (e.g. "9:05 remaining"). */
+  remaining: string;
 }
 
 /** Interpolate {key} placeholders in an i18n string. */
@@ -573,6 +594,16 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     error_generic: 'Something went wrong. Please try again.',
     conflict_notice: 'Some seats in your cart are no longer available.',
     continue_without_conflicts: 'Continue without unavailable seats',
+    cart_title: 'Your cart',
+    cart_details_title: 'Your details',
+    cart_empty: 'Your cart is empty.',
+    cart_total_label: 'Total',
+    cart_back: 'Back',
+    expires_warn: 'your seats expire soon!',
+    ticket_singular: 'ticket',
+    ticket_plural: 'tickets',
+    redirecting_to_payment: 'Redirecting to payment…',
+    remaining: 'remaining',
   },
   ru: {
     email_label: 'Email',
@@ -603,6 +634,16 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     error_generic: 'Произошла ошибка. Пожалуйста, попробуйте ещё раз.',
     conflict_notice: 'Некоторые места в вашей корзине больше недоступны.',
     continue_without_conflicts: 'Продолжить без недоступных мест',
+    cart_title: 'Ваша корзина',
+    cart_details_title: 'Ваши данные',
+    cart_empty: 'Ваша корзина пуста.',
+    cart_total_label: 'Итого',
+    cart_back: 'Назад',
+    expires_warn: 'ваши места скоро истекут!',
+    ticket_singular: 'билет',
+    ticket_plural: 'билеты',
+    redirecting_to_payment: 'Переход к оплате…',
+    remaining: 'осталось',
   },
   cs: {
     email_label: 'E-mail',
@@ -633,6 +674,16 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     error_generic: 'Něco se pokazilo. Zkuste to prosím znovu.',
     conflict_notice: 'Některá místa ve vašem košíku již nejsou dostupná.',
     continue_without_conflicts: 'Pokračovat bez nedostupných míst',
+    cart_title: 'Váš košík',
+    cart_details_title: 'Vaše údaje',
+    cart_empty: 'Váš košík je prázdný.',
+    cart_total_label: 'Celkem',
+    cart_back: 'Zpět',
+    expires_warn: 'vaše místa brzy vyprší!',
+    ticket_singular: 'vstupenka',
+    ticket_plural: 'vstupenky',
+    redirecting_to_payment: 'Přesměrování na platbu…',
+    remaining: 'zbývá',
   },
   he: {
     email_label: 'דוא"ל',
@@ -663,6 +714,16 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     error_generic: 'משהו השתבש. אנא נסה שוב.',
     conflict_notice: 'חלק מהמקומות בסל שלך אינם זמינים יותר.',
     continue_without_conflicts: 'המשך ללא המקומות הלא זמינים',
+    cart_title: 'הסל שלך',
+    cart_details_title: 'הפרטים שלך',
+    cart_empty: 'הסל שלך ריק.',
+    cart_total_label: 'סה״כ',
+    cart_back: 'חזרה',
+    expires_warn: 'המקומות שלך עומדים לפוג בקרוב!',
+    ticket_singular: 'כרטיס',
+    ticket_plural: 'כרטיסים',
+    redirecting_to_payment: 'מעביר לדף התשלום…',
+    remaining: 'נותר',
   },
 };
 
