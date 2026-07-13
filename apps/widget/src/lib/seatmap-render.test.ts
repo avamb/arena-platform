@@ -404,28 +404,26 @@ describe('buildSeatMapSVG', () => {
     expect(svg).toContain('r="8"');
   });
 
-  it('first seat in each row has tabindex="0" (roving tabindex model)', () => {
+  it('all seats have tabindex="-1" (canonical single-stop model, WID-T5)', () => {
     const svg = buildSeatMapSVG(makeGeometry(), categoryPrices, {});
-    // role=button on all seats
+    // role=button on all seats.
     expect(svg).toContain('role="button"');
-    // The first seat of each row gets tabindex="0" (Tab stop per row).
-    expect(svg).toContain('tabindex="0"');
-    // Non-first seats get tabindex="-1".
-    // makeGeometry() has Parter/Row1 with 2 seats → second seat must be -1.
+    // WID-T5 canonical single-stop: ALL seat circles start at tabindex="-1".
+    // The .seat-map-container (tabindex="0") is the sole Tab stop; its onfocus
+    // handler promotes one seat to "0" when the user enters the composite widget.
+    expect(svg).not.toContain('tabindex="0"');
     expect(svg).toContain('tabindex="-1"');
   });
 
-  it('only the first seat per row gets tabindex="0", subsequent seats get "-1"', () => {
-    // Row P|1 has 2 seats: first → 0, second → -1.
+  it('all seats in all rows have tabindex="-1" (no per-row Tab stops)', () => {
+    // makeGeometry() has 2 rows: Parter/Row1 (2 seats) + Balkon/RowA (1 seat).
     const svg = buildSeatMapSVG(makeGeometry(), categoryPrices, {});
     // Count occurrences.
     const zeros = (svg.match(/tabindex="0"/g) ?? []).length;
     const minusOnes = (svg.match(/tabindex="-1"/g) ?? []).length;
-    // makeGeometry() has 2 rows (Parter/Row1 and Balkon/RowA) → 2 zeros.
-    // Parter/Row1 has 2 seats: 1 zero, 1 minus-one.
-    // Balkon/RowA has 1 seat:  1 zero, 0 minus-ones.
-    expect(zeros).toBe(2);
-    expect(minusOnes).toBe(1);
+    // WID-T5: no seat has tabindex="0" — all 3 seats start at "-1".
+    expect(zeros).toBe(0);
+    expect(minusOnes).toBe(3);
   });
 
   it('seat aria-label includes price when categoryPrices has price_amount', () => {

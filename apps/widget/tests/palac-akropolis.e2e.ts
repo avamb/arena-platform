@@ -944,9 +944,11 @@ test.describe('6 — Keyboard-only, screen-reader, axe WCAG 2.2 AA, RTL', () => 
 
     expect(attrs.role).toBe('application');
     expect(attrs.ariaLabel).toBeTruthy();
-    // WID-S4: container is tabindex="-1" — not a Tab stop. Individual seat
-    // circles (first per row, tabindex="0") are the Tab stops inside the map.
-    expect(attrs.tabindex).toBe('-1');
+    // WID-T5 canonical single-stop: container is tabindex="0" (the sole Tab
+    // stop for the composite widget).  Its onfocus handler delegates focus to
+    // the current seat and sets container to "-1" while focus is inside.
+    // All seat circles start at tabindex="-1" (no per-row Tab stops).
+    expect(attrs.tabindex).toBe('0');
   });
 
   test('fit and reset buttons are keyboard-focusable inside shadow root', async ({ page }) => {

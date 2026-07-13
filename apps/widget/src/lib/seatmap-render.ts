@@ -215,12 +215,15 @@ export function buildSeatMapSVG(
   }
 
   // ── Seats ──
-  // Roving-tabindex model (WID-R4): the FIRST seat in each row gets
-  // tabindex="0" (the row's initial Tab stop).  All other seats in the row
-  // get tabindex="-1" so they are reachable only via ArrowLeft/Right keys.
-  // ArrowUp/Down move between rows; Tab/Shift+Tab jump between rows.
-  // This keeps the seat map navigable without flooding the global Tab order
-  // with hundreds of individual seat stops.
+  // Canonical single-stop model (WID-T5): ALL seat circles start with
+  // tabindex="-1".  The .seat-map-container is the SOLE Tab stop for the
+  // entire composite widget (tabindex="0" on the container).  When the user
+  // Tabs into the container, its onfocus handler delegates browser focus to
+  // the "current" seat (roving tabindex inside: the one seat holding
+  // tabindex="0" at any given time) and removes the container from the Tab
+  // order (tabindex="-1").  Arrow keys then navigate within the composite
+  // widget via navigateSeat().  A single Tab press exits the widget entirely.
+  // This eliminates the "leaky" N-rows-as-N-Tab-stops model (WID-R4).
   parts.push('<g id="seats">');
   for (const section of sections) {
     parts.push(
@@ -230,12 +233,13 @@ export function buildSeatMapSVG(
       parts.push(
         `<g data-row-key="${xmlAttr(row.key)}" aria-label="Row ${xmlAttr(row.name)}">`,
       );
-      row.seats.forEach((seat, seatIndexInRow) => {
+      row.seats.forEach((seat, _seatIndexInRow) => {
         const status = seatStatuses[seat.key] ?? 'available';
         const fill = seatFillColor(seat.category_index, status, catColors);
         const r = seat.radius > 0 ? seat.radius : 8;
-        // Roving tabindex: only the first seat in each row is a Tab stop.
-        const tabIdx = seatIndexInRow === 0 ? '0' : '-1';
+        // All seats start at -1; the container's focus handler promotes one
+        // seat to tabindex="0" when the user enters the composite widget.
+        const tabIdx = '-1';
         // Build aria-label: section, row, seat, price (if available), status.
         const priceLabel = buildPriceLabel(seat.category_index, categoryPrices);
         // Base label: section + row + seat + price (no status suffix).

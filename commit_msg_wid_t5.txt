@@ -1,0 +1,6 @@
+feat(widget): WID-T5 #343 - single tabstop ARIA composite widget
+
+Container tabindex=0 is sole Tab entry; seat circles at tabindex=-1.
+Delegation handlers promote active seat on entry, restore on exit.
+Updated seatmap-render, SeatMapView, keyboard.e2e.ts, render tests.
+type-check OK, 455/455 tests PASS, build 55.68 kB gzip

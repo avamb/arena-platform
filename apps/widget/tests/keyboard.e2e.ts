@@ -197,10 +197,10 @@ test.describe('A11y fixture keyboard navigation', () => {
 
     // No keyboard trap: a trap means focus is STUCK on one element. Seeing
     // several distinct focused elements across 15 Tabs proves movement.
-    // With the roving-tabindex model (WID-R4), Tab moves between rows (one
-    // Tab stop per row), not between individual seats — so the number of
-    // distinct elements depends on the number of rows/zones rendered, not
-    // the total seat count.
+    // WID-T5 canonical single-stop: the entire seat map is ONE Tab stop
+    // (the .seat-map-container).  The toolbar buttons (fit/reset) add 2 more
+    // Tab stops.  So the widget contributes ≥ 3 distinct Tab stops in total
+    // regardless of the number of rows rendered.
     const distinct = new Set(identities).size;
     expect(distinct).toBeGreaterThanOrEqual(3);
   });
@@ -314,7 +314,7 @@ test.describe('WID-R4: roving tabindex + live seat labels', () => {
     expect(firstSeatLabel).toContain('available');
   });
 
-  test('roving tabindex: first seat per row has tabindex=0, rest have -1', async ({ page }) => {
+  test('roving tabindex: all seats initially have tabindex="-1" (canonical single-stop model)', async ({ page }) => {
     await page.goto('/demo/populated-map.html');
     await page.waitForLoadState('networkidle');
 
@@ -338,10 +338,12 @@ test.describe('WID-R4: roving tabindex + live seat labels', () => {
       return { zeroCount, minusOneCount };
     });
 
-    // 3 rows → 3 seats with tabindex="0" (one per row).
-    expect(zeroCount).toBe(3);
-    // 3 rows × 4 seats - 3 row-first seats = 9 seats with tabindex="-1".
-    expect(minusOneCount).toBe(9);
+    // WID-T5 canonical single-stop: ALL seats start at tabindex="-1".
+    // The container (.seat-map-container) holds the single tabindex="0" Tab stop.
+    // The onfocus handler promotes one seat to "0" on first keyboard entry.
+    expect(zeroCount).toBe(0);
+    // 3 rows × 4 seats = 12 seats, all at tabindex="-1".
+    expect(minusOneCount).toBe(12);
   });
 
   test('ArrowRight moves focus to next seat within the same row', async ({ page }) => {
@@ -582,9 +584,9 @@ test.describe('WID-S4: roving tabindex invariant across row navigation', () => {
     await setupPopulatedMapRoutes(page);
   });
 
-  // ── Dead tab-stop fix ───────────────────────────────────────────────────────
+  // ── Single Tab stop (WID-T5) ───────────────────────────────────────────────
 
-  test('seat-map container has tabindex="-1" (dead Tab-stop removed)', async ({ page }) => {
+  test('seat-map container has tabindex="0" (canonical single Tab stop)', async ({ page }) => {
     await page.goto('/demo/populated-map.html');
     await page.waitForLoadState('networkidle');
     await waitForSeats(page);
@@ -596,15 +598,12 @@ test.describe('WID-S4: roving tabindex invariant across row navigation', () => {
       return container?.getAttribute('tabindex') ?? null;
     });
 
-    // The container must be tabindex="-1", NOT "0".
-    // When it was "0" it was a dead Tab stop: focus would land on the
-    // container div, but arrow keys only acted when focus was on a
-    // [data-seat-key] element — so users were trapped with no way to enter
-    // the seat grid using keyboard only.
-    // With tabindex="-1" the container is programmatically focusable but not
-    // in the Tab order; the first-seat-per-row circles (tabindex="0") are the
-    // real Tab stops that users land on when pressing Tab into the seat map.
-    expect(containerTabindex).toBe('-1');
+    // WID-T5 canonical single-stop: the container is the SOLE Tab stop for the
+    // entire seat map composite widget.  It must have tabindex="0" before the
+    // user has interacted with it (all seat circles start at tabindex="-1").
+    // The container's onfocus handler delegates focus to the current seat and
+    // temporarily sets the container to tabindex="-1" while focus is inside.
+    expect(containerTabindex).toBe('0');
   });
 
   // ── Cross-row invariant ─────────────────────────────────────────────────────
@@ -848,5 +847,242 @@ test.describe('WID-S4: roving tabindex invariant across row navigation', () => {
     expect(restoredLabel).toContain('held');
     expect(restoredLabel).not.toContain('conflict');
     expect(restoredLabel).toBe(`${baseLabel}, held`);
+  });
+});
+
+// ─── WID-T5: canonical single-stop tab navigation ─────────────────────────────
+
+test.describe('WID-T5: canonical single-stop tab navigation', () => {
+  /** Wait until 12 seat circles are in the shadow DOM. */
+  async function waitForSeats(page: import('@playwright/test').Page): Promise<void> {
+    await page.waitForFunction(
+      () => {
+        const host = document.querySelector('arena-tickets');
+        if (!host || !host.shadowRoot) return false;
+        return host.shadowRoot.querySelectorAll('[data-seat-key]').length >= 12;
+      },
+      { timeout: 10_000 },
+    );
+  }
+
+  test.beforeEach(async ({ page }) => {
+    await setupPopulatedMapRoutes(page);
+  });
+
+  test('container has tabindex="0" and all seats have tabindex="-1" initially', async ({ page }) => {
+    await page.goto('/demo/populated-map.html');
+    await page.waitForLoadState('networkidle');
+    await waitForSeats(page);
+
+    const { containerTab, zeroSeatCount } = await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      if (!host || !host.shadowRoot) return { containerTab: null, zeroSeatCount: -1 };
+      const container = host.shadowRoot.querySelector('.seat-map-container');
+      const containerTab = container?.getAttribute('tabindex') ?? null;
+      const seats = host.shadowRoot.querySelectorAll('[data-seat-key]');
+      let zeroSeatCount = 0;
+      for (const s of seats) {
+        if (s.getAttribute('tabindex') === '0') zeroSeatCount++;
+      }
+      return { containerTab, zeroSeatCount };
+    });
+
+    // Container is the single Tab stop before any interaction.
+    expect(containerTab).toBe('0');
+    // All seat circles start at tabindex="-1" — none is a Tab stop yet.
+    expect(zeroSeatCount).toBe(0);
+  });
+
+  test('programmatic focus on container delegates to first seat, container becomes tabindex="-1"', async ({ page }) => {
+    await page.goto('/demo/populated-map.html');
+    await page.waitForLoadState('networkidle');
+    await waitForSeats(page);
+
+    // Programmatically focus the container — simulates Tab arriving on it.
+    await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      const container = host?.shadowRoot?.querySelector<HTMLElement>('.seat-map-container');
+      container?.focus();
+    });
+
+    // Wait for focus to settle (onfocus handler fires synchronously but we
+    // still need to let Playwright observe the DOM state).
+    await page.waitForFunction(
+      () => {
+        const host = document.querySelector('arena-tickets');
+        if (!host || !host.shadowRoot) return false;
+        const seats = host.shadowRoot.querySelectorAll('[data-seat-key]');
+        for (const s of seats) {
+          if (s.getAttribute('tabindex') === '0') return true;
+        }
+        return false;
+      },
+      { timeout: 3_000 },
+    );
+
+    const { containerTab, focusedSeatKey, seatZeroCount } = await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      if (!host || !host.shadowRoot) return { containerTab: null, focusedSeatKey: null, seatZeroCount: -1 };
+      const container = host.shadowRoot.querySelector('.seat-map-container');
+      const containerTab = container?.getAttribute('tabindex') ?? null;
+
+      // Find the focused seat.
+      let el: Element | null = host.shadowRoot.activeElement;
+      while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+      const focusedSeatKey = el?.getAttribute('data-seat-key') ?? null;
+
+      // Count seats with tabindex=0.
+      const seats = host.shadowRoot.querySelectorAll('[data-seat-key]');
+      let seatZeroCount = 0;
+      for (const s of seats) {
+        if (s.getAttribute('tabindex') === '0') seatZeroCount++;
+      }
+      return { containerTab, focusedSeatKey, seatZeroCount };
+    });
+
+    // Container must have ceded its Tab-stop role while focus is inside.
+    expect(containerTab).toBe('-1');
+    // Exactly one seat has tabindex=0 (the "current" seat that received focus).
+    expect(seatZeroCount).toBe(1);
+    // Focus landed on a seat (A1 — the first circle in the SVG).
+    expect(focusedSeatKey).toBeTruthy();
+    expect(focusedSeatKey).toBe('A1');
+  });
+
+  test('after focus leaves widget, container is restored to tabindex="0"', async ({ page }) => {
+    await page.goto('/demo/populated-map.html');
+    await page.waitForLoadState('networkidle');
+    await waitForSeats(page);
+
+    // Enter the composite widget by focusing the container.
+    await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      const container = host?.shadowRoot?.querySelector<HTMLElement>('.seat-map-container');
+      container?.focus();
+    });
+
+    // Wait until a seat has tabindex=0 (focus delegated inside).
+    await page.waitForFunction(
+      () => {
+        const host = document.querySelector('arena-tickets');
+        return (
+          !!host?.shadowRoot?.querySelector('[data-seat-key][tabindex="0"]')
+        );
+      },
+      { timeout: 3_000 },
+    );
+
+    // Now move focus AWAY from the widget (blur the current seat).
+    await page.evaluate(() => {
+      (document.body as HTMLElement).focus();
+    });
+
+    // Container should be restored to tabindex=0 (focusout handler fires).
+    await page.waitForFunction(
+      () => {
+        const host = document.querySelector('arena-tickets');
+        const container = host?.shadowRoot?.querySelector('.seat-map-container');
+        return container?.getAttribute('tabindex') === '0';
+      },
+      { timeout: 3_000 },
+    );
+
+    const containerTab = await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      const container = host?.shadowRoot?.querySelector('.seat-map-container');
+      return container?.getAttribute('tabindex') ?? null;
+    });
+
+    expect(containerTab).toBe('0');
+  });
+
+  test('ArrowRight navigates after Tab-into-container (one-stop entry)', async ({ page }) => {
+    await page.goto('/demo/populated-map.html');
+    await page.waitForLoadState('networkidle');
+    await waitForSeats(page);
+
+    // Enter via container focus (simulating Tab into widget).
+    await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      const container = host?.shadowRoot?.querySelector<HTMLElement>('.seat-map-container');
+      container?.focus();
+    });
+
+    // Wait for focus delegation to first seat.
+    await page.waitForFunction(
+      () => {
+        const host = document.querySelector('arena-tickets');
+        return !!host?.shadowRoot?.querySelector('[data-seat-key][tabindex="0"]');
+      },
+      { timeout: 3_000 },
+    );
+
+    // Now press ArrowRight — should navigate from A1 to A2.
+    await page.keyboard.press('ArrowRight');
+
+    const focusedKey = await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      if (!host || !host.shadowRoot) return null;
+      let el: Element | null = host.shadowRoot.activeElement;
+      while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+      return el?.getAttribute('data-seat-key') ?? null;
+    });
+
+    expect(focusedKey).toBe('A2');
+  });
+
+  test('re-entry after Tab-out restores focus to last-visited seat', async ({ page }) => {
+    await page.goto('/demo/populated-map.html');
+    await page.waitForLoadState('networkidle');
+    await waitForSeats(page);
+
+    // Enter and navigate to A3.
+    await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      const container = host?.shadowRoot?.querySelector<HTMLElement>('.seat-map-container');
+      container?.focus();
+    });
+    await page.waitForFunction(
+      () => !!document.querySelector('arena-tickets')?.shadowRoot?.querySelector('[data-seat-key][tabindex="0"]'),
+      { timeout: 3_000 },
+    );
+    await page.keyboard.press('ArrowRight'); // A1 → A2
+    await page.keyboard.press('ArrowRight'); // A2 → A3
+
+    // Leave the widget.
+    await page.evaluate(() => { (document.body as HTMLElement).focus(); });
+
+    // Wait for container to be restored.
+    await page.waitForFunction(
+      () => {
+        const container = document.querySelector('arena-tickets')?.shadowRoot?.querySelector('.seat-map-container');
+        return container?.getAttribute('tabindex') === '0';
+      },
+      { timeout: 3_000 },
+    );
+
+    // Re-enter the widget via container focus.
+    await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      const container = host?.shadowRoot?.querySelector<HTMLElement>('.seat-map-container');
+      container?.focus();
+    });
+
+    // Wait for focus delegation.
+    await page.waitForFunction(
+      () => !!document.querySelector('arena-tickets')?.shadowRoot?.querySelector('[data-seat-key][tabindex="0"]'),
+      { timeout: 3_000 },
+    );
+
+    const focusedKey = await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      if (!host || !host.shadowRoot) return null;
+      let el: Element | null = host.shadowRoot.activeElement;
+      while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+      return el?.getAttribute('data-seat-key') ?? null;
+    });
+
+    // Focus should resume at A3 (the last-visited seat before leaving).
+    expect(focusedKey).toBe('A3');
   });
 });

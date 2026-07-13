@@ -194,8 +194,65 @@
     if (key) onSeatTap(key, status);
   }
 
+  // ── Canonical single-stop focus management (WID-T5) ───────────────────────
+
   /**
-   * Roving-tabindex navigation (WID-R4).
+   * Called when the .seat-map-container itself receives focus (e.g. via Tab).
+   *
+   * Canonical single-stop ARIA composite widget pattern:
+   *   1. The container starts with tabindex="0" and is the ONLY Tab stop for
+   *      the entire seat map.
+   *   2. When focus lands on the container, we immediately delegate it to the
+   *      "current" seat (the one holding tabindex="0" from a previous visit, or
+   *      the first available seat on first entry).
+   *   3. The container is moved to tabindex="-1" so subsequent Tabs exit the
+   *      widget rather than cycling back to the container.
+   *   4. A single seat holds tabindex="0" at all times while focus is inside.
+   */
+  function onContainerFocus(e: FocusEvent): void {
+    // Only act when the container div ITSELF receives focus, not when focus
+    // moves between children inside it (those also bubble focus events).
+    if (e.target !== svgContainer || !svgContainer) return;
+
+    // Find the "current" seat — either a previously roving-selected one
+    // (tabindex="0") or fall back to the very first seat in the SVG.
+    const currentSeat =
+      (svgContainer.querySelector<HTMLElement>('[data-seat-key][tabindex="0"]') ??
+       svgContainer.querySelector<HTMLElement>('[data-seat-key]'));
+
+    if (!currentSeat) return;
+
+    // Ensure the seat is a Tab stop (important on first visit when all seats
+    // were rendered with tabindex="-1").
+    currentSeat.setAttribute('tabindex', '0');
+
+    // Move the container out of the Tab order while focus is inside.
+    svgContainer.setAttribute('tabindex', '-1');
+
+    // Shift actual browser focus into the seat.  preventScroll avoids an
+    // unwanted scroll jump when the seat is off-screen after pan/zoom.
+    currentSeat.focus({ preventScroll: true });
+  }
+
+  /**
+   * Called when focus leaves any element inside .seat-map-container.
+   *
+   * When the new focus target (`relatedTarget`) is OUTSIDE the container,
+   * focus has left the composite widget entirely — restore the container as
+   * the single Tab stop so future Tabs can re-enter the widget.
+   * The current seat retains tabindex="0" as "memory" so the next entry
+   * resumes at the last-visited seat rather than jumping back to the first.
+   */
+  function onContainerFocusOut(e: FocusEvent): void {
+    const related = e.relatedTarget as Element | null;
+    if (svgContainer && !svgContainer.contains(related)) {
+      // Restore container as single Tab stop.
+      svgContainer.setAttribute('tabindex', '0');
+    }
+  }
+
+  /**
+   * Roving-tabindex navigation (WID-R4, updated for WID-T5 canonical model).
    *
    * When focus is on a seat circle ([data-seat-key]):
    *   ArrowLeft/Right — move within the current row (does NOT wrap).
@@ -203,9 +260,9 @@
    *   Home/End        — jump to the first/last seat in the current row.
    *
    * Navigation updates tabindex: the target seat gets tabindex="0" and receives
-   * focus; the previously-focused seat gets tabindex="-1".  This maintains one
-   * Tab stop per row (the last-focused seat in that row) so subsequent Tabs
-   * continue to cycle through rows rather than individual seats.
+   * focus; the previously-focused seat gets tabindex="-1".  Only ONE seat in the
+   * entire map holds tabindex="0" at any time (the last-navigated-to seat).
+   * Tab/Shift+Tab exit the composite widget (since no other seat is a Tab stop).
    */
   function navigateSeat(current: Element, navKey: string): void {
     if (!svgContainer) return;
@@ -374,6 +431,16 @@
   // Computed SVG transform attribute.
   const svgTransform = $derived(toSVGTransform(transform));
 
+  // ── Canonical single-stop: restore container Tab stop on SVG reload ─────────
+  // When the session changes, buildSeatMapSVG produces fresh HTML with all seats
+  // at tabindex="-1".  If a previous focus visit left the container at
+  // tabindex="-1" (delegated), we must restore it to "0" so the composite widget
+  // can be re-entered via Tab after the reload.
+  $effect(() => {
+    if (!svgHTML || !svgContainer) return;
+    svgContainer.setAttribute('tabindex', '0');
+  });
+
   // ── Selection highlights ────────────────────────────────────────────────────
   let prevSelectedKeys = $state<ReadonlySet<string>>(new Set());
 
@@ -442,9 +509,11 @@
     onpointercancel={onPointerUp}
     onclick={onContainerClick}
     onkeydown={onContainerKeydown}
+    onfocus={onContainerFocus}
+    onfocusout={onContainerFocusOut}
     aria-label="Interactive seat map"
     role="application"
-    tabindex="-1"
+    tabindex="0"
   >
     {#if schemaLoading}
       <div class="seat-map-state" aria-live="polite">Loading seat map…</div>
