@@ -20056,3 +20056,59 @@ Verification:
   npm --prefix apps/widget run size          52.25 kB gzip PASS
   ci_workflow_test.go: widget-acceptance still present in ci.yml (PASS)
 Marked #334 passing. (334/338 features passing, 98.8%)
+
+
+## 2026-07-13 - Feature #336 (WID-S2) 409 conflict handling against real backend
+
+Fixed all five bugs identified in the WID-R review of feature #331:
+
+1. **Nested error envelope parsing** (api.ts):
+   The Arena backend sends {"error": {code, message, details}} — a nested object,
+   NOT the flat {error: string, code: string, details: ...} that the old code assumed.
+   Both postCheckoutStart and postCheckoutRecover now unwrap the nested envelope:
+   - body.error is an object -> extract nested.code / nested.message / nested.details
+   - body.error is a string -> legacy flat fallback (backward compat)
+   - body.message -> last-resort fallback
+
+2. **Infinite $effect loop killed** (SeatMapView.svelte):
+   prevConflictKeys was $state, so writing to it inside the $effect re-triggered
+   the effect on every conflictKeys update. Changed to plain let (non-reactive).
+
+3. **conflictKeys prop wired into <arena-tickets>** (ArenaTickets.svelte):
+   - Imported parseConflictsFromApiError + conflictKeySet from checkout.ts
+   - Added conflictKeys = $state<ReadonlySet<string>>(new Set())
+   - handleCheckout: catch 409, parse conflicts, set conflictKeys + show t.conflict_notice
+   - handleRecover: same pattern
+   - handleRetry: resets conflictKeys = new Set()
+   - Passed {conflictKeys} to <SeatMapView>
+
+4. **Diff-based conflict highlight cleanup** (SeatMapView.svelte):
+   When conflictKeys changes, the $effect now diffs prev vs current:
+   - Applies applyConflictHighlight to all current keys
+   - Computes toRestore = prevConflictKeys minus keys, calls clearConflictHighlight
+   Previously only cleared when new set was empty — partial resolution left stale highlights.
+
+5. **Shared aria-label restore fix / data-base-label** (seatmap-render.ts):
+   Replaced all brittle regex surgery (/,\s+[\w -]+$/) with a stable data-base-label
+   attribute stored on each seat circle at build time:
+   - buildSeatMapSVG(): emits data-base-label (label without status suffix)
+   - applySeatStatusUpdate(): reads data-base-label + status (no regex)
+   - applyConflictHighlight(): reads data-base-label + conflict suffix (no regex)
+   - applySelectionHighlights(): reads data-base-label + data-status for restore
+   This is the WID-S4 prep: WID-S4 can build on data-base-label for live updates.
+
+New/modified files:
+- apps/widget/src/api.ts: nested envelope parsing in postCheckoutStart + postCheckoutRecover
+- apps/widget/src/lib/seatmap-render.ts: data-base-label attribute, aria-label restoration
+- apps/widget/src/components/SeatMapView.svelte: fix $effect loop, diff-based cleanup
+- apps/widget/src/ArenaTickets.svelte: conflictKeys state + wiring
+- apps/widget/src/api.test.ts: +1 test for real nested envelope format
+- apps/widget/src/lib/seatmap-render.test.ts: +5 tests (data-base-label, aria-label restore)
+- apps/widget/tests/palac-akropolis-real.e2e.ts: +1 E2E test for nested envelope shape
+
+Verification:
+  npm --prefix apps/widget run type-check    OK (0 errors)
+  npm --prefix apps/widget test              429/429 PASS (11 test files)
+  npm --prefix apps/widget run build         54.46 kB gzip vs 150 kB gate PASS
+  npm --prefix apps/widget run size          54.1 kB gzip PASS
+Marked #336 passing. (336/338 features passing, 99.4%)
