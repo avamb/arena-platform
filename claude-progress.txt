@@ -19887,3 +19887,46 @@ Verification:
   npm --prefix apps/widget run build         52.12 kB gzip vs 150 kB gate PASS
   npm --prefix apps/widget run size          51.81 kB gzip PASS
 Marked #330 passing.
+
+
+## 2026-07-13 - Feature #333 (WID-R4) Keyboard model - roving tabindex + live seat labels
+
+Implemented WID-R4: roving tabindex keyboard model for the SVG seat map and
+live aria-labels that include price and update without focus loss.
+
+New/modified files:
+- apps/widget/src/lib/seatmap-render.ts:
+  Added buildPriceLabel(categoryIndex, categoryPrices): returns price string
+  ("22.00 EUR", "50.00 CZK") for aria-labels. Uses price_hint/currency_hint
+  first, falls back to price_amount/100 + currency.
+  Updated buildSeatMapSVG(): roving tabindex - first seat per row gets
+  tabindex="0" (Tab stop), all other seats get tabindex="-1". Seat
+  aria-labels now include price: "Parter, row 1, seat 1, 22.00 EUR, available".
+  Exported buildPriceLabel from index.ts.
+
+- apps/widget/src/components/SeatMapView.svelte:
+  Added navigateSeat(current, key): implements roving tabindex navigation.
+  ArrowLeft/Right move within a row; ArrowUp/Down move to same-index seat
+  in next/prev row; Home/End jump to first/last seat in row. Navigation
+  updates tabindex (old seat -1, new seat 0) and calls .focus() on target.
+  Updated onContainerKeydown to dispatch arrow/Home/End keys to navigateSeat.
+
+- apps/widget/src/lib/seatmap-render.test.ts:
+  +8 buildPriceLabel tests. +5 roving-tabindex and price-in-aria-label tests.
+  Total: 70 tests (was 56).
+
+- apps/widget/tests/keyboard.e2e.ts:
+  Removed WID-R4 forward-reference comment. Added "WID-R4" describe block
+  with 7 E2E tests: axe on populated map, price in aria-label, tabindex
+  counts, ArrowRight/ArrowDown/Home/End navigation, status-poll live label.
+
+- apps/widget/demo/populated-map.html (new):
+  Fixture page with session-id=kbd-session-001; E2E tests mock schema +
+  seat-status via page.route() for offline 3x4 seat map testing.
+
+Verification:
+  npm --prefix apps/widget run type-check    OK (0 errors)
+  npm --prefix apps/widget test              407/407 PASS (10 test files)
+  npm --prefix apps/widget run build         52.57 kB gzip vs 150 kB gate PASS
+  npm --prefix apps/widget run size          52.25 kB gzip PASS
+Marked #333 passing. (332/333 features passing, 99.7%)
