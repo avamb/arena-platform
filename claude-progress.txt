@@ -20111,4 +20111,54 @@ Verification:
   npm --prefix apps/widget test              429/429 PASS (11 test files)
   npm --prefix apps/widget run build         54.46 kB gzip vs 150 kB gate PASS
   npm --prefix apps/widget run size          54.1 kB gzip PASS
+Marked #336 passing. (336/338 features passing, 98.8%)
+
+
+## 2026-07-13 - Feature #338 (WID-S5) CustomEvents from <arena-tickets> for host pages
+
+Implemented WID-S5: the <arena-tickets> web component now dispatches typed
+CustomEvents at key purchase-cycle milestones so host pages can integrate
+with analytics or UX without touching widget internals.
+
+All events dispatched with bubbles:true, composed:true (cross Shadow DOM).
+
+New/modified files:
+- apps/widget/src/lib/events.ts (NEW):
+  ARENA_EVENTS const (5 names: arena:seat_selected, arena:seat_released,
+  arena:payment_started, arena:order_paid, arena:order_failed).
+  Typed detail interfaces for each event. dispatchWidgetEvent<K> generic
+  helper enforces detail-to-name type mapping at compile time.
+
+- apps/widget/src/ArenaTickets.svelte (changes were pre-committed in c57c70d
+  by WID-S2 agent; confirmed present):
+  import dispatchWidgetEvent + ARENA_EVENTS; const host = $host<HTMLElement>();
+  onSeatTap: detects add vs remove, emits seat_selected/released accordingly.
+  handleRemoveLine: emits seat_released for each removed seated seat key.
+  handleCheckout: emits payment_started after postCheckoutStart succeeds.
+  loadOrderStatus: emits order_paid (status=paid) or order_failed (failed/expired).
+
+- apps/widget/src/index.ts: exports ARENA_EVENTS, dispatchWidgetEvent, all 5
+  detail types, ArenaEventDetailMap, ArenaEventName.
+
+- apps/widget/src/lib/events.test.ts (NEW): 16 unit tests covering ARENA_EVENTS
+  constant, dispatchWidgetEvent dispatch, all 5 event types, multiple listeners,
+  and cross-event non-leakage.
+
+- apps/widget/tests/custom-events.e2e.ts (NEW): 11 E2E tests covering
+  seat_selected (3), seat_released (2), order_paid (2), order_failed (3),
+  composed boundary verification (1 — event bubbles through shadow DOM to
+  document), and no-spurious-events check (1).
+
+- apps/widget/demo/custom-events.html (NEW): offline fixture for E2E tests;
+  mounts widget with evt-feed-token/evt-session-001, host-page event log.
+
+- apps/widget/docs/custom-events.md (NEW): full event contract reference with
+  quick-start HTML snippet, per-event tables, TypeScript types usage guide.
+
+Verification:
+  npm --prefix apps/widget run type-check    OK (0 errors)
+  npm --prefix apps/widget test              429/429 PASS (11 test files, +16 new)
+  npm --prefix apps/widget run build         success 54.46 kB gzip
+  npm --prefix apps/widget run size          54.1 kB gzip vs 150 kB gate PASS
+Marked #338 passing. (338/338 features passing, 100.0%)
 Marked #336 passing. (336/338 features passing, 99.4%)
