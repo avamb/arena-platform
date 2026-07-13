@@ -26,6 +26,36 @@
 import type { Geometry, CategoryPrice, SeatStatusValue } from '../types.js';
 import { sanitizeDecorSvg } from './svg-sanitize.js';
 
+// ─── Price label helper ───────────────────────────────────────────────────────
+
+/**
+ * Build a human-readable price label for an aria-label from a seat category.
+ *
+ * Priority:
+ *   1. `price_hint` + `currency_hint` (e.g. "22.00 EUR")
+ *   2. `price_amount / 100` + `currency`  (e.g. "50.00 CZK")
+ *   3. Empty string when no price info is available.
+ *
+ * The returned string uses only ASCII-safe characters so it is safe to embed
+ * directly in an XML attribute value (no further escaping required beyond the
+ * standard `xmlAttr()` call applied to the full aria-label).
+ */
+export function buildPriceLabel(
+  categoryIndex: number,
+  categoryPrices: CategoryPrice[],
+): string {
+  const cp = categoryPrices.find((c) => c.index === categoryIndex);
+  if (!cp) return '';
+  if (cp.price_hint && cp.currency_hint) {
+    return `${cp.price_hint} ${cp.currency_hint}`;
+  }
+  if (cp.price_amount !== undefined && cp.currency) {
+    const amount = (cp.price_amount / 100).toFixed(2);
+    return `${amount} ${cp.currency}`;
+  }
+  return '';
+}
+
 // ─── Status color palette ─────────────────────────────────────────────────────
 
 /** Fill color overrides for non-available seat statuses. */
@@ -185,6 +215,12 @@ export function buildSeatMapSVG(
   }
 
   // ── Seats ──
+  // Roving-tabindex model (WID-R4): the FIRST seat in each row gets
+  // tabindex="0" (the row's initial Tab stop).  All other seats in the row
+  // get tabindex="-1" so they are reachable only via ArrowLeft/Right keys.
+  // ArrowUp/Down move between rows; Tab/Shift+Tab jump between rows.
+  // This keeps the seat map navigable without flooding the global Tab order
+  // with hundreds of individual seat stops.
   parts.push('<g id="seats">');
   for (const section of sections) {
     parts.push(
@@ -194,13 +230,18 @@ export function buildSeatMapSVG(
       parts.push(
         `<g data-row-key="${xmlAttr(row.key)}" aria-label="Row ${xmlAttr(row.name)}">`,
       );
-      for (const seat of row.seats) {
+      row.seats.forEach((seat, seatIndexInRow) => {
         const status = seatStatuses[seat.key] ?? 'available';
         const fill = seatFillColor(seat.category_index, status, catColors);
         const r = seat.radius > 0 ? seat.radius : 8;
-        const ariaLabel = xmlAttr(
-          `${section.name}, row ${row.name}, seat ${seat.number}, ${status}`,
-        );
+        // Roving tabindex: only the first seat in each row is a Tab stop.
+        const tabIdx = seatIndexInRow === 0 ? '0' : '-1';
+        // Build aria-label: section, row, seat, price (if available), status.
+        const priceLabel = buildPriceLabel(seat.category_index, categoryPrices);
+        const rawLabel = priceLabel
+          ? `${section.name}, row ${row.name}, seat ${seat.number}, ${priceLabel}, ${status}`
+          : `${section.name}, row ${row.name}, seat ${seat.number}, ${status}`;
+        const ariaLabel = xmlAttr(rawLabel);
         parts.push(
           `<circle` +
             ` data-seat-key="${xmlAttr(seat.key)}"` +
@@ -209,11 +250,11 @@ export function buildSeatMapSVG(
             ` data-status="${status}"` +
             ` data-cat="${seat.category_index}"` +
             ` role="button"` +
-            ` tabindex="0"` +
+            ` tabindex="${tabIdx}"` +
             ` aria-label="${ariaLabel}"` +
             `/>`,
         );
-      }
+      });
       parts.push('</g>');
     }
     parts.push('</g>');

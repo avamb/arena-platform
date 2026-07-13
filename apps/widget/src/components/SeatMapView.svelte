@@ -172,16 +172,84 @@
     if (key) onSeatTap(key, status);
   }
 
+  /**
+   * Roving-tabindex navigation (WID-R4).
+   *
+   * When focus is on a seat circle ([data-seat-key]):
+   *   ArrowLeft/Right — move within the current row (does NOT wrap).
+   *   ArrowUp/Down    — move to the same column index in the prev/next row.
+   *   Home/End        — jump to the first/last seat in the current row.
+   *
+   * Navigation updates tabindex: the target seat gets tabindex="0" and receives
+   * focus; the previously-focused seat gets tabindex="-1".  This maintains one
+   * Tab stop per row (the last-focused seat in that row) so subsequent Tabs
+   * continue to cycle through rows rather than individual seats.
+   */
+  function navigateSeat(current: Element, navKey: string): void {
+    if (!svgContainer) return;
+
+    const rowGroup = current.closest('[data-row-key]');
+    if (!rowGroup) return;
+
+    const rowSeats = Array.from(rowGroup.querySelectorAll<Element>('[data-seat-key]'));
+    const seatIdx = rowSeats.indexOf(current);
+    if (seatIdx === -1) return;
+
+    let target: Element | null = null;
+
+    if (navKey === 'ArrowRight') {
+      target = seatIdx + 1 < rowSeats.length ? (rowSeats[seatIdx + 1] ?? null) : null;
+    } else if (navKey === 'ArrowLeft') {
+      target = seatIdx > 0 ? (rowSeats[seatIdx - 1] ?? null) : null;
+    } else if (navKey === 'Home') {
+      target = rowSeats[0] ?? null;
+    } else if (navKey === 'End') {
+      target = rowSeats[rowSeats.length - 1] ?? null;
+    } else if (navKey === 'ArrowDown' || navKey === 'ArrowUp') {
+      const allRows = Array.from(svgContainer.querySelectorAll<Element>('[data-row-key]'));
+      const rowIdx = allRows.indexOf(rowGroup);
+      const nextRowIdx = navKey === 'ArrowDown' ? rowIdx + 1 : rowIdx - 1;
+      if (nextRowIdx >= 0 && nextRowIdx < allRows.length) {
+        const nextRow = allRows[nextRowIdx]!;
+        const nextRowSeats = Array.from(nextRow.querySelectorAll<Element>('[data-seat-key]'));
+        target = nextRowSeats[Math.min(seatIdx, nextRowSeats.length - 1)] ?? null;
+      }
+    }
+
+    if (target && target !== current) {
+      current.setAttribute('tabindex', '-1');
+      target.setAttribute('tabindex', '0');
+      (target as HTMLElement).focus();
+    }
+  }
+
   function onContainerKeydown(e: KeyboardEvent): void {
-    if (e.key !== 'Enter' && e.key !== ' ') return;
-    if (!onSeatTap) return;
     const target = e.target as Element;
-    const seatEl = target.closest('[data-seat-key]');
-    if (!seatEl) return;
-    e.preventDefault();
-    const key = seatEl.getAttribute('data-seat-key') ?? '';
-    const status = (seatEl.getAttribute('data-status') ?? 'available') as SeatStatusValue;
-    if (key) onSeatTap(key, status);
+    const seatEl = target.closest?.('[data-seat-key]') ?? null;
+
+    if (seatEl) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        if (!onSeatTap) return;
+        e.preventDefault();
+        const seatKey = seatEl.getAttribute('data-seat-key') ?? '';
+        const status = (seatEl.getAttribute('data-status') ?? 'available') as SeatStatusValue;
+        if (seatKey) onSeatTap(seatKey, status);
+        return;
+      }
+
+      if (
+        e.key === 'ArrowLeft' ||
+        e.key === 'ArrowRight' ||
+        e.key === 'ArrowUp' ||
+        e.key === 'ArrowDown' ||
+        e.key === 'Home' ||
+        e.key === 'End'
+      ) {
+        e.preventDefault();
+        navigateSeat(seatEl, e.key);
+        return;
+      }
+    }
   }
 
   function onPointerMove(e: PointerEvent): void {

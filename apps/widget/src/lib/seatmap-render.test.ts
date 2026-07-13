@@ -15,6 +15,7 @@ import {
   clearConflictHighlight,
   buildCategoryColorMap,
   seatFillColor,
+  buildPriceLabel,
   xmlAttr,
   cssAttrEscape,
   STATUS_COLORS,
@@ -184,6 +185,69 @@ describe('seatFillColor', () => {
   });
 });
 
+// ─── buildPriceLabel ─────────────────────────────────────────────────────────
+
+describe('buildPriceLabel', () => {
+  it('returns empty string when category not found', () => {
+    expect(buildPriceLabel(99, [])).toBe('');
+  });
+
+  it('returns empty string when category has no price fields', () => {
+    const cp: CategoryPrice[] = [{ index: 1, name: 'Cat', color: '#fff' }];
+    expect(buildPriceLabel(1, cp)).toBe('');
+  });
+
+  it('uses price_hint and currency_hint when both present', () => {
+    const cp: CategoryPrice[] = [
+      { index: 1, name: 'Parter', color: '#f00', price_hint: '22.00', currency_hint: 'EUR' },
+    ];
+    expect(buildPriceLabel(1, cp)).toBe('22.00 EUR');
+  });
+
+  it('uses price_amount/100 and currency when price_hint absent', () => {
+    const cp: CategoryPrice[] = [
+      { index: 1, name: 'Parter', color: '#f00', price_amount: 5000, currency: 'CZK' },
+    ];
+    expect(buildPriceLabel(1, cp)).toBe('50.00 CZK');
+  });
+
+  it('formats price_amount with two decimal places', () => {
+    const cp: CategoryPrice[] = [
+      { index: 2, name: 'Balkon', color: '#00f', price_amount: 1250, currency: 'CZK' },
+    ];
+    expect(buildPriceLabel(2, cp)).toBe('12.50 CZK');
+  });
+
+  it('prefers price_hint over price_amount when both present', () => {
+    const cp: CategoryPrice[] = [
+      {
+        index: 1,
+        name: 'Parter',
+        color: '#f00',
+        price_hint: '22.00',
+        currency_hint: 'EUR',
+        price_amount: 2200,
+        currency: 'EUR',
+      },
+    ];
+    expect(buildPriceLabel(1, cp)).toBe('22.00 EUR');
+  });
+
+  it('returns empty string when price_amount present but currency absent', () => {
+    const cp: CategoryPrice[] = [
+      { index: 1, name: 'Cat', color: '#fff', price_amount: 1000 },
+    ];
+    expect(buildPriceLabel(1, cp)).toBe('');
+  });
+
+  it('returns empty string when currency present but price_amount absent', () => {
+    const cp: CategoryPrice[] = [
+      { index: 1, name: 'Cat', color: '#fff', currency: 'EUR' },
+    ];
+    expect(buildPriceLabel(1, cp)).toBe('');
+  });
+});
+
 // ─── buildSeatMapSVG ─────────────────────────────────────────────────────────
 
 describe('buildSeatMapSVG', () => {
@@ -340,10 +404,64 @@ describe('buildSeatMapSVG', () => {
     expect(svg).toContain('r="8"');
   });
 
-  it('includes role=button and tabindex=0 on each seat', () => {
+  it('first seat in each row has tabindex="0" (roving tabindex model)', () => {
     const svg = buildSeatMapSVG(makeGeometry(), categoryPrices, {});
+    // role=button on all seats
     expect(svg).toContain('role="button"');
+    // The first seat of each row gets tabindex="0" (Tab stop per row).
     expect(svg).toContain('tabindex="0"');
+    // Non-first seats get tabindex="-1".
+    // makeGeometry() has Parter/Row1 with 2 seats → second seat must be -1.
+    expect(svg).toContain('tabindex="-1"');
+  });
+
+  it('only the first seat per row gets tabindex="0", subsequent seats get "-1"', () => {
+    // Row P|1 has 2 seats: first → 0, second → -1.
+    const svg = buildSeatMapSVG(makeGeometry(), categoryPrices, {});
+    // Count occurrences.
+    const zeros = (svg.match(/tabindex="0"/g) ?? []).length;
+    const minusOnes = (svg.match(/tabindex="-1"/g) ?? []).length;
+    // makeGeometry() has 2 rows (Parter/Row1 and Balkon/RowA) → 2 zeros.
+    // Parter/Row1 has 2 seats: 1 zero, 1 minus-one.
+    // Balkon/RowA has 1 seat:  1 zero, 0 minus-ones.
+    expect(zeros).toBe(2);
+    expect(minusOnes).toBe(1);
+  });
+
+  it('seat aria-label includes price when categoryPrices has price_amount', () => {
+    const svg = buildSeatMapSVG(makeGeometry(), categoryPrices, {});
+    // categoryPrices fixture: index 1 → price_amount 5000 CZK → "50.00 CZK"
+    expect(svg).toContain('50.00 CZK');
+    // index 2 → 3000 CZK → "30.00 CZK"
+    expect(svg).toContain('30.00 CZK');
+  });
+
+  it('seat aria-label format is: section, row, seat, price, status', () => {
+    const svg = buildSeatMapSVG(makeGeometry(), categoryPrices, {});
+    // Parter / Row 1 / seat 1 / 50.00 CZK / available
+    expect(svg).toContain('Parter, row 1, seat 1, 50.00 CZK, available');
+  });
+
+  it('seat aria-label uses price_hint when available', () => {
+    const geo = makeGeometry();
+    const cpWithHint: CategoryPrice[] = [
+      { index: 1, name: 'Parter', color: '#ff0000', price_hint: '22.00', currency_hint: 'EUR' },
+    ];
+    const svg = buildSeatMapSVG(geo, cpWithHint, {});
+    expect(svg).toContain('22.00 EUR');
+  });
+
+  it('seat aria-label omits price when categoryPrices has no price data', () => {
+    const geo = makeGeometry();
+    const cpNoPrice: CategoryPrice[] = [
+      { index: 1, name: 'Parter', color: '#ff0000' },
+      { index: 2, name: 'Balkon', color: '#0000ff' },
+    ];
+    const svg = buildSeatMapSVG(geo, cpNoPrice, {});
+    // Should fall back to format without price.
+    expect(svg).toContain('Parter, row 1, seat 1, available');
+    expect(svg).not.toContain('undefined');
+    expect(svg).not.toContain('NaN');
   });
 
   it('is deterministic across multiple calls', () => {

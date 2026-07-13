@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Arena Tickets — Populated Seat Map Test Fixture</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        margin: 0;
+        padding: 2rem;
+        background: #f8fafc;
+        color: #1a1a1a;
+      }
+      h1 { font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem; }
+      .card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 1.5rem;
+        min-height: 400px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Populated Seat Map — Keyboard &amp; Axe Test Fixture</h1>
+      <!--
+        The E2E test intercepts /v1/event-sessions/kbd-session-001/schema and
+        /v1/event-sessions/kbd-session-001/seat-status via page.route() so the
+        widget renders a real populated seat map without a live backend.
+      -->
+      <section aria-labelledby="map-heading">
+        <h2 id="map-heading">Test Seat Map</h2>
+        <div class="card">
+          <arena-tickets
+            id="test-widget"
+            feed-token="kbd-feed-token"
+            session-id="kbd-session-001"
+          ></arena-tickets>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="../dist/v1/arena-tickets.js"></script>
+  </body>
+</html>

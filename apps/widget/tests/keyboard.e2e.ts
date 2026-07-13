@@ -5,9 +5,101 @@
  * only (no mouse), with visible focus indicators on all interactive elements.
  *
  * WID-E: Keyboard-only purchase E2E — feature #327
+ * WID-R4: Roving tabindex + live seat labels — feature #333
  */
 
 import { test, expect } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
+
+// ─── Minimal schema for keyboard / axe tests ──────────────────────────────────
+
+/** 3 rows × 4 seats = 12 seats total.  Kept small for fast test runs. */
+function buildMinimalSchema(): object {
+  const rowNames = ['A', 'B', 'C'];
+  return {
+    session_id: 'kbd-session-001',
+    event_id: 'kbd-event-001',
+    admission_mode: 'assigned_seats',
+    seating_plan_version_id: 'spv-kbd-001',
+    seat_status_version: 1,
+    geometry_checksum: 'kbd-checksum',
+    capacity_seated: 12,
+    capacity_standing: 0,
+    geometry: {
+      schema_version: 1,
+      canvas: { width: 600, height: 300 },
+      categories: [
+        { index: 0, name: 'Parter', color: '#4F46E5', price_hint: '22.00', currency_hint: 'EUR' },
+      ],
+      sections: [
+        {
+          key: 'parter',
+          name: 'Parter',
+          rows: rowNames.map((rowName, rowIdx) => ({
+            key: `parter-row-${rowName}`,
+            name: rowName,
+            seats: Array.from({ length: 4 }, (_, seatIdx) => ({
+              key: `${rowName}${seatIdx + 1}`,
+              number: String(seatIdx + 1),
+              x: 80 + seatIdx * 80,
+              y: 80 + rowIdx * 60,
+              radius: 10,
+              category_index: 0,
+              barcode_hint: null,
+            })),
+          })),
+        },
+      ],
+      standing_zones: [],
+      tables: [],
+      decor_svg: '',
+    },
+    category_prices: [
+      {
+        index: 0,
+        name: 'Parter',
+        color: '#4F46E5',
+        price_hint: '22.00',
+        currency_hint: 'EUR',
+        pricing_mode: 'fixed',
+        price_amount: 2200,
+        currency: 'EUR',
+      },
+    ],
+  };
+}
+
+function buildStatusResponse(): object {
+  return {
+    session_id: 'kbd-session-001',
+    status_version: 1,
+    delta: false,
+    seats: {
+      A1: 'available', A2: 'available', A3: 'available', A4: 'available',
+      B1: 'available', B2: 'available', B3: 'available', B4: 'available',
+      C1: 'available', C2: 'available', C3: 'available', C4: 'available',
+    },
+  };
+}
+
+// ─── Shared route setup ───────────────────────────────────────────────────────
+
+async function setupPopulatedMapRoutes(page: import('@playwright/test').Page): Promise<void> {
+  await page.route('**/v1/event-sessions/kbd-session-001/schema', (route) => {
+    void route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(buildMinimalSchema()),
+    });
+  });
+  await page.route('**/v1/event-sessions/kbd-session-001/seat-status**', (route) => {
+    void route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(buildStatusResponse()),
+    });
+  });
+}
 
 // ─── Demo page keyboard navigation ───────────────────────────────────────────
 
@@ -76,19 +168,15 @@ test.describe('Demo page keyboard navigation', () => {
 // ─── A11y fixture keyboard navigation ────────────────────────────────────────
 
 test.describe('A11y fixture keyboard navigation', () => {
-  test('page is navigable by keyboard (no trap)', async ({ page }) => {
-    // The a11y-keyboard.html fixture contains no focusable elements at all,
-    // so a Tab-walk there is vacuous — run the no-trap check against the
-    // real demo page, where the widget exposes chips and focusable seats.
+  test('page is navigable by keyboard (no trap — roving tabindex model)', async ({ page }) => {
     await page.goto('/demo/index.html');
     await page.waitForLoadState('networkidle');
 
     // Tab 15 times and collect the DEEP focused element identity.
     // document.activeElement stops at the shadow host (ARENA-TICKETS), so a
     // tagName heuristic would see one repeating tag while focus is in fact
-    // advancing through hundreds of focusable seats inside the shadow root
-    // (each with a unique aria-label). Resolve through shadowRoot and track
-    // element identity instead.
+    // advancing through focusable elements inside the shadow root.
+    // Resolve through shadowRoot and track element identity instead.
     const identities: string[] = [];
     for (let i = 0; i < 15; i++) {
       await page.keyboard.press('Tab');
@@ -108,11 +196,11 @@ test.describe('A11y fixture keyboard navigation', () => {
     }
 
     // No keyboard trap: a trap means focus is STUCK on one element. Seeing
-    // several distinct focused elements across 15 Tabs proves movement; the
-    // exact count depends on how many demo instances render focusable
-    // content (error-state instances contribute none). (Per-seat arrow-key
-    // navigation with a roving tabindex is Wave WID-R4; until then seats
-    // are individually tabbable, which is verbose but not a trap.)
+    // several distinct focused elements across 15 Tabs proves movement.
+    // With the roving-tabindex model (WID-R4), Tab moves between rows (one
+    // Tab stop per row), not between individual seats — so the number of
+    // distinct elements depends on the number of rows/zones rendered, not
+    // the total seat count.
     const distinct = new Set(identities).size;
     expect(distinct).toBeGreaterThanOrEqual(3);
   });
@@ -166,5 +254,295 @@ test.describe('Widget shadow DOM focus styles', () => {
       return root?.getAttribute('aria-label') ?? null;
     });
     expect(ariaLabel).toBeTruthy();
+  });
+});
+
+// ─── Roving tabindex + live seat labels (WID-R4) ─────────────────────────────
+
+test.describe('WID-R4: roving tabindex + live seat labels', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupPopulatedMapRoutes(page);
+  });
+
+  test('axe WCAG 2.2 AA — no critical/serious violations on populated seat map', async ({
+    page,
+  }) => {
+    await page.goto('/demo/populated-map.html');
+    await page.waitForLoadState('networkidle');
+
+    // Wait for seat circles to appear in the shadow DOM.
+    await page.waitForFunction(() => {
+      const host = document.querySelector('arena-tickets');
+      if (!host || !host.shadowRoot) return false;
+      return host.shadowRoot.querySelectorAll('[data-seat-key]').length > 0;
+    }, { timeout: 10_000 });
+
+    const results = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
+      .analyze();
+
+    const critical = results.violations.filter(
+      (v) => v.impact === 'critical' || v.impact === 'serious',
+    );
+    expect(
+      critical,
+      `WCAG 2.2 AA violations on populated map:\n${JSON.stringify(critical, null, 2)}`,
+    ).toHaveLength(0);
+  });
+
+  test('seat aria-labels include price and status', async ({ page }) => {
+    await page.goto('/demo/populated-map.html');
+    await page.waitForLoadState('networkidle');
+
+    await page.waitForFunction(() => {
+      const host = document.querySelector('arena-tickets');
+      if (!host || !host.shadowRoot) return false;
+      return host.shadowRoot.querySelectorAll('[data-seat-key]').length > 0;
+    }, { timeout: 10_000 });
+
+    const firstSeatLabel = await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      if (!host || !host.shadowRoot) return null;
+      const seat = host.shadowRoot.querySelector('[data-seat-key]');
+      return seat?.getAttribute('aria-label') ?? null;
+    });
+
+    // Label should include section, row, seat, price, and status.
+    expect(firstSeatLabel).toBeTruthy();
+    expect(firstSeatLabel).toContain('Parter');
+    expect(firstSeatLabel).toContain('22.00 EUR');
+    expect(firstSeatLabel).toContain('available');
+  });
+
+  test('roving tabindex: first seat per row has tabindex=0, rest have -1', async ({ page }) => {
+    await page.goto('/demo/populated-map.html');
+    await page.waitForLoadState('networkidle');
+
+    await page.waitForFunction(() => {
+      const host = document.querySelector('arena-tickets');
+      if (!host || !host.shadowRoot) return false;
+      return host.shadowRoot.querySelectorAll('[data-seat-key]').length > 0;
+    }, { timeout: 10_000 });
+
+    const { zeroCount, minusOneCount } = await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      if (!host || !host.shadowRoot) return { zeroCount: 0, minusOneCount: 0 };
+      const seats = host.shadowRoot.querySelectorAll('[data-seat-key]');
+      let zeroCount = 0;
+      let minusOneCount = 0;
+      for (const seat of seats) {
+        const tab = seat.getAttribute('tabindex');
+        if (tab === '0') zeroCount++;
+        if (tab === '-1') minusOneCount++;
+      }
+      return { zeroCount, minusOneCount };
+    });
+
+    // 3 rows → 3 seats with tabindex="0" (one per row).
+    expect(zeroCount).toBe(3);
+    // 3 rows × 4 seats - 3 row-first seats = 9 seats with tabindex="-1".
+    expect(minusOneCount).toBe(9);
+  });
+
+  test('ArrowRight moves focus to next seat within the same row', async ({ page }) => {
+    await page.goto('/demo/populated-map.html');
+    await page.waitForLoadState('networkidle');
+
+    await page.waitForFunction(() => {
+      const host = document.querySelector('arena-tickets');
+      if (!host || !host.shadowRoot) return false;
+      return host.shadowRoot.querySelectorAll('[data-seat-key]').length > 0;
+    }, { timeout: 10_000 });
+
+    // Focus the first seat (row A, seat 1) — it has tabindex="0" already.
+    await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      const seat = host?.shadowRoot?.querySelector('[data-seat-key]') as HTMLElement | null;
+      seat?.focus();
+    });
+
+    // Press ArrowRight.
+    await page.keyboard.press('ArrowRight');
+
+    const focusedKey = await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      if (!host || !host.shadowRoot) return null;
+      let el: Element | null = host.shadowRoot.activeElement;
+      while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+      return el?.getAttribute('data-seat-key') ?? null;
+    });
+
+    // Focus should have moved to seat A2.
+    expect(focusedKey).toBe('A2');
+  });
+
+  test('ArrowDown moves focus to same-column seat in the next row', async ({ page }) => {
+    await page.goto('/demo/populated-map.html');
+    await page.waitForLoadState('networkidle');
+
+    await page.waitForFunction(() => {
+      const host = document.querySelector('arena-tickets');
+      if (!host || !host.shadowRoot) return false;
+      return host.shadowRoot.querySelectorAll('[data-seat-key]').length > 0;
+    }, { timeout: 10_000 });
+
+    // Focus the first seat in row A (A1).
+    await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      const seat = host?.shadowRoot?.querySelector('[data-seat-key]') as HTMLElement | null;
+      seat?.focus();
+    });
+
+    await page.keyboard.press('ArrowDown');
+
+    const focusedKey = await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      if (!host || !host.shadowRoot) return null;
+      let el: Element | null = host.shadowRoot.activeElement;
+      while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+      return el?.getAttribute('data-seat-key') ?? null;
+    });
+
+    // Focus should have moved to B1 (same column, next row).
+    expect(focusedKey).toBe('B1');
+  });
+
+  test('Home moves focus to first seat in the row', async ({ page }) => {
+    await page.goto('/demo/populated-map.html');
+    await page.waitForLoadState('networkidle');
+
+    await page.waitForFunction(() => {
+      const host = document.querySelector('arena-tickets');
+      if (!host || !host.shadowRoot) return false;
+      return host.shadowRoot.querySelectorAll('[data-seat-key]').length > 0;
+    }, { timeout: 10_000 });
+
+    // Focus A3 directly (tabindex="-1" seat).
+    await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      const seat = host?.shadowRoot?.querySelector('[data-seat-key="A3"]') as HTMLElement | null;
+      seat?.focus();
+    });
+
+    await page.keyboard.press('Home');
+
+    const focusedKey = await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      if (!host || !host.shadowRoot) return null;
+      let el: Element | null = host.shadowRoot.activeElement;
+      while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+      return el?.getAttribute('data-seat-key') ?? null;
+    });
+
+    expect(focusedKey).toBe('A1');
+  });
+
+  test('End moves focus to last seat in the row', async ({ page }) => {
+    await page.goto('/demo/populated-map.html');
+    await page.waitForLoadState('networkidle');
+
+    await page.waitForFunction(() => {
+      const host = document.querySelector('arena-tickets');
+      if (!host || !host.shadowRoot) return false;
+      return host.shadowRoot.querySelectorAll('[data-seat-key]').length > 0;
+    }, { timeout: 10_000 });
+
+    // Focus A1 (first seat).
+    await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      const seat = host?.shadowRoot?.querySelector('[data-seat-key="A1"]') as HTMLElement | null;
+      seat?.focus();
+    });
+
+    await page.keyboard.press('End');
+
+    const focusedKey = await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      if (!host || !host.shadowRoot) return null;
+      let el: Element | null = host.shadowRoot.activeElement;
+      while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+      return el?.getAttribute('data-seat-key') ?? null;
+    });
+
+    // Last seat in row A has 4 seats → A4.
+    expect(focusedKey).toBe('A4');
+  });
+
+  test('status-poll updates aria-labels without moving focus', async ({ page }) => {
+    // Set up a status response that marks B2 as "held".
+    await page.route('**/v1/event-sessions/kbd-session-001/seat-status**', (route) => {
+      void route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          session_id: 'kbd-session-001',
+          status_version: 2,
+          delta: true,
+          seats: { B2: 'held' },
+        }),
+      });
+    });
+    // Unregister the previous catchall schema route and re-register.
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    await page.route('**/v1/event-sessions/kbd-session-001/schema', (route) => {
+      void route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(buildMinimalSchema()),
+      });
+    });
+    await page.route('**/v1/event-sessions/kbd-session-001/seat-status**', (route) => {
+      void route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          session_id: 'kbd-session-001',
+          status_version: 2,
+          delta: true,
+          seats: { B2: 'held' },
+        }),
+      });
+    });
+
+    await page.goto('/demo/populated-map.html');
+    await page.waitForLoadState('networkidle');
+
+    await page.waitForFunction(() => {
+      const host = document.querySelector('arena-tickets');
+      if (!host || !host.shadowRoot) return false;
+      return host.shadowRoot.querySelectorAll('[data-seat-key]').length > 0;
+    }, { timeout: 10_000 });
+
+    // Focus seat B2.
+    await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      const seat = host?.shadowRoot?.querySelector('[data-seat-key="B2"]') as HTMLElement | null;
+      seat?.focus();
+    });
+
+    // Wait for status poll to update B2 → held.
+    await page.waitForFunction(() => {
+      const host = document.querySelector('arena-tickets');
+      const seat = host?.shadowRoot?.querySelector('[data-seat-key="B2"]');
+      return seat?.getAttribute('data-status') === 'held';
+    }, { timeout: 10_000 });
+
+    // aria-label should be updated.
+    const label = await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      const seat = host?.shadowRoot?.querySelector('[data-seat-key="B2"]');
+      return seat?.getAttribute('aria-label') ?? null;
+    });
+
+    expect(label).toContain('held');
+    // Focus should still be on B2 after the label update.
+    const stillFocused = await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      if (!host || !host.shadowRoot) return null;
+      let el: Element | null = host.shadowRoot.activeElement;
+      while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+      return el?.getAttribute('data-seat-key') ?? null;
+    });
+    expect(stillFocused).toBe('B2');
   });
 });

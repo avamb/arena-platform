@@ -110,10 +110,12 @@ export {
 } from './lib/checkout.js';
 
 // WID-R2: seat conflict highlight (DOM mutation, no re-render).
+// WID-R4: price label helper for aria-labels.
 export {
   applyConflictHighlight,
   clearConflictHighlight,
   CONFLICT_COLOR,
+  buildPriceLabel,
 } from './lib/seatmap-render.js';
 
 export {
