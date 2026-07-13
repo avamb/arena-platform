@@ -213,6 +213,15 @@
         const nextRow = allRows[nextRowIdx]!;
         const nextRowSeats = Array.from(nextRow.querySelectorAll<Element>('[data-seat-key]'));
         target = nextRowSeats[Math.min(seatIdx, nextRowSeats.length - 1)] ?? null;
+        // WID-S4: Reset ALL seats in the target row to tabindex="-1" first.
+        // Without this, the original first-seat tabindex="0" (emitted by
+        // buildSeatMapSVG for every row's initial Tab stop) would remain
+        // alongside the newly-focused target seat, leaving two seats in the
+        // row with tabindex="0" and breaking the single-tab-stop-per-row
+        // invariant during cross-row navigation.
+        for (const rowSeat of nextRowSeats) {
+          rowSeat.setAttribute('tabindex', '-1');
+        }
       }
     }
 
@@ -413,7 +422,7 @@
     onkeydown={onContainerKeydown}
     aria-label="Interactive seat map"
     role="application"
-    tabindex="0"
+    tabindex="-1"
   >
     {#if schemaLoading}
       <div class="seat-map-state" aria-live="polite">Loading seat map…</div>

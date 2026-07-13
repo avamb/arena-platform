@@ -546,3 +546,301 @@ test.describe('WID-R4: roving tabindex + live seat labels', () => {
     expect(stillFocused).toBe('B2');
   });
 });
+
+// ─── WID-S4: roving tabindex invariant across row navigation ──────────────────
+
+test.describe('WID-S4: roving tabindex invariant across row navigation', () => {
+  /** Wait until the shadow DOM contains all 12 seat circles. */
+  async function waitForSeats(page: import('@playwright/test').Page): Promise<void> {
+    await page.waitForFunction(
+      () => {
+        const host = document.querySelector('arena-tickets');
+        if (!host || !host.shadowRoot) return false;
+        return host.shadowRoot.querySelectorAll('[data-seat-key]').length >= 12;
+      },
+      { timeout: 10_000 },
+    );
+  }
+
+  /** Evaluate tabindex=0 count in a specific row inside the shadow DOM. */
+  async function rowTabzeroCount(
+    page: import('@playwright/test').Page,
+    rowKey: string,
+  ): Promise<number> {
+    return page.evaluate((key) => {
+      const host = document.querySelector('arena-tickets');
+      if (!host || !host.shadowRoot) return -1;
+      const row = host.shadowRoot.querySelector(`[data-row-key="${key}"]`);
+      if (!row) return -1;
+      return Array.from(row.querySelectorAll('[data-seat-key]')).filter(
+        (s) => s.getAttribute('tabindex') === '0',
+      ).length;
+    }, rowKey);
+  }
+
+  test.beforeEach(async ({ page }) => {
+    await setupPopulatedMapRoutes(page);
+  });
+
+  // ── Dead tab-stop fix ───────────────────────────────────────────────────────
+
+  test('seat-map container has tabindex="-1" (dead Tab-stop removed)', async ({ page }) => {
+    await page.goto('/demo/populated-map.html');
+    await page.waitForLoadState('networkidle');
+    await waitForSeats(page);
+
+    const containerTabindex = await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      if (!host || !host.shadowRoot) return null;
+      const container = host.shadowRoot.querySelector('.seat-map-container');
+      return container?.getAttribute('tabindex') ?? null;
+    });
+
+    // The container must be tabindex="-1", NOT "0".
+    // When it was "0" it was a dead Tab stop: focus would land on the
+    // container div, but arrow keys only acted when focus was on a
+    // [data-seat-key] element — so users were trapped with no way to enter
+    // the seat grid using keyboard only.
+    // With tabindex="-1" the container is programmatically focusable but not
+    // in the Tab order; the first-seat-per-row circles (tabindex="0") are the
+    // real Tab stops that users land on when pressing Tab into the seat map.
+    expect(containerTabindex).toBe('-1');
+  });
+
+  // ── Cross-row invariant ─────────────────────────────────────────────────────
+
+  test('ArrowDown into non-first column: target row ends with exactly 1 tabindex=0', async ({
+    page,
+  }) => {
+    await page.goto('/demo/populated-map.html');
+    await page.waitForLoadState('networkidle');
+    await waitForSeats(page);
+
+    // Focus A1 (already tabindex="0"), move right to A2 (column index 1).
+    await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      const s = host?.shadowRoot?.querySelector('[data-seat-key="A1"]') as HTMLElement | null;
+      s?.focus();
+    });
+    await page.keyboard.press('ArrowRight');
+
+    // Navigate down from A2 → B2.
+    await page.keyboard.press('ArrowDown');
+
+    // Which seat has focus?
+    const focusedKey = await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      if (!host || !host.shadowRoot) return null;
+      let el: Element | null = host.shadowRoot.activeElement;
+      while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+      return el?.getAttribute('data-seat-key') ?? null;
+    });
+    expect(focusedKey).toBe('B2');
+
+    // Invariant: row B must have EXACTLY ONE tabindex=0 seat (B2, not B1 AND B2).
+    // Before WID-S4 the first-seat tabindex="0" from buildSeatMapSVG was never
+    // cleared when entering via ArrowDown, so B1 would remain at "0" while B2
+    // also received "0" — two Tab stops in the same row.
+    const bTabzero = await rowTabzeroCount(page, 'parter-row-B');
+    expect(bTabzero).toBe(1);
+  });
+
+  test('ArrowUp into non-first column: target row ends with exactly 1 tabindex=0', async ({
+    page,
+  }) => {
+    await page.goto('/demo/populated-map.html');
+    await page.waitForLoadState('networkidle');
+    await waitForSeats(page);
+
+    // Focus C3 directly (tabindex="-1" seat in row C, column index 2).
+    await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      const s = host?.shadowRoot?.querySelector('[data-seat-key="C3"]') as HTMLElement | null;
+      s?.focus();
+    });
+
+    // Navigate up from C3 → B3.
+    await page.keyboard.press('ArrowUp');
+
+    const focusedKey = await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      if (!host || !host.shadowRoot) return null;
+      let el: Element | null = host.shadowRoot.activeElement;
+      while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+      return el?.getAttribute('data-seat-key') ?? null;
+    });
+    expect(focusedKey).toBe('B3');
+
+    // Row B: exactly one tabindex=0 (B3, not B1 AND B3).
+    const bTabzero = await rowTabzeroCount(page, 'parter-row-B');
+    expect(bTabzero).toBe(1);
+  });
+
+  test('repeated cross-row navigation keeps invariant (ArrowDown A→B→C)', async ({ page }) => {
+    await page.goto('/demo/populated-map.html');
+    await page.waitForLoadState('networkidle');
+    await waitForSeats(page);
+
+    // Start at A1, move to A3, then down to B3, then down to C3.
+    await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      const s = host?.shadowRoot?.querySelector('[data-seat-key="A1"]') as HTMLElement | null;
+      s?.focus();
+    });
+    await page.keyboard.press('ArrowRight'); // A1 → A2
+    await page.keyboard.press('ArrowRight'); // A2 → A3
+    await page.keyboard.press('ArrowDown');  // A3 → B3
+    await page.keyboard.press('ArrowDown');  // B3 → C3
+
+    const focusedKey = await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      if (!host || !host.shadowRoot) return null;
+      let el: Element | null = host.shadowRoot.activeElement;
+      while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+      return el?.getAttribute('data-seat-key') ?? null;
+    });
+    expect(focusedKey).toBe('C3');
+
+    // Row B should have 0 tabindex=0 seats (we passed through it).
+    const bTabzero = await rowTabzeroCount(page, 'parter-row-B');
+    expect(bTabzero).toBe(0);
+
+    // Row C should have exactly 1 tabindex=0 seat (C3).
+    const cTabzero = await rowTabzeroCount(page, 'parter-row-C');
+    expect(cTabzero).toBe(1);
+  });
+
+  // ── aria-label data-base-label mechanism (WID-S2 coverage) ─────────────────
+
+  test('aria-label restores correctly after seat deselection (data-base-label)', async ({
+    page,
+  }) => {
+    await page.goto('/demo/populated-map.html');
+    await page.waitForLoadState('networkidle');
+    await waitForSeats(page);
+
+    // Capture the pre-selection label (data-base-label + ", available").
+    const originalLabel = await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      return (
+        host?.shadowRoot?.querySelector('[data-seat-key="A1"]')?.getAttribute('aria-label') ?? null
+      );
+    });
+    expect(originalLabel).toBeTruthy();
+    expect(originalLabel).toContain('available');
+
+    // Click A1 to select it — applySelectionHighlights appends ", selected".
+    await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      (host?.shadowRoot?.querySelector('[data-seat-key="A1"]') as HTMLElement | null)?.click();
+    });
+
+    await page.waitForFunction(
+      () => {
+        const host = document.querySelector('arena-tickets');
+        const s = host?.shadowRoot?.querySelector('[data-seat-key="A1"]');
+        return s?.getAttribute('aria-label')?.includes('selected') === true;
+      },
+      { timeout: 5_000 },
+    );
+
+    // Click A1 again to deselect — applySelectionHighlights removes suffix via data-base-label.
+    await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      (host?.shadowRoot?.querySelector('[data-seat-key="A1"]') as HTMLElement | null)?.click();
+    });
+
+    await page.waitForFunction(
+      () => {
+        const host = document.querySelector('arena-tickets');
+        const s = host?.shadowRoot?.querySelector('[data-seat-key="A1"]');
+        const lbl = s?.getAttribute('aria-label') ?? '';
+        return !lbl.includes('selected') && lbl.includes('available');
+      },
+      { timeout: 5_000 },
+    );
+
+    const restoredLabel = await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      return (
+        host?.shadowRoot?.querySelector('[data-seat-key="A1"]')?.getAttribute('aria-label') ?? null
+      );
+    });
+
+    // Restored label must exactly match the original: data-base-label + ", available".
+    // Any stale ", selected" suffix would indicate the data-base-label mechanism is broken.
+    expect(restoredLabel).toBe(originalLabel);
+    expect(restoredLabel).not.toContain('selected');
+  });
+
+  test('aria-label restores via data-base-label after status-poll overrides a conflict suffix', async ({
+    page,
+  }) => {
+    // Override the status-poll to mark B1 as "held" on every tick.
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    await page.route('**/v1/event-sessions/kbd-session-001/schema', (route) => {
+      void route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(buildMinimalSchema()),
+      });
+    });
+    await page.route('**/v1/event-sessions/kbd-session-001/seat-status**', (route) => {
+      void route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          session_id: 'kbd-session-001',
+          status_version: 2,
+          delta: true,
+          seats: { B1: 'held' },
+        }),
+      });
+    });
+
+    await page.goto('/demo/populated-map.html');
+    await page.waitForLoadState('networkidle');
+    await waitForSeats(page);
+
+    // Simulate a conflict highlight on B1 — as if applyConflictHighlight was
+    // called after a 409 response. We write a non-standard aria-label suffix
+    // ("conflict — not available") directly in the DOM.
+    await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      const seat = host?.shadowRoot?.querySelector('[data-seat-key="B1"]');
+      if (!seat) return;
+      const base = seat.getAttribute('data-base-label') ?? '';
+      seat.setAttribute('data-status', 'conflict');
+      seat.setAttribute('fill', '#b91c1c');
+      seat.setAttribute('aria-label', base ? `${base}, conflict — not available` : 'conflict — not available');
+    });
+
+    // Wait for the status poll to fire and call applySeatStatusUpdate → B1 = "held".
+    // applySeatStatusUpdate reads data-base-label to build the aria-label,
+    // so the "conflict — not available" suffix must NOT survive.
+    await page.waitForFunction(
+      () => {
+        const host = document.querySelector('arena-tickets');
+        return (
+          host?.shadowRoot?.querySelector('[data-seat-key="B1"]')?.getAttribute('data-status') ===
+          'held'
+        );
+      },
+      { timeout: 10_000 },
+    );
+
+    const restoredLabel = await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      return host?.shadowRoot?.querySelector('[data-seat-key="B1"]')?.getAttribute('aria-label') ?? null;
+    });
+    const baseLabel = await page.evaluate(() => {
+      const host = document.querySelector('arena-tickets');
+      return host?.shadowRoot?.querySelector('[data-seat-key="B1"]')?.getAttribute('data-base-label') ?? null;
+    });
+
+    // aria-label must be base-label + ", held" — not the polluted conflict suffix.
+    expect(restoredLabel).toContain('held');
+    expect(restoredLabel).not.toContain('conflict');
+    expect(restoredLabel).toBe(`${baseLabel}, held`);
+  });
+});

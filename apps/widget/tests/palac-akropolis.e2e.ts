@@ -928,7 +928,9 @@ test.describe('6 — Keyboard-only, screen-reader, axe WCAG 2.2 AA, RTL', () => 
 
     expect(attrs.role).toBe('application');
     expect(attrs.ariaLabel).toBeTruthy();
-    expect(attrs.tabindex).toBe('0'); // focusable via keyboard
+    // WID-S4: container is tabindex="-1" — not a Tab stop. Individual seat
+    // circles (first per row, tabindex="0") are the Tab stops inside the map.
+    expect(attrs.tabindex).toBe('-1');
   });
 
   test('fit and reset buttons are keyboard-focusable inside shadow root', async ({ page }) => {
