@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Arena Tickets — Custom Events Test Fixture</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        margin: 0;
+        padding: 2rem;
+        background: #f8fafc;
+        color: #1a1a1a;
+      }
+      h1 { font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem; }
+      .card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 1.5rem;
+        min-height: 400px;
+      }
+      #event-log {
+        margin-top: 1.5rem;
+        padding: 1rem;
+        background: #1e293b;
+        color: #e2e8f0;
+        border-radius: 6px;
+        font-family: monospace;
+        font-size: 0.85rem;
+        min-height: 80px;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Custom Events — Test Fixture (WID-S5)</h1>
+
+      <!--
+        The E2E test intercepts /v1/event-sessions/evt-session-001/schema and
+        /v1/event-sessions/evt-session-001/seat-status via page.route() so the
+        widget renders a real 3×4 seat map without a live backend.
+
+        Host-page event listeners are attached by the test via page.evaluate()
+        and results captured in window.__arenaEvents for assertion.
+      -->
+      <section aria-labelledby="widget-heading">
+        <h2 id="widget-heading">Test Widget</h2>
+        <div class="card">
+          <arena-tickets
+            id="test-widget"
+            feed-token="evt-feed-token"
+            session-id="evt-session-001"
+          ></arena-tickets>
+        </div>
+      </section>
+
+      <section aria-labelledby="log-heading">
+        <h2 id="log-heading">Event Log (host-page listener)</h2>
+        <div id="event-log" aria-live="polite">Waiting for events…</div>
+      </section>
+    </main>
+
+    <script type="module" src="../dist/v1/arena-tickets.js"></script>
+
+    <!--
+      Attach host-page listeners AFTER the module loads so the custom element
+      is registered. The test also attaches its own listeners via page.evaluate().
+    -->
+    <script type="module">
+      const logEl = document.getElementById('event-log');
+      const lines = [];
+
+      const EVENTS = [
+        'arena:seat_selected',
+        'arena:seat_released',
+        'arena:payment_started',
+        'arena:order_paid',
+        'arena:order_failed',
+      ];
+
+      const widget = document.getElementById('test-widget');
+      for (const name of EVENTS) {
+        widget.addEventListener(name, (e) => {
+          const entry = { name: e.type, detail: e.detail };
+          lines.push(JSON.stringify(entry));
+          logEl.textContent = lines.join('\n');
+        });
+      }
+    </script>
+  </body>
+</html>

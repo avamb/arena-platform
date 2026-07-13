@@ -125,6 +125,19 @@ export {
   ApiError,
 } from './api.js';
 
+// WID-S5: CustomEvent contract for host-page integration.
+export {
+  ARENA_EVENTS,
+  dispatchWidgetEvent,
+  type ArenaEventName,
+  type ArenaSeatSelectedDetail,
+  type ArenaSeatReleasedDetail,
+  type ArenaPaymentStartedDetail,
+  type ArenaOrderPaidDetail,
+  type ArenaOrderFailedDetail,
+  type ArenaEventDetailMap,
+} from './lib/events.js';
+
 // WID-R1: purchase-loop wiring helpers.
 export {
   saveCheckoutToken,
