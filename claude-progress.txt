@@ -2,6 +2,42 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+## 2026-07-13 - Feature #332 (WID-R3) Real acceptance E2E against compose backend in CI
+
+Implemented WID-R3: real Playwright acceptance suite for the Palac Akropolis
+hybrid session that hits the ACTUAL backend — no page.route() mocks for /v1/*
+platform endpoints. The existing mock palac-akropolis.e2e.ts remains as a
+labeled "mock smoke suite" (testIgnore in playwright.config.ts); the real suite
+runs via the new widget-acceptance CI job.
+
+New files:
+- apps/widget/scripts/seed-palac-e2e.sql: Idempotent PostgreSQL fixture seed.
+  Uses generate_series + jsonb_build_object to insert 260 session_seats and the
+  full 260-seat geometry. Fixed IDs in the fe000007-* range.
+- apps/widget/scripts/serve-demo-real.cjs: CommonJS Node proxy (port 4174) that
+  forwards /v1/* to ARENA_API_URL and static-files everything else.
+- apps/widget/demo/palac-akropolis-real.html: Demo page wired to real seed
+  feed token and session UUID.
+- apps/widget/tests/palac-akropolis-real.e2e.ts: 7 describe blocks (cold load,
+  260 seats from real backend, concurrent real 409 via two browser contexts,
+  checkout contract, recovery, axe WCAG AA on populated map, RTL, API shapes).
+  Zero page.route() mocks for /v1/* endpoints.
+- apps/widget/playwright.config.real.ts: Playwright config for real E2E.
+- .github/workflows/ci.yml: New widget-acceptance job (postgres:17 + redis:7
+  services, Go build, migrate, arena-seed, Akropolis SQL seed, arena-api start,
+  npm run test:e2e:real).
+- ci_workflow_test.go: widget-acceptance added to required-jobs assertions.
+- playwright.config.ts testIgnore also excludes palac-akropolis-real.e2e.ts.
+- package.json: test:e2e:smoke and test:e2e:real scripts.
+- tsconfig.app.json: playwright.config.real.ts added to include.
+
+Verification:
+  npm --prefix apps/widget run type-check    OK (0 errors)
+  npm --prefix apps/widget test              407/407 PASS (10 test files)
+  ci_workflow_test.go assertions verified - widget-acceptance in ci.yml
+Marked #332 passing. (331/333 features passing, 99.4%)
+
+
 === Session 2026-07-11 (feature #324) ===
 WID-B: Event/session view + SVG seat map render (Svelte 5 widget)
 
