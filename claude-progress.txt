@@ -2,6 +2,56 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+## 2026-07-13 - Feature #335 (WID-S1) Fix UI purchase cycle - review of #330
+
+Fixed 6 bugs identified in the WID-R1 code review:
+
+Fix 1 - Missing GA stepper prop:
+  ArenaTickets.svelte: {onGaQuantityChange} shorthand was passing the wrong
+  prop name to GaTierCard; changed to onQuantityChange={onGaQuantityChange}.
+  Without this the +/− stepper buttons silently did nothing.
+
+Fix 2 - setPointerCapture (already present):
+  SeatMapView.svelte already calls setPointerCapture in onPointerDown on the
+  container. Click-to-select works correctly via the drag-threshold check.
+
+Fix 3+4 - Hold response + dead timer:
+  Added holdExpiresAt state variable to ArenaTickets.svelte. After a
+  successful postCheckoutStart, expires_at is stored there. After a
+  successful postCheckoutRecover, the fresh expires_at updates it. A new
+  derived 'cartEffective' merges holdExpiresAt into the cart so MiniCart and
+  CartSheet countdown timers actually start ticking. Previously the pure
+  helper applyHoldResponse() return value was discarded and the derived cart
+  always had expiresAt=null.
+
+Fix 5 - Stale token brick:
+  getCheckoutStatus in api.ts now throws ApiError (with HTTP status) instead
+  of a generic Error. In the order-status load catch block, if the status is
+  401 or 404, the checkout token is cleared from sessionStorage so the next
+  page refresh doesn't loop back to the broken order-status view.
+
+Fix 6 - Seat selection reset on session change:
+  The onSelectSession callback in ArenaTickets.svelte now clears
+  selectedSeatKeys, gaQuantities, holdExpiresAt and closes the CartSheet
+  when the user switches to a different session date.
+
+Fix 7 - Hardcoded i18n strings:
+  Added 10 new keys to CheckoutI18nStrings + all 4 locale tables (en/ru/cs/he):
+  cart_title, cart_details_title, cart_empty, cart_total_label, cart_back,
+  expires_warn, ticket_singular, ticket_plural, redirecting_to_payment, remaining.
+  MiniCart.svelte uses t.ticket_singular / t.ticket_plural.
+  CartSheet.svelte uses t.cart_title, t.cart_details_title, t.cart_empty,
+  t.cart_total_label, t.cart_back, t.expires_warn, t.remaining.
+  ArenaTickets.svelte uses t.loading and t.redirecting_to_payment.
+  checkout.test.ts REQUIRED_KEYS updated to cover all 10 new keys.
+
+Verification:
+  npm --prefix apps/widget run type-check    OK (0 errors)
+  npm --prefix apps/widget test              407/407 PASS (10 test files)
+  npm --prefix apps/widget run build         52.97 kB gzip vs 150 kB gate PASS
+  npm --prefix apps/widget run size          52.97 kB gzip PASS
+Marked #335 passing. (335/338 features passing, 99.1%)
+
 ## 2026-07-13 - Feature #332 (WID-R3) Real acceptance E2E against compose backend in CI
 
 Implemented WID-R3: real Playwright acceptance suite for the Palac Akropolis
