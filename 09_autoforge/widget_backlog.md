@@ -1,6 +1,6 @@
 # AutoForge backlog: ticket-selection widget — Wave WID
 
-Updated: 2026-07-11
+Updated: 2026-07-13
 Status: planning artifact for AutoForge. This file is not an implementation.
 Design authority: `08_architecture/16_ticket_widget_ux_and_technology_ru.md`
 (owner-approved UX research, technology decision and principles — READ IT
@@ -277,3 +277,158 @@ with the existing unit/size steps if needed). The mock smoke suite may
 stay as a separate fast step, clearly labeled.
 
 Out of scope for WID-R: everything in §7 above.
+
+## 9. Wave WID-S — stabilization (added 2026-07-13 after WID-R review)
+
+The WID-R delivery (#330-#333, commits 9cfe2f2..d48e4c0) was reviewed.
+Unit-level work is genuine (407/407 vitest, tsc clean — verified), but
+the integration layer the wave was supposed to deliver is broken in
+every feature. Systemic root cause: features were marked passing on
+type-check + pure-helper unit tests alone; nothing exercised the
+assembled element, and the "real" E2E suite (#332) was never executed
+even once before being counted as passing.
+
+**Process rule for this wave (non-negotiable): a WID-S feature may be
+marked passing ONLY after the relevant E2E suite has actually executed
+and passed — locally against the compose backend or in CI. Grep-style
+assertions on ci.yml and unit tests of pure helpers do not count as
+verification of integration claims.**
+
+**WID-S1. Purchase loop actually works through the UI (fixes #330).**
+- ArenaTickets.svelte:395 passes `{onGaQuantityChange}` but
+  GaTierCard.svelte declares `onQuantityChange` — the prop is
+  undefined and the +/− stepper throws. Rename one side; add a test
+  that mounts the component and clicks the stepper. GA purchase is
+  currently impossible through the UI.
+- SeatMapView.svelte onPointerDown calls setPointerCapture on the
+  container, so the subsequent `click` retargets to the container and
+  `closest('[data-seat-key]')` misses — mouse/touch seat taps likely
+  never fire (only keyboard selection works). Fix (release capture
+  before click, or derive the seat from pointerdown/pointerup
+  coordinates) and cover with a Playwright mouse-click test.
+- handleCheckout discards the hold response: `applyHoldResponse(...)`
+  is pure and its return value is thrown away (cart is `$derived` and
+  can't be assigned). Consequence: cart.expiresAt/checkoutToken stay
+  null and the ENTIRE countdown / T-2min warning machinery in
+  MiniCart/CartSheet is dead code. Rework state so the hold token +
+  expires_at actually flow into the cart UI.
+- onMount early-returns on a sessionStorage checkout_token; if
+  getCheckoutStatus then fails (expired/404) the widget shows an error
+  with no seat map and never clears the token — bricked on every
+  reload of that tab. Clear the token on terminal failures and fall
+  through to the normal feed load.
+- Session switch keeps selectedSeatKeys/gaQuantities from the previous
+  session — stale seat keys go into checkout/start for the new
+  session_id. Reset selection (and conflict state) on session change.
+- Localize the hardcoded English copy added by WID-R1 (CartSheet:
+  "Your cart", "Your details", "remaining", expiry warning, empty
+  state, "Total"; MiniCart pluralization; GaTierCard "Free" +
+  aria-labels; ArenaTickets "Redirecting to payment…", checkout/
+  recovery errors) via the existing getCheckoutI18n en/ru/cs/he.
+- Cleanups: unused removeCartLine imports; CartSheet close button
+  aria-label vs Back state; dialog Escape/focus-trap; clear the
+  checkout_token when the paid state is dismissed so the tab can
+  return to selection.
+
+**WID-S2. Conflict surfacing works against the real backend (fixes
+#331).**
+- api.ts (postCheckoutStart ~:184, postCheckoutRecover ~:248) parses
+  `body.code`/`body.details`/`body.error` flat, but the backend
+  envelope is nested: `{"error":{"code":…,"message":…,"details":…}}`
+  (httputil/helpers.go). Against the real API every 409 yields
+  ApiError.code = [object Object] and empty details, so
+  parseConflictsFromApiError always returns [] — the whole feature is
+  inert. Parse the nested envelope; add unit tests that use the REAL
+  envelope shape (copy a fixture from the backend handler tests), and
+  fix the stale flat-envelope doc comment in
+  public_checkout_recover.go.
+- SeatMapView.svelte:361-372 conflict $effect self-triggers forever in
+  the default (no-conflict) state: each run assigns a FRESH
+  `new Set()` to prevConflictKeys, a $state it also reads —
+  reproduced on the installed Svelte 5.56.4
+  (effect_update_depth_exceeded). Use a plain non-reactive `let` (or
+  untrack) and a shared empty-set constant. Audit the sibling
+  selection effect (:349) for the same pattern.
+- Wire it end-to-end: ArenaTickets never passes conflictKeys to
+  SeatMapView and handleCheckout collapses the 409 into a generic
+  message; parseConflictsFromApiError / filterCartWithoutConflicts /
+  conflict_notice i18n are dead exports. On 409: highlight the
+  conflicting seats, show the localized notice, offer "continue
+  without conflicts" (drop conflicting lines, keep the rest — cart
+  intact per design note).
+- Highlight lifecycle: the clear branch only runs when the new set is
+  EMPTY, so {A,B}→{C} leaves A,B painted red — diff against
+  prevConflictKeys. Also decide precedence between the conflict
+  overlay and poller status updates (applySeatStatusUpdate currently
+  stomps conflict paint on the next delta).
+- The DoD is the WID-R3 real-E2E two-context 409 test asserting the
+  conflicting seat is visually highlighted in the second context and
+  the rest of the cart survives.
+
+**WID-S3. Real acceptance E2E actually runs and passes (fixes #332).**
+- palac-akropolis-real.e2e.ts:35 `waitForSVG` selects
+  `svg[aria-label="Seat map"]`, but the renderer emits
+  `"Seat map — sections: …"` when sections exist (seatmap-render.ts
+  ~:179) — every describe block times out. Use a prefix/attribute-
+  contains selector or a stable data-testid.
+- seed-palac-e2e.sql inserts no `event_publications` row, but
+  GetPublicCheckoutContext JOINs it — every checkout/start returns
+  403 "session is not published to this feed token". Add the
+  publication row (idempotent, fixed ID like the rest).
+- ETag test is vacuous: `firstEtag` initialized null makes the assert
+  always-true, `secondRequestHadIfNoneMatch` is computed but never
+  asserted, and no second navigation happens. Make it assert a real
+  304/If-None-Match round trip.
+- ci.yml widget-acceptance job: the arena-api health-wait loop ends in
+  `sleep 1` so the step can NEVER fail — fail explicitly after the
+  timeout and upload backend stdout/stderr as an artifact on failure.
+  Remove/rename the nonexistent env vars (JWT_SECRET → 
+  JWT_SIGNING_SECRET; APP_PORT does not exist, HTTP_LISTEN_ADDR
+  defaults to :8080).
+- retries:1 in playwright.config.real.ts cannot work for the stateful
+  seat tests (first attempt's holds make the retry 409) — either seed
+  per-attempt seat ranges or drop retries.
+- DoD: the suite passes in the widget-acceptance CI job (green run
+  linked in progress notes) AND locally against docker compose.
+
+**WID-S4. Keyboard model invariant + live labels (fixes #333).**
+- navigateSeat (SeatMapView.svelte ~:208) breaks the roving-tabindex
+  invariant on ArrowUp/Down: the target row keeps its old tab stop, so
+  rows accumulate two `tabindex="0"` seats while traversed rows drop
+  to zero. Decide the model explicitly — either ONE stop for the whole
+  map or exactly one per row (current documented intent) — and
+  maintain it on every move; ArrowDown must reset the previous stop of
+  the TARGET row.
+- The container div (tabindex="0" role="application") is a dead stop:
+  arrows do nothing when it has focus. Forward arrows/Enter from the
+  container to the current roving seat (or make the container
+  tabindex="-1" once a seat stop exists).
+- aria-label restore regex `/,\s+[\w -]+$/` (seatmap-render.ts ~:300)
+  cannot match the em-dash conflict suffix ", conflict — not
+  available" → labels stay conflict forever after clearing, and
+  re-apply duplicates the suffix; the "selected" marker is eaten by
+  the next status delta (", available, selected" → ", available,
+  held"). Restructure: keep the immutable label base in a data
+  attribute and rebuild label = base + status + (selected?) +
+  (conflict?) instead of regex surgery. This also unblocks WID-S2.
+- Nice-to-have (small): aria-disabled on sold/blocked seats; an
+  aria-live polite region for status changes of the focused seat.
+- E2E additions to keyboard.e2e.ts: post-navigation invariant (after
+  Arrow moves across rows, count of tabindex="0" seats matches the
+  declared model), Enter/Space toggles selection on the map,
+  ArrowLeft/ArrowUp and no-wrap edges, conflict-clear label
+  restoration.
+
+**WID-S5. Custom-element events (deferred from WID-R1 review; small).**
+`<arena-tickets>` dispatches nothing — host pages cannot observe the
+funnel. Dispatch bubbling composed CustomEvents at the milestones the
+telemetry sink (WID-0e) already names: seat_selected, cart_opened,
+payment_started, order_paid, recovery. Document them in the embed
+docs from WID-F.
+
+Ordering: WID-S2 and WID-S4 share the label-restore fix — land it
+once. WID-S3 is the verification vehicle for S1/S2/S4; do S3's
+selector+seed fixes FIRST so every later feature can be proven
+against the real suite.
+
+Out of scope for WID-S: everything in §7 above.
