@@ -1,6 +1,6 @@
 <script lang="ts">
   import { cartTotal, cartItemCount, countdownSeconds, isTwoMinWarning, formatCountdown } from '../lib/cart.js';
-  import { formatPrice, getCheckoutI18n } from '../lib/checkout.js';
+  import { formatPrice, getCheckoutI18n, pluralizeTickets } from '../lib/checkout.js';
   import type { CartLineItem } from '../lib/cart.js';
 
   interface Props {
@@ -41,7 +41,7 @@
   <div class="mini-cart" class:warning={isWarning} role="status" aria-label="Cart: {count} items">
     <button class="mini-cart-btn" onclick={onOpen} aria-label="Open cart ({count} items)">
       <span class="mini-cart-count">{count}</span>
-      <span class="mini-cart-label">{count === 1 ? t.ticket_singular : t.ticket_plural}</span>
+      <span class="mini-cart-label">{pluralizeTickets(count, locale, t)}</span>
       {#if total.currency}
         <span class="mini-cart-total">{formatPrice(total.amount, total.currency)}</span>
       {/if}

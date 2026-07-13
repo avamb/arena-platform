@@ -19,10 +19,13 @@
     CheckoutStatusResponse,
     CheckoutStatusTicketItem,
   } from '../lib/checkout.js';
+  import { countdownSeconds, isTwoMinWarning, formatCountdown } from '../lib/cart.js';
 
   interface Props {
     status: CheckoutStatusResponse;
     locale?: string;
+    /** ISO-8601 expires_at from order-status response for hold countdown (WID-T3). */
+    expiresAt?: string | null;
     /** Called when buyer clicks "Reclaim seats" (expired state). */
     onRecover?: () => void;
     /** Called when buyer clicks "Try again" (failed state). */
@@ -38,6 +41,7 @@
   const {
     status,
     locale = 'en',
+    expiresAt = null,
     onRecover,
     onRetry,
     onSendAgain,
@@ -46,6 +50,26 @@
   }: Props = $props();
 
   const t = $derived(getCheckoutI18n(locale));
+
+  // Hold countdown timer driven by server-side expires_at (WID-T3)
+  let secondsLeft = $state(0);
+  let _tickInterval: ReturnType<typeof setInterval> | null = null;
+
+  $effect(() => {
+    if (_tickInterval) { clearInterval(_tickInterval); _tickInterval = null; }
+    if (expiresAt) {
+      secondsLeft = countdownSeconds(expiresAt);
+      _tickInterval = setInterval(() => {
+        secondsLeft = countdownSeconds(expiresAt!);
+      }, 1000);
+    } else {
+      secondsLeft = 0;
+    }
+    return () => { if (_tickInterval) clearInterval(_tickInterval); };
+  });
+
+  const holdIsWarning = $derived(isTwoMinWarning(secondsLeft));
+  const holdCountdown = $derived(expiresAt && secondsLeft > 0 ? formatCountdown(secondsLeft) : null);
 
   function seatLabel(ticket: CheckoutStatusTicketItem): string {
     const parts: string[] = [];
@@ -63,6 +87,11 @@
     <div class="status-pending" aria-live="polite" aria-busy="true">
       <span class="spinner large" aria-hidden="true"></span>
       <p class="status-message">{t.status_pending}</p>
+      {#if holdCountdown}
+        <p class="hold-countdown" class:warn={holdIsWarning} aria-live="polite" data-testid="hold-countdown">
+          ⏱ {holdCountdown} {t.remaining}
+        </p>
+      {/if}
     </div>
 
   {:else if status.status === 'paid'}
@@ -362,5 +391,16 @@
 
   @keyframes spin {
     to { transform: rotate(360deg); }
+  }
+
+  .hold-countdown {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--arena-color-secondary, #6b7280);
+    margin: 0;
+  }
+
+  .hold-countdown.warn {
+    color: #d97706;
   }
 </style>

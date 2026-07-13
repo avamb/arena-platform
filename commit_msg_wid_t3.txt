@@ -1,0 +1,9 @@
+feat(widget): WID-T3 #341 hold-timer, refresh-flow, i18n
+
+- OrderStatus: countdown from server-side expires_at
+- ArenaTickets: holdExpiresAt from order-status; token expiry triggers refresh-flow
+- checkout.ts: pluralizeTickets via Intl.PluralRules, ru/cs 3-form
+- SessionList: locale prop wired from parent
+- checkout.test.ts: +15 pluralizeTickets tests
+- 455/455 tests PASS; type-check clean; 55.53 kB gzip
+- Marked #341 passing (342/343)

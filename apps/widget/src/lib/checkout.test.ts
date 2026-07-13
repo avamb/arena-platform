@@ -31,6 +31,7 @@ import {
   parseConflictsFromApiError,
   conflictKeySet,
   filterCartWithoutConflicts,
+  pluralizeTickets,
   type BuyerFieldConfig,
   type BuyerFormValues,
   type ConflictDetail,
@@ -661,6 +662,68 @@ describe('filterCartWithoutConflicts', () => {
 
   test('empty seats array → empty result', () => {
     expect(filterCartWithoutConflicts([], new Set(['X|1']))).toEqual([]);
+  });
+});
+
+// ─── pluralizeTickets (WID-T3) ────────────────────────────────────────────────
+
+describe('pluralizeTickets', () => {
+  const en = CHECKOUT_I18N.en;
+  const ru = CHECKOUT_I18N.ru;
+  const cs = CHECKOUT_I18N.cs;
+
+  // English: one / other
+  test('en: 1 → ticket_singular', () => {
+    expect(pluralizeTickets(1, 'en', en)).toBe('ticket');
+  });
+  test('en: 2 → ticket_plural', () => {
+    expect(pluralizeTickets(2, 'en', en)).toBe('tickets');
+  });
+  test('en: 5 → ticket_plural', () => {
+    expect(pluralizeTickets(5, 'en', en)).toBe('tickets');
+  });
+
+  // Russian 3-form: one / few / many
+  test('ru: 1 → билет (one)', () => {
+    expect(pluralizeTickets(1, 'ru', ru)).toBe('билет');
+  });
+  test('ru: 2 → билета (few)', () => {
+    expect(pluralizeTickets(2, 'ru', ru)).toBe('билета');
+  });
+  test('ru: 3 → билета (few)', () => {
+    expect(pluralizeTickets(3, 'ru', ru)).toBe('билета');
+  });
+  test('ru: 4 → билета (few)', () => {
+    expect(pluralizeTickets(4, 'ru', ru)).toBe('билета');
+  });
+  test('ru: 5 → билетов (many)', () => {
+    expect(pluralizeTickets(5, 'ru', ru)).toBe('билетов');
+  });
+  test('ru: 11 → билетов (many, not one)', () => {
+    expect(pluralizeTickets(11, 'ru', ru)).toBe('билетов');
+  });
+  test('ru: 21 → билет (one)', () => {
+    expect(pluralizeTickets(21, 'ru', ru)).toBe('билет');
+  });
+  test('ru: 22 → билета (few)', () => {
+    expect(pluralizeTickets(22, 'ru', ru)).toBe('билета');
+  });
+
+  // Czech 3-form: one / few / other
+  test('cs: 1 → vstupenka (one)', () => {
+    expect(pluralizeTickets(1, 'cs', cs)).toBe('vstupenka');
+  });
+  test('cs: 2 → vstupenky (few)', () => {
+    expect(pluralizeTickets(2, 'cs', cs)).toBe('vstupenky');
+  });
+  test('cs: 5 → vstupenek (other)', () => {
+    expect(pluralizeTickets(5, 'cs', cs)).toBe('vstupenek');
+  });
+
+  // Invalid locale falls back gracefully
+  test('invalid locale → fallback to count===1 check', () => {
+    expect(pluralizeTickets(1, 'xx-INVALID', en)).toBe('ticket');
+    expect(pluralizeTickets(2, 'xx-INVALID', en)).toBe('tickets');
   });
 });
 

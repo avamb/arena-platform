@@ -12,9 +12,10 @@
     sessions: FeedSession[];
     selectedSession: FeedSession | null;
     onSelectSession: (session: FeedSession) => void;
+    locale?: string;
   }
 
-  const { sessions, selectedSession, onSelectSession }: Props = $props();
+  const { sessions, selectedSession, onSelectSession, locale = 'en' }: Props = $props();
 
   /** Format a session start_at ISO string as a short date chip label. */
   function formatDate(isoDate: string, locale: string): string {
@@ -53,7 +54,6 @@
     selectedSession ? [...selectedSession.tiers].sort((a, b) => a.sort_order - b.sort_order) : [],
   );
 
-  const displayLocale = 'en'; // TODO: wire from parent when i18n wave lands
 </script>
 
 <div class="session-list">
@@ -70,8 +70,8 @@
         onclick={() => onSelectSession(session)}
         disabled={session.status === 'cancelled'}
       >
-        <span class="chip-date">{formatDate(session.start_at, displayLocale)}</span>
-        <span class="chip-time">{formatTime(session.start_at, displayLocale)}</span>
+        <span class="chip-date">{formatDate(session.start_at, locale)}</span>
+        <span class="chip-time">{formatTime(session.start_at, locale)}</span>
       </button>
     {/each}
   </div>

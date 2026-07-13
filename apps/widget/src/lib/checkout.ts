@@ -553,6 +553,8 @@ export interface CheckoutI18nStrings {
   ticket_singular: string;
   /** Plural ticket label in MiniCart bar (e.g. "3 tickets"). */
   ticket_plural: string;
+  /** "Few" plural form for 3-form pluralization (e.g. Russian "2 билета", Czech "3 vstupenky"). Falls back to ticket_plural when absent. */
+  ticket_few?: string;
   /** Full-screen message shown while the widget redirects to the payment page. */
   redirecting_to_payment: string;
   /** Countdown suffix (e.g. "9:05 remaining"). */
@@ -641,7 +643,8 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     cart_back: 'Назад',
     expires_warn: 'ваши места скоро истекут!',
     ticket_singular: 'билет',
-    ticket_plural: 'билеты',
+    ticket_few: 'билета',
+    ticket_plural: 'билетов',
     redirecting_to_payment: 'Переход к оплате…',
     remaining: 'осталось',
   },
@@ -681,7 +684,8 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     cart_back: 'Zpět',
     expires_warn: 'vaše místa brzy vyprší!',
     ticket_singular: 'vstupenka',
-    ticket_plural: 'vstupenky',
+    ticket_few: 'vstupenky',
+    ticket_plural: 'vstupenek',
     redirecting_to_payment: 'Přesměrování na platbu…',
     remaining: 'zbývá',
   },
@@ -735,4 +739,34 @@ export function getCheckoutI18n(locale: string): CheckoutI18nStrings {
     ? (locale as CheckoutLocale)
     : 'en';
   return CHECKOUT_I18N[key];
+}
+
+/**
+ * Pluralize a ticket count using locale-aware Intl.PluralRules.
+ *
+ * Handles Russian 3-form pluralization (one/few/many) via Intl.PluralRules.
+ * Falls back gracefully when locale is invalid or Intl is unavailable.
+ *
+ * @param count   Number of tickets.
+ * @param locale  BCP-47 locale tag (e.g. 'en', 'ru', 'cs').
+ * @param strings CheckoutI18nStrings for the active locale.
+ */
+export function pluralizeTickets(
+  count: number,
+  locale: string,
+  strings: CheckoutI18nStrings,
+): string {
+  try {
+    const pr = new Intl.PluralRules(locale);
+    const category = pr.select(count);
+    switch (category) {
+      case 'one':  return strings.ticket_singular;
+      case 'few':  return strings.ticket_few ?? strings.ticket_plural;
+      case 'many': return strings.ticket_plural;
+      default:     return strings.ticket_plural; // 'other', 'zero', 'two'
+    }
+  } catch {
+    // Fallback if Intl.PluralRules is unavailable or locale is invalid.
+    return count === 1 ? strings.ticket_singular : strings.ticket_plural;
+  }
 }

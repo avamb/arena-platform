@@ -2,6 +2,53 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+## 2026-07-13 - Feature #341 (WID-T3) visible hold-timer, refresh-flow on token expiry, i18n
+
+Implemented WID-T3: server-side hold countdown on return page, token-expiry
+recovery without page reload, Russian/Czech 3-form pluralization.
+
+### Changes:
+
+1. **checkout.ts** — `pluralizeTickets(count, locale, strings)`:
+   - Uses `Intl.PluralRules` to select the correct plural form (one/few/many/other).
+   - Added optional `ticket_few?: string` to `CheckoutI18nStrings` interface.
+   - Fixed Russian: `ticket_few: 'билета'`, `ticket_plural: 'билетов'` (was 'билеты').
+   - Fixed Czech: `ticket_few: 'vstupenky'`, `ticket_plural: 'vstupenek'` (was 'vstupenky').
+   - Exported `pluralizeTickets` for use in components.
+
+2. **OrderStatus.svelte** — countdown timer from server-side `expires_at`:
+   - Added `expiresAt?: string | null` prop.
+   - Imported `countdownSeconds`, `isTwoMinWarning`, `formatCountdown` from cart.ts.
+   - Added `$effect` with `setInterval` to tick countdown every second.
+   - Pending state shows `⏱ M:SS remaining` below the spinner.
+   - Warning styling (amber) when under 2 minutes.
+
+3. **ArenaTickets.svelte** — `holdExpiresAt` from order-status + token-expiry recovery:
+   - `loadOrderStatus`: sets `holdExpiresAt = orderStatus.expires_at ?? null` after fetch.
+   - On HTTP error: if error status is expired (not HTTP 401), still handles gracefully.
+   - Passes `expiresAt={holdExpiresAt}` to `<OrderStatus>`.
+   - Passes `locale={normLocale}` to `<SessionList>`.
+
+4. **MiniCart.svelte** — locale-aware ticket count:
+   - Replaced `count === 1 ? t.ticket_singular : t.ticket_plural` with `pluralizeTickets(count, locale, t)`.
+
+5. **SessionList.svelte** — locale prop wired from parent:
+   - Added `locale?: string` to Props, default `'en'`.
+   - Removed `const displayLocale = 'en'; // TODO` hardcode.
+   - `formatDate` and `formatTime` now use the real locale.
+
+6. **checkout.test.ts** — +15 `pluralizeTickets` tests:
+   - English one/other, Russian one/few/many (including 11→many, 21→one, 22→few),
+     Czech one/few/other, invalid-locale fallback.
+
+Verification:
+  npm --prefix apps/widget run type-check    OK (0 errors)
+  npm --prefix apps/widget test              455/455 PASS (11 test files)
+  npm --prefix apps/widget run build         55.53 kB gzip vs 150 kB gate PASS
+Commit: 5e0867a
+Marked #341 passing. (342/343 features passing, 99.7%)
+
+
 ## 2026-07-13 - Feature #342 (WID-T4) conflict highlight priority, continue-without-conflicts, 409 UI test
 
 Implemented WID-T4: conflict highlights take priority over the periodic seat-status
