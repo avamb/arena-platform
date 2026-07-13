@@ -730,9 +730,12 @@ test.describe('WID-S4: roving tabindex invariant across row navigation', () => {
     expect(originalLabel).toContain('available');
 
     // Click A1 to select it — applySelectionHighlights appends ", selected".
+    // WID-T2: dispatchEvent instead of .click() for SVG elements.
     await page.evaluate(() => {
       const host = document.querySelector('arena-tickets');
-      (host?.shadowRoot?.querySelector('[data-seat-key="A1"]') as HTMLElement | null)?.click();
+      host?.shadowRoot
+        ?.querySelector('[data-seat-key="A1"]')
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true }));
     });
 
     await page.waitForFunction(
@@ -745,9 +748,12 @@ test.describe('WID-S4: roving tabindex invariant across row navigation', () => {
     );
 
     // Click A1 again to deselect — applySelectionHighlights removes suffix via data-base-label.
+    // WID-T2: dispatchEvent for SVG element.
     await page.evaluate(() => {
       const host = document.querySelector('arena-tickets');
-      (host?.shadowRoot?.querySelector('[data-seat-key="A1"]') as HTMLElement | null)?.click();
+      host?.shadowRoot
+        ?.querySelector('[data-seat-key="A1"]')
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true }));
     });
 
     await page.waitForFunction(

@@ -164,8 +164,28 @@
     const dy = e.clientY - pointerDownY;
     if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) return;
     if (!onSeatTap) return;
-    const target = e.target as Element;
-    const seatEl = target.closest('[data-seat-key]');
+
+    // Fast path: e.target is the seat element (works for synthetic/dispatchEvent clicks
+    // where there is no active pointer capture).
+    let seatEl = (e.target as Element).closest?.('[data-seat-key]') ?? null;
+
+    // Fallback: when setPointerCapture is active (called from onPointerDown), the browser
+    // may redirect the 'click' event to the capture element (the container) instead of the
+    // actual element under the cursor. In that case e.target is the container and the
+    // closest() call above returns null.  Use coordinate hit-testing on the bounding boxes
+    // of all seat circles to find the seat at the click position.
+    if (!seatEl && svgContainer) {
+      const cx = e.clientX;
+      const cy = e.clientY;
+      for (const el of svgContainer.querySelectorAll<Element>('[data-seat-key]')) {
+        const r = el.getBoundingClientRect();
+        if (cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom) {
+          seatEl = el;
+          break;
+        }
+      }
+    }
+
     if (!seatEl) return;
     const key = seatEl.getAttribute('data-seat-key') ?? '';
     const status = (seatEl.getAttribute('data-status') ?? 'available') as SeatStatusValue;

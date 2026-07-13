@@ -171,6 +171,12 @@
       // Restore order status view.
       checkoutToken = resumeToken;
       stage = 'order-status';
+      // WID-T2: emit recovery for sessionStorage resume so host pages can
+      // track funnel re-entry (expiresAt unknown until status response arrives).
+      dispatchWidgetEvent(host, ARENA_EVENTS.RECOVERY, {
+        checkoutToken: resumeToken,
+        expiresAt: '',
+      });
       loadOrderStatus(resumeToken);
       return;
     }
@@ -265,6 +271,9 @@
 
   function openCartSheet(): void {
     cartSheetOpen = true;
+    // WID-T2: notify host page that the cart sheet was opened (view_cart analytics).
+    const sessionId = selectedSession?.id ?? '';
+    dispatchWidgetEvent(host, ARENA_EVENTS.CART_OPENED, { sessionId, itemCount: cartCount });
   }
 
   function closeCartSheet(): void {
@@ -382,6 +391,11 @@
       const recovered = await postCheckoutRecover(checkoutToken);
       // Update hold expiry with the fresh timestamp from recovery (WID-S1 fix #3).
       holdExpiresAt = recovered.expires_at;
+      // WID-T2: notify host page that session was successfully recovered.
+      dispatchWidgetEvent(host, ARENA_EVENTS.RECOVERY, {
+        checkoutToken,
+        expiresAt: recovered.expires_at,
+      });
       // Re-load status after recovery attempt.
       orderStatus = await getCheckoutStatus(checkoutToken);
     } catch (err) {

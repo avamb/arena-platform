@@ -2,10 +2,12 @@
  * events.test.ts — Unit tests for the widget CustomEvent contract (WID-S5).
  *
  * Tests cover:
- *  1. ARENA_EVENTS constant — all five names present and correctly namespaced.
+ *  1. ARENA_EVENTS constant — all seven names present and correctly namespaced.
  *  2. dispatchWidgetEvent — dispatches a CustomEvent with the right name,
  *     bubbles:true, composed:true, and the supplied detail payload.
- *  3. Each of the five event types end-to-end.
+ *  3. Each of the seven event types end-to-end.
+ *
+ * WID-T2 additions: CART_OPENED, RECOVERY events.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -17,17 +19,22 @@ import {
   type ArenaPaymentStartedDetail,
   type ArenaOrderPaidDetail,
   type ArenaOrderFailedDetail,
+  type ArenaCartOpenedDetail,
+  type ArenaRecoveryDetail,
 } from './events.js';
 
 // ─── ARENA_EVENTS constant ────────────────────────────────────────────────────
 
 describe('ARENA_EVENTS', () => {
-  it('defines all five event names', () => {
+  it('defines all seven event names', () => {
     expect(ARENA_EVENTS.SEAT_SELECTED).toBe('arena:seat_selected');
     expect(ARENA_EVENTS.SEAT_RELEASED).toBe('arena:seat_released');
     expect(ARENA_EVENTS.PAYMENT_STARTED).toBe('arena:payment_started');
     expect(ARENA_EVENTS.ORDER_PAID).toBe('arena:order_paid');
     expect(ARENA_EVENTS.ORDER_FAILED).toBe('arena:order_failed');
+    // WID-T2 additions:
+    expect(ARENA_EVENTS.CART_OPENED).toBe('arena:cart_opened');
+    expect(ARENA_EVENTS.RECOVERY).toBe('arena:recovery');
   });
 
   it('all names are namespaced with "arena:" prefix', () => {
@@ -36,8 +43,8 @@ describe('ARENA_EVENTS', () => {
     }
   });
 
-  it('has exactly five event names', () => {
-    expect(Object.keys(ARENA_EVENTS)).toHaveLength(5);
+  it('has exactly seven event names', () => {
+    expect(Object.keys(ARENA_EVENTS)).toHaveLength(7);
   });
 });
 
@@ -252,5 +259,88 @@ describe('dispatchWidgetEvent — no cross-event leakage', () => {
     });
 
     expect(released).toBe(false);
+  });
+});
+
+// ─── WID-T2: cart_opened and recovery events ──────────────────────────────────
+
+describe('arena:cart_opened', () => {
+  it('carries sessionId and itemCount', () => {
+    const target = new EventTarget();
+    let detail: ArenaCartOpenedDetail | null = null;
+    target.addEventListener('arena:cart_opened', (e) => {
+      detail = (e as CustomEvent<ArenaCartOpenedDetail>).detail;
+    });
+
+    dispatchWidgetEvent(target, ARENA_EVENTS.CART_OPENED, {
+      sessionId: 'sess-cart-1',
+      itemCount: 3,
+    });
+
+    expect(detail).toEqual({ sessionId: 'sess-cart-1', itemCount: 3 });
+  });
+
+  it('itemCount can be 0 (empty cart opened programmatically)', () => {
+    const target = new EventTarget();
+    let detail: ArenaCartOpenedDetail | null = null;
+    target.addEventListener('arena:cart_opened', (e) => {
+      detail = (e as CustomEvent<ArenaCartOpenedDetail>).detail;
+    });
+
+    dispatchWidgetEvent(target, ARENA_EVENTS.CART_OPENED, {
+      sessionId: 'sess-empty',
+      itemCount: 0,
+    });
+
+    expect(detail?.itemCount).toBe(0);
+    expect(detail?.sessionId).toBe('sess-empty');
+  });
+});
+
+describe('arena:recovery', () => {
+  it('carries checkoutToken and expiresAt (API recovery)', () => {
+    const target = new EventTarget();
+    let detail: ArenaRecoveryDetail | null = null;
+    target.addEventListener('arena:recovery', (e) => {
+      detail = (e as CustomEvent<ArenaRecoveryDetail>).detail;
+    });
+
+    const expiry = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    dispatchWidgetEvent(target, ARENA_EVENTS.RECOVERY, {
+      checkoutToken: 'ckout-recover-1',
+      expiresAt: expiry,
+    });
+
+    expect(detail).toEqual({ checkoutToken: 'ckout-recover-1', expiresAt: expiry });
+  });
+
+  it('carries empty expiresAt for sessionStorage resume', () => {
+    const target = new EventTarget();
+    let detail: ArenaRecoveryDetail | null = null;
+    target.addEventListener('arena:recovery', (e) => {
+      detail = (e as CustomEvent<ArenaRecoveryDetail>).detail;
+    });
+
+    dispatchWidgetEvent(target, ARENA_EVENTS.RECOVERY, {
+      checkoutToken: 'ckout-resume-1',
+      expiresAt: '',
+    });
+
+    expect(detail?.checkoutToken).toBe('ckout-resume-1');
+    expect(detail?.expiresAt).toBe('');
+  });
+
+  it('dispatches with bubbles:true and composed:true', () => {
+    const target = new EventTarget();
+    let evt: CustomEvent | null = null;
+    target.addEventListener('arena:recovery', (e) => { evt = e as CustomEvent; });
+
+    dispatchWidgetEvent(target, ARENA_EVENTS.RECOVERY, {
+      checkoutToken: 'tok-composed',
+      expiresAt: new Date().toISOString(),
+    });
+
+    expect(evt?.bubbles).toBe(true);
+    expect(evt?.composed).toBe(true);
   });
 });

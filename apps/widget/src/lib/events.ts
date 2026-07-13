@@ -69,6 +69,20 @@ export const ARENA_EVENTS = {
    * or `status: "expired"`.
    */
   ORDER_FAILED: 'arena:order_failed',
+
+  /**
+   * WID-T2: Fired when the user opens the cart sheet (clicks the mini-cart bar).
+   * Use this for "view_cart" analytics funnel events.
+   */
+  CART_OPENED: 'arena:cart_opened',
+
+  /**
+   * WID-T2: Fired when a held session is successfully recovered via
+   * `POST /checkout/{token}/recover`, giving the user a fresh hold expiry.
+   * Also fired on initial mount when a checkout token is restored from
+   * sessionStorage (indicating an in-progress purchase is being resumed).
+   */
+  RECOVERY: 'arena:recovery',
 } as const;
 
 /** Union of all event name string literals. */
@@ -130,6 +144,26 @@ export interface ArenaOrderFailedDetail {
   reason: string;
 }
 
+/** WID-T2: Detail payload for `arena:cart_opened`. */
+export interface ArenaCartOpenedDetail {
+  /** ID of the event session currently active in the widget. */
+  sessionId: string;
+  /** Total number of items (seats + GA units) in the cart at the time of opening. */
+  itemCount: number;
+}
+
+/** WID-T2: Detail payload for `arena:recovery`. */
+export interface ArenaRecoveryDetail {
+  /** The checkout token that was recovered / resumed. */
+  checkoutToken: string;
+  /**
+   * New expiry timestamp (ISO-8601) for the recovered hold, or an empty
+   * string when the expiry is not yet known (e.g. sessionStorage resume
+   * before the status response arrives).
+   */
+  expiresAt: string;
+}
+
 /**
  * Maps each event name to its strongly-typed detail shape.
  * Use this with `CustomEvent<ArenaEventDetailMap[K]>` for full type safety.
@@ -140,6 +174,8 @@ export type ArenaEventDetailMap = {
   'arena:payment_started': ArenaPaymentStartedDetail;
   'arena:order_paid': ArenaOrderPaidDetail;
   'arena:order_failed': ArenaOrderFailedDetail;
+  'arena:cart_opened': ArenaCartOpenedDetail;
+  'arena:recovery': ArenaRecoveryDetail;
 };
 
 // ─── Dispatch helper ──────────────────────────────────────────────────────────

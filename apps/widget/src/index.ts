@@ -126,6 +126,7 @@ export {
 } from './api.js';
 
 // WID-S5: CustomEvent contract for host-page integration.
+// WID-T2: Added ArenaCartOpenedDetail, ArenaRecoveryDetail.
 export {
   ARENA_EVENTS,
   dispatchWidgetEvent,
@@ -135,6 +136,8 @@ export {
   type ArenaPaymentStartedDetail,
   type ArenaOrderPaidDetail,
   type ArenaOrderFailedDetail,
+  type ArenaCartOpenedDetail,
+  type ArenaRecoveryDetail,
   type ArenaEventDetailMap,
 } from './lib/events.js';
 
