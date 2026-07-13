@@ -12,6 +12,7 @@ import {
   buildSeatMapSVG,
   applySeatStatusUpdate,
   applyConflictHighlight,
+  applySelectionHighlights,
   clearConflictHighlight,
   buildCategoryColorMap,
   seatFillColor,
@@ -608,6 +609,24 @@ describe('applyConflictHighlight', () => {
     expect(circle.getAttribute('aria-label')).toContain('conflict — not available');
   });
 
+  it('preserves the selected suffix when conflict is applied to a selected seat', () => {
+    const div = document.createElement('div');
+    div.innerHTML = `<svg><circle
+      data-seat-key="P|1|4" data-status="available" data-cat="1"
+      data-base-label="Parter, row 1, seat 4, 50.00 CZK"
+      fill="#ff0000"
+      aria-label="Parter, row 1, seat 4, 50.00 CZK, available"
+    /></svg>`;
+    applySelectionHighlights(div, new Set(['P|1|4']), new Set());
+
+    applyConflictHighlight(div, new Set(['P|1|4']));
+
+    const circle = div.querySelector('[data-seat-key="P|1|4"]') as SVGCircleElement;
+    expect(circle.getAttribute('aria-label')).toBe(
+      'Parter, row 1, seat 4, 50.00 CZK, conflict — not available, selected',
+    );
+  });
+
   it('highlights multiple seats', () => {
     const div = document.createElement('div');
     div.innerHTML = `<svg>
@@ -816,6 +835,27 @@ describe('clearConflictHighlight', () => {
     const el = div.querySelector('[data-seat-key="P|1|1"]') as SVGCircleElement;
     // Full label must be restored from base-label + status, not regex over live label.
     expect(el.getAttribute('aria-label')).toBe('Parter, row 1, seat 1, 50.00 CZK, available');
+  });
+
+  it('restores base, status, and selected after clearing a selected-seat conflict', () => {
+    const div = document.createElement('div');
+    div.innerHTML = `<svg><circle
+      data-seat-key="P|1|2" data-cat="1" data-status="available"
+      data-base-label="Parter, row 1, seat 2, 50.00 CZK"
+      fill="#ff0000"
+      aria-label="Parter, row 1, seat 2, 50.00 CZK, available"
+    /></svg>`;
+    const conflictKeys = new Set(['P|1|2']);
+    const catColorMap = new Map([[1, '#ff0000']]);
+    applySelectionHighlights(div, conflictKeys, new Set());
+    applyConflictHighlight(div, conflictKeys);
+
+    clearConflictHighlight(div, conflictKeys, catColorMap, {});
+
+    const el = div.querySelector('[data-seat-key="P|1|2"]') as SVGCircleElement;
+    expect(el.getAttribute('aria-label')).toBe(
+      'Parter, row 1, seat 2, 50.00 CZK, available, selected',
+    );
   });
 
   it('applyConflictHighlight uses data-base-label to build conflict aria-label (WID-S2)', () => {

@@ -336,7 +336,8 @@ export function applySeatStatusUpdate(
  * Marks each conflicting seat circle with:
  *  - `fill`          → `CONFLICT_COLOR` (#b91c1c, WCAG-AA error red)
  *  - `data-status`   → `"conflict"` (widget-only overlay value)
- *  - `aria-label`    → trailing status replaced with "conflict — not available"
+ *  - `aria-label`    → trailing status replaced with "conflict — not available",
+ *                      preserving the selected marker when present
  *
  * This is a keyed DOM mutation that does not trigger a full SVG re-render.
  *
@@ -359,10 +360,11 @@ export function applyConflictHighlight(
     // conflict suffix is appended to the canonical label (not to a live
     // string that may already carry ", selected" or a previous status suffix).
     const baseLabel = el.getAttribute('data-base-label') ?? '';
-    el.setAttribute(
-      'aria-label',
-      baseLabel ? `${baseLabel}, conflict — not available` : 'conflict — not available',
-    );
+    const conflictLabel = baseLabel
+      ? `${baseLabel}, conflict — not available`
+      : 'conflict — not available';
+    const isSelected = el.getAttribute('data-selected') === 'true';
+    el.setAttribute('aria-label', isSelected ? `${conflictLabel}, selected` : conflictLabel);
   }
 }
 
