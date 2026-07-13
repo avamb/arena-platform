@@ -17,6 +17,7 @@
 --   ledger session    fe000007-0000-7000-8000-000000000008
 --   ledger parket     fe000007-0000-7000-8000-000000000009
 --   ledger galerie    fe000007-0000-7000-8000-00000000000a
+--   event_publication fe000007-0000-7000-8000-00000000000b
 -- =============================================================================
 
 -- ── 1. Event ─────────────────────────────────────────────────────────────────
@@ -264,7 +265,27 @@ VALUES (
 )
 ON CONFLICT DO NOTHING;
 
--- ── 9. Session seats (260 assigned seats for Parket) ─────────────────────────
+-- ── 9. Event publication ──────────────────────────────────────────────────────
+--
+-- Links the E2E event to the E2E agent_feed_token via event_publications.
+-- Without this row the JOIN in GetPublicCheckoutContext returns no rows and
+-- every POST /v1/public/feeds/{token}/checkout/start returns 403.
+--
+-- Fixed ID: fe000007-0000-7000-8000-00000000000b
+
+INSERT INTO event_publications (
+    id,
+    event_id,
+    feed_token_id
+)
+VALUES (
+    'fe000007-0000-7000-8000-00000000000b',
+    'fe000007-0000-7000-8000-000000000001',  -- E2E event
+    'fe000007-0000-7000-8000-000000000007'   -- E2E agent_feed_token
+)
+ON CONFLICT DO NOTHING;
+
+-- ── 10. Session seats (260 assigned seats for Parket) ────────────────────────
 --
 -- Key format: chr(64+r) || lpad(s::text, 2, '0')
 --   row 1 (r=1) → 'A', row 10 (r=10) → 'J'

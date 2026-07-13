@@ -30,9 +30,20 @@ const TIER_GALERIE = 'fe000007-0000-7000-8000-000000000006';
 // ─── Helper: wait for the SVG seat map to appear ─────────────────────────────
 
 async function waitForSVG(page: Page): Promise<void> {
+  // Use the starts-with CSS attribute selector [attr^=val] because the real
+  // backend renders a dynamic label: "Seat map — sections: Parket" (or similar).
+  // An exact [aria-label="Seat map"] match would never resolve against the live
+  // markup and cause every test that calls waitForSVG to time out.
   await page.waitForFunction(() => {
     const el = document.querySelector('#widget-hybrid-en');
-    return el?.shadowRoot?.querySelector('svg[aria-label="Seat map"]') !== null;
+    const shadow = el?.shadowRoot;
+    if (!shadow) return false;
+    // Accept any SVG whose aria-label starts with "Seat map" (covers both the
+    // empty-geometry fallback "Seat map" and the populated "Seat map — sections: …").
+    return (
+      shadow.querySelector('svg[aria-label^="Seat map"]') !== null ||
+      shadow.querySelector('.seat-map-inner svg') !== null
+    );
   }, { timeout: 15_000 });
 }
 
@@ -173,7 +184,9 @@ test.describe('2 — Real schema: 260 seats from backend', () => {
 
     const seatCount = await page.evaluate(() => {
       const el  = document.querySelector('#widget-hybrid-en');
-      const svg = el?.shadowRoot?.querySelector('svg[aria-label="Seat map"]');
+      // Use starts-with selector — the real backend populates the label as
+      // "Seat map — sections: Parket" (not the bare "Seat map" fallback).
+      const svg = el?.shadowRoot?.querySelector('svg[aria-label^="Seat map"]');
       return svg?.querySelectorAll('[data-seat-key]').length ?? 0;
     });
 
@@ -232,12 +245,15 @@ test.describe('2 — Real schema: 260 seats from backend', () => {
     await page.goto(DEMO_PAGE);
     await waitForSVG(page);
 
-    // The first load should have received an ETag from the backend
-    // (if the backend sets one). If it does, a second navigation will
-    // use If-None-Match. We verify the backend sends ETag rather than
-    // asserting the client caches it (that is a widget unit-test concern).
-    // For the real backend contract test we just assert the round-trip worked.
-    expect(firstEtag !== undefined).toBe(true); // may be null if backend omits ETag
+    // The real backend always sets ETag = '"<geometry_checksum>"' (strong ETag)
+    // on GET /v1/event-sessions/{id}/schema — see hseating/public_schema.go.
+    // Assert that the response included a non-null ETag with the expected format.
+    expect(firstEtag, 'Backend schema endpoint must set an ETag header').not.toBeNull();
+    // Strong ETags are double-quoted strings, e.g. '"sha256-palac-akropolis-…"'.
+    expect(
+      firstEtag,
+      `ETag "${firstEtag}" should be a double-quoted strong ETag`,
+    ).toMatch(/^"[^"]+"$/);
   });
 });
 

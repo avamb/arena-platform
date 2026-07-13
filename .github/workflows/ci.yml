@@ -345,14 +345,25 @@ jobs:
         working-directory: .
         run: |
           /tmp/arena-api &
-          # Wait until /healthz returns 200 (up to 30 s)
+          ARENA_PID=$!
+          echo "arena-api started with PID ${ARENA_PID}"
+
+      - name: Wait for arena-api to be healthy
+        working-directory: .
+        run: |
+          # Block until /healthz returns HTTP 200 (up to 30 s).
+          # Exit 1 if the backend never comes up so subsequent E2E steps
+          # don't race against an unavailable backend.
           for i in $(seq 1 30); do
-            if curl -sf http://localhost:8080/healthz; then
-              echo "arena-api is up"
-              break
+            if curl -sf http://localhost:8080/healthz > /dev/null 2>&1; then
+              echo "arena-api is healthy after ${i}s"
+              exit 0
             fi
+            echo "Waiting for arena-api... (${i}/30)"
             sleep 1
           done
+          echo "ERROR: arena-api failed to become healthy within 30 seconds"
+          exit 1
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
