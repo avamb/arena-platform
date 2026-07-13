@@ -20162,3 +20162,52 @@ Verification:
   npm --prefix apps/widget run size          54.1 kB gzip vs 150 kB gate PASS
 Marked #338 passing. (338/338 features passing, 100.0%)
 Marked #336 passing. (336/338 features passing, 99.4%)
+
+
+## 2026-07-13 - Feature #337 (WID-S4) Roving tabindex invariant across row navigation
+
+Fixed two keyboard navigation bugs and added E2E invariant coverage.
+
+### Bug 1: Cross-row tabindex invariant broken (primary fix)
+When `navigateSeat` handled ArrowDown/ArrowUp, it set `target.tabindex=0` in
+the destination row, but the ORIGINAL first-seat-per-row tabindex=0 (emitted by
+`buildSeatMapSVG`) was never cleared. Result: if the user navigated into a
+non-first column (e.g. A2→ArrowDown→B2), row B ended up with TWO tabindex=0
+seats: the original B1 AND the target B2.
+
+Fix in `SeatMapView.svelte navigateSeat`: before setting the target seat to
+tabindex=0, iterate all seats in the target row and reset them to tabindex=-1.
+The final block then sets target to 0, guaranteeing exactly one Tab stop per row.
+
+### Bug 2: Dead container Tab stop
+`.seat-map-container` had `tabindex="0"` which put it in the Tab order as a
+dead stop: arrow keys only acted when focus was on a `[data-seat-key]` element,
+so Tab→container trapped keyboard users with no way forward.
+
+Fix: changed container `tabindex="0"` → `tabindex="-1"`. The container stays
+programmatically focusable but is no longer a Tab stop. First-seat-per-row
+circles (tabindex=0) are the real Tab stops users land on via Tab.
+
+### palac-akropolis.e2e.ts updated
+Line that asserted `expect(attrs.tabindex).toBe('0')` updated to `-1` with
+WID-S4 comment (this test is in testIgnore so does not block CI).
+
+### New E2E tests — keyboard.e2e.ts (5 tests in WID-S4 describe block)
+- container has tabindex="-1" (dead Tab-stop removed)
+- ArrowDown into non-first column: target row has exactly 1 tabindex=0
+- ArrowUp into non-first column: target row has exactly 1 tabindex=0
+- repeated cross-row A→B→C preserves invariant (row B = 0, row C = 1)
+- aria-label restores correctly after seat deselection (data-base-label)
+- aria-label restores via data-base-label after status-poll overrides conflict suffix
+
+Modified files:
+- apps/widget/src/components/SeatMapView.svelte (navigateSeat fix + tabindex=-1)
+- apps/widget/tests/keyboard.e2e.ts (+5 WID-S4 E2E tests)
+- apps/widget/tests/palac-akropolis.e2e.ts (tabindex expectation update)
+
+Verification:
+  npm --prefix apps/widget test              429/429 PASS (11 test files)
+  npm --prefix apps/widget run type-check    OK (0 errors)
+  npm --prefix apps/widget run build         54.48 kB gzip vs 150 kB gate PASS
+  npm --prefix apps/widget run size          54.12 kB gzip PASS
+Marked #337 passing. (337/338 features passing, 99.7%)
