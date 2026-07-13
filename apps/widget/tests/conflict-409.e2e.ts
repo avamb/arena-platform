@@ -189,14 +189,14 @@ test.describe('WID-T4 — dual-context 409 conflict', () => {
     // Open cart sheet in context B by clicking seat A1 to select it
     await pageB.evaluate(() => {
       const el = document.querySelector('#widget-conflict') as HTMLElement & { shadowRoot: ShadowRoot };
-      const seat = el?.shadowRoot?.querySelector<HTMLElement>('circle[data-seat-key="A1"]');
-      seat?.click();
+      const seat = el?.shadowRoot?.querySelector('circle[data-seat-key="A1"]');
+      seat?.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
     });
 
     // Open the MiniCart to get to the CartSheet
     await pageB.evaluate(() => {
       const el = document.querySelector('#widget-conflict') as HTMLElement & { shadowRoot: ShadowRoot };
-      const miniCart = el?.shadowRoot?.querySelector<HTMLElement>('.mini-cart');
+      const miniCart = el?.shadowRoot?.querySelector<HTMLButtonElement>('.mini-cart-btn');
       miniCart?.click();
     });
 
@@ -290,14 +290,14 @@ test.describe('WID-T4 — dual-context 409 conflict', () => {
     // Select seat A1
     await page.evaluate(() => {
       const el = document.querySelector('#widget-conflict') as HTMLElement & { shadowRoot: ShadowRoot };
-      const seat = el?.shadowRoot?.querySelector<HTMLElement>('circle[data-seat-key="A1"]');
-      seat?.click();
+      const seat = el?.shadowRoot?.querySelector('circle[data-seat-key="A1"]');
+      seat?.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
     });
 
     // Open MiniCart
     await page.evaluate(() => {
       const el = document.querySelector('#widget-conflict') as HTMLElement & { shadowRoot: ShadowRoot };
-      const miniCart = el?.shadowRoot?.querySelector<HTMLElement>('.mini-cart');
+      const miniCart = el?.shadowRoot?.querySelector<HTMLButtonElement>('.mini-cart-btn');
       miniCart?.click();
     });
 
