@@ -238,14 +238,34 @@ export async function getCheckoutStatus(
   if (!res.ok) {
     let detail = '';
     let code: string | undefined;
+    let details: Record<string, unknown> | undefined;
     try {
-      const body = (await res.json()) as { error?: string; message?: string; code?: string };
-      detail = body.error ?? body.message ?? '';
-      code = body.code ?? (body.error || undefined);
+      // WID-T4: parse the nested envelope just like postCheckoutStart/postCheckoutRecover.
+      // Arena backend sends {"error": {"code": "...", "message": "...", "details": {...}}}.
+      const body = (await res.json()) as { error?: unknown; message?: string };
+      const errBody = body.error;
+      if (errBody !== null && typeof errBody === 'object') {
+        // Standard arena-backend nested envelope.
+        const nested = errBody as { code?: string; message?: string; details?: Record<string, unknown> };
+        detail = nested.message ?? '';
+        code = nested.code;
+        details = nested.details;
+      } else if (typeof errBody === 'string') {
+        // Legacy flat-string fallback: {"error": "code_string", ...}
+        detail = errBody;
+        code = errBody || undefined;
+        const d = (body as Record<string, unknown>)['details'];
+        if (d !== null && d !== undefined && typeof d === 'object') {
+          details = d as Record<string, unknown>;
+        }
+      } else if (typeof body.message === 'string') {
+        // Last-resort fallback: {"message": "..."}
+        detail = body.message;
+      }
     } catch { /* ignore non-JSON bodies */ }
     throw new ApiError(
       `getCheckoutStatus HTTP ${res.status}${detail ? `: ${detail}` : ''}`,
-      { status: res.status, code },
+      { status: res.status, code, details },
     );
   }
   return res.json() as Promise<CheckoutStatusResponse>;

@@ -11,12 +11,25 @@
     locale?: string;
     submitting?: boolean;
     submitError?: string | null;
+    /**
+     * Seat keys currently in conflict (from a 409 response).
+     * When non-empty and submitError is set, a "continue without conflicts" CTA
+     * is shown so the user can drop conflicting seats and retry (WID-T4).
+     */
+    conflictKeys?: ReadonlySet<string>;
+    /**
+     * Called when the user clicks "continue without unavailable seats".
+     * The handler in ArenaTickets removes conflicting seats from the selection
+     * and clears the conflict state so the user can proceed (WID-T4).
+     */
+    onContinueWithoutConflicts?: () => void;
     onClose: () => void;
     onRemoveLine: (idx: number) => void;
     onCheckout: (values: BuyerFormValues) => void;
   }
   const {
     cart, buyerFields, locale = 'en', submitting = false, submitError = null,
+    conflictKeys, onContinueWithoutConflicts,
     onClose, onRemoveLine, onCheckout,
   }: Props = $props();
 
@@ -107,6 +120,12 @@
     <div class="sheet-body">
       {#if submitError}
         <p class="submit-error" role="alert">{submitError}</p>
+        {#if conflictKeys && conflictKeys.size > 0 && onContinueWithoutConflicts}
+          <!-- WID-T4: one-click "continue without unavailable seats" CTA -->
+          <button class="continue-without-btn" onclick={onContinueWithoutConflicts}>
+            {t.continue_without_conflicts}
+          </button>
+        {/if}
       {/if}
       <BuyerForm
         {buyerFields}
@@ -254,5 +273,25 @@
     padding: 0.5rem 0.75rem;
     border-radius: var(--arena-radius, 8px);
     margin: 0;
+  }
+  /* WID-T4: secondary action for the 409 conflict case */
+  .continue-without-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.625rem 1.25rem;
+    background: transparent;
+    color: var(--_accent, #4f46e5);
+    border: 1.5px solid var(--_accent, #4f46e5);
+    border-radius: var(--arena-radius, 8px);
+    font-size: 0.9375rem;
+    font-family: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    width: 100%;
+    transition: background 0.15s, color 0.15s;
+  }
+  .continue-without-btn:hover {
+    background: color-mix(in srgb, var(--_accent, #4f46e5) 8%, transparent);
   }
 </style>

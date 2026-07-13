@@ -652,6 +652,113 @@ describe('applyConflictHighlight', () => {
   });
 });
 
+// ─── applySeatStatusUpdate — WID-T4 new behaviour ────────────────────────────
+
+describe('applySeatStatusUpdate — WID-T4', () => {
+  it('skips seats that are in the skipKeys set (conflict priority over poller)', () => {
+    const div = document.createElement('div');
+    div.innerHTML = `<svg>
+      <circle data-seat-key="A1" data-cat="1" data-status="conflict"
+        data-base-label="Parter, row 1, seat 1"
+        fill="#b91c1c" aria-label="Parter, row 1, seat 1, conflict — not available"/>
+    </svg>`;
+    const catMap = new Map([[1, '#ff0000']]);
+    const skipKeys = new Set(['A1']);
+
+    applySeatStatusUpdate(div, { A1: 'held' as SeatStatusValue }, catMap, skipKeys);
+
+    const el = div.querySelector('[data-seat-key="A1"]') as SVGCircleElement;
+    // fill and data-status must NOT be overwritten by the poller update
+    expect(el.getAttribute('fill')).toBe('#b91c1c');
+    expect(el.getAttribute('data-status')).toBe('conflict');
+  });
+
+  it('updates seats NOT in skipKeys while skipping conflict seats', () => {
+    const div = document.createElement('div');
+    div.innerHTML = `<svg>
+      <circle data-seat-key="A1" data-cat="1" data-status="conflict"
+        data-base-label="Parter, row 1, seat 1"
+        fill="#b91c1c" aria-label="Parter, row 1, seat 1, conflict — not available"/>
+      <circle data-seat-key="A2" data-cat="1" data-status="available"
+        data-base-label="Parter, row 1, seat 2"
+        fill="#ff0000" aria-label="Parter, row 1, seat 2, available"/>
+    </svg>`;
+    const catMap = new Map([[1, '#ff0000']]);
+    const skipKeys = new Set(['A1']);
+
+    applySeatStatusUpdate(
+      div,
+      { A1: 'held' as SeatStatusValue, A2: 'held' as SeatStatusValue },
+      catMap,
+      skipKeys,
+    );
+
+    const el1 = div.querySelector('[data-seat-key="A1"]') as SVGCircleElement;
+    const el2 = div.querySelector('[data-seat-key="A2"]') as SVGCircleElement;
+    // A1 is skipped — stays in conflict state
+    expect(el1.getAttribute('data-status')).toBe('conflict');
+    expect(el1.getAttribute('fill')).toBe('#b91c1c');
+    // A2 is not in skipKeys — should be updated to held
+    expect(el2.getAttribute('data-status')).toBe('held');
+    expect(el2.getAttribute('fill')).toBe(STATUS_COLORS['held']);
+  });
+
+  it('works with an empty skipKeys set (no seats skipped)', () => {
+    const div = document.createElement('div');
+    div.innerHTML = `<svg>
+      <circle data-seat-key="B1" data-cat="1" data-status="available"
+        data-base-label="Balkon, row 1, seat 1"
+        fill="#ff0000" aria-label="Balkon, row 1, seat 1, available"/>
+    </svg>`;
+    const catMap = new Map([[1, '#ff0000']]);
+
+    applySeatStatusUpdate(div, { B1: 'held' as SeatStatusValue }, catMap, new Set());
+
+    const el = div.querySelector('[data-seat-key="B1"]') as SVGCircleElement;
+    expect(el.getAttribute('data-status')).toBe('held');
+  });
+
+  it('preserves "selected" aria-label suffix when seat has data-selected=true (WID-T4)', () => {
+    const div = document.createElement('div');
+    div.innerHTML = `<svg>
+      <circle data-seat-key="S1" data-cat="1" data-status="available"
+        data-selected="true"
+        data-base-label="Parter, row 1, seat 1, 22.00 EUR"
+        fill="#4f46e5"
+        aria-label="Parter, row 1, seat 1, 22.00 EUR, available, selected"
+        stroke="#4f46e5" stroke-width="2.5"/>
+    </svg>`;
+    const catMap = new Map([[1, '#ff0000']]);
+
+    // Poller delivers a "held" update for this seat while the user has it selected
+    applySeatStatusUpdate(div, { S1: 'held' as SeatStatusValue }, catMap);
+
+    const el = div.querySelector('[data-seat-key="S1"]') as SVGCircleElement;
+    // data-status should be updated
+    expect(el.getAttribute('data-status')).toBe('held');
+    // aria-label must still include "selected" suffix because data-selected=true
+    expect(el.getAttribute('aria-label')).toContain('selected');
+    expect(el.getAttribute('aria-label')).toBe('Parter, row 1, seat 1, 22.00 EUR, held, selected');
+  });
+
+  it('does NOT append "selected" suffix when data-selected is absent or false', () => {
+    const div = document.createElement('div');
+    div.innerHTML = `<svg>
+      <circle data-seat-key="U1" data-cat="1" data-status="available"
+        data-base-label="Parter, row 1, seat 1"
+        fill="#ff0000" aria-label="Parter, row 1, seat 1, available"/>
+    </svg>`;
+    const catMap = new Map([[1, '#ff0000']]);
+
+    applySeatStatusUpdate(div, { U1: 'sold' as SeatStatusValue }, catMap);
+
+    const el = div.querySelector('[data-seat-key="U1"]') as SVGCircleElement;
+    // aria-label must NOT include "selected"
+    expect(el.getAttribute('aria-label')).toBe('Parter, row 1, seat 1, sold');
+    expect(el.getAttribute('aria-label')).not.toContain('selected');
+  });
+});
+
 // ─── clearConflictHighlight ───────────────────────────────────────────────────
 
 describe('clearConflictHighlight', () => {

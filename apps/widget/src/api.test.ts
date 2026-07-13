@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { postCheckoutStart, ApiError } from './api.js';
+import { postCheckoutStart, getCheckoutStatus, ApiError } from './api.js';
 import type { CheckoutStartPayload } from './lib/checkout.js';
 
 const payload: CheckoutStartPayload = {
@@ -112,6 +112,33 @@ describe('postCheckoutStart — structured errors', () => {
     const err = (await postCheckoutStart('ft', payload).catch((e: unknown) => e)) as ApiError;
     expect(err.message).toBe('postCheckoutStart HTTP 400: bad payload');
     expect(err.code).toBe('http_400');
+  });
+
+  it('parses real arena-backend nested envelope {"error": {...}} on 409 (WID-T4 — getCheckoutStatus)', async () => {
+    // getCheckoutStatus must parse the nested envelope the same way as postCheckoutStart.
+    // Backend sends {"error": {"code": "...", "message": "...", "details": {...}}}
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+        json: () =>
+          Promise.resolve({
+            error: {
+              code: 'auth.token_expired',
+              message: 'checkout token has expired',
+              details: {},
+            },
+          }),
+      }),
+    );
+    const err = (await getCheckoutStatus('stale-token').catch((e: unknown) => e)) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.status).toBe(401);
+    expect(err.code).toBe('auth.token_expired');
+    expect(err.message).toContain('checkout token has expired');
+    expect(err.details).toEqual({});
   });
 
   it('parses real arena-backend nested envelope {"error": {...}} on 409 (WID-S2)', async () => {

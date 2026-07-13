@@ -21,7 +21,7 @@
   import { fetchFeedEvent, postCheckoutStart, getCheckoutStatus, postCheckoutRecover, ApiError } from './api.js';
   import type { FeedSession, FeedEvent, Geometry, CategoryPrice, SeatStatusValue } from './types.js';
   import type { BuyerFormValues } from './lib/checkout.js';
-  import { buildCheckoutPayload, getCheckoutI18n, parseConflictsFromApiError, conflictKeySet } from './lib/checkout.js';
+  import { buildCheckoutPayload, getCheckoutI18n, parseConflictsFromApiError, conflictKeySet, filterCartWithoutConflicts } from './lib/checkout.js';
   import { toggleSeatSelection } from './lib/selection.js';
   import { dispatchWidgetEvent, ARENA_EVENTS } from './lib/events.js';
   import {
@@ -355,6 +355,8 @@
   async function loadOrderStatus(token: string): Promise<void> {
     try {
       orderStatus = await getCheckoutStatus(token);
+      // WID-T3: use server-side expires_at from order-status to drive countdown.
+      holdExpiresAt = orderStatus.expires_at ?? null;
       // WID-S5: notify host page about terminal order outcomes.
       const status = orderStatus.status;
       if (status === 'paid') {
@@ -371,10 +373,28 @@
         });
       }
     } catch (err) {
-      // Stale / invalid checkout token (401 or 404) → clear it from storage so
-      // the widget doesn't brick on the next page refresh (WID-S1 fix #5).
       const apiErr = err as ApiError;
-      if (apiErr?.status === 401 || apiErr?.status === 404) {
+      if (apiErr?.status === 401) {
+        // WID-T3: Token may have expired — attempt silent recovery without page reload.
+        try {
+          const recovered = await postCheckoutRecover(token);
+          holdExpiresAt = recovered.expires_at;
+          const newToken = recovered.checkout_token;
+          checkoutToken = newToken;
+          saveCheckoutToken(newToken);
+          // Reload status with the refreshed token.
+          await loadOrderStatus(newToken);
+          return;
+        } catch {
+          // Recovery also failed — clear session and go back to seat selection.
+          clearCheckoutToken();
+          checkoutToken = null;
+          stage = 'selecting';
+          return;
+        }
+      }
+      // 404 = token doesn't exist in the backend; clear and reset.
+      if (apiErr?.status === 404) {
         clearCheckoutToken();
         checkoutToken = null;
       }
@@ -414,6 +434,20 @@
     }
   }
 
+  /**
+   * WID-T4: "Continue without conflicts" one-click action.
+   *
+   * Removes conflicting seats from the selection so the user can proceed
+   * to checkout without the unavailable seats.  Clears conflict highlights
+   * and the inline conflict notice so the map and form return to a clean state.
+   */
+  function handleContinueWithoutConflicts(): void {
+    const remaining = filterCartWithoutConflicts([...selectedSeatKeys], conflictKeys);
+    selectedSeatKeys = new Set(remaining);
+    conflictKeys = new Set();
+    checkoutError = null;
+  }
+
   function handleRetry(): void {
     // Clear token and return to selecting stage.
     clearCheckoutToken();
@@ -449,6 +483,7 @@
       <OrderStatus
         status={orderStatus}
         locale={normLocale}
+        expiresAt={holdExpiresAt}
         onRecover={handleRecover}
         onRetry={handleRetry}
         actionLoading={orderActionLoading}
@@ -473,6 +508,7 @@
         <!-- Session date chips + legend -->
         <SessionList
           sessions={event.sessions}
+          locale={normLocale}
           {selectedSession}
           onSelectSession={(s) => {
             // Reset seat/GA selection when switching sessions so stale keys
@@ -538,6 +574,8 @@
         locale={normLocale}
         submitting={checkoutSubmitting}
         submitError={checkoutError}
+        {conflictKeys}
+        onContinueWithoutConflicts={handleContinueWithoutConflicts}
         onClose={closeCartSheet}
         onRemoveLine={handleRemoveLine}
         onCheckout={handleCheckout}

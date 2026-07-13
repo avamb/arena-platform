@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Arena Tickets — Conflict 409 Test Fixture (WID-T4)</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        margin: 0;
+        padding: 2rem;
+        background: #f8fafc;
+        color: #1a1a1a;
+      }
+      h1 { font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem; }
+      .card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 1.5rem;
+        min-height: 480px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Conflict 409 — Test Fixture (WID-T4)</h1>
+      <div class="card">
+        <arena-tickets
+          id="widget-conflict"
+          feed-token="conflict-feed-token"
+          session-id="conflict-session-001"
+          locale="en"
+          style="display:block;width:100%;height:480px;"
+        ></arena-tickets>
+      </div>
+    </main>
+    <script type="module" src="/dist/v1/arena-tickets.js"></script>
+  </body>
+</html>

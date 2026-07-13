@@ -291,8 +291,14 @@ export function applySeatStatusUpdate(
   container: Element,
   delta: Record<string, SeatStatusValue>,
   catColorMap: ReadonlyMap<number, string>,
+  skipKeys?: ReadonlySet<string>,
 ): void {
   for (const [key, status] of Object.entries(delta)) {
+    // WID-T4: conflict highlight takes priority over the status poller.
+    // If this seat key is in the current conflict set, skip the DOM update
+    // so the WCAG-AA error-red overlay is not overwritten by the next poll tick.
+    if (skipKeys?.has(key)) continue;
+
     const selector = `circle[data-seat-key="${cssAttrEscape(key)}"]`;
     const el = container.querySelector<SVGCircleElement>(selector);
     if (!el) continue;
@@ -309,7 +315,11 @@ export function applySeatStatusUpdate(
     // that also has ", selected" appended by applySelectionHighlights, or
     // ", conflict — not available" from a prior applyConflictHighlight call.
     const baseLabel = el.getAttribute('data-base-label') ?? '';
-    el.setAttribute('aria-label', baseLabel ? `${baseLabel}, ${status}` : status);
+    const baseWithStatus = baseLabel ? `${baseLabel}, ${status}` : status;
+    // WID-T4: preserve the "selected" suffix so poller ticks do not silently
+    // drop the selection indicator from the accessible label.
+    const isSelected = el.getAttribute('data-selected') === 'true';
+    el.setAttribute('aria-label', isSelected ? `${baseWithStatus}, selected` : baseWithStatus);
   }
 }
 

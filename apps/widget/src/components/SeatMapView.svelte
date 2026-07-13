@@ -104,8 +104,10 @@
       onUpdate(seats, _version) {
         seatStatuses = { ...seatStatuses, ...seats };
         // Keyed DOM update — no re-render, no per-tick map allocation.
+        // WID-T4: pass current conflictKeys so the poller does not overwrite
+        // the WCAG-AA error-red conflict highlight on seats still in conflict.
         if (svgContainer) {
-          applySeatStatusUpdate(svgContainer, seats, catColorMap);
+          applySeatStatusUpdate(svgContainer, seats, catColorMap, conflictKeys ?? new Set());
         }
       },
       onError(err) {
