@@ -171,12 +171,6 @@
       // Restore order status view.
       checkoutToken = resumeToken;
       stage = 'order-status';
-      // WID-T2: emit recovery for sessionStorage resume so host pages can
-      // track funnel re-entry (expiresAt unknown until status response arrives).
-      dispatchWidgetEvent(host, ARENA_EVENTS.RECOVERY, {
-        checkoutToken: resumeToken,
-        expiresAt: '',
-      });
       loadOrderStatus(resumeToken);
       return;
     }
@@ -387,6 +381,10 @@
           const newToken = recovered.checkout_token;
           checkoutToken = newToken;
           saveCheckoutToken(newToken);
+          dispatchWidgetEvent(host, ARENA_EVENTS.RECOVERY, {
+            checkoutToken: newToken,
+            expiresAt: recovered.expires_at,
+          });
           // Reload status with the refreshed token.
           await loadOrderStatus(newToken);
           return;

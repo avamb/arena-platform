@@ -120,6 +120,64 @@ Fires when the widget polls order status and receives `status: "failed"` or
 
 ---
 
+### `arena:cart_opened`
+
+Fires when the user opens the cart sheet from the mini-cart. Use this for a
+`view_cart` analytics event. The count includes selected seats and GA units.
+
+```typescript
+interface ArenaCartOpenedDetail {
+  sessionId: string;
+  itemCount: number;
+}
+```
+
+| Field       | Type     | Description                                      |
+|-------------|----------|--------------------------------------------------|
+| `sessionId` | `string` | ID of the event session currently being viewed  |
+| `itemCount` | `number` | Total seats and GA units in the cart             |
+
+```javascript
+widget.addEventListener('arena:cart_opened', (e) => {
+  analytics.track('view_cart', {
+    session_id: e.detail.sessionId,
+    item_count: e.detail.itemCount,
+  });
+});
+```
+
+---
+
+### `arena:recovery`
+
+Fires only after `POST /checkout/{token}/recover` succeeds, whether recovery
+was initiated by the user or silently after a `401` status response. Restoring
+a checkout token from the URL or session storage by itself does not fire this
+event.
+
+```typescript
+interface ArenaRecoveryDetail {
+  checkoutToken: string;
+  expiresAt: string;
+}
+```
+
+| Field           | Type     | Description                                      |
+|-----------------|----------|--------------------------------------------------|
+| `checkoutToken` | `string` | Checkout token returned by successful recovery  |
+| `expiresAt`     | `string` | Fresh hold expiry as an ISO-8601 timestamp       |
+
+```javascript
+widget.addEventListener('arena:recovery', (e) => {
+  analytics.track('checkout_recovered', {
+    token: e.detail.checkoutToken,
+    expires_at: e.detail.expiresAt,
+  });
+});
+```
+
+---
+
 ## TypeScript types
 
 If you consume the widget as an npm package you can import the type definitions:
@@ -132,6 +190,8 @@ import type {
   ArenaPaymentStartedDetail,
   ArenaOrderPaidDetail,
   ArenaOrderFailedDetail,
+  ArenaCartOpenedDetail,
+  ArenaRecoveryDetail,
   ArenaEventDetailMap,
 } from '@arena/widget';
 ```

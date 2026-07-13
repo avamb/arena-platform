@@ -884,6 +884,68 @@ test.describe('WID-T2 — arena:cart_opened and arena:recovery events', () => {
   // ── arena:recovery ────────────────────────────────────────────────────────
 
   test.describe('arena:recovery', () => {
+    test('does NOT fire on a plain checkout-token resume', async ({ page }) => {
+      await page.route(`**/v1/public/checkout/${RECOVER_TOKEN}`, (route) => {
+        void route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(buildExpiredStatus()),
+        });
+      });
+      await preCaptureEvents(page);
+
+      await page.goto(`/demo/custom-events.html?checkout_token=${RECOVER_TOKEN}`);
+      await page.waitForFunction(
+        () => document.getElementById('test-widget')?.shadowRoot?.querySelector('[data-status="expired"]') !== null,
+        { timeout: 10_000 },
+      );
+
+      const events = await getCapturedEvents(page);
+      expect(events.filter((e) => e.name === 'arena:recovery')).toHaveLength(0);
+    });
+
+    test('fires after successful silent recovery from a 401 status response', async ({ page }) => {
+      const refreshedToken = `${RECOVER_TOKEN}-refreshed`;
+      const newExpiry = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+      await page.route(`**/v1/public/checkout/${RECOVER_TOKEN}`, (route) => {
+        void route.fulfill({
+          status: 401,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: { code: 'checkout.expired', message: 'Token expired' } }),
+        });
+      });
+      await page.route(`**/v1/public/checkout/${RECOVER_TOKEN}/recover`, (route) => {
+        void route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            checkout_session: {},
+            checkout_token: refreshedToken,
+            expires_at: newExpiry,
+          }),
+        });
+      });
+      await page.route(`**/v1/public/checkout/${refreshedToken}`, (route) => {
+        void route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ ...buildExpiredStatus(), checkout_token: refreshedToken }),
+        });
+      });
+      await preCaptureEvents(page);
+
+      await page.goto(`/demo/custom-events.html?checkout_token=${RECOVER_TOKEN}`);
+      await page.waitForFunction(() => {
+        const events = (window as Record<string, unknown>)['__arenaEvents'] as Array<{ name: string }> | undefined;
+        return events?.some((e) => e.name === 'arena:recovery');
+      }, { timeout: 10_000 });
+
+      const recoveries = (await getCapturedEvents(page)).filter((e) => e.name === 'arena:recovery');
+      expect(recoveries).toHaveLength(1);
+      expect(recoveries[0]?.detail['checkoutToken']).toBe(refreshedToken);
+      expect(recoveries[0]?.detail['expiresAt']).toBe(newExpiry);
+    });
+
     test('fires with checkoutToken and expiresAt when recover call succeeds', async ({ page }) => {
       const newExpiry = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
@@ -921,8 +983,8 @@ test.describe('WID-T2 — arena:cart_opened and arena:recovery events', () => {
         { timeout: 10_000 },
       );
 
-      // Attach listeners AFTER the expired screen renders (initial onMount recovery
-      // event is intentionally not captured here — we test the API recovery path).
+      // Attach listeners after the expired screen renders; this test exercises
+      // the explicit reclaim action rather than the mount/resume path.
       await captureEvents(page);
 
       // Click the "Reclaim seats" button (action-btn primary inside status-expired).

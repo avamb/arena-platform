@@ -79,8 +79,6 @@ export const ARENA_EVENTS = {
   /**
    * WID-T2: Fired when a held session is successfully recovered via
    * `POST /checkout/{token}/recover`, giving the user a fresh hold expiry.
-   * Also fired on initial mount when a checkout token is restored from
-   * sessionStorage (indicating an in-progress purchase is being resumed).
    */
   RECOVERY: 'arena:recovery',
 } as const;
@@ -154,13 +152,9 @@ export interface ArenaCartOpenedDetail {
 
 /** WID-T2: Detail payload for `arena:recovery`. */
 export interface ArenaRecoveryDetail {
-  /** The checkout token that was recovered / resumed. */
+  /** The checkout token returned by the successful recovery. */
   checkoutToken: string;
-  /**
-   * New expiry timestamp (ISO-8601) for the recovered hold, or an empty
-   * string when the expiry is not yet known (e.g. sessionStorage resume
-   * before the status response arrives).
-   */
+  /** New expiry timestamp (ISO-8601) for the recovered hold. */
   expiresAt: string;
 }
 
