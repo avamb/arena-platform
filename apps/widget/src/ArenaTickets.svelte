@@ -255,6 +255,11 @@
     if (next.has(seatKey) && !prev.has(seatKey)) {
       dispatchWidgetEvent(host, ARENA_EVENTS.SEAT_SELECTED, { seatKey, sessionId });
     } else if (!next.has(seatKey) && prev.has(seatKey)) {
+      if (conflictKeys.has(seatKey)) {
+        const remainingConflicts = new Set(conflictKeys);
+        remainingConflicts.delete(seatKey);
+        conflictKeys = remainingConflicts;
+      }
       dispatchWidgetEvent(host, ARENA_EVENTS.SEAT_RELEASED, { seatKey, sessionId });
     }
   }
@@ -517,6 +522,8 @@
               selectedSeatKeys = new Set();
               gaQuantities = new Map();
               holdExpiresAt = null;
+              conflictKeys = new Set();
+              checkoutError = null;
               cartSheetOpen = false;
             }
             selectedSession = s;

@@ -246,6 +246,29 @@ test.describe('WID-T4 — dual-context 409 conflict', () => {
     expect(seatStatus?.dataStatus).toBe('conflict');
     expect(seatStatus?.fill?.toLowerCase()).toBe('#b91c1c');
 
+    // Deselecting a conflicted seat clears its conflict state and red paint.
+    await pageB.evaluate(() => {
+      const el = document.querySelector('#widget-conflict') as HTMLElement & { shadowRoot: ShadowRoot };
+      const seat = el?.shadowRoot?.querySelector('circle[data-seat-key="A1"]');
+      seat?.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
+    });
+    await pageB.waitForFunction(() => {
+      const el = document.querySelector('#widget-conflict') as HTMLElement & { shadowRoot: ShadowRoot };
+      const seat = el?.shadowRoot?.querySelector('circle[data-seat-key="A1"]');
+      return seat?.getAttribute('data-status') === 'available';
+    });
+
+    const clearedSeatStatus = await pageB.evaluate(() => {
+      const el = document.querySelector('#widget-conflict') as HTMLElement & { shadowRoot: ShadowRoot };
+      const seat = el?.shadowRoot?.querySelector('circle[data-seat-key="A1"]');
+      return {
+        fill: seat?.getAttribute('fill') ?? null,
+        selected: seat?.getAttribute('data-selected') ?? null,
+      };
+    });
+    expect(clearedSeatStatus.fill?.toLowerCase()).toBe('#4f46e5');
+    expect(clearedSeatStatus.selected).toBe('false');
+
     await ctxA.close();
     await ctxB.close();
   });
