@@ -674,6 +674,56 @@ func truncate(s string, n int) string {
 	return s[:n-1] + "…"
 }
 
+// EnqueueInTx inserts a worker_jobs row within an existing pgx.Tx.
+//
+// Use this to atomically enqueue a background job alongside the business
+// operation that triggers it (the "transactional outbox" pattern). If the
+// surrounding transaction is rolled back, the job row is rolled back with it,
+// so no orphaned jobs exist and no notification is sent for a write that never
+// committed.
+//
+// Example (inside an open transaction):
+//
+//	jobID, err := worker.EnqueueInTx(ctx, tx, "auth.email_verification", payload, 5)
+//	if err != nil { return fmt.Errorf("enqueue: %w", err) }
+//	if err := tx.Commit(ctx); err != nil { return fmt.Errorf("commit: %w", err) }
+//	// job is now committed and will be picked up by the next worker poll
+func EnqueueInTx(
+	ctx context.Context,
+	tx interface {
+		QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	},
+	jobType string,
+	payload any,
+	maxAttempts int,
+) (string, error) {
+	if tx == nil {
+		return "", errors.New("worker: nil transaction")
+	}
+	if jobType == "" {
+		return "", errors.New("worker: job_type is required")
+	}
+	if maxAttempts <= 0 {
+		maxAttempts = 10
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("marshal payload: %w", err)
+	}
+
+	const insertSQL = `
+		INSERT INTO worker_jobs (job_type, payload, max_attempts, status, scheduled_at)
+		VALUES ($1, $2::jsonb, $3, 'pending', now())
+		RETURNING id::text
+	`
+	var id string
+	if err := tx.QueryRow(ctx, insertSQL, jobType, body, maxAttempts).Scan(&id); err != nil {
+		return "", fmt.Errorf("enqueue %s in tx: %w", jobType, err)
+	}
+	return id, nil
+}
+
 // EnqueuePayload is a small convenience for tests and ad-hoc producers:
 // it INSERTs a single pending row using a payload that's pre-encoded as
 // JSON.

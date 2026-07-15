@@ -45,6 +45,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/storage"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/database"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery"
@@ -353,6 +354,19 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 		FromAddress:        coalesce(getEmailFrom(cfg), "tickets@arena.example.com"),
 		Logger:             logger,
 	}))
+
+	// auth.email_verification and auth.password_reset_email deliver
+	// account-management emails for the registration and password-reset flows.
+	// Links are built from AppPublicURL (configured in the environment) so they
+	// are never derived from untrusted HTTP headers. Feature PR-02.
+	authEmailHandler := authemail.NewHandler(authemail.HandlerOptions{
+		Sender:       buildEmailSender(cfg, logger),
+		AppPublicURL: cfg.AppPublicURL,
+		FromAddress:  coalesce(cfg.SMTPFrom, "noreply@arena.example.com"),
+		Logger:       logger,
+	})
+	reg.Register(authemail.JobTypeEmailVerification, authEmailHandler.HandleEmailVerification)
+	reg.Register(authemail.JobTypePasswordResetEmail, authEmailHandler.HandlePasswordResetEmail)
 }
 
 // registerMediaGCHandler registers the media-gc worker handler when the

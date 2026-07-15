@@ -8,8 +8,10 @@
 //	     to prevent user enumeration).
 //	  3. Generate a 64-char hex reset token with a 1-hour TTL.
 //	  4. INSERT into password_reset_tokens + write audit event (same tx).
-//	  5. Log the reset link to stdout (dev-mode email delivery).
+//	  5. INSERT into worker_jobs (auth.password_reset_email) — atomically
+//	     with the token so enqueue and token are always committed together.
 //	  6. Return 202 Accepted regardless of whether the email was found.
+//	     Logs contain user_id and job_id; never the token or URL.
 //
 //	POST /v1/auth/password-reset/confirm
 //	  1. Parse and validate the request body (token, new_password).
@@ -40,9 +42,11 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/users"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
 
 // passwordResetTokenTTL is the lifetime of a password-reset token (1 hour per security policy).
@@ -144,28 +148,47 @@ func (h *Handler) PasswordResetRequest(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		logger.Error("auth.password_reset.request: commit failed", "error", err)
-		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "failed to save reset token", r))
+	// Enqueue the password-reset email job WITHIN the same transaction so that
+	// the job row and the token row are committed atomically.
+	// Logs contain user_id and job_id only — never the raw token or URL.
+	jobPayload := authemail.PasswordResetEmailPayload{
+		UserID:    userRow.ID.String(),
+		Email:     email,
+		Token:     token,
+		ExpiresAt: expiresAt,
+	}
+	jobID, enqErr := worker.EnqueueInTx(ctx, tx, authemail.JobTypePasswordResetEmail, jobPayload, 5)
+	if enqErr != nil {
+		// Enqueue failure is treated as a transaction error: roll back so no
+		// orphaned token exists without a delivery job, then return 202 to
+		// preserve enumeration safety.
+		logger.Error("auth.password_reset.request: failed to enqueue reset email job",
+			slog.String("user_id", userRow.ID.String()),
+			slog.String("request_id", logging.RequestID(ctx)),
+			slog.String("error", enqErr.Error()),
+		)
+		// Rollback is handled by the deferred tx.Rollback above.
+		// Return 202 to preserve enumeration safety — don't reveal the failure.
+		httputil.WriteJSON(w, http.StatusAccepted, map[string]any{
+			"message": "If that email address is registered, you will receive a password reset link.",
+		})
 		return
 	}
 
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
+	if err := tx.Commit(ctx); err != nil {
+		logger.Error("auth.password_reset.request: commit failed", "error", err)
+		// Preserve enumeration safety even on commit failure.
+		httputil.WriteJSON(w, http.StatusAccepted, map[string]any{
+			"message": "If that email address is registered, you will receive a password reset link.",
+		})
+		return
 	}
-	host := r.Host
-	if host == "" {
-		host = "localhost:8080"
-	}
-	resetURL := scheme + "://" + host + "/v1/auth/password-reset/confirm?token=" + token
 
-	slog.Info("EMAIL DELIVERY (dev-mode): password reset",
-		"to", email,
-		"subject", "Reset your Arena Platform password",
-		"reset_url", resetURL,
-		"expires_at", expiresAt.Format(time.RFC3339),
-		"user_id", userRow.ID.String(),
+	// Log identifiers only — no token, no URL.
+	logger.Info("auth.password_reset.request: reset email job enqueued",
+		slog.String("user_id", userRow.ID.String()),
+		slog.String("job_id", jobID),
+		slog.String("request_id", logging.RequestID(ctx)),
 	)
 
 	httputil.WriteJSON(w, http.StatusAccepted, map[string]any{

@@ -10,10 +10,12 @@
 //     violation (code 23505) which is mapped to 409 Conflict.
 //  7. Generate a 64-char hex verification token (32 random bytes).
 //  8. INSERT INTO email_verification_tokens with expires_at = now()+24h.
-//  9. COMMIT.
-//
-// 10. Log the verification email to stdout (dev-mode email delivery).
+//  9. INSERT INTO worker_jobs (auth.email_verification job) — atomically with
+//     the token row so job and token are always committed together.
+// 10. COMMIT.
 // 11. Return 201 Created with the user_id and a human-readable message.
+//
+// Logs contain user_id and job_id; they never contain the raw token or URL.
 package hauth
 
 import (
@@ -29,9 +31,11 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/users"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
 
 // pgUniqueViolation is the PostgreSQL error code for unique-constraint violations.
@@ -159,28 +163,40 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Enqueue the verification email job WITHIN the same transaction so that
+	// the job row and the token row are committed atomically. A rollback
+	// removes both. Only correlation/job/user identifiers are logged — the
+	// raw token and complete URL are never written to structured logs.
+	jobPayload := authemail.VerificationEmailPayload{
+		UserID:    userRow.ID.String(),
+		Email:     email,
+		Token:     token,
+		Locale:    locale,
+		ExpiresAt: expiresAt,
+	}
+	jobID, enqErr := worker.EnqueueInTx(ctx, tx, authemail.JobTypeEmailVerification, jobPayload, 5)
+	if enqErr != nil {
+		logger.Error("auth.register: failed to enqueue verification email job",
+			slog.String("user_id", userRow.ID.String()),
+			slog.String("request_id", logging.RequestID(ctx)),
+			slog.String("error", enqErr.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError,
+			httputil.ErrorEnvelope("internal.enqueue_failed", "failed to schedule verification email", r))
+		return
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		logger.Error("auth.register: commit failed", "error", err)
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "failed to save registration", r))
 		return
 	}
 
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
-	host := r.Host
-	if host == "" {
-		host = "localhost:8080"
-	}
-	verifyURL := scheme + "://" + host + "/v1/auth/verify?token=" + token
-
-	slog.Info("EMAIL DELIVERY (dev-mode): email verification",
-		"to", email,
-		"subject", "Verify your Arena Platform email address",
-		"verify_url", verifyURL,
-		"expires_at", expiresAt.Format(time.RFC3339),
-		"user_id", userRow.ID.String(),
+	// Log identifiers only — no token, no URL.
+	logger.Info("auth.register: verification email job enqueued",
+		slog.String("user_id", userRow.ID.String()),
+		slog.String("job_id", jobID),
+		slog.String("request_id", logging.RequestID(ctx)),
 	)
 
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{

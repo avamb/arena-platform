@@ -20688,3 +20688,51 @@ all tests report success, and eliminate the SeatMapView accessibility warning.
 
 Commit: 883b822
 Marked #352 passing. (347/356 features passing, 97.5%)
+
+---
+## PR-03 — Feature #347: Honest SMTP delivery status (2026-07-15)
+
+### Root causes fixed
+- `LogSender` (dev-only) and nil sender were updating `delivery_jobs.status='sent'`
+  without any real SMTP delivery, making the sent status meaningless.
+- No idempotency guard: concurrent worker invocations could double-send.
+- No 'processing' / 'disabled' / 'skipped' states in the status machine.
+
+### Files changed
+- apps/backend/internal/migrations/sql/0064_delivery_jobs_processing.sql (NEW)
+  Extends CHECK constraint to include 'processing', 'disabled', 'skipped'.
+  Adds `processing_at timestamptz` column.
+
+- apps/backend/internal/adapters/email/sender.go (MODIFIED)
+  Added `DevOnlySender` interface + `IsDevOnly()` helper.
+  `LogSender` now implements `DevOnly() bool` returning true.
+
+- apps/backend/internal/adapters/postgres/gen/delivery_jobs.sql.go (MODIFIED)
+  Added `ProcessingAt *time.Time` to `DeliveryJobRow`.
+  Updated all SELECT/RETURNING lists to include `processing_at`.
+  Added `ClaimDeliveryJobForProcessing` CAS query (pending → processing).
+
+- apps/backend/internal/adapters/postgres/gen/querier.go (MODIFIED)
+  Added `ClaimDeliveryJobForProcessing` to Querier interface.
+
+- apps/backend/internal/platform/delivery/handler.go (MAJOR REWRITE)
+  New status flow: nil/dev-only guard → terminal guard → no-email guard →
+  CAS claim (pending→processing) → real SMTP send → 'sent' update.
+  'sent' is now ONLY set after a real SMTP sender accepts the message.
+
+- apps/backend/internal/platform/delivery/delivery_integration_test.go (NEW)
+  6 integration tests (build tag: integration):
+    SMTPSuccess            → status='sent', message captured
+    SMTPRefused            → status not 'sent' after 554 rejection
+    DevSenderProducesDisabled  → status='disabled'
+    NilSenderProducesDisabled  → status='disabled'
+    NoEmailProducesSkipped     → status='skipped'
+    IdempotencyProcessingSkip  → second handler call skips (CAS returns ErrNoRows)
+
+### Verification
+  go build ./apps/backend/...          OK (exit 0)
+  go test ./apps/backend/internal/platform/delivery/...   PASS
+  All other backend unit tests: PASS
+
+Commit: 4171c28
+Marked #347 passing. (348/356 features passing, 97.8%)
