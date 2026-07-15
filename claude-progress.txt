@@ -20454,3 +20454,62 @@ Verification:
   npm --prefix apps/widget run build         55.68 kB gzip vs 150 kB gate PASS
 Commit: 26f2636
 Marked #343 passing. (343/343 features passing, 100.0%)
+
+
+## 2026-07-15 - Feature #344 (PR-00) Production Configuration Contract
+
+Feature #344 was already fully implemented by the PR-06 agent in commit 4e974a8
+("fix(integration): PR-06 repair tagged PostgreSQL integration suite") which
+bundled the PR-00 config changes as part of its work. The files were already
+committed and matched the acceptance criteria exactly.
+
+### What was implemented (in commit 4e974a8):
+
+**apps/backend/internal/platform/config/config.go**
+- Added OutboxMode and EmailMode typed enums
+- Added new Config fields: JWTIssuer, JWTAudience, JWTDefaultTTL, IdempotencyTTL,
+  IdempotencyKeyMaxLength, WorkerConcurrency, WorkerPollInterval, WorkerJobTimeout,
+  WorkerRetryBackoffBase, WorkerRetryBackoffMax, OutboxMode, OutboxBatchSize,
+  EmailMode, SMTPHost, SMTPPort, SMTPUsername, SMTPPassword, SMTPFrom, SMTPUseTLS,
+  AppPublicURL, HealthAddr, MediaSigningSecret
+- Added validateProduction() with 9 production-specific rejections:
+  1. Missing/weak/dev-placeholder JWT secret (< 32 bytes)
+  2. ENABLE_DEV_AUTH=true
+  3. Wildcard CORS (*)
+  4. DB_LOG_QUERIES=true
+  5. Unsafe DB TLS (sslmode=disable or sslmode=allow)
+  6. Local media without MEDIA_SIGNING_SECRET
+  7. EMAIL_MODE=log or empty
+  8. OUTBOX_MODE=noop or empty
+  9. LOG_FORMAT=text
+- Added LogAttrs()/LogValue() for secret-redacted config logging
+- Added EffectiveHealthAddr() and MediaSigningKey() helpers
+
+**apps/backend/internal/platform/config/config_test.go**
+- Updated validBase() with new fields
+- Added validProductionBase() for production tests
+- 15 table-driven production rejection tests (one per rejection)
+- TestValidate_ProductionOK() — valid production profile
+- TestLogAttrs_RedactsSecrets() — secrets don't appear in log output
+- TestLoad_WorkerAndOutboxDefaults(), TestLoad_JWTFieldsWiredFromEnv(),
+  TestLoad_EmailAndSMTPFieldsWiredFromEnv() — new field defaults + wiring
+
+**apps/backend/cmd/arena-worker/main.go**
+- buildEmailSender() uses cfg.EmailMode/SMTPHost/etc instead of direct os.Getenv
+- getEmailFrom() uses cfg.SMTPFrom instead of direct os.Getenv
+- Worker PollInterval uses cfg.WorkerPollInterval instead of hardcoded time.Second
+
+**apps/backend/cmd/arena-api/main.go**
+- auth.NewStubProvider uses cfg.JWTIssuer, cfg.JWTAudience, cfg.JWTDefaultTTL
+- buildMediaRepo uses cfg.MediaSigningKey() instead of cfg.JWTSecretStub fallback
+
+**.env.example** — synchronized with all new fields
+**deploy/DOKPLOY.md** — production env table updated with PR-00 contract
+
+### Verification:
+  go build ./apps/backend/...                        OK (0 errors)
+  go test ./apps/backend/internal/platform/config/... 87/87 PASS
+  go test ./apps/backend/internal/platform/...       ALL PASS
+  go test ./apps/backend/...                          ALL PASS (exit 0)
+
+Marked #344 passing. (344/356 features passing, 96.6%)
