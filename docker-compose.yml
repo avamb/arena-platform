@@ -275,6 +275,35 @@ services:
       start_period: 60s
 
   # ------------------------------------------------------------------
+  # admin-web-prod : Production admin-web container (PR-07).
+  #   - Built from apps/admin-web/Dockerfile (nginx:1.27-alpine runtime).
+  #   - Runs as non-root (nginx uid=101), listens on port 8080.
+  #   - SPA fallback, immutable asset cache headers, /health endpoint.
+  #   - Enable with: docker compose --profile admin-prod up -d
+  #   - VITE_API_BASE_URL must be set to the public arena-api address.
+  # ------------------------------------------------------------------
+  admin-web-prod:
+    build:
+      context: .
+      dockerfile: apps/admin-web/Dockerfile
+      args:
+        VITE_API_BASE_URL: "${VITE_API_BASE_URL:-http://localhost:8080}"
+    container_name: arena_admin_web_prod
+    profiles: ["admin-prod"]
+    restart: unless-stopped
+    ports:
+      - "5175:8080"
+    depends_on:
+      api:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ------------------------------------------------------------------
   # prometheus : scrapes /metrics from api (and worker when it exposes
   #              metrics). Opt-in via --profile observability.
   # ------------------------------------------------------------------

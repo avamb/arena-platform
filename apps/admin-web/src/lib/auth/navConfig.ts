@@ -90,6 +90,18 @@ export interface NavEntry {
   readonly scopeKinds?: readonly ScopeKind[];
   /** Short human-readable explanation, shown in the missing-permission UI. */
   readonly purpose: string;
+  /**
+   * PR-07: When true, this entry is a shell-only placeholder that has not yet
+   * been implemented. In production builds (`!isDevelopment`) this entry is
+   * hidden from the sidebar so operators are not presented with non-functional
+   * navigation items. The route itself remains registered (permission-gated),
+   * so direct-URL access still produces the correct 403/placeholder UI; only
+   * the sidebar link is suppressed.
+   *
+   * Set this flag on Reports/Content/POS entries until their real
+   * implementations land.
+   */
+  readonly productionPlaceholder?: boolean;
 }
 
 /**
@@ -241,6 +253,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     scopeKinds: ["global", "platform", "network", "organization"],
     purpose:
       "Unified reporting by platform, network, organizer, agent, event, period. Shell only -- explicitly out of scope this milestone. Requires network.view_reports, report.read, or superadmin.read.",
+    productionPlaceholder: true,
   },
   {
     id: "notifications_content",
@@ -250,6 +263,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     scopeKinds: ["global", "platform", "network", "organization"],
     purpose:
       "Notifications, news, subscriptions, widget and content configuration. Shell only. Requires superadmin.read.",
+    productionPlaceholder: true,
   },
   {
     id: "pos",
@@ -259,6 +273,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     scopeKinds: ["global", "platform", "network"],
     purpose:
       "Cash desk mode (shifts, event selection, cart, payment, fiscal, printing, returns). Shell only -- POS execution explicitly out of scope this milestone. Requires pos.execute or superadmin.read.",
+    productionPlaceholder: true,
   },
   {
     id: "audit",
@@ -338,6 +353,30 @@ export function scopeRuleSatisfied(
     return entry.scopeKinds.includes("global") || entry.scopeKinds.includes("platform");
   }
   return entry.scopeKinds.includes(activeScopeKind);
+}
+
+/**
+ * PR-07: Filter out placeholder entries that should be hidden in production.
+ *
+ * Entries marked `productionPlaceholder: true` (Reports, Content, POS) are
+ * shell-only routes with no real backend implementation. In production builds
+ * (`isDevelopment === false`) they are suppressed from the sidebar so operators
+ * are not presented with non-functional navigation items.
+ *
+ * The routes themselves remain registered and permission-gated; direct URL
+ * access still produces the correct placeholder/403 UI. Only sidebar visibility
+ * is controlled here.
+ *
+ * Pass `config.isDevelopment` from `@/lib/config` as the second argument.
+ */
+export function hideProductionPlaceholders(
+  entries: readonly NavEntry[],
+  isDevelopment: boolean,
+): readonly NavEntry[] {
+  if (isDevelopment) {
+    return entries;
+  }
+  return entries.filter((entry) => !entry.productionPlaceholder);
 }
 
 /**

@@ -45,10 +45,12 @@ import { useAuth } from "@/lib/auth/useAuth";
 import { useScope } from "@/lib/auth/ScopeContext";
 import {
   NAV_ENTRIES,
+  hideProductionPlaceholders,
   visibleNavEntries,
   type NavEntry,
   type NavRoutePath,
 } from "@/lib/auth/navConfig";
+import { config } from "@/lib/config";
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -105,7 +107,9 @@ function DashboardRoute() {
 
   // Sidebar uses the same data; we surface a SUBSET as shortcut tiles.
   // Workspace itself ("/") is intentionally excluded — no self-link.
-  const shortcuts = visibleNavEntries(NAV_ENTRIES, permissions, activeScopeKind)
+  // PR-07: Apply the same production placeholder filter as the sidebar.
+  const prodEntries = hideProductionPlaceholders(NAV_ENTRIES, config.isDevelopment);
+  const shortcuts = visibleNavEntries(prodEntries, permissions, activeScopeKind)
     .filter((e) => e.to !== "/");
 
   return (

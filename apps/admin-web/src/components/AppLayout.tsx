@@ -13,6 +13,7 @@ import { useScope } from "@/lib/auth/ScopeContext";
 import { useTranslation } from "@/lib/i18n/I18nContext";
 import {
   NAV_ENTRIES,
+  hideProductionPlaceholders,
   visibleNavEntries,
   type NavEntry,
 } from "@/lib/auth/navConfig";
@@ -265,7 +266,11 @@ function AuthenticatedSidebarNav({
   const { permissions } = useAuth();
   const { activeScopeKind } = useScope();
   const { t } = useTranslation();
-  const entries = visibleNavEntries(NAV_ENTRIES, permissions, activeScopeKind);
+  // PR-07: Hide shell-only placeholder routes (Reports/Content/POS) in
+  // production until real implementations land. In dev mode they remain
+  // visible so developers can see the placeholder UI.
+  const prodEntries = hideProductionPlaceholders(NAV_ENTRIES, config.isDevelopment);
+  const entries = visibleNavEntries(prodEntries, permissions, activeScopeKind);
   return (
     <nav style={navStyle} data-testid="primary-nav">
       {entries.map((entry) => (

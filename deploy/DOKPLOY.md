@@ -1,8 +1,9 @@
 # Deploying arena_new to Dokploy
 
-> **Milestone scope:** This guide covers the **Backend Foundation Milestone**.
-> Business-logic modules (identity, catalog, payments, etc.) are added in
-> subsequent milestones; deployment steps will grow accordingly.
+> **Milestone scope:** This guide covers the **Backend Foundation Milestone** and
+> the **PR-07 admin-web production artifact** (§15). Business-logic modules
+> (identity, catalog, payments, etc.) are added in subsequent milestones;
+> deployment steps will grow accordingly.
 
 ---
 
@@ -22,6 +23,7 @@
 12. [Troubleshooting](#12-troubleshooting)
 13. [Release Branch & Image Tag Strategy](#13-release-branch--image-tag-strategy)
 14. [Initial Production Server Requirements](#14-initial-production-server-requirements)
+15. [Admin Web Service (PR-07)](#15-admin-web-service-pr-07)
 
 ---
 
@@ -824,3 +826,127 @@ and backup-last-success staleness.
 
 Disk-free monitoring (§14.7) must alert **before** any of these retention
 policies is exceeded so that no stream is forced to drop unrotated data.
+
+---
+
+## 15. Admin Web Service (PR-07)
+
+The admin-web service serves the SuperAdmin React SPA as a static nginx artifact.
+It is built from `apps/admin-web/Dockerfile` (separate from the Go image).
+
+### 15.1 Image overview
+
+| Property | Value |
+|---|---|
+| Source Dockerfile | `apps/admin-web/Dockerfile` |
+| Build stage | `node:20-alpine` — runs `npm ci && npm run build` |
+| Runtime stage | `nginx:1.27-alpine` — serves `/usr/share/nginx/html` |
+| Listen port | `8080` (non-root; no CAP_NET_BIND_SERVICE) |
+| Runtime user | `nginx` (uid=101) — fully non-root |
+| Health endpoint | `GET /health` → `200 OK text/plain "ok\n"` |
+| Healthcheck | `HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3` |
+| SPA routing | `try_files $uri /index.html` — all unknown paths return the SPA |
+| Asset caching | Hashed `.js`/`.css` files: `Cache-Control: public, immutable, max-age=31536000` |
+| `index.html` | `Cache-Control: no-store, no-cache` — always re-fetched on deploy |
+| Source maps | Disabled by default; set `VITE_ENABLE_SOURCEMAPS=true` at build time for CI artifacts only |
+
+### 15.2 Dokploy service configuration
+
+| Property | Value |
+|---|---|
+| Dokploy service type | **Application** (long-running) |
+| Docker image | `your-registry/arena-admin-web:<tag>` |
+| Listen port | `8080` |
+| Liveness / readiness probe | `GET /health` → `200 OK` |
+| Start policy | `Always` |
+| Replicas | ≥ 1 (stateless; can scale freely) |
+| Domain | Assign your admin subdomain (e.g. `admin.yourdomain.com`) via Traefik |
+
+### 15.3 Build arguments (set at image build time, NOT runtime)
+
+`VITE_*` variables are inlined by Vite at build time and become part of the
+JavaScript bundle. They are **not** read at nginx runtime. Never put secrets
+in `VITE_*` — they appear in browser-readable JS.
+
+| Build ARG | Required | Example value | Notes |
+|---|---|---|---|
+| `VITE_API_BASE_URL` | **Yes** | `https://api.yourdomain.com` | No trailing slash. Must be the public-facing URL of arena-api. |
+| `VITE_ENABLE_SOURCEMAPS` | No | `false` | Set to `true` in CI to generate `.map` files for upload to an error tracker. Do not serve them publicly. |
+
+**Build example (from repo root):**
+
+```bash
+docker build \
+  --file apps/admin-web/Dockerfile \
+  --build-arg VITE_API_BASE_URL=https://api.yourdomain.com \
+  --tag your-registry/arena-admin-web:v0.1.0 \
+  .
+```
+
+### 15.4 Environment variables (nginx runtime — none required)
+
+The nginx container needs **no** runtime environment variables. Configuration is
+fully baked into the bundle at build time.
+
+If you need to change `VITE_API_BASE_URL` after deploy, you must **rebuild**
+the image and redeploy. There is no runtime injection for this value.
+
+### 15.5 Rollback procedure
+
+1. Identify the last known-good image tag in your registry (e.g. `v0.1.0`).
+2. In Dokploy, change the image tag for the `admin-web` service to the rollback tag.
+3. Trigger a re-deploy. The old static bundle will be served immediately.
+4. Verify by loading the admin UI and checking the version badge in the sidebar footer.
+
+Because the admin-web image is stateless (no database, no persistent storage),
+rollback is instantaneous and risk-free. The API it points to is determined at
+build time; ensure the rollback image's baked `VITE_API_BASE_URL` matches your
+current API endpoint.
+
+### 15.6 Browser smoke test (manual, run after each production deploy)
+
+The automated smoke tests in `apps/admin-web/src/smoke/pr07_smoke.test.ts`
+verify logic at build time. After deploying the container, perform these
+manual checks:
+
+1. Open `https://admin.yourdomain.com` in a browser — the login page must load.
+2. Log in with a valid superadmin account.
+3. Open the browser's Network tab and confirm `GET /v1/me` returns `200 OK`.
+4. Confirm the navigation sidebar does NOT show Reports, Notifications & Content,
+   or POS Mode (these are hidden in production until implemented).
+5. Open `https://admin.yourdomain.com/health` directly — must return `200 ok`.
+6. Check that `.js` asset responses include `Cache-Control: public, immutable`.
+7. Check that `index.html` response includes `Cache-Control: no-store`.
+
+### 15.7 CORS and security notes
+
+- The nginx container serves only static files; it makes no outbound requests.
+- Cross-origin requests go from the **browser** to `arena-api`; ensure
+  `CORS_ALLOWED_ORIGINS` on arena-api includes the admin domain.
+- Do not use `*` for `CORS_ALLOWED_ORIGINS` in production (rejected by
+  `APP_ENV=production` validation).
+- The nginx config includes `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY`, `X-XSS-Protection: 1; mode=block`, and
+  `Referrer-Policy: strict-origin-when-cross-origin` on all responses.
+
+### 15.8 Bundle size budget
+
+| Chunk | Budget (gzip) |
+|---|---|
+| `vendor-react` | ≤ 200 kB |
+| `vendor-router` | ≤ 150 kB |
+| `vendor-query` | ≤ 80 kB |
+| `vendor-table` | ≤ 80 kB |
+| `vendor-forms` | ≤ 50 kB |
+| `vendor-misc` | ≤ 50 kB |
+| `index` (app code) | ≤ 150 kB |
+| **Total** | **≤ 760 kB** |
+
+Monitor bundle size in CI with:
+
+```bash
+npm --prefix apps/admin-web run build 2>&1 | grep gzip
+```
+
+If any chunk exceeds its budget, investigate with `vite-bundle-analyzer` and
+split the offending dependency or introduce lazy route loading.
