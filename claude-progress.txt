@@ -20887,3 +20887,75 @@ Marked #352 passing. (347/356 features passing, 97.5%)
 
 Commit: 4171c28
 Marked #347 passing. (348/356 features passing, 97.8%)
+
+
+## 2026-07-15 - Feature #351 (PR-07): Produce a deployable admin-web artifact
+
+### Objective
+Provide a production artifact for apps/admin-web — replace the Vite dev server
+with a deterministic npm ci build, non-root nginx runtime, static serving, SPA
+fallback, cache headers, health endpoint, and hide unimplemented placeholder
+routes (Reports/Content/POS) in production navigation.
+
+### Changes implemented
+
+**apps/admin-web/Dockerfile (NEW)**
+- Multi-stage: Stage 1 = node:20-alpine (npm ci + vite build), Stage 2 = nginx:1.27-alpine
+- Accepts VITE_API_BASE_URL as a build ARG (not baked from env; no secrets in bundle)
+- VITE_ENABLE_SOURCEMAPS=false by default (CI can pass "true" for private artifacts)
+- Non-root: USER nginx (uid=101), listens on 8080, no CAP_NET_BIND_SERVICE needed
+- HEALTHCHECK: wget --spider http://localhost:8080/health
+
+**apps/admin-web/nginx.conf (NEW)**
+- Listens on port 8080 (non-root)
+- Gzip compression for text/html, js, css, json, xml, svg
+- Security headers: X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy
+- GET /health returns 200 "ok" (no access log)
+- Immutable cache (expires 1y) for hashed .js/.css assets
+- Cache-Control: no-store on index.html (SPA entry point, always re-fetched)
+- SPA fallback: try_files $uri /index.html
+
+**apps/admin-web/vite.config.ts (MODIFIED)**
+- sourcemap: process.env.VITE_ENABLE_SOURCEMAPS === "true" (was: always true)
+- Added rollupOptions.output.manualChunks: vendor-react, vendor-router,
+  vendor-query, vendor-table, vendor-forms, vendor-misc
+- Build output: 6 vendor chunks + index, no .map files in default build
+
+**apps/admin-web/src/lib/auth/navConfig.ts (MODIFIED)**
+- Added productionPlaceholder?: boolean to NavEntry interface
+- Marked reports, notifications_content, pos as productionPlaceholder: true
+- Added hideProductionPlaceholders(entries, isDevelopment) exported helper
+
+**apps/admin-web/src/components/AppLayout.tsx (MODIFIED)**
+- Imported hideProductionPlaceholders
+- Applies production placeholder filter before visibleNavEntries in sidebar
+
+**apps/admin-web/src/routes/index.tsx (MODIFIED)**
+- Applied same production placeholder filter before dashboard shortcut tiles
+
+**docker-compose.yml (MODIFIED)**
+- Added admin-web-prod service (profiles: ["admin-prod"]) via apps/admin-web/Dockerfile
+- Exposes port 5175:8080; existing dev admin-web service unchanged on port 5174
+
+**deploy/DOKPLOY.md (MODIFIED)**
+- Added section 15 "Admin Web Service": Dokploy config table, build args, no runtime env,
+  rollback procedure, manual browser smoke checklist, CORS notes, bundle budget table
+
+**apps/admin-web/src/smoke/pr07_smoke.test.ts (NEW)**
+- 24 tests: source-map guard, code-split config, hideProductionPlaceholders (dev+prod modes),
+  placeholder entry pinning (3 entries), nginx.conf directives, Dockerfile structure checks
+
+### Verification
+  npm --prefix apps/admin-web run type-check    OK (0 errors)
+  npm --prefix apps/admin-web test              857/857 PASS (36 test files, +24 new PR-07)
+  npm --prefix apps/admin-web run build         OK (0 errors, no .map files)
+    dist/assets/vendor-misc-*.js      4.24 kB gzip
+    dist/assets/vendor-query-*.js    10.58 kB gzip
+    dist/assets/vendor-forms-*.js    12.08 kB gzip
+    dist/assets/vendor-router-*.js   23.64 kB gzip
+    dist/assets/vendor-react-*.js    55.39 kB gzip
+    dist/assets/index-*.js          102.40 kB gzip (vs old single 778 kB raw bundle)
+  Total gzip: ~208 kB vs 760 kB documented budget
+
+Commit: eb35c71
+Marked #351 passing. (352/356 features passing, 98.9%)
