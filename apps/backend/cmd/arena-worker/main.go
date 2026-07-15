@@ -433,29 +433,45 @@ func buildEmailSender(cfg *config.Config, logger *slog.Logger) email.Sender {
 // getEmailFrom returns the canonical from-address from config.
 func getEmailFrom(cfg *config.Config) string { return cfg.SMTPFrom }
 
-// buildOutboxDispatcher constructs the Dispatcher for the outbox events loop.
+// buildOutboxDispatcher constructs the Dispatcher for the outbox events loop
+// based on cfg.OutboxMode.
 //
-// When OUTBOX_WEBHOOK_URL is configured a WebhookDispatcher is returned that
-// POSTs signed payloads to that URL. Otherwise NoopDispatcher is returned so
-// the dispatcher starts cleanly in environments without a webhook target.
+//   - webhook  → WebhookDispatcher posting signed payloads to OUTBOX_WEBHOOK_URL.
+//   - disabled → DisabledDispatcher; the OutboxEventsDispatcher loop skips
+//                ClaimNext entirely so no rows are ever consumed.
+//   - noop/"" → NoopDispatcher (dev/test only; rejected in production by PR-00).
 func buildOutboxDispatcher(cfg *config.Config, logger *slog.Logger) outbox.Dispatcher {
-	if cfg.OutboxWebhookURL == "" {
-		logger.Info("outbox events dispatcher: no OUTBOX_WEBHOOK_URL configured; using noop dispatcher")
-		return outbox.NoopDispatcher{}
-	}
-	d, err := outbox.NewWebhookDispatcher(outbox.WebhookDispatcherOptions{
-		TargetURL:     cfg.OutboxWebhookURL,
-		SigningSecret: []byte(cfg.OutboxSigningSecret),
-	})
-	if err != nil {
-		// TargetURL is non-empty — this should never fail. Fall back to noop
-		// and log the error rather than crashing the worker.
-		logger.Error("outbox events dispatcher: failed to build webhook dispatcher; falling back to noop",
-			"error", err.Error(),
+	switch cfg.OutboxMode {
+	case config.OutboxModeDisabled:
+		logger.Info("outbox events dispatcher: OUTBOX_MODE=disabled; no events will be claimed or consumed")
+		return outbox.DisabledDispatcher{}
+
+	case config.OutboxModeWebhook:
+		if cfg.OutboxWebhookURL == "" {
+			// Config validation should have caught this. Fail-safe to noop.
+			logger.Error("outbox: OUTBOX_MODE=webhook but OUTBOX_WEBHOOK_URL is empty; falling back to noop (check config)")
+			return outbox.NoopDispatcher{}
+		}
+		d, err := outbox.NewWebhookDispatcher(outbox.WebhookDispatcherOptions{
+			TargetURL:     cfg.OutboxWebhookURL,
+			SigningSecret: []byte(cfg.OutboxSigningSecret),
+		})
+		if err != nil {
+			logger.Error("outbox events dispatcher: failed to build webhook dispatcher; falling back to noop",
+				"error", err.Error(),
+			)
+			return outbox.NoopDispatcher{}
+		}
+		logger.Info("outbox events dispatcher: OUTBOX_MODE=webhook",
+			"webhook_url", cfg.OutboxWebhookURL,
+			"signed", cfg.OutboxSigningSecret != "",
 		)
+		return d
+
+	default: // OutboxModeNoop, "" — dev/test only; rejected in production by PR-00
+		logger.Info("outbox events dispatcher: no webhook configured; using noop dispatcher (dev/test only)")
 		return outbox.NoopDispatcher{}
 	}
-	return d
 }
 
 // coalesce returns the first non-empty argument.

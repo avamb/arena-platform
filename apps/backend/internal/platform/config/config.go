@@ -675,6 +675,18 @@ func (c *Config) Validate() error {
 				"OUTBOX_WEBHOOK_URL is required when OUTBOX_MODE=webhook",
 			))
 		}
+		// Webhook mode requires a signing secret to authenticate deliveries.
+		// Unsigned webhook calls cannot be verified by subscribers (PR-04).
+		if strings.TrimSpace(c.OutboxSigningSecret) == "" {
+			errs = append(errs, errors.New(
+				"OUTBOX_SIGNING_SECRET is required when OUTBOX_MODE=webhook",
+			))
+		} else if len(strings.TrimSpace(c.OutboxSigningSecret)) < 32 {
+			errs = append(errs, fmt.Errorf(
+				"OUTBOX_SIGNING_SECRET must be at least 32 bytes when OUTBOX_MODE=webhook (got %d)",
+				len(strings.TrimSpace(c.OutboxSigningSecret)),
+			))
+		}
 	}
 
 	// --- Email delivery -------------------------------------------------------

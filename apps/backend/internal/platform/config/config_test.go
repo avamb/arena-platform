@@ -331,6 +331,34 @@ func TestValidate_OutboxWebhookRequiresURL(t *testing.T) {
 	}
 }
 
+func TestValidate_OutboxWebhookRequiresSigningSecret(t *testing.T) {
+	cfg := validBase()
+	cfg.OutboxMode = OutboxModeWebhook
+	cfg.OutboxWebhookURL = "https://hooks.example.com/events"
+	cfg.OutboxSigningSecret = "" // missing
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error when OUTBOX_MODE=webhook but OUTBOX_SIGNING_SECRET is empty")
+	}
+	if !strings.Contains(err.Error(), "OUTBOX_SIGNING_SECRET") {
+		t.Errorf("error should mention OUTBOX_SIGNING_SECRET, got: %v", err)
+	}
+}
+
+func TestValidate_OutboxWebhookRejectsWeakSigningSecret(t *testing.T) {
+	cfg := validBase()
+	cfg.OutboxMode = OutboxModeWebhook
+	cfg.OutboxWebhookURL = "https://hooks.example.com/events"
+	cfg.OutboxSigningSecret = "short" // < 32 bytes
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error when OUTBOX_SIGNING_SECRET is too short")
+	}
+	if !strings.Contains(err.Error(), "OUTBOX_SIGNING_SECRET") {
+		t.Errorf("error should mention OUTBOX_SIGNING_SECRET, got: %v", err)
+	}
+}
+
 func TestValidate_InvalidEmailMode(t *testing.T) {
 	cfg := validBase()
 	cfg.EmailMode = EmailMode("carrier_pigeon")

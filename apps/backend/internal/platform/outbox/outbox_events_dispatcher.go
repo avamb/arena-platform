@@ -337,6 +337,15 @@ func (od *OutboxEventsDispatcher) Run(ctx context.Context) error {
 		default:
 		}
 
+		// In disabled mode, skip claiming rows entirely so no outbox_events row
+		// ever receives processed_at. Rows accumulate until the mode is changed.
+		if dd, ok := od.dispatcher.(DisabledModeDispatcher); ok && dd.IsDisabled() {
+			if !od.waitOrStop(ctx, od.pollInterval) {
+				return nil
+			}
+			continue
+		}
+
 		row, err := od.store.ClaimNext(ctx)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -387,6 +396,14 @@ func (od *OutboxEventsDispatcher) deliverRow(ctx context.Context, row *OutboxEve
 
 	dispErr := od.dispatcher.Dispatch(ctx, ev)
 	if dispErr != nil {
+		if errors.Is(dispErr, ErrDispatchDisabled) {
+			// Disabled mode: leave the row completely untouched.
+			od.logger.Debug("outbox events dispatcher: dispatch disabled; row left unconsumed",
+				slog.String("event_id", row.ID),
+				slog.String("event_type", row.EventType),
+			)
+			return
+		}
 		od.logger.Warn("outbox events dispatcher: dispatch failed",
 			slog.String("event_id", row.ID),
 			slog.String("event_type", row.EventType),
