@@ -20959,3 +20959,128 @@ routes (Reports/Content/POS) in production navigation.
 
 Commit: eb35c71
 Marked #351 passing. (352/356 features passing, 98.9%)
+
+## 2026-07-15 - Feature #353 (PR-09): Reproducible and minimal container builds
+
+### Objective
+Prevent local node_modules, build output, VCS metadata, test artifacts, and
+AutoForge databases from entering Docker build contexts or runtime images.
+
+### What was done
+
+**1. Created .dockerignore (root level)**
+Applied to both Dockerfile (Go backend) and apps/admin-web/Dockerfile (nginx).
+Key exclusions:
+- .git, .autoforge (VCS + agent state)
+- node_modules (root + apps/admin-web/node_modules + apps/widget/node_modules)
+- apps/admin-web/dist, apps/widget/dist (local build output)
+- Pre-built binaries at root: arena-api (~28MB), arena-worker (~27MB),
+  arena-migrate (~17MB), arena-healthcheck (~8MB) = ~80MB alone
+- Documentation dirs: 00_project_control through 010_legasy_
+- Test artifacts: test-results, playwright-report, .playwright, .playwright-cli
+- Editor files: .vscode, .idea, *.swp, .DS_Store
+- Secrets: .env, .env.local, *.key, *.pem, *.p12, *.pfx
+- Go caches: .gocache, .gomodcache
+- SQLite databases: *.db, *.db-shm, *.db-wal
+- apps/wp-plugin (not needed by any image)
+
+**Result:** Context reduced from audited ~108 MB to:
+- Go backend context: 74.23 kB
+- Admin-web context: 95.70 kB
+Total reduction: >99.9%
+
+**2. Fixed admin-web Docker build reproducibility**
+
+Root cause: The admin-web Dockerfile ran `npm ci` then `COPY apps/admin-web/ ./`
+which previously COPIED the host's node_modules into the container, masking a
+missing explicit @types/node dependency. With .dockerignore excluding host
+node_modules, the clean `npm ci` exposed the bug:
+
+- @types/node was listed as `"optional": true` in peerDependenciesMeta of vite
+  and vitest, so `npm ci` did NOT install it
+- vite.config.ts uses `node:path`, `__dirname`, `process` → needs @types/node
+- Test files (*.test.ts/tsx) import `node:fs`, `node:path`, `node:url`
+- tsconfig.app.json included ALL src/ files including test files
+- Previously masked because host node_modules was being copied in (non-reproducible)
+
+Fixes:
+- apps/admin-web/package.json: added `"@types/node": "^22.0.0"` to devDependencies
+- apps/admin-web/tsconfig.node.json: added `"types": ["node"]`, included vitest.config.ts
+- apps/admin-web/tsconfig.app.json: added exclude for *.test.ts/tsx (checked by vitest)
+- Updated package-lock.json via npm install
+
+**3. Runtime image verification**
+- Go backend: distroless/static-debian12:nonroot, USER nonroot:nonroot, 22.7 MB
+- Admin-web nginx: USER nginx (uid=101), no source maps (.map files excluded)
+- Both use non-root users ✓
+- No .env files, no databases, no source maps, no test reports in runtime layers ✓
+
+### Verification
+  docker build -f Dockerfile . → Context: 74.23 kB, Build: OK
+  docker build -f apps/admin-web/Dockerfile . → Context: 95.70 kB, Build: OK
+  npm --prefix apps/admin-web run build    OK (257 modules, no errors)
+  npm --prefix apps/admin-web test         857/857 PASS (36 test files)
+  npm --prefix apps/admin-web run type-check  OK (0 errors)
+  Go backend inspect: USER nonroot:nonroot
+  Admin-web inspect: USER nginx
+
+Commit: 44e40b0
+Marked #353 passing. (353/356 features passing, 99.2%)
+
+---
+## 2026-07-15 - Feature #354 (PR-10): Turn CI into a real publication gate
+
+### Objective
+Block every image/widget/release publication until lint, unit/race, tagged
+integration, OpenAPI drift, admin, widget, and real acceptance gates all pass.
+
+### Changes implemented
+
+**.github/workflows/ci.yml (major rework)**
+- Added top-level permissions: contents: read (least-privilege default).
+- Added timeout-minutes to every job (lint=15, test/openapi/admin/widget=20,
+  integration/widget-acceptance/build-and-push=30, widget-publish=10).
+- Concurrency cancellation block retained.
+
+**New: integration job**
+- Runs go test -tags=integration -timeout=25m ./... with PostgreSQL 17 + Redis 7
+  service containers (Testcontainers support from ubuntu-latest Docker socket).
+- Uploads integration-test-failure-logs artifact on failure.
+
+**New: admin-build job**
+- npm --prefix apps/admin-web: type-check, vitest unit tests, production build,
+  then Docker container smoke test (builds arena-admin-web:ci, runs it, waits
+  up to 60s for HEALTHCHECK healthy status, cleans up).
+- Uploads admin-web-dist artifact always; admin-build-failure-logs on failure.
+
+**Updated: widget job**
+- Removed publish step (moved to widget-publish job).
+- permissions changed to contents: read only.
+- Comment clarifies mock E2E is non-gating; real acceptance is widget-acceptance.
+
+**New: widget-publish job**
+- needs: [lint, test, integration, openapi-check, admin-build, widget, widget-acceptance]
+- if: refs/heads/master AND event_name==push (PRs never publish).
+- Downloads arena-tickets-widget-v1 artifact and publishes to GitHub Release.
+
+**Updated: build-and-push job**
+- needs: [lint, test, integration, openapi-check, admin-build, widget, widget-acceptance]
+- timeout-minutes: 30; uploads docker-build-failure-logs on failure.
+
+**New: ci_workflow_pr10_test.go (25 regression tests)**
+- Integration job: exists, -tags=integration, postgres service, timeout, failure artifacts.
+- Admin-build job: exists, unit tests, type-check, build, container smoke, failure artifacts.
+- Widget: unit tests, size gate, widget-acceptance exists, widget-publish is separate.
+- Dependency graph: both build-and-push and widget-publish list all 7 required gates.
+- PR guard: both publication jobs guarded by refs/heads/master + event_name==push.
+- Timeouts: asserts at least 9 timeout-minutes: declarations (one per job).
+- Concurrency cancellation: cancel-in-progress: true present.
+- Least-privilege: top-level permissions: contents: read declared before jobs:.
+- Gate enforcement: build-and-push declares both integration and widget-acceptance.
+
+### Test results
+  go test ./apps/backend/internal/platform/httpserver/ -run TestCIWorkflow
+  All 47 tests PASS (22 original PR-108 + 25 new PR-10)
+
+Commit: bb20845
+Marked #354 passing. (354/356 features passing, 99.4%)
