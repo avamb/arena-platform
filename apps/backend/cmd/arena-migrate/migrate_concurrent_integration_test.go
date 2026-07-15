@@ -29,6 +29,8 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/migrations"
 	"github.com/pressly/goose/v3"
+	"github.com/pressly/goose/v3/database"
+	"github.com/pressly/goose/v3/lock"
 )
 
 // ---------------------------------------------------------------------------
@@ -88,9 +90,13 @@ SELECT pg_sleep(1);
 
 	// Build testFS from ALL embedded production migrations plus the test migration.
 	//
+	// goose.NewProvider scans the ROOT of the provided fs.FS for .sql files.
+	// Files must be at the root level (e.g. "0001_init.sql"), NOT in a subdirectory
+	// (the embedded migrations live at "sql/*.sql" in migrations.FS).
+	//
 	// We must include every migration the DB already knows about so that
-	// goose.NewProvider does not error with "applied migration N is not registered"
-	// when it inspects schema_migrations and finds versions that aren't in the FS.
+	// goose.NewProvider does not error with "no migrations found" or fail when it
+	// inspects schema_migrations and finds versions that aren't in the FS.
 	// Hardcoding a subset (e.g. only 0001–0003) breaks as new migrations are added.
 	testFS := fstest.MapFS{}
 	sqlEntries, readDirErr := fs.ReadDir(migrations.FS, migrations.Dir)
@@ -101,13 +107,13 @@ SELECT pg_sleep(1);
 		if e.IsDir() {
 			continue
 		}
-		filePath := migrations.Dir + "/" + e.Name()
-		testFS[filePath] = &fstest.MapFile{
-			Data: readEmbeddedSQL(t, filePath),
+		// Store at root level (no "sql/" prefix) so goose.NewProvider finds them.
+		testFS[e.Name()] = &fstest.MapFile{
+			Data: readEmbeddedSQL(t, migrations.Dir+"/"+e.Name()),
 		}
 	}
-	// Inject the test-only migration at version 9974.
-	testFS[fmt.Sprintf("%s/%04d_concurrent_lock_test.sql", migrations.Dir, testVersion)] = &fstest.MapFile{
+	// Inject the test-only migration at version 9974 at the root level.
+	testFS[fmt.Sprintf("%04d_concurrent_lock_test.sql", testVersion)] = &fstest.MapFile{
 		Data: []byte(testMigrationSQL),
 	}
 
@@ -124,28 +130,54 @@ SELECT pg_sleep(1);
 	// Step 3: Open two separate DB connections (two "process" simulations).
 	db2 := integrationMigrateDB(t)
 
+	// Create a custom store so the provider uses "schema_migrations" instead of
+	// goose's default table name "goose_db_version".
+	// goose.WithTableName / goose.WithLogger do not exist in the goose.NewProvider
+	// API (they are global-API helpers); use WithStore, WithSessionLocker, and
+	// WithVerbose instead.
+	providerStore, err := database.NewStore(database.DialectPostgres, "schema_migrations")
+	if err != nil {
+		t.Fatalf("database.NewStore: %v", err)
+	}
+
+	// Create a PostgreSQL advisory-lock session locker.
+	// Without WithSessionLocker, the Provider does not acquire advisory locks and
+	// both concurrent instances can apply the same migration simultaneously.
+	// The locker is stateless (pure configuration), so it is safe to share.
+	sessionLocker, err := lock.NewPostgresSessionLocker()
+	if err != nil {
+		t.Fatalf("lock.NewPostgresSessionLocker: %v", err)
+	}
+
 	// Create two goose.Provider instances — one per DB connection.
 	// Each provider has its own session-level advisory lock state.
 	// When both call Up concurrently, goose serialises them via pg_advisory_lock.
-	provider1, err := goose.NewProvider(goose.DialectPostgres, db, testFS,
-		goose.WithTableName("schema_migrations"),
-		goose.WithLogger(&integrationSilentLogger{t: t}),
+	//
+	// When WithStore is used, the first argument (dialect) must be empty string
+	// because the store already encodes the dialect. Passing a non-empty dialect
+	// with WithStore causes goose.NewProvider to return an error.
+	provider1, err := goose.NewProvider("", db, testFS,
+		goose.WithStore(providerStore),
+		goose.WithSessionLocker(sessionLocker),
+		goose.WithVerbose(false),
 	)
 	if err != nil {
 		t.Fatalf("goose.NewProvider (instance 1): %v", err)
 	}
 
-	provider2, err := goose.NewProvider(goose.DialectPostgres, db2, testFS,
-		goose.WithTableName("schema_migrations"),
-		goose.WithLogger(&integrationSilentLogger{t: t}),
+	provider2, err := goose.NewProvider("", db2, testFS,
+		goose.WithStore(providerStore),
+		goose.WithSessionLocker(sessionLocker),
+		goose.WithVerbose(false),
 	)
 	if err != nil {
 		t.Fatalf("goose.NewProvider (instance 2): %v", err)
 	}
 
 	// Start both providers concurrently and collect results.
+	// provider.Up returns []*goose.MigrationResult (pointer slice) in v3.22.1.
 	type providerResult struct {
-		results []goose.MigrationResult
+		results []*goose.MigrationResult
 		err     error
 		label   string
 	}
@@ -189,7 +221,8 @@ SELECT pg_sleep(1);
 	appliedCount := 0
 	for _, r := range allResults {
 		for _, mr := range r.results {
-			if mr.Source.Version == testVersion {
+			// mr.Source is *goose.Source (pointer); guard against nil.
+			if mr.Source != nil && mr.Source.Version == testVersion {
 				appliedCount++
 				t.Logf("[%s] applied version %d", r.label, testVersion)
 			}

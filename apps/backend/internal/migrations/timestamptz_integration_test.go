@@ -149,12 +149,16 @@ func TestTimestamptzIntegration_AuditEventsInLosAngeles(t *testing.T) {
 	}
 	t.Logf("step 5: audit_events.occurred_at data_type = %q", dataType)
 
-	// ── Step 6: Verify NO column uses 'timestamp without time zone' ───────────
+	// ── Step 6: Verify NO application column uses 'timestamp without time zone' ──
+	// The goose-managed schema_migrations table uses TIMESTAMP for its tstamp
+	// column (an upstream goose design choice, not an application decision).
+	// We exclude it from the check so that only application tables are verified.
 	const badColSQL = `
 		SELECT table_name, column_name, data_type
 		FROM information_schema.columns
 		WHERE table_schema = 'public'
-		  AND data_type = 'timestamp without time zone'`
+		  AND data_type = 'timestamp without time zone'
+		  AND table_name != 'schema_migrations'`
 
 	rows, err := conn.Query(ctx, badColSQL)
 	if err != nil {

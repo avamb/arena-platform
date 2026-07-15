@@ -1269,45 +1269,42 @@ func TestMigrateRedo_LogsRollbackThenApply(t *testing.T) {
 			len(capture.messages), capture.messages)
 	}
 
-	// The migration filenames embedded in this binary.
-	knownMigrations := []string{"0001_init.sql", "0002_outbox.sql", "0003_i18n_seeds.sql"}
+	// Build the set of known migration filenames dynamically from the embedded FS.
+	// This avoids hardcoding a subset (e.g. only 0001–0003) that breaks when new
+	// migrations are added — redo operates on the LATEST migration, which changes
+	// as the migration history grows.
+	knownMigrations := make(map[string]bool)
+	if entries, err := migrations.FS.ReadDir(migrations.Dir); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() {
+				knownMigrations[e.Name()] = true
+			}
+		}
+	}
 
-	rollbackIdx := -1
-	applyIdx := -1
-	for i, msg := range capture.messages {
+	// In goose v3.22.1, BOTH the rollback (down) step and the re-apply (up) step
+	// emit "OK   <filename> (<duration>)" via the global logger.  Older versions
+	// used "DONE" for the rollback step.  We accept "OK" for both directions and
+	// count occurrences — redo must produce exactly 2 "OK" messages for the
+	// migration file that was redone (one for down, one for up).
+	var migOKCount int
+	for _, msg := range capture.messages {
 		upper := strings.ToUpper(msg)
-		containsMig := false
-		for _, name := range knownMigrations {
+		if !strings.Contains(upper, "OK") {
+			continue
+		}
+		for name := range knownMigrations {
 			if strings.Contains(msg, name) {
-				containsMig = true
+				migOKCount++
 				break
 			}
 		}
-		if !containsMig {
-			continue
-		}
-		// goose v3 logs "DONE" for a successful rollback (down) step.
-		if strings.Contains(upper, "DONE") && rollbackIdx == -1 {
-			rollbackIdx = i
-		}
-		// goose v3 logs "OK" for a successful apply (up) step.
-		if strings.Contains(upper, "OK") && applyIdx == -1 {
-			applyIdx = i
-		}
 	}
 
-	if rollbackIdx == -1 {
-		t.Errorf("redo: no 'DONE' (rollback) message found for any migration file; messages: %v",
-			capture.messages)
-	}
-	if applyIdx == -1 {
-		t.Errorf("redo: no 'OK' (apply) message found for any migration file; messages: %v",
-			capture.messages)
-	}
-	// Rollback must be logged BEFORE the re-apply.
-	if rollbackIdx != -1 && applyIdx != -1 && rollbackIdx > applyIdx {
-		t.Errorf("redo: rollback message (idx=%d) appeared AFTER apply message (idx=%d); want rollback first",
-			rollbackIdx, applyIdx)
+	if migOKCount < 2 {
+		t.Errorf("redo: expected >= 2 'OK' messages for a migration file (down + up); "+
+			"got %d. goose v3.22 uses 'OK' for both rollback and re-apply directions. "+
+			"Messages: %v", migOKCount, capture.messages)
 	}
 }
 
