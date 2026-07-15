@@ -326,37 +326,86 @@ func TestPR04_DuplicateSafety_AlreadyProcessedNotReDelivered(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Test 5: Disabled mode — no rows are claimed or consumed
+// Test 5: Disabled mode — no rows are claimed or consumed by OUR dispatcher
 // ---------------------------------------------------------------------------
 
+// countingStore wraps an OutboxEventStore and records how many times
+// MarkDispatched and MarkFailed are called. Used in the disabled-mode test to
+// verify that OUR OutboxEventsDispatcher (with DisabledDispatcher) makes zero
+// mark calls, regardless of what other processes (e.g. arena_worker) do to the
+// shared outbox_events table.
+type countingStore struct {
+	OutboxEventStore
+	claimCount    atomic.Int64
+	dispatchCount atomic.Int64
+	failCount     atomic.Int64
+}
+
+func (s *countingStore) ClaimNext(ctx context.Context) (*OutboxEventRow, error) {
+	s.claimCount.Add(1)
+	return s.OutboxEventStore.ClaimNext(ctx)
+}
+
+func (s *countingStore) MarkDispatched(ctx context.Context, id string) error {
+	s.dispatchCount.Add(1)
+	return s.OutboxEventStore.MarkDispatched(ctx, id)
+}
+
+func (s *countingStore) MarkFailed(ctx context.Context, id string, lastErr string) error {
+	s.failCount.Add(1)
+	return s.OutboxEventStore.MarkFailed(ctx, id, lastErr)
+}
+
+// Compile-time interface guard.
+var _ OutboxEventStore = (*countingStore)(nil)
+
 // TestPR04_DisabledMode_NoRowsConsumed proves that DisabledDispatcher causes
-// OutboxEventsDispatcher to never claim rows from outbox_events. Rows written
-// while the mode is disabled accumulate with processed_at NULL.
+// OutboxEventsDispatcher to never call ClaimNext, MarkDispatched, or MarkFailed
+// on the outbox_events store. The test uses a counting store wrapper to count
+// calls made by OUR dispatcher instance, so a concurrently running arena_worker
+// (which has its own separate store instance) cannot cause false failures.
 func TestPR04_DisabledMode_NoRowsConsumed(t *testing.T) {
 	pool := pr04Pool(t)
 	const evType = "pr04.integration.disabled"
 	t.Cleanup(func() { cleanupOutboxEvents(t, pool, "pr04.integration.disabled") })
 
-	// Insert two rows.
-	rowID1 := insertOutboxEvent(t, pool, fmt.Sprintf("%s.1", evType))
-	rowID2 := insertOutboxEvent(t, pool, fmt.Sprintf("%s.2", evType))
+	// Insert two rows into outbox_events.
+	_ = insertOutboxEvent(t, pool, fmt.Sprintf("%s.1", evType))
+	_ = insertOutboxEvent(t, pool, fmt.Sprintf("%s.2", evType))
 
-	// Run with DisabledDispatcher — no rows should be consumed.
-	runPR04Dispatcher(t, pool, DisabledDispatcher{}, 200*time.Millisecond)
+	// Wrap the real store with a counter so we can track calls from OUR dispatcher.
+	counting := &countingStore{OutboxEventStore: NewPGOutboxEventStore(pool)}
 
-	// Both rows must still have processed_at NULL.
-	if ts := outboxEventProcessedAt(t, pool, rowID1); ts != nil {
-		t.Error("PR-04 disabled: row1 processed_at must remain NULL in disabled mode")
-	}
-	if ts := outboxEventProcessedAt(t, pool, rowID2); ts != nil {
-		t.Error("PR-04 disabled: row2 processed_at must remain NULL in disabled mode")
+	// Run OutboxEventsDispatcher with DisabledDispatcher using the counting store.
+	d, err := NewOutboxEventsDispatcher(OutboxEventsDispatcherOptions{
+		Store:           counting,
+		Dispatcher:      DisabledDispatcher{},
+		PollInterval:    20 * time.Millisecond,
+		ShutdownTimeout: 3 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("NewOutboxEventsDispatcher: %v", err)
 	}
 
-	// Attempts must remain 0 (rows were never even claimed).
-	if n := outboxEventAttempts(t, pool, rowID1); n != 0 {
-		t.Errorf("PR-04 disabled: row1 attempts=%d, want 0 (rows must not be claimed)", n)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	go func() { _ = d.Run(ctx) }()
+	<-ctx.Done()
+	_ = d.Stop()
+
+	// PR-04 disabled-mode contract: when the dispatcher implements
+	// DisabledModeDispatcher, OutboxEventsDispatcher.Run MUST skip ClaimNext.
+	// Zero claim calls prove the loop never even attempted to acquire a lock.
+	if n := counting.claimCount.Load(); n != 0 {
+		t.Errorf("PR-04 disabled: ClaimNext called %d times, want 0 (disabled mode must skip claiming rows)", n)
 	}
-	if n := outboxEventAttempts(t, pool, rowID2); n != 0 {
-		t.Errorf("PR-04 disabled: row2 attempts=%d, want 0 (rows must not be claimed)", n)
+
+	// MarkDispatched and MarkFailed must also be zero — no row should have been
+	// claimed, so neither success nor failure path should have run.
+	if n := counting.dispatchCount.Load(); n != 0 {
+		t.Errorf("PR-04 disabled: MarkDispatched called %d times, want 0", n)
+	}
+	if n := counting.failCount.Load(); n != 0 {
+		t.Errorf("PR-04 disabled: MarkFailed called %d times, want 0", n)
 	}
 }
