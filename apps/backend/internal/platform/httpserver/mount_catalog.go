@@ -9,14 +9,14 @@ func (s *Server) mountFeedTokenRoutes(r chi.Router) {
 		// Public feed read (no auth — token in path is the credential).
 		r.Get("/feeds/{token}", s.handlePublicFeed)
 	}
-	if s.stub != nil && s.stub.Enabled() && s.feedTokenQueries != nil {
+	if s.authEnabled() && s.feedTokenQueries != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "feed_token.read", "feed_tokens")
 			pr.Get("/organizations/{org_id}/channels/{channel_id}/feed-tokens", s.handleListFeedTokens)
 			pr.Get("/organizations/{org_id}/channels/{channel_id}/feed-tokens/{id}", s.handleGetFeedToken)
 		})
 	}
-	if s.stub != nil && s.stub.Enabled() && s.feedTokenQueries != nil && s.pool != nil {
+	if s.authEnabled() && s.feedTokenQueries != nil && s.pool != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "feed_token.create", "feed_tokens")
 			pr.Post("/organizations/{org_id}/channels/{channel_id}/feed-tokens", s.handleCreateFeedToken)
@@ -30,7 +30,7 @@ func (s *Server) mountFeedTokenRoutes(r chi.Router) {
 
 // mountEventRoutes mounts event CRUD endpoints (feature #125).
 func (s *Server) mountEventRoutes(r chi.Router) {
-	if s.stub != nil && s.stub.Enabled() && s.eventQueries != nil {
+	if s.authEnabled() && s.eventQueries != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "event.read", "events")
 			pr.Get("/events", s.handleListEvents)
@@ -38,7 +38,7 @@ func (s *Server) mountEventRoutes(r chi.Router) {
 			pr.Get("/organizations/{org_id}/events", s.handleListEventsByOrg)
 		})
 	}
-	if s.stub != nil && s.stub.Enabled() && s.eventQueries != nil && s.pool != nil {
+	if s.authEnabled() && s.eventQueries != nil && s.pool != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "event.create", "events")
 			pr.Post("/organizations/{org_id}/events", s.handleCreateEvent)
@@ -60,14 +60,14 @@ func (s *Server) mountEventRoutes(r chi.Router) {
 
 // mountSessionRoutes mounts session CRUD endpoints (feature #126).
 func (s *Server) mountSessionRoutes(r chi.Router) {
-	if s.stub != nil && s.stub.Enabled() && s.sessionQueries != nil {
+	if s.authEnabled() && s.sessionQueries != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "session.read", "sessions")
 			pr.Get("/organizations/{org_id}/events/{event_id}/sessions", s.handleListSessions)
 			pr.Get("/organizations/{org_id}/events/{event_id}/sessions/{id}", s.handleGetSession)
 		})
 	}
-	if s.stub != nil && s.stub.Enabled() && s.sessionQueries != nil && s.pool != nil {
+	if s.authEnabled() && s.sessionQueries != nil && s.pool != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "session.create", "sessions")
 			pr.Post("/organizations/{org_id}/events/{event_id}/sessions", s.handleCreateSession)
@@ -85,14 +85,14 @@ func (s *Server) mountSessionRoutes(r chi.Router) {
 
 // mountTierRoutes mounts ticket tier CRUD endpoints (feature #127).
 func (s *Server) mountTierRoutes(r chi.Router) {
-	if s.stub != nil && s.stub.Enabled() && s.tierQueries != nil {
+	if s.authEnabled() && s.tierQueries != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "tier.read", "tiers")
 			pr.Get("/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers", s.handleListTiers)
 			pr.Get("/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}", s.handleGetTier)
 		})
 	}
-	if s.stub != nil && s.stub.Enabled() && s.tierQueries != nil && s.pool != nil {
+	if s.authEnabled() && s.tierQueries != nil && s.pool != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "tier.create", "tiers")
 			pr.Post("/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers", s.handleCreateTier)
@@ -110,13 +110,13 @@ func (s *Server) mountTierRoutes(r chi.Router) {
 
 // mountPublicationRoutes mounts event publication endpoints (feature #151).
 func (s *Server) mountPublicationRoutes(r chi.Router) {
-	if s.stub != nil && s.stub.Enabled() && s.publicationQueries != nil {
+	if s.authEnabled() && s.publicationQueries != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "publication.read", "publications")
 			pr.Get("/events/{event_id}/publications", s.handleListPublications)
 		})
 	}
-	if s.stub != nil && s.stub.Enabled() && s.publicationQueries != nil && s.pool != nil {
+	if s.authEnabled() && s.publicationQueries != nil && s.pool != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "publication.create", "publications")
 			pr.Post("/events/{event_id}/publications", s.handlePublishEvent)

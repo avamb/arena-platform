@@ -4,7 +4,7 @@ import "github.com/go-chi/chi/v5"
 
 // mountPromoRoutes mounts promo-code CRUD + validation (feature #128).
 func (s *Server) mountPromoRoutes(r chi.Router) {
-	if s.stub != nil && s.stub.Enabled() && s.promoQueries != nil {
+	if s.authEnabled() && s.promoQueries != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "promo.read", "promo-codes")
 			pr.Get("/organizations/{org_id}/promo-codes", s.handleListPromoCodes)
@@ -15,7 +15,7 @@ func (s *Server) mountPromoRoutes(r chi.Router) {
 			pr.Post("/checkout/promo-validate", s.handleValidatePromoCode)
 		})
 	}
-	if s.stub != nil && s.stub.Enabled() && s.promoQueries != nil && s.pool != nil {
+	if s.authEnabled() && s.promoQueries != nil && s.pool != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "promo.create", "promo-codes")
 			pr.Post("/organizations/{org_id}/promo-codes", s.handleCreatePromoCode)
@@ -33,7 +33,7 @@ func (s *Server) mountPromoRoutes(r chi.Router) {
 
 // mountPricingRoutes mounts GET /v1/checkout/quote (feature #129).
 func (s *Server) mountPricingRoutes(r chi.Router) {
-	if s.stub == nil || !s.stub.Enabled() || s.tierQueries == nil {
+	if !s.authEnabled() || s.tierQueries == nil {
 		return
 	}
 	r.Group(func(pr chi.Router) {
@@ -45,14 +45,14 @@ func (s *Server) mountPricingRoutes(r chi.Router) {
 // mountCheckoutRoutes mounts checkout session state machine + price
 // breakdown (features #132, #163).
 func (s *Server) mountCheckoutRoutes(r chi.Router) {
-	if s.stub != nil && s.stub.Enabled() && s.checkoutQueries != nil {
+	if s.authEnabled() && s.checkoutQueries != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "checkout.read", "checkout")
 			pr.Get("/checkout/{id}", s.handleGetCheckoutSession)
 			pr.Get("/checkout/{id}/price-breakdown", s.handlePriceBreakdown)
 		})
 	}
-	if s.stub != nil && s.stub.Enabled() && s.checkoutQueries != nil && s.pool != nil {
+	if s.authEnabled() && s.checkoutQueries != nil && s.pool != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "checkout.start", "checkout")
 			pr.Post("/checkout/start", s.handleStartCheckout)
@@ -79,13 +79,13 @@ func (s *Server) mountPaymentIntentRoutes(r chi.Router) {
 		// Webhook is intentionally unauthenticated; idempotency handled inside.
 		r.Post("/payment-intents/webhook", s.handlePaymentIntentWebhook)
 	}
-	if s.stub != nil && s.stub.Enabled() && s.paymentIntentQueries != nil {
+	if s.authEnabled() && s.paymentIntentQueries != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "payment_intent.read", "payment_intents")
 			pr.Get("/payment-intents/{id}", s.handleGetPaymentIntent)
 		})
 	}
-	if s.stub != nil && s.stub.Enabled() && s.paymentIntentQueries != nil && s.pool != nil {
+	if s.authEnabled() && s.paymentIntentQueries != nil && s.pool != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "payment_intent.create", "payment_intents")
 			pr.Post("/payment-intents", s.handleCreatePaymentIntent)
@@ -100,7 +100,7 @@ func (s *Server) mountPaymentIntentRoutes(r chi.Router) {
 // mountStripeConnectRoutes mounts the Stripe Connect OAuth onboarding
 // endpoints (feature #135). Mounted only when StripeConnect is wired.
 func (s *Server) mountStripeConnectRoutes(r chi.Router) {
-	if s.stripeConnect == nil || s.stub == nil || !s.stub.Enabled() {
+	if s.stripeConnect == nil || !s.authEnabled() {
 		return
 	}
 	r.Group(func(pr chi.Router) {
@@ -113,7 +113,7 @@ func (s *Server) mountStripeConnectRoutes(r chi.Router) {
 // mountTicketRoutes mounts the GET /v1/checkout/{id}/tickets read endpoint
 // (feature #139). Issuance is internal.
 func (s *Server) mountTicketRoutes(r chi.Router) {
-	if s.stub == nil || !s.stub.Enabled() || s.ticketQueries == nil {
+	if !s.authEnabled() || s.ticketQueries == nil {
 		return
 	}
 	r.Group(func(pr chi.Router) {
@@ -125,7 +125,7 @@ func (s *Server) mountTicketRoutes(r chi.Router) {
 // mountCredentialRoutes mounts the lazy ticket credential endpoint
 // (feature #140).
 func (s *Server) mountCredentialRoutes(r chi.Router) {
-	if s.stub == nil || !s.stub.Enabled() || s.credentialQueries == nil {
+	if !s.authEnabled() || s.credentialQueries == nil {
 		return
 	}
 	r.Group(func(pr chi.Router) {
@@ -140,13 +140,13 @@ func (s *Server) mountRefundRoutes(r chi.Router) {
 		// Webhook — intentionally unauthenticated.
 		r.Post("/refunds/webhook", s.handleRefundWebhook)
 	}
-	if s.stub != nil && s.stub.Enabled() && s.refundQueries != nil {
+	if s.authEnabled() && s.refundQueries != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "refund.read", "refunds")
 			pr.Get("/refunds/{id}", s.handleGetRefund)
 		})
 	}
-	if s.stub != nil && s.stub.Enabled() && s.refundQueries != nil && s.pool != nil {
+	if s.authEnabled() && s.refundQueries != nil && s.pool != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "refund.create", "refunds")
 			pr.Post("/refunds", s.handleCreateRefund)
@@ -161,13 +161,13 @@ func (s *Server) mountRefundRoutes(r chi.Router) {
 
 // mountGDPRRoutes mounts self-service GDPR data subject endpoints (feature #164).
 func (s *Server) mountGDPRRoutes(r chi.Router) {
-	if s.stub != nil && s.stub.Enabled() && s.gdprQueries != nil {
+	if s.authEnabled() && s.gdprQueries != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "gdpr.request", "gdpr")
 			pr.Get("/me/data-requests", s.handleListDataRequests)
 		})
 	}
-	if s.stub != nil && s.stub.Enabled() && s.gdprQueries != nil && s.pool != nil {
+	if s.authEnabled() && s.gdprQueries != nil && s.pool != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "gdpr.request", "gdpr")
 			pr.Post("/me/data-export", s.handleDataExportRequest)

@@ -12,11 +12,11 @@ import (
 // every authenticated caller is allowed to read their own context. The handler
 // itself enforces user-scoping by keying every query off actor.ID.
 func (s *Server) mountMeRoutes(r chi.Router) {
-	if s.stub == nil || !s.stub.Enabled() || s.meQueries == nil {
+	if !s.authEnabled() || s.meQueries == nil {
 		return
 	}
 	r.Group(func(pr chi.Router) {
-		pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+		pr.Use(auth.Middleware(s.authProvider(), auth.MiddlewareOptions{Logger: s.logger}))
 		pr.Get("/me", s.handleMe)
 	})
 }
@@ -27,7 +27,7 @@ func (s *Server) mountGeoRoutes(r chi.Router) {
 		r.Get("/geo/countries", s.handleListCountries)
 		r.Get("/geo/cities", s.handleListCities)
 	}
-	if s.stub != nil && s.stub.Enabled() && s.geoQueries != nil && s.pool != nil {
+	if s.authEnabled() && s.geoQueries != nil && s.pool != nil {
 		r.Route("/admin/geo", func(ar chi.Router) {
 			ar.Group(func(pr chi.Router) {
 				s.applyAuth(pr, "geo.admin", "geo")
@@ -42,7 +42,7 @@ func (s *Server) mountGeoRoutes(r chi.Router) {
 
 // mountOrgRoutes mounts organization CRUD endpoints (feature #119).
 func (s *Server) mountOrgRoutes(r chi.Router) {
-	if s.stub == nil || !s.stub.Enabled() || s.orgQueries == nil || s.pool == nil {
+	if !s.authEnabled() || s.orgQueries == nil || s.pool == nil {
 		return
 	}
 	r.Group(func(pr chi.Router) {
@@ -66,7 +66,7 @@ func (s *Server) mountOrgRoutes(r chi.Router) {
 
 // mountChannelRoutes mounts sales channel CRUD endpoints (feature #121).
 func (s *Server) mountChannelRoutes(r chi.Router) {
-	if s.stub == nil || !s.stub.Enabled() || s.channelQueries == nil || s.pool == nil {
+	if !s.authEnabled() || s.channelQueries == nil || s.pool == nil {
 		return
 	}
 	r.Group(func(pr chi.Router) {
@@ -93,7 +93,7 @@ func (s *Server) mountChannelRoutes(r chi.Router) {
 // Routes are gated on payment_config.read for the GET surface and
 // payment_config.write for create / update / delete.
 func (s *Server) mountPaymentConfigRoutes(r chi.Router) {
-	if s.stub == nil || !s.stub.Enabled() || s.paymentConfigQueries == nil || s.pool == nil {
+	if !s.authEnabled() || s.paymentConfigQueries == nil || s.pool == nil {
 		return
 	}
 	r.Group(func(pr chi.Router) {
@@ -115,7 +115,7 @@ func (s *Server) mountPaymentConfigRoutes(r chi.Router) {
 // sensitive financial data and are deliberately NOT exposed to actors with
 // only `org.read` (see the Wave O section of openapi.yaml).
 func (s *Server) mountBankAccountRoutes(r chi.Router) {
-	if s.stub == nil || !s.stub.Enabled() || s.bankAccountQueries == nil || s.pool == nil {
+	if !s.authEnabled() || s.bankAccountQueries == nil || s.pool == nil {
 		return
 	}
 	r.Group(func(pr chi.Router) {
@@ -129,7 +129,7 @@ func (s *Server) mountBankAccountRoutes(r chi.Router) {
 
 // mountMembershipRoutes mounts membership grant/revoke/list endpoints (feature #120).
 func (s *Server) mountMembershipRoutes(r chi.Router) {
-	if s.stub == nil || !s.stub.Enabled() || s.membershipQueries == nil || s.pool == nil {
+	if !s.authEnabled() || s.membershipQueries == nil || s.pool == nil {
 		return
 	}
 	r.Group(func(pr chi.Router) {
@@ -148,7 +148,7 @@ func (s *Server) mountMembershipRoutes(r chi.Router) {
 
 // mountVenueRoutes mounts venue CRUD endpoints (feature #124).
 func (s *Server) mountVenueRoutes(r chi.Router) {
-	if s.stub != nil && s.stub.Enabled() && s.venueQueries != nil {
+	if s.authEnabled() && s.venueQueries != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "venue.read", "venues")
 			pr.Get("/venues", s.handleListVenues)
@@ -156,7 +156,7 @@ func (s *Server) mountVenueRoutes(r chi.Router) {
 			pr.Get("/organizations/{org_id}/venues", s.handleListVenuesByOrg)
 		})
 	}
-	if s.stub != nil && s.stub.Enabled() && s.venueQueries != nil && s.pool != nil {
+	if s.authEnabled() && s.venueQueries != nil && s.pool != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "venue.create", "venues")
 			pr.Post("/organizations/{org_id}/venues", s.handleCreateVenue)

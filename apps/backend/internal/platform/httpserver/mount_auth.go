@@ -17,11 +17,8 @@ func (s *Server) mountAuthRoutes(r chi.Router) {
 		return
 	}
 
-	issuer, audience := "arena-api", "arena-api"
-	if s.stub != nil {
-		issuer = s.stub.Issuer()
-		audience = s.stub.Audience()
-	}
+	issuer := s.authIssuer()
+	audience := s.authAudience()
 	h := hauth.New(s.pool, s.audit, s.sessionStore, s.cfg.JWTSecretStub, issuer, audience, s.maxConcurrentSessions)
 
 	r.Post("/auth/register", h.Register)
@@ -31,9 +28,9 @@ func (s *Server) mountAuthRoutes(r chi.Router) {
 	r.Post("/auth/password-reset/request", h.PasswordResetRequest)
 	r.Post("/auth/password-reset/confirm", h.PasswordResetConfirm)
 
-	if s.stub != nil && s.stub.Enabled() {
+	if s.authEnabled() {
 		r.Group(func(pr chi.Router) {
-			pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+			pr.Use(auth.Middleware(s.authProvider(), auth.MiddlewareOptions{Logger: s.logger}))
 			pr.Post("/auth/logout", h.Logout)
 		})
 	}

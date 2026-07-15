@@ -4,7 +4,7 @@ import "github.com/go-chi/chi/v5"
 
 // mountBarcodeRoutes mounts barcode authority federation (feature #142).
 func (s *Server) mountBarcodeRoutes(r chi.Router) {
-	if s.stub != nil && s.stub.Enabled() && s.barcodeQueries != nil {
+	if s.authEnabled() && s.barcodeQueries != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "barcode.read", "barcodes")
 			pr.Get("/barcodes/authorities", s.handleListBarcodeAuthorities)
@@ -15,7 +15,7 @@ func (s *Server) mountBarcodeRoutes(r chi.Router) {
 			pr.Post("/scan", s.handleScan)
 		})
 	}
-	if s.stub != nil && s.stub.Enabled() && s.barcodeQueries != nil && s.pool != nil {
+	if s.authEnabled() && s.barcodeQueries != nil && s.pool != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "barcode.create", "barcodes")
 			pr.Post("/barcodes/authorities", s.handleCreateBarcodeAuthority)
@@ -31,7 +31,7 @@ func (s *Server) mountBarcodeRoutes(r chi.Router) {
 // mountScannerRoutes mounts offline scanner snapshot + online validate
 // (feature #144).
 func (s *Server) mountScannerRoutes(r chi.Router) {
-	if s.stub == nil || !s.stub.Enabled() || s.barcodeQueries == nil {
+	if !s.authEnabled() || s.barcodeQueries == nil {
 		return
 	}
 	r.Group(func(pr chi.Router) {
@@ -60,7 +60,7 @@ func (s *Server) mountScannerCallbackRoutes(r chi.Router) {
 // mountBarcodeBatchRoutes mounts external barcode batch import endpoints
 // (feature #146).
 func (s *Server) mountBarcodeBatchRoutes(r chi.Router) {
-	if s.stub == nil || !s.stub.Enabled() || s.barcodeBatchQueries == nil {
+	if !s.authEnabled() || s.barcodeBatchQueries == nil {
 		return
 	}
 	r.Group(func(pr chi.Router) {

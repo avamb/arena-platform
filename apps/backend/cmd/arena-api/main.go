@@ -163,6 +163,17 @@ func run() error {
 		logger.Info("stub auth provider disabled")
 	}
 
+	// Production JWT verifier — validates tokens issued by auth.IssueJWT.
+	// Unlike the stub, this verifier is always active and has no disabled mode.
+	prodVerifier, err := auth.NewJWTVerifier(
+		cfg.JWTSecretStub,
+		cfg.JWTIssuer,
+		cfg.JWTAudience,
+	)
+	if err != nil {
+		return fmt.Errorf("init jwt verifier: %w", err)
+	}
+
 	// 7. HTTP server -----------------------------------------------------------
 	// FAULT_INJECT_OUTBOX_AFTER_AUDIT is a dev/test-only flag that forces a
 	// transaction rollback between the audit_events and outbox_events writes
@@ -202,6 +213,7 @@ func run() error {
 		Pool:                        pool.Pool,
 		PgxPool:                     pool.Pool,
 		Auth:                        stubAuth,
+		Verifier:                    prodVerifier,
 		Metrics:                     metrics,           // wires the Prometheus HTTP latency/count middleware
 		MetricsHandler:              metrics.Handler(), // mounts the /metrics scrape endpoint
 		FaultInjectOutboxAfterAudit: faultInjectOutbox,

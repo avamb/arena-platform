@@ -48,11 +48,8 @@ func loginRateLimiterKey(r *http.Request, email string) string {
 // authHandler constructs an hauth.Handler using the current loginRateLimiter
 // so that test code can substitute a controlled limiter via the package-level var.
 func (s *Server) authHandler() *hauth.Handler {
-	issuer, audience := "arena-api", "arena-api"
-	if s.stub != nil {
-		issuer = s.stub.Issuer()
-		audience = s.stub.Audience()
-	}
+	issuer := s.authIssuer()
+	audience := s.authAudience()
 	jwtSecret := ""
 	if s.cfg != nil {
 		jwtSecret = s.cfg.JWTSecretStub

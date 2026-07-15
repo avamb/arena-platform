@@ -72,7 +72,7 @@ func (s *Server) mountV1Routes() {
 // applyAuth adds the canonical auth + permission middleware pair to pr.
 // Use inside a r.Group(...) closure to scope the middleware to a sub-tree.
 func (s *Server) applyAuth(pr chi.Router, perm, scope string) {
-	pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+	pr.Use(auth.Middleware(s.authProvider(), auth.MiddlewareOptions{Logger: s.logger}))
 	pr.Use(permissions.RequirePermission(s.perms, perm, scope))
 }
 
@@ -113,11 +113,11 @@ func (s *Server) mountDevTokenRoutes(r chi.Router) {
 // mountEchoRoute mounts the JWT-protected, idempotent echo endpoint used as
 // the canonical transactional command example.
 func (s *Server) mountEchoRoute(r chi.Router) {
-	if s.stub == nil || !s.stub.Enabled() || s.idem == nil || s.audit == nil || s.pool == nil {
+	if !s.authEnabled() || s.idem == nil || s.audit == nil || s.pool == nil {
 		return
 	}
 	r.Group(func(pr chi.Router) {
-		pr.Use(auth.Middleware(s.stub, auth.MiddlewareOptions{Logger: s.logger}))
+		pr.Use(auth.Middleware(s.authProvider(), auth.MiddlewareOptions{Logger: s.logger}))
 		idemOpts := idempotency.Options{
 			Scope: "POST /v1/echo",
 			TTL:   24 * time.Hour,

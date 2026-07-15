@@ -16,7 +16,7 @@ import "github.com/go-chi/chi/v5"
 // pattern means create and archive are already restricted to platform
 // superadmins without any extra route-level guard.
 func (s *Server) mountOperatorNetworkRoutes(r chi.Router) {
-	if s.stub == nil || !s.stub.Enabled() || s.networkQueries == nil || s.pool == nil {
+	if !s.authEnabled() || s.networkQueries == nil || s.pool == nil {
 		return
 	}
 	r.Group(func(pr chi.Router) {

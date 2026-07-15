@@ -4,7 +4,7 @@ import "github.com/go-chi/chi/v5"
 
 // mountReportRoutes mounts post-event report endpoints (feature #159).
 func (s *Server) mountReportRoutes(r chi.Router) {
-	if s.stub == nil || !s.stub.Enabled() || s.reportQueries == nil {
+	if !s.authEnabled() || s.reportQueries == nil {
 		return
 	}
 	r.Group(func(pr chi.Router) {
@@ -20,7 +20,7 @@ func (s *Server) mountReportRoutes(r chi.Router) {
 // mountBillingRoutes mounts the platform service billing ledger endpoints
 // (feature #161).
 func (s *Server) mountBillingRoutes(r chi.Router) {
-	if s.stub == nil || !s.stub.Enabled() || s.billingQueries == nil {
+	if !s.authEnabled() || s.billingQueries == nil {
 		return
 	}
 	r.Group(func(pr chi.Router) {
@@ -43,7 +43,7 @@ func (s *Server) mountBillingRoutes(r chi.Router) {
 // mountStripeBillingRoutes mounts the Stripe Billing push + webhook
 // endpoints (feature #162).
 func (s *Server) mountStripeBillingRoutes(r chi.Router) {
-	if s.stub == nil || !s.stub.Enabled() || s.stripeBilling == nil || s.billingQueries == nil {
+	if !s.authEnabled() || s.stripeBilling == nil || s.billingQueries == nil {
 		return
 	}
 	r.Group(func(pr chi.Router) {
@@ -57,7 +57,7 @@ func (s *Server) mountStripeBillingRoutes(r chi.Router) {
 // mountSuperadminRoutes mounts read-only cross-tenant superadmin endpoints
 // (feature #166).
 func (s *Server) mountSuperadminRoutes(r chi.Router) {
-	if s.stub == nil || !s.stub.Enabled() || s.superadminQueries == nil {
+	if !s.authEnabled() || s.superadminQueries == nil {
 		return
 	}
 	r.Group(func(pr chi.Router) {
@@ -74,7 +74,7 @@ func (s *Server) mountSuperadminRoutes(r chi.Router) {
 // RBAC: ticket.update (or support.act fallback in the future RBAC engine).
 // All three writes carry the same X-Admin-Reason gate as the rest of /v1/admin.
 func (s *Server) mountAdminTicketDeliveryRoutes(r chi.Router) {
-	if s.stub == nil || !s.stub.Enabled() || s.deliveryJobQueries == nil || s.ticketQueries == nil {
+	if !s.authEnabled() || s.deliveryJobQueries == nil || s.ticketQueries == nil {
 		return
 	}
 	r.Group(func(pr chi.Router) {
@@ -114,7 +114,7 @@ func (s *Server) mountAdminTicketDeliveryRoutes(r chi.Router) {
 // The companion GET /v1/admin/organizations list endpoint is mounted by
 // mountSuperadminRoutes (cross-tenant superadmin read; feature #166).
 func (s *Server) mountAdminOrgRoutes(r chi.Router) {
-	if s.stub == nil || !s.stub.Enabled() || s.orgQueries == nil || s.pool == nil {
+	if !s.authEnabled() || s.orgQueries == nil || s.pool == nil {
 		return
 	}
 	r.Group(func(pr chi.Router) {
@@ -139,7 +139,7 @@ func (s *Server) mountAdminOrgRoutes(r chi.Router) {
 // membership.read / membership.grant / membership.revoke permissions seeded
 // in migration 0011_memberships.sql so no schema change is required.
 func (s *Server) mountAdminMembershipRoutes(r chi.Router) {
-	if s.stub == nil || !s.stub.Enabled() || s.membershipQueries == nil || s.pool == nil {
+	if !s.authEnabled() || s.membershipQueries == nil || s.pool == nil {
 		return
 	}
 	r.Group(func(pr chi.Router) {
@@ -161,7 +161,7 @@ func (s *Server) mountAdminMembershipRoutes(r chi.Router) {
 // The route creates a user, issues a password setup token, and assigns either a
 // global platform role or an organization-scoped membership role.
 func (s *Server) mountAdminUserRoutes(r chi.Router) {
-	if s.stub == nil || !s.stub.Enabled() || s.membershipQueries == nil || s.pool == nil {
+	if !s.authEnabled() || s.membershipQueries == nil || s.pool == nil {
 		return
 	}
 	r.Group(func(pr chi.Router) {
@@ -173,7 +173,7 @@ func (s *Server) mountAdminUserRoutes(r chi.Router) {
 // mountImpersonationRoutes mounts the scoped impersonation JWT endpoint
 // (feature #167).
 func (s *Server) mountImpersonationRoutes(r chi.Router) {
-	if s.stub == nil || !s.stub.Enabled() {
+	if !s.authEnabled() {
 		return
 	}
 	r.Group(func(pr chi.Router) {
@@ -185,7 +185,7 @@ func (s *Server) mountImpersonationRoutes(r chi.Router) {
 // mountWebhookSubscriberRoutes mounts WordPress webhook subscriber registry
 // (feature #156).
 func (s *Server) mountWebhookSubscriberRoutes(r chi.Router) {
-	if s.stub == nil || !s.stub.Enabled() || s.webhookSubQueries == nil {
+	if !s.authEnabled() || s.webhookSubQueries == nil {
 		return
 	}
 	r.Group(func(pr chi.Router) {

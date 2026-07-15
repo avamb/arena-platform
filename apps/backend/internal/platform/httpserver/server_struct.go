@@ -38,6 +38,7 @@ type Server struct {
 	probes       []ReadinessProbe
 	pool         PoolDB
 	stub         *auth.StubProvider
+	verifier     auth.Provider
 	audit        audit.Writer
 	idem         idempotency.Store
 	metrics      http.Handler

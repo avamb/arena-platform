@@ -42,7 +42,12 @@ type Options struct {
 
 	Pool    PoolDB
 	Auth    *auth.StubProvider
-	Audit   audit.Writer
+	// Verifier is the production JWT verifier. When non-nil it is used by the
+	// auth middleware on all protected routes instead of (or in addition to)
+	// the StubProvider. In production main.go passes auth.NewJWTVerifier here;
+	// tests that only supply Auth will fall back to the stub as verifier.
+	Verifier auth.Provider
+	Audit    audit.Writer
 	Idem    idempotency.Store
 	PgxPool *pgxpool.Pool
 
@@ -225,6 +230,7 @@ func New(opts Options) *Server {
 		probes:       probes,
 		pool:         opts.Pool,
 		stub:         opts.Auth,
+		verifier:     opts.Verifier,
 		audit:        auditWriter,
 		idem:         idemStore,
 		metrics:      opts.MetricsHandler,
@@ -285,6 +291,12 @@ func New(opts Options) *Server {
 		seatingQueries:        pickQueries(opts.SeatingQueries, opts.PgxPool),
 		meQueries:             pickMeQueries(opts.MeQueries, opts.PgxPool),
 		media:                 opts.Media,
+	}
+
+	// Production verifier fallback: when no explicit Verifier is supplied,
+	// use the stub (if enabled) so tests that only set Auth continue to work.
+	if s.verifier == nil && s.stub != nil {
+		s.verifier = s.stub
 	}
 
 	s.mountOperationalRoutes()

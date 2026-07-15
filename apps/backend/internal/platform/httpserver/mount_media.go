@@ -25,7 +25,7 @@ func (s *Server) mountMediaRoutes(r chi.Router) {
 	// `media.storage_unavailable` 503 response instead of a 404. The
 	// handlers guard media == nil internally.
 	h := hmedia.New(s.media, s.logger)
-	if s.stub != nil && s.stub.Enabled() {
+	if s.authEnabled() {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "media.write", "media")
 			pr.Post("/media", h.CreateMedia)

@@ -5,7 +5,7 @@ import "github.com/go-chi/chi/v5"
 // mountAllocationRoutes mounts the external allocation quota endpoints
 // (feature #145).
 func (s *Server) mountAllocationRoutes(r chi.Router) {
-	if s.stub == nil || !s.stub.Enabled() || s.allocationQueries == nil {
+	if !s.authEnabled() || s.allocationQueries == nil {
 		return
 	}
 	r.Group(func(pr chi.Router) {
@@ -26,7 +26,7 @@ func (s *Server) mountAllocationRoutes(r chi.Router) {
 // mountComplimentaryRoutes mounts complimentary ticket issuance + revocation
 // (features #148, #150).
 func (s *Server) mountComplimentaryRoutes(r chi.Router) {
-	if s.stub == nil || !s.stub.Enabled() || s.complimentaryQueries == nil {
+	if !s.authEnabled() || s.complimentaryQueries == nil {
 		return
 	}
 	r.Group(func(pr chi.Router) {
@@ -51,7 +51,7 @@ func (s *Server) mountComplimentaryRoutes(r chi.Router) {
 // mountReconciliationRoutes mounts external reconciliation report endpoints
 // (feature #147).
 func (s *Server) mountReconciliationRoutes(r chi.Router) {
-	if s.stub == nil || !s.stub.Enabled() || s.reconciliationQueries == nil {
+	if !s.authEnabled() || s.reconciliationQueries == nil {
 		return
 	}
 	r.Group(func(pr chi.Router) {

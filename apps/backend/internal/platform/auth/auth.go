@@ -444,6 +444,130 @@ func containsAudience(aud jwt.ClaimStrings, want string) bool {
 }
 
 // -----------------------------------------------------------------------------
+// JWTVerifier — production-grade Provider (verify-only, no token mint)
+// -----------------------------------------------------------------------------
+
+// jwtVerifierClaims is the JWT payload shape used by JWTVerifier. It embeds
+// jwt.RegisteredClaims so jwt/v5 can validate time bounds automatically, and
+// adds the arena-specific custom fields.
+type jwtVerifierClaims struct {
+	jwt.RegisteredClaims
+	ActorType           string   `json:"actor_type,omitempty"`
+	Roles               []string `json:"roles,omitempty"`
+	ImpersonatedBy      string   `json:"impersonated_by,omitempty"`
+	ImpersonationReason string   `json:"impersonation_reason,omitempty"`
+}
+
+// JWTVerifier is a production-grade auth.Provider that verifies HS256 JWTs
+// using github.com/golang-jwt/jwt/v5. Unlike StubProvider it has no disabled
+// state and cannot mint tokens — it is the read-only counterpart to IssueJWT.
+type JWTVerifier struct {
+	secret   []byte
+	issuer   string
+	audience string
+}
+
+// NewJWTVerifier constructs a JWTVerifier. Returns an error when secret is
+// empty or contains only whitespace.
+func NewJWTVerifier(secret, issuer, audience string) (*JWTVerifier, error) {
+	if strings.TrimSpace(secret) == "" {
+		return nil, errors.New("auth: JWTVerifier requires a non-empty secret")
+	}
+	if issuer == "" {
+		issuer = "arena-api"
+	}
+	if audience == "" {
+		audience = "arena-api"
+	}
+	return &JWTVerifier{
+		secret:   []byte(secret),
+		issuer:   issuer,
+		audience: audience,
+	}, nil
+}
+
+// Verify implements auth.Provider. It validates the HS256 signature, algorithm,
+// time bounds, issuer, audience, and required claims. Returns one of the
+// sentinel errors from this package on failure.
+func (v *JWTVerifier) Verify(_ context.Context, rawToken string) (Actor, error) {
+	keyFunc := func(t *jwt.Token) (any, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("%w: %q", ErrUnsupportedAlg, t.Header["alg"])
+		}
+		return v.secret, nil
+	}
+
+	var claims jwtVerifierClaims
+	tok, err := jwt.ParseWithClaims(rawToken, &claims, keyFunc,
+		jwt.WithValidMethods([]string{"HS256"}),
+		jwt.WithExpirationRequired(),
+		jwt.WithLeeway(5*time.Second),
+	)
+	if err != nil {
+		return Actor{}, mapJWTVerifyError(err)
+	}
+	if !tok.Valid {
+		return Actor{}, ErrMalformedToken
+	}
+
+	sub := claims.Subject
+	if strings.TrimSpace(sub) == "" {
+		return Actor{}, fmt.Errorf("%w: missing sub claim", ErrMalformedToken)
+	}
+	if v.issuer != "" && claims.Issuer != "" && claims.Issuer != v.issuer {
+		return Actor{}, fmt.Errorf("%w: %q", ErrUnknownIssuer, claims.Issuer)
+	}
+	if v.audience != "" && len(claims.Audience) > 0 && !containsAudience(claims.Audience, v.audience) {
+		return Actor{}, fmt.Errorf("%w: %q", ErrUnknownAudience, claims.Audience)
+	}
+
+	actorType := ActorType(claims.ActorType)
+	if actorType == "" {
+		actorType = ActorTypeUser
+	}
+
+	var exp, iat time.Time
+	if claims.ExpiresAt != nil {
+		exp = claims.ExpiresAt.Time
+	}
+	if claims.IssuedAt != nil {
+		iat = claims.IssuedAt.Time
+	}
+
+	return Actor{
+		ID:                  sub,
+		Type:                actorType,
+		Roles:               claims.Roles,
+		Issuer:              claims.Issuer,
+		ExpiresAt:           exp.UTC(),
+		IssuedAt:            iat.UTC(),
+		RawToken:            rawToken,
+		ImpersonatedBy:      claims.ImpersonatedBy,
+		ImpersonationReason: claims.ImpersonationReason,
+	}, nil
+}
+
+// mapJWTVerifyError translates jwt/v5 parse errors into auth sentinel errors.
+func mapJWTVerifyError(err error) error {
+	switch {
+	case errors.Is(err, jwt.ErrTokenExpired):
+		return ErrTokenExpired
+	case errors.Is(err, jwt.ErrTokenNotValidYet):
+		return ErrTokenNotValidYet
+	case errors.Is(err, jwt.ErrTokenSignatureInvalid):
+		return ErrInvalidSignature
+	case errors.Is(err, jwt.ErrTokenMalformed):
+		return ErrMalformedToken
+	case errors.Is(err, jwt.ErrTokenUnverifiable):
+		return ErrMalformedToken
+	case errors.Is(err, ErrUnsupportedAlg):
+		return ErrUnsupportedAlg
+	default:
+		return fmt.Errorf("%w: %v", ErrMalformedToken, err)
+	}
+}
+
+// -----------------------------------------------------------------------------
 // Middleware
 // -----------------------------------------------------------------------------
 

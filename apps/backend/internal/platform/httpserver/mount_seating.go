@@ -27,7 +27,7 @@ func (s *Server) mountSeatingRoutes(r chi.Router) {
 		r.Get("/event-sessions/{id}/layout.svg", s.handleGetPublicSessionLayoutSVG)
 	}
 
-	if s.stub == nil || !s.stub.Enabled() || s.seatingQueries == nil || s.pool == nil {
+	if !s.authEnabled() || s.seatingQueries == nil || s.pool == nil {
 		return
 	}
 

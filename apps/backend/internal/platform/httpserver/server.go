@@ -35,6 +35,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 )
@@ -248,4 +249,49 @@ func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
 // that existing handler methods on *Server require no import changes.
 func writeJSON(w http.ResponseWriter, status int, payload any) {
 	httputil.WriteJSON(w, status, payload)
+}
+
+// authEnabled reports whether a JWT verifier is available for this server.
+// It returns true when a production verifier is wired OR when the dev stub
+// is enabled. Mount guards use this instead of s.stub.Enabled() so all
+// protected routes are available in both development and production.
+func (s *Server) authEnabled() bool {
+	if s.verifier != nil {
+		return true
+	}
+	return s.stub != nil && s.stub.Enabled()
+}
+
+// authProvider returns the auth.Provider used by the auth middleware.
+// Production uses the JWTVerifier set in s.verifier; development falls
+// back to the StubProvider when no explicit verifier is supplied.
+func (s *Server) authProvider() auth.Provider {
+	if s.verifier != nil {
+		return s.verifier
+	}
+	return s.stub
+}
+
+// authIssuer returns the JWT issuer claim value configured for this server.
+// Reads from the stub (dev) or the config (production).
+func (s *Server) authIssuer() string {
+	if s.stub != nil && s.stub.Issuer() != "" {
+		return s.stub.Issuer()
+	}
+	if s.cfg != nil && s.cfg.JWTIssuer != "" {
+		return s.cfg.JWTIssuer
+	}
+	return "arena-api"
+}
+
+// authAudience returns the JWT audience claim value configured for this server.
+// Reads from the stub (dev) or the config (production).
+func (s *Server) authAudience() string {
+	if s.stub != nil && s.stub.Audience() != "" {
+		return s.stub.Audience()
+	}
+	if s.cfg != nil && s.cfg.JWTAudience != "" {
+		return s.cfg.JWTAudience
+	}
+	return "arena-api"
 }
