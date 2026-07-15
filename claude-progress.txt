@@ -21084,3 +21084,50 @@ integration, OpenAPI drift, admin, widget, and real acceptance gates all pass.
 
 Commit: bb20845
 Marked #354 passing. (354/356 features passing, 99.4%)
+
+
+## 2026-07-16 - Feature #355 (PR-11): Make the load-test workflow fail honestly
+
+### Objective
+Eliminate false-green load tests from missing migrations, silent readiness
+timeout, and continue-on-error on k6 steps. k6 threshold breaches now fail the
+CI job. A new auth-login scenario exercises the real production login path.
+
+### Files created/modified
+
+**ops/loadtest/auth-login.js (NEW)**
+- k6 scenario using real POST /v1/auth/login (not dev-stub endpoint)
+- setup(): authenticates once as super@test.arena.local / TestPass!23
+  fail() aborts with nonzero exit if login fails
+- default(): GET /v1/me with Bearer token — protected endpoint under 5 VUs
+- Thresholds: p95 < 500ms, p99 < 1000ms, me_errors < 1%
+
+**ops/loadtest/negative/check-negative.sh (NEW)**
+Two negative tests proving k6 returns nonzero in both cases:
+  Test 1: k6 against port 19999 (nothing listening) — http_req_failed breached
+  Test 2: Rate metric at 100% with threshold requiring <10% — always breached
+Runs before real k6 scenarios in CI.
+
+**ops/loadtest/README.md (UPDATED)**
+Added auth-login scenario, First Production Profile thresholds table, negative
+test documentation, and CI correctness guarantees section.
+
+**.github/workflows/load-test.yml (MAJOR REWORK)**
+1. setup-go + go mod download added
+2. Build arena-migrate and arena-seed on runner
+3. Migrations via arena-migrate against localhost:55432
+4. Seed fixtures via arena-seed before k6
+5. Readiness poll exits nonzero on deadline — dumps all container logs
+6. check-negative.sh runs before real k6 scenarios
+7. Removed continue-on-error: true from scanner, feed, checkout steps
+8. auth-login scenario added (VUS=5) as first scenario
+9. Results still saved with if:always()
+10. Service logs captured and saved as CI artifact on failure
+
+### Verification
+  YAML valid — no continue-on-error directives remain
+  auth-login.js — imports login/bearerHeader, uses fail() in setup
+  check-negative.sh — both k6 inline tests guaranteed to breach thresholds
+
+Commit: 6c9da0e
+Marked #355 passing. (355/356 features passing, 99.7%)
