@@ -21130,4 +21130,57 @@ test documentation, and CI correctness guarantees section.
   check-negative.sh — both k6 inline tests guaranteed to breach thresholds
 
 Commit: 6c9da0e
+
+## 2026-07-16 - Feature #356 (PR-12): Automate current-head release evidence and refresh stale docs
+
+### Objective
+Replace stale migration-0041 references with dynamic migration head discovery.
+Create a reproducible release gate script and evidence report.
+
+### Migration head
+Current embedded head: 0064_delivery_jobs_processing.sql (64 migrations total)
+Previous stale reference: 0041_reconciliation_reports.sql (now removed from all release docs)
+
+### Changes implemented
+
+**apps/backend/internal/migrations/migrations.go (MODIFIED)**
+- Added Head() function that reads embedded FS and returns highest-numbered migration filename
+- New imports: fmt, strconv, strings
+- No hardcoded version; dynamic discovery from embed.FS
+
+**apps/backend/internal/migrations/migrations_head_test.go (NEW)**
+- TestHead_ReturnsSQLFile: verifies non-empty, ends in .sql
+- TestHead_NumericPrefixPositive: verifies leading prefix is greater than 0
+- TestHead_KnownCurrentHead: sentinel asserting head == "0064_delivery_jobs_processing.sql"
+
+**deploy/release-gate.sh (NEW, executable)**
+- Dynamic head discovery from apps/backend/internal/migrations/sql/
+- Starts ephemeral postgres:17-alpine on port 54390
+- Runs arena-migrate up, asserts DB head matches
+- Optional arena-api smoke (/healthz, /readyz)
+- Cleanup trap on exit
+
+**00_project_control/RELEASE_CHECKLIST.md (MODIFIED)**
+- Last reconciled: 2026-07-16 (PR-12 wave; dynamic migration head)
+- Removed all hardcoded 0041_reconciliation_reports.sql references
+- Gate 4 now uses migrations.Head() + deploy/release-gate.sh
+- Signature table row 4: "Runtime migrations (dynamic head)"
+
+**README.md (MODIFIED)**
+- Gate 4 row updated: references migrations.Head(), 0064 current head, release-gate.sh
+
+**00_project_control/RELEASE_EVIDENCE_PR12.md (NEW)**
+- Evidence report: commit 2961df2, date 2026-07-16
+- Migration head: 0064 (dynamic discovery)
+- Smoke test summary with PASS/SKIP status
+- Rollback rehearsal notes
+- STAGING_REHEARSAL_REPORT.md preserved unchanged as historical evidence
+
+### Verification
+  go test ./apps/backend/internal/migrations/... all pass (3 new tests)
+  No 0041 references remain in RELEASE_CHECKLIST.md or README.md
+  deploy/release-gate.sh is executable and structurally valid
+
+Commit: 2961df2
+Marked #356 passing. (356/356 features passing, 100.0%) --- WAVE PR COMPLETE!
 Marked #355 passing. (355/356 features passing, 99.7%)
