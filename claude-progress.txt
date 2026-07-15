@@ -2,6 +2,62 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+## 2026-07-15 - Feature #348 (PR-04): Make outbox delivery explicit and fail-closed
+
+Implemented PR-04: fail-closed outbox delivery with explicit mode enforcement.
+
+### Changes made
+
+**apps/backend/internal/platform/outbox/dispatcher.go**
+- Added `ErrDispatchDisabled` sentinel error
+- Added `DisabledModeDispatcher` interface (`IsDisabled() bool`)
+- Added `DisabledDispatcher` type implementing both `Dispatcher` and `DisabledModeDispatcher`
+  - `Dispatch()` returns `ErrDispatchDisabled`
+  - `IsDisabled()` returns true → OutboxEventsDispatcher.Run skips ClaimNext entirely
+
+**apps/backend/internal/platform/outbox/outbox_events_dispatcher.go**
+- `Run()` loop: check `DisabledModeDispatcher` before `ClaimNext`; skip rows in disabled mode
+- `deliverRow()`: detect `ErrDispatchDisabled` sentinel, leave row completely untouched
+  (no `MarkFailed`, no `MarkDispatched` — row stays unprocessed, attempts unchanged)
+
+**apps/backend/cmd/arena-worker/main.go**
+- `buildOutboxDispatcher()` now uses `switch cfg.OutboxMode` instead of URL-only check:
+  - `disabled` → `DisabledDispatcher{}`
+  - `webhook` → `WebhookDispatcher` (requires URL + signing secret)
+  - `noop`/empty → `NoopDispatcher{}` (dev/test only, rejected in production by PR-00)
+
+**apps/backend/internal/platform/config/config.go**
+- Extended webhook mode validation: `OUTBOX_SIGNING_SECRET` is now required (non-empty,
+  min 32 bytes) when `OUTBOX_MODE=webhook`. Unsigned webhook calls can't be verified.
+
+**apps/backend/internal/platform/config/config_test.go**
+- Added `TestValidate_OutboxWebhookRequiresSigningSecret` — empty secret rejected
+- Added `TestValidate_OutboxWebhookRejectsWeakSigningSecret` — short secret rejected
+
+**apps/backend/internal/platform/outbox/outbox_pr04_integration_test.go** (NEW, //go:build integration)
+- 5 PR-04 integration tests:
+  1. `TestPR04_WebhookSuccess_MarksProcessedAt` — successful delivery sets processed_at
+  2. `TestPR04_NonSuccessResponse_LeavesRowRetryable` — 5xx leaves row retryable, attempts++
+  3. `TestPR04_HMACSignature_VerifiedBySubscriber` — HMAC signature verifiable by subscriber
+  4. `TestPR04_DuplicateSafety_AlreadyProcessedNotReDelivered` — already-processed not re-sent
+  5. `TestPR04_DisabledMode_NoRowsConsumed` — DisabledDispatcher never calls ClaimNext
+     (uses countingStore wrapper to isolate from running arena_worker container)
+
+### Verification
+  go build ./apps/backend/...          OK (0 errors)
+  go test ./apps/backend/internal/platform/outbox/...   ok 1.152s
+  go test ./apps/backend/internal/platform/config/...   ok 0.010s
+  go test ./apps/backend/...           ALL PASS (exit 0)
+  go test -tags=integration ./apps/backend/internal/platform/outbox/... -run TestPR04
+    TestPR04_WebhookSuccess_MarksProcessedAt          PASS
+    TestPR04_NonSuccessResponse_LeavesRowRetryable    PASS
+    TestPR04_HMACSignature_VerifiedBySubscriber       PASS
+    TestPR04_DuplicateSafety_AlreadyProcessedNotReDelivered  PASS
+    TestPR04_DisabledMode_NoRowsConsumed              PASS
+
+Commits: 38e9d0a, e646610
+Marked #348 passing. (351/356 features passing, 98.6%)
+
 ## 2026-07-15 — Feature #349 (PR-05): Give API and worker correct container healthchecks
 
 ### Objective
