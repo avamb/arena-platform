@@ -179,7 +179,7 @@ func run() error {
 	//   placeholder.log   — demonstrates ShouldRunPlaceholderJob (step 3)
 	//   idempotency.cleanup — purges expired idempotency_keys (feature #48)
 	registry := worker.NewRegistry()
-	registerBuiltinHandlers(registry, pool.Pool, metrics, logger)
+	registerBuiltinHandlers(registry, pool.Pool, cfg, metrics, logger)
 	registerMediaGCHandler(registry, pool.Pool, cfg, logger)
 
 	// 7b. Idempotency cleanup startup scheduling (feature #48) ---------------
@@ -234,7 +234,7 @@ func run() error {
 		Pool:            pool,
 		Registry:        registry,
 		Logger:          logger,
-		PollInterval:    time.Second,
+		PollInterval:    cfg.WorkerPollInterval,
 		ShutdownTimeout: cfg.ShutdownTimeout,
 	})
 	if err != nil {
@@ -243,7 +243,7 @@ func run() error {
 
 	logger.Info("arena-worker ready",
 		"instance_id", w.InstanceID(),
-		"poll_interval", "1s",
+		"poll_interval", cfg.WorkerPollInterval.String(),
 		"outbox_backlog_interval", worker.DefaultOutboxBacklogPollInterval.String(),
 		"metrics_addr", cfg.WorkerMetricsAddr,
 	)
@@ -315,7 +315,7 @@ func run() error {
 
 // registerBuiltinHandlers attaches every job type the foundation
 // milestone ships with.
-func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, metrics *observability.Metrics, logger *slog.Logger) {
+func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, metrics *observability.Metrics, logger *slog.Logger) {
 	// noop.test exists for feature #20 (worker job persistence) and for
 	// any future smoke test that wants to prove the queue plumbing
 	// without exercising business code. It always succeeds.
@@ -349,8 +349,8 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, metrics *
 		TicketQueries:      queries,
 		DeliveryJobQueries: queries,
 		CredentialQueries:  queries,
-		Sender:             buildEmailSender(logger),
-		FromAddress:        coalesce(getEmailFrom(), "tickets@arena.example.com"),
+		Sender:             buildEmailSender(cfg, logger),
+		FromAddress:        coalesce(getEmailFrom(cfg), "tickets@arena.example.com"),
 		Logger:             logger,
 	}))
 }
@@ -395,27 +395,29 @@ func registerMediaGCHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *confi
 }
 
 // buildEmailSender returns an email.Sender appropriate for the current
-// environment.  When SMTP_HOST is set, an SMTPSender is returned;
-// otherwise a LogSender is returned so development/CI environments work
-// without an SMTP server.
-func buildEmailSender(logger *slog.Logger) email.Sender {
-	host := coalesce(os.Getenv("SMTP_HOST"), "")
-	if host == "" {
-		logger.Info("email: SMTP_HOST not configured; using LogSender (emails logged, not sent)")
-		return &email.LogSender{Logger: logger}
+// environment. EMAIL_MODE=smtp (required in production) returns an
+// SMTPSender using the typed SMTP_* config values. Any other mode (or
+// empty) returns a LogSender so development/CI environments work without
+// an SMTP server.
+func buildEmailSender(cfg *config.Config, logger *slog.Logger) email.Sender {
+	if cfg.EmailMode == config.EmailModeSMTP {
+		logger.Info("email: using SMTP sender", "host", cfg.SMTPHost, "from", cfg.SMTPFrom)
+		return email.NewSMTPSender(email.SMTPConfig{
+			Host:     cfg.SMTPHost,
+			Port:     coalesce(cfg.SMTPPort, "587"),
+			Username: cfg.SMTPUsername,
+			Password: cfg.SMTPPassword,
+			From:     coalesce(cfg.SMTPFrom, "tickets@arena.example.com"),
+			UseTLS:   cfg.SMTPUseTLS,
+		})
 	}
-	return email.NewSMTPSender(email.SMTPConfig{
-		Host:     host,
-		Port:     coalesce(os.Getenv("SMTP_PORT"), "25"),
-		Username: os.Getenv("SMTP_USERNAME"),
-		Password: os.Getenv("SMTP_PASSWORD"),
-		From:     coalesce(os.Getenv("SMTP_FROM"), "tickets@arena.example.com"),
-		UseTLS:   os.Getenv("SMTP_USE_TLS") == "true",
-	})
+	logger.Info("email: EMAIL_MODE is not 'smtp'; using LogSender (emails logged, not sent)",
+		"email_mode", string(cfg.EmailMode))
+	return &email.LogSender{Logger: logger}
 }
 
-// getEmailFrom returns the SMTP_FROM environment variable.
-func getEmailFrom() string { return os.Getenv("SMTP_FROM") }
+// getEmailFrom returns the canonical from-address from config.
+func getEmailFrom(cfg *config.Config) string { return cfg.SMTPFrom }
 
 // buildOutboxDispatcher constructs the Dispatcher for the outbox events loop.
 //

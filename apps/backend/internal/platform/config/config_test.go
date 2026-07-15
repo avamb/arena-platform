@@ -8,9 +8,9 @@ import (
 	"time"
 )
 
-// validBase returns a Config that passes Validate(). Individual tests start
-// from this baseline and mutate one or more fields to exercise the failure
-// branches.
+// validBase returns a Config that passes Validate() in development mode.
+// Individual tests start from this baseline and mutate one or more fields to
+// exercise the failure branches.
 func validBase() *Config {
 	return &Config{
 		AppEnv:             EnvDevelopment,
@@ -20,7 +20,7 @@ func validBase() *Config {
 		HTTPListenAddr:     ":8080",
 		BodyLimitBytes:     1 << 20,
 		RequestTimeout:     30 * time.Second,
-		CORSAllowedOrigins: []string{"*"},
+		CORSAllowedOrigins: []string{"*"}, // wildcard OK in development
 		ShutdownTimeout:    20 * time.Second,
 		DatabaseURL:        "postgres://arena:arena@localhost:5432/arena?sslmode=disable",
 		DBPoolMinConns:     2,
@@ -34,10 +34,54 @@ func validBase() *Config {
 		LogLevel:           "info",
 		LogFormat:          "json",
 		OTLPEndpoint:       "",
-		JWTSecretStub:      "dev-secret",
+		JWTSecretStub:   "dev-secret",
 		EnableStubAuth:     true,
+		// New fields — zero values are valid in development
+		OutboxMode: OutboxModeNoop, // dev default: noop
+		EmailMode:  EmailModeLog,   // dev default: log
 	}
 }
+
+// validProductionBase returns a Config that passes Validate() in production.
+// Tests for production rejections start from this and corrupt a single field.
+func validProductionBase() *Config {
+	return &Config{
+		AppEnv:             EnvProduction,
+		AppName:            "arena-api",
+		AppVersion:         "1.0.0",
+		AppCommit:          "abc1234",
+		HTTPListenAddr:     ":8080",
+		BodyLimitBytes:     1 << 20,
+		RequestTimeout:     30 * time.Second,
+		CORSAllowedOrigins: []string{"https://app.example.com"},
+		ShutdownTimeout:    20 * time.Second,
+		DatabaseURL:        "postgres://arena:strongpw@db.example.com:5432/arena?sslmode=require",
+		DBPoolMinConns:     2,
+		DBPoolMaxConns:     20,
+		DBPoolMaxConnLife:  time.Hour,
+		DBPoolMaxConnIdle:  30 * time.Minute,
+		DBLogQueries:       false,
+		DefaultLocale:      "en",
+		ActiveLocales:      []string{"en", "ru"},
+		LogLevel:           "info",
+		LogFormat:          "json",
+		// Strong production JWT secret (>= 32 bytes)
+		JWTSecretStub: "a-very-strong-secret-for-production-use-32b",
+		EnableStubAuth:   false,
+		// Explicit production modes
+		OutboxMode:      OutboxModeDisabled,
+		EmailMode:       EmailModeSMTP,
+		SMTPHost:        "smtp.example.com",
+		SMTPPort:        "587",
+		SMTPFrom:        "no-reply@example.com",
+		AppPublicURL:    "https://app.example.com",
+		OTELTracesSampler: 0.1,
+	}
+}
+
+// ---------------------------------------------------------------------------
+// General validation tests (development profile)
+// ---------------------------------------------------------------------------
 
 func TestValidate_OK(t *testing.T) {
 	cfg := validBase()
@@ -262,6 +306,71 @@ func TestValidate_ShutdownTimeoutNonPositive(t *testing.T) {
 	}
 }
 
+func TestValidate_InvalidOutboxMode(t *testing.T) {
+	cfg := validBase()
+	cfg.OutboxMode = OutboxMode("magic")
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for invalid OUTBOX_MODE")
+	}
+	if !strings.Contains(err.Error(), "OUTBOX_MODE") {
+		t.Errorf("error should mention OUTBOX_MODE, got: %v", err)
+	}
+}
+
+func TestValidate_OutboxWebhookRequiresURL(t *testing.T) {
+	cfg := validBase()
+	cfg.OutboxMode = OutboxModeWebhook
+	cfg.OutboxWebhookURL = "" // missing
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error when OUTBOX_MODE=webhook but URL is empty")
+	}
+	if !strings.Contains(err.Error(), "OUTBOX_WEBHOOK_URL") {
+		t.Errorf("error should mention OUTBOX_WEBHOOK_URL, got: %v", err)
+	}
+}
+
+func TestValidate_InvalidEmailMode(t *testing.T) {
+	cfg := validBase()
+	cfg.EmailMode = EmailMode("carrier_pigeon")
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for invalid EMAIL_MODE")
+	}
+	if !strings.Contains(err.Error(), "EMAIL_MODE") {
+		t.Errorf("error should mention EMAIL_MODE, got: %v", err)
+	}
+}
+
+func TestValidate_SMTPModeRequiresHost(t *testing.T) {
+	cfg := validBase()
+	cfg.EmailMode = EmailModeSMTP
+	cfg.SMTPHost = "" // missing
+	cfg.SMTPFrom = "test@example.com"
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error when EMAIL_MODE=smtp but SMTP_HOST is empty")
+	}
+	if !strings.Contains(err.Error(), "SMTP_HOST") {
+		t.Errorf("error should mention SMTP_HOST, got: %v", err)
+	}
+}
+
+func TestValidate_SMTPModeRequiresFrom(t *testing.T) {
+	cfg := validBase()
+	cfg.EmailMode = EmailModeSMTP
+	cfg.SMTPHost = "smtp.example.com"
+	cfg.SMTPFrom = "" // missing
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error when EMAIL_MODE=smtp but SMTP_FROM is empty")
+	}
+	if !strings.Contains(err.Error(), "SMTP_FROM") {
+		t.Errorf("error should mention SMTP_FROM, got: %v", err)
+	}
+}
+
 func TestDBDSNAlias(t *testing.T) {
 	cfg := validBase()
 	if cfg.DBDSN() != cfg.DatabaseURL {
@@ -288,9 +397,254 @@ func TestIsProductionAndDevelopmentHelpers(t *testing.T) {
 	}
 }
 
-// -----------------------------------------------------------------------------
+func TestEffectiveHealthAddr(t *testing.T) {
+	cases := []struct {
+		name       string
+		healthAddr string
+		role       string
+		want       string
+	}{
+		{"explicit overrides api", ":9999", "api", ":9999"},
+		{"explicit overrides worker", ":9999", "worker", ":9999"},
+		{"api default", "", "api", ":8080"},
+		{"worker default", "", "worker", ":9091"},
+		{"unknown role falls back to HTTP", "", "other", ":8080"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &Config{
+				HTTPListenAddr:    ":8080",
+				WorkerMetricsAddr: ":9091",
+				HealthAddr:        tc.healthAddr,
+			}
+			got := cfg.EffectiveHealthAddr(tc.role)
+			if got != tc.want {
+				t.Errorf("EffectiveHealthAddr(%q): want %q, got %q", tc.role, tc.want, got)
+			}
+		})
+	}
+}
+
+func TestMediaSigningKey(t *testing.T) {
+	t.Run("uses MediaSigningSecret when set", func(t *testing.T) {
+		cfg := &Config{
+			MediaSigningSecret: "explicit-media-secret",
+			JWTSecretStub:   "jwt-secret",
+		}
+		got := string(cfg.MediaSigningKey())
+		if got != "explicit-media-secret" {
+			t.Errorf("want explicit-media-secret, got %q", got)
+		}
+	})
+
+	t.Run("falls back to JWT secret when MediaSigningSecret is empty", func(t *testing.T) {
+		cfg := &Config{
+			MediaSigningSecret: "",
+			JWTSecretStub:   "jwt-secret",
+		}
+		got := string(cfg.MediaSigningKey())
+		if got != "jwt-secret" {
+			t.Errorf("want jwt-secret fallback, got %q", got)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// PR-00 production safety contract — table-driven rejection tests
+// ---------------------------------------------------------------------------
+
+func TestValidate_ProductionOK(t *testing.T) {
+	cfg := validProductionBase()
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid production config should pass, got: %v", err)
+	}
+}
+
+func TestValidate_Production_TableDriven(t *testing.T) {
+	cases := []struct {
+		name        string
+		mutate      func(*Config)
+		wantInError string
+	}{
+		{
+			name: "missing JWT secret",
+			mutate: func(c *Config) {
+				c.JWTSecretStub = ""
+			},
+			wantInError: "JWT_SIGNING_SECRET",
+		},
+		{
+			name: "weak JWT secret (too short)",
+			mutate: func(c *Config) {
+				c.JWTSecretStub = "short"
+			},
+			wantInError: "JWT_SIGNING_SECRET",
+		},
+		{
+			name: "known dev JWT placeholder",
+			mutate: func(c *Config) {
+				c.JWTSecretStub = "dev-only-do-not-use-in-prod"
+			},
+			wantInError: "JWT_SIGNING_SECRET",
+		},
+		{
+			name: "dev auth enabled",
+			mutate: func(c *Config) {
+				c.EnableStubAuth = true
+			},
+			wantInError: "ENABLE_DEV_AUTH",
+		},
+		{
+			name: "wildcard CORS",
+			mutate: func(c *Config) {
+				c.CORSAllowedOrigins = []string{"*"}
+			},
+			wantInError: "CORS_ALLOWED_ORIGINS",
+		},
+		{
+			name: "query logging enabled",
+			mutate: func(c *Config) {
+				c.DBLogQueries = true
+			},
+			wantInError: "DB_LOG_QUERIES",
+		},
+		{
+			name: "unsafe DB TLS (sslmode=disable)",
+			mutate: func(c *Config) {
+				c.DatabaseURL = "postgres://arena:pw@host:5432/db?sslmode=disable"
+			},
+			wantInError: "unsafe TLS mode",
+		},
+		{
+			name: "unsafe DB TLS (sslmode=allow)",
+			mutate: func(c *Config) {
+				c.DatabaseURL = "postgres://arena:pw@host:5432/db?sslmode=allow"
+			},
+			wantInError: "unsafe TLS mode",
+		},
+		{
+			name: "local media without signing secret",
+			mutate: func(c *Config) {
+				c.MediaBackend = "local"
+				c.MediaLocalRoot = "/tmp/media"
+				c.MediaSigningSecret = ""
+			},
+			wantInError: "MEDIA_SIGNING_SECRET",
+		},
+		{
+			name: "local media with weak signing secret",
+			mutate: func(c *Config) {
+				c.MediaBackend = "local"
+				c.MediaLocalRoot = "/tmp/media"
+				c.MediaSigningSecret = "short"
+			},
+			wantInError: "MEDIA_SIGNING_SECRET",
+		},
+		{
+			name: "log-only email",
+			mutate: func(c *Config) {
+				c.EmailMode = EmailModeLog
+			},
+			wantInError: "EMAIL_MODE",
+		},
+		{
+			name: "implicit email mode (empty)",
+			mutate: func(c *Config) {
+				c.EmailMode = ""
+			},
+			wantInError: "EMAIL_MODE",
+		},
+		{
+			name: "noop outbox mode",
+			mutate: func(c *Config) {
+				c.OutboxMode = OutboxModeNoop
+			},
+			wantInError: "OUTBOX_MODE",
+		},
+		{
+			name: "implicit outbox mode (empty)",
+			mutate: func(c *Config) {
+				c.OutboxMode = ""
+			},
+			wantInError: "OUTBOX_MODE",
+		},
+		{
+			name: "text log format in production",
+			mutate: func(c *Config) {
+				c.LogFormat = "text"
+			},
+			wantInError: "LOG_FORMAT",
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := validProductionBase()
+			tc.mutate(cfg)
+			err := cfg.Validate()
+			if err == nil {
+				t.Fatalf("expected validation error for %q, got nil", tc.name)
+			}
+			if !strings.Contains(err.Error(), tc.wantInError) {
+				t.Errorf("expected error containing %q, got: %v", tc.wantInError, err)
+			}
+		})
+	}
+}
+
+// TestValidate_ProductionWebhookOutbox ensures the webhook mode with URL is
+// also a valid production profile (not just disabled).
+func TestValidate_ProductionWebhookOutbox(t *testing.T) {
+	cfg := validProductionBase()
+	cfg.OutboxMode = OutboxModeWebhook
+	cfg.OutboxWebhookURL = "https://webhook.example.com/arena"
+	cfg.OutboxSigningSecret = "a-very-strong-webhook-signing-secret-32b+"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("webhook outbox production config should pass, got: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Redaction / log safety
+// ---------------------------------------------------------------------------
+
+func TestLogAttrs_RedactsSecrets(t *testing.T) {
+	cfg := validProductionBase()
+	cfg.JWTSecretStub = "super-secret-jwt-key-must-not-appear"
+	cfg.SMTPPassword = "secret-smtp-password"
+	cfg.OutboxSigningSecret = "secret-outbox-signing"
+	cfg.MediaSigningSecret = "secret-media-signing"
+	cfg.MediaS3SecretAccessKey = "secret-s3-key"
+	cfg.MediaS3AccessKeyID = "AKIAIOSFODNN7EXAMPLE"
+
+	attrs := cfg.LogAttrs()
+	combined := make([]string, 0, len(attrs))
+	for _, a := range attrs {
+		combined = append(combined, a.Key+"="+a.Value.String())
+	}
+	log := strings.Join(combined, " ")
+
+	secrets := []string{
+		"super-secret-jwt-key-must-not-appear",
+		"secret-smtp-password",
+		"secret-outbox-signing",
+		"secret-media-signing",
+		"secret-s3-key",
+	}
+	for _, s := range secrets {
+		if strings.Contains(log, s) {
+			t.Errorf("secret %q leaked into LogAttrs output: %s", s, log)
+		}
+	}
+	if !strings.Contains(log, "[REDACTED]") {
+		t.Error("expected [REDACTED] marker in LogAttrs output")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Load() — environment-driven entry point.
-// -----------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 // envSetter is a tiny helper that records prior env-var values so the test can
 // restore them on Cleanup, leaving the test environment untouched for any
@@ -413,13 +767,112 @@ func TestLoad_HappyPath(t *testing.T) {
 	}
 }
 
-// -----------------------------------------------------------------------------
+func TestLoad_WorkerAndOutboxDefaults(t *testing.T) {
+	es := newEnvSetter(t)
+	es.set("APP_ENV", "development")
+	es.set("DATABASE_URL", "postgres://arena:arena@localhost:5432/arena?sslmode=disable")
+	es.set("ENABLE_DEV_AUTH", "false")
+	for _, k := range []string{
+		"WORKER_CONCURRENCY", "WORKER_POLL_INTERVAL", "WORKER_JOB_TIMEOUT",
+		"WORKER_RETRY_BACKOFF_BASE", "WORKER_RETRY_BACKOFF_MAX",
+		"OUTBOX_BATCH_SIZE", "OUTBOX_POLL_INTERVAL",
+		"IDEMPOTENCY_TTL", "IDEMPOTENCY_KEY_MAX_LENGTH",
+	} {
+		es.unset(k)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() should succeed with defaults: %v", err)
+	}
+
+	checks := []struct {
+		name string
+		got  interface{}
+		want interface{}
+	}{
+		{"WorkerConcurrency", cfg.WorkerConcurrency, 4},
+		{"WorkerPollInterval", cfg.WorkerPollInterval, time.Second},
+		{"WorkerJobTimeout", cfg.WorkerJobTimeout, 5 * time.Minute},
+		{"WorkerRetryBackoffBase", cfg.WorkerRetryBackoffBase, 2 * time.Second},
+		{"WorkerRetryBackoffMax", cfg.WorkerRetryBackoffMax, 10 * time.Minute},
+		{"OutboxBatchSize", cfg.OutboxBatchSize, 50},
+		{"OutboxPollInterval", cfg.OutboxPollInterval, 2 * time.Second},
+		{"IdempotencyTTL", cfg.IdempotencyTTL, 24 * time.Hour},
+		{"IdempotencyKeyMaxLength", cfg.IdempotencyKeyMaxLength, 255},
+	}
+	for _, c := range checks {
+		if c.got != c.want {
+			t.Errorf("default for %s: want %v, got %v", c.name, c.want, c.got)
+		}
+	}
+}
+
+func TestLoad_JWTFieldsWiredFromEnv(t *testing.T) {
+	es := newEnvSetter(t)
+	es.set("APP_ENV", "development")
+	es.set("DATABASE_URL", "postgres://arena:arena@localhost:5432/arena?sslmode=disable")
+	es.set("JWT_SIGNING_SECRET", "dev-secret")
+	es.set("ENABLE_DEV_AUTH", "true")
+	es.set("JWT_ISSUER", "my-issuer")
+	es.set("JWT_AUDIENCE", "my-audience")
+	es.set("JWT_DEFAULT_TTL", "2h")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() should succeed: %v", err)
+	}
+	if cfg.JWTIssuer != "my-issuer" {
+		t.Errorf("JWTIssuer: want my-issuer, got %q", cfg.JWTIssuer)
+	}
+	if cfg.JWTAudience != "my-audience" {
+		t.Errorf("JWTAudience: want my-audience, got %q", cfg.JWTAudience)
+	}
+	if cfg.JWTDefaultTTL != 2*time.Hour {
+		t.Errorf("JWTDefaultTTL: want 2h, got %v", cfg.JWTDefaultTTL)
+	}
+}
+
+func TestLoad_EmailAndSMTPFieldsWiredFromEnv(t *testing.T) {
+	es := newEnvSetter(t)
+	es.set("APP_ENV", "development")
+	es.set("DATABASE_URL", "postgres://arena:arena@localhost:5432/arena?sslmode=disable")
+	es.set("ENABLE_DEV_AUTH", "false")
+	es.set("EMAIL_MODE", "smtp")
+	es.set("SMTP_HOST", "smtp.example.com")
+	es.set("SMTP_PORT", "465")
+	es.set("SMTP_USERNAME", "user@example.com")
+	es.set("SMTP_PASSWORD", "hunter2")
+	es.set("SMTP_FROM", "noreply@example.com")
+	es.set("SMTP_USE_TLS", "true")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() should succeed: %v", err)
+	}
+	if cfg.EmailMode != EmailModeSMTP {
+		t.Errorf("EmailMode: want smtp, got %q", cfg.EmailMode)
+	}
+	if cfg.SMTPHost != "smtp.example.com" {
+		t.Errorf("SMTPHost: want smtp.example.com, got %q", cfg.SMTPHost)
+	}
+	if cfg.SMTPPort != "465" {
+		t.Errorf("SMTPPort: want 465, got %q", cfg.SMTPPort)
+	}
+	if cfg.SMTPPassword != "hunter2" {
+		t.Errorf("SMTPPassword should be loaded from env")
+	}
+	if cfg.SMTPFrom != "noreply@example.com" {
+		t.Errorf("SMTPFrom: want noreply@example.com, got %q", cfg.SMTPFrom)
+	}
+	if !cfg.SMTPUseTLS {
+		t.Error("SMTPUseTLS: want true")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Feature #113 — Config struct field tags (env, required, default)
-// -----------------------------------------------------------------------------
-// The Config struct annotates every field with env:"VAR_NAME", required:"true|false",
-// and (where applicable) default:"<value>" tags. These tests use reflection to
-// verify that the tags are present and well-formed for a representative set of
-// critical fields.
+// ---------------------------------------------------------------------------
 
 // fieldTag is a helper that returns the value of a named tag for a Config field.
 // It returns ("", false) when the field or tag is absent.
@@ -442,12 +895,14 @@ func TestConfigFieldTags_EnvTagPresent(t *testing.T) {
 		{"AppName", "APP_NAME"},
 		{"AppVersion", "APP_VERSION"},
 		{"AppCommit", "APP_COMMIT"},
+		{"AppPublicURL", "APP_PUBLIC_URL"},
 		{"HTTPListenAddr", "HTTP_LISTEN_ADDR"},
 		{"WorkerMetricsAddr", "WORKER_METRICS_ADDR"},
 		{"BodyLimitBytes", "BODY_LIMIT_BYTES"},
 		{"RequestTimeout", "REQUEST_TIMEOUT_SECONDS"},
 		{"CORSAllowedOrigins", "CORS_ALLOWED_ORIGINS"},
 		{"ShutdownTimeout", "SHUTDOWN_TIMEOUT"},
+		{"HealthAddr", "HEALTH_ADDR"},
 		{"DatabaseURL", "DATABASE_URL"},
 		{"DBPoolMinConns", "DB_POOL_MIN_CONNS"},
 		{"DBPoolMaxConns", "DB_POOL_MAX_CONNS"},
@@ -455,6 +910,13 @@ func TestConfigFieldTags_EnvTagPresent(t *testing.T) {
 		{"DBPoolMaxConnIdle", "DB_POOL_MAX_CONN_IDLE_TIME"},
 		{"DBLogQueries", "DB_LOG_QUERIES"},
 		{"RedisURL", "REDIS_URL"},
+		{"JWTSecretStub", "JWT_SIGNING_SECRET"},
+		{"EnableStubAuth", "ENABLE_DEV_AUTH"},
+		{"JWTIssuer", "JWT_ISSUER"},
+		{"JWTAudience", "JWT_AUDIENCE"},
+		{"JWTDefaultTTL", "JWT_DEFAULT_TTL"},
+		{"IdempotencyTTL", "IDEMPOTENCY_TTL"},
+		{"IdempotencyKeyMaxLength", "IDEMPOTENCY_KEY_MAX_LENGTH"},
 		{"DefaultLocale", "DEFAULT_LOCALE"},
 		{"ActiveLocales", "ACTIVE_LOCALES"},
 		{"LogLevel", "LOG_LEVEL"},
@@ -463,8 +925,26 @@ func TestConfigFieldTags_EnvTagPresent(t *testing.T) {
 		{"OTELServiceName", "OTEL_SERVICE_NAME"},
 		{"OTELTracesSampler", "OTEL_TRACES_SAMPLER_ARG"},
 		{"OTELInsecure", "OTEL_EXPORTER_OTLP_INSECURE"},
-		{"JWTSecretStub", "JWT_SIGNING_SECRET"},
-		{"EnableStubAuth", "ENABLE_DEV_AUTH"},
+		{"WorkerConcurrency", "WORKER_CONCURRENCY"},
+		{"WorkerPollInterval", "WORKER_POLL_INTERVAL"},
+		{"WorkerJobTimeout", "WORKER_JOB_TIMEOUT"},
+		{"WorkerRetryBackoffBase", "WORKER_RETRY_BACKOFF_BASE"},
+		{"WorkerRetryBackoffMax", "WORKER_RETRY_BACKOFF_MAX"},
+		{"OutboxMode", "OUTBOX_MODE"},
+		{"OutboxWebhookURL", "OUTBOX_WEBHOOK_URL"},
+		{"OutboxSigningSecret", "OUTBOX_SIGNING_SECRET"},
+		{"OutboxPollInterval", "OUTBOX_POLL_INTERVAL"},
+		{"OutboxBatchSize", "OUTBOX_BATCH_SIZE"},
+		{"EmailMode", "EMAIL_MODE"},
+		{"SMTPHost", "SMTP_HOST"},
+		{"SMTPPort", "SMTP_PORT"},
+		{"SMTPUsername", "SMTP_USERNAME"},
+		{"SMTPPassword", "SMTP_PASSWORD"},
+		{"SMTPFrom", "SMTP_FROM"},
+		{"SMTPUseTLS", "SMTP_USE_TLS"},
+		{"MediaBackend", "MEDIA_BACKEND"},
+		{"MediaLocalRoot", "MEDIA_LOCAL_ROOT"},
+		{"MediaSigningSecret", "MEDIA_SIGNING_SECRET"},
 	}
 
 	for _, tc := range cases {
@@ -525,6 +1005,13 @@ func TestConfigFieldTags_DefaultTagOnNonRequiredFields(t *testing.T) {
 		{"DBPoolMaxConns", "20"},
 		{"LogLevel", "info"},
 		{"LogFormat", "json"},
+		{"WorkerConcurrency", "4"},
+		{"WorkerPollInterval", "1s"},
+		{"OutboxBatchSize", "50"},
+		{"IdempotencyTTL", "24h"},
+		{"IdempotencyKeyMaxLength", "255"},
+		{"EmailMode", "log"},
+		{"OutboxMode", "noop"},
 	}
 
 	for _, tc := range optionalWithDefaults {
@@ -603,8 +1090,6 @@ func TestConfig113_BootValidation_InvalidType(t *testing.T) {
 }
 
 // TestConfig113_BootValidation_DefaultsApplyWhenAbsent verifies: "defaults apply when var absent".
-// This test unsets optional variables and checks that Load() returns a populated
-// Config with the expected defaults (not zero values).
 func TestConfig113_BootValidation_DefaultsApplyWhenAbsent(t *testing.T) {
 	es := newEnvSetter(t)
 	// Required vars only — everything else should get defaults.

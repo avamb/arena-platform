@@ -146,9 +146,9 @@ func run() error {
 	// 6. Auth provider (dev stub; production swaps for real IdP) -------------
 	stubAuth, err := auth.NewStubProvider(auth.StubConfig{
 		Secret:     cfg.JWTSecretStub,
-		Issuer:     "arena-dev",
-		Audience:   "arena-api",
-		DefaultTTL: time.Hour,
+		Issuer:     cfg.JWTIssuer,
+		Audience:   cfg.JWTAudience,
+		DefaultTTL: cfg.JWTDefaultTTL,
 		Enabled:    cfg.EnableStubAuth,
 	})
 	if err != nil {
@@ -282,12 +282,11 @@ func buildMediaRepo(cfg *config.Config, logger *slog.Logger, pool *pgxpool.Pool)
 	if err != nil {
 		return nil, err
 	}
-	// Sign local-backend download URLs with the same dev JWT secret so
-	// developers do not need to plumb a second secret for HMAC. In
-	// production the operator would set a dedicated MEDIA_SIGNING_SECRET
-	// env var; for the foundation milestone we accept the small dev
-	// reuse.
-	signingSecret := []byte(cfg.JWTSecretStub)
+	// Sign local-backend download URLs. In production MEDIA_SIGNING_SECRET
+	// must be set explicitly. In development the JWT secret is used as a
+	// fallback so operators do not need two secrets for local testing.
+	// cfg.MediaSigningKey() encapsulates this precedence logic.
+	signingSecret := cfg.MediaSigningKey()
 	logger.Info("media storage configured",
 		"backend", cfg.MediaBackend,
 	)

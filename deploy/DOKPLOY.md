@@ -120,26 +120,68 @@ the API and worker rely on the new schema being in place before they boot.
 The three services share configuration loaded from the same `config.Load()`
 path. The variables below **must be set identically** on `arena-api`,
 `arena-worker`, and `arena-migrate` (Dokploy "Shared Environment" or copy-paste
-into each service's env tab):
+into each service's env tab).
+
+> **PR-00 production safety contract**: `APP_ENV=production` enforces the
+> following hard rejections at boot time — the process will not start if any
+> of these are violated:
+> - `JWT_SIGNING_SECRET` must be ≥ 32 bytes and not a known dev placeholder.
+> - `ENABLE_DEV_AUTH` must be `false`.
+> - `CORS_ALLOWED_ORIGINS` must not contain `*`.
+> - `DB_LOG_QUERIES` must be `false`.
+> - `DATABASE_URL` must use `sslmode=require` or `sslmode=verify-full`.
+> - `MEDIA_BACKEND=local` requires a strong `MEDIA_SIGNING_SECRET` (≥ 32 bytes).
+> - `EMAIL_MODE` must be `smtp` (never `log`).
+> - `OUTBOX_MODE` must be `webhook` or `disabled` (never `noop` or empty).
+> - `LOG_FORMAT` must be `json`.
+
+#### Mandatory shared variables
+
+| Variable | Required by | Production value | Notes |
+|---|---|---|---|
+| `APP_ENV` | api / worker / migrate | `production` | Enables all production safety checks |
+| `DATABASE_URL` | api / worker / migrate | `postgres://user:pw@host:5432/db?sslmode=require` | **sslmode=require** or verify-full is mandatory |
+| `LOG_LEVEL` | api / worker / migrate | `info` | |
+| `LOG_FORMAT` | api / worker / migrate | `json` | **Must be json** in production |
+| `APP_NAME` | api / worker | `arena-api` / `arena-worker` | |
+| `APP_VERSION` | api / worker / migrate | *(injected by CI)* | |
+| `APP_COMMIT` | api / worker / migrate | *(injected by CI)* | |
+| `JWT_SIGNING_SECRET` | api / worker | *(strong random, ≥ 32 bytes)* | Shared symmetric key; must not be a dev placeholder |
+| `ENABLE_DEV_AUTH` | api / worker | `false` | **Must be false** |
+| `APP_PUBLIC_URL` | api / worker | `https://app.example.com` | Canonical URL for emails and webhooks; never derived from request headers |
+| `OUTBOX_MODE` | worker | `webhook` or `disabled` | `noop` and empty are forbidden in production |
+| `EMAIL_MODE` | worker | `smtp` | `log` is forbidden in production |
+
+#### Email delivery (when EMAIL_MODE=smtp)
 
 | Variable | Required by | Notes |
 |---|---|---|
-| `APP_ENV` | api / worker / migrate | `production` |
-| `DATABASE_URL` | api / worker / migrate | Must point to the same PostgreSQL instance |
-| `LOG_LEVEL` | api / worker / migrate | `info` |
-| `LOG_FORMAT` | api / worker / migrate | `json` |
-| `APP_NAME` | api / worker | `arena-api` / `arena-worker` respectively |
-| `APP_VERSION` | api / worker / migrate | Injected by CI |
-| `APP_COMMIT` | api / worker / migrate | Injected by CI |
-| `JWT_SIGNING_SECRET` | api (mandatory), worker (recommended) | Worker shares the symmetric secret for inter-service signed callbacks |
-| `ENABLE_DEV_AUTH` | api / worker | `false` |
-| `HTTP_LISTEN_ADDR` | api only | `:8080` |
-| `WORKER_METRICS_ADDR` | worker only | `:9091` (default; do not expose publicly) |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | api / worker | Same collector endpoint |
-| `OTEL_SERVICE_NAME` | api / worker | `arena-api` / `arena-worker` respectively |
-| `REDIS_URL` | api / worker | Required once lock / hot-cache features land |
-| `DB_POOL_MIN_CONNS` / `DB_POOL_MAX_CONNS` | api / worker | Tune pools independently — total connections across api + worker must stay below the PostgreSQL `max_connections` limit |
-| `SHUTDOWN_TIMEOUT` | api / worker | `20s` recommended |
+| `SMTP_HOST` | worker | SMTP server hostname |
+| `SMTP_PORT` | worker | Default: `587` (STARTTLS) |
+| `SMTP_USERNAME` | worker | SMTP auth username |
+| `SMTP_PASSWORD` | worker | SMTP auth password |
+| `SMTP_FROM` | worker | Envelope from address, e.g. `tickets@arena.example.com` |
+| `SMTP_USE_TLS` | worker | `true` recommended |
+
+#### Outbox webhook (when OUTBOX_MODE=webhook)
+
+| Variable | Required by | Notes |
+|---|---|---|
+| `OUTBOX_WEBHOOK_URL` | worker | HTTP endpoint for outbox event delivery |
+| `OUTBOX_SIGNING_SECRET` | worker | HMAC-SHA256 key for `X-Arena-Signature` header |
+
+#### Service-specific variables
+
+| Variable | Required by | Default | Notes |
+|---|---|---|---|
+| `HTTP_LISTEN_ADDR` | api only | `:8080` | |
+| `WORKER_METRICS_ADDR` | worker only | `:9091` | Do **not** expose publicly |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | api / worker | *(empty)* | OTLP gRPC collector |
+| `OTEL_SERVICE_NAME` | api / worker | | `arena-api` / `arena-worker` |
+| `REDIS_URL` | api / worker | | Required once lock/hot-cache features land |
+| `DB_POOL_MIN_CONNS` / `DB_POOL_MAX_CONNS` | api / worker | 2 / 20 | Tune independently |
+| `SHUTDOWN_TIMEOUT` | api / worker | `20s` | |
+| `DB_LOG_QUERIES` | api / worker | `false` | **Must be false** in production |
 
 > Tip: in Dokploy ≥ 0.6 you can attach a **Shared Environment** group to all
 > three services and only override the service-specific entries (`APP_NAME`,
@@ -187,17 +229,27 @@ In Dokploy, open your `arena-api` application → **Environment Variables** tab.
 Set each variable below.  A full list of *optional* tuning variables is in
 [`.env.example`](../.env.example) at the repository root.
 
-### Mandatory Production Variables
+### Mandatory Production Variables (enforced by config.Load at boot)
 
-| Variable | Production value | Notes |
+> `APP_ENV=production` causes the process to exit at boot if any of these
+> constraints are violated. See `apps/backend/internal/platform/config/config.go`
+> for the full `validateProduction()` implementation.
+
+| Variable | Production value | Constraint |
 |---|---|---|
-| `APP_ENV` | `production` | Enables production-mode code paths |
-| `DATABASE_URL` | `postgres://user:pass@host:5432/dbname?sslmode=require` | pgx DSN; **must** use `sslmode=require` or `verify-full` in production |
-| `JWT_SIGNING_SECRET` | *(strong random secret, ≥ 32 bytes)* | HS256 signing key for dev-stub JWT. **Replace** with RS256 asymmetric key when the real identity module ships |
-| `ENABLE_DEV_AUTH` | `false` | **Must be `false` in production.** The dev-stub identity provider must be disabled |
-| `LOG_LEVEL` | `info` | One of `debug`, `info`, `warn`, `error` |
-| `LOG_FORMAT` | `json` | Production **must** use `json` for log aggregator compatibility |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `host:4317` | OTLP gRPC endpoint for traces; leave empty to disable |
+| `APP_ENV` | `production` | Required; enables all safety checks |
+| `DATABASE_URL` | `postgres://user:pass@host:5432/db?sslmode=require` | **sslmode=disable / allow are rejected** |
+| `JWT_SIGNING_SECRET` | *(random, ≥ 32 bytes)* | **Empty, short, or known dev placeholder are rejected** |
+| `ENABLE_DEV_AUTH` | `false` | **`true` is rejected** |
+| `LOG_FORMAT` | `json` | **`text` is rejected** |
+| `LOG_LEVEL` | `info` | `debug`/`info`/`warn`/`error` |
+| `CORS_ALLOWED_ORIGINS` | `https://your-frontend.example.com` | **Wildcard `*` is rejected** |
+| `DB_LOG_QUERIES` | `false` | **`true` is rejected** |
+| `EMAIL_MODE` | `smtp` | **`log` and empty are rejected** |
+| `OUTBOX_MODE` | `webhook` or `disabled` | **`noop` and empty are rejected** |
+| `APP_PUBLIC_URL` | `https://app.example.com` | Required when EMAIL_MODE=smtp for canonical email links |
+| `SMTP_HOST` | SMTP server hostname | Required when EMAIL_MODE=smtp |
+| `SMTP_FROM` | `tickets@arena.example.com` | Required when EMAIL_MODE=smtp |
 
 ### Recommended Tuning Variables
 
@@ -207,13 +259,20 @@ Set each variable below.  A full list of *optional* tuning variables is in
 | `APP_VERSION` | *(set by CI, e.g. `1.0.0`)* | Semver for observability dashboards |
 | `APP_COMMIT` | *(set by CI, e.g. `abc1234`)* | Git SHA for alerting correlation |
 | `HTTP_LISTEN_ADDR` | `:8080` | Keep default; Dokploy routes to this port |
-| `CORS_ALLOWED_ORIGINS` | `https://your-frontend.example.com` | Restrict CORS in production |
 | `DB_POOL_MIN_CONNS` | `2` | Minimum idle connections in pgx pool |
 | `DB_POOL_MAX_CONNS` | `20` | Maximum connections; tune to DB tier limits |
 | `REDIS_URL` | `redis://redis:6379/0` | Required when lock / hot-cache features ship |
 | `SHUTDOWN_TIMEOUT` | `20s` | Graceful shutdown window |
 | `OTEL_SERVICE_NAME` | `arena-api` | Service name in traces |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `host:4317` | OTLP gRPC endpoint for traces; leave empty to disable |
 | `OTEL_TRACES_SAMPLER_ARG` | `0.1` | 10 % sampling; increase for debugging |
+| `JWT_ISSUER` | `arena-api` | JWT issuer claim (default: arena-dev) |
+| `JWT_AUDIENCE` | `arena-api` | JWT audience claim |
+| `JWT_DEFAULT_TTL` | `1h` | Access token lifetime |
+| `WORKER_CONCURRENCY` | `4` | Parallel job dispatch threads |
+| `WORKER_POLL_INTERVAL` | `1s` | Queue polling cadence |
+| `OUTBOX_WEBHOOK_URL` | `https://receiver.example.com/events` | Required when OUTBOX_MODE=webhook |
+| `OUTBOX_SIGNING_SECRET` | *(random, ≥ 32 bytes)* | HMAC key for X-Arena-Signature; required with webhook mode |
 
 ---
 

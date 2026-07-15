@@ -21,6 +21,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"sync"
 	"testing"
 	"testing/fstest"
@@ -71,40 +72,43 @@ func TestConcurrentMigrations_TwoProvidersConcurrent(t *testing.T) {
 	}
 
 	// Step 2: Create a test migration FS with a slow migration.
-	// Version 9974 is chosen to be clearly above the current 0003 baseline and
+	// Version 9974 is chosen to be clearly above the current migration head and
 	// to avoid conflicts with production migration files.
-	// The migration runs SELECT pg_sleep(2) to create a detectable window
+	// The migration runs SELECT pg_sleep(1) to create a detectable window
 	// during which the second instance must wait on the advisory lock.
 	const testVersion = 9974
-	testMigrationSQL := fmt.Sprintf(`-- +goose Up
+	testMigrationSQL := `-- +goose Up
 -- Feature #74 concurrent migration safety test
 -- The pg_sleep makes the race condition observable: instance B must wait
 -- until instance A releases the advisory lock after applying this migration.
 SELECT pg_sleep(1);
 -- +goose Down
 -- (no-op: test migration is dropped by cleanup)
-`)
+`
 
-	testFS := fstest.MapFS{
-		// Re-include the existing embedded migrations so goose sees the full history.
-		// Without these, goose would try to re-apply 0001..0003 and fail with conflicts.
-		// We use a "union" approach: inject the test SQL alongside the real ones.
-		//
-		// Note: goose.NewProvider with an fs.FS scans ALL .sql files in the given
-		// directory. We must provide the complete history so the Provider knows
-		// which versions are already applied.
-		"sql/0001_init.sql": &fstest.MapFile{
-			Data: readEmbeddedSQL(t, "sql/0001_init.sql"),
-		},
-		"sql/0002_outbox.sql": &fstest.MapFile{
-			Data: readEmbeddedSQL(t, "sql/0002_outbox.sql"),
-		},
-		"sql/0003_i18n_seeds.sql": &fstest.MapFile{
-			Data: readEmbeddedSQL(t, "sql/0003_i18n_seeds.sql"),
-		},
-		fmt.Sprintf("sql/%04d_concurrent_lock_test.sql", testVersion): &fstest.MapFile{
-			Data: []byte(testMigrationSQL),
-		},
+	// Build testFS from ALL embedded production migrations plus the test migration.
+	//
+	// We must include every migration the DB already knows about so that
+	// goose.NewProvider does not error with "applied migration N is not registered"
+	// when it inspects schema_migrations and finds versions that aren't in the FS.
+	// Hardcoding a subset (e.g. only 0001–0003) breaks as new migrations are added.
+	testFS := fstest.MapFS{}
+	sqlEntries, readDirErr := fs.ReadDir(migrations.FS, migrations.Dir)
+	if readDirErr != nil {
+		t.Fatalf("read embedded migrations dir %q: %v", migrations.Dir, readDirErr)
+	}
+	for _, e := range sqlEntries {
+		if e.IsDir() {
+			continue
+		}
+		filePath := migrations.Dir + "/" + e.Name()
+		testFS[filePath] = &fstest.MapFile{
+			Data: readEmbeddedSQL(t, filePath),
+		}
+	}
+	// Inject the test-only migration at version 9974.
+	testFS[fmt.Sprintf("%s/%04d_concurrent_lock_test.sql", migrations.Dir, testVersion)] = &fstest.MapFile{
+		Data: []byte(testMigrationSQL),
 	}
 
 	// Cleanup: remove the test migration version from schema_migrations and

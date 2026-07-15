@@ -27,6 +27,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -154,26 +155,54 @@ func runMigrations(ctx context.Context, dsn string) error {
 //
 // Call TruncateAll at the start (or end) of each sub-test when multiple
 // sub-tests share a single pool from NewTestDB.
+//
+// Tables are discovered dynamically from information_schema so that the list
+// remains correct as migrations add or remove tables over time. This avoids
+// hardcoding table names (e.g. scaffold_echo which was removed in migration
+// 0031) and excludes the goose-managed schema_migrations table and any
+// extension-owned system objects that should not be truncated.
 func TruncateAll(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	ctx := context.Background()
 
-	// Application tables defined in the migrations. The order respects FK
-	// constraints (child before parent where applicable). Since all tables
-	// in the foundation milestone are independent, plain alphabetical order
-	// is fine here.
-	const q = `
-		TRUNCATE TABLE
-			audit_events,
-			i18n_text,
-			idempotency_keys,
-			outbox,
-			outbox_events,
-			scaffold_echo,
-			worker_dead_letter,
-			worker_jobs
-		RESTART IDENTITY CASCADE
-	`
+	// Discover all current application tables in the public schema.
+	// Exclude:
+	//   - schema_migrations: managed by goose; must survive truncation so
+	//     migrations do not need to be re-applied.
+	//   - Tables outside the public schema are never included by this filter.
+	rows, err := pool.Query(ctx, `
+		SELECT table_name
+		FROM information_schema.tables
+		WHERE table_schema = 'public'
+		  AND table_type   = 'BASE TABLE'
+		  AND table_name  != 'schema_migrations'
+		ORDER BY table_name
+	`)
+	if err != nil {
+		t.Fatalf("pgtest: TruncateAll: discover tables: %v", err)
+	}
+	defer rows.Close()
+
+	var quoted []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			t.Fatalf("pgtest: TruncateAll: scan table name: %v", err)
+		}
+		// Double-quote identifiers to handle reserved words or special characters.
+		quoted = append(quoted, `"`+name+`"`)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("pgtest: TruncateAll: iterate tables: %v", err)
+	}
+	rows.Close()
+
+	if len(quoted) == 0 {
+		return // nothing to truncate (empty schema after rollback)
+	}
+
+	// TRUNCATE with CASCADE handles FK constraints automatically.
+	q := "TRUNCATE TABLE " + strings.Join(quoted, ", ") + " RESTART IDENTITY CASCADE"
 	if _, err := pool.Exec(ctx, q); err != nil {
 		t.Fatalf("pgtest: TruncateAll: %v", err)
 	}
