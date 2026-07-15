@@ -6,6 +6,10 @@ on:
       - master
   pull_request:
 
+# Least-privilege default: every job gets read-only token unless it declares more.
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -17,6 +21,9 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,8 +46,11 @@ jobs:
   # Job 2: Test — unit tests with race detector + coverage
   # ─────────────────────────────────────────────────────────────────
   test:
-    name: Test
+    name: Unit / Race
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
 
     services:
       postgres:
@@ -84,12 +94,93 @@ jobs:
           path: coverage.out
           retention-days: 7
 
+      - name: Upload unit test failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-failure-logs
+          path: /tmp/
+          retention-days: 7
+
   # ─────────────────────────────────────────────────────────────────
-  # Job 3: OpenAPI check — verify generated code matches spec
+  # Job 3: Integration — tagged PostgreSQL + Testcontainers tests
+  #
+  # Runs go test -tags=integration ./... against a live PostgreSQL and
+  # Redis service. Testcontainers-based tests also get Docker socket
+  # access from the ubuntu-latest runner environment.
+  #
+  # PR-10: Required gate before build-and-push/publish. Failure here
+  # prevents any image or release from being published.
+  # ─────────────────────────────────────────────────────────────────
+  integration:
+    name: Integration (PostgreSQL + Testcontainers)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: arena
+          POSTGRES_PASSWORD: arena_secret
+          POSTGRES_DB: arena_integration
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U arena"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://arena:arena_secret@localhost:5432/arena_integration?sslmode=disable
+      REDIS_URL: redis://localhost:6379/0
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run integration tests (tagged)
+        run: go test -tags=integration -timeout=25m ./...
+
+      - name: Upload integration test failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-failure-logs
+          path: /tmp/
+          retention-days: 7
+
+  # ─────────────────────────────────────────────────────────────────
+  # Job 4: OpenAPI check — verify generated code matches spec
   # ─────────────────────────────────────────────────────────────────
   openapi-check:
     name: OpenAPI Check
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -117,76 +208,101 @@ jobs:
           fi
 
   # ─────────────────────────────────────────────────────────────────
-  # Job 4: Build & Push — Docker image (only on push to master)
+  # Job 5: Admin — unit tests, production build, and container smoke
   #
-  # Release branch: master (single production release branch). See
-  # deploy/DOKPLOY.md §13 "Release branch & image tag strategy" for the
-  # documented tag plan: every push to master publishes
-  #   - <short-sha>   (immutable, used by Dokploy for pinned deploys)
-  #   - latest        (mutable, tracks the tip of master)
-  # Required GitHub secrets: REGISTRY_URL, REGISTRY_USERNAME, REGISTRY_PASSWORD.
+  # Runs type-check + vitest unit tests, then a deterministic npm ci
+  # build, then builds the admin-web Docker image and verifies that
+  # the resulting container becomes healthy (PR-07 nginx image).
+  #
+  # PR-10: Required gate before build-and-push/publish.
   # ─────────────────────────────────────────────────────────────────
-  build-and-push:
-    name: Build and Push Docker Image
+  admin-build:
+    name: Admin (unit / build / container smoke)
     runs-on: ubuntu-latest
-    needs: [lint, test]
-    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
-
-    # packages: write lets the GHCR fallback below publish with the
-    # built-in GITHUB_TOKEN when no REGISTRY_* secrets are configured.
+    timeout-minutes: 20
     permissions:
       contents: read
-      packages: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      # Explicit REGISTRY_URL / REGISTRY_USERNAME / REGISTRY_PASSWORD
-      # secrets take precedence (see deploy/DOKPLOY.md §13.2). Without
-      # them the job falls back to GitHub Container Registry using the
-      # built-in GITHUB_TOKEN, so the pipeline publishes out of the box.
-      - name: Log in to container registry
-        uses: docker/login-action@v3
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          registry: ${{ secrets.REGISTRY_URL != '' && secrets.REGISTRY_URL || 'ghcr.io' }}
-          username: ${{ secrets.REGISTRY_USERNAME != '' && secrets.REGISTRY_USERNAME || github.actor }}
-          password: ${{ secrets.REGISTRY_PASSWORD != '' && secrets.REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: apps/admin-web/package-lock.json
 
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ secrets.REGISTRY_URL != '' && format('{0}/arena-api', secrets.REGISTRY_URL) || format('ghcr.io/{0}/arena-api', github.repository_owner) }}
-          tags: |
-            type=sha,prefix=,format=short
-            type=raw,value=latest
+      - name: Install dependencies
+        run: npm --prefix apps/admin-web ci
 
-      - name: Build and push image
-        uses: docker/build-push-action@v6
+      - name: Type-check
+        run: npm --prefix apps/admin-web run type-check
+
+      - name: Unit tests (vitest)
+        run: npm --prefix apps/admin-web test
+
+      - name: Production build
+        run: npm --prefix apps/admin-web run build
+
+      - name: Upload admin-web artifact
+        uses: actions/upload-artifact@v4
         with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          name: admin-web-dist
+          path: apps/admin-web/dist/
+          retention-days: 7
+
+      - name: Container smoke test
+        run: |
+          docker build \
+            --build-arg VITE_API_BASE_URL=http://localhost:8080 \
+            -t arena-admin-web:ci \
+            -f apps/admin-web/Dockerfile \
+            .
+          docker run -d --name arena-admin-smoke -p 8089:8080 arena-admin-web:ci
+          echo "Waiting for admin-web container to become healthy..."
+          for i in $(seq 1 60); do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' arena-admin-smoke 2>/dev/null || echo "starting")
+            if [ "$STATUS" = "healthy" ]; then
+              echo "Container is healthy after ${i}s"
+              docker rm -f arena-admin-smoke
+              exit 0
+            fi
+            if [ "$i" = "60" ]; then
+              echo "ERROR: Container did not become healthy within 60s"
+              docker logs arena-admin-smoke
+              docker rm -f arena-admin-smoke
+              exit 1
+            fi
+            sleep 1
+          done
+
+      - name: Upload admin build failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-build-failure-logs
+          path: apps/admin-web/dist/
+          retention-days: 7
 
   # ─────────────────────────────────────────────────────────────────
-  # Job 5: Widget — Svelte 5 custom element (arena-tickets)
+  # Job 6: Widget — Svelte 5 custom element (arena-tickets)
   #
-  # Runs on every push/PR (additive; does not gate build-and-push).
-  # Steps: install → unit tests (vitest) → build → size gate (<150 KB gzip).
+  # Runs on every push/PR. Steps: install → type-check → unit tests
+  # (vitest) → build → size gate (<150 KB gzip) → mock E2E (WCAG).
+  #
+  # Note: Mock-only E2E (test:e2e) is non-gating for publication.
+  # The real backend acceptance gate (widget-acceptance) is the
+  # required publication gate. The widget artifact is uploaded here
+  # and consumed by the widget-publish job.
   # ─────────────────────────────────────────────────────────────────
   widget:
-    name: Widget
+    name: Widget (unit / build / size / mock E2E)
     runs-on: ubuntu-latest
-
+    timeout-minutes: 20
     permissions:
-      contents: write
+      contents: read
 
     defaults:
       run:
@@ -221,10 +337,11 @@ jobs:
       # ── WCAG 2.2 AA gate: axe-core + keyboard E2E via Playwright ───────────
       # Mirrors the ops/accessibility gate used for the WP plugin.
       # Runs after build so dist/v1/arena-tickets.js exists for the demo server.
+      # Note: mock-only E2E is informational; real acceptance is in widget-acceptance.
       - name: Install Playwright browsers (Chromium only)
         run: npx playwright install --with-deps chromium
 
-      - name: E2E tests — axe-core WCAG 2.2 AA + keyboard navigation
+      - name: E2E tests — axe-core WCAG 2.2 AA + keyboard navigation (mock backend)
         run: npm run test:e2e
 
       - name: Upload Playwright report
@@ -242,27 +359,8 @@ jobs:
           path: apps/widget/dist/v1/
           retention-days: 30
 
-      # Publish to GitHub Release on master push.
-      # Chosen path: GH Release (tag: widget-v1, rolling) rather than
-      # extending build-and-push, because the widget is a static asset
-      # not a Docker image. The rolling tag widget-v1 always points to the
-      # latest v1 build; CDN (e.g. jsDelivr) can pin to a commit SHA.
-      - name: Publish to GitHub Release (master only)
-        if: github.ref == 'refs/heads/master' && github.event_name == 'push'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: widget-v1
-          name: "Arena Tickets Widget v1 (latest)"
-          prerelease: false
-          make_latest: false
-          files: |
-            apps/widget/dist/v1/arena-tickets.js
-            apps/widget/dist/v1/iframe.html
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   # ─────────────────────────────────────────────────────────────────
-  # Job 6: Widget Acceptance — real-backend Palác Akropolis E2E
+  # Job 7: Widget Acceptance — real-backend Palác Akropolis E2E
   #
   # Boots a Postgres + Redis service container, builds the Go backend,
   # runs migrations + arena-seed + Akropolis SQL seed, starts arena-api,
@@ -270,10 +368,15 @@ jobs:
   # (serve-demo-real.cjs) so no page.route() mocks intercept /v1/* calls.
   #
   # WID-R3 (feature #332): real acceptance E2E against compose backend.
+  # PR-10: Required gate before publication. Mock-only E2E (widget job)
+  # cannot satisfy the real-backend acceptance requirement.
   # ─────────────────────────────────────────────────────────────────
   widget-acceptance:
     name: Widget Acceptance (real backend)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
 
     services:
       postgres:
@@ -401,3 +504,128 @@ jobs:
           name: arena-api-logs
           path: /tmp/arena-api.log
           retention-days: 7
+
+  # ─────────────────────────────────────────────────────────────────
+  # Job 8: Build & Push — Docker image (only on push to master)
+  #
+  # PR-10 gate: depends on ALL required jobs. A failed or skipped
+  # required job prevents publication. PR builds never trigger this
+  # job (guarded by the push + master condition).
+  #
+  # Release branch: master. See deploy/DOKPLOY.md §13.
+  # Required GitHub secrets: REGISTRY_URL, REGISTRY_USERNAME, REGISTRY_PASSWORD.
+  # ─────────────────────────────────────────────────────────────────
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs:
+      - lint
+      - test
+      - integration
+      - openapi-check
+      - admin-build
+      - widget
+      - widget-acceptance
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+
+    # packages: write lets the GHCR fallback below publish with the
+    # built-in GITHUB_TOKEN when no REGISTRY_* secrets are configured.
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Explicit REGISTRY_URL / REGISTRY_USERNAME / REGISTRY_PASSWORD
+      # secrets take precedence (see deploy/DOKPLOY.md §13.2). Without
+      # them the job falls back to GitHub Container Registry using the
+      # built-in GITHUB_TOKEN, so the pipeline publishes out of the box.
+      - name: Log in to container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.REGISTRY_URL != '' && secrets.REGISTRY_URL || 'ghcr.io' }}
+          username: ${{ secrets.REGISTRY_USERNAME != '' && secrets.REGISTRY_USERNAME || github.actor }}
+          password: ${{ secrets.REGISTRY_PASSWORD != '' && secrets.REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.REGISTRY_URL != '' && format('{0}/arena-api', secrets.REGISTRY_URL) || format('ghcr.io/{0}/arena-api', github.repository_owner) }}
+          tags: |
+            type=sha,prefix=,format=short
+            type=raw,value=latest
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Upload build failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-build-failure-logs
+          path: /tmp/
+          retention-days: 7
+
+  # ─────────────────────────────────────────────────────────────────
+  # Job 9: Widget Publish — GitHub Release (only on push to master)
+  #
+  # PR-10 gate: depends on ALL required jobs. Widget publication is
+  # separated from the widget build job so it can be gated behind the
+  # full set of required checks (lint, unit/race, integration, OpenAPI,
+  # admin, widget, real acceptance). Mock-only E2E alone is insufficient.
+  #
+  # Consumes the arena-tickets-widget-v1 artifact uploaded by the widget job.
+  # ─────────────────────────────────────────────────────────────────
+  widget-publish:
+    name: Widget Publish (master only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs:
+      - lint
+      - test
+      - integration
+      - openapi-check
+      - admin-build
+      - widget
+      - widget-acceptance
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download widget artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: arena-tickets-widget-v1
+          path: dist/v1/
+
+      - name: Publish to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: widget-v1
+          name: "Arena Tickets Widget v1 (latest)"
+          prerelease: false
+          make_latest: false
+          files: |
+            dist/v1/arena-tickets.js
+            dist/v1/iframe.html
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
