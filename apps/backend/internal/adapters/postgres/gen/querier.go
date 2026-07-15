@@ -259,11 +259,14 @@ type Querier interface {
 	ListSnapshotBarcodesBySession(ctx context.Context, sessionID uuid.UUID, since time.Time, limit, offset int32) ([]BarcodeRow, error)
 	CountSnapshotBarcodesBySession(ctx context.Context, sessionID uuid.UUID, since time.Time) (int64, error)
 
-	// Ticket delivery jobs — email delivery tracking (feature #141)
+	// Ticket delivery jobs — email delivery tracking (feature #141, PR-03)
 	InsertDeliveryJob(ctx context.Context, ticketID uuid.UUID, recipientEmail *string) (DeliveryJobRow, error)
 	GetDeliveryJobByTicketID(ctx context.Context, ticketID uuid.UUID) (DeliveryJobRow, error)
 	UpdateDeliveryJobStatus(ctx context.Context, id uuid.UUID, newStatus string, lastError *string) (DeliveryJobRow, error)
 	ListPendingDeliveryJobs(ctx context.Context, limit int32) ([]DeliveryJobRow, error)
+	// ClaimDeliveryJobForProcessing atomically transitions a delivery_jobs row
+	// from 'pending' to 'processing'. Returns pgx.ErrNoRows when not claimable.
+	ClaimDeliveryJobForProcessing(ctx context.Context, id uuid.UUID) (DeliveryJobRow, error)
 
 	// Public feed events API — unauthenticated event browsing by feed token (feature #152)
 	ListPublishedEventsByFeedToken(ctx context.Context, token string, cityID *uuid.UUID, dateFrom, dateTo *time.Time, limit, offset int32) ([]EventRow, error)

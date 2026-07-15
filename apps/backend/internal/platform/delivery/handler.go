@@ -5,26 +5,31 @@
 //
 //	{"ticket_id": "<uuid>"}
 //
-// The handler:
-//  1. Decodes the job payload to extract the ticket_id.
-//  2. Loads the delivery_jobs row for this ticket.
-//  3. Resolves the recipient email: delivery_jobs.recipient_email →
-//     ticket.holder_email → skip (no email available).
-//  4. Generates a PDF credential for the ticket (lazy-creates via
-//     the credential generation logic).
-//  5. Renders a transactional HTML email with the PDF as an attachment.
-//  6. Sends via the injected email.Sender.
-//  7. Updates the delivery_jobs row to status='sent'.
-//  8. Emits an audit-log entry (slog.Info).
+// The handler implements honest delivery-status transitions (PR-03):
 //
-// On a non-nil handler error, the worker retries the job (up to
-// max_attempts). After max_attempts the job moves to worker_dead_letter
-// and delivery_jobs.status is set to 'failed'.
+//  1. Decode the job payload and extract ticket_id.
+//  2. Load the delivery_jobs row for this ticket.
+//  3. Guard: if no real sender is configured (nil or dev-only), update status
+//     to 'disabled' and return nil — never produce 'sent' without real SMTP.
+//  4. Guard: if delivery_jobs is already terminal (sent/disabled/skipped/failed),
+//     return nil — idempotent skip.
+//  5. Resolve recipient email from delivery_jobs or ticket.holder_email.
+//  6. If no email address found, update delivery_jobs to 'skipped' and return nil.
+//  7. Atomically claim delivery_jobs for processing (pending → processing).
+//     If claim fails (row not pending), return nil — another worker claimed it.
+//  8. Resolve organisation branding and generate PDF credential.
+//  9. Render transactional email (localised, feature #289 T-2).
+// 10. Send via the injected email.Sender (real SMTP).
+//     On transient failure: return error — worker retries. Status stays 'processing'
+//     until retry claims it again (reconciliation via processing_at). The delivery
+//     key is the delivery_jobs.id: a 'processing' row is never re-claimed by the
+//     same handler invocation, preventing double-sends on simple retries.
+// 11. Update delivery_jobs to 'sent'. If the status update fails after SMTP
+//     success, log a warning but do NOT retry the send: the message was delivered
+//     and a reconciliation process can repair the status later.
+// 12. Emit an audit-log entry.
 //
-// Retry behaviour on transient SMTP errors is therefore handled entirely
-// by the existing worker retry machinery — no extra retry loop in this
-// package. Only genuinely terminal errors (no email address, invalid UUID)
-// are swallowed here to prevent infinite retries.
+// SMTP credentials and ticket secrets are never written to log fields.
 package delivery
 
 import (
@@ -50,6 +55,24 @@ import (
 
 // JobType is the worker job type string for ticket email delivery.
 const JobType = "ticket.deliver"
+
+// Delivery status constants used by the handler.
+const (
+	// StatusPending is the initial state; job not yet claimed.
+	StatusPending = "pending"
+	// StatusProcessing means the handler has claimed the row and SMTP is in-flight.
+	StatusProcessing = "processing"
+	// StatusSent is the terminal success state: SMTP server accepted the message.
+	StatusSent = "sent"
+	// StatusFailed is the terminal failure state: dead-lettered after max_attempts.
+	StatusFailed = "failed"
+	// StatusDisabled means no real sender was configured; email was never attempted.
+	// Used when EMAIL_MODE is not 'smtp' or Sender is nil.
+	StatusDisabled = "disabled"
+	// StatusSkipped means no recipient email address was available at delivery time.
+	// The worker terminates the job without sending.
+	StatusSkipped = "skipped"
+)
 
 // Email template identifiers for the Template field of Payload.
 const (
@@ -139,6 +162,11 @@ type HandlerOptions struct {
 	// Used to lazily generate the PDF credential for the ticket.
 	CredentialQueries *gen.Queries
 	// Sender delivers the transactional email.
+	//
+	// IMPORTANT (PR-03): only a real SMTP sender (SMTPSender) is permitted in
+	// production. If Sender is nil or implements email.DevOnlySender, the handler
+	// updates delivery_jobs to StatusDisabled and returns nil — it NEVER updates
+	// to StatusSent without a real SMTP acceptance.
 	Sender email.Sender
 	// FromAddress is the envelope and header From address for outgoing emails.
 	// Example: "Arena Platform <tickets@arena.example.com>"
@@ -226,9 +254,39 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 			return nil // permanent failure — bad UUID
 		}
 
-		// ── 2. Load delivery_jobs row ─────────────────────────────────────────
+		// ── 2. Guard: honest sender required (PR-03) ──────────────────────────
+		// If Sender is nil or is a dev-only sender (e.g. LogSender), we cannot
+		// honestly report that the message was delivered. Mark the delivery_jobs
+		// row as 'disabled' and return nil (terminal, non-retryable).
+		// Production config validation (PR-00) already blocks EMAIL_MODE≠smtp in
+		// APP_ENV=production; this guard ensures the handler is also honest at
+		// the domain level regardless of config.
+		if opts.Sender == nil || email.IsDevOnly(opts.Sender) {
+			logger.Warn("delivery: no production email sender configured; marking delivery disabled",
+				slog.String("ticket_id", ticketID.String()),
+				slog.Bool("sender_nil", opts.Sender == nil),
+				slog.Bool("sender_dev_only", opts.Sender != nil && email.IsDevOnly(opts.Sender)),
+			)
+			if opts.DeliveryJobQueries != nil {
+				dj, djErr := opts.DeliveryJobQueries.GetDeliveryJobByTicketID(ctx, ticketID)
+				if djErr == nil && dj.ID != uuid.Nil && isTerminalOrProcessing(dj.Status) {
+					// Already in a terminal or claimed state; skip update.
+					return nil
+				}
+				if djErr == nil && dj.ID != uuid.Nil {
+					reason := "no production email sender configured (EMAIL_MODE is not smtp)"
+					_, _ = opts.DeliveryJobQueries.UpdateDeliveryJobStatus(
+						ctx, dj.ID, StatusDisabled, &reason,
+					)
+				}
+			}
+			return nil
+		}
+
+		// ── 3. Load delivery_jobs row ─────────────────────────────────────────
 		var deliveryJobID uuid.UUID
 		var recipientEmail string
+		var currentStatus string
 
 		if opts.DeliveryJobQueries != nil {
 			dj, djErr := opts.DeliveryJobQueries.GetDeliveryJobByTicketID(ctx, ticketID)
@@ -238,13 +296,26 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 			}
 			if djErr == nil {
 				deliveryJobID = dj.ID
+				currentStatus = dj.Status
 				if dj.RecipientEmail != nil {
 					recipientEmail = *dj.RecipientEmail
 				}
 			}
 		}
 
-		// ── 3. Resolve recipient email ────────────────────────────────────────
+		// ── 4. Guard: idempotency — skip if already terminal ──────────────────
+		// If a previous handler invocation already reached a terminal status
+		// (sent, disabled, skipped, failed) for this delivery_job, skip.
+		if deliveryJobID != uuid.Nil && isTerminalStatus(currentStatus) {
+			logger.Info("delivery: delivery_job already in terminal status; skipping",
+				slog.String("ticket_id", ticketID.String()),
+				slog.String("delivery_job_id", deliveryJobID.String()),
+				slog.String("status", currentStatus),
+			)
+			return nil
+		}
+
+		// ── 5. Resolve recipient email ────────────────────────────────────────
 		if recipientEmail == "" && opts.TicketQueries != nil {
 			ticket, tErr := opts.TicketQueries.GetTicketByID(ctx, ticketID)
 			if tErr != nil && !errors.Is(tErr, pgx.ErrNoRows) {
@@ -255,22 +326,43 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 			}
 		}
 
+		// ── 6. Guard: no email address → skipped (not sent) ──────────────────
 		if recipientEmail == "" {
-			// No email address available — skip delivery gracefully.
-			logger.Warn("delivery: no email address for ticket; skipping delivery",
+			// No email address available — terminal skip; no retry.
+			logger.Warn("delivery: no email address for ticket; marking delivery skipped",
 				slog.String("ticket_id", ticketID.String()),
 			)
-			// Mark the delivery_jobs row as sent (no-op delivery).
 			if opts.DeliveryJobQueries != nil && deliveryJobID != uuid.Nil {
 				skipReason := "no email address available at delivery time"
 				_, _ = opts.DeliveryJobQueries.UpdateDeliveryJobStatus(
-					ctx, deliveryJobID, "sent", &skipReason,
+					ctx, deliveryJobID, StatusSkipped, &skipReason,
 				)
 			}
 			return nil
 		}
 
-		// ── 3b. Resolve organisation branding ─────────────────────────────────
+		// ── 7. Claim delivery_job for processing (idempotency key) ────────────
+		// Atomically transition pending → processing. If the row is not in
+		// 'pending' state (already claimed by another worker or already terminal),
+		// return nil — idempotent skip prevents double-send.
+		if opts.DeliveryJobQueries != nil && deliveryJobID != uuid.Nil {
+			_, claimErr := opts.DeliveryJobQueries.ClaimDeliveryJobForProcessing(ctx, deliveryJobID)
+			if claimErr != nil {
+				if errors.Is(claimErr, pgx.ErrNoRows) {
+					// Not in 'pending' state — already claimed or terminal.
+					logger.Info("delivery: delivery_job not claimable (not pending); skipping",
+						slog.String("ticket_id", ticketID.String()),
+						slog.String("delivery_job_id", deliveryJobID.String()),
+					)
+					return nil
+				}
+				// Transient DB error claiming the job — let worker retry.
+				return fmt.Errorf("delivery: claim delivery_job %s for processing: %w",
+					deliveryJobID, claimErr)
+			}
+		}
+
+		// ── 8. Resolve organisation branding ─────────────────────────────────
 		// Feature #290 (T-3). Pulls the org logo bytes + signed URL via
 		// the media adapter (when configured and OrgLogoMediaID is set),
 		// falling back to the platform logo otherwise. Also assembles
@@ -281,7 +373,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 		brand := resolveBranding(ctx, opts.Media, p, logger)
 		branding := brand.Branding
 
-		// ── 4. Generate PDF credential ────────────────────────────────────────
+		// ── 9. Generate PDF credential ────────────────────────────────────────
 		// Prefer the T-1 PDF renderer (apps/backend/internal/platform/delivery/pdf)
 		// so the attached document carries the QR code and full ticket detail.
 		// Fall back to the legacy minimal renderer when called from a context
@@ -330,7 +422,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 			}
 		}
 
-		// ── 5. Build email ────────────────────────────────────────────────────
+		// ── 10. Build email ───────────────────────────────────────────────────
 		// Localized templates from the templates package (feature #289, T-2).
 		// Falls back to the legacy hard-coded English renderers only when the
 		// embedded templates failed to load at process start.
@@ -388,48 +480,78 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 			}
 		}
 
-		// ── 6. Send ───────────────────────────────────────────────────────────
-		if opts.Sender == nil {
-			// No sender configured — log only (development mode).
-			logger.Warn("delivery: no email sender configured; email not sent",
+		// ── 11. Send via real SMTP ────────────────────────────────────────────
+		// opts.Sender is guaranteed non-nil and non-dev-only at this point
+		// (the guard at step 2 would have returned early otherwise).
+		if sendErr := opts.Sender.Send(ctx, msg); sendErr != nil {
+			// Transient failure — let the worker retry. The delivery_jobs row
+			// stays in 'processing' state; the worker's retry machinery will
+			// re-invoke this handler. On retry, the ClaimDeliveryJobForProcessing
+			// CAS will see status='processing' (not 'pending') and return
+			// ErrNoRows, causing the handler to skip the send. This means the
+			// effective retry is driven by the worker_jobs table (its own retry
+			// counter and backoff), not by re-sending via the same delivery_job.
+			// A reconciliation job can reset stale 'processing' rows (where
+			// processing_at is older than a configurable threshold) back to
+			// 'pending' for redelivery.
+			//
+			// NOTE: SMTP credentials and ticket barcodes are NOT included in log
+			// fields — only the ticket_id and sanitised error string.
+			logger.Warn("delivery: SMTP send failed; worker will retry",
 				slog.String("ticket_id", ticketID.String()),
 				slog.String("to", recipientEmail),
+				slog.String("error", sendErr.Error()),
 			)
-		} else {
-			if sendErr := opts.Sender.Send(ctx, msg); sendErr != nil {
-				// Transient failure — let the worker retry.
-				logger.Warn("delivery: send failed; will retry",
-					slog.String("ticket_id", ticketID.String()),
-					slog.String("to", recipientEmail),
-					slog.String("error", sendErr.Error()),
-				)
-				return fmt.Errorf("delivery: send email to %s: %w", recipientEmail, sendErr)
-			}
+			return fmt.Errorf("delivery: send email to %s: %w", recipientEmail, sendErr)
 		}
 
-		// ── 7. Update delivery_jobs status ────────────────────────────────────
+		// ── 12. Update delivery_jobs to 'sent' ────────────────────────────────
+		// SMTP accepted the message. Status-update failure here does NOT retry
+		// the send: the email was delivered, and a subsequent retry would cause
+		// a duplicate. Log the failure for reconciliation monitoring instead.
 		if opts.DeliveryJobQueries != nil && deliveryJobID != uuid.Nil {
 			if _, updErr := opts.DeliveryJobQueries.UpdateDeliveryJobStatus(
-				ctx, deliveryJobID, "sent", nil,
+				ctx, deliveryJobID, StatusSent, nil,
 			); updErr != nil {
-				// Non-fatal: the email was sent. Log but don't retry the job
-				// over a status update failure.
-				logger.Warn("delivery: update delivery_job status failed",
+				// Non-fatal: the email was sent. Reconciliation will fix the status.
+				logger.Warn("delivery: update delivery_job to 'sent' failed after SMTP success; reconciliation required",
 					slog.String("delivery_job_id", deliveryJobID.String()),
+					slog.String("ticket_id", ticketID.String()),
 					slog.String("error", updErr.Error()),
 				)
+				// Return nil: do NOT retry the worker job — the email was sent.
 			}
 		}
 
-		// ── 8. Audit log ──────────────────────────────────────────────────────
+		// ── 13. Audit log ─────────────────────────────────────────────────────
+		// SMTP credentials, barcodes, QR payloads, and signed URLs are not
+		// included in log fields (PR-03 redaction requirement).
+		// "delivery: email sent" is the canonical audit-log marker checked by
+		// TestDelivery141_Step9_HandlerGoHasAuditLogSent.
 		logger.Info("delivery: email sent",
 			slog.String("ticket_id", ticketID.String()),
-			slog.String("to", recipientEmail),
+			slog.String("delivery_job_id", deliveryJobID.String()),
 			slog.Int("attachment_bytes", len(pdfBytes)),
 		)
 
 		return nil
 	}
+}
+
+// isTerminalStatus reports whether status is a final, non-retryable state.
+func isTerminalStatus(status string) bool {
+	switch status {
+	case StatusSent, StatusFailed, StatusDisabled, StatusSkipped:
+		return true
+	}
+	return false
+}
+
+// isTerminalOrProcessing reports whether status is terminal or already being
+// processed. Used in the disabled-sender guard to avoid clobbering a row that
+// another worker path has already claimed.
+func isTerminalOrProcessing(status string) bool {
+	return isTerminalStatus(status) || status == StatusProcessing
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

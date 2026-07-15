@@ -68,16 +68,49 @@ type Sender interface {
 // LogSender — dev / test implementation
 // ──────────────────────────────────────────────────────────────────────────────
 
+// DevOnlySender is an optional marker interface for email.Sender implementations
+// that are NOT suitable for production use. A DevOnlySender does not open a
+// real network connection and must not be used where honest delivery status is
+// required.
+//
+// Callers (such as the ticket delivery worker handler) MUST check IsDevOnly
+// before recording delivery_jobs.status='sent': a dev-only sender that returns
+// nil from Send has not actually delivered the message.
+type DevOnlySender interface {
+	Sender
+	// DevOnly returns true, indicating this sender is restricted to
+	// development / CI / test environments.
+	DevOnly() bool
+}
+
+// IsDevOnly returns true when s is a non-production, development-only sender
+// (e.g. LogSender). Returns false for nil (nil means no sender at all, which
+// is also non-production, but callers handle nil separately).
+func IsDevOnly(s Sender) bool {
+	if d, ok := s.(DevOnlySender); ok {
+		return d.DevOnly()
+	}
+	return false
+}
+
 // LogSender writes email content to a slog.Logger instead of delivering it
 // via SMTP. Use this in development, CI, and unit tests where a real SMTP
 // server is unavailable.
 //
 // Each Send call emits a single structured log line with the recipient, subject,
 // attachment count, and the first 200 characters of the text body.
+//
+// LogSender implements DevOnlySender: callers MUST NOT record delivery
+// status 'sent' after a LogSender.Send call — the message was logged,
+// not delivered.
 type LogSender struct {
 	// Logger receives the email log entries. Falls back to slog.Default() when nil.
 	Logger *slog.Logger
 }
+
+// DevOnly implements DevOnlySender and returns true, marking LogSender as a
+// development-only sender restricted to non-production environments.
+func (s *LogSender) DevOnly() bool { return true }
 
 // Send logs the email and always returns nil (never fails).
 func (s *LogSender) Send(_ context.Context, msg Message) error {
@@ -94,8 +127,9 @@ func (s *LogSender) Send(_ context.Context, msg Message) error {
 	return nil
 }
 
-// compile-time assertion
+// compile-time assertions
 var _ Sender = (*LogSender)(nil)
+var _ DevOnlySender = (*LogSender)(nil)
 
 // ──────────────────────────────────────────────────────────────────────────────
 // SMTPSender — production implementation (net/smtp, no external deps)
