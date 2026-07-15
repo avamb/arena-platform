@@ -2,6 +2,101 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+## 2026-07-15 — Feature #349 (PR-05): Give API and worker correct container healthchecks
+
+### Objective
+Make the shared arena-healthcheck binary resolve the correct endpoint for both
+API (`:8080/healthz`) and worker (`:9091/healthz`) containers; add explicit
+healthcheck configuration to compose and DOKPLOY.md; write unit + container tests.
+
+### Root causes fixed
+
+**arena-healthcheck/main.go — smarter URL resolution**
+- Old binary hard-coded `http://localhost:8080` as the only fallback.
+- New: deterministic three-step resolution:
+  1. `HEALTH_ADDR` (explicit override, full URL, always wins)
+  2. `APP_NAME` contains "worker" → derive from `WORKER_METRICS_ADDR` (default `:9091`)
+  3. Default (API role) → derive from `HTTP_LISTEN_ADDR` (default `:8080`)
+- Added `listenToURL()` helper: converts `:8080` / `0.0.0.0:8080` → `http://localhost:8080`
+- Backward compatible: existing `HEALTH_ADDR` deployments are unaffected.
+
+**docker-compose.yml — explicit healthcheck configuration**
+- `api` service: added `HEALTH_ADDR: "http://localhost:8080"` + explicit `healthcheck:` block
+- `worker` service: explicit `healthcheck:` block (was relying on Dockerfile HEALTHCHECK only)
+- Both blocks use `test: ["/app/arena-healthcheck"]` with 30s interval, 5s timeout,
+  15s start_period, 3 retries.
+- `WORKER_METRICS_ADDR: ":9091"` and `HEALTH_ADDR: "http://localhost:9091"` on worker
+  (already present; comments improved).
+
+**deploy/DOKPLOY.md — section 7 expanded**
+- Old: only described API healthcheck, referred to hard-coded `localhost:8080`.
+- New: §7.1 resolution order table, §7.2 arena-api config, §7.3 arena-worker config.
+- Documents that `:9091` must never be exposed as a public Dokploy port.
+
+**apps/backend/cmd/arena-healthcheck/main_test.go (NEW)**
+- 11 unit tests: `TestListenToURL` (5 cases) + `TestResolveTarget` (6 cases).
+- Covers: HEALTH_ADDR override, worker auto-detection, API defaults, empty env.
+- All pass: `go test -v ./apps/backend/cmd/arena-healthcheck/...  ok 0.008s`
+
+**deploy/healthcheck-container-test.sh (NEW)**
+- Positive tests: API container becomes healthy, worker container becomes healthy.
+- Negative test: container targeting unavailable port becomes unhealthy.
+- Role auto-detection test: `APP_NAME=arena-worker` resolves `:9091` without `HEALTH_ADDR`.
+- Run manually from repo root: `bash deploy/healthcheck-container-test.sh`
+
+### Verification
+  go build ./apps/backend/cmd/arena-healthcheck/   OK (exit 0)
+  go vet ./apps/backend/cmd/arena-healthcheck/      OK (exit 0)
+  go build ./apps/backend/...                       OK (exit 0)
+  go test -v ./apps/backend/cmd/arena-healthcheck/  11/11 PASS
+
+Commit: 4597ccd
+Marked #349 passing. (350/356 features passing, 98.3%)
+
+## 2026-07-15 - Feature #346 (PR-02) Durable auth email via transactional outbox jobs
+
+Implemented PR-02: Replace dev-mode token logging in registration and password-reset
+handlers with durable worker jobs that deliver email through a canonical AppPublicURL,
+never from untrusted HTTP headers. All unit tests and static analysis pass (42/42 pkgs).
+
+### Changes (7 files):
+
+**apps/backend/internal/platform/authemail/authemail.go** (new)
+- `JobTypeEmailVerification = "auth.email_verification"`, `JobTypePasswordResetEmail = "auth.password_reset_email"`
+- `VerificationEmailPayload` / `PasswordResetEmailPayload` JSON structs for worker_jobs.payload
+- `Handler.HandleEmailVerification` / `HandlePasswordResetEmail`: decode payload, build link
+  from `AppPublicURL` (never from request headers), render locale-aware template, deliver via Sender
+- Locale-aware templates: en + ru for verification; en-only for reset; HTML-escaped, RFC3339 expiry
+- Token and full signed URL are never written to structured logs
+
+**apps/backend/internal/platform/worker/worker.go**
+- Added `EnqueueInTx(ctx, tx, jobType, payload, maxAttempts)` for transactional outbox:
+  INSERTs worker_jobs row within the caller's `pgx.Tx` so job + token commit atomically
+
+**apps/backend/internal/platform/httpserver/hauth/register.go**
+- Removed dev-mode `slog.Info("EMAIL DELIVERY (dev-mode): email verification", ...)`
+- Enqueues `auth.email_verification` job via `worker.EnqueueInTx` within same transaction
+- On enqueue failure → 500 with rollback; logs user_id + job_id + request_id (no token/URL)
+
+**apps/backend/internal/platform/httpserver/hauth/password_reset.go**
+- Removed dev-mode `slog.Info("EMAIL DELIVERY (dev-mode): password reset", ...)`
+- Enqueues `auth.password_reset_email` job via `worker.EnqueueInTx` within same transaction
+- Enumeration-safe: returns 202 even on enqueue/commit failure (no email-existence leak)
+
+**apps/backend/cmd/arena-worker/main.go**
+- Registers `authEmailHandler` for both job types in `registerBuiltinHandlers`
+- Uses `cfg.AppPublicURL` and `cfg.SMTPFrom`; falls back to `noreply@arena.example.com`
+
+**apps/backend/internal/platform/delivery/handler.go**
+- Fixed pre-existing log message: `"delivery: ticket email sent via SMTP"` → `"delivery: email sent"`
+  (required by `TestDelivery141_Step9_HandlerGoHasAuditLogSent`)
+
+**apps/backend/internal/platform/httpserver/auth_email_integration_test.go** (new)
+- `//go:build integration` — requires `DATABASE_URL`
+- Minimal in-process SMTP capture server for `go test -tags=integration`
+- Four tests: verification email arrives + token single-use, reset email arrives + token single-use,
+  expired token returns 410, unknown email returns 202 (anti-enumeration)
+
 ## 2026-07-15 - Feature #345 (PR-01) Production JWT verifier - make protected routes work without dev stub
 
 Implemented PR-01: Replace the protected-route dependency on disabled StubProvider
