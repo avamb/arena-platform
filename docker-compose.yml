@@ -152,8 +152,19 @@ services:
       JWT_ISSUER: "arena-dev"
       JWT_AUDIENCE: "arena-api"
       JWT_DEFAULT_TTL: "1h"
+      # arena-healthcheck reads HEALTH_ADDR to know which URL to probe.
+      # For arena-api: the main HTTP server on :8080.
+      HEALTH_ADDR: "http://localhost:8080"
     ports:
       - "8080:8080"
+    healthcheck:
+      # arena-healthcheck is built into the image and performs
+      # GET $HEALTH_ADDR/healthz, exiting 0 on HTTP 200.
+      test: ["/app/arena-healthcheck"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
 
   # ------------------------------------------------------------------
   # worker : arena-worker (long-running). Consumes worker_jobs rows
@@ -193,8 +204,10 @@ services:
       DB_POOL_MAX_CONN_IDLE_TIME: "30m"
       DB_LOG_QUERIES: "false"
 
-      # The shared image healthcheck defaults to arena-api on :8080. Worker
-      # exposes its own /healthz on the metrics server instead.
+      # arena-worker exposes /healthz and /metrics on the sidecar metrics
+      # server (WORKER_METRICS_ADDR) rather than on the api port.
+      # HEALTH_ADDR overrides the arena-healthcheck default so it probes
+      # the worker's sidecar on :9091, not arena-api on :8080.
       WORKER_METRICS_ADDR: ":9091"
       HEALTH_ADDR: "http://localhost:9091"
 
@@ -208,6 +221,14 @@ services:
       # explicitly disable the dev stub so config.Validate does not
       # insist on a signing secret being present.
       ENABLE_DEV_AUTH: "false"
+    healthcheck:
+      # arena-healthcheck reads HEALTH_ADDR (set to http://localhost:9091
+      # above) and performs GET /healthz on the worker sidecar server.
+      test: ["/app/arena-healthcheck"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
 
   # ------------------------------------------------------------------
   # admin-web : Vite dev server hosting the SuperAdmin React UI from

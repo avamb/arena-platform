@@ -325,7 +325,7 @@ docker run --rm ... --entrypoint /app/arena-migrate your-registry/arena-api:late
 
 ## 7. Healthcheck & Port Configuration
 
-The image already contains a `HEALTHCHECK` directive that Dokploy honours
+The shared image contains a `HEALTHCHECK` directive that Dokploy honours
 automatically:
 
 ```dockerfile
@@ -333,22 +333,70 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD ["/app/arena-healthcheck"]
 ```
 
-`arena-healthcheck` is a tiny static Go binary that performs
-`GET http://localhost:8080/healthz` and exits 0 on HTTP 200.
+`arena-healthcheck` is a tiny static Go binary that resolves the probe URL
+from environment variables (deterministic resolution order) and performs
+`GET <resolved-url>/healthz`, exiting 0 on HTTP 200.
+
+### 7.1 Healthcheck resolution order
+
+The probe URL is determined in this order — the first matching rule wins:
+
+| Priority | Rule | Example result |
+|---|---|---|
+| 1 | `HEALTH_ADDR` is set | `http://localhost:8080` (use as-is) |
+| 2 | `APP_NAME` contains `worker` | derive from `WORKER_METRICS_ADDR` (default `:9091`) → `http://localhost:9091` |
+| 3 | Default (API role) | derive from `HTTP_LISTEN_ADDR` (default `:8080`) → `http://localhost:8080` |
+
+**Always set `HEALTH_ADDR` explicitly** in Dokploy and docker-compose to avoid
+relying on the `APP_NAME` heuristic at runtime. See the compose file for the
+canonical values:
+
+```yaml
+# arena-api service
+HEALTH_ADDR: "http://localhost:8080"
+
+# arena-worker service
+HEALTH_ADDR: "http://localhost:9091"
+```
+
+### 7.2 `arena-api` healthcheck configuration
+
+| Property | Value |
+|---|---|
+| Probe URL | `http://localhost:8080/healthz` |
+| `HEALTH_ADDR` env | `http://localhost:8080` |
+| Expose port | `8080` (`EXPOSE 8080` in Dockerfile) |
+| Dokploy healthcheck path | `/healthz` |
+| Protocol | HTTP |
 
 | Endpoint | Purpose | Expected response |
 |---|---|---|
-| `GET /healthz` | Liveness — process alive | `200 OK` |
+| `GET /healthz` | Liveness — process alive | `200 OK {"status":"ok"}` |
 | `GET /readyz`  | Readiness — DB reachable | `200 OK` (or `503` during startup) |
 
-**Dokploy port configuration:**
+Dokploy will forward traffic to port 8080 and mark the container unhealthy if
+`/healthz` fails three consecutive checks.
 
-- **Expose port:** `8080` (already set via `EXPOSE 8080` in the `Dockerfile`)
-- **Healthcheck path:** `/healthz`
-- **Protocol:** HTTP
+### 7.3 `arena-worker` healthcheck configuration
 
-Dokploy will automatically forward traffic to port 8080 and mark the container
-unhealthy if `/healthz` fails three consecutive checks.
+| Property | Value |
+|---|---|
+| Probe URL | `http://localhost:9091/healthz` |
+| `HEALTH_ADDR` env | `http://localhost:9091` |
+| `WORKER_METRICS_ADDR` env | `:9091` |
+| Public port | **None** — do not expose `:9091` to the public Traefik router |
+
+The worker exposes a lightweight sidecar HTTP server on `WORKER_METRICS_ADDR`
+(default `:9091`) with two endpoints:
+
+| Endpoint | Purpose | Expected response |
+|---|---|---|
+| `GET /healthz` | Liveness — worker process alive | `200 OK {"status":"ok"}` |
+| `GET /metrics` | Prometheus scrape | Prometheus exposition format |
+
+**Important:** the sidecar port `:9091` must never be exposed as a public
+Dokploy port. It is internal-only (Prometheus scraping, container health
+checks). Only `arena-api`'s port `8080` routes public traffic.
 
 ---
 
