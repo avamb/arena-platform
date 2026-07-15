@@ -2,6 +2,67 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+## 2026-07-15 - Feature #345 (PR-01) Production JWT verifier - make protected routes work without dev stub
+
+Implemented PR-01: Replace the protected-route dependency on disabled StubProvider
+with a production JWT verifier (JWTVerifier) that validates tokens issued by normal
+login and refresh flows.
+
+### Root cause
+All 81 occurrences of `s.stub == nil || !s.stub.Enabled()` guards prevented
+protected routes from mounting when ENABLE_DEV_AUTH=false. The auth middleware
+also used s.stub directly, returning 503 auth.disabled in production.
+
+### Changes (20 files, 946 insertions):
+
+**apps/backend/internal/platform/auth/auth.go**
+- Added `jwtVerifierClaims` struct (embeds jwt.RegisteredClaims + arena custom fields)
+- Added `JWTVerifier` struct: production-grade auth.Provider using jwt/v5 HS256
+- Added `NewJWTVerifier(secret, issuer, audience)` constructor (rejects empty/whitespace secrets)
+- Added `Verify()`: validates HS256 signature, algorithm, expiry (5s leeway), issuer, audience, sub
+- Added `mapJWTVerifyError()`: maps jwt/v5 errors to auth sentinel errors
+
+**apps/backend/internal/platform/httpserver/server_struct.go**
+- Added `verifier auth.Provider` field
+
+**apps/backend/internal/platform/httpserver/server.go**
+- Added `authEnabled()`: true if production verifier wired OR dev stub enabled
+- Added `authProvider()`: returns verifier (priority) or stub
+- Added `authIssuer()` / `authAudience()`: reads from stub or config
+
+**apps/backend/internal/platform/httpserver/wire.go**
+- Added `Options.Verifier auth.Provider`
+- Set `verifier: opts.Verifier` in New(); post-init fallback to stub for backward compat
+
+**12 mount files** (mount_v1, mount_iam, mount_auth, mount_admin, mount_catalog,
+mount_commerce, mount_inventory, mount_media, mount_networks, mount_partner,
+mount_scanning, mount_seating):
+- All `s.stub == nil || !s.stub.Enabled()` → `!s.authEnabled()`
+- All `s.stub != nil && s.stub.Enabled()` → `s.authEnabled()`
+- All `auth.Middleware(s.stub,` → `auth.Middleware(s.authProvider(),`
+
+**apps/backend/internal/platform/httpserver/auth_shims.go**
+- Uses s.authIssuer() / s.authAudience() instead of direct stub access
+
+**apps/backend/cmd/arena-api/main.go**
+- Creates prodVerifier via auth.NewJWTVerifier(cfg.JWTSecretStub, cfg.JWTIssuer, cfg.JWTAudience)
+- Passes Verifier: prodVerifier to httpserver.New()
+
+**New test files:**
+- apps/backend/internal/platform/auth/jwt_verifier_test.go: 12 unit tests
+- apps/backend/internal/platform/httpserver/auth_production_integration_test.go: PostgreSQL
+  integration test for full login→/v1/me→refresh→logout flow (requires DATABASE_URL)
+
+Verification:
+  go build ./apps/backend/...                    PASS (exit 0)
+  go test ./apps/backend/...                     PASS (exit 0, all packages)
+  go test ./apps/backend/internal/platform/auth/ PASS (0.020s)
+  go test ./apps/backend/internal/platform/httpserver/ PASS (16.946s)
+
+Commit: 44aaa2d
+Marked #345 passing. (345/356 features passing, 97.0%)
+
+
 ## 2026-07-13 - Feature #341 (WID-T3) visible hold-timer, refresh-flow on token expiry, i18n
 
 Implemented WID-T3: server-side hold countdown on return page, token-expiry
@@ -20511,5 +20572,62 @@ committed and matched the acceptance criteria exactly.
   go test ./apps/backend/internal/platform/config/... 87/87 PASS
   go test ./apps/backend/internal/platform/...       ALL PASS
   go test ./apps/backend/...                          ALL PASS (exit 0)
+
+
+## 2026-07-15 — Feature #350 (PR-06): Repair the tagged PostgreSQL integration suite
+
+### Objective
+Make `go test -tags=integration ./apps/backend/...` compile and pass against
+pinned goose v3.22.1 and current migration head (63 SQL files, 0001–0063).
+
+### Root causes fixed
+
+**1. `pgtest.TruncateAll` — hardcoded removed table**
+`apps/backend/internal/tests/pgtest/pgtest.go`
+- `scaffold_echo` was removed by migration 0031 but was hardcoded in TRUNCATE list
+- Fix: Replaced hardcoded list with dynamic discovery via `information_schema.tables`
+  (filters `table_schema='public'`, `table_type='BASE TABLE'`, excludes `schema_migrations`)
+- Added `"strings"` import; table names are double-quoted to handle reserved words
+
+**2. Concurrent migration test — goose v3.22.1 API incompatibilities**
+`apps/backend/cmd/arena-migrate/migrate_concurrent_integration_test.go`
+- `goose.WithTableName` and `goose.WithLogger` do not exist in `NewProvider` API
+- Fix: Use `database.NewStore(database.DialectPostgres, "schema_migrations")` + `goose.WithStore()`
+- Fix: Pass empty string `""` as dialect (required when using `WithStore`)
+- Fix: `goose.WithVerbose(false)` replaces missing `WithLogger`
+- Fix: Add `lock.NewPostgresSessionLocker()` + `goose.WithSessionLocker()` for advisory lock concurrency
+- Fix: Changed result type from `[]goose.MigrationResult` → `[]*goose.MigrationResult`
+- Fix: testFS built dynamically from all 63 embedded migrations at FS ROOT (no "sql/" prefix)
+  so `goose.NewProvider` can find them; `io/fs.ReadDir` used to enumerate them
+- Added nil guard: `if mr.Source != nil && mr.Source.Version == testVersion`
+
+**3. Redo log test — stale expectations**
+`apps/backend/cmd/arena-migrate/migrate_integration_test.go`
+- `knownMigrations` was hardcoded to 3 files; redo now operates on migration 0063
+- goose v3.22.1 logs "OK" for both rollback AND apply (not "DONE" for rollback)
+- Fix: Build `knownMigrations` dynamically from embedded FS; check `migOKCount >= 2` with "OK"
+
+**4. Timestamptz test — schema_migrations excluded**
+`apps/backend/internal/migrations/timestamptz_integration_test.go`
+- `schema_migrations.tstamp` is goose-internal TIMESTAMP (not TIMESTAMPTZ); was flagged by Step 6
+- Fix: Added `AND table_name != 'schema_migrations'` exclusion to the bad-column query
+
+### Files changed
+- `apps/backend/internal/tests/pgtest/pgtest.go` — dynamic TruncateAll (commit 4e974a8)
+- `apps/backend/cmd/arena-migrate/migrate_concurrent_integration_test.go` — goose v3.22.1 API (commit 44d35b6)
+- `apps/backend/cmd/arena-migrate/migrate_integration_test.go` — redo log expectations (commit 44d35b6)
+- `apps/backend/internal/migrations/timestamptz_integration_test.go` — schema_migrations exclusion (commit 44d35b6)
+
+### Verification (DATABASE_URL=host.docker.internal:55432, run twice)
+  go build -tags=integration ./apps/backend/...      OK (0 errors)
+  go vet -tags=integration ./apps/backend/...        OK (0 issues)
+  go test -tags=integration ./apps/backend/cmd/arena-migrate/...        ok  30.253s
+  go test -tags=integration ./apps/backend/internal/adapters/postgres/... ok   0.378s
+  go test -tags=integration ./apps/backend/internal/platform/outbox/...  ok   1.344s
+  go test -tags=integration ./apps/backend/internal/migrations/...       ok   0.125s
+  go test ./apps/backend/...                         ALL PASS (13 packages, exit 0)
+
+Commits: 4e974a8, 44d35b6
+Marked #350 passing.
 
 Marked #344 passing. (344/356 features passing, 96.6%)
