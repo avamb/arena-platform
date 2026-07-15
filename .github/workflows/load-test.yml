@@ -1,7 +1,7 @@
 name: Load Test (k6)
 
 # Triggered manually OR when a PR receives the "load-test" label.
-# This keeps load tests opt-in so they don't run on every PR.
+# Load tests are opt-in to avoid running on every PR.
 on:
   workflow_dispatch:
     inputs:
@@ -14,7 +14,7 @@ on:
         required: false
         default: ''
       vus:
-        description: 'Virtual users per scenario'
+        description: 'Virtual users per scenario (scanner/feed/checkout)'
         required: false
         default: '20'
       duration:
@@ -52,17 +52,41 @@ jobs:
           fi
 
   # ─────────────────────────────────────────────────────────────────────────
-  # Load tests: spin up the full stack in Docker, then run k6 scenarios.
+  # Load tests: spin up the full stack, run migrations + seed, then k6.
+  #
+  # PR-11 correctness guarantees:
+  #   - Migrations run to current head before any k6 scenario.
+  #   - Deterministic seed (arena-seed) populates test fixtures including
+  #     users required by the auth-login scenario.
+  #   - Readiness poll exits nonzero on deadline and captures all service logs.
+  #   - k6 threshold failures fail the job (no continue-on-error).
+  #   - Results are uploaded with if:always() regardless of threshold outcome.
+  #   - Negative tests run before k6 to confirm k6 will fail honestly.
   # ─────────────────────────────────────────────────────────────────────────
   load-test:
     name: k6 Load Tests
     runs-on: ubuntu-latest
     needs: check-label
     if: needs.check-label.outputs.should_run == 'true'
+    timeout-minutes: 45
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # ── Go toolchain ─────────────────────────────────────────────────────
+      # Needed to build arena-migrate and arena-seed on the runner so that
+      # migrations and fixtures are applied before k6 starts.
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: true
+
+      - name: Download Go dependencies
+        run: go mod download
 
       # ── Start the full stack ─────────────────────────────────────────────
       - name: Set up Docker Buildx
@@ -75,16 +99,91 @@ jobs:
         env:
           COMPOSE_DOCKER_CLI_BUILD: 1
 
+      # ── Migrations ────────────────────────────────────────────────────────
+      # Build arena-migrate on the runner and apply all pending migrations to
+      # the current migration head.  Connects to PostgreSQL on the host-exposed
+      # port (55432).  Runs BEFORE any k6 scenario so the schema is current.
+      - name: Build arena-migrate and arena-seed
+        run: |
+          go build -o /tmp/arena-migrate ./apps/backend/cmd/arena-migrate
+          go build -o /tmp/arena-seed    ./apps/backend/cmd/arena-seed
+
+      - name: Run database migrations
+        run: /tmp/arena-migrate up
+        env:
+          DATABASE_URL: postgres://arena:arena@localhost:55432/arena?sslmode=disable
+          APP_ENV: development
+          APP_NAME: arena-migrate
+          APP_VERSION: 0.1.0-ci
+          APP_COMMIT: ${{ github.sha }}
+          DEFAULT_LOCALE: en
+          ACTIVE_LOCALES: "ru,en"
+          LOG_LEVEL: info
+          LOG_FORMAT: text
+          ENABLE_DEV_AUTH: "false"
+          # JWT config required by config.Load() even in development mode.
+          # This is a non-secret CI placeholder used only by the migrate binary.
+          JWT_SIGNING_SECRET: ci-load-test-placeholder-jwt-secret-min32b
+          JWT_ISSUER: arena-dev
+          JWT_AUDIENCE: arena-api
+
+      # ── Seed ─────────────────────────────────────────────────────────────
+      # Insert deterministic fixture rows (idempotent ON CONFLICT DO NOTHING):
+      #   Users: super@test.arena.local / admin@test.arena.local (password: TestPass!23)
+      #   Orgs, venues, sales channels, payment configs.
+      # The auth-login scenario depends on super@test.arena.local being present.
+      - name: Seed test fixtures
+        run: /tmp/arena-seed
+        env:
+          DATABASE_URL: postgres://arena:arena@localhost:55432/arena?sslmode=disable
+          APP_ENV: development
+          APP_NAME: arena-seed
+          APP_VERSION: 0.1.0-ci
+          APP_COMMIT: ${{ github.sha }}
+          DEFAULT_LOCALE: en
+          ACTIVE_LOCALES: "ru,en"
+          LOG_LEVEL: info
+          LOG_FORMAT: text
+          ENABLE_DEV_AUTH: "false"
+          JWT_SIGNING_SECRET: ci-load-test-placeholder-jwt-secret-min32b
+          JWT_ISSUER: arena-dev
+          JWT_AUDIENCE: arena-api
+
+      # ── Wait for API readiness (fail-closed) ─────────────────────────────
+      # Polls /readyz every 2 s for up to 120 s.  On deadline failure the step
+      # exits nonzero and dumps API, worker, PostgreSQL, and Redis container
+      # logs so the root cause is visible without a second debugging run.
       - name: Wait for API readiness
         run: |
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:8080/readyz; then
-              echo "API is ready"
+          MAX_TRIES=60
+          READY=0
+          for i in $(seq 1 $MAX_TRIES); do
+            if curl -sf http://localhost:8080/readyz > /dev/null 2>&1; then
+              echo "API is ready after $((i * 2))s"
+              READY=1
               break
             fi
-            echo "Waiting for API... ($i/30)"
+            echo "Waiting for API... ($i/${MAX_TRIES}, elapsed $((i * 2))s)"
             sleep 2
           done
+
+          if [ "${READY}" -eq 0 ]; then
+            echo ""
+            echo "ERROR: API did not become ready within $((MAX_TRIES * 2)) seconds."
+            echo ""
+            echo "=== arena-api container logs (last 100 lines) ==="
+            docker compose logs api --no-color --tail=100 2>&1 || true
+            echo ""
+            echo "=== arena-worker container logs (last 50 lines) ==="
+            docker compose logs worker --no-color --tail=50 2>&1 || true
+            echo ""
+            echo "=== PostgreSQL container logs (last 30 lines) ==="
+            docker compose logs postgres --no-color --tail=30 2>&1 || true
+            echo ""
+            echo "=== Redis container logs (last 20 lines) ==="
+            docker compose logs redis --no-color --tail=20 2>&1 || true
+            exit 1
+          fi
 
       # ── Install k6 ───────────────────────────────────────────────────────
       - name: Install k6
@@ -100,10 +199,37 @@ jobs:
           sudo apt-get update -q
           sudo apt-get install -q k6
 
-      # ── Run load tests ────────────────────────────────────────────────────
+      # ── Negative tests ────────────────────────────────────────────────────
+      # Run BEFORE the real scenarios to prove k6 will return nonzero when
+      # either the API is unavailable OR a threshold is breached.
+      # If this step fails, it means k6 would silently swallow failures — a
+      # serious misconfiguration that must block the rest of the job.
+      - name: Negative tests — verify k6 fails honestly
+        run: bash ops/loadtest/scripts/check-negative.sh
+
+      # ── Create results directory ─────────────────────────────────────────
       - name: Create results directory
         run: mkdir -p ops/loadtest/results
 
+      # ── Run load tests ────────────────────────────────────────────────────
+      # No continue-on-error: a threshold breach now fails the job.
+      # Results are still uploaded via the artifact step below (if: always()).
+
+      # Scenario 1 (PR-11 required): production login + protected endpoint.
+      # Uses real POST /v1/auth/login (bcrypt, JWT issuance, DB user lookup).
+      # VUS is intentionally low (5) because bcrypt limits auth concurrency.
+      - name: Run auth-login load test (production login + GET /v1/me)
+        run: |
+          BASE_URL=${{ github.event.inputs.base_url || 'http://localhost:8080' }} \
+          LOAD_TEST_USER=super@test.arena.local \
+          LOAD_TEST_PASSWORD=TestPass!23 \
+          VUS=5 \
+          DURATION=${{ github.event.inputs.duration || '30s' }} \
+          k6 run ops/loadtest/auth-login.js \
+            --out json=ops/loadtest/results/auth-login-raw.json \
+            --summary-export=ops/loadtest/results/auth-login-summary.json
+
+      # Scenario 2: scanner barcode validation (dev-auth JWT, random barcodes).
       - name: Run scanner load test
         run: |
           BASE_URL=${{ github.event.inputs.base_url || 'http://localhost:8080' }} \
@@ -112,8 +238,8 @@ jobs:
           k6 run ops/loadtest/scanner.js \
             --out json=ops/loadtest/results/scanner-raw.json \
             --summary-export=ops/loadtest/results/scanner-summary.json
-        continue-on-error: true  # collect results even if thresholds fail
 
+      # Scenario 3: public feed read (skipped if no feed token is available).
       - name: Run public feed load test
         if: ${{ github.event.inputs.feed_token != '' || env.FEED_TOKEN != '' }}
         run: |
@@ -124,11 +250,10 @@ jobs:
           k6 run ops/loadtest/feed.js \
             --out json=ops/loadtest/results/feed-raw.json \
             --summary-export=ops/loadtest/results/feed-summary.json
-        continue-on-error: true
         env:
           FEED_TOKEN: ${{ secrets.LOAD_TEST_FEED_TOKEN }}
 
-      # Checkout test requires pre-seeded data; run only when secrets are set.
+      # Scenario 4: checkout end-to-end (skipped if no org seed secrets set).
       - name: Run checkout load test
         if: ${{ env.ORG_ID != '' }}
         run: |
@@ -141,13 +266,12 @@ jobs:
           k6 run ops/loadtest/checkout.js \
             --out json=ops/loadtest/results/checkout-raw.json \
             --summary-export=ops/loadtest/results/checkout-summary.json
-        continue-on-error: true
         env:
           ORG_ID:         ${{ secrets.LOAD_TEST_ORG_ID }}
           CHANNEL_ID:     ${{ secrets.LOAD_TEST_CHANNEL_ID }}
           RESERVATION_ID: ${{ secrets.LOAD_TEST_RESERVATION_ID }}
 
-      # ── Upload results as artifact ────────────────────────────────────────
+      # ── Upload results (always — even when thresholds fail) ───────────────
       - name: Upload load test results
         uses: actions/upload-artifact@v4
         if: always()
@@ -155,6 +279,26 @@ jobs:
           name: load-test-results
           path: ops/loadtest/results/
           retention-days: 30
+
+      # ── Capture and upload service logs on failure ────────────────────────
+      - name: Capture service logs on failure
+        if: failure()
+        run: |
+          mkdir -p /tmp/service-logs
+          docker compose logs api    --no-color --tail=200 > /tmp/service-logs/api.log    2>&1 || true
+          docker compose logs worker --no-color --tail=100 > /tmp/service-logs/worker.log 2>&1 || true
+          docker compose logs postgres --no-color --tail=50 > /tmp/service-logs/postgres.log 2>&1 || true
+          docker compose logs redis  --no-color --tail=30  > /tmp/service-logs/redis.log  2>&1 || true
+          echo "Service logs written to /tmp/service-logs/"
+          ls -lh /tmp/service-logs/
+
+      - name: Upload service logs artifact
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: load-test-service-logs
+          path: /tmp/service-logs/
+          retention-days: 7
 
       # ── Print summary to job log ──────────────────────────────────────────
       - name: Print results summary
@@ -164,18 +308,20 @@ jobs:
           for f in ops/loadtest/results/*-summary.json; do
             [ -f "$f" ] || continue
             echo ""
-            echo "--- $(basename $f) ---"
+            echo "--- $(basename "$f") ---"
             if command -v jq &>/dev/null; then
               jq -r '
-                "  http_req_duration p95: " + (.metrics.http_req_duration.values["p(95)" | tostring] // "N/A") + " ms",
-                "  http_req_failed rate: " + ((.metrics.http_req_failed.values.rate // 0) * 100 | tostring) + "%"
+                "  http_req_duration p95: " +
+                  ((.metrics.http_req_duration.values["p(95)"] // 0) | tostring) + " ms",
+                "  http_req_failed rate:  " +
+                  (((.metrics.http_req_failed.values.rate // 0) * 100) | tostring) + "%"
               ' "$f" 2>/dev/null || cat "$f"
             else
               cat "$f"
             fi
           done
 
-      # ── Stop services ────────────────────────────────────────────────────
+      # ── Stop services ─────────────────────────────────────────────────────
       - name: Stop services
         if: always()
         run: docker compose down -v
