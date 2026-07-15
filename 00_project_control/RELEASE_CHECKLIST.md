@@ -2,9 +2,9 @@
 
 **Document owner:** Backend platform team
 **Status:** Signed — ready for production release gate
-**Last reconciled:** 2026-06-25 (feature #190; signed under #181)
+**Last reconciled:** 2026-07-16 (PR-12 wave; dynamic migration head)
 **Tracking feature:** AutoForge #181 "Reconciliation чек-лист готовности к production"
-**Reconciliation history:** #181 (sign), #190 (commands reconciled with `Makefile` + `.github/workflows/ci.yml`)
+**Reconciliation history:** #181 (sign), #190 (commands reconciled with `Makefile` + `.github/workflows/ci.yml`), PR-12 (dynamic migration head; release gate script)
 
 This checklist is the single source of truth for the four-gate production
 readiness contract that was previously asserted in the
@@ -37,7 +37,7 @@ included here for reproducibility against the CI `build-and-push` job.
 > run the staging deploy rehearsal documented in
 > [`STAGING_REHEARSAL_REPORT.md`](STAGING_REHEARSAL_REPORT.md) (feature
 > #194). The rehearsal walks the seven acceptance steps (deploy,
-> `arena-migrate up`, migration head matches `0041_reconciliation_reports.sql`,
+> `arena-migrate up`, migration head matches the current embedded head (discovered dynamically via `arena-migrate status | tail -1`),
 > `/healthz` + `/readyz` + `/v1/info`, worker job pickup, backup
 > dry-run, captured release notes) against the candidate image and
 > records the captured outputs as the promotion evidence.
@@ -122,25 +122,20 @@ golangci-lint run --timeout=5m ./...      # explicit, matches CI argument
 ## Gate 4 — Runtime databases migrated
 
 **Owner:** SRE / Backend
-**Status:** GREEN
+**Status:** GREEN (dynamically verified — see PR-12 evidence)
 **Reproduce:**
 
 ```bash
 docker compose up -d postgres
-# Run the migrator from source (no install needed):
-make migrate-up                              # ≡ go run ./apps/backend/cmd/arena-migrate up
-# Or, if the compiled binary is already on PATH:
-arena-migrate up
-arena-migrate status                         # expect: 0041_reconciliation_reports.sql (applied)
+make migrate-up
+arena-migrate status | tail -1   # shows current embedded head
+# Dynamic head discovery (no hardcoded version):
+deploy/release-gate.sh           # runs ephemeral smoke suite and prints head
 ```
 
 - Embedded migrations live in `apps/backend/internal/migrations/sql/`.
-- The latest applied migration is `0041_reconciliation_reports.sql`.
-- Local `docker-compose` stack is healthy; PostgreSQL 17 is the runtime
-  database.
-- Before promoting a release: run `arena-migrate up` against staging and
-  production and confirm `0041_reconciliation_reports.sql` is the head
-  migration on both.
+- The current embedded migration head is discovered dynamically via `migrations.Head()` (see `apps/backend/internal/migrations/migrations.go`).
+- Before promoting a release: run `arena-migrate up` against staging and production and confirm the output head matches `deploy/release-gate.sh` output.
 
 ## Gate 5 — Container image builds
 
@@ -181,13 +176,14 @@ This checklist is countersigned by the closing of AutoForge feature #181.
 | 1. Architecture/spec reconciled       | #180            | passed |
 | 2. Generated clients current          | n/a (CI Job 3)  | green  |
 | 3. Tests + lint green                 | #182            | passed |
-| 4. Runtime migrations through 0041    | n/a (ops)       | green  |
+| 4. Runtime migrations (dynamic head)  | n/a (ops)       | green  |
 | 5. Container image builds             | n/a (CI build)  | green  |
 
 Reproduce commands above are byte-for-byte aligned with `Makefile` targets
 (`make gen-openapi`, `make gen-ts-client`, `make test`, `make test-race`,
 `make lint`, `make migrate-up`) and the steps in `.github/workflows/ci.yml`
-as of this reconciliation (#190).
+as of this reconciliation (#190). Gate 4 reproduce commands updated by PR-12
+to use dynamic migration head discovery (`migrations.Head()` + `deploy/release-gate.sh`).
 
 With all gates green, the `<implementation_status_override>` block
 that previously lived in `CLAUDE.md` is retired. Future scope expansions
