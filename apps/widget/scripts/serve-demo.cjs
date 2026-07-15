@@ -8,6 +8,14 @@
  *
  * Run: node scripts/serve-demo.cjs
  * The dist/ folder must be built first: npm run build
+ *
+ * Lifecycle:
+ *   Playwright starts this process as the webServer child and kills it (via
+ *   SIGTERM on POSIX or TerminateProcess on Windows) when all tests complete.
+ *   The shutdown() handler below destroys any keep-alive connections so
+ *   server.close() resolves promptly and the process exits without delay.
+ *   A 3-second forced-exit timer (unref'd so it does not itself block exit)
+ *   acts as a backstop if any connection refuses to close.
  */
 
 // @ts-check
@@ -69,6 +77,47 @@ const server = http.createServer((req, res) => {
     res.end(data);
   });
 });
+
+// ── Connection tracking for clean shutdown ────────────────────────────────────
+// HTTP keep-alive connections prevent server.close() from resolving until the
+// browser side closes them.  We track every socket so shutdown() can forcibly
+// destroy them, allowing the process to exit promptly after tests complete.
+
+/** @type {Set<import('net').Socket>} */
+const connections = new Set();
+
+server.on('connection', (conn) => {
+  connections.add(conn);
+  conn.on('close', () => connections.delete(conn));
+});
+
+/**
+ * Gracefully stop the server and exit.
+ *
+ * Called by SIGTERM (Playwright's preferred kill on POSIX) and SIGINT
+ * (Ctrl-C during local development).  Destroys open keep-alive connections
+ * so server.close() resolves immediately, then calls process.exit(0).
+ * An unref'd 3-second timer is the final backstop.
+ */
+function shutdown() {
+  process.stdout.write('Arena demo server shutting down…\n');
+  // Destroy keep-alive sockets so server.close() does not wait for them.
+  for (const conn of connections) {
+    conn.destroy();
+  }
+  connections.clear();
+  server.close(() => {
+    process.exit(0);
+  });
+  // Backstop: force exit after 3 s if something still holds the loop open.
+  // .unref() ensures this timer does not itself prevent the natural exit.
+  setTimeout(() => process.exit(0), 3000).unref();
+}
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
+
+// ── Start ─────────────────────────────────────────────────────────────────────
 
 server.listen(PORT, '127.0.0.1', () => {
   process.stdout.write(`Arena demo server listening on http://localhost:${PORT}\n`);

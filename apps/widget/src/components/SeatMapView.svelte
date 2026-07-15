@@ -498,8 +498,13 @@
     </button>
   </div>
 
-  <!-- ── Map container ── -->
-  <!-- svelte-ignore a11y_no_noninteractive_tabindex a11y_no_noninteractive_element_interactions -->
+  <!-- ── Map container ──
+       role="toolbar" is the correct ARIA composite-widget role here: the seat
+       map is a collection of interactive seat buttons navigated by arrow keys
+       with a single external Tab stop — exactly the keyboard pattern WAI-ARIA
+       defines for toolbar.  Svelte's compiler a11y checker recognises toolbar
+       as interactive (special-cased in non_interactive_roles), so no suppression
+       comment is needed.  The accessible name is supplied by aria-label. -->
   <div
     class="seat-map-container"
     bind:this={svgContainer}
@@ -512,7 +517,7 @@
     onfocus={onContainerFocus}
     onfocusout={onContainerFocusOut}
     aria-label="Interactive seat map"
-    role="application"
+    role="toolbar"
     tabindex="0"
   >
     {#if schemaLoading}

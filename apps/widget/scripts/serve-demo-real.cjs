@@ -152,6 +152,33 @@ const server = http.createServer((req, res) => {
   serveStatic(res, absPath, normalized);
 });
 
+// ── Connection tracking for clean shutdown ────────────────────────────────────
+
+/** @type {Set<import('net').Socket>} */
+const connections = new Set();
+
+server.on('connection', (conn) => {
+  connections.add(conn);
+  conn.on('close', () => connections.delete(conn));
+});
+
+/**
+ * Gracefully stop the server and exit.
+ * Mirrors the shutdown logic in serve-demo.cjs.
+ */
+function shutdown() {
+  process.stdout.write('[serve-demo-real] Shutting down…\n');
+  for (const conn of connections) conn.destroy();
+  connections.clear();
+  server.close(() => { process.exit(0); });
+  setTimeout(() => process.exit(0), 3000).unref();
+}
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
+
+// ── Start ─────────────────────────────────────────────────────────────────────
+
 server.listen(PORT, '127.0.0.1', () => {
   process.stdout.write(
     `[serve-demo-real] Listening on http://127.0.0.1:${PORT} — /v1/* → ${BACKEND_URL}\n`,

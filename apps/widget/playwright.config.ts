@@ -34,7 +34,10 @@ export default defineConfig({
   reporter: process.env['CI'] ? 'github' : 'list',
   use: {
     baseURL: 'http://localhost:4173',
-    trace: 'on-first-retry',
+    // Retain trace and screenshot for every failed test regardless of retry
+    // count so failure artifacts are always available (PR-08 requirement).
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
   },
   projects: [
     {
@@ -44,10 +47,18 @@ export default defineConfig({
   ],
   // Start a static demo server that serves demo/ and dist/ from the widget root.
   // The server is a plain Node HTTP server — no Vite, no hot reload.
+  //
+  // reuseExistingServer: false — always start a fresh server owned by this
+  // Playwright run and always terminate it when tests finish.  This guarantees
+  // deterministic behaviour in both local and CI environments and prevents the
+  // run from accidentally attaching to a stale server from a previous session
+  // (PR-08: "stale-server reuse" fix).  The server's SIGTERM handler in
+  // scripts/serve-demo.cjs ensures it exits promptly once Playwright sends the
+  // termination signal after all tests complete.
   webServer: {
     command: 'node scripts/serve-demo.cjs',
     url: 'http://localhost:4173',
-    reuseExistingServer: !process.env['CI'],
+    reuseExistingServer: false,
     timeout: 30_000,
   },
 });
