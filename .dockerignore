@@ -1,0 +1,122 @@
+# =============================================================
+# arena_new — .dockerignore (root build context)
+# =============================================================
+# Applied to every `docker build` / `docker compose build` that
+# uses `context: .` — i.e. the Go backend image (Dockerfile)
+# and the admin-web production image (apps/admin-web/Dockerfile).
+#
+# Goals:
+#   1. Exclude VCS data, agent state, and secrets.
+#   2. Exclude host-installed node_modules and pre-built dist
+#      so Docker always performs a clean, reproducible build.
+#   3. Exclude large documentation trees and local artifacts.
+#   4. Keep every source file and lockfile required by all
+#      production build targets.
+# =============================================================
+
+# ----- VCS / agent state ------------------------------------
+.git
+.gitattributes
+.github
+.autoforge
+
+# ----- Root-level node_modules (spectral / misc tooling) ----
+node_modules
+
+# ----- Admin-web: host-installed deps and local build output -
+# Docker runs `npm ci` inside the container; host directories
+# must not shadow or pollute the container install.
+apps/admin-web/node_modules
+apps/admin-web/dist
+apps/admin-web/tsconfig.app.tsbuildinfo
+apps/admin-web/tsconfig.node.tsbuildinfo
+
+# ----- Widget: not required in any production image ----------
+# The Go and admin images do not use the widget source.
+apps/widget/node_modules
+apps/widget/dist
+apps/widget/test-results
+apps/widget/playwright-report
+apps/widget/.playwright
+apps/widget/demo
+
+# ----- Test / CI / Playwright artifacts ----------------------
+.playwright
+.playwright-cli
+.tmp
+test-results
+**/test-results
+**/.playwright
+**/playwright-report
+
+# ----- Editor and OS artefacts ------------------------------
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ----- Secrets and environment overrides --------------------
+# .env.example is intentionally KEPT (needed by Go backend tests).
+.env
+.env.local
+.env.development
+.env.staging
+.env.production
+.env.*.local
+*.secret
+*.key
+*.pem
+*.p12
+*.pfx
+
+# ----- Pre-built local binaries (from `go build` on host) ---
+# These are committed during development for local convenience;
+# Docker always builds fresh binaries from source.
+arena-api
+arena-worker
+arena-migrate
+arena-healthcheck
+
+# ----- Go host-side module / build caches -------------------
+.gocache
+.gomodcache
+.gocache;C
+.gomodcache;C
+
+# ----- Documentation and research directories ---------------
+# Large trees of product docs, legacy screenshots, and specs
+# that are not required in any Docker image.
+00_project_control
+01_official_bil24_docs
+02_product_and_market_research
+03_legacy_bil24_apps
+04_legacy_screenshots
+05_widgets_and_site_templates
+06_venue_maps_and_seating
+07_source_snippets_legacy
+08_architecture
+09_autoforge
+010_legasy_
+
+# ----- Local SQLite / feature databases ---------------------
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+
+# ----- Progress / session logs and temp commit messages -----
+claude-progress.txt
+commit_msg_*.txt
+app_spec.txt
+
+# ----- Apps not required in any production Docker image -----
+# wp-plugin is a WordPress PHP plugin; no Dockerfile uses it.
+apps/wp-plugin
+
+# ----- Misc root-level artefacts that are not source code ---
+Projectsarena_new
+scripts
+ops
