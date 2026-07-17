@@ -226,7 +226,9 @@ type Querier interface {
 	InsertPromoCodeRedemption(ctx context.Context, promoCodeID uuid.UUID, userID, reservationID *uuid.UUID, discountAmount, orderAmount int64) (PromoCodeRedemptionRow, error)
 
 	// Tickets — issued entitlements after payment.succeeded or free checkout (feature #139)
-	InsertTicket(ctx context.Context, checkoutSessionID uuid.UUID, sessionID uuid.UUID, tierID *uuid.UUID, holderEmail *string, seatKey *string, seatSector *string, seatRow *string, seatNumber *string) (TicketRow, error)
+	// ordinal (feature #366): 0-based ticket index within the checkout session;
+	// pairs with checkout_session_id in the UNIQUE constraint to prevent double-issuance.
+	InsertTicket(ctx context.Context, checkoutSessionID uuid.UUID, sessionID uuid.UUID, tierID *uuid.UUID, holderEmail *string, seatKey *string, seatSector *string, seatRow *string, seatNumber *string, ordinal int32) (TicketRow, error)
 	ListTicketsByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID) ([]TicketRow, error)
 	GetTicketByID(ctx context.Context, id uuid.UUID) (TicketRow, error)
 	CountTicketsByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID) (int64, error)

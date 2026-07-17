@@ -4,9 +4,24 @@
 //   - payment.succeeded (via the payment-intent webhook handler)
 //   - Free-checkout completion (via POST /v1/checkout/{id}/complete with total=0)
 //
-// Issuance is idempotent per checkout_session_id: if tickets already exist for
-// a checkout session, re-issuance returns the existing rows without inserting
-// new ones.  This prevents double-issuance on webhook replay or handler retry.
+// # Idempotency and concurrency safety (feature #366, PR2-10)
+//
+// IssueTicketsForCheckout is idempotent and safe under concurrent callers:
+//
+//  1. pg_advisory_xact_lock(low-64-bits-of-checkout_session_id) serialises
+//     concurrent triggers for the same checkout session within a transaction.
+//     Two callers racing on the same session queue at the lock; the second
+//     caller exits immediately when it sees all tickets already issued.
+//
+//  2. The idempotency check is quantity-aware: len(existing) is compared to
+//     the expected ticket count (len(seats) for assigned-seat sessions,
+//     reservation.Quantity for GA). A partial set (len < expected) triggers
+//     gap-fill: only the missing ordinals are inserted, completing the set
+//     without re-inserting already-issued tickets.
+//
+//  3. The UNIQUE (checkout_session_id, ordinal) constraint (migration 0066)
+//     is a database-level safety belt. Even if the advisory lock is bypassed
+//     (e.g. a code-path bug), the DB rejects true duplicate inserts.
 //
 // Endpoints:
 //
@@ -15,6 +30,7 @@ package htickets
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -78,20 +94,36 @@ func TicketFromRow(t gen.TicketRow) TicketResponse {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// IssueTicketsForCheckout — internal issuance helper (idempotent)
+// IssueTicketsForCheckout — internal issuance helper (idempotent, concurrent-safe)
 // ─────────────────────────────────────────────────────────────────────────────
+
+// issuanceLockKey returns the int64 advisory-lock key for a checkout session.
+//
+// UUIDv7 layout: bytes 0-5 = unix-ts-ms, bytes 6-7 = version+rand,
+// bytes 8-15 = 64 random bits. We use the low-64-bits (the fully-random
+// portion) to minimise key collisions across concurrent sessions.
+func issuanceLockKey(id uuid.UUID) int64 {
+	return int64(binary.BigEndian.Uint64(id[8:]))
+}
 
 // IssueTicketsForCheckout issues tickets for the given completed checkout session.
 //
-// The function is idempotent per checkout_session_id:
-//   - If tickets already exist for this session (detected via
-//     ListTicketsByCheckoutSession), the existing rows are returned unchanged.
-//   - If no tickets exist, the function loads the associated reservation to
-//     determine quantity, session_id, and tier_id, then inserts one TicketRow
-//     per unit of quantity.
+// The function is idempotent and concurrent-safe:
 //
-// Returns an error if ticketQueries or reservationQueries are nil, or if any
-// DB operation fails. Callers should log but not hard-fail when the checkout is
+//  1. It acquires a transaction-scoped advisory lock keyed on the
+//     checkout_session_id UUID. Concurrent calls for the same session
+//     serialise at this point.
+//
+//  2. It compares len(existing) to the expected ticket count (quantity-aware):
+//     - len == expected → return existing (fully issued, replay-safe)
+//     - 0 < len < expected → gap-fill: insert only missing ordinals
+//     - len == 0 → issue all tickets
+//
+//  3. The UNIQUE (checkout_session_id, ordinal) DB constraint is the final
+//     safety net against any bug that bypasses the advisory lock.
+//
+// Returns an error if required dependencies are nil, or if any DB
+// operation fails. Callers should log but not hard-fail when the checkout is
 // already terminal (the customer got their goods; ticket retry is safe).
 func (h *Handler) IssueTicketsForCheckout(ctx context.Context, cs gen.CheckoutSessionRow) ([]gen.TicketRow, error) {
 	if h.ticketQueries == nil {
@@ -100,53 +132,90 @@ func (h *Handler) IssueTicketsForCheckout(ctx context.Context, cs gen.CheckoutSe
 	if h.reservationQueries == nil {
 		return nil, fmt.Errorf("IssueTicketsForCheckout: reservationQueries not wired")
 	}
-
-	// ── Idempotency check ────────────────────────────────────────────────────
-	// If tickets were already issued for this checkout session, return them.
-	existing, err := h.ticketQueries.ListTicketsByCheckoutSession(ctx, cs.ID)
-	if err != nil {
-		return nil, fmt.Errorf("IssueTicketsForCheckout: list existing tickets: %w", err)
-	}
-	if len(existing) > 0 {
-		h.logger.Info("tickets: idempotent replay — returning existing tickets",
-			slog.String("checkout_session_id", cs.ID.String()),
-			slog.Int("existing_count", len(existing)),
-		)
-		return existing, nil
+	if h.pool == nil {
+		return nil, fmt.Errorf("IssueTicketsForCheckout: pool not wired")
 	}
 
 	// ── Load reservation ─────────────────────────────────────────────────────
-	// The reservation holds the quantity, session_id, and optional tier_id.
+	// Load before acquiring the lock so we know the expected ticket count.
 	reservation, err := h.reservationQueries.GetReservationByID(ctx, cs.ReservationID)
 	if err != nil {
 		return nil, fmt.Errorf("IssueTicketsForCheckout: get reservation %s: %w",
 			cs.ReservationID.String(), err)
 	}
 
-	// ── SEAT-C3 (feature #311): hydrate seat coordinates from reservation ──
-	// For assigned-seat reservations, list the reservation_seats join to get
-	// one row per held seat with the denormalized seat_key / sector_name /
-	// row_name / seat_number columns copied from session_seats. GA
-	// reservations have no reservation_seats rows so this returns an empty
-	// slice and the loop below falls back to the quantity-based path.
-	var seats []gen.SessionSeatRow
-	if h.reservationQueries != nil {
-		s, err := h.reservationQueries.ListReservationSeats(ctx, reservation.ID)
-		if err != nil {
-			return nil, fmt.Errorf("IssueTicketsForCheckout: list reservation seats: %w", err)
-		}
-		seats = s
+	// ── SEAT-C3 (feature #311): load seat coordinates ────────────────────────
+	// For assigned-seat reservations, load the reservation_seats join to get
+	// one row per held seat with denormalized seat_key / sector_name /
+	// row_name / seat_number columns. GA reservations return an empty slice.
+	seats, err := h.reservationQueries.ListReservationSeats(ctx, reservation.ID)
+	if err != nil {
+		return nil, fmt.Errorf("IssueTicketsForCheckout: list reservation seats: %w", err)
 	}
 
-	// ── Issue one ticket per unit (GA) or one ticket per seat (assigned) ──
-	tickets := make([]gen.TicketRow, 0, max(int(reservation.Quantity), len(seats)))
+	// Expected ticket count: one per seat (assigned) or one per quantity unit (GA).
+	expectedCount := len(seats)
+	if expectedCount == 0 {
+		expectedCount = int(reservation.Quantity)
+	}
+
+	// ── Transaction + advisory lock ──────────────────────────────────────────
+	// pg_advisory_xact_lock is blocking (unlike pg_try_advisory_xact_lock).
+	// Concurrent callers for the same checkout session queue here; the second
+	// caller sees all tickets already issued and returns immediately.
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("IssueTicketsForCheckout: begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	lockKey := issuanceLockKey(cs.ID)
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", lockKey); err != nil {
+		return nil, fmt.Errorf("IssueTicketsForCheckout: acquire advisory lock for %s: %w",
+			cs.ID.String(), err)
+	}
+
+	txQ := gen.New(tx)
+
+	// ── Quantity-aware idempotency check ─────────────────────────────────────
+	// Compare existing ticket count to the expected total.
+	// A non-zero count < expected means a previous attempt was interrupted
+	// mid-loop; we complete the missing ordinals instead of giving up.
+	existing, err := txQ.ListTicketsByCheckoutSession(ctx, cs.ID)
+	if err != nil {
+		return nil, fmt.Errorf("IssueTicketsForCheckout: list existing tickets: %w", err)
+	}
+
+	if len(existing) >= expectedCount {
+		// All tickets are already issued. Return them without another INSERT.
+		h.logger.Info("tickets: idempotent replay — returning existing tickets",
+			slog.String("checkout_session_id", cs.ID.String()),
+			slog.Int("existing_count", len(existing)),
+			slog.Int("expected_count", expectedCount),
+		)
+		// No write happened — rollback is a cheap no-op.
+		_ = tx.Rollback(ctx)
+		return existing, nil
+	}
+
+	// ── Gap-fill: insert only missing ordinals ───────────────────────────────
+	// Build a set of ordinals already present (for partial-issue recovery).
+	issuedOrdinals := make(map[int32]struct{}, len(existing))
+	for _, t := range existing {
+		issuedOrdinals[t.Ordinal] = struct{}{}
+	}
+
+	var newTickets []gen.TicketRow
+
 	if len(seats) > 0 {
-		// Assigned seats: one ticket per session_seats row, with the four
-		// seat_* denormalized columns populated. The per-seat tier_id
-		// overrides the reservation.tier_id so mixed-tier seated
-		// reservations (e.g. hybrid VIP + Standard) issue tickets with the
-		// correct tier per seat.
+		// Assigned seats: one ticket per session_seats row, with seat coordinates.
+		// Per-seat tier_id overrides the reservation tier so mixed-tier seated
+		// reservations (VIP + Standard) issue tickets with the correct tier.
 		for i, s := range seats {
+			ordinal := int32(i)
+			if _, alreadyIssued := issuedOrdinals[ordinal]; alreadyIssued {
+				continue // skip — already present from a prior attempt
+			}
 			seatKey := s.SeatKey
 			seatSector := s.SectorName
 			seatRow := s.RowName
@@ -155,42 +224,54 @@ func (h *Handler) IssueTicketsForCheckout(ctx context.Context, cs gen.CheckoutSe
 			if tierID == nil {
 				tierID = reservation.TierID
 			}
-			t, err := h.ticketQueries.InsertTicket(ctx,
+			t, err := txQ.InsertTicket(ctx,
 				cs.ID,
 				reservation.SessionID,
 				tierID,
-				nil, // holderEmail — not yet known at issuance time
+				nil, // holderEmail — not known at issuance time
 				&seatKey,
 				&seatSector,
 				&seatRow,
 				&seatNumber,
+				ordinal,
 			)
 			if err != nil {
-				return nil, fmt.Errorf("IssueTicketsForCheckout: insert seated ticket %d of %d (seat_key=%s): %w",
-					i+1, len(seats), seatKey, err)
+				return nil, fmt.Errorf("IssueTicketsForCheckout: insert seated ticket ordinal=%d (seat_key=%s): %w",
+					ordinal, seatKey, err)
 			}
-			tickets = append(tickets, t)
+			newTickets = append(newTickets, t)
 		}
 	} else {
 		// General-admission fallback: one ticket per unit of reservation.Quantity.
 		for i := int32(0); i < reservation.Quantity; i++ {
-			t, err := h.ticketQueries.InsertTicket(ctx,
+			if _, alreadyIssued := issuedOrdinals[i]; alreadyIssued {
+				continue // skip — already present from a prior attempt
+			}
+			t, err := txQ.InsertTicket(ctx,
 				cs.ID,
 				reservation.SessionID,
 				reservation.TierID,
-				nil, // holderEmail — not yet known at issuance time
+				nil, // holderEmail — not known at issuance time
 				nil, // seatKey — GA ticket
 				nil, // seatSector — GA ticket
 				nil, // seatRow — GA ticket
 				nil, // seatNumber — GA ticket
+				i,
 			)
 			if err != nil {
-				return nil, fmt.Errorf("IssueTicketsForCheckout: insert ticket %d of %d: %w",
-					i+1, reservation.Quantity, err)
+				return nil, fmt.Errorf("IssueTicketsForCheckout: insert GA ticket ordinal=%d: %w",
+					i, err)
 			}
-			tickets = append(tickets, t)
+			newTickets = append(newTickets, t)
 		}
 	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("IssueTicketsForCheckout: commit tx for %s: %w",
+			cs.ID.String(), err)
+	}
+
+	allTickets := append(existing, newTickets...)
 
 	h.logger.Info("tickets: issued",
 		slog.String("checkout_session_id", cs.ID.String()),
@@ -198,20 +279,26 @@ func (h *Handler) IssueTicketsForCheckout(ctx context.Context, cs gen.CheckoutSe
 		slog.String("session_id", reservation.SessionID.String()),
 		slog.Int("quantity", int(reservation.Quantity)),
 		slog.Int("seat_count", len(seats)),
-		slog.Int("tickets_issued", len(tickets)),
+		slog.Int("new_tickets_issued", len(newTickets)),
+		slog.Int("existing_tickets", len(existing)),
+		slog.Int("total_tickets", len(allTickets)),
 	)
 
 	// Publish Bil24-compatible scanner events for each newly issued ticket
 	// (feature #143). Best-effort: errors are logged internally, not returned.
-	if h.publishTicketIssuedEvents != nil {
-		h.publishTicketIssuedEvents(ctx, tickets)
+	// Only newly issued tickets are published to avoid duplicate events on replay.
+	if len(newTickets) > 0 && h.publishTicketIssuedEvents != nil {
+		h.publishTicketIssuedEvents(ctx, newTickets)
 	}
 
-	// Enqueue email delivery jobs for each issued ticket (feature #141).
+	// Enqueue email delivery jobs for each newly issued ticket (feature #141).
 	// Best-effort: errors are logged internally, not returned.
-	h.EnqueueDeliveryJobs(ctx, tickets)
+	// Only new tickets get delivery jobs; existing ones were already enqueued.
+	if len(newTickets) > 0 {
+		h.EnqueueDeliveryJobs(ctx, newTickets)
+	}
 
-	return tickets, nil
+	return allTickets, nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

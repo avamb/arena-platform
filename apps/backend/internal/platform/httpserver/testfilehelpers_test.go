@@ -907,6 +907,11 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0065_token_hash_invalidation.sql"),
 		}
+	// Tickets idempotent issuance migration (feature #366 — PR2-10)
+	case "0066_tickets_idempotent_issuance.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0066_tickets_idempotent_issuance.sql"),
+		}
 	// Auth handlers in hauth/ sub-package (feature #359 — PR2-03 structural checks)
 	case "login.go":
 		candidates = []string{

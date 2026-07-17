@@ -32,6 +32,11 @@ import (
 // seat_number} taken at issuance time. All four are nil for
 // general-admission tickets; all four are populated together for tickets
 // issued from an assigned-seats reservation.
+//
+// Ordinal (feature #366): 0-based sequence number of this ticket within the
+// checkout session. Together with CheckoutSessionID it forms a unique pair
+// (backed by UNIQUE constraint tickets_checkout_ordinal_uq) that prevents
+// concurrent double-issuance and enables partial-issue recovery on retry.
 type TicketRow struct {
 	ID                uuid.UUID  `json:"id"`
 	CheckoutSessionID uuid.UUID  `json:"checkout_session_id"`
@@ -46,6 +51,9 @@ type TicketRow struct {
 	SeatSector        *string    `json:"seat_sector"`
 	SeatRow           *string    `json:"seat_row"`
 	SeatNumber        *string    `json:"seat_number"`
+	// Ordinal is the 0-based ticket index within the checkout session.
+	// Added in migration 0066 (feature #366) for idempotent concurrent issuance.
+	Ordinal int32 `json:"ordinal"`
 }
 
 // scanTicketRow scans a single tickets row into a TicketRow.
@@ -67,6 +75,7 @@ func scanTicketRow(row interface {
 		&r.SeatSector,
 		&r.SeatRow,
 		&r.SeatNumber,
+		&r.Ordinal,
 	)
 	return r, err
 }
@@ -78,12 +87,12 @@ func scanTicketRow(row interface {
 const insertTicket = `-- name: InsertTicket :one
 INSERT INTO tickets (
     checkout_session_id, session_id, tier_id, holder_email,
-    seat_key, seat_sector, seat_row, seat_number
+    seat_key, seat_sector, seat_row, seat_number, ordinal
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING id, checkout_session_id, session_id, tier_id, holder_email,
           status, issued_at, created_at, updated_at,
-          seat_key, seat_sector, seat_row, seat_number`
+          seat_key, seat_sector, seat_row, seat_number, ordinal`
 
 // InsertTicket creates a new ticket row for the given checkout session.
 //
@@ -92,6 +101,8 @@ RETURNING id, checkout_session_id, session_id, tier_id, holder_email,
 // Pass seatKey/seatSector/seatRow/seatNumber = nil for a GA ticket; the
 // SEAT-C3 issuance path (feature #311) populates all four together from
 // the reservation's session_seats row.
+// ordinal is the 0-based ticket index within the checkout session
+// (feature #366). The pair (checkoutSessionID, ordinal) is unique in the DB.
 // Returns the created row including the uuidv7 PK assigned by the database.
 func (q *Queries) InsertTicket(
 	ctx context.Context,
@@ -103,10 +114,11 @@ func (q *Queries) InsertTicket(
 	seatSector *string,
 	seatRow *string,
 	seatNumber *string,
+	ordinal int32,
 ) (TicketRow, error) {
 	row := q.db.QueryRow(ctx, insertTicket,
 		checkoutSessionID, sessionID, tierID, holderEmail,
-		seatKey, seatSector, seatRow, seatNumber,
+		seatKey, seatSector, seatRow, seatNumber, ordinal,
 	)
 	return scanTicketRow(row)
 }
@@ -118,14 +130,14 @@ func (q *Queries) InsertTicket(
 const listTicketsByCheckoutSession = `-- name: ListTicketsByCheckoutSession :many
 SELECT id, checkout_session_id, session_id, tier_id, holder_email,
        status, issued_at, created_at, updated_at,
-       seat_key, seat_sector, seat_row, seat_number
+       seat_key, seat_sector, seat_row, seat_number, ordinal
 FROM   tickets
 WHERE  checkout_session_id = $1
-ORDER BY issued_at ASC, id ASC`
+ORDER BY ordinal ASC, issued_at ASC, id ASC`
 
 // ListTicketsByCheckoutSession returns all tickets issued for the given checkout
-// session, ordered by issuance time then ID. Used as the idempotency check:
-// a non-empty result means tickets were already issued for this checkout.
+// session, ordered by ordinal (ascending). Used as the idempotency check:
+// comparing len(result) to the expected quantity detects partial issuance.
 func (q *Queries) ListTicketsByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID) ([]TicketRow, error) {
 	rows, err := q.db.Query(ctx, listTicketsByCheckoutSession, checkoutSessionID)
 	if err != nil {
@@ -151,7 +163,7 @@ func (q *Queries) ListTicketsByCheckoutSession(ctx context.Context, checkoutSess
 const getTicketByID = `-- name: GetTicketByID :one
 SELECT id, checkout_session_id, session_id, tier_id, holder_email,
        status, issued_at, created_at, updated_at,
-       seat_key, seat_sector, seat_row, seat_number
+       seat_key, seat_sector, seat_row, seat_number, ordinal
 FROM   tickets
 WHERE  id = $1`
 
