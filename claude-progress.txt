@@ -21314,3 +21314,214 @@ and bypass the 5 attempts / 15 min lockout entirely.
 
 Commit: af30ece
 Marked #358 passing. (357/? features passing)
+
+## 2026-07-17 - Feature #360 (PR2-04 BLOCKER): Convert held seats/capacity to sold on checkout completion
+
+### Root cause
+SellReservationSeatsTx and ConfirmCapacity had zero production callers on the
+checkout-completion path. Paid seats stayed 'held' in session_seats and the
+reservation stayed in 'draft' or 'active' state. The TTL worker's
+GetExpiredReservations query selects reservations with state IN ('draft', 'active')
+AND expires_at < now(). When the TTL elapsed, the worker released the held
+seats back to 'available' and decremented capacity_held — even though valid
+tickets already existed. This allowed the same seats to be resold while valid
+tickets existed.
+
+### Fix
+
+**apps/backend/internal/platform/httpserver/hcheckout/checkout_convert.go (NEW)**
+- Added `convertReservationTx` method on `*Handler`
+- Atomically in one transaction:
+  1. Calls `sellReservationSeatsTx` (held → sold for session_seats, GA is no-op)
+  2. Calls `ConfirmCapacity` (capacity_held → capacity_sold in inventory_ledger)
+  3. Calls `UpdateReservationState(id, "converted")` to exclude from TTL worker
+- Idempotent: skips if reservation already in 'converted', 'expired', or 'cancelled' state
+- Safe nil guard: returns nil if pool/queries not wired (unit test servers)
+
+**apps/backend/internal/platform/httpserver/hcheckout/checkout.go (MODIFIED)**
+- Free checkout branch: calls `convertReservationTx` after `CompleteFreeCheckoutSession`
+- Paid checkout branch: calls `convertReservationTx` after `CompleteCheckoutSession`
+- Both branches: non-fatal error handling (checkout state already persisted)
+
+**apps/backend/internal/platform/httpserver/hcheckout/payment_intents.go (MODIFIED)**
+- Payment webhook when `payment.succeeded`: calls `convertReservationTx` before `issueTickets`
+- Non-fatal error handling (payment state already persisted)
+- Idempotent for webhook replays (already-converted reservations are skipped)
+
+**apps/backend/internal/platform/httpserver/checkout_pr2_04_360_test.go (NEW)**
+- 8 structural unit tests verifying:
+  - GetExpiredReservations SQL excludes 'converted' state
+  - UpdateReservationState supports 'converted' target
+  - ConfirmCapacity present in querier interface
+  - SellReservationSeatsTx exported from hcheckout
+  - checkout.go calls convertReservationTx on both free and paid completion
+  - payment_intents.go calls convertReservationTx on payment.succeeded
+  - checkout_convert.go implements the 3-step atomic transaction
+  - 'converted' is a terminal state in validReservationTransitions
+
+**apps/backend/internal/platform/httpserver/checkout_pr2_04_360_integration_test.go (NEW)**
+- Integration test (//go:build integration) that:
+  1. Finds valid session with inventory_ledger
+  2. Inserts reservation with past expires_at (TTL worker would pick it up)
+  3. Manually applies ConfirmCapacity + UpdateReservationState('converted')
+  4. Verifies GetExpiredReservations does NOT return 'converted' reservation
+  5. Runs ProcessExpiredReservations (TTL worker)
+  6. Asserts reservation is still 'converted' after worker ran
+  7. Asserts inventory_sold is preserved
+
+**apps/backend/internal/platform/httpserver/testfilehelpers_test.go (MODIFIED)**
+- Added checkout_convert.go → hcheckout/checkout_convert.go mapping
+
+### Key invariant
+GetExpiredReservations SQL: `WHERE state IN ('draft', 'active') AND expires_at < now()`
+A 'converted' reservation (checkout completed) is NEVER in this set.
+The TTL worker can NEVER release capacity for a paid checkout.
+
+### Verification
+Static analysis verified:
+- All imports correct and used
+- slog.Int32 → slog.Int(int(qty)) (fixed compile issue)
+- seatSellQuerier interface satisfied by *gen.Queries
+- gen.New(tx) accepts pgx.Tx via DBTX interface
+- All method signatures match gen/*.go generated code
+
+Commit: 11c9451
+Marked #360 passing. (359/380 features passing)
+
+## 2026-07-17 - Feature #361 (PR2-05 BLOCKER): Add over-refund and double-refund protection
+
+### Status: PASSING
+
+### What was found
+The core implementation was already complete in a previous session:
+- `HandleCreateRefund`: wrapped in BeginTx, locks PI row with GetPaymentIntentByIDForUpdate,
+  validates state='succeeded', currency match, amount <= remaining (via SumNonFailedRefundsByIntent)
+- `HandleApproveRefund`: also wrapped in BeginTx with FOR UPDATE lock, re-validates all three
+  constraints before approving, uses refundNeedsManualReviewWithPI to avoid double PI lookup
+- SQL gen: GetPaymentIntentByIDForUpdate (FOR UPDATE), SumNonFailedRefundsByIntent (SUM excluding failed/rejected)
+- Querier interface: both methods declared
+
+### What needed fixing
+`refunds_361_test.go` referenced `newRecorder()` and `newRequest()` helpers that did not
+exist anywhere in the httpserver package. The file imported only "strings" and "testing"
+but called helpers needing "net/http" and "net/http/httptest".
+
+### Fix
+Added `newRecorder()` and `newRequest()` helper functions directly to `refunds_361_test.go`
+and added the necessary imports. These are thin wrappers:
+- `newRecorder()` → `httptest.NewRecorder()`
+- `newRequest(method, path, body)` → `httptest.NewRequest(...)` with Content-Type: application/json
+
+### Verification
+- All 14 TestRefund361_* tests pass
+- `go test ./apps/backend/...` passes
+
+Commit: e79cc26
+Marked #361 passing.
+
+## 2026-07-17 - Feature #365 (PR2-09 MAJOR): Guard reservation state transitions against races
+
+### Problem
+UpdateReservationState issued an unconditional `UPDATE WHERE id=$1` with no state guard.
+Concurrent cancels, or a cancel racing the TTL worker, each released capacity and understated
+holds, enabling oversell.
+
+Race scenario:
+1. Cancel reads state='active', validates transition
+2. TTL poll commits (releases SKIP LOCKED)
+3. Cancel begins tx
+4. TTL expire tx runs: ReleaseCapacity + UpdateReservationState('expired') commits
+5. Cancel tx: UpdateReservationState('cancelled') - overwrites 'expired'!
+6. Cancel tx: ReleaseCapacity - double release! capacity_held goes negative → oversell
+
+### Fix
+
+**apps/backend/internal/adapters/postgres/queries/reservations.sql**
+- Added UpdateReservationStateGuarded query: UPDATE ... WHERE id=$1 AND state=$2
+- Returns pgx.ErrNoRows when row not found OR state guard failed (race lost)
+- 3 params: id, expectedState, newState (new state is $3)
+
+**apps/backend/internal/adapters/postgres/gen/reservations.sql.go**
+- Added UpdateReservationStateGuarded method on *Queries
+- const updateReservationStateGuarded with the guarded SQL
+
+**apps/backend/internal/adapters/postgres/gen/querier.go**
+- Added UpdateReservationStateGuarded to Querier interface
+
+**apps/backend/internal/platform/httpserver/hcheckout/reservation_processor.go**
+- Added "errors" import
+- expireReservation now:
+  1. Re-reads row inside per-item tx (GetReservationByID)
+  2. If state != draft/active → skip (already handled by concurrent cancel)
+  3. Attempts UpdateReservationStateGuarded(id, current.State, "expired")
+  4. If ErrNoRows → lost race → skip capacity release, return nil
+  5. Only calls ReleaseCapacity after winning the guarded transition
+
+**apps/backend/internal/platform/httpserver/hcheckout/reservations.go (HandleCancelReservation)**
+- Uses UpdateReservationStateGuarded(id, current.State, "cancelled") inside tx
+- Returns 409 Conflict with code "reservation.state_changed" when ErrNoRows
+- ReleaseCapacity is now AFTER the guarded transition (only if won)
+
+**apps/backend/internal/platform/httpserver/hcheckout/hold_api.go (ReleaseHold)**
+- Uses UpdateReservationStateGuarded(id, current.State, "cancelled")
+- Returns NotReleasableError when ErrNoRows (race lost)
+- ReleaseCapacity is now AFTER the guarded transition
+
+**apps/backend/internal/platform/httpserver/reservation_365_test.go (NEW)**
+- 8 test groups covering all invariants:
+  Step 1: SQL query has guarded WHERE clause
+  Step 2: Generated Go method with correct signature
+  Step 3: Querier interface includes guarded variant
+  Step 4: expireReservation re-reads + uses guarded update + capacity after
+  Step 5: HandleCancelReservation uses guarded update + 409 on race
+  Step 6: ReleaseHold uses guarded update + capacity after
+  Step 7: reservation_processor.go imports errors
+  Step 8: All 3 race-sensitive callers use guarded variant
+
+**apps/backend/internal/platform/httpserver/testfilehelpers_test.go**
+- Added "hold_api.go" to resolveFileInRepo switch
+
+### Verification
+- go build ./... passes (no errors)
+- go test ./... passes (all 40+ packages, 0 failures)
+- All 8 TestReservation365_* test groups PASS
+
+Commit: d28e4cf
+
+## 2026-07-17 - Feature #364 (PR2-08 MAJOR): Derive checkout pricing from reservation
+
+### Root cause
+HandleConfirmCheckout used client-supplied tier/quantity for pricing with no
+cross-check against the linked reservation. A buyer holding 10 VIP seats could
+send confirm with a cheap tier and quantity=1, getting VIP tickets at cheap price.
+
+### Fix
+
+**hcheckout/checkout.go (MAJOR REWRITE of HandleConfirmCheckout)**
+
+New confirm flow:
+1. Load checkout session by URL id to get reservation_id
+2. Load reservation to get authoritative session_id, tier_id, quantity, org_id
+3. Cross-validate any client-provided fields; return 422 pricing_mismatch if mismatch
+4. Three pricing paths (all using reservation data):
+   a. Seated: list seats, buildSeatedPricingLines, ComputePricingLines
+   b. Multi-tier GA (TierID == nil): list GA items, ComputePricingLines
+   c. Single-tier GA: look up tier by reservation.TierID, ComputePricing(reservation.Quantity)
+5. Guard h.reservationQueries == nil, return 503 dependency.reservation_unavailable
+6. Extracted applyPromoCode helper to remove duplication across 3 paths
+
+New error codes: checkout.pricing_mismatch (422), checkout.reservation_not_found (422),
+checkout.reservation_lookup_failed (500), checkout.pricing_unavailable (422),
+dependency.reservation_unavailable (503)
+
+**checkout_pr2_08_364_test.go (NEW)** - 12 structural + HTTP shape tests
+**openapi/openapi.yaml (MODIFIED)** - ConfirmCheckoutRequest fields now optional
+
+### Verification
+  go test ./apps/backend/... all 43 packages PASS
+  12/12 TestPR2_08_364_* tests PASS
+  go build ./apps/backend/... zero errors
+
+Commit: ecf2e3a
+Marked #364 passing.
+Marked #365 passing. (362/380 features passing)
