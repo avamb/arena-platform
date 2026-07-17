@@ -2,6 +2,64 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+## 2026-07-17 - Feature #357 (PR2-01 BLOCKER): Enforce org membership on every org-scoped route
+
+### Objective
+Close cross-tenant authorization bypass: an org_admin in Org A could read/mutate
+Org B's bank accounts, payment configs, channels, venues, and org settings via
+PATCH /v1/organizations/{orgB}/... because RBAC check takes no org_id and roles
+were unioned across all orgs.
+
+### Root cause
+`DBChecker.Check()` resolves roles across ALL organizations. When actor has
+`org_admin` role in Org A, the RBAC check for `org.update` passes for ANY org
+path. Handlers used path org_id (Org B) without verifying actor's membership.
+
+### Fix implemented
+
+**New SQL query**: `GetActiveRolesForUserInOrg(ctx, userID, orgID)` added to:
+- `apps/backend/internal/adapters/postgres/queries/memberships.sql`
+- `apps/backend/internal/adapters/postgres/gen/memberships.sql.go`
+- `apps/backend/internal/adapters/postgres/gen/querier.go`
+
+Scopes membership roles by org_id; global user_roles (org_id IS NULL) still apply.
+
+**New orgauth.go files** (one per affected handler package):
+- `hbankaccounts/orgauth.go` — `actorIsMemberOfOrg` + `requireOrgMembership`
+- `hpayments/orgauth.go` — same pattern
+- `hcatalog/orgauth.go` — same pattern (q param for multi-query struct)
+- `hiam/orgauth.go` — same pattern
+
+**Handler struct updates**:
+- `hbankaccounts`, `hpayments`, `hcatalog` gained `membershipQueries *gen.Queries`
+  field + `WithMembershipQueries()` builder method
+
+**Membership check insertions** (14 handler methods across 6 files):
+- `hbankaccounts`: List, Create, Update, Delete bank accounts → 403 if not member
+- `hpayments`: List, Get, Create, Update, Delete payment configs → 403 if not member
+- `hcatalog/channels`: all 5 CRUD endpoints → 403 if not member
+- `hcatalog/venues`: org-scoped only (Create, ListByOrg, Update, Delete) → 403
+- `hiam/orgs`: HandleUpdateOrg → 403 if not member of target org
+
+**Shim updates**: bank_accounts_shims.go, payments_shims.go, catalog_shims.go
+call `.WithMembershipQueries(s.membershipQueries)` in production wiring.
+
+**Test file**: `pr2_01_org_isolation_test.go` — 17 tests verifying HTTP 403
+when non-member actor accesses any affected surface. Uses emptyMembershipDBTX
+(returns empty membership rows) to simulate no org membership.
+
+### Additional fix
+Restored `users` import in `hauth/verify.go` that was removed after PR2-03
+agent added `users.TokenHash` call. Fixed `emptyRows.Conn()` missing method.
+
+### Verification
+  go build ./apps/backend/...          OK (exit 0)
+  go test -run TestPR201 ./apps/backend/internal/platform/httpserver/  PASS
+  go test -run "TestBankAccount|TestChannel|TestVenue|TestPayment|TestOrg" ./... PASS
+
+Commits: d05e609, 6710660
+Marked #357 passing. (357/380 features passing)
+
 ## 2026-07-15 - Feature #348 (PR-04): Make outbox delivery explicit and fail-closed
 
 Implemented PR-04: fail-closed outbox delivery with explicit mode enforcement.
