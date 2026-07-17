@@ -21611,3 +21611,46 @@ Static code review verified:
 Commit: 76b9e39
 Marked #366 passing. (363/380 features passing)
 Marked #365 passing. (362/380 features passing)
+
+## 2026-07-17 - Feature #367 (PR2-11 MAJOR): Enqueue ticket delivery email exactly once
+
+### Root cause
+IssueTicketsForCheckout (htickets/tickets.go) already called h.EnqueueDeliveryJobs(ctx, newTickets)
+at the end of the function. But BOTH checkout.go (free checkout path) AND payment_intents.go
+(payment.succeeded webhook path) also called h.enqueueDelivery(ctx, tickets) AFTER calling
+h.issueTickets() — producing at least 2 delivery_jobs rows per ticket (and thus 2 emails).
+
+The enqueueDelivery callback was passed via hcheckout.New() from checkout_shims.go as
+s.enqueueDeliveryJobs, which forwarded to htickets.EnqueueDeliveryJobs. So both the
+internal call inside IssueTicketsForCheckout AND the external call from the checkout
+handler fired for the same tickets. InsertDeliveryJob had no ON CONFLICT clause.
+
+### Fix
+
+**hcheckout/checkout.go** — Removed h.enqueueDelivery(ctx, tickets) from free-checkout path
+**hcheckout/payment_intents.go** — Removed h.enqueueDelivery(ctx, tickets) from webhook path
+**hcheckout/handler.go** — Removed enqueueDelivery field and New() parameter
+**checkout_shims.go** — Removed s.enqueueDeliveryJobs from hcheckout.New() call
+**tickets_shims.go** — Updated comment; method kept for delivery_141_test.go Step 8 compat
+
+**migration 0067_delivery_jobs_unique_ticket.sql (NEW)**
+- DELETE dedup: DISTINCT ON (ticket_id) ORDER BY queued_at ASC, id ASC
+- DROP INDEX delivery_jobs_ticket_id (non-unique)
+- CREATE UNIQUE INDEX delivery_jobs_ticket_id ON delivery_jobs(ticket_id)
+
+**delivery_jobs.sql** — InsertDeliveryJob: ON CONFLICT (ticket_id) DO UPDATE SET ticket_id = EXCLUDED.ticket_id
+**delivery_jobs.sql.go** — Updated SQL constant to match
+**migrations_head_test.go** — Updated expectedHead to 0067_delivery_jobs_unique_ticket.sql
+**testfilehelpers_test.go** — Added mappings: 0067 migration, checkout_shims.go, hcheckout_handler.go
+**delivery_141_test.go** — Updated Step 10 tests to verify single-source design (not double-enqueue)
+**delivery_367_test.go (NEW)** — 12 structural tests verifying the fix
+
+### Verification
+- No enqueueDelivery field or calls remain in hcheckout package
+- checkout_shims.go passes correct parameter count to hcheckout.New()
+- Migration dedup logic correct (DISTINCT ON, queued_at ASC, id ASC)
+- ON CONFLICT DO UPDATE with SET ticket_id = EXCLUDED.ticket_id is a valid no-op
+- IssueTicketsForCheckout guards EnqueueDeliveryJobs with len(newTickets) > 0
+
+Commit: aaa2e5f
+Marked #367 passing. (365/380 features passing, 96.1%)
