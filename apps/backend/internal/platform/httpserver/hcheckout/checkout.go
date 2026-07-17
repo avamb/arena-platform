@@ -518,7 +518,7 @@ func (h *Handler) HandleConfirmCheckout(w http.ResponseWriter, r *http.Request) 
 			seatedSubtotal += l.UnitPrice * int64(l.Quantity)
 		}
 
-		discount, promoCodeID, ok := h.applyPromoCode(ctx, w, r, req.PromoCode, orgID, seatedSubtotal)
+		discount, promoCodeID, ok := h.applyPromoCode(ctx, w, r, req.PromoCode, orgID, checkoutSession.UserID, seatedSubtotal)
 		if !ok {
 			return
 		}
@@ -592,7 +592,7 @@ func (h *Handler) HandleConfirmCheckout(w http.ResponseWriter, r *http.Request) 
 			}
 		}
 
-		discount, promoCodeID, ok := h.applyPromoCode(ctx, w, r, req.PromoCode, orgID, gaSubtotal)
+		discount, promoCodeID, ok := h.applyPromoCode(ctx, w, r, req.PromoCode, orgID, checkoutSession.UserID, gaSubtotal)
 		if !ok {
 			return
 		}
@@ -687,7 +687,7 @@ func (h *Handler) HandleConfirmCheckout(w http.ResponseWriter, r *http.Request) 
 
 	// ── Optionally validate promo code ───────────────────────────────────────
 
-	discount, promoCodeID, ok := h.applyPromoCode(ctx, w, r, req.PromoCode, orgID, subtotal)
+	discount, promoCodeID, ok := h.applyPromoCode(ctx, w, r, req.PromoCode, orgID, checkoutSession.UserID, subtotal)
 	if !ok {
 		return
 	}
@@ -733,12 +733,20 @@ func (h *Handler) HandleConfirmCheckout(w http.ResponseWriter, r *http.Request) 
 // applyPromoCode validates the promo code (if provided) against the given
 // subtotal and returns (discount, promoCodeID, ok). When ok is false the
 // handler has already written an error response and the caller must return.
+//
+// PR2-12 (feature #368): also enforces max_uses and max_uses_per_customer by
+// querying the promo_code_redemptions table. This is a soft check (no row lock)
+// that prevents the most common over-use scenario. The hard concurrency-safe
+// check happens at checkout COMPLETION inside completeCheckoutWithPromoTx.
+//
+// userID is used for per-customer limit enforcement; pass nil for anonymous users.
 func (h *Handler) applyPromoCode(
 	ctx context.Context,
 	w http.ResponseWriter,
 	r *http.Request,
 	promoCode *string,
 	orgID uuid.UUID,
+	userID *uuid.UUID,
 	subtotal int64,
 ) (discount int64, promoCodeID *uuid.UUID, ok bool) {
 	if promoCode == nil || *promoCode == "" || h.promoQueries == nil {
@@ -762,6 +770,45 @@ func (h *Handler) applyPromoCode(
 		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(errCode, "promo code is not applicable", r))
 		return 0, nil, false
 	}
+
+	// ── PR2-12: Soft check — total redemption limit ───────────────────────────
+	if promoRow.MaxUses != nil {
+		count, countErr := h.promoQueries.CountPromoCodeRedemptions(ctx, promoRow.ID)
+		if countErr != nil {
+			h.logger.Error("checkout: promo redemption count failed",
+				slog.String("promo_id", promoRow.ID.String()),
+				slog.String("error", countErr.Error()),
+			)
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("promo.count_failed", "failed to count redemptions", r))
+			return 0, nil, false
+		}
+		if count >= *promoRow.MaxUses {
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
+				"promo.exhausted", "this promo code has reached its maximum number of uses", r,
+			))
+			return 0, nil, false
+		}
+	}
+
+	// ── PR2-12: Soft check — per-customer limit ───────────────────────────────
+	if promoRow.MaxUsesPerCustomer != nil && userID != nil {
+		userCount, countErr := h.promoQueries.CountUserRedemptions(ctx, promoRow.ID, *userID)
+		if countErr != nil {
+			h.logger.Error("checkout: promo user redemption count failed",
+				slog.String("promo_id", promoRow.ID.String()),
+				slog.String("error", countErr.Error()),
+			)
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("promo.count_failed", "failed to count user redemptions", r))
+			return 0, nil, false
+		}
+		if userCount >= *promoRow.MaxUsesPerCustomer {
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
+				"promo.per_customer_limit", "you have already used this promo code the maximum number of times", r,
+			))
+			return 0, nil, false
+		}
+	}
+
 	pid := promoRow.ID
 	return d, &pid, true
 }
@@ -829,8 +876,44 @@ func (h *Handler) HandleCompleteCheckout(w http.ResponseWriter, r *http.Request)
 	// When no payment_intent_id is supplied, attempt the free-checkout
 	// completion path.  The DB query only succeeds if the session's total = 0.
 	if req.PaymentIntentID == "" {
-		cs, err := h.checkoutQueries.CompleteFreeCheckoutSession(ctx, id)
+		// ── PR2-12 (feature #368): Pre-load session for promo redemption ──────
+		// Fetch the session INSIDE the branch (after all validations) so the pre-load
+		// only runs when we're actually about to complete. On any error we fall back
+		// gracefully: promoCodeID stays nil and the completion uses the plain path.
+		var (
+			promoCodeIDForComplete   *uuid.UUID
+			userIDForComplete        *uuid.UUID
+			reservationIDForComplete uuid.UUID
+			discountForComplete      int64
+			subtotalForComplete      int64
+		)
+		if preCS, preErr := h.checkoutQueries.GetCheckoutSessionByID(ctx, id); preErr == nil {
+			promoCodeIDForComplete = preCS.PromoCodeID
+			userIDForComplete = preCS.UserID
+			reservationIDForComplete = preCS.ReservationID
+			if preCS.Discount != nil {
+				discountForComplete = *preCS.Discount
+			}
+			if preCS.Subtotal != nil {
+				subtotalForComplete = *preCS.Subtotal
+			}
+		}
+
+		// PR2-12: complete + promo redemption insert in one transaction when a
+		// promo code was applied (completeCheckoutWithPromoTx falls back to the
+		// plain CompleteFreeCheckoutSession when promoCodeIDForComplete is nil).
+		cs, err := h.completeCheckoutWithPromoTx(
+			ctx, w, r,
+			promoCodeIDForComplete, userIDForComplete, reservationIDForComplete,
+			discountForComplete, subtotalForComplete,
+			func(txQ *gen.Queries) (gen.CheckoutSessionRow, error) {
+				return txQ.CompleteFreeCheckoutSession(ctx, id)
+			},
+		)
 		if err != nil {
+			if errors.Is(err, errPromoExhausted) || errors.Is(err, errPromoPerCustomerLimit) {
+				return // 409 response already written by completeCheckoutWithPromoTx
+			}
 			if errors.Is(err, pgx.ErrNoRows) {
 				// Session not found, not pricing_confirmed, or total != 0.
 				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
@@ -900,8 +983,46 @@ func (h *Handler) HandleCompleteCheckout(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	cs, err := h.checkoutQueries.CompleteCheckoutSession(ctx, id, req.PaymentIntentID, req.PaymentProvider)
+	// ── PR2-12 (feature #368): Pre-load session for paid promo redemption ────
+	// Fetch the session INSIDE the branch (after all validations). On any
+	// error we fall back gracefully: promoCodeID stays nil and the completion
+	// uses the plain CompleteCheckoutSession (non-transactional) path.
+	var (
+		promoCodeIDForComplete   *uuid.UUID
+		userIDForComplete        *uuid.UUID
+		reservationIDForComplete uuid.UUID
+		discountForComplete      int64
+		subtotalForComplete      int64
+	)
+	if preCS, preErr := h.checkoutQueries.GetCheckoutSessionByID(ctx, id); preErr == nil {
+		promoCodeIDForComplete = preCS.PromoCodeID
+		userIDForComplete = preCS.UserID
+		reservationIDForComplete = preCS.ReservationID
+		if preCS.Discount != nil {
+			discountForComplete = *preCS.Discount
+		}
+		if preCS.Subtotal != nil {
+			subtotalForComplete = *preCS.Subtotal
+		}
+	}
+
+	// PR2-12: complete + promo redemption insert in one transaction when a
+	// promo code was applied (completeCheckoutWithPromoTx falls back to the
+	// plain CompleteCheckoutSession when promoCodeIDForComplete is nil).
+	piID := req.PaymentIntentID
+	piProvider := req.PaymentProvider
+	cs, err := h.completeCheckoutWithPromoTx(
+		ctx, w, r,
+		promoCodeIDForComplete, userIDForComplete, reservationIDForComplete,
+		discountForComplete, subtotalForComplete,
+		func(txQ *gen.Queries) (gen.CheckoutSessionRow, error) {
+			return txQ.CompleteCheckoutSession(ctx, id, piID, piProvider)
+		},
+	)
 	if err != nil {
+		if errors.Is(err, errPromoExhausted) || errors.Is(err, errPromoPerCustomerLimit) {
+			return // 409 response already written by completeCheckoutWithPromoTx
+		}
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 				"checkout.invalid_transition",

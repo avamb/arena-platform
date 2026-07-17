@@ -331,3 +331,24 @@ func (q *Queries) InsertPromoCodeRedemption(
 	)
 	return scanPromoCodeRedemptionRow(row)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GetPromoCodeByIDForUpdate
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getPromoCodeByIDForUpdate = `-- name: GetPromoCodeByIDForUpdate :one
+SELECT id, org_id, code, discount_type, discount_value, applies_to_tier_ids,
+       max_uses, max_uses_per_customer, valid_from, valid_until, min_order_amount,
+       status, created_at, updated_at, deleted_at
+FROM promo_codes
+WHERE id = $1 AND deleted_at IS NULL
+FOR UPDATE`
+
+// GetPromoCodeByIDForUpdate fetches and exclusively locks an active promo code row
+// by its UUID primary key. Must be called inside an explicit transaction.
+// The lock serialises concurrent redemption count-checks and inserts (feature #368).
+// Returns pgx.ErrNoRows when not found or already soft-deleted.
+func (q *Queries) GetPromoCodeByIDForUpdate(ctx context.Context, id uuid.UUID) (PromoCodeRow, error) {
+	row := q.db.QueryRow(ctx, getPromoCodeByIDForUpdate, id)
+	return scanPromoCodeRow(row)
+}

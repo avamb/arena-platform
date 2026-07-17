@@ -68,3 +68,14 @@ SELECT COUNT(*)::int FROM promo_code_redemptions WHERE promo_code_id = $1 AND us
 INSERT INTO promo_code_redemptions (promo_code_id, user_id, reservation_id, discount_amount, order_amount)
 VALUES ($1, $2, $3, $4, $5)
 RETURNING id, promo_code_id, user_id, reservation_id, redeemed_at, discount_amount, order_amount;
+
+-- name: GetPromoCodeByIDForUpdate :one
+-- Lock the promo code row exclusively so concurrent checkout completions
+-- serialise their redemption count-check and insert (feature #368 — PR2-12).
+-- Must be called inside an explicit transaction; the lock is released at COMMIT/ROLLBACK.
+SELECT id, org_id, code, discount_type, discount_value, applies_to_tier_ids,
+       max_uses, max_uses_per_customer, valid_from, valid_until, min_order_amount,
+       status, created_at, updated_at, deleted_at
+FROM promo_codes
+WHERE id = $1 AND deleted_at IS NULL
+FOR UPDATE;

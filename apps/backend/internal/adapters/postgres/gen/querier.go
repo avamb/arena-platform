@@ -224,6 +224,9 @@ type Querier interface {
 	CountPromoCodeRedemptions(ctx context.Context, promoCodeID uuid.UUID) (int32, error)
 	CountUserRedemptions(ctx context.Context, promoCodeID, userID uuid.UUID) (int32, error)
 	InsertPromoCodeRedemption(ctx context.Context, promoCodeID uuid.UUID, userID, reservationID *uuid.UUID, discountAmount, orderAmount int64) (PromoCodeRedemptionRow, error)
+	// GetPromoCodeByIDForUpdate locks the promo row FOR UPDATE inside an explicit
+	// transaction, serialising concurrent redemption count-checks (feature #368 — PR2-12).
+	GetPromoCodeByIDForUpdate(ctx context.Context, id uuid.UUID) (PromoCodeRow, error)
 
 	// Tickets — issued entitlements after payment.succeeded or free checkout (feature #139)
 	// ordinal (feature #366): 0-based ticket index within the checkout session;

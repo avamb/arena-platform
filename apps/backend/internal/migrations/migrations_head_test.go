@@ -40,7 +40,7 @@ func TestHead_NumericPrefixPositive(t *testing.T) {
 }
 
 func TestHead_KnownCurrentHead(t *testing.T) {
-	const expectedHead = "0068_outbox_poison_safe.sql" // updated: 0068 added by outbox-poison agent
+	const expectedHead = "0069_worker_stale_claim_reaper.sql" // updated: 0069 added by stale-claim reaper agent
 	head, err := migrations.Head()
 	if err != nil {
 		t.Fatalf("Head() returned unexpected error: %v", err)
