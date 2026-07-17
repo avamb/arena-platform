@@ -8,6 +8,12 @@ bin/
 dist/
 build/
 
+# Root-level compiled Go binaries (built inside Docker; never commit to VCS)
+/arena-api
+/arena-worker
+/arena-migrate
+/arena-healthcheck
+
 # Test artifacts
 *.test
 *.out

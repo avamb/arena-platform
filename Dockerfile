@@ -29,14 +29,16 @@ COPY .env.example ./
 # Copy the rest of the source tree.
 COPY apps ./apps
 
-# Materialize go.sum if missing (foundation milestone — first real deps) then
-# build all four binaries. Splitting this into one RUN keeps the build cache
-# semantics simple for the scaffold phase.
-RUN go mod tidy \
- && go build -ldflags="-s -w" -o /out/arena-api         ./apps/backend/cmd/arena-api         \
- && go build -ldflags="-s -w" -o /out/arena-worker      ./apps/backend/cmd/arena-worker      \
- && go build -ldflags="-s -w" -o /out/arena-migrate     ./apps/backend/cmd/arena-migrate     \
- && go build -ldflags="-s -w" -o /out/arena-healthcheck ./apps/backend/cmd/arena-healthcheck
+# Download and verify modules against go.sum (reproducible — no network
+# access is required at compile time; -mod=readonly enforces that no changes
+# to go.mod/go.sum can occur during the build).
+RUN go mod download && go mod verify
+
+# Build all four binaries with -mod=readonly to guarantee reproducibility.
+RUN go build -mod=readonly -ldflags="-s -w" -o /out/arena-api         ./apps/backend/cmd/arena-api         \
+ && go build -mod=readonly -ldflags="-s -w" -o /out/arena-worker      ./apps/backend/cmd/arena-worker      \
+ && go build -mod=readonly -ldflags="-s -w" -o /out/arena-migrate     ./apps/backend/cmd/arena-migrate     \
+ && go build -mod=readonly -ldflags="-s -w" -o /out/arena-healthcheck ./apps/backend/cmd/arena-healthcheck
 
 # ---- Stage 2: runtime ----
 FROM gcr.io/distroless/static-debian12:nonroot

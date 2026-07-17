@@ -181,13 +181,15 @@ func (q *inMemoryQueue) MarkDone(_ context.Context, jobID string) error {
 	return fmt.Errorf("inMemoryQueue: job %s not found", jobID)
 }
 
-// MarkRetry implements Queue.
-func (q *inMemoryQueue) MarkRetry(_ context.Context, jobID, lastErr string) error {
+// MarkRetry implements Queue. scheduledAt sets the next earliest pick-up time
+// so the worker only re-claims the row after the backoff window has elapsed.
+func (q *inMemoryQueue) MarkRetry(_ context.Context, jobID, lastErr string, scheduledAt time.Time) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	for _, r := range q.rows {
 		if r.id == jobID {
 			r.status = "pending"
+			r.scheduledAt = scheduledAt
 			r.claimedAt = nil
 			r.claimedBy = ""
 			r.lastError = &lastErr
@@ -195,6 +197,24 @@ func (q *inMemoryQueue) MarkRetry(_ context.Context, jobID, lastErr string) erro
 		}
 	}
 	return fmt.Errorf("inMemoryQueue: job %s not found", jobID)
+}
+
+// ReclaimStale implements Queue. It resets rows whose status='claimed' and
+// claimedAt is older than now()-visibilityTimeout back to 'pending'.
+func (q *inMemoryQueue) ReclaimStale(_ context.Context, visibilityTimeout time.Duration) (int, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	cutoff := time.Now().Add(-visibilityTimeout)
+	n := 0
+	for _, r := range q.rows {
+		if r.status == "claimed" && r.claimedAt != nil && r.claimedAt.Before(cutoff) {
+			r.status = "pending"
+			r.claimedAt = nil
+			r.claimedBy = ""
+			n++
+		}
+	}
+	return n, nil
 }
 
 // MarkFailed implements Queue — copies to dead letter and sets status='failed'.

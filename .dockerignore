@@ -86,6 +86,11 @@ arena-healthcheck
 .gocache;C
 .gomodcache;C
 
+# ----- Windows PowerShell path-mishap artifacts (*;C suffix) -----
+# Stray directories like `.gocache;C` or `Projectsarena_new;C` produced
+# by broken `cd C:\...` commands in PowerShell; never useful in an image.
+**/*;C
+
 # ----- Documentation and research directories ---------------
 # Large trees of product docs, legacy screenshots, and specs
 # that are not required in any Docker image.

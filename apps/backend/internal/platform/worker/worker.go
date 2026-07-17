@@ -122,13 +122,24 @@ type Queue interface {
 	MarkDone(ctx context.Context, jobID string) error
 
 	// MarkRetry resets the row to status='pending', stores lastErr in
-	// last_error, and clears claimed_at / claimed_by so the next worker
-	// poll picks it up again.
-	MarkRetry(ctx context.Context, jobID, lastErr string) error
+	// last_error, clears claimed_at / claimed_by, and sets scheduled_at
+	// to scheduledAt so the next worker poll only picks it up after the
+	// backoff window has elapsed.
+	MarkRetry(ctx context.Context, jobID, lastErr string, scheduledAt time.Time) error
 
 	// MarkFailed sets status='failed' on the row and inserts a
 	// corresponding record in worker_dead_letter.
 	MarkFailed(ctx context.Context, job *Job, lastErr string) error
+
+	// ReclaimStale finds every row with status='claimed' whose claimed_at
+	// is older than now()-visibilityTimeout and resets it to
+	// status='pending', clearing claimed_at and claimed_by. It returns the
+	// number of rows reclaimed so callers can log the event.
+	//
+	// This is the stale-claim reaper: it recovers jobs that were claimed
+	// by a worker that subsequently crashed or was OOM-killed before it
+	// could call MarkDone or MarkRetry.
+	ReclaimStale(ctx context.Context, visibilityTimeout time.Duration) (int, error)
 }
 
 // PGQueue implements Queue against the worker_jobs PostgreSQL table.
@@ -228,23 +239,54 @@ func (q *PGQueue) MarkDone(ctx context.Context, jobID string) error {
 	return nil
 }
 
-// MarkRetry implements Queue by resetting the row to status='pending'.
-func (q *PGQueue) MarkRetry(ctx context.Context, jobID, lastErr string) error {
+// MarkRetry implements Queue by resetting the row to status='pending' and
+// setting scheduled_at to scheduledAt so the next worker poll only picks it
+// up after the backoff window has elapsed.
+func (q *PGQueue) MarkRetry(ctx context.Context, jobID, lastErr string, scheduledAt time.Time) error {
 	updCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	const retrySQL = `
 		UPDATE worker_jobs
-		   SET status      = 'pending',
-		       last_error  = $2,
-		       claimed_at  = NULL,
-		       claimed_by  = NULL
+		   SET status       = 'pending',
+		       last_error   = $2,
+		       scheduled_at = $3,
+		       claimed_at   = NULL,
+		       claimed_by   = NULL
 		 WHERE id = $1::uuid
 	`
-	if _, err := q.pool.Exec(updCtx, retrySQL, jobID, lastErr); err != nil {
+	if _, err := q.pool.Exec(updCtx, retrySQL, jobID, lastErr, scheduledAt); err != nil {
 		return fmt.Errorf("schedule retry: %w", err)
 	}
 	return nil
+}
+
+// ReclaimStale implements Queue by resetting every row with status='claimed'
+// whose claimed_at is older than now()-visibilityTimeout back to
+// status='pending', clearing claimed_at and claimed_by.
+func (q *PGQueue) ReclaimStale(ctx context.Context, visibilityTimeout time.Duration) (int, error) {
+	updCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	// Use a Go-side cutoff (now - timeout) rather than a PostgreSQL interval
+	// expression so the worker process clock drives the decision — the same
+	// clock that set claimed_at. This also avoids casting a Go duration to a
+	// SQL interval string.
+	cutoff := time.Now().Add(-visibilityTimeout)
+
+	const reclaimSQL = `
+		UPDATE worker_jobs
+		   SET status     = 'pending',
+		       claimed_at = NULL,
+		       claimed_by = NULL
+		 WHERE status     = 'claimed'
+		   AND claimed_at < $1
+	`
+	tag, err := q.pool.Exec(updCtx, reclaimSQL, cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("reclaim stale: %w", err)
+	}
+	return int(tag.RowsAffected()), nil
 }
 
 // MarkFailed implements Queue by atomically inserting into worker_dead_letter
@@ -326,6 +368,19 @@ type Options struct {
 	// racing against the timer even on a heavily loaded container.
 	RetryBackoff time.Duration
 
+	// StaleClaimTimeout is how long a row may remain in status='claimed'
+	// before the reaper considers it stranded and resets it to 'pending'.
+	// A worker that crashes or is OOM-killed between ClaimNext and
+	// MarkDone/MarkRetry leaves a permanently-claimed row without this
+	// mechanism. Defaults to 5 minutes when zero or negative.
+	StaleClaimTimeout time.Duration
+
+	// StaleClaimInterval is how often the reaper goroutine scans for
+	// stranded claimed rows. Defaults to half of StaleClaimTimeout when
+	// zero or negative (so a stuck row is recovered within at most 1.5×
+	// StaleClaimTimeout of the crash).
+	StaleClaimInterval time.Duration
+
 	// ShutdownTimeout bounds the graceful Stop path. After this duration
 	// Stop returns even if a handler is still running. Defaults to 20s.
 	ShutdownTimeout time.Duration
@@ -334,13 +389,15 @@ type Options struct {
 // Worker polls the worker_jobs table and dispatches claimed rows to the
 // registered handlers.
 type Worker struct {
-	queue           Queue
-	registry        *Registry
-	logger          *slog.Logger
-	instanceID      string
-	pollInterval    time.Duration
-	retryBackoff    time.Duration
-	shutdownTimeout time.Duration
+	queue              Queue
+	registry           *Registry
+	logger             *slog.Logger
+	instanceID         string
+	pollInterval       time.Duration
+	retryBackoff       time.Duration
+	staleClaimTimeout  time.Duration
+	staleClaimInterval time.Duration
+	shutdownTimeout    time.Duration
 
 	stopOnce sync.Once
 	stopCh   chan struct{}
@@ -396,16 +453,28 @@ func New(opts Options) (*Worker, error) {
 		shutdownTimeout = 20 * time.Second
 	}
 
+	staleClaimTimeout := opts.StaleClaimTimeout
+	if staleClaimTimeout <= 0 {
+		staleClaimTimeout = 5 * time.Minute
+	}
+
+	staleClaimInterval := opts.StaleClaimInterval
+	if staleClaimInterval <= 0 {
+		staleClaimInterval = staleClaimTimeout / 2
+	}
+
 	return &Worker{
-		queue:           q,
-		registry:        opts.Registry,
-		logger:          logger.With(slog.String("component", "worker"), slog.String("instance_id", instanceID)),
-		instanceID:      instanceID,
-		pollInterval:    pollInterval,
-		retryBackoff:    retryBackoff,
-		shutdownTimeout: shutdownTimeout,
-		stopCh:          make(chan struct{}),
-		doneCh:          make(chan struct{}),
+		queue:              q,
+		registry:           opts.Registry,
+		logger:             logger.With(slog.String("component", "worker"), slog.String("instance_id", instanceID)),
+		instanceID:         instanceID,
+		pollInterval:       pollInterval,
+		retryBackoff:       retryBackoff,
+		staleClaimTimeout:  staleClaimTimeout,
+		staleClaimInterval: staleClaimInterval,
+		shutdownTimeout:    shutdownTimeout,
+		stopCh:             make(chan struct{}),
+		doneCh:             make(chan struct{}),
 	}, nil
 }
 
@@ -430,7 +499,38 @@ func (w *Worker) Run(ctx context.Context) error {
 	w.logger.Info("worker started",
 		"poll_interval", w.pollInterval.String(),
 		"shutdown_timeout", w.shutdownTimeout.String(),
+		"stale_claim_timeout", w.staleClaimTimeout.String(),
+		"stale_claim_interval", w.staleClaimInterval.String(),
 	)
+
+	// Stale-claim reaper goroutine: periodically finds rows that were
+	// claimed by a worker that subsequently crashed and resets them to
+	// pending so they can be re-claimed. The goroutine exits cleanly when
+	// the parent ctx is cancelled or Stop() is called.
+	go func() {
+		ticker := time.NewTicker(w.staleClaimInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-w.stopCh:
+				return
+			case <-ticker.C:
+				reaperCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+				n, err := w.queue.ReclaimStale(reaperCtx, w.staleClaimTimeout)
+				cancel()
+				if err != nil {
+					w.logger.Warn("stale-claim reaper failed", "error", err.Error())
+				} else if n > 0 {
+					w.logger.Info("stale-claim reaper reclaimed stranded jobs",
+						"count", n,
+						"visibility_timeout", w.staleClaimTimeout.String(),
+					)
+				}
+			}
+		}
+	}()
 
 	for {
 		// Honour both the parent context (signal-driven shutdown) and
@@ -621,7 +721,12 @@ func (w *Worker) markFailureOrRetry(ctx context.Context, job *Job, handlerErr er
 	// ctx must not prevent the outcome from being written, but trace/log
 	// values from the job ctx must still propagate.
 	if job.Attempts < job.MaxAttempts {
-		if err := w.queue.MarkRetry(context.WithoutCancel(ctx), job.ID, errText); err != nil {
+		// Schedule the retry after retryBackoff so the row is not immediately
+		// re-claimed. This implements the documented at-least-once-with-backoff
+		// contract and gives operators a reliable observation window between
+		// consecutive attempts.
+		scheduledAt := time.Now().Add(w.retryBackoff)
+		if err := w.queue.MarkRetry(context.WithoutCancel(ctx), job.ID, errText, scheduledAt); err != nil {
 			w.logger.Error("schedule retry failed",
 				"job_id", job.ID,
 				"error", err.Error(),
