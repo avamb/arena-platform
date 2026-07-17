@@ -149,7 +149,7 @@
   },
   {
     "name": "create_order_ext_full_request",
-    "description": "CREATE_ORDER_EXT as sent by Vino&Co widget — full wine tasting event booking",
+    "description": "CREATE_ORDER_EXT as sent by Vino&Co widget — must return NOT_IMPLEMENTED (-5), never success (feature #374 security fix: stub must not report resultCode=0)",
     "request": {
       "command": "CREATE_ORDER_EXT",
       "fid": "1271",
@@ -162,14 +162,14 @@
     },
     "expect": {
       "http_status": 200,
-      "result_code_eq": 0,
+      "result_code_eq": -5,
       "command_echo": "CREATE_ORDER_EXT",
-      "required_response_fields": ["resultCode", "description", "command", "orderId"]
+      "required_response_fields": ["resultCode", "description", "command"]
     }
   },
   {
     "name": "create_order_ext_quantity_one_default",
-    "description": "CREATE_ORDER_EXT with quantity=0 — must be treated as 1 (Vino&Co omits quantity for single tickets)",
+    "description": "CREATE_ORDER_EXT with quantity=0 — must return NOT_IMPLEMENTED (-5); Vino&Co callers must migrate to POST /v1/checkout/reservations (feature #374)",
     "request": {
       "command": "CREATE_ORDER_EXT",
       "fid": "1271",
@@ -182,9 +182,9 @@
     },
     "expect": {
       "http_status": 200,
-      "result_code_eq": 0,
+      "result_code_eq": -5,
       "command_echo": "CREATE_ORDER_EXT",
-      "required_response_fields": ["resultCode", "description", "command", "orderId"]
+      "required_response_fields": ["resultCode", "description", "command"]
     }
   },
   {
@@ -277,7 +277,7 @@
   },
   {
     "name": "cancel_order_valid_uuid",
-    "description": "CANCEL_ORDER with a valid UUID orderId — Vino&Co customer cancellation flow",
+    "description": "CANCEL_ORDER with a valid UUID orderId — must return NOT_IMPLEMENTED (-5), never success (feature #374 security fix: stub must not report resultCode=0)",
     "request": {
       "command": "CANCEL_ORDER",
       "fid": "1271",
@@ -287,9 +287,9 @@
     },
     "expect": {
       "http_status": 200,
-      "result_code_eq": 0,
+      "result_code_eq": -5,
       "command_echo": "CANCEL_ORDER",
-      "required_response_fields": ["resultCode", "description", "command", "orderId"]
+      "required_response_fields": ["resultCode", "description", "command"]
     }
   },
   {

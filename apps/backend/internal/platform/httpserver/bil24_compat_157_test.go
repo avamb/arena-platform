@@ -450,7 +450,11 @@ func TestBil24_157_CreateOrderExt_MissingCategoryPriceID_Returns_InvalidRequest(
 	}
 }
 
-func TestBil24_157_CreateOrderExt_ValidInput_Returns_ScaffoldResponse(t *testing.T) {
+func TestBil24_157_CreateOrderExt_ValidInput_Returns_NotImplemented(t *testing.T) {
+	// Feature #374: CREATE_ORDER_EXT must NEVER return resultCode=0 from
+	// an unimplemented stub (would give callers a false success signal).
+	// It must return resultCode=-5 (NOT_IMPLEMENTED) so legacy clients
+	// know to migrate to POST /v1/checkout/reservations.
 	s := buildBil24Server(t)
 	sessionID := uuid.New().String()
 	tierID := uuid.New().String()
@@ -462,13 +466,12 @@ func TestBil24_157_CreateOrderExt_ValidInput_Returns_ScaffoldResponse(t *testing
 	}
 	m := decodeBil24Response(t, w)
 	rc := int(m["resultCode"].(float64))
-	if rc != ResultCodeOK {
-		t.Errorf("expected resultCode 0 for valid CREATE_ORDER_EXT, got %d (body: %s)",
+	if rc == ResultCodeOK {
+		t.Errorf("CREATE_ORDER_EXT must not return resultCode=0 (scaffold stub security fix #374); got %d (body: %s)",
 			rc, w.Body.String())
 	}
-	// Scaffold stub returns orderId field
-	if _, ok := m["orderId"]; !ok {
-		t.Error("CREATE_ORDER_EXT response missing 'orderId' field")
+	if rc != ResultCodeNotImplemented {
+		t.Errorf("expected resultCode=%d (NOT_IMPLEMENTED), got %d", ResultCodeNotImplemented, rc)
 	}
 }
 
@@ -554,7 +557,11 @@ func TestBil24_157_CancelOrder_InvalidOrderID_Returns_InvalidRequest(t *testing.
 	}
 }
 
-func TestBil24_157_CancelOrder_ValidOrderID_Returns_ScaffoldResponse(t *testing.T) {
+func TestBil24_157_CancelOrder_ValidOrderID_Returns_NotImplemented(t *testing.T) {
+	// Feature #374: CANCEL_ORDER must NEVER return resultCode=0 from an
+	// unimplemented stub (would give callers a false cancellation signal).
+	// It must return resultCode=-5 (NOT_IMPLEMENTED) so legacy clients
+	// know to migrate to POST /v1/checkout/{id}/cancel.
 	s := buildBil24Server(t)
 	orderID := uuid.New().String()
 	w := postBil24(s, `{"command":"CANCEL_ORDER","orderId":"`+orderID+`"}`)
@@ -563,11 +570,11 @@ func TestBil24_157_CancelOrder_ValidOrderID_Returns_ScaffoldResponse(t *testing.
 	}
 	m := decodeBil24Response(t, w)
 	rc := int(m["resultCode"].(float64))
-	if rc != ResultCodeOK {
-		t.Errorf("expected resultCode 0 for CANCEL_ORDER with nil queries, got %d", rc)
+	if rc == ResultCodeOK {
+		t.Errorf("CANCEL_ORDER must not return resultCode=0 (scaffold stub security fix #374); got %d", rc)
 	}
-	if _, ok := m["orderId"]; !ok {
-		t.Error("CANCEL_ORDER response missing 'orderId' field")
+	if rc != ResultCodeNotImplemented {
+		t.Errorf("expected resultCode=%d (NOT_IMPLEMENTED), got %d", ResultCodeNotImplemented, rc)
 	}
 }
 

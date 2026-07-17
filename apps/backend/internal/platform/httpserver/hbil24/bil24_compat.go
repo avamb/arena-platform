@@ -88,6 +88,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
@@ -113,6 +114,12 @@ const (
 	// ResultCodeNotFound is returned when the requested resource does not
 	// exist in the platform (Bil24 wire: -3).
 	ResultCodeNotFound = bil24compat.ResultCodeNotFound
+	// ResultCodeUnauthorized is returned when the fid/token credential pair
+	// is invalid or missing. Platform extension (feature #374).
+	ResultCodeUnauthorized = bil24compat.ResultCodeUnauthorized
+	// ResultCodeNotImplemented is returned for recognized commands that are
+	// not yet wired to platform functionality (feature #374).
+	ResultCodeNotImplemented = bil24compat.ResultCodeNotImplemented
 	// ResultCodeInternalError is returned when an unexpected error prevents
 	// command execution (Bil24 wire: -99).
 	ResultCodeInternalError = bil24compat.ResultCodeInternalError
@@ -244,6 +251,19 @@ func (h *Handler) HandleBil24Command(w http.ResponseWriter, r *http.Request) {
 		h.handleBil24ScanTicket(w, r, req)
 	case "CANCEL_ORDER":
 		h.handleBil24CancelOrder(w, r, req)
+	case "ADD_PROMO_CODES":
+		// ADD_PROMO_CODES is recognized but explicitly not implemented in
+		// this gateway version. Returning resultCode=-5 (NOT_IMPLEMENTED)
+		// rather than -1 (unknown command) so legacy clients that inspect
+		// the description can distinguish "command unknown" from "command
+		// exists but not available here" (feature #374).
+		h.logger.Warn("bil24_compat: ADD_PROMO_CODES is not implemented in this gateway version",
+			slog.String("fid", req.FID),
+		)
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			command, ResultCodeNotImplemented,
+			"ADD_PROMO_CODES is not implemented; apply promo codes via POST /v1/checkout/{id}/promos",
+		))
 	default:
 		h.logger.Warn("bil24_compat: unknown command",
 			slog.String("command", command),
@@ -686,12 +706,19 @@ func (h *Handler) handleBil24GetOrderInfo(w http.ResponseWriter, r *http.Request
 //   - quantity:        number of tickets (default 1)
 //   - email:           buyer email
 //
-// This is a scaffold implementation. Full checkout creation requires a
-// reservation, pricing confirmation, and payment flow (features #131, #129,
-// #132, #137). This stub validates the input and returns a placeholder
-// response signalling that the command structure is understood.
+// CREATE_ORDER_EXT is NOT IMPLEMENTED in this gateway version. The command
+// is recognized (not "unknown") but returns resultCode=-5 (NOT_IMPLEMENTED)
+// so legacy clients get a machine-readable signal that the operation is
+// unavailable. Full checkout creation requires a reservation + payment flow
+// that is not exposed via the Bil24 compatibility gateway; callers MUST
+// migrate to POST /v1/checkout/reservations + /v1/checkout/{id}/confirm.
 //
-// Response: { "resultCode": 0, "command": "CREATE_ORDER_EXT", "orderId": "<placeholder>" }
+// Returning resultCode=0 (success) from an unimplemented stub is a security
+// risk because it allows the caller to believe an order was created when in
+// fact no inventory hold, no payment intent, and no checkout session were
+// created. This was fixed in feature #374.
+//
+// Response: { "resultCode": -5, "command": "CREATE_ORDER_EXT", ... }
 func (h *Handler) handleBil24CreateOrderExt(w http.ResponseWriter, _ *http.Request, req bil24Request) {
 	if req.ActionEventID == "" {
 		writeBil24JSON(w, http.StatusOK, bil24Error(
@@ -722,26 +749,18 @@ func (h *Handler) handleBil24CreateOrderExt(w http.ResponseWriter, _ *http.Reque
 		return
 	}
 
-	quantity := req.Quantity
-	if quantity <= 0 {
-		quantity = 1
-	}
-
-	h.logger.Info("bil24_compat: CREATE_ORDER_EXT: scaffold stub",
+	h.logger.Warn("bil24_compat: CREATE_ORDER_EXT is not implemented; returning NOT_IMPLEMENTED",
 		slog.String("session_id", req.ActionEventID),
 		slog.String("tier_id", req.CategoryPriceID),
-		slog.Int("quantity", quantity),
-		slog.String("email", req.Email),
+		slog.String("fid", req.FID),
 	)
 
-	// Scaffold response: full checkout creation requires multi-step flow.
-	// Return a placeholder order ID derived from the session + tier IDs.
-	// Real implementation: create reservation → confirm pricing → return checkout_session.id.
-	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
-		"orderId": "pending",
-		"status":  "scaffold_stub",
-		"message": "order creation requires reservation flow; use POST /v1/checkout/reservations",
-	}))
+	// NOT_IMPLEMENTED: never return resultCode=0 from an unimplemented stub.
+	// Real implementation: POST /v1/checkout/reservations → POST /v1/checkout/{id}/confirm.
+	writeBil24JSON(w, http.StatusOK, bil24Error(
+		req.Command, ResultCodeNotImplemented,
+		"CREATE_ORDER_EXT is not implemented; use POST /v1/checkout/reservations to create a reservation",
+	))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -878,12 +897,19 @@ func (h *Handler) handleBil24ScanTicket(w http.ResponseWriter, r *http.Request, 
 // Bil24 request fields used:
 //   - orderId: platform checkout session UUID
 //
-// This is a scaffold implementation. Full cancellation requires the checkout
-// state machine to transition through to 'cancelled' and potentially trigger
-// a refund (feature #138). This stub validates the order exists and returns
-// a placeholder response.
+// CANCEL_ORDER is NOT IMPLEMENTED in this gateway version. The command is
+// recognized (not "unknown") but returns resultCode=-5 (NOT_IMPLEMENTED)
+// so legacy clients get a machine-readable signal that the operation is
+// unavailable. Full cancellation requires the checkout state machine to
+// transition to 'cancelled' and potentially trigger a refund; callers
+// MUST migrate to POST /v1/checkout/{id}/cancel.
 //
-// Response: { "resultCode": 0, "command": "CANCEL_ORDER", "status": "cancelled" }
+// Returning resultCode=0 (success) from an unimplemented stub is a security
+// risk because it allows the caller to believe an order was cancelled when
+// in fact no state transition, no seat release, and no refund was initiated.
+// This was fixed in feature #374.
+//
+// Response: { "resultCode": -5, "command": "CANCEL_ORDER", ... }
 func (h *Handler) handleBil24CancelOrder(w http.ResponseWriter, _ *http.Request, req bil24Request) {
 	if req.OrderID == "" {
 		writeBil24JSON(w, http.StatusOK, bil24Error(
@@ -900,17 +926,17 @@ func (h *Handler) handleBil24CancelOrder(w http.ResponseWriter, _ *http.Request,
 		return
 	}
 
-	h.logger.Info("bil24_compat: CANCEL_ORDER: scaffold stub",
+	h.logger.Warn("bil24_compat: CANCEL_ORDER is not implemented; returning NOT_IMPLEMENTED",
 		slog.String("order_id", orderID.String()),
+		slog.String("fid", req.FID),
 	)
 
-	// Scaffold response: full cancellation requires checkout state machine.
+	// NOT_IMPLEMENTED: never return resultCode=0 from an unimplemented stub.
 	// Real implementation: POST /v1/checkout/{id}/cancel.
-	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
-		"orderId": TranslatePlatformID(orderID),
-		"status":  "scaffold_stub",
-		"message": "cancellation requires checkout state machine; use POST /v1/checkout/{id}/cancel",
-	}))
+	writeBil24JSON(w, http.StatusOK, bil24Error(
+		req.Command, ResultCodeNotImplemented,
+		"CANCEL_ORDER is not implemented; use POST /v1/checkout/{id}/cancel",
+	))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1046,6 +1072,13 @@ func (h *Handler) handleBil24Reservation(w http.ResponseWriter, r *http.Request,
 // the platform sales_channel UUID). The hold TTL honours the channel's
 // reservation_ttl_override and falls back to the platform default.
 //
+// When h.requireToken is true (feature #374), the token field from the
+// request is validated against the bcrypt hash stored in the channel's
+// settings JSON under "gateway_token_hash". Missing or invalid tokens cause
+// a resultCode=-4 (Unauthorized) response. Channels without a stored hash
+// are rejected when requireToken=true (channel must be configured before
+// gateway access is allowed).
+//
 // On failure the Bil24 error envelope has already been written and
 // ok=false is returned.
 func (h *Handler) reservationContext(
@@ -1106,11 +1139,79 @@ func (h *Handler) reservationContext(
 		return uuid.Nil, uuid.Nil, time.Time{}, false
 	}
 
+	// Feature #374: validate fid/token when requireToken is enabled.
+	// The gateway_token_hash is stored in the channel's settings JSONB as:
+	//   { "gateway_token_hash": "<bcrypt hash of the secret token>" }
+	// Channels without a stored hash are rejected when requireToken=true.
+	if h.requireToken {
+		if !h.validateGatewayToken(w, req, channel.Settings) {
+			return uuid.Nil, uuid.Nil, time.Time{}, false
+		}
+	}
+
 	ttl := hcheckout.DefaultReservationTTL
 	if channel.ReservationTTLOverride != nil && *channel.ReservationTTLOverride > 0 {
 		ttl = time.Duration(*channel.ReservationTTLOverride) * time.Second
 	}
 	return orgCtx.OrgID, channel.ID, time.Now().UTC().Add(ttl), true
+}
+
+// validateGatewayToken reads gateway_token_hash from the channel's settings
+// JSON and compares it against the token in the request using bcrypt.
+// Returns true on success; on failure writes the Bil24 error response and
+// returns false. Feature #374.
+func (h *Handler) validateGatewayToken(
+	w http.ResponseWriter,
+	req bil24Request,
+	settings json.RawMessage,
+) bool {
+	// Parse the stored gateway_token_hash from the channel settings.
+	var cfg struct {
+		GatewayTokenHash string `json:"gateway_token_hash"`
+	}
+	if len(settings) > 0 {
+		_ = json.Unmarshal(settings, &cfg) // ignore decode errors — empty cfg means no hash
+	}
+
+	if cfg.GatewayTokenHash == "" {
+		// No hash configured: this channel has not been set up for gateway
+		// access. Reject rather than allow unauthenticated access.
+		h.logger.Warn("bil24_compat: gateway_token_hash not configured on channel; rejecting",
+			slog.String("command", req.Command),
+			slog.String("fid", req.FID),
+		)
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeUnauthorized,
+			"channel is not configured for gateway access; set gateway_token_hash in channel settings",
+		))
+		return false
+	}
+
+	if strings.TrimSpace(req.Token) == "" {
+		h.logger.Warn("bil24_compat: token missing in request",
+			slog.String("command", req.Command),
+			slog.String("fid", req.FID),
+		)
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeUnauthorized,
+			"authentication required: token field is missing",
+		))
+		return false
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(cfg.GatewayTokenHash), []byte(req.Token)); err != nil {
+		h.logger.Warn("bil24_compat: token validation failed",
+			slog.String("command", req.Command),
+			slog.String("fid", req.FID),
+		)
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeUnauthorized,
+			"authentication failed: invalid token",
+		))
+		return false
+	}
+
+	return true
 }
 
 // bil24FinancialFields projects a platform pricing breakdown onto the

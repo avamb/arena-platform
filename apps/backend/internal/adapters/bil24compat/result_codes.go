@@ -23,6 +23,15 @@ const (
 	// ResultCodeNotFound is returned when the requested resource does not
 	// exist in the platform (Bil24 wire: -3).
 	ResultCodeNotFound = -3
+	// ResultCodeUnauthorized is returned when the fid/token credential pair
+	// is invalid or missing. Platform extension — not in the legacy Bil24
+	// wire spec but safe to add (non-zero means failure for all legacy
+	// clients regardless of the specific code value). Feature #374.
+	ResultCodeUnauthorized = -4
+	// ResultCodeNotImplemented is returned for commands that are recognized
+	// by the gateway but not yet wired to platform functionality (e.g.
+	// CREATE_ORDER_EXT, CANCEL_ORDER). Platform extension. Feature #374.
+	ResultCodeNotImplemented = -5
 	// ResultCodeInternalError is returned when an unexpected error prevents
 	// command execution (Bil24 wire: -99).
 	ResultCodeInternalError = -99
