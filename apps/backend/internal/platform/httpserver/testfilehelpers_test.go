@@ -887,6 +887,11 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hreconciliation", "reconciliation.go"),
 		}
+	// checkout_convert.go — convertReservationTx helper (feature #360 — PR2-04)
+	case "checkout_convert.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hcheckout", "checkout_convert.go"),
+		}
 	// Refresh tokens query file (feature #359 — PR2-03 token hashing)
 	case "refresh_tokens.sql":
 		candidates = []string{

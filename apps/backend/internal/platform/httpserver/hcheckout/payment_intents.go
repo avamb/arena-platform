@@ -696,8 +696,10 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 		slog.String("to", updated.State),
 	)
 
-	// Issue tickets when payment reaches succeeded state and a checkout session is linked.
-	// Idempotent: issueTickets returns existing tickets if already issued.
+	// Issue tickets and convert reservation when payment reaches succeeded state
+	// and a checkout session is linked.
+	// Idempotent: issueTickets returns existing tickets if already issued;
+	// convertReservationTx skips if reservation is already 'converted'.
 	if updated.State == "succeeded" && updated.CheckoutSessionID != nil &&
 		h.ticketQueries != nil && h.checkoutQueries != nil && h.reservationQueries != nil && h.issueTickets != nil {
 		cs, csErr := h.checkoutQueries.GetCheckoutSessionByID(ctx, *updated.CheckoutSessionID)
@@ -709,6 +711,19 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 				slog.String("error", csErr.Error()),
 			)
 		} else {
+			// Convert the reservation: held seats → sold, capacity_held → capacity_sold,
+			// reservation.state → 'converted'. This is idempotent and prevents the TTL
+			// worker from releasing seats back to available (feature #360).
+			// Non-fatal: payment state is persisted; log and continue.
+			if convErr := h.convertReservationTx(ctx, cs.ReservationID); convErr != nil {
+				h.logger.Error("webhook: convert reservation failed after payment succeeded (non-fatal)",
+					slog.String("payment_intent_id", pi.ID.String()),
+					slog.String("checkout_session_id", cs.ID.String()),
+					slog.String("reservation_id", cs.ReservationID.String()),
+					slog.String("error", convErr.Error()),
+				)
+			}
+
 			tickets, ticketErr := h.issueTickets(ctx, cs)
 			if ticketErr != nil {
 				h.logger.Error("webhook: ticket issuance failed",
