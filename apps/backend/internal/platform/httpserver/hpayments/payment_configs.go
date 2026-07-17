@@ -65,6 +65,10 @@ func (h *Handler) HandleListPaymentConfigs(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	if !h.requireOrgMembership(w, r, orgID) {
+		return
+	}
+
 	rows, err := h.paymentConfigQueries.ListPaymentProviderConfigsByOrg(ctx, orgID)
 	if err != nil {
 		h.logger.Error("payment_config: list failed", slog.String("error", err.Error()))
@@ -101,6 +105,10 @@ func (h *Handler) HandleGetPaymentConfig(w http.ResponseWriter, r *http.Request)
 	}
 	id, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
+		return
+	}
+
+	if !h.requireOrgMembership(w, r, orgID) {
 		return
 	}
 
@@ -142,6 +150,10 @@ func (h *Handler) HandleDeletePaymentConfig(w http.ResponseWriter, r *http.Reque
 	}
 	id, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
+		return
+	}
+
+	if !h.requireOrgMembership(w, r, orgID) {
 		return
 	}
 

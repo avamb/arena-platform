@@ -29,6 +29,7 @@ type TxStarter interface {
 // Handler holds the shared dependencies for all payment-config HTTP handlers.
 type Handler struct {
 	paymentConfigQueries *gen.Queries
+	membershipQueries    *gen.Queries // used by requireOrgMembership (PR2-01)
 	pool                 TxStarter
 	audit                audit.Writer
 	logger               *slog.Logger
@@ -50,4 +51,12 @@ func New(
 		audit:                auditWriter,
 		logger:               logger,
 	}
+}
+
+// WithMembershipQueries attaches a separate *gen.Queries handle used for org
+// membership checks (PR2-01). Production wiring calls this in the shim layer;
+// tests that omit it will have membership checks silently skip.
+func (h *Handler) WithMembershipQueries(q *gen.Queries) *Handler {
+	h.membershipQueries = q
+	return h
 }

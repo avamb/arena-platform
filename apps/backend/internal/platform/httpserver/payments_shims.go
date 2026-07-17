@@ -19,7 +19,7 @@ func (s *Server) paymentsHandler() *hpayments.Handler {
 		s.pool,
 		s.audit,
 		s.logger,
-	)
+	).WithMembershipQueries(s.membershipQueries)
 }
 
 // ─── type aliases ─────────────────────────────────────────────────────────────

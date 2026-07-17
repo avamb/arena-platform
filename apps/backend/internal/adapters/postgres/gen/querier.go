@@ -81,6 +81,7 @@ type Querier interface {
 	RevokeMembership(ctx context.Context, userID, orgID uuid.UUID, role string) (MembershipRow, error)
 	ListMembershipsByOrg(ctx context.Context, orgID uuid.UUID) ([]MembershipRow, error)
 	GetActiveRolesForUser(ctx context.Context, userID uuid.UUID) ([]string, error)
+	GetActiveRolesForUserInOrg(ctx context.Context, userID, orgID uuid.UUID) ([]string, error)
 	ListMembershipsByUser(ctx context.Context, userID uuid.UUID) ([]MembershipRow, error)
 	// Admin memberships console (feature #234)
 	GetMembershipByID(ctx context.Context, id, orgID uuid.UUID) (MembershipRow, error)

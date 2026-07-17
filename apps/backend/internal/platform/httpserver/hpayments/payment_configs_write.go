@@ -63,6 +63,10 @@ func (h *Handler) HandleCreatePaymentConfig(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	if !h.requireOrgMembership(w, r, orgID) {
+		return
+	}
+
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("payment_config.invalid_body", "cannot read request body: "+err.Error(), r))
@@ -199,6 +203,10 @@ func (h *Handler) HandleUpdatePaymentConfig(w http.ResponseWriter, r *http.Reque
 	}
 	id, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
+		return
+	}
+
+	if !h.requireOrgMembership(w, r, orgID) {
 		return
 	}
 

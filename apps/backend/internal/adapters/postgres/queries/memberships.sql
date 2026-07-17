@@ -107,3 +107,26 @@ WHERE  id     = $1
   AND  org_id = $2
   AND  status = 'active'
 RETURNING id, user_id, org_id, role, status, joined_at;
+
+-- name: GetActiveRolesForUserInOrg :many
+-- Returns distinct roles for a user scoped to a specific organization.
+-- Includes active membership roles for the given org AND global user_roles
+-- (org_id IS NULL — platform-wide roles that apply regardless of org context).
+-- Used by the org-scoped permission enforcement layer (PR2-01).
+SELECT DISTINCT role
+FROM (
+    SELECT m.role
+    FROM   memberships m
+    WHERE  m.user_id = $1
+      AND  m.org_id  = $2
+      AND  m.status  = 'active'
+
+    UNION
+
+    SELECT r.name AS role
+    FROM   user_roles ur
+    JOIN   roles r ON r.id = ur.role_id
+    WHERE  ur.user_id = $1
+      AND  ur.org_id IS NULL
+) effective_roles
+ORDER BY role;

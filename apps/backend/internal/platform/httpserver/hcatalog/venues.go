@@ -87,6 +87,10 @@ func (h *Handler) HandleCreateVenue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !h.requireOrgMembership(w, r, h.venueQueries, orgID) {
+		return
+	}
+
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("venue.invalid_body", "cannot read request body: "+err.Error(), r))
@@ -240,6 +244,10 @@ func (h *Handler) HandleListVenuesByOrg(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if !h.requireOrgMembership(w, r, h.venueQueries, orgID) {
+		return
+	}
+
 	rows, err := h.venueQueries.ListVenuesByOrg(ctx, orgID)
 	if err != nil {
 		h.logger.Error("venue: list by org failed", slog.String("error", err.Error()))
@@ -282,6 +290,10 @@ func (h *Handler) HandleUpdateVenue(w http.ResponseWriter, r *http.Request) {
 	}
 	venueID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
+		return
+	}
+
+	if !h.requireOrgMembership(w, r, h.venueQueries, orgID) {
 		return
 	}
 
@@ -371,6 +383,10 @@ func (h *Handler) HandleDeleteVenue(w http.ResponseWriter, r *http.Request) {
 	}
 	venueID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
+		return
+	}
+
+	if !h.requireOrgMembership(w, r, h.venueQueries, orgID) {
 		return
 	}
 

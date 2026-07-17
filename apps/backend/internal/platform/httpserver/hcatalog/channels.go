@@ -198,6 +198,10 @@ func (h *Handler) HandleCreateChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !h.requireOrgMembership(w, r, h.channelQueries, orgID) {
+		return
+	}
+
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("channel.invalid_body", "cannot read request body: "+err.Error(), r))
@@ -304,6 +308,10 @@ func (h *Handler) HandleListChannels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !h.requireOrgMembership(w, r, h.channelQueries, orgID) {
+		return
+	}
+
 	rows, err := h.channelQueries.ListSalesChannelsByOrg(ctx, orgID)
 	if err != nil {
 		h.logger.Error("channel: list failed", slog.String("error", err.Error()))
@@ -339,6 +347,10 @@ func (h *Handler) HandleGetChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	chID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
+		return
+	}
+
+	if !h.requireOrgMembership(w, r, h.channelQueries, orgID) {
 		return
 	}
 
@@ -389,6 +401,10 @@ func (h *Handler) HandleUpdateChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	chID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
+		return
+	}
+
+	if !h.requireOrgMembership(w, r, h.channelQueries, orgID) {
 		return
 	}
 
@@ -504,6 +520,10 @@ func (h *Handler) HandleDeleteChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	chID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
+		return
+	}
+
+	if !h.requireOrgMembership(w, r, h.channelQueries, orgID) {
 		return
 	}
 

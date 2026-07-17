@@ -20,7 +20,7 @@ func (s *Server) bankAccountsHandler() *hbankaccounts.Handler {
 		s.pool,
 		s.audit,
 		s.logger,
-	)
+	).WithMembershipQueries(s.membershipQueries)
 }
 
 // ─── type aliases ─────────────────────────────────────────────────────────────

@@ -31,7 +31,7 @@ func (s *Server) catalogHandler() *hcatalog.Handler {
 		s.audit,
 		s.logger,
 		s.publishSessionCancelledEvent,
-	)
+	).WithMembershipQueries(s.membershipQueries)
 }
 
 // ──── type aliases ───────────────────────────────────────────────────────────

@@ -63,6 +63,10 @@ func (h *Handler) HandleListBankAccounts(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	if !h.requireOrgMembership(w, r, orgID) {
+		return
+	}
+
 	// The spec documents 404 for an unknown or archived organization.
 	if _, err := h.queries.GetOrganizationByID(ctx, orgID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -112,6 +116,10 @@ func (h *Handler) HandleDeleteBankAccount(w http.ResponseWriter, r *http.Request
 	}
 	id, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
+		return
+	}
+
+	if !h.requireOrgMembership(w, r, orgID) {
 		return
 	}
 

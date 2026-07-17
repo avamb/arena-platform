@@ -65,6 +65,11 @@ func (h *Handler) HandleCreateBankAccount(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
+
+	if !h.requireOrgMembership(w, r, orgID) {
+		return
+	}
+
 	fields, ok := readBankAccountBody(w, r)
 	if !ok {
 		return
@@ -242,6 +247,11 @@ func (h *Handler) HandleUpdateBankAccount(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
+
+	if !h.requireOrgMembership(w, r, orgID) {
+		return
+	}
+
 	fields, ok := readBankAccountBody(w, r)
 	if !ok {
 		return

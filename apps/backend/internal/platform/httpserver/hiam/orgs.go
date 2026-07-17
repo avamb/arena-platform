@@ -259,6 +259,10 @@ func (h *Handler) HandleUpdateOrg(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !h.requireOrgMembership(w, r, orgID) {
+		return
+	}
+
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("org.invalid_body", "cannot read request body: "+err.Error(), r))

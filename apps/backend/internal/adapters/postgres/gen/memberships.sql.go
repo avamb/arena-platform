@@ -157,6 +157,51 @@ func (q *Queries) GetActiveRolesForUser(ctx context.Context, userID uuid.UUID) (
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GetActiveRolesForUserInOrg
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getActiveRolesForUserInOrg = `-- name: GetActiveRolesForUserInOrg :many
+SELECT DISTINCT role
+FROM (
+    SELECT m.role
+    FROM   memberships m
+    WHERE  m.user_id = $1
+      AND  m.org_id  = $2
+      AND  m.status  = 'active'
+
+    UNION
+
+    SELECT r.name AS role
+    FROM   user_roles ur
+    JOIN   roles r ON r.id = ur.role_id
+    WHERE  ur.user_id = $1
+      AND  ur.org_id IS NULL
+) effective_roles
+ORDER BY role`
+
+// GetActiveRolesForUserInOrg returns distinct role names held by a user
+// within a specific organization. Includes active membership roles for the
+// given org plus global user_roles (org_id IS NULL) which apply platform-wide.
+// Used by the org-scoped enforcement layer introduced in PR2-01.
+func (q *Queries) GetActiveRolesForUserInOrg(ctx context.Context, userID, orgID uuid.UUID) ([]string, error) {
+	rows, err := q.db.Query(ctx, getActiveRolesForUserInOrg, userID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var roles []string
+	for rows.Next() {
+		var role string
+		if err := rows.Scan(&role); err != nil {
+			return nil, err
+		}
+		roles = append(roles, role)
+	}
+	return roles, rows.Err()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ListMembershipsByUser
 // ─────────────────────────────────────────────────────────────────────────────
 
