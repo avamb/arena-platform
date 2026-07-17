@@ -1,0 +1,9 @@
+fix(tickets): PR2-10 make ticket issuance idempotent and quantity-aware (#366)
+
+- 0066_tickets_idempotent_issuance.sql: ordinal column + UNIQUE constraint
+- IssueTicketsForCheckout: tx + pg_advisory_xact_lock for concurrent safety
+- Idempotency check is now quantity-aware (len >= expected, not just > 0)
+- issuedOrdinals map enables gap-fill on partial-failure retry
+- InsertTicket accepts ordinal param; querier interface and sql.go updated
+- 12 structural tests in tickets_366_test.go
+- head sentinel updated to 0066

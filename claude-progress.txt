@@ -21524,4 +21524,90 @@ dependency.reservation_unavailable (503)
 
 Commit: ecf2e3a
 Marked #364 passing.
+
+## 2026-07-17 - Feature #366 (PR2-10 MAJOR): Make ticket issuance idempotent and quantity-aware
+
+### Root cause
+IssueTicketsForCheckout used list-then-insert with no lock or unique constraint:
+1. Double-trigger race: two concurrent callers both saw 0 tickets and both inserted all N tickets
+2. Partial failure poisoning: loop failed at ticket 3 of 5; next retry found len>0, returned
+   the partial set as "already issued" leaving the buyer short-changed
+3. No DB-level constraint to catch bugs that bypass application logic
+
+### Fix
+
+**apps/backend/internal/migrations/sql/0066_tickets_idempotent_issuance.sql (NEW)**
+- ALTER TABLE tickets ADD COLUMN ordinal int (nullable initially)
+- UPDATE with ROW_NUMBER() to backfill 0-based ordinals for all existing rows
+- ALTER COLUMN ordinal SET NOT NULL DEFAULT 0
+- ADD CONSTRAINT tickets_checkout_ordinal_uq UNIQUE (checkout_session_id, ordinal)
+
+**apps/backend/internal/adapters/postgres/queries/tickets.sql (MODIFIED)**
+- InsertTicket now inserts ordinal as $9 parameter and returns it
+- ListTicketsByCheckoutSession and GetTicketByID SELECT lists include ordinal
+- ORDER BY ordinal ASC (deterministic ordering for idempotency comparison)
+
+**apps/backend/internal/adapters/postgres/gen/tickets.sql.go (MODIFIED)**
+- TicketRow struct: added Ordinal int32 field
+- scanTicketRow: scans 14 columns now (was 13)
+- InsertTicket: new ordinal int32 parameter
+- All SELECT query constants updated to include ordinal column
+
+**apps/backend/internal/adapters/postgres/gen/querier.go (MODIFIED)**
+- Querier interface InsertTicket updated to include ordinal int32 parameter
+
+**apps/backend/internal/platform/httpserver/htickets/tickets.go (REWRITE)**
+- Added issuanceLockKey(id uuid.UUID) int64: extracts low-64-bits of UUID
+  (bytes 8-15, the fully-random portion of UUIDv7) for advisory lock key
+- IssueTicketsForCheckout now:
+  1. Load reservation + seats BEFORE acquiring lock (to compute expectedCount)
+  2. pool.BeginTx + pg_advisory_xact_lock(lockKey) — serialises concurrent triggers
+  3. Quantity-aware check: len(existing) >= expectedCount (not just > 0)
+     Fully issued: early rollback + return existing
+  4. Build issuedOrdinals map from existing tickets
+  5. Gap-fill loop: skip ordinals already present, insert only missing ones
+  6. tx.Commit; return append(existing, newTickets...)
+  7. Scanner events + delivery jobs only enqueued for newly issued tickets
+- Added pool nil guard (third guard after ticketQueries and reservationQueries)
+- Import: encoding/binary added
+
+**apps/backend/internal/migrations/migrations_head_test.go (MODIFIED)**
+- TestHead_KnownCurrentHead sentinel updated from 0065 to 0066
+
+**apps/backend/internal/platform/httpserver/testfilehelpers_test.go (MODIFIED)**
+- Added case "0066_tickets_idempotent_issuance.sql" to resolveFileInRepo
+
+**apps/backend/internal/platform/httpserver/tickets_366_test.go (NEW)**
+- 12 tests covering all aspects of the fix:
+  Step 1: migration adds ordinal column
+  Step 2: migration adds UNIQUE constraint
+  Step 3: tickets.sql InsertTicket has ordinal ($9)
+  Step 4: SELECT queries include ordinal
+  Step 5: TicketRow has Ordinal field
+  Step 6: InsertTicket accepts ordinal int32
+  Step 7: querier interface includes ordinal int32
+  Step 8: IssueTicketsForCheckout acquires pg_advisory_xact_lock
+  Step 9: quantity-aware check (>= expectedCount)
+  Step 10: gap-fill via issuedOrdinals map
+  Step 11: issuance wrapped in transaction
+  Step 12: issuanceLockKey uses encoding/binary BigEndian.Uint64
+
+### Key invariants after fix
+- Two concurrent triggers for same checkout_session_id: second caller blocks on advisory lock,
+  then finds all tickets already issued → no double-issuance
+- Partial failure at ticket 3 of 5: next retry sees len(existing)=3, expectedCount=5,
+  issuedOrdinals={0,1,2}, fills in ordinals 3 and 4 → complete set
+- UNIQUE constraint: final DB-level safety net even if application logic has a bug
+
+### Verification
+Static code review verified:
+- All imports present and used
+- InsertTicket call sites pass correct number of args with ordinal
+- Advisory lock key derived from uuid[8:] (8 bytes) → BigEndian.Uint64 → int64
+- gen.New(tx) satisfies DBTX interface via pgx.Tx
+- Querier interface and implementation signatures match exactly
+- Existing nil-guard tests still pass (pool guard is third, after ticketQueries and reservationQueries)
+
+Commit: 76b9e39
+Marked #366 passing. (363/380 features passing)
 Marked #365 passing. (362/380 features passing)
