@@ -36,11 +36,13 @@ var loginRateLimiter ratelimit.Limiter = ratelimit.New(ratelimit.Config{
 
 // ─── function forwarders ──────────────────────────────────────────────────────
 
-// loginRateLimiterKey forwards to hauth.LoginRateLimiterKey so that
+// loginRateLimiterKey forwards to the Handler method so that
 // auth_login_test.go (package httpserver) can call loginRateLimiterKey
-// without importing hauth directly.
+// without importing hauth directly. It builds a zero-trustedProxies handler
+// solely to compute the key, matching the default server behaviour in tests.
 func loginRateLimiterKey(r *http.Request, email string) string {
-	return hauth.LoginRateLimiterKey(r, email)
+	h := hauth.NewWithLimiter(nil, nil, nil, "", "", "", 0, 0, loginRateLimiter)
+	return h.LoginRateLimiterKey(r, email)
 }
 
 // ─── auth handler ────────────────────────────────────────────────────────────
@@ -51,8 +53,10 @@ func (s *Server) authHandler() *hauth.Handler {
 	issuer := s.authIssuer()
 	audience := s.authAudience()
 	jwtSecret := ""
+	trustedProxies := 0
 	if s.cfg != nil {
 		jwtSecret = s.cfg.JWTSecretStub
+		trustedProxies = s.cfg.TrustedProxyCount
 	}
 	return hauth.NewWithLimiter(
 		s.pool,
@@ -62,6 +66,7 @@ func (s *Server) authHandler() *hauth.Handler {
 		issuer,
 		audience,
 		s.maxConcurrentSessions,
+		trustedProxies,
 		loginRateLimiter,
 	)
 }

@@ -458,6 +458,149 @@ func (f *fakeLoginPool) BeginTx(_ context.Context, _ pgx.TxOptions) (pgx.Tx, err
 var _ PoolDB = (*fakeLoginPool)(nil)
 
 // ---------------------------------------------------------------------------
+// PR2-02: XFF spoofing — rate-limit key must not change when attacker
+// rotates X-Forwarded-For to bypass the sliding-window lockout.
+// ---------------------------------------------------------------------------
+
+// postLoginWithXFF sends a POST /v1/auth/login request with a custom
+// X-Forwarded-For header set to the given value.
+func postLoginWithXFF(t *testing.T, s *Server, body, xff string) *httptest.ResponseRecorder {
+	t.Helper()
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	if xff != "" {
+		r.Header.Set("X-Forwarded-For", xff)
+	}
+	s.handleAuthLogin(w, r)
+	return w
+}
+
+// TestAuthLogin358_ForgedXFFDoesNotBypassRateLimit verifies that a client
+// cannot reset the per-IP lockout counter by rotating the X-Forwarded-For
+// header. With TRUSTED_PROXY_COUNT=0 (the default), XFF is ignored and the
+// rate-limit key is always derived from RemoteAddr.
+func TestAuthLogin358_ForgedXFFDoesNotBypassRateLimit(t *testing.T) {
+	orig := loginRateLimiter
+	t.Cleanup(func() { loginRateLimiter = orig })
+
+	// Tight limit: 2 attempts per session, then blocked.
+	testLimiter := ratelimit.New(ratelimit.Config{
+		MaxAttempts: 2,
+		Window:      time.Hour,
+	})
+	loginRateLimiter = testLimiter
+
+	s := serverWithSecret(t) // cfg.TrustedProxyCount defaults to 0
+
+	body := `{"email":"xff-bypass@example.com","password":"x"}`
+
+	// Consume the two allowed attempts.
+	w1 := postLoginWithXFF(t, s, body, "")
+	w2 := postLoginWithXFF(t, s, body, "")
+	if w1.Code == http.StatusTooManyRequests || w2.Code == http.StatusTooManyRequests {
+		t.Fatalf("unexpected 429 on first two attempts (w1=%d w2=%d)", w1.Code, w2.Code)
+	}
+
+	// Third attempt — must be rate-limited regardless of the XFF header value.
+	// An attacker rotates the header trying to appear as a different IP.
+	forgedIPs := []string{
+		"1.2.3.4",
+		"9.8.7.6",
+		"192.168.0.100",
+		"2001:db8::1",
+		"", // no XFF at all
+	}
+	for _, xff := range forgedIPs {
+		w := postLoginWithXFF(t, s, body, xff)
+		if w.Code != http.StatusTooManyRequests {
+			m := decodeLoginJSON(t, w)
+			t.Errorf("XFF=%q: expected 429 after 2 attempts; got %d (code=%q)",
+				xff, w.Code, errorCode(t, m))
+		}
+	}
+}
+
+// TestAuthLogin358_RateLimitKeyUsesRemoteAddr confirms that the rate-limit
+// key for two requests from different RemoteAddrs are independent, even when
+// they share the same email — enforcing per-IP bucketing at the TCP layer.
+func TestAuthLogin358_RateLimitKeyUsesRemoteAddr(t *testing.T) {
+	orig := loginRateLimiter
+	t.Cleanup(func() { loginRateLimiter = orig })
+
+	// Limit of 1 attempt — any second attempt is blocked.
+	testLimiter := ratelimit.New(ratelimit.Config{
+		MaxAttempts: 1,
+		Window:      time.Hour,
+	})
+	loginRateLimiter = testLimiter
+
+	s := serverWithSecret(t)
+	body := `{"email":"shared-email@example.com","password":"p"}`
+
+	// First request from "client A" RemoteAddr — allowed.
+	wA1 := httptest.NewRecorder()
+	rA1 := httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(body))
+	rA1.Header.Set("Content-Type", "application/json")
+	rA1.RemoteAddr = "10.0.0.1:1111"
+	s.handleAuthLogin(wA1, rA1)
+	if wA1.Code == http.StatusTooManyRequests {
+		t.Error("client A first attempt should not be rate-limited")
+	}
+
+	// Second request from same "client A" RemoteAddr — rate-limited.
+	wA2 := httptest.NewRecorder()
+	rA2 := httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(body))
+	rA2.Header.Set("Content-Type", "application/json")
+	rA2.RemoteAddr = "10.0.0.1:1112"
+	s.handleAuthLogin(wA2, rA2)
+	if wA2.Code != http.StatusTooManyRequests {
+		t.Errorf("client A second attempt should be rate-limited (429); got %d", wA2.Code)
+	}
+
+	// First request from "client B" with a different RemoteAddr — NOT rate-limited
+	// (independent counter, even though the email is the same).
+	wB := httptest.NewRecorder()
+	rB := httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(body))
+	rB.Header.Set("Content-Type", "application/json")
+	rB.RemoteAddr = "10.0.0.2:2222"
+	s.handleAuthLogin(wB, rB)
+	if wB.Code == http.StatusTooManyRequests {
+		t.Errorf("client B (different RemoteAddr) should not be rate-limited; got %d", wB.Code)
+	}
+}
+
+// TestAuthLogin358_RateLimitKeyIgnoresXFFByDefault directly verifies the key
+// string produced for two requests that share the same RemoteAddr but send
+// different X-Forwarded-For values: the keys must be identical (XFF ignored).
+func TestAuthLogin358_RateLimitKeyIgnoresXFFByDefault(t *testing.T) {
+	email := "key-test@example.com"
+
+	rNoXFF := httptest.NewRequest(http.MethodPost, "/", nil)
+	rNoXFF.RemoteAddr = "10.1.2.3:50000"
+
+	rWithXFF := httptest.NewRequest(http.MethodPost, "/", nil)
+	rWithXFF.RemoteAddr = "10.1.2.3:50001" // same IP, different ephemeral port
+	rWithXFF.Header.Set("X-Forwarded-For", "9.9.9.9")
+
+	keyNoXFF := loginRateLimiterKey(rNoXFF, email)
+	keyWithXFF := loginRateLimiterKey(rWithXFF, email)
+
+	if keyNoXFF != keyWithXFF {
+		t.Errorf("rate-limit keys differ when XFF present vs absent:\n  noXFF  = %q\n  withXFF = %q\n"+
+			"XFF header must be ignored when TRUSTED_PROXY_COUNT=0", keyNoXFF, keyWithXFF)
+	}
+	// The key must contain the email (bucketing is per-IP+email).
+	if !strings.Contains(keyNoXFF, email) {
+		t.Errorf("rate-limit key %q does not contain email %q", keyNoXFF, email)
+	}
+	// The key must NOT contain the spoofed XFF IP when proxies=0.
+	if strings.Contains(keyNoXFF, "9.9.9.9") {
+		t.Errorf("rate-limit key %q contains spoofed XFF IP 9.9.9.9; XFF should be ignored", keyNoXFF)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // JWT constants sanity checks
 // ---------------------------------------------------------------------------
 

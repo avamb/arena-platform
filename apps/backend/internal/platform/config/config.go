@@ -109,6 +109,18 @@ type Config struct {
 	// arena-healthcheck binary. When empty it defaults to the process-specific
 	// address (HTTPListenAddr for arena-api, WorkerMetricsAddr for arena-worker).
 	HealthAddr string `env:"HEALTH_ADDR" required:"false" default:""`
+	// TrustedProxyCount is the number of trusted reverse-proxy hops that sit
+	// between this process and the public internet. When 0 (the default),
+	// X-Forwarded-For is completely ignored and RemoteAddr is used as the
+	// client IP for rate-limiting — this is the safe default for deployments
+	// without a load balancer. When N > 0, the (N+1)th-from-right entry in
+	// XFF is treated as the real client IP; the rightmost N entries are added
+	// by trusted proxies and therefore cannot be spoofed by clients.
+	//
+	// Example: behind one nginx reverse proxy set TRUSTED_PROXY_COUNT=1.
+	// WARNING: setting this value higher than your actual proxy depth allows
+	// clients to spoof their IP by prepending entries to X-Forwarded-For.
+	TrustedProxyCount int `env:"TRUSTED_PROXY_COUNT" required:"false" default:"0"`
 
 	// -------------------------------------------------------------------------
 	// Database (PostgreSQL 17)
@@ -399,6 +411,14 @@ func Load() (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.BodyLimitBytes = v
+
+	// TRUSTED_PROXY_COUNT — number of trusted reverse-proxy hops. Defaults to
+	// 0 (ignore XFF, use RemoteAddr for rate limiting). See TrustedClientIP.
+	iTPC, err := getenvInt("TRUSTED_PROXY_COUNT", 0)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.TrustedProxyCount = iTPC
 
 	d, err := getenvDuration("REQUEST_TIMEOUT_SECONDS", 30*time.Second, true)
 	if err != nil {

@@ -48,15 +48,20 @@ const (
 	refreshTokenTTL = 30 * 24 * time.Hour
 )
 
-func loginRateLimiterKey(r *http.Request, email string) string {
-	return httputil.ClientIP(r) + ":" + email
+// loginRateLimiterKey builds the per-key string used by the sliding-window
+// rate limiter. The IP component is derived via httputil.TrustedClientIP so
+// that a client cannot bypass the lockout by rotating the X-Forwarded-For
+// header — when trustedProxyCount is 0 (the default) XFF is ignored entirely
+// and the TCP RemoteAddr is used instead.
+func (h *Handler) loginRateLimiterKey(r *http.Request, email string) string {
+	return httputil.TrustedClientIP(r, h.trustedProxyCount) + ":" + email
 }
 
 // LoginRateLimiterKey is the exported form of loginRateLimiterKey, for use by
 // the httpserver shim layer (auth_login_test.go calls loginRateLimiterKey directly
 // from package httpserver via the shim forwarder in auth_shims.go).
-func LoginRateLimiterKey(r *http.Request, email string) string {
-	return loginRateLimiterKey(r, email)
+func (h *Handler) LoginRateLimiterKey(r *http.Request, email string) string {
+	return h.loginRateLimiterKey(r, email)
 }
 
 // Login serves POST /v1/auth/login.
@@ -92,7 +97,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rlKey := loginRateLimiterKey(r, email)
+	rlKey := h.loginRateLimiterKey(r, email)
 	if !h.rateLimiter.Allow(rlKey) {
 		logger.Warn("auth.login: rate limit exceeded", "email_prefix", email[:min(len(email), 5)])
 		httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorEnvelopeWithDetails(
@@ -151,7 +156,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.rateLimiter.Reset(rlKey)
+	h.rateLimiter.Reset(rlKey) // clear on successful login
 
 	actorID := userRow.ID
 	accessToken, exp, err := auth.IssueJWT(

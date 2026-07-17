@@ -75,6 +75,11 @@ func UUIDPathParam(w http.ResponseWriter, r *http.Request, paramName string) (uu
 
 // ClientIP extracts the real client IP from the request, preferring
 // X-Forwarded-For (first hop) over RemoteAddr.
+//
+// Deprecated: ClientIP trusts the client-supplied X-Forwarded-For header
+// unconditionally and is vulnerable to IP spoofing. Use TrustedClientIP
+// with an explicit trustedProxies count derived from your deployment
+// topology for any security-sensitive operation (e.g. rate limiting).
 func ClientIP(r *http.Request) string {
 	if ip := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); ip != "" {
 		if i := strings.IndexByte(ip, ','); i >= 0 {
@@ -83,6 +88,66 @@ func ClientIP(r *http.Request) string {
 		return strings.TrimSpace(ip)
 	}
 	return r.RemoteAddr
+}
+
+// TrustedClientIP derives the real client IP using a hop-count approach
+// that is resistant to X-Forwarded-For spoofing.
+//
+// When trustedProxies == 0 (the recommended default for most deployments),
+// the X-Forwarded-For header is completely ignored and net.SplitHostPort is
+// applied to r.RemoteAddr. This is always safe because RemoteAddr is set by
+// the Go net/http server from the TCP connection and cannot be forged by the
+// client.
+//
+// When trustedProxies == N (N > 0), each trusted proxy is expected to append
+// one entry to the end of the X-Forwarded-For list. The real client IP is
+// therefore the entry at position len(xff)-N-1 (0-indexed from the left). If
+// the XFF list contains fewer than N+1 entries the function falls back to
+// RemoteAddr to avoid returning an attacker-controlled value.
+//
+// Example: behind one nginx reverse proxy set trustedProxies=1. The XFF value
+// would be "<real-client>, <nginx-added>"; the function returns <real-client>.
+func TrustedClientIP(r *http.Request, trustedProxies int) string {
+	remoteAddr := func() string {
+		host, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			return r.RemoteAddr
+		}
+		return host
+	}
+
+	if trustedProxies <= 0 {
+		// Default: never trust XFF; use the TCP peer address.
+		return remoteAddr()
+	}
+
+	xff := strings.TrimSpace(r.Header.Get("X-Forwarded-For"))
+	if xff == "" {
+		return remoteAddr()
+	}
+
+	// Split into individual entries and trim whitespace.
+	parts := strings.Split(xff, ",")
+	ips := parts[:0]
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			ips = append(ips, p)
+		}
+	}
+
+	// The real client is at len(ips)-trustedProxies-1. If there are not
+	// enough entries, the header is suspicious — fall back to RemoteAddr.
+	idx := len(ips) - trustedProxies - 1
+	if idx < 0 {
+		return remoteAddr()
+	}
+
+	if ip := net.ParseIP(ips[idx]); ip != nil {
+		return ip.String()
+	}
+
+	// Unparseable IP in the expected slot — fall back to RemoteAddr.
+	return remoteAddr()
 }
 
 // RequireAdminReason validates the X-Admin-Reason header used by superadmin and

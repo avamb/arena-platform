@@ -19,7 +19,7 @@ func (s *Server) mountAuthRoutes(r chi.Router) {
 
 	issuer := s.authIssuer()
 	audience := s.authAudience()
-	h := hauth.New(s.pool, s.audit, s.sessionStore, s.cfg.JWTSecretStub, issuer, audience, s.maxConcurrentSessions)
+	h := hauth.New(s.pool, s.audit, s.sessionStore, s.cfg.JWTSecretStub, issuer, audience, s.maxConcurrentSessions, s.cfg.TrustedProxyCount)
 
 	r.Post("/auth/register", h.Register)
 	r.Get("/auth/verify", h.VerifyEmail)

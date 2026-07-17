@@ -48,17 +48,27 @@ type Handler struct {
 	jwtAudience           string
 	maxConcurrentSessions int
 	rateLimiter           ratelimit.Limiter
+	// trustedProxyCount is forwarded to httputil.TrustedClientIP so that the
+	// rate-limit key is derived from the real client IP rather than from the
+	// client-controlled X-Forwarded-For header. See config.TrustedProxyCount.
+	trustedProxyCount int
 }
 
 // New creates a Handler. jwtSecret, issuer, and audience must be fully resolved
 // by the caller (mount_auth.go derives them from the stub provider or hardcoded
 // fallbacks before calling New).
+//
+// trustedProxies controls how many reverse-proxy hops are trusted when
+// deriving the client IP for rate limiting — see httputil.TrustedClientIP.
+// Pass 0 (the safe default) if the API server receives connections directly
+// or you are not behind a load balancer / reverse proxy.
 func New(
 	db DB,
 	auditW audit.Writer,
 	store redissession.Store,
 	jwtSecret, issuer, audience string,
 	maxSessions int,
+	trustedProxies int,
 ) *Handler {
 	return &Handler{
 		db:                    db,
@@ -68,6 +78,7 @@ func New(
 		jwtIssuer:             issuer,
 		jwtAudience:           audience,
 		maxConcurrentSessions: maxSessions,
+		trustedProxyCount:     trustedProxies,
 		rateLimiter: ratelimit.New(ratelimit.Config{
 			MaxAttempts: loginRateLimitAttempts,
 			Window:      loginRateLimitWindow,
@@ -85,6 +96,7 @@ func NewWithLimiter(
 	store redissession.Store,
 	jwtSecret, issuer, audience string,
 	maxSessions int,
+	trustedProxies int,
 	limiter ratelimit.Limiter,
 ) *Handler {
 	return &Handler{
@@ -95,6 +107,7 @@ func NewWithLimiter(
 		jwtIssuer:             issuer,
 		jwtAudience:           audience,
 		maxConcurrentSessions: maxSessions,
+		trustedProxyCount:     trustedProxies,
 		rateLimiter:           limiter,
 	}
 }
