@@ -44,14 +44,15 @@ import (
 // emptyRows is a pgx.Rows implementation that is already closed with no data.
 type emptyRows struct{}
 
-func (emptyRows) Close()                                  {}
-func (emptyRows) Err() error                              { return nil }
-func (emptyRows) CommandTag() pgconn.CommandTag           { return pgconn.CommandTag{} }
+func (emptyRows) Close()                                       {}
+func (emptyRows) Err() error                                   { return nil }
+func (emptyRows) CommandTag() pgconn.CommandTag                { return pgconn.CommandTag{} }
 func (emptyRows) FieldDescriptions() []pgconn.FieldDescription { return nil }
-func (emptyRows) Next() bool                              { return false }
-func (emptyRows) Scan(_ ...any) error                     { return nil }
-func (emptyRows) Values() ([]any, error)                  { return nil, nil }
-func (emptyRows) RawValues() [][]byte                     { return nil }
+func (emptyRows) Next() bool                                   { return false }
+func (emptyRows) Scan(_ ...any) error                          { return nil }
+func (emptyRows) Values() ([]any, error)                       { return nil, nil }
+func (emptyRows) RawValues() [][]byte                          { return nil }
+func (emptyRows) Conn() *pgx.Conn                              { return nil }
 
 // emptyMembershipDBTX implements gen.DBTX and returns empty rows for all
 // queries. Used to simulate a member lookup that returns no memberships.

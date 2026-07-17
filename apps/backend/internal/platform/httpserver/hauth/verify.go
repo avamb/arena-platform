@@ -22,6 +22,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/users"
 )
 
 // VerifyEmail serves GET /v1/auth/verify?token=<tok>.
@@ -53,7 +54,9 @@ func (h *Handler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 
 	q := gen.New(tx)
 
-	tokenRow, err := q.GetEmailVerificationToken(ctx, token)
+	// PR2-03: look up by SHA-256 hash; client sent raw token in the URL query param.
+	tokenHash := users.TokenHash(token)
+	tokenRow, err := q.GetEmailVerificationToken(ctx, tokenHash)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("auth.token_not_found", "verification token not found or already expired", r))
@@ -81,7 +84,7 @@ func (h *Handler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := q.MarkVerificationTokenUsed(ctx, token); err != nil {
+	if err := q.MarkVerificationTokenUsed(ctx, tokenHash); err != nil {
 		logger.Error("auth.verify: mark token used failed", "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.update_failed", "failed to consume verification token", r))
 		return
