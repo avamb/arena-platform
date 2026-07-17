@@ -98,7 +98,14 @@ class Arena_Events_Checkout {
 		}
 
 		// Fetch live tier availability from the Arena public feed API.
+		// Returns null on fetch failure; empty array when the event has no tiers.
 		$tiers = self::fetch_tier_availability( $arena_event_id );
+
+		if ( $tiers === null ) {
+			return '<div class="arena-tiers arena-fetch-error"><p>' .
+				esc_html__( 'Ticket availability could not be loaded. Please try again later.', 'arena-events' ) .
+				'</p></div>';
+		}
 
 		// Retrieve stored sessions meta for supplemental data.
 		$sessions = [];
@@ -120,21 +127,36 @@ class Arena_Events_Checkout {
 	/**
 	 * Fetch live tier availability from the Arena public feed API.
 	 *
-	 * Calls GET /v1/public/feeds/{feed_token}/sessions and filters sessions
-	 * to those belonging to $arena_event_id, then flattens into a tier list.
+	 * Calls GET /v1/public/feeds/{feed_token}/events/{arena_event_id} (the
+	 * event-detail endpoint) and flattens all sessions' tiers into a single
+	 * list.  Field names are normalised so that rendering code can use the
+	 * well-known 'price' and 'capacity_available' keys:
+	 *
+	 *   price_amount (int cents from the API) → aliased as 'price'
+	 *   capacity     (total capacity)         → aliased as 'capacity_available'
+	 *
+	 * Returns null on any fetch failure (network error, non-200 status, or
+	 * unexpected response shape) so callers can surface the error instead of
+	 * silently rendering an empty tier list.
+	 *
+	 * Returns an empty array when the fetch succeeds but the event has no
+	 * published sessions or tiers.
 	 *
 	 * @param string $arena_event_id Arena UUIDv7 event identifier.
-	 * @return array Flat list of tier arrays (each with a 'session_id' key injected).
+	 * @return array|null Flat list of normalised tier arrays, or null on failure.
 	 */
-	protected static function fetch_tier_availability( string $arena_event_id ): array {
+	protected static function fetch_tier_availability( string $arena_event_id ): ?array {
 		$feed_token = Arena_Events_Settings::get_feed_token();
 		$api_base   = Arena_Events_Settings::get_api_base_url();
 
 		if ( ! $feed_token ) {
-			return [];
+			return null; // configuration error — surface as failure
 		}
 
-		$url = $api_base . '/v1/public/feeds/' . rawurlencode( $feed_token ) . '/sessions';
+		// Use the correct event-detail endpoint which includes sessions and tiers.
+		// The old /sessions path does not exist on the backend and returns 404.
+		$url = $api_base . '/v1/public/feeds/' . rawurlencode( $feed_token )
+			. '/events/' . rawurlencode( $arena_event_id );
 
 		$response = wp_remote_get(
 			$url,
@@ -145,30 +167,48 @@ class Arena_Events_Checkout {
 		);
 
 		if ( is_wp_error( $response ) ) {
-			return [];
+			return null; // network error — caller will surface this
+		}
+
+		$http_code = (int) wp_remote_retrieve_response_code( $response );
+		if ( $http_code !== 200 ) {
+			return null; // unexpected status (e.g. 404) — surface as failure
 		}
 
 		$body = wp_remote_retrieve_body( $response );
 		$data = json_decode( $body, true );
 
-		if ( ! is_array( $data ) ) {
-			return [];
+		// Response shape: {"event": {..., "sessions": [{..., "tiers": [...]}]}}
+		if ( ! is_array( $data )
+			|| ! isset( $data['event']['sessions'] )
+			|| ! is_array( $data['event']['sessions'] )
+		) {
+			return null; // unexpected response shape — surface as failure
 		}
 
-		// Flatten tiers from sessions that belong to this event.
+		// Flatten tiers from all sessions, normalising field names.
 		$tiers = [];
-		foreach ( $data as $session ) {
-			if ( isset( $session['event_id'] ) && $session['event_id'] === $arena_event_id ) {
-				if ( isset( $session['tiers'] ) && is_array( $session['tiers'] ) ) {
-					foreach ( $session['tiers'] as $tier ) {
-						$tier['session_id'] = $session['id'] ?? '';
-						$tiers[]            = $tier;
-					}
+		foreach ( $data['event']['sessions'] as $session ) {
+			if ( ! isset( $session['tiers'] ) || ! is_array( $session['tiers'] ) ) {
+				continue;
+			}
+			foreach ( $session['tiers'] as $tier ) {
+				// Normalise price: the API returns price_amount (int cents);
+				// the rendering code divides 'price' by 100 for display.
+				if ( ! isset( $tier['price'] ) && isset( $tier['price_amount'] ) ) {
+					$tier['price'] = $tier['price_amount'];
 				}
+				// Normalise availability: the API returns 'capacity' (total);
+				// render code checks 'capacity_available' to detect sold-out.
+				if ( ! isset( $tier['capacity_available'] ) && isset( $tier['capacity'] ) ) {
+					$tier['capacity_available'] = $tier['capacity'];
+				}
+				$tier['session_id'] = $session['id'] ?? '';
+				$tiers[]            = $tier;
 			}
 		}
 
-		return $tiers;
+		return $tiers; // empty array = success with no tiers; null = fetch failure
 	}
 
 	// ─────────────────────────────────────────────────────────────────────────
@@ -351,7 +391,16 @@ class Arena_Events_Checkout {
 		$data         = json_decode( $body_raw, true );
 
 		if ( $status_code !== 201 ) {
-			$msg = is_array( $data ) ? ( $data['error'] ?? $data['message'] ?? __( 'Checkout failed.', 'arena-events' ) ) : __( 'Checkout failed.', 'arena-events' );
+			// The Arena API wraps errors as {"error":{"code":"...","message":"..."}}.
+			// Extract the nested message string; fall back through alternatives.
+			if ( is_array( $data ) ) {
+				$error_obj = $data['error'] ?? null;
+				$msg = is_array( $error_obj )
+					? ( $error_obj['message'] ?? __( 'Checkout failed.', 'arena-events' ) )
+					: ( $data['message'] ?? __( 'Checkout failed.', 'arena-events' ) );
+			} else {
+				$msg = __( 'Checkout failed.', 'arena-events' );
+			}
 			return new WP_Error( 'checkout_failed', $msg, [ 'status' => $status_code ] );
 		}
 

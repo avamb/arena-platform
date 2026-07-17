@@ -122,6 +122,12 @@ const (
 	// ResultCodeNotFound is returned when the requested resource does not
 	// exist in the platform (Bil24 wire: -3).
 	ResultCodeNotFound = bil24compat.ResultCodeNotFound
+	// ResultCodeUnauthorized is returned when the fid/token credential pair
+	// is invalid or missing. Platform extension (feature #374).
+	ResultCodeUnauthorized = bil24compat.ResultCodeUnauthorized
+	// ResultCodeNotImplemented is returned for commands recognized by the
+	// gateway but not yet wired to platform functionality (feature #374).
+	ResultCodeNotImplemented = bil24compat.ResultCodeNotImplemented
 	// ResultCodeInternalError is returned when an unexpected error prevents
 	// command execution (Bil24 wire: -99).
 	ResultCodeInternalError = bil24compat.ResultCodeInternalError
