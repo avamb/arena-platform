@@ -892,6 +892,11 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hcheckout", "checkout_convert.go"),
 		}
+	// hold_api.go — CreateSeatedHold/CreateGAHold/ReleaseHold (feature #365 — PR2-09)
+	case "hold_api.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hcheckout", "hold_api.go"),
+		}
 	// Refresh tokens query file (feature #359 — PR2-03 token hashing)
 	case "refresh_tokens.sql":
 		candidates = []string{

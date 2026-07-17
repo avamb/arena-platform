@@ -174,6 +174,8 @@ type Querier interface {
 	// Payment intents — SCA-aware payment state machine (feature #137)
 	InsertPaymentIntent(ctx context.Context, checkoutSessionID *uuid.UUID, orgID uuid.UUID, provider string, providerPaymentID *string, amount int64, currency string, initialState string, scaRedirectURL *string, clientSecret *string) (PaymentIntentRow, error)
 	GetPaymentIntentByID(ctx context.Context, id uuid.UUID) (PaymentIntentRow, error)
+	// GetPaymentIntentByIDForUpdate is the row-locking variant; call inside a tx (feature #361).
+	GetPaymentIntentByIDForUpdate(ctx context.Context, id uuid.UUID) (PaymentIntentRow, error)
 	GetPaymentIntentByProviderID(ctx context.Context, providerPaymentID string) (PaymentIntentRow, error)
 	ListPaymentIntentsByCheckout(ctx context.Context, checkoutSessionID uuid.UUID) ([]PaymentIntentRow, error)
 	UpdatePaymentIntentState(ctx context.Context, id uuid.UUID, newState string, scaRedirectURL *string, clientSecret *string, failureCode *string, failureMessage *string, providerPaymentID *string) (PaymentIntentRow, error)
@@ -204,6 +206,9 @@ type Querier interface {
 	InsertReservation(ctx context.Context, orgID, channelID, sessionID uuid.UUID, tierID, userID *uuid.UUID, quantity int32, expiresAt time.Time) (ReservationRow, error)
 	GetReservationByID(ctx context.Context, id uuid.UUID) (ReservationRow, error)
 	UpdateReservationState(ctx context.Context, id uuid.UUID, state string) (ReservationRow, error)
+	// UpdateReservationStateGuarded transitions only when current state == expectedState.
+	// Returns pgx.ErrNoRows when not found OR state guard failed (race lost). Feature #365.
+	UpdateReservationStateGuarded(ctx context.Context, id uuid.UUID, expectedState, newState string) (ReservationRow, error)
 	GetExpiredReservations(ctx context.Context, limit int32) ([]ReservationRow, error)
 	ListReservationsBySession(ctx context.Context, sessionID uuid.UUID) ([]ReservationRow, error)
 	ListReservationsByUser(ctx context.Context, userID uuid.UUID) ([]ReservationRow, error)
@@ -245,6 +250,8 @@ type Querier interface {
 	InsertRefundEvent(ctx context.Context, refundID uuid.UUID, providerRefundID string, eventType string, eventPayload []byte, resultingState *string) (RefundEventRow, error)
 	GetRefundEvent(ctx context.Context, providerRefundID string, eventType string) (RefundEventRow, error)
 	CancelTicketsByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID) (int64, error)
+	// SumNonFailedRefundsByIntent aggregates committed refund amounts for over-refund protection (feature #361).
+	SumNonFailedRefundsByIntent(ctx context.Context, paymentIntentID uuid.UUID) (int64, error)
 
 	// Barcode authority federation — multi-system barcode validation (feature #142)
 	InsertBarcodeAuthority(ctx context.Context, authorityType string, label string) (BarcodeAuthorityRow, error)

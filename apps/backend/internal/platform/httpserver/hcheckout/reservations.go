@@ -652,7 +652,9 @@ func (h *Handler) HandleCancelReservation(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Begin transaction: UpdateReservationState + ReleaseCapacity atomically.
+	// Begin transaction: UpdateReservationStateGuarded + ReleaseCapacity atomically.
+	// The guarded UPDATE ensures capacity is released exactly once even when a
+	// concurrent TTL-expire or second cancel races this request. (feature #365)
 	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
@@ -665,25 +667,21 @@ func (h *Handler) HandleCancelReservation(w http.ResponseWriter, r *http.Request
 	resQ := h.reservationQueries.WithTx(tx)
 	invQ := h.inventoryQueries.WithTx(tx)
 
-	// Release held seats atomically with the state transition. GA
-	// reservations have no reservation_seats rows and this call is a
-	// cheap no-op; seated / hybrid reservations get their session_seats
-	// flipped back to 'available' with a bumped seat_status_version so
-	// the delta seat-status endpoints observe the release immediately
-	// (feature #309 §5.2 contract).
-	if _, err := releaseReservationSeatsTx(ctx, resQ, current.SessionID, current.ID); err != nil {
-		h.logger.Warn("reservation: release seats on cancel failed (non-fatal)",
-			slog.String("reservation_id", id.String()),
-			slog.String("error", err.Error()),
-		)
-		// Non-fatal: cancel still proceeds. The TTL worker will eventually
-		// clean up any leftover seat holds.
-	}
-
-	cancelled, err := resQ.UpdateReservationState(ctx, id, "cancelled")
+	// Guarded state transition: only wins when state still matches current.State.
+	// If the TTL worker or a second cancel raced and already transitioned the
+	// reservation, pgx.ErrNoRows is returned and we return 409 Conflict without
+	// releasing capacity, preventing a double-release. (feature #365)
+	cancelled, err := resQ.UpdateReservationStateGuarded(ctx, id, current.State, "cancelled")
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("reservation.not_found", "reservation not found", r))
+			// State changed between our read and this UPDATE — another transaction
+			// already handled this reservation. Report conflict so the caller knows.
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+				"reservation.state_changed",
+				"reservation state changed concurrently — it may already be cancelled or expired",
+				r,
+				map[string]any{"reservation_id": id.String()},
+			))
 			return
 		}
 		h.logger.Error("reservation: cancel state update failed", slog.String("error", err.Error()))
@@ -693,7 +691,24 @@ func (h *Handler) HandleCancelReservation(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Release held capacity back to available.
+	// Release held seats atomically with the state transition. GA
+	// reservations have no reservation_seats rows and this call is a
+	// cheap no-op; seated / hybrid reservations get their session_seats
+	// flipped back to 'available' with a bumped seat_status_version so
+	// the delta seat-status endpoints observe the release immediately
+	// (feature #309 §5.2 contract). Seat release is non-fatal: the
+	// guarded state transition above already won the row.
+	if _, err := releaseReservationSeatsTx(ctx, resQ, current.SessionID, current.ID); err != nil {
+		h.logger.Warn("reservation: release seats on cancel failed (non-fatal)",
+			slog.String("reservation_id", id.String()),
+			slog.String("error", err.Error()),
+		)
+		// Non-fatal: cancel still proceeds. The TTL worker will eventually
+		// clean up any leftover seat holds.
+	}
+
+	// Release held capacity back to available. Only reached after winning the
+	// guarded transition, so capacity is released exactly once.
 	if _, err := invQ.ReleaseCapacity(ctx, current.SessionID, current.TierID, current.Quantity); err != nil {
 		h.logger.Error("reservation: release capacity failed",
 			slog.String("reservation_id", id.String()),

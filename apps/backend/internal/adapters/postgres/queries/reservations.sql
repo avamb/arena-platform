@@ -36,6 +36,24 @@ WHERE  id = $1
 RETURNING id, org_id, channel_id, session_id, tier_id, user_id, quantity, state,
           expires_at, created_at, updated_at, cancelled_at, converted_at, expired_at;
 
+-- name: UpdateReservationStateGuarded :one
+-- Conditionally transitions the reservation only when the current state matches
+-- expectedState ($2). Returns pgx.ErrNoRows when the row does not exist OR the
+-- state guard failed (another transition already won the race). Callers MUST
+-- treat pgx.ErrNoRows as a signal to skip any side-effects (e.g. capacity
+-- release) — they did not win the transition. Used to prevent double-release
+-- when cancel and TTL-expire execute concurrently (feature #365).
+UPDATE reservations
+SET    state        = $3,
+       updated_at   = now(),
+       cancelled_at = CASE WHEN $3 = 'cancelled' THEN now() ELSE cancelled_at END,
+       converted_at = CASE WHEN $3 = 'converted' THEN now() ELSE converted_at END,
+       expired_at   = CASE WHEN $3 = 'expired'   THEN now() ELSE expired_at   END
+WHERE  id = $1
+  AND  state = $2
+RETURNING id, org_id, channel_id, session_id, tier_id, user_id, quantity, state,
+          expires_at, created_at, updated_at, cancelled_at, converted_at, expired_at;
+
 -- name: GetExpiredReservations :many
 -- Polls up to $1 reservations whose TTL has elapsed but have not yet been
 -- marked expired. Uses FOR UPDATE SKIP LOCKED so concurrent TTL worker

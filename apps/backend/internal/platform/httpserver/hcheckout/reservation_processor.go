@@ -24,6 +24,7 @@ package hcheckout
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -118,8 +119,18 @@ func (p *ReservationProcessor) ProcessExpiredReservations(ctx context.Context, l
 }
 
 // expireReservation processes a single expired reservation within its own transaction:
-//  1. Releases held capacity on the inventory ledger.
-//  2. Transitions the reservation state to 'expired'.
+//  1. Re-acquires the row to verify it is still in a cancellable state (feature #365).
+//  2. Releases held seats on session_seats.
+//  3. Attempts a guarded state transition to 'expired' (feature #365).
+//  4. Releases held capacity only when the guarded transition wins.
+//
+// The guarded transition (UpdateReservationStateGuarded) prevents the double-
+// release race that arises because the FOR UPDATE SKIP LOCKED lock from the poll
+// transaction is released before each per-item transaction begins: a concurrent
+// cancel (HandleCancelReservation or ReleaseHold) can win the row between the
+// poll commit and this per-item tx. If the guarded UPDATE returns pgx.ErrNoRows,
+// the reservation was already transitioned by the concurrent cancel and we skip
+// capacity release entirely.
 func (p *ReservationProcessor) expireReservation(ctx context.Context, r gen.ReservationRow) error {
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -129,11 +140,37 @@ func (p *ReservationProcessor) expireReservation(ctx context.Context, r gen.Rese
 
 	q := gen.New(tx)
 
+	// Re-acquire the row inside this per-item transaction to check whether the
+	// state is still eligible for expiry. The SKIP LOCKED lock from the poll
+	// transaction was released when that transaction committed; a concurrent
+	// HandleCancelReservation or ReleaseHold may have already transitioned the
+	// reservation to 'cancelled' in the meantime. (feature #365)
+	current, err := q.GetReservationByID(ctx, r.ID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Reservation deleted mid-flight — treat as already processed.
+			_ = tx.Commit(ctx)
+			return nil
+		}
+		return fmt.Errorf("expire: re-fetch reservation: %w", err)
+	}
+	if current.State != "draft" && current.State != "active" {
+		// Already cancelled, converted, or expired by a concurrent transition.
+		// Nothing to release — exit cleanly without touching capacity.
+		p.logger.Info("reservation_processor: reservation already transitioned, skipping",
+			slog.String("reservation_id", r.ID.String()),
+			slog.String("session_id", r.SessionID.String()),
+			slog.String("state", current.State),
+		)
+		_ = tx.Commit(ctx)
+		return nil
+	}
+
 	// Release held seats (seated / hybrid reservations) atomically with the
 	// state transition. GA-only reservations have no reservation_seats rows,
 	// so this is a cheap no-op for them. A seat-release failure is non-fatal
-	// so the TTL worker still transitions the reservation to 'expired' and
-	// the ledger release below still runs (feature #309 §5.2 contract).
+	// so the TTL worker still attempts the guarded state transition below
+	// (feature #309 §5.2 contract).
 	if released, err := releaseReservationSeatsTx(ctx, q, r.SessionID, r.ID); err != nil {
 		p.logger.Warn("reservation_processor: release seats failed (non-fatal)",
 			slog.String("reservation_id", r.ID.String()),
@@ -149,20 +186,33 @@ func (p *ReservationProcessor) expireReservation(ctx context.Context, r gen.Rese
 		)
 	}
 
-	// Release held capacity — non-fatal if it fails (inventory may already be
-	// inconsistent, but the reservation must still be marked expired).
+	// Guarded state transition: only wins when state still matches current.State.
+	// If a concurrent cancel committed between our re-read and this UPDATE,
+	// pgx.ErrNoRows is returned and we must NOT release capacity. (feature #365)
+	if _, err := q.UpdateReservationStateGuarded(ctx, r.ID, current.State, "expired"); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Lost the race — a concurrent cancel or convert already transitioned
+			// this reservation. Skip capacity release to avoid double-release.
+			p.logger.Info("reservation_processor: guarded transition lost race, skipping capacity release",
+				slog.String("reservation_id", r.ID.String()),
+				slog.String("session_id", r.SessionID.String()),
+				slog.String("expected_state", current.State),
+			)
+			_ = tx.Commit(ctx)
+			return nil
+		}
+		return fmt.Errorf("update reservation state to expired: %w", err)
+	}
+
+	// Release held capacity — only reached when the guarded transition won.
+	// Non-fatal if it fails (inventory may already be inconsistent, but the
+	// reservation is already marked expired above).
 	if _, err := q.ReleaseCapacity(ctx, r.SessionID, r.TierID, r.Quantity); err != nil {
 		p.logger.Warn("reservation_processor: release capacity failed (non-fatal)",
 			slog.String("reservation_id", r.ID.String()),
 			slog.String("session_id", r.SessionID.String()),
 			slog.String("error", err.Error()),
 		)
-		// Continue: still mark the reservation as expired even if capacity release fails.
-	}
-
-	// Transition the reservation to 'expired'.
-	if _, err := q.UpdateReservationState(ctx, r.ID, "expired"); err != nil {
-		return fmt.Errorf("update reservation state to expired: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {

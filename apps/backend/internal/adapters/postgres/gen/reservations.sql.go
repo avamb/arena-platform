@@ -135,6 +135,32 @@ func (q *Queries) UpdateReservationState(ctx context.Context, id uuid.UUID, stat
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// UpdateReservationStateGuarded
+// ─────────────────────────────────────────────────────────────────────────────
+
+const updateReservationStateGuarded = `-- name: UpdateReservationStateGuarded :one
+UPDATE reservations
+SET    state        = $3,
+       updated_at   = now(),
+       cancelled_at = CASE WHEN $3 = 'cancelled' THEN now() ELSE cancelled_at END,
+       converted_at = CASE WHEN $3 = 'converted' THEN now() ELSE converted_at END,
+       expired_at   = CASE WHEN $3 = 'expired'   THEN now() ELSE expired_at   END
+WHERE  id = $1
+  AND  state = $2
+RETURNING id, org_id, channel_id, session_id, tier_id, user_id, quantity, state,
+          expires_at, created_at, updated_at, cancelled_at, converted_at, expired_at`
+
+// UpdateReservationStateGuarded conditionally transitions the reservation only
+// when the current state matches expectedState. Returns pgx.ErrNoRows when the
+// row does not exist OR the state guard failed (another transition already won
+// the race). Callers MUST treat pgx.ErrNoRows as a signal to skip side-effects
+// such as capacity release — they did not win the transition. Feature #365.
+func (q *Queries) UpdateReservationStateGuarded(ctx context.Context, id uuid.UUID, expectedState, newState string) (ReservationRow, error) {
+	row := q.db.QueryRow(ctx, updateReservationStateGuarded, id, expectedState, newState)
+	return scanReservationRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GetExpiredReservations
 // ─────────────────────────────────────────────────────────────────────────────
 

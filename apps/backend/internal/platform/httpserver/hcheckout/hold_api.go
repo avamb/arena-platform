@@ -385,7 +385,20 @@ func ReleaseHold(ctx context.Context, pool TxStarter, q *gen.Queries, reservatio
 		return gen.ReservationRow{}, &NotReleasableError{State: current.State}
 	}
 
-	// Release held seats (no-op for GA reservations).
+	// Guarded state transition: only wins when state still matches current.State.
+	// Prevents double-release when a concurrent TTL-expire or cancel races
+	// ReleaseHold. If pgx.ErrNoRows is returned the reservation was already
+	// transitioned — surface as NotReleasableError so callers handle it. (feature #365)
+	cancelled, err := txq.UpdateReservationStateGuarded(ctx, current.ID, current.State, "cancelled")
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return gen.ReservationRow{}, &NotReleasableError{State: current.State + " (changed concurrently)"}
+		}
+		return gen.ReservationRow{}, fmt.Errorf("hcheckout: cancel reservation: %w", err)
+	}
+
+	// Release held seats (no-op for GA reservations). Only reached after
+	// winning the guarded transition above.
 	released, err := releaseReservationSeatsTx(ctx, txq, current.SessionID, current.ID)
 	if err != nil {
 		return gen.ReservationRow{}, fmt.Errorf("hcheckout: release seats: %w", err)
@@ -395,11 +408,6 @@ func ReleaseHold(ctx context.Context, pool TxStarter, q *gen.Queries, reservatio
 	gaItems, err := txq.ListReservationGAItems(ctx, current.ID)
 	if err != nil {
 		return gen.ReservationRow{}, fmt.Errorf("hcheckout: list GA lines: %w", err)
-	}
-
-	cancelled, err := txq.UpdateReservationState(ctx, current.ID, "cancelled")
-	if err != nil {
-		return gen.ReservationRow{}, fmt.Errorf("hcheckout: cancel reservation: %w", err)
 	}
 
 	// Return reserved capacity, mirroring how it was taken:
