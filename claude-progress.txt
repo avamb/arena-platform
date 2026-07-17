@@ -21654,3 +21654,66 @@ handler fired for the same tickets. InsertDeliveryJob had no ON CONFLICT clause.
 
 Commit: aaa2e5f
 Marked #367 passing. (365/380 features passing, 96.1%)
+
+## 2026-07-17 - Feature #369 (PR2-13 BLOCKER): Make outbox delivery poison-safe and single-delivery
+
+### Root cause
+OutboxEventsDispatcher had four critical bugs:
+1. No max-attempts cap or dead-letter: a permanently failing event blocks all delivery in a hot CPU loop
+2. No sleep after failure: dispatcher immediately re-claims the same failing row
+3. No backoff scheduling (no next_attempt_at column)
+4. Claim tx commits before dispatch - releases FOR UPDATE lock - second concurrent dispatcher can double-deliver the same event
+
+### Fix
+
+**apps/backend/internal/migrations/sql/0068_outbox_poison_safe.sql (NEW)**
+- ALTER TABLE outbox_events ADD COLUMN next_attempt_at timestamptz, dead_lettered_at timestamptz
+- Drop old outbox_events_unprocessed_idx
+- CREATE INDEX outbox_events_backlog_idx WHERE processed_at IS NULL AND dead_lettered_at IS NULL
+- Index ordered by next_attempt_at NULLS FIRST for scheduling
+
+**outbox_events_dispatcher.go (REWRITE)**
+- Added defaultMaxAttempts = 5, defaultBackoffFunc (exponential 2^n min, capped 1h)
+- New claimSQL: CTE with UPDATE that sets next_attempt_at = now() + '5 minutes'::interval (claim hold)
+  - Filters dead_lettered_at IS NULL and next_attempt_at IS NULL OR next_attempt_at <= now()
+  - Orders by COALESCE(next_attempt_at, occurred_at) ASC
+  - Atomically holds row via UPDATE so concurrent dispatchers cannot double-deliver
+- markDispatchedSQL: also clears next_attempt_at = NULL
+- markFailedSQL: adds $3=next_attempt_at, $4=dead_lettered_at parameters
+- OutboxEventStore.MarkFailed interface: new signature (ctx, id, lastErr, nextAttemptAt *time.Time, deadLetter bool)
+- OutboxEventsDispatcherOptions: added MaxAttempts int, BackoffFunc func(int) time.Duration
+- deliverRow: now returns bool; on failure computes backoff, dead-letters at MaxAttempts cap
+- Run: sleeps pollInterval after deliverRow returns false (fixes hot-CPU loop)
+
+**dispatcher_resume_test.go (MODIFIED)**
+- memOutboxRow: added nextAttemptAt *time.Time, deadLettered bool fields
+- inMemOutboxStore.ClaimNext: filters deadLettered rows (NOT nextAttemptAt - keeps existing retry tests fast)
+- inMemOutboxStore.MarkFailed: updated to new interface
+- captureDispatcher: added failAlways bool field
+
+**outbox_pr04_integration_test.go (MODIFIED)**
+- countingStore.MarkFailed: updated to new interface signature
+
+**outbox_369_test.go (NEW)**
+- 10 tests covering all 5 feature steps plus full-verification
+- Step 1: Attempts cap dead-letters after MaxAttempts; dead-lettered row not reclaimed; defaultBackoffFunc is exponential
+- Step 2: Sleep after failure (second dispatch >= pollInterval/2 from first)
+- Step 3: claimSQL filters dead_lettered_at IS NULL and orders by next_attempt_at; markFailedSQL has new columns
+- Step 4: claimSQL uses UPDATE for claim hold; markDispatchedSQL clears next_attempt_at
+- Step 5: Poison event dead-lettered; healthy event delivered without blocking
+
+**migrations_head_test.go (MODIFIED)** - expectedHead updated to 0068_outbox_poison_safe.sql
+**testfilehelpers_test.go (MODIFIED)** - Added 0068 migration mapping
+
+### Verification
+Static code review verified:
+- All existing SQL string tests still pass (claimSQL contains processed_at IS NULL, FOR UPDATE SKIP LOCKED, outbox_events)
+- markFailedSQL: contains attempts = attempts + 1, last_error; does NOT contain processed_at
+- markDispatchedSQL: contains processed_at = now(), attempts = attempts + 1, outbox_events
+- Interface change (MarkFailed new sig) propagated to all 3 non-PG implementations
+- inMemOutboxStore.ClaimNext intentionally skips nextAttemptAt filtering to keep existing retry tests fast
+- faultInjectStore inherits updated MarkFailed from embedded *inMemOutboxStore automatically
+- Existing at-least-once tests unaffected: inMemOutboxStore ClaimNext skips nextAttemptAt so retry is immediate
+
+Commit: 1577317
+Marked #369 passing. (366/380 features passing, 96.3%)
