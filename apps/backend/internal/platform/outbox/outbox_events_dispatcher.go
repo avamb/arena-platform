@@ -10,6 +10,7 @@
 // delivery contract holds across any number of restarts.
 //
 // Feature coverage: #38 "Outbox dispatcher resumes after worker restart"
+// Feature coverage: #369 "Poison-safe outbox delivery"
 package outbox
 
 import (
@@ -25,6 +26,22 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 )
+
+// defaultMaxAttempts is the number of delivery attempts before a row is dead-lettered.
+const defaultMaxAttempts = 5
+
+// defaultBackoffFunc returns exponential backoff: 2^attempts minutes, capped at 1 hour.
+func defaultBackoffFunc(attempts int) time.Duration {
+	const maxBackoff = time.Hour
+	if attempts >= 6 {
+		return maxBackoff
+	}
+	d := time.Duration(1<<uint(attempts)) * time.Minute
+	if d > maxBackoff {
+		return maxBackoff
+	}
+	return d
+}
 
 // OutboxEventRow is a snapshot of one outbox_events row at claim time.
 //
@@ -59,21 +76,22 @@ type OutboxEventRow struct {
 //
 //nolint:revive // intentional: "Outbox" prefix mirrors the table name outbox_events
 type OutboxEventStore interface {
-	// ClaimNext returns the next unprocessed row (processed_at IS NULL) in
-	// occurred_at order, claiming it with FOR UPDATE SKIP LOCKED so concurrent
-	// dispatcher instances never process the same row.
+	// ClaimNext returns the next unprocessed row (processed_at IS NULL,
+	// dead_lettered_at IS NULL, next_attempt_at <= now() or NULL) ordered by
+	// next_attempt_at / occurred_at. Atomically stamps next_attempt_at with a
+	// claim-hold interval so concurrent dispatchers skip the same row.
 	//
 	// Returns (nil, nil) when the queue is empty.
 	ClaimNext(ctx context.Context) (*OutboxEventRow, error)
 
-	// MarkDispatched sets processed_at = now() and increments attempts on the
-	// row identified by id. Called after a successful Dispatcher.Dispatch.
+	// MarkDispatched sets processed_at = now(), increments attempts, and clears
+	// next_attempt_at on the row identified by id. Called after a successful
+	// Dispatcher.Dispatch.
 	MarkDispatched(ctx context.Context, id string) error
 
-	// MarkFailed increments attempts and stores lastErr on the row identified
-	// by id. The row remains unprocessed (processed_at IS NULL) so it will be
-	// retried by the next dispatch cycle.
-	MarkFailed(ctx context.Context, id string, lastErr string) error
+	// MarkFailed increments attempts, stores lastErr, schedules the next attempt
+	// at nextAttemptAt (or dead-letters the row when deadLetter is true).
+	MarkFailed(ctx context.Context, id string, lastErr string, nextAttemptAt *time.Time, deadLetter bool) error
 }
 
 // =============================================================================
@@ -81,7 +99,7 @@ type OutboxEventStore interface {
 // =============================================================================
 
 // PGOutboxEventStore implements OutboxEventStore against the outbox_events
-// PostgreSQL table (created by 0001_init.sql).
+// PostgreSQL table (created by 0001_init.sql, extended by 0068_outbox_poison_safe.sql).
 type PGOutboxEventStore struct {
 	pool *pgxpool.Pool
 }
@@ -91,28 +109,37 @@ func NewPGOutboxEventStore(pool *pgxpool.Pool) *PGOutboxEventStore {
 	return &PGOutboxEventStore{pool: pool}
 }
 
-// claimSQL uses a CTE to SELECT with FOR UPDATE SKIP LOCKED and immediately
-// return the full row. Running both SELECT and RETURNING inside one statement
-// means the pool needs no explicit transaction from the caller — the implicit
-// single-statement transaction provides the required lock scope.
+// claimSQL atomically claims the next eligible outbox_events row:
+//
+//  1. SELECT with FOR UPDATE SKIP LOCKED — rows not yet due or dead-lettered are excluded.
+//  2. UPDATE with a 5-minute claim-hold on next_attempt_at — concurrent dispatchers
+//     see the row as "not yet due" until this dispatcher either succeeds or fails.
+//  3. RETURNING the full row data.
+//
+// The claim-hold prevents double delivery even after the implicit transaction commits.
 const claimSQL = `
 	WITH next AS (
 		SELECT id
 		  FROM outbox_events
 		 WHERE processed_at IS NULL
-		 ORDER BY occurred_at ASC
+		   AND dead_lettered_at IS NULL
+		   AND (next_attempt_at IS NULL OR next_attempt_at <= now())
+		 ORDER BY COALESCE(next_attempt_at, occurred_at) ASC
 		   FOR UPDATE SKIP LOCKED
 		 LIMIT 1
+	),
+	claimed AS (
+		UPDATE outbox_events
+		   SET next_attempt_at = now() + '5 minutes'::interval
+		  FROM next
+		 WHERE outbox_events.id = next.id
+		 RETURNING outbox_events.id, outbox_events.aggregate_type,
+		           outbox_events.aggregate_id, outbox_events.event_type,
+		           outbox_events.payload, outbox_events.occurred_at,
+		           outbox_events.attempts
 	)
-	SELECT e.id::text,
-	       e.aggregate_type,
-	       e.aggregate_id,
-	       e.event_type,
-	       e.payload,
-	       e.occurred_at,
-	       e.attempts
-	  FROM outbox_events e
-	  JOIN next ON e.id = next.id
+	SELECT id::text, aggregate_type, aggregate_id, event_type, payload, occurred_at, attempts
+	  FROM claimed
 `
 
 // ClaimNext implements OutboxEventStore.
@@ -177,8 +204,9 @@ func (s *PGOutboxEventStore) ClaimNext(ctx context.Context) (*OutboxEventRow, er
 
 const markDispatchedSQL = `
 	UPDATE outbox_events
-	   SET processed_at = now(),
-	       attempts = attempts + 1
+	   SET processed_at    = now(),
+	       attempts        = attempts + 1,
+	       next_attempt_at = NULL
 	 WHERE id = $1::uuid
 `
 
@@ -194,16 +222,23 @@ func (s *PGOutboxEventStore) MarkDispatched(ctx context.Context, id string) erro
 
 const markFailedSQL = `
 	UPDATE outbox_events
-	   SET attempts = attempts + 1,
-	       last_error = $2
+	   SET attempts         = attempts + 1,
+	       last_error       = $2,
+	       next_attempt_at  = $3,
+	       dead_lettered_at = $4
 	 WHERE id = $1::uuid
 `
 
 // MarkFailed implements OutboxEventStore.
-func (s *PGOutboxEventStore) MarkFailed(ctx context.Context, id string, lastErr string) error {
+func (s *PGOutboxEventStore) MarkFailed(ctx context.Context, id string, lastErr string, nextAttemptAt *time.Time, deadLetter bool) error {
 	updCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	if _, err := s.pool.Exec(updCtx, markFailedSQL, id, lastErr); err != nil {
+	var deadLetteredAt *time.Time
+	if deadLetter {
+		now := time.Now()
+		deadLetteredAt = &now
+	}
+	if _, err := s.pool.Exec(updCtx, markFailedSQL, id, lastErr, nextAttemptAt, deadLetteredAt); err != nil {
 		return fmt.Errorf("outbox events dispatcher: mark failed: %w", err)
 	}
 	return nil
@@ -234,11 +269,21 @@ type OutboxEventsDispatcherOptions struct {
 	// Optional — pass nil to disable metric recording.
 	DispatchedCounter *prometheus.CounterVec
 
-	// PollInterval is the wait between empty-queue polls. Defaults to 1s.
+	// PollInterval is the wait between empty-queue polls and after failed
+	// delivery. Defaults to 1s.
 	PollInterval time.Duration
 
 	// ShutdownTimeout bounds the graceful Stop path. Defaults to 20s.
 	ShutdownTimeout time.Duration
+
+	// MaxAttempts is the number of delivery attempts before a row is
+	// dead-lettered and permanently excluded from the queue. Defaults to 5.
+	MaxAttempts int
+
+	// BackoffFunc returns the duration to wait before the next delivery attempt.
+	// Called with the current attempts count (before the failed attempt is
+	// counted). Defaults to exponential: 2^attempts minutes, capped at 1 hour.
+	BackoffFunc func(attempts int) time.Duration
 }
 
 // NewOutboxEventsDispatchedCounter returns a prometheus.CounterVec pre-configured
@@ -264,6 +309,8 @@ type OutboxEventsDispatcher struct {
 	dispCounter     *prometheus.CounterVec
 	pollInterval    time.Duration
 	shutdownTimeout time.Duration
+	maxAttempts     int
+	backoffFunc     func(int) time.Duration
 
 	stopOnce sync.Once
 	stopCh   chan struct{}
@@ -297,6 +344,16 @@ func NewOutboxEventsDispatcher(opts OutboxEventsDispatcherOptions) (*OutboxEvent
 		shutdown = 20 * time.Second
 	}
 
+	maxAttempts := opts.MaxAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = defaultMaxAttempts
+	}
+
+	backoffFn := opts.BackoffFunc
+	if backoffFn == nil {
+		backoffFn = defaultBackoffFunc
+	}
+
 	return &OutboxEventsDispatcher{
 		store:           opts.Store,
 		dispatcher:      d,
@@ -304,6 +361,8 @@ func NewOutboxEventsDispatcher(opts OutboxEventsDispatcherOptions) (*OutboxEvent
 		dispCounter:     opts.DispatchedCounter,
 		pollInterval:    poll,
 		shutdownTimeout: shutdown,
+		maxAttempts:     maxAttempts,
+		backoffFunc:     backoffFn,
 		stopCh:          make(chan struct{}),
 		doneCh:          make(chan struct{}),
 	}, nil
@@ -311,7 +370,8 @@ func NewOutboxEventsDispatcher(opts OutboxEventsDispatcherOptions) (*OutboxEvent
 
 // Run polls the outbox_events table until ctx is cancelled or Stop is called.
 // Each iteration attempts to claim and deliver one unprocessed row. An empty
-// queue triggers a pollInterval sleep before the next attempt.
+// queue triggers a pollInterval sleep before the next attempt. A failed
+// delivery also triggers a pollInterval sleep to avoid a hot-CPU retry loop.
 //
 // Run returns nil on clean shutdown. Non-nil errors indicate non-recoverable
 // conditions such as a closed pool.
@@ -368,12 +428,19 @@ func (od *OutboxEventsDispatcher) Run(ctx context.Context) error {
 			continue
 		}
 
-		od.deliverRow(ctx, row)
+		success := od.deliverRow(ctx, row)
+		if !success {
+			// Sleep after failure to avoid a hot-CPU loop on a poison event.
+			if !od.waitOrStop(ctx, od.pollInterval) {
+				return nil
+			}
+		}
 	}
 }
 
 // deliverRow dispatches one outbox_events row and records the outcome.
-func (od *OutboxEventsDispatcher) deliverRow(ctx context.Context, row *OutboxEventRow) {
+// Returns true on success (or when dispatch is disabled), false on failure.
+func (od *OutboxEventsDispatcher) deliverRow(ctx context.Context, row *OutboxEventRow) bool {
 	// Extract trace_id from the payload so it can be propagated and logged.
 	traceID, _ := row.Payload["trace_id"].(string)
 
@@ -402,7 +469,7 @@ func (od *OutboxEventsDispatcher) deliverRow(ctx context.Context, row *OutboxEve
 				slog.String("event_id", row.ID),
 				slog.String("event_type", row.EventType),
 			)
-			return
+			return true // not an error — return success so Run does not sleep
 		}
 		od.logger.Warn("outbox events dispatcher: dispatch failed",
 			slog.String("event_id", row.ID),
@@ -412,13 +479,32 @@ func (od *OutboxEventsDispatcher) deliverRow(ctx context.Context, row *OutboxEve
 			slog.String("error", dispErr.Error()),
 		)
 		errText := outboxTruncate(dispErr.Error(), 4000)
-		if err := od.store.MarkFailed(ctx, row.ID, errText); err != nil {
+
+		// Determine whether this row has exceeded the attempts cap.
+		nextAttemptCount := row.Attempts + 1
+		deadLetter := nextAttemptCount >= od.maxAttempts
+		var nextAttemptAt *time.Time
+		if !deadLetter {
+			t := time.Now().Add(od.backoffFunc(row.Attempts))
+			nextAttemptAt = &t
+		}
+
+		if deadLetter {
+			od.logger.Warn("outbox events dispatcher: dead-lettering event after max attempts",
+				slog.String("event_id", row.ID),
+				slog.String("event_type", row.EventType),
+				slog.Int("attempts", nextAttemptCount),
+				slog.Int("max_attempts", od.maxAttempts),
+			)
+		}
+
+		if err := od.store.MarkFailed(ctx, row.ID, errText, nextAttemptAt, deadLetter); err != nil {
 			od.logger.Error("outbox events dispatcher: mark failed error",
 				slog.String("event_id", row.ID),
 				slog.String("error", err.Error()),
 			)
 		}
-		return
+		return false
 	}
 
 	if err := od.store.MarkDispatched(ctx, row.ID); err != nil {
@@ -426,7 +512,7 @@ func (od *OutboxEventsDispatcher) deliverRow(ctx context.Context, row *OutboxEve
 			slog.String("event_id", row.ID),
 			slog.String("error", err.Error()),
 		)
-		return
+		return true // dispatch succeeded; mark error is not a delivery failure
 	}
 
 	od.logger.Info("outbox events dispatcher: event dispatched successfully",
@@ -440,6 +526,7 @@ func (od *OutboxEventsDispatcher) deliverRow(ctx context.Context, row *OutboxEve
 	if od.dispCounter != nil {
 		od.dispCounter.WithLabelValues(row.EventType).Inc()
 	}
+	return true
 }
 
 // Stop initiates a graceful shutdown. Returns nil when the Run loop has exited,

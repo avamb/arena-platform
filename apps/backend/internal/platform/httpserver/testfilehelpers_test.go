@@ -892,6 +892,11 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hcheckout", "checkout_convert.go"),
 		}
+	// checkout_promo_368.go — atomic promo redemption at completion (feature #368 — PR2-12)
+	case "checkout_promo_368.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hcheckout", "checkout_promo_368.go"),
+		}
 	// hold_api.go — CreateSeatedHold/CreateGAHold/ReleaseHold (feature #365 — PR2-09)
 	case "hold_api.go":
 		candidates = []string{
@@ -916,6 +921,11 @@ func resolveFileInRepo(repoRoot, name string) string {
 	case "0067_delivery_jobs_unique_ticket.sql":
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0067_delivery_jobs_unique_ticket.sql"),
+		}
+	// Outbox poison-safe migration (feature #369 — PR2-13)
+	case "0068_outbox_poison_safe.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0068_outbox_poison_safe.sql"),
 		}
 	// checkout_shims.go — Server-side shim for hcheckout sub-package (feature #367 check)
 	case "checkout_shims.go":

@@ -351,9 +351,9 @@ func (s *countingStore) MarkDispatched(ctx context.Context, id string) error {
 	return s.OutboxEventStore.MarkDispatched(ctx, id)
 }
 
-func (s *countingStore) MarkFailed(ctx context.Context, id string, lastErr string) error {
+func (s *countingStore) MarkFailed(ctx context.Context, id string, lastErr string, nextAttemptAt *time.Time, deadLetter bool) error {
 	s.failCount.Add(1)
-	return s.OutboxEventStore.MarkFailed(ctx, id, lastErr)
+	return s.OutboxEventStore.MarkFailed(ctx, id, lastErr, nextAttemptAt, deadLetter)
 }
 
 // Compile-time interface guard.

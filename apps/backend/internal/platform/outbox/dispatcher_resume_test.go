@@ -46,6 +46,8 @@ type memOutboxRow struct {
 	processedAt   *time.Time // nil = unprocessed
 	attempts      int
 	lastError     string
+	nextAttemptAt *time.Time
+	deadLettered  bool
 }
 
 // inMemOutboxStore is a thread-safe in-memory OutboxEventStore for tests.
@@ -65,12 +67,14 @@ func (s *inMemOutboxStore) seed(row *memOutboxRow) {
 	s.rows = append(s.rows, row)
 }
 
-// ClaimNext returns the first unprocessed row in occurred_at order.
+// ClaimNext returns the first unprocessed, non-dead-lettered row.
+// Note: nextAttemptAt is deliberately NOT filtered here so existing retry
+// tests continue to work with immediate re-claim in the in-memory store.
 func (s *inMemOutboxStore) ClaimNext(_ context.Context) (*OutboxEventRow, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, r := range s.rows {
-		if r.processedAt == nil {
+		if r.processedAt == nil && !r.deadLettered {
 			return &OutboxEventRow{
 				ID:            r.id,
 				AggregateType: r.aggregateType,
@@ -100,14 +104,16 @@ func (s *inMemOutboxStore) MarkDispatched(_ context.Context, id string) error {
 	return errors.New("inMemOutboxStore: row not found: " + id)
 }
 
-// MarkFailed increments attempts and stores lastErr (row stays unprocessed).
-func (s *inMemOutboxStore) MarkFailed(_ context.Context, id string, lastErr string) error {
+// MarkFailed increments attempts, stores lastErr, and records backoff/dead-letter state.
+func (s *inMemOutboxStore) MarkFailed(_ context.Context, id string, lastErr string, nextAttemptAt *time.Time, deadLetter bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, r := range s.rows {
 		if r.id == id {
 			r.attempts++
 			r.lastError = lastErr
+			r.nextAttemptAt = nextAttemptAt
+			r.deadLettered = deadLetter
 			return nil
 		}
 	}
@@ -139,15 +145,19 @@ type capturedDispatch struct {
 }
 
 type captureDispatcher struct {
-	mu       sync.Mutex
-	calls    []capturedDispatch
-	failOnce bool // if true, first call returns error then clears flag
+	mu         sync.Mutex
+	calls      []capturedDispatch
+	failOnce   bool // if true, first call returns error then clears flag
+	failAlways bool // if true, always return error
 }
 
 func (d *captureDispatcher) Dispatch(_ context.Context, ev Event) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.calls = append(d.calls, capturedDispatch{event: ev})
+	if d.failAlways {
+		return errors.New("simulated always-fail dispatch")
+	}
 	if d.failOnce {
 		d.failOnce = false
 		return errors.New("simulated dispatch failure")
