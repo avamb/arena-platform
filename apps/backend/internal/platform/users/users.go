@@ -12,6 +12,7 @@ package users
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -98,4 +99,18 @@ func GenerateVerificationToken() (string, error) {
 		return "", fmt.Errorf("users: failed to generate verification token: %w", err)
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// TokenHash computes the SHA-256 hash of a raw token and returns it as a
+// lowercase hex string (64 characters). This is the value stored in the
+// database; the raw token is only ever held by the client.
+//
+// Usage pattern:
+//   - On issue:  rawToken → send to client; store TokenHash(rawToken) in DB.
+//   - On verify: client sends rawToken; look up by TokenHash(rawToken) in DB.
+//
+// This ensures that a database breach does not expose usable tokens.
+func TokenHash(rawToken string) string {
+	h := sha256.Sum256([]byte(rawToken))
+	return hex.EncodeToString(h[:])
 }

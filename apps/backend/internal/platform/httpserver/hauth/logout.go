@@ -27,6 +27,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/users"
 )
 
 // Logout serves POST /v1/auth/logout.
@@ -80,7 +81,9 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 
 	q := gen.New(tx)
 
-	row, err := q.GetRefreshToken(ctx, req.RefreshToken)
+	// PR2-03: look up by hash; client holds raw token.
+	tokenHash := users.TokenHash(req.RefreshToken)
+	row, err := q.GetRefreshToken(ctx, tokenHash)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("auth.refresh_token_not_found", "refresh token not found", r))
@@ -97,6 +100,8 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if row.RevokedAt != nil {
+		// Idempotent logout: token already revoked (e.g. via rotation or password reset).
+		// Ensure Redis is also up to date (best-effort).
 		if h.sessionStore != nil {
 			_ = h.sessionStore.RevokeSession(ctx, actor.ID, req.RefreshToken, row.ExpiresAt)
 		}
@@ -104,7 +109,7 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := q.RevokeRefreshToken(ctx, req.RefreshToken); err != nil {
+	if err := q.RevokeRefreshToken(ctx, tokenHash); err != nil {
 		logger.Error("auth.logout: revoke refresh token failed", "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.revoke_failed", "failed to revoke refresh token", r))
 		return
@@ -116,6 +121,7 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Redis: revoke the raw token (ephemeral fast-path for future IsRevoked checks).
 	if h.sessionStore != nil {
 		if redisErr := h.sessionStore.RevokeSession(ctx, actor.ID, req.RefreshToken, row.ExpiresAt); redisErr != nil {
 			logger.Warn("auth.logout: redis revoke session failed (token still revoked in DB)",

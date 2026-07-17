@@ -123,5 +123,14 @@ func (m *MemStore) PruneAndEvict(_ context.Context, userID string, maxSessions i
 	return tokens, nil
 }
 
+// ClearUserSessions implements Store. It removes all tracked sessions for the
+// given user, matching the Redis DEL behaviour on the sorted-set key.
+func (m *MemStore) ClearUserSessions(_ context.Context, userID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.sessions, userID)
+	return nil
+}
+
 // compile-time interface guard.
 var _ Store = (*MemStore)(nil)

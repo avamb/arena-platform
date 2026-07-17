@@ -70,6 +70,16 @@ type Store interface {
 	// enforces the concurrent-session policy configured per deployment.
 	PruneAndEvict(ctx context.Context, userID string, maxSessions int, now time.Time) ([]string, error)
 
+	// ClearUserSessions removes all session-tracking entries for the given user
+	// from the active-sessions sorted set. This does NOT write individual
+	// "arena:revoked:{token}" keys — if per-token revocation keys are also
+	// needed, the caller should additionally call RevokeSession for each token.
+	//
+	// Called on password reset (all existing sessions are implicitly revoked
+	// because the DB row has revoked_at set by RevokeAllUserRefreshTokens) and
+	// on session compromise (to clear the tracking set immediately).
+	ClearUserSessions(ctx context.Context, userID string) error
+
 	// Ping checks that the backing store is reachable. Used by the readiness probe.
 	Ping(ctx context.Context) error
 }
@@ -209,6 +219,11 @@ func (s *RedisStore) PruneAndEvict(ctx context.Context, userID string, maxSessio
 	}
 
 	return tokens, nil
+}
+
+// ClearUserSessions implements Store.
+func (s *RedisStore) ClearUserSessions(ctx context.Context, userID string) error {
+	return s.rdb.Del(ctx, keySessions(userID)).Err()
 }
 
 // compile-time interface guard.

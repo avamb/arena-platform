@@ -1,5 +1,5 @@
 // login.go implements POST /v1/auth/login and POST /v1/auth/refresh
-// (feature #115).
+// (feature #115, hardened in feature #359 / PR2-03).
 //
 // Login flow:
 //  1. Parse and validate the request body (email, password).
@@ -7,21 +7,26 @@
 //  3. Look up the user by normalised email.
 //  4. Verify the bcrypt password hash.
 //  5. Issue an HS256 JWT access token (15-minute TTL) via auth.IssueJWT.
-//  6. Generate a 64-char hex refresh token and store it in the DB (30-day TTL).
+//  6. Generate a 64-char hex refresh token; store SHA-256(token) in DB (30-day TTL).
+//     The raw token is returned to the client and tracked in Redis by raw value.
 //  7. If a session store is wired (feature #118): evict excess sessions and
 //     track the new session in Redis.
 //  8. Return 200 with {access_token, refresh_token, token_type, expires_at}.
 //
-// Refresh flow:
+// Refresh flow (PR2-03 hardened):
 //  1. Parse the refresh token from the request body.
-//  2. If a session store is wired (feature #118): check the Redis revocation
-//     store before querying PostgreSQL (fast O(1) path).
-//  3. Fetch the token row from DB; return 401 when not found.
-//  4. Verify the token is not revoked (revoked_at IS NULL) → 401.
-//  5. Verify the token has not expired → 401.
-//  6. Fetch the owning user to populate the new JWT claims.
-//  7. Issue a new JWT access token (15-minute TTL).
-//  8. Return 200 with {access_token, token_type, expires_at}.
+//  2. Hash the token: tokenHash = SHA-256(rawToken).
+//  3. Open a read-write DB transaction (rotation requires writes).
+//  4. Fetch the token row by tokenHash; return 401 when not found.
+//  5. If revoked_at IS NOT NULL → SESSION COMPROMISE: revoke all user sessions,
+//     clear Redis session set, return 401 "auth.session_compromised".
+//  6. Verify the token has not expired → 401.
+//  7. Fetch the owning user to populate the new JWT claims.
+//  8. Issue a new JWT access token (15-minute TTL).
+//  9. Generate a new refresh token; revoke old token in DB, insert new hash.
+// 10. Commit transaction.
+// 11. Update Redis: revoke old raw token, track new raw token.
+// 12. Return 200 with {access_token, refresh_token, token_type, expires_at}.
 //
 // Both endpoints are intentionally PUBLIC — no Authorization header required.
 package hauth
@@ -181,8 +186,10 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// PR2-03: store SHA-256(rawToken) in DB; return raw token to client only.
+	refreshTokenHash := users.TokenHash(refreshToken)
 	refreshExp := time.Now().UTC().Add(refreshTokenTTL)
-	if err := q.InsertRefreshToken(ctx, refreshToken, actorID, refreshExp); err != nil {
+	if err := q.InsertRefreshToken(ctx, refreshTokenHash, actorID, refreshExp); err != nil {
 		logger.Error("auth.login: insert refresh token failed", "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.token_insert_failed", "failed to save refresh token", r))
 		return
@@ -246,6 +253,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 // Refresh serves POST /v1/auth/refresh.
+// PR2-03: rotates the refresh token on every call and detects session compromise.
 func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logger := logging.FromContext(ctx)
@@ -284,18 +292,14 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Feature #118: fast Redis revocation check before opening a DB transaction.
-	if h.sessionStore != nil {
-		revoked, checkErr := h.sessionStore.IsRevoked(ctx, req.RefreshToken)
-		if checkErr != nil {
-			logger.Warn("auth.refresh: redis revocation check failed (falling back to DB)", "error", checkErr)
-		} else if revoked {
-			httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope("auth.refresh_token_revoked", "refresh token has been revoked", r))
-			return
-		}
-	}
+	// PR2-03: hash the incoming raw token for all DB lookups.
+	// The DB stores SHA-256(rawToken); the raw token is only held by the client.
+	tokenHash := users.TokenHash(req.RefreshToken)
 
-	tx, err := h.db.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	// PR2-03: always open a read-write transaction — rotation requires INSERTs.
+	// The Redis fast-path (feature #118) is intentionally removed here because
+	// revoked-token reuse must trigger a DB lookup for compromise detection.
+	tx, err := h.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		logger.Error("auth.refresh: begin tx failed", "error", err)
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "database is not available", r))
@@ -305,7 +309,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 
 	q := gen.New(tx)
 
-	row, err := q.GetRefreshToken(ctx, req.RefreshToken)
+	row, err := q.GetRefreshToken(ctx, tokenHash)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope("auth.invalid_refresh_token", "refresh token is invalid or does not exist", r))
@@ -316,8 +320,30 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// PR2-03: reuse of a revoked refresh token is treated as full-session compromise.
+	// Revoke all remaining sessions for the account and abort immediately.
 	if row.RevokedAt != nil {
-		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope("auth.refresh_token_revoked", "refresh token has been revoked", r))
+		logger.Warn("auth.refresh: revoked token reuse — session compromise detected",
+			"user_id", row.UserID.String(),
+		)
+		// Revoke all active refresh tokens for this user in the same transaction.
+		if rErr := q.RevokeAllUserRefreshTokens(ctx, row.UserID); rErr != nil {
+			logger.Error("auth.refresh: revoke all sessions failed during compromise", "error", rErr)
+		}
+		if cErr := tx.Commit(ctx); cErr != nil {
+			logger.Error("auth.refresh: commit failed during compromise handling", "error", cErr)
+		}
+		// Clear the Redis session set for the user.
+		if h.sessionStore != nil {
+			if sErr := h.sessionStore.ClearUserSessions(ctx, row.UserID.String()); sErr != nil {
+				logger.Warn("auth.refresh: clear redis sessions failed during compromise", "error", sErr)
+			}
+		}
+		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope(
+			"auth.session_compromised",
+			"this refresh token was previously revoked — all sessions have been terminated for security",
+			r,
+		))
 		return
 	}
 
@@ -353,10 +379,57 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// PR2-03: rotate the refresh token — revoke the old one and issue a new one.
+	newRawToken, err := users.GenerateVerificationToken()
+	if err != nil {
+		logger.Error("auth.refresh: generate new refresh token failed", "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.token_generation_failed", "failed to generate new refresh token", r))
+		return
+	}
+	newTokenHash := users.TokenHash(newRawToken)
+	newRefreshExp := time.Now().UTC().Add(refreshTokenTTL)
+
+	if err := q.RevokeRefreshToken(ctx, tokenHash); err != nil {
+		logger.Error("auth.refresh: revoke old token failed", "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.revoke_failed", "failed to revoke old refresh token", r))
+		return
+	}
+	if err := q.InsertRefreshToken(ctx, newTokenHash, actorID, newRefreshExp); err != nil {
+		logger.Error("auth.refresh: insert new refresh token failed", "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.token_insert_failed", "failed to save new refresh token", r))
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		logger.Error("auth.refresh: commit failed", "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.transaction_failed", "failed to commit token rotation", r))
+		return
+	}
+
+	// Feature #118: update Redis session tracking after successful rotation.
+	if h.sessionStore != nil {
+		userIDStr := actorID.String()
+		now := time.Now().UTC()
+		// Revoke the old raw token in Redis.
+		if rErr := h.sessionStore.RevokeSession(ctx, userIDStr, req.RefreshToken, row.ExpiresAt); rErr != nil {
+			logger.Warn("auth.refresh: redis revoke old session failed (DB revocation succeeded)", "error", rErr)
+		}
+		// Track the new raw token in Redis.
+		if tErr := h.sessionStore.TrackSession(ctx, userIDStr, newRawToken, newRefreshExp); tErr != nil {
+			logger.Warn("auth.refresh: redis track new session failed", "error", tErr, "user_id", userIDStr)
+		}
+		_ = now
+	}
+
+	slog.Info("auth.refresh: token rotated",
+		"user_id", actorID.String(),
+	)
+
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"access_token": accessToken,
-		"token_type":   "Bearer",
-		"expires_at":   exp.UTC().Format(time.RFC3339),
-		"user_id":      actorID.String(),
+		"access_token":  accessToken,
+		"refresh_token": newRawToken,
+		"token_type":    "Bearer",
+		"expires_at":    exp.UTC().Format(time.RFC3339),
+		"user_id":       actorID.String(),
 	})
 }

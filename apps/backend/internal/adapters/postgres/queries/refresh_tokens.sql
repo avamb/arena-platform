@@ -14,6 +14,13 @@ UPDATE refresh_tokens
 SET revoked_at = now()
 WHERE token = $1;
 
+-- name: RevokeAllUserRefreshTokens :exec
+-- Revokes every active refresh token for a user in one sweep.
+-- Called when a password reset succeeds or a session-compromise is detected.
+UPDATE refresh_tokens
+SET revoked_at = now()
+WHERE user_id = $1 AND revoked_at IS NULL;
+
 -- name: GetUserByID :one
 SELECT id, email, password_hash, preferred_locale, created_at, email_verified_at
 FROM users

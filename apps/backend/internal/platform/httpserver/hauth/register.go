@@ -156,8 +156,10 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// PR2-03: store SHA-256(rawToken) in DB; send raw token in the email URL only.
+	tokenHash := users.TokenHash(token)
 	expiresAt := time.Now().UTC().Add(emailVerificationTTL)
-	if err := q.InsertEmailVerificationToken(ctx, token, userRow.ID, expiresAt); err != nil {
+	if err := q.InsertEmailVerificationToken(ctx, tokenHash, userRow.ID, expiresAt); err != nil {
 		logger.Error("auth.register: insert token failed", "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.token_insert_failed", "failed to save verification token", r))
 		return
@@ -167,6 +169,8 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	// the job row and the token row are committed atomically. A rollback
 	// removes both. Only correlation/job/user identifiers are logged — the
 	// raw token and complete URL are never written to structured logs.
+	// The raw token (not hash) goes in the email payload so it can be embedded
+	// in the verification URL; the verify handler will hash it on receipt.
 	jobPayload := authemail.VerificationEmailPayload{
 		UserID:    userRow.ID.String(),
 		Email:     email,

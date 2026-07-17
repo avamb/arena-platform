@@ -143,19 +143,21 @@ func TestPasswordResetIntegration116_ValidTokenResetsPassword(t *testing.T) {
 	_ = email
 
 	// Insert a reset token directly.
-	token, err := users.GenerateVerificationToken()
+	// PR2-03: store the SHA-256 hash of the raw token in DB; send raw to handler.
+	rawToken, err := users.GenerateVerificationToken()
 	if err != nil {
 		t.Fatalf("GenerateVerificationToken: %v", err)
 	}
 	q := gen.New(pool)
-	if err := q.InsertPasswordResetToken(t.Context(), token, userID, time.Now().Add(time.Hour)); err != nil {
+	tokenHash := users.TokenHash(rawToken)
+	if err := q.InsertPasswordResetToken(t.Context(), tokenHash, userID, time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("InsertPasswordResetToken: %v", err)
 	}
 
-	// Confirm with valid token and new password.
+	// Confirm with raw token (handler hashes it for DB lookup).
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/v1/auth/password-reset/confirm",
-		strings.NewReader(`{"token":"`+token+`","new_password":"NewPassword1!"}`))
+		strings.NewReader(`{"token":"`+rawToken+`","new_password":"NewPassword1!"}`))
 	r.Header.Set("Content-Type", "application/json")
 	srv.handleAuthPasswordResetConfirm(w, r)
 
@@ -179,16 +181,17 @@ func TestPasswordResetIntegration116_ReusedTokenRejected(t *testing.T) {
 	userID, _ := seedTestUser(t, pool)
 	srv := buildIntegrationResetServer(t, pool)
 
-	token, err := users.GenerateVerificationToken()
+	rawToken, err := users.GenerateVerificationToken()
 	if err != nil {
 		t.Fatalf("GenerateVerificationToken: %v", err)
 	}
 	q := gen.New(pool)
-	if err := q.InsertPasswordResetToken(t.Context(), token, userID, time.Now().Add(time.Hour)); err != nil {
+	// PR2-03: store hash in DB; send raw token to handler.
+	if err := q.InsertPasswordResetToken(t.Context(), users.TokenHash(rawToken), userID, time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("InsertPasswordResetToken: %v", err)
 	}
 
-	body := `{"token":"` + token + `","new_password":"NewPassword1!"}`
+	body := `{"token":"` + rawToken + `","new_password":"NewPassword1!"}`
 
 	// First use — should succeed.
 	w1 := httptest.NewRecorder()
@@ -225,20 +228,20 @@ func TestPasswordResetIntegration116_ExpiredTokenRejected(t *testing.T) {
 	userID, _ := seedTestUser(t, pool)
 	srv := buildIntegrationResetServer(t, pool)
 
-	token, err := users.GenerateVerificationToken()
+	rawToken, err := users.GenerateVerificationToken()
 	if err != nil {
 		t.Fatalf("GenerateVerificationToken: %v", err)
 	}
 	q := gen.New(pool)
-	// Insert token that expired 2 hours ago.
+	// PR2-03: store hash; Insert token that expired 2 hours ago.
 	expired := time.Now().UTC().Add(-2 * time.Hour)
-	if err := q.InsertPasswordResetToken(t.Context(), token, userID, expired); err != nil {
+	if err := q.InsertPasswordResetToken(t.Context(), users.TokenHash(rawToken), userID, expired); err != nil {
 		t.Fatalf("InsertPasswordResetToken: %v", err)
 	}
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/v1/auth/password-reset/confirm",
-		strings.NewReader(`{"token":"`+token+`","new_password":"NewPassword1!"}`))
+		strings.NewReader(`{"token":"`+rawToken+`","new_password":"NewPassword1!"}`))
 	r.Header.Set("Content-Type", "application/json")
 	srv.handleAuthPasswordResetConfirm(w, r)
 

@@ -1,4 +1,5 @@
-// password_reset.go implements the password-reset flow (feature #116).
+// password_reset.go implements the password-reset flow (feature #116, hardened
+// in feature #359 / PR2-03).
 //
 // Endpoints:
 //
@@ -7,7 +8,8 @@
 //	  2. Look up the user by normalised email (silently succeed if not found
 //	     to prevent user enumeration).
 //	  3. Generate a 64-char hex reset token with a 1-hour TTL.
-//	  4. INSERT into password_reset_tokens + write audit event (same tx).
+//	  4. INSERT SHA-256(token) into password_reset_tokens + write audit event (same tx).
+//	     The raw token is included in the email payload for the URL only.
 //	  5. INSERT into worker_jobs (auth.password_reset_email) — atomically
 //	     with the token so enqueue and token are always committed together.
 //	  6. Return 202 Accepted regardless of whether the email was found.
@@ -16,15 +18,18 @@
 //	POST /v1/auth/password-reset/confirm
 //	  1. Parse and validate the request body (token, new_password).
 //	  2. Validate password length (8–72 chars).
-//	  3. Fetch the token row — 404 when not found.
+//	  3. Fetch the token row by SHA-256(token) — 404 when not found.
 //	  4. Check that used_at IS NULL — 410 Gone when already consumed.
 //	  5. Check that expires_at is in the future — 410 Gone when expired.
 //	  6. Hash the new password with bcrypt (cost 12).
 //	  7. UPDATE users SET password_hash = … WHERE id = token.user_id.
 //	  8. Mark the token as used (single-use guarantee).
-//	  9. Write audit event (same tx).
-//	 10. COMMIT.
-//	 11. Return 200 OK with user_id and message.
+//	  9. PR2-03: Revoke ALL active refresh tokens for the user (same tx)
+//	     so that old sessions cannot persist after account recovery.
+//	 10. Write audit event (same tx).
+//	 11. COMMIT.
+//	 12. PR2-03: Clear Redis session tracking set for the user (best-effort).
+//	 13. Return 200 OK with user_id and message.
 //
 // Both endpoints are intentionally PUBLIC — no Authorization header required.
 package hauth
@@ -120,8 +125,10 @@ func (h *Handler) PasswordResetRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// PR2-03: store SHA-256(rawToken) in DB; send raw token in the email URL only.
+	tokenHash := users.TokenHash(token)
 	expiresAt := time.Now().UTC().Add(passwordResetTokenTTL)
-	if err := q.InsertPasswordResetToken(ctx, token, userRow.ID, expiresAt); err != nil {
+	if err := q.InsertPasswordResetToken(ctx, tokenHash, userRow.ID, expiresAt); err != nil {
 		logger.Error("auth.password_reset.request: insert token failed", "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.token_insert_failed", "failed to save reset token", r))
 		return
@@ -265,7 +272,9 @@ func (h *Handler) PasswordResetConfirm(w http.ResponseWriter, r *http.Request) {
 
 	q := gen.New(tx)
 
-	tokenRow, err := q.GetPasswordResetToken(ctx, req.Token)
+	// PR2-03: look up token by SHA-256 hash; client sent raw token.
+	resetTokenHash := users.TokenHash(req.Token)
+	tokenRow, err := q.GetPasswordResetToken(ctx, resetTokenHash)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("auth.token_not_found", "reset token not found or already expired", r))
@@ -286,22 +295,31 @@ func (h *Handler) PasswordResetConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hash, err := users.HashPassword(req.NewPassword)
+	pwHash, err := users.HashPassword(req.NewPassword)
 	if err != nil {
 		logger.Error("auth.password_reset.confirm: bcrypt failed", "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.password_hash_failed", "failed to hash password", r))
 		return
 	}
 
-	if err := q.UpdateUserPassword(ctx, tokenRow.UserID, hash); err != nil {
+	if err := q.UpdateUserPassword(ctx, tokenRow.UserID, pwHash); err != nil {
 		logger.Error("auth.password_reset.confirm: update password failed", "error", err, "user_id", tokenRow.UserID)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.update_failed", "failed to update password", r))
 		return
 	}
 
-	if err := q.MarkPasswordResetTokenUsed(ctx, req.Token); err != nil {
+	if err := q.MarkPasswordResetTokenUsed(ctx, resetTokenHash); err != nil {
 		logger.Error("auth.password_reset.confirm: mark token used failed", "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.update_failed", "failed to consume reset token", r))
+		return
+	}
+
+	// PR2-03: revoke ALL active refresh tokens for this user so that old
+	// sessions cannot survive account recovery. This is atomic with the
+	// password update — both succeed or both roll back.
+	if err := q.RevokeAllUserRefreshTokens(ctx, tokenRow.UserID); err != nil {
+		logger.Error("auth.password_reset.confirm: revoke all refresh tokens failed", "error", err, "user_id", tokenRow.UserID)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.revoke_failed", "failed to revoke existing sessions", r))
 		return
 	}
 
@@ -333,7 +351,17 @@ func (h *Handler) PasswordResetConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slog.Info("auth.password_reset.confirm: password reset successful",
+	// PR2-03: clear Redis session tracking for the user (best-effort, non-fatal).
+	// The DB already has revoked_at set for all tokens, so the Redis clear is
+	// an optimistic cleanup — clients will be rejected on next DB check regardless.
+	if h.sessionStore != nil {
+		if sErr := h.sessionStore.ClearUserSessions(ctx, tokenRow.UserID.String()); sErr != nil {
+			logger.Warn("auth.password_reset.confirm: clear redis sessions failed (DB revocation succeeded)",
+				"error", sErr, "user_id", tokenRow.UserID.String())
+		}
+	}
+
+	slog.Info("auth.password_reset.confirm: password reset successful; all sessions revoked",
 		"user_id", tokenRow.UserID.String(),
 	)
 

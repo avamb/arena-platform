@@ -887,6 +887,37 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hreconciliation", "reconciliation.go"),
 		}
+	// Refresh tokens query file (feature #359 — PR2-03 token hashing)
+	case "refresh_tokens.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "queries", "refresh_tokens.sql"),
+		}
+	// Token hash invalidation migration (feature #359 — PR2-03)
+	case "0065_token_hash_invalidation.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0065_token_hash_invalidation.sql"),
+		}
+	// Auth handlers in hauth/ sub-package (feature #359 — PR2-03 structural checks)
+	case "login.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hauth", "login.go"),
+		}
+	case "logout.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hauth", "logout.go"),
+		}
+	case "password_reset.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hauth", "password_reset.go"),
+		}
+	case "register.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hauth", "register.go"),
+		}
+	case "verify.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hauth", "verify.go"),
+		}
 	default:
 		// Generic fallback: try the file directly at the repo root.
 		candidates = []string{
