@@ -249,7 +249,6 @@ type Handler struct {
 
 	// Callback fields for cross-domain side effects.
 	issueTickets      func(ctx context.Context, cs gen.CheckoutSessionRow) ([]gen.TicketRow, error)
-	enqueueDelivery   func(ctx context.Context, tickets []gen.TicketRow)
 	publishRefunded   func(ctx context.Context, checkoutSessionID, refundID, currency string, amount int64)
 	publishRefundedV1 func(ctx context.Context, ticketIDs []string, checkoutSessionID, refundID, currency string, amount int64)
 }
@@ -270,7 +269,6 @@ func New(
 	logger *slog.Logger,
 	pricingRules PricingRules,
 	issueTickets func(ctx context.Context, cs gen.CheckoutSessionRow) ([]gen.TicketRow, error),
-	enqueueDelivery func(ctx context.Context, tickets []gen.TicketRow),
 	publishRefunded func(ctx context.Context, checkoutSessionID, refundID, currency string, amount int64),
 	publishRefundedV1 func(ctx context.Context, ticketIDs []string, checkoutSessionID, refundID, currency string, amount int64),
 ) *Handler {
@@ -289,7 +287,6 @@ func New(
 		logger:               logger,
 		pricingRules:         pricingRules,
 		issueTickets:         issueTickets,
-		enqueueDelivery:      enqueueDelivery,
 		publishRefunded:      publishRefunded,
 		publishRefundedV1:    publishRefundedV1,
 	}

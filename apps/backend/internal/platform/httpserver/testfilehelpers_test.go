@@ -912,6 +912,21 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0066_tickets_idempotent_issuance.sql"),
 		}
+	// Delivery jobs unique-ticket index migration (feature #367 — PR2-11)
+	case "0067_delivery_jobs_unique_ticket.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0067_delivery_jobs_unique_ticket.sql"),
+		}
+	// checkout_shims.go — Server-side shim for hcheckout sub-package (feature #367 check)
+	case "checkout_shims.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "checkout_shims.go"),
+		}
+	// hcheckout_handler.go — Handler struct and New() constructor for hcheckout (feature #367 check)
+	case "hcheckout_handler.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hcheckout", "handler.go"),
+		}
 	// Auth handlers in hauth/ sub-package (feature #359 — PR2-03 structural checks)
 	case "login.go":
 		candidates = []string{

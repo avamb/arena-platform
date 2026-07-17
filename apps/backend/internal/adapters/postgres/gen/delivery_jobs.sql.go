@@ -70,6 +70,8 @@ func scanDeliveryJobRow(row interface {
 const insertDeliveryJob = `-- name: InsertDeliveryJob :one
 INSERT INTO delivery_jobs (ticket_id, recipient_email)
 VALUES ($1, $2)
+ON CONFLICT (ticket_id) DO UPDATE
+    SET ticket_id = EXCLUDED.ticket_id
 RETURNING id, ticket_id, recipient_email, status, attempts, last_error,
           queued_at, sent_at, processing_at, created_at, updated_at`
 

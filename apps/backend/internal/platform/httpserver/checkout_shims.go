@@ -34,7 +34,6 @@ func (s *Server) checkoutHandler() *hcheckout.Handler {
 		s.logger,
 		hcheckout.PricingRules(s.pricingRules),
 		s.issueTicketsForCheckout,
-		s.enqueueDeliveryJobs,
 		s.publishTicketRefundedEvents,
 		s.publishTicketRefundedV1Events,
 	)

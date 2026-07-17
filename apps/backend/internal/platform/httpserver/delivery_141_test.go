@@ -636,20 +636,44 @@ func TestDelivery141_Step9_EnqueueGoHasWorkerJobIDField(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Step 10: Checkout and payment_intents wire enqueueDeliveryJobs
+// Step 10: Delivery is enqueued from exactly one place (feature #367 fix)
+//
+// PR2-11 (feature #367) found that checkout.go and payment_intents.go were
+// calling enqueueDelivery AFTER issueTickets, while IssueTicketsForCheckout
+// was also calling EnqueueDeliveryJobs internally — resulting in two delivery
+// jobs per ticket.  The fix moves delivery enqueueing exclusively into
+// IssueTicketsForCheckout/EnqueueDeliveryJobs; checkout.go and
+// payment_intents.go must NOT have separate delivery calls.
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestDelivery141_Step10_CheckoutGoCallsEnqueueDeliveryJobs(t *testing.T) {
+// TestDelivery141_Step10_CheckoutGoDoesNotDoubleEnqueue verifies that
+// checkout.go does NOT call enqueueDelivery directly after issueTickets.
+// Delivery is handled exclusively inside IssueTicketsForCheckout (tickets.go).
+func TestDelivery141_Step10_CheckoutGoDoesNotDoubleEnqueue(t *testing.T) {
 	content := findFileByName(t, "checkout.go")
-	if !strings.Contains(content, "enqueueDeliveryJobs") {
-		t.Error("checkout.go missing 'enqueueDeliveryJobs' call — delivery not wired on free checkout")
+	// The field h.enqueueDelivery must not be called; only the comment
+	// documenting the removal (for auditability) may reference the old name.
+	if strings.Contains(content, "h.enqueueDelivery(") {
+		t.Error("checkout.go must not call h.enqueueDelivery directly — delivery is enqueued inside IssueTicketsForCheckout (feature #367)")
 	}
 }
 
-func TestDelivery141_Step10_PaymentIntentsGoCallsEnqueueDeliveryJobs(t *testing.T) {
+// TestDelivery141_Step10_PaymentIntentsGoDoesNotDoubleEnqueue verifies that
+// payment_intents.go does NOT call enqueueDelivery directly after issueTickets.
+// Delivery is handled exclusively inside IssueTicketsForCheckout (tickets.go).
+func TestDelivery141_Step10_PaymentIntentsGoDoesNotDoubleEnqueue(t *testing.T) {
 	content := findFileByName(t, "payment_intents.go")
-	if !strings.Contains(content, "enqueueDeliveryJobs") {
-		t.Error("payment_intents.go missing 'enqueueDeliveryJobs' call — delivery not wired on payment webhook")
+	if strings.Contains(content, "h.enqueueDelivery(") {
+		t.Error("payment_intents.go must not call h.enqueueDelivery directly — delivery is enqueued inside IssueTicketsForCheckout (feature #367)")
+	}
+}
+
+// TestDelivery141_Step10_TicketsGoEnqueuesDelivery verifies that tickets.go
+// (IssueTicketsForCheckout) calls EnqueueDeliveryJobs for newly issued tickets.
+func TestDelivery141_Step10_TicketsGoEnqueuesDelivery(t *testing.T) {
+	content := findFileByName(t, "tickets.go")
+	if !strings.Contains(content, "EnqueueDeliveryJobs") {
+		t.Error("tickets.go (IssueTicketsForCheckout) must call EnqueueDeliveryJobs for newly issued tickets")
 	}
 }
 

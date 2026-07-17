@@ -4,10 +4,18 @@
 -- InsertDeliveryJob creates a new pending delivery job for a ticket.
 -- recipient_email may be NULL when the email address is not yet known at
 -- enqueue time; the worker resolves it from ticket.holder_email at delivery time.
+--
+-- ON CONFLICT DO UPDATE (feature #367): the UNIQUE index on ticket_id means
+-- a second insert for the same ticket (e.g. webhook replay) is a no-op that
+-- returns the existing row rather than inserting a duplicate.  The DO UPDATE
+-- clause is a deliberate no-op (sets status to itself) so that terminal rows
+-- (sent/failed/skipped) are preserved unchanged.
 INSERT INTO delivery_jobs (ticket_id, recipient_email)
 VALUES ($1, $2)
+ON CONFLICT (ticket_id) DO UPDATE
+    SET ticket_id = EXCLUDED.ticket_id  -- no-op; forces RETURNING to fire
 RETURNING id, ticket_id, recipient_email, status, attempts, last_error,
-          queued_at, sent_at, created_at, updated_at;
+          queued_at, sent_at, processing_at, created_at, updated_at;
 
 -- name: GetDeliveryJobByTicketID :one
 -- GetDeliveryJobByTicketID returns the most recent delivery job for a ticket.

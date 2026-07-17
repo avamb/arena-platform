@@ -99,9 +99,11 @@ func (s *Server) issueTicketsForCheckout(ctx context.Context, cs gen.CheckoutSes
 	return s.ticketsHandler().IssueTicketsForCheckout(ctx, cs)
 }
 
-// enqueueDeliveryJobs forwards to htickets.EnqueueDeliveryJobs. Kept as a
-// *Server method because checkout_shims.go passes s.enqueueDeliveryJobs as a
-// function value into hcheckout.New.
+// enqueueDeliveryJobs forwards to htickets.EnqueueDeliveryJobs.
+// Kept as a *Server method for backward compatibility with the Step 8 structural
+// tests in delivery_141_test.go (which call s.enqueueDeliveryJobs directly).
+// NOTE (feature #367): delivery enqueueing is now done exclusively inside
+// IssueTicketsForCheckout; hcheckout.New no longer accepts this as a callback.
 func (s *Server) enqueueDeliveryJobs(ctx context.Context, tickets []gen.TicketRow) {
 	s.ticketsHandler().EnqueueDeliveryJobs(ctx, tickets)
 }

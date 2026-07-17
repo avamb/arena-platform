@@ -34,7 +34,7 @@ Verified reconciliation status as of 2026-07-16 (Wave PR):
 | 3. Go tests | GREEN | `make test` (≡ `go test ./...`) in `golang:1.24` |
 | 3. Race + coverage tests | GREEN | `go test -race -coverprofile=coverage.out -covermode=atomic ./...` (matches CI Job 2) |
 | 3. Lint | GREEN (#182) | `make lint` or `golangci-lint run --timeout=5m ./...` (matches CI Job 1) |
-| 4. Runtime DB migrations | GREEN | `make migrate-up`; head migration discovered dynamically via `migrations.Head()` (currently `0064_delivery_jobs_processing.sql`) — see `deploy/release-gate.sh` and PR-12 evidence |
+| 4. Runtime DB migrations | GREEN | `make migrate-up`; head migration discovered dynamically via `migrations.Head()` (currently `0067_delivery_jobs_unique_ticket.sql`) — see `deploy/release-gate.sh` and PR-12 evidence |
 | 5. Container image builds | GREEN | `docker build -t arena-api:local .` and `docker compose build && docker compose up -d --wait` |
 
 All five gates are green on `master` as of 2026-06-25. The

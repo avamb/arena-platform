@@ -737,10 +737,8 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 					slog.String("checkout_session_id", cs.ID.String()),
 					slog.Int("count", len(tickets)),
 				)
-				// Enqueue email delivery jobs (feature #141). Best-effort.
-				if h.enqueueDelivery != nil {
-					h.enqueueDelivery(ctx, tickets)
-				}
+				// Delivery jobs are enqueued inside IssueTicketsForCheckout (feature #367).
+				// A separate enqueueDelivery call here was removed to prevent double-delivery.
 			}
 		}
 	}
