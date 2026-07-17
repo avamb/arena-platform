@@ -19,6 +19,7 @@
 package hcheckout
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -277,20 +278,35 @@ func (h *Handler) HandleGetCheckoutSession(w http.ResponseWriter, r *http.Reques
 // ─────────────────────────────────────────────────────────────────────────────
 
 // confirmCheckoutRequest is the request body for POST /v1/checkout/{id}/confirm.
-// The handler re-quotes the price using the current pricing pipeline and stores
-// the snapshot.
+//
+// PR2-08 (feature #364) security note: all pricing is now derived from the
+// server-side reservation, NOT from client-supplied tier_id / quantity.
+// tier_id, session_id, quantity, and org_id are accepted as optional
+// cross-validation fields only — if provided, they must match the reservation
+// or the request is rejected with 422 checkout.pricing_mismatch.
+//
+// PromoCode and ChosenPrice remain client-supplied (promo codes are user-chosen;
+// chosen_price is the PWYW user input).
 type confirmCheckoutRequest struct {
-	TierID      string  `json:"tier_id"`
-	SessionID   string  `json:"session_id"` // event session (not checkout session)
-	Quantity    int32   `json:"quantity"`
-	OrgID       string  `json:"org_id"`
+	// Cross-validation only — must match reservation if provided.
+	TierID    string `json:"tier_id"`
+	SessionID string `json:"session_id"` // event session (not checkout session)
+	Quantity  int32  `json:"quantity"`
+	OrgID     string `json:"org_id"`
+
 	PromoCode   *string `json:"promo_code"`
 	ChosenPrice *int64  `json:"chosen_price"` // required for pwyw tiers
 }
 
 // HandleConfirmCheckout serves POST /v1/checkout/{id}/confirm.
-// Re-quotes the pricing, stores the snapshot, and transitions created →
-// pricing_confirmed.  Returns 409 if the session is not in 'created' state.
+//
+// Loads the checkout session and its linked reservation; derives all pricing
+// from the reservation (tier, quantity, seats) rather than trusting client
+// input (PR2-08 / feature #364 — prevents buyers from down-pricing by
+// substituting a cheaper tier or smaller quantity in the confirm request).
+//
+// Transitions created → pricing_confirmed.
+// Returns 409 if the session is not in 'created' state.
 // Requires JWT + "checkout.confirm" permission.
 func (h *Handler) HandleConfirmCheckout(w http.ResponseWriter, r *http.Request) {
 	if h.checkoutQueries == nil || h.pool == nil {
@@ -302,6 +318,12 @@ func (h *Handler) HandleConfirmCheckout(w http.ResponseWriter, r *http.Request) 
 	if h.tierQueries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.tier_unavailable", "tier service is not available", r,
+		))
+		return
+	}
+	if h.reservationQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			"dependency.reservation_unavailable", "reservation service is not available", r,
 		))
 		return
 	}
@@ -329,38 +351,285 @@ func (h *Handler) HandleConfirmCheckout(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	tierID, err := uuid.Parse(req.TierID)
+	// ── Load checkout session → reservation (authoritative pricing source) ────
+	// PR2-08: pricing MUST be derived from the server-side reservation so buyers
+	// cannot down-price by supplying a different tier_id or smaller quantity.
+
+	checkoutSession, err := h.checkoutQueries.GetCheckoutSessionByID(ctx, id)
 	if err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-			"checkout.invalid_tier_id", "tier_id must be a valid UUID", r,
-			map[string]any{"field": "tier_id"},
-		))
-		return
-	}
-	eventSessionID, err := uuid.Parse(req.SessionID)
-	if err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-			"checkout.invalid_session_id", "session_id must be a valid UUID", r,
-			map[string]any{"field": "session_id"},
-		))
-		return
-	}
-	orgID, err := uuid.Parse(req.OrgID)
-	if err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-			"checkout.invalid_org_id", "org_id must be a valid UUID", r,
-			map[string]any{"field": "org_id"},
-		))
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("checkout.not_found", "checkout session not found", r))
+			return
+		}
+		h.logger.Error("checkout: confirm — session lookup failed",
+			slog.String("id", id.String()),
+			slog.String("error", err.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("checkout.get_failed", "failed to retrieve checkout session", r))
 		return
 	}
 
-	if req.Quantity <= 0 {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-			"checkout.invalid_quantity", "quantity must be greater than 0", r,
+	reservation, err := h.reservationQueries.GetReservationByID(ctx, checkoutSession.ReservationID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			h.logger.Error("checkout: confirm — reservation not found",
+				slog.String("checkout_id", id.String()),
+				slog.String("reservation_id", checkoutSession.ReservationID.String()),
+			)
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+				"checkout.reservation_not_found",
+				"reservation linked to this checkout session was not found",
+				r,
+			))
+			return
+		}
+		h.logger.Error("checkout: confirm — reservation lookup failed",
+			slog.String("reservation_id", checkoutSession.ReservationID.String()),
+			slog.String("error", err.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("checkout.reservation_lookup_failed", "failed to retrieve reservation", r))
+		return
+	}
+
+	// ── Cross-validate optional client-provided fields ────────────────────────
+	// Any client-supplied field that disagrees with the reservation is rejected
+	// so an attacker cannot confirm a VIP reservation at a cheap-tier price.
+
+	if req.TierID != "" {
+		clientTierID, err := uuid.Parse(req.TierID)
+		if err != nil {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+				"checkout.invalid_tier_id", "tier_id must be a valid UUID", r,
+				map[string]any{"field": "tier_id"},
+			))
+			return
+		}
+		if reservation.TierID == nil || clientTierID != *reservation.TierID {
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+				"checkout.pricing_mismatch",
+				"tier_id does not match the reservation; pricing is derived from the reservation",
+				r,
+			))
+			return
+		}
+	}
+
+	if req.Quantity != 0 && req.Quantity != reservation.Quantity {
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+			"checkout.pricing_mismatch",
+			"quantity does not match the reservation; pricing is derived from the reservation",
+			r,
 			map[string]any{"field": "quantity"},
 		))
 		return
 	}
+
+	if req.SessionID != "" {
+		clientSessionID, err := uuid.Parse(req.SessionID)
+		if err != nil {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+				"checkout.invalid_session_id", "session_id must be a valid UUID", r,
+				map[string]any{"field": "session_id"},
+			))
+			return
+		}
+		if clientSessionID != reservation.SessionID {
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+				"checkout.pricing_mismatch",
+				"session_id does not match the reservation",
+				r,
+			))
+			return
+		}
+	}
+
+	if req.OrgID != "" {
+		clientOrgID, err := uuid.Parse(req.OrgID)
+		if err != nil {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+				"checkout.invalid_org_id", "org_id must be a valid UUID", r,
+				map[string]any{"field": "org_id"},
+			))
+			return
+		}
+		if clientOrgID != reservation.OrgID {
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+				"checkout.pricing_mismatch",
+				"org_id does not match the reservation",
+				r,
+			))
+			return
+		}
+	}
+
+	// ── Authoritative pricing inputs (from reservation, not request) ──────────
+	eventSessionID := reservation.SessionID
+	orgID := reservation.OrgID
+
+	// ── Seated path: derive pricing from session_seats per-seat tier_id ───────
+	// When the reservation has session_seat rows, each seat carries its own
+	// tier_id.  buildSeatedPricingLines groups by (tier_id, unit_price) and
+	// returns per-group PricingLineInput slices for ComputePricingLines.
+	seats, err := h.reservationQueries.ListReservationSeats(ctx, reservation.ID)
+	if err != nil {
+		h.logger.Error("checkout: confirm — seat lookup failed",
+			slog.String("reservation_id", reservation.ID.String()),
+			slog.String("error", err.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("checkout.confirm_failed", "failed to retrieve reservation seats", r))
+		return
+	}
+
+	if len(seats) > 0 {
+		// Resolve unit price for each unique tier_id in the seat rows.
+		tierPriceMap := make(map[string]int64)
+		var currency string
+		for _, s := range seats {
+			if s.TierID == nil {
+				continue
+			}
+			tid := s.TierID.String()
+			if _, seen := tierPriceMap[tid]; seen {
+				continue
+			}
+			t, err := h.tierQueries.GetTicketTierByID(ctx, *s.TierID, eventSessionID)
+			if err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("checkout.tier_not_found", "ticket tier not found", r))
+					return
+				}
+				h.logger.Error("checkout: confirm — seated tier lookup failed",
+					slog.String("tier_id", tid),
+					slog.String("error", err.Error()),
+				)
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("checkout.tier_lookup_failed", "failed to retrieve ticket tier", r))
+				return
+			}
+			tierPriceMap[tid] = t.PriceAmount
+			if currency == "" {
+				currency = t.Currency
+			}
+		}
+
+		lines := buildSeatedPricingLines(seats, tierPriceMap)
+
+		var seatedSubtotal int64
+		for _, l := range lines {
+			seatedSubtotal += l.UnitPrice * int64(l.Quantity)
+		}
+
+		discount, promoCodeID, ok := h.applyPromoCode(ctx, w, r, req.PromoCode, orgID, seatedSubtotal)
+		if !ok {
+			return
+		}
+
+		bd := ComputePricingLines(lines, discount, currency, h.pricingRules)
+
+		cs, err := h.checkoutQueries.ConfirmCheckoutSession(ctx, id,
+			bd.Subtotal, bd.Discount, bd.PlatformFee, bd.ProviderFee, bd.Tax, bd.Total,
+			bd.Currency, promoCodeID,
+		)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
+					"checkout.invalid_transition", "checkout session is not in 'created' state", r,
+				))
+				return
+			}
+			h.logger.Error("checkout: confirm failed (seated)",
+				slog.String("id", id.String()),
+				slog.String("error", err.Error()),
+			)
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("checkout.confirm_failed", "failed to confirm checkout session", r))
+			return
+		}
+		h.logger.Info("checkout: pricing confirmed (seated)",
+			slog.String("id", id.String()),
+			slog.Int64("total", bd.Total),
+			slog.String("currency", bd.Currency),
+		)
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{"checkout_session": checkoutSessionFromRow(cs)})
+		return
+	}
+
+	// ── Multi-tier GA path: use stored reservation_ga_items prices ────────────
+	// When reservation.TierID is nil the hold was placed against multiple tiers;
+	// unit prices are already snapshotted in reservation_ga_items at hold time.
+	if reservation.TierID == nil {
+		gaItems, err := h.reservationQueries.ListReservationGAItems(ctx, reservation.ID)
+		if err != nil {
+			h.logger.Error("checkout: confirm — GA items lookup failed",
+				slog.String("reservation_id", reservation.ID.String()),
+				slog.String("error", err.Error()),
+			)
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("checkout.confirm_failed", "failed to retrieve reservation items", r))
+			return
+		}
+		if len(gaItems) == 0 {
+			h.logger.Error("checkout: confirm — no GA items and no tier_id on reservation",
+				slog.String("reservation_id", reservation.ID.String()),
+			)
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+				"checkout.pricing_unavailable",
+				"reservation has no pricing items",
+				r,
+			))
+			return
+		}
+
+		lines := make([]PricingLineInput, 0, len(gaItems))
+		var currency string
+		var gaSubtotal int64
+		for _, it := range gaItems {
+			lines = append(lines, PricingLineInput{
+				TierID:    it.TierID.String(),
+				Quantity:  it.Quantity,
+				UnitPrice: it.UnitPrice,
+			})
+			gaSubtotal += it.UnitPrice * int64(it.Quantity)
+			if currency == "" {
+				currency = it.Currency
+			}
+		}
+
+		discount, promoCodeID, ok := h.applyPromoCode(ctx, w, r, req.PromoCode, orgID, gaSubtotal)
+		if !ok {
+			return
+		}
+
+		bd := ComputePricingLines(lines, discount, currency, h.pricingRules)
+
+		cs, err := h.checkoutQueries.ConfirmCheckoutSession(ctx, id,
+			bd.Subtotal, bd.Discount, bd.PlatformFee, bd.ProviderFee, bd.Tax, bd.Total,
+			bd.Currency, promoCodeID,
+		)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
+					"checkout.invalid_transition", "checkout session is not in 'created' state", r,
+				))
+				return
+			}
+			h.logger.Error("checkout: confirm failed (multi-tier GA)",
+				slog.String("id", id.String()),
+				slog.String("error", err.Error()),
+			)
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("checkout.confirm_failed", "failed to confirm checkout session", r))
+			return
+		}
+		h.logger.Info("checkout: pricing confirmed (multi-tier GA)",
+			slog.String("id", id.String()),
+			slog.Int64("total", bd.Total),
+			slog.String("currency", bd.Currency),
+		)
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{"checkout_session": checkoutSessionFromRow(cs)})
+		return
+	}
+
+	// ── Single-tier GA path ───────────────────────────────────────────────────
+	// Use the reservation's tier_id and quantity — never the client-supplied ones.
+	tierID := *reservation.TierID
+	quantity := reservation.Quantity
 
 	// ── Look up ticket tier ──────────────────────────────────────────────────
 
@@ -414,40 +683,18 @@ func (h *Handler) HandleConfirmCheckout(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	subtotal := unitPrice * int64(req.Quantity)
+	subtotal := unitPrice * int64(quantity)
 
 	// ── Optionally validate promo code ───────────────────────────────────────
 
-	var discount int64
-	var promoCodeID *uuid.UUID
-
-	if req.PromoCode != nil && *req.PromoCode != "" && h.promoQueries != nil {
-		promoRow, err := h.promoQueries.GetPromoCodeByCode(ctx, orgID, *req.PromoCode)
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope("promo.not_found", "promo code not found", r))
-				return
-			}
-			h.logger.Error("checkout: promo lookup failed",
-				slog.String("promo_code", *req.PromoCode),
-				slog.String("error", err.Error()),
-			)
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("checkout.promo_lookup_failed", "failed to retrieve promo code", r))
-			return
-		}
-
-		d, errCode := validatePromoCode(promoRow, subtotal, time.Now().UTC())
-		if errCode != "" {
-			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(errCode, "promo code is not applicable", r))
-			return
-		}
-		discount = d
-		promoCodeID = &promoRow.ID
+	discount, promoCodeID, ok := h.applyPromoCode(ctx, w, r, req.PromoCode, orgID, subtotal)
+	if !ok {
+		return
 	}
 
 	// ── Run pricing pipeline ─────────────────────────────────────────────────
 
-	bd := ComputePricing(unitPrice, req.Quantity, discount, tier.Currency, h.pricingRules)
+	bd := ComputePricing(unitPrice, quantity, discount, tier.Currency, h.pricingRules)
 
 	// ── Persist pricing_confirmed transition ─────────────────────────────────
 
@@ -481,6 +728,42 @@ func (h *Handler) HandleConfirmCheckout(w http.ResponseWriter, r *http.Request) 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"checkout_session": checkoutSessionFromRow(cs),
 	})
+}
+
+// applyPromoCode validates the promo code (if provided) against the given
+// subtotal and returns (discount, promoCodeID, ok). When ok is false the
+// handler has already written an error response and the caller must return.
+func (h *Handler) applyPromoCode(
+	ctx context.Context,
+	w http.ResponseWriter,
+	r *http.Request,
+	promoCode *string,
+	orgID uuid.UUID,
+	subtotal int64,
+) (discount int64, promoCodeID *uuid.UUID, ok bool) {
+	if promoCode == nil || *promoCode == "" || h.promoQueries == nil {
+		return 0, nil, true
+	}
+	promoRow, err := h.promoQueries.GetPromoCodeByCode(ctx, orgID, *promoCode)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope("promo.not_found", "promo code not found", r))
+			return 0, nil, false
+		}
+		h.logger.Error("checkout: promo lookup failed",
+			slog.String("promo_code", *promoCode),
+			slog.String("error", err.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("checkout.promo_lookup_failed", "failed to retrieve promo code", r))
+		return 0, nil, false
+	}
+	d, errCode := validatePromoCode(promoRow, subtotal, time.Now().UTC())
+	if errCode != "" {
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(errCode, "promo code is not applicable", r))
+		return 0, nil, false
+	}
+	pid := promoRow.ID
+	return d, &pid, true
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
