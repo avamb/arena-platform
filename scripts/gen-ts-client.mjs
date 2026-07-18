@@ -56,6 +56,75 @@ export type DevTokenResponse   = components["schemas"]["DevTokenResponse"];
 export type DevAuthTokenRequest  = components["schemas"]["DevAuthTokenRequest"];
 export type DevAuthTokenResponse = components["schemas"]["DevAuthTokenResponse"];
 
+// ── Identity & auth ───────────────────────────────────────────────────────────
+export type AuthLoginRequest  = components["schemas"]["AuthLoginRequest"];
+export type AuthLoginResponse = components["schemas"]["AuthLoginResponse"];
+export type AuthRefreshRequest  = components["schemas"]["AuthRefreshRequest"];
+export type AuthRefreshResponse = components["schemas"]["AuthRefreshResponse"];
+export type MeResponse = components["schemas"]["MeResponse"];
+export type MeUser = components["schemas"]["MeUser"];
+
+// ── Organizations ─────────────────────────────────────────────────────────────
+export type OrganizationItem  = components["schemas"]["OrganizationItem"];
+export type OrganizationDetail = components["schemas"]["OrganizationDetail"];
+export type MembershipItem    = components["schemas"]["MembershipItem"];
+
+// ── Sales channels & feed tokens ─────────────────────────────────────────────
+/** A sales channel owned by an organization (online widget, box office, API partner). */
+export type Channel   = components["schemas"]["Channel"];
+/** Long-lived scanner feed bearer token scoped to a sales channel. */
+export type FeedToken = components["schemas"]["FeedToken"];
+
+// ── Events & sessions ─────────────────────────────────────────────────────────
+export type EventItem           = components["schemas"]["EventItem"];
+export type SessionItem         = components["schemas"]["SessionItem"];
+export type TicketTierItem      = components["schemas"]["TicketTierItem"];
+
+// ── Checkout & payments ───────────────────────────────────────────────────────
+export type CheckoutSessionItem = components["schemas"]["CheckoutSessionItem"];
+export type PricingLineItem     = components["schemas"]["PricingLineItem"];
+export type PricingBreakdownItem = components["schemas"]["PricingBreakdownItem"];
+export type PaymentIntentItem   = components["schemas"]["PaymentIntentItem"];
+export type RefundItem          = components["schemas"]["RefundItem"];
+
+// ── Public feed / widget checkout ────────────────────────────────────────────
+export type PublicFeedCheckoutStartRequest  = components["schemas"]["PublicFeedCheckoutStartRequest"];
+export type PublicFeedCheckoutStartResponse = components["schemas"]["PublicFeedCheckoutStartResponse"];
+export type CheckoutStatusResponse  = components["schemas"]["CheckoutStatusResponse"];
+export type CheckoutRecoverResponse = components["schemas"]["CheckoutRecoverResponse"];
+export type PublicGAItem   = components["schemas"]["PublicGAItem"];
+export type PublicBuyerInfo = components["schemas"]["PublicBuyerInfo"];
+
+// ── Promo codes ───────────────────────────────────────────────────────────────
+export type PromoCodeItem           = components["schemas"]["PromoCodeItem"];
+export type ValidatePromoCodeRequest  = components["schemas"]["ValidatePromoCodeRequest"];
+export type ValidatePromoCodeResponse = components["schemas"]["ValidatePromoCodeResponse"];
+
+// ── Barcodes & batches ────────────────────────────────────────────────────────
+export type BarcodeAuthorityItem = components["schemas"]["BarcodeAuthorityItem"];
+export type BarcodeItem          = components["schemas"]["BarcodeItem"];
+/** Externally-issued barcode batch submitted for approval and registration. */
+export type BarcodeBatch         = components["schemas"]["BarcodeBatch"];
+
+// ── Seating ───────────────────────────────────────────────────────────────────
+export type SeatingPlan            = components["schemas"]["SeatingPlan"];
+export type SeatingSeatStatusResponse = components["schemas"]["SeatingSeatStatusResponse"];
+export type SeatingSchemaResponse  = components["schemas"]["SeatingSchemaResponse"];
+
+// ── Tickets & delivery ────────────────────────────────────────────────────────
+export type TicketItem                  = components["schemas"]["TicketItem"];
+export type AdminTicketDeliveryResponse = components["schemas"]["AdminTicketDeliveryResponse"];
+
+// ── Complimentary issuances & external allocations ───────────────────────────
+/** An externally-allocated seat quota assigned to a distribution partner. */
+export type ExternalAllocation    = components["schemas"]["ExternalAllocation"];
+/** A complimentary (free/comp) ticket issuance outside the normal checkout flow. */
+export type ComplimentaryIssuance = components["schemas"]["ComplimentaryIssuance"];
+
+// ── Geo ───────────────────────────────────────────────────────────────────────
+export type GeoCountryItem = components["schemas"]["GeoCountryItem"];
+export type GeoCityItem    = components["schemas"]["GeoCityItem"];
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Error code string-literal union types.
 //

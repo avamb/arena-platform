@@ -176,7 +176,7 @@ jobs:
   # Job 4: OpenAPI check — verify generated code matches spec
   # ─────────────────────────────────────────────────────────────────
   openapi-check:
-    name: OpenAPI Check
+    name: OpenAPI Check (Go types + TS client drift)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -191,19 +191,34 @@ jobs:
           go-version: "1.24"
           cache: true
 
-      - name: Install Node.js (for npx)
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: "npm"
 
-      - name: Regenerate OpenAPI types
+      - name: Install npm dependencies (openapi-typescript)
+        run: npm ci
+
+      - name: Regenerate Go OpenAPI types
         run: make gen-openapi
 
-      - name: Check for drift
+      - name: Check Go types for drift
         run: |
           if ! git diff --exit-code apps/backend/internal/adapters/http/openapi/types_gen.go; then
-            echo "::error::Generated OpenAPI types are out of sync with openapi.yaml."
+            echo "::error::Generated Go OpenAPI types are out of sync with openapi.yaml."
             echo "::error::Run 'make gen-openapi' locally and commit the result."
+            exit 1
+          fi
+
+      - name: Regenerate TypeScript client
+        run: node scripts/gen-ts-client.mjs
+
+      - name: Check TypeScript client for drift
+        run: |
+          if ! git diff --exit-code apps/backend/openapi/clients/ts/index.d.ts; then
+            echo "::error::Generated TypeScript client is out of sync with openapi.yaml."
+            echo "::error::Run './generate-clients.sh' (or 'node scripts/gen-ts-client.mjs') locally and commit the result."
             exit 1
           fi
 

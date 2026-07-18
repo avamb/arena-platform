@@ -3453,6 +3453,898 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/public/feeds/{feed_token}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List events published to a feed token
+         * @description Returns published events that are actively published to the given
+         *     feed token. No JWT required — the feed token in the path is the
+         *     credential (ADR-013 federated feeds).
+         *
+         *     Rate-limited per token and per IP.
+         */
+        get: operations["listPublicFeedEvents"];
+        put?: never;
+        /**
+         * Submit batched widget funnel telemetry events
+         * @description Accepts a batch of funnel telemetry events from the embedded ticket
+         *     widget (feature #322 WID-0e).  Fire-and-forget: the server persists
+         *     each event to an audit-grade table and returns 204 regardless of
+         *     individual insert outcomes.
+         *
+         *     No PII is stored — the only linkage to a checkout journey is the
+         *     opaque `checkout_token` (a random 256-bit hex string).
+         *
+         *     Heavily rate-limited (shared per-token + per-IP bucket with the
+         *     browse endpoints).  No JWT required.
+         */
+        post: operations["postPublicFeedFunnelEvents"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/feeds/{feed_token}/events/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a single event published to a feed token
+         * @description Returns a single published event that is actively published to the
+         *     given feed token. No JWT required.
+         *
+         *     Rate-limited per token and per IP.
+         */
+        get: operations["getPublicFeedEvent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/feeds/{feed_token}/checkout/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a public (anonymous) checkout via a feed token
+         * @description Extends the public checkout start endpoint to accept seated (seats[]),
+         *     GA (ga_items[]), or mixed (seats[] + ga_items[]) carts in any
+         *     combination valid for the session's admission_mode.
+         *
+         *     No JWT required — the feed token in the path is the credential.
+         *     Rate-limited per token and per IP.
+         *
+         *     Response includes checkout_token (opaque high-entropy token, NOT UUID)
+         *     and expires_at so the widget can display a countdown and later recover
+         *     the order via WID-0b.
+         */
+        post: operations["startPublicFeedCheckout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/checkout/{checkout_token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Anonymous order-status lookup
+         * @description Returns the current status of a checkout session identified by its
+         *     opaque `checkout_token`. No JWT is required — the token in the path
+         *     is the credential. Used by the widget's cart-restore, success-page,
+         *     and payment-return deep-link flows (feature #319 WID-0b).
+         *
+         *     Rate-limited per-token and per-IP using the shared public-feed
+         *     rate limiter (`publicFeedRL`).
+         */
+        get: operations["getPublicCheckoutStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/checkout/{checkout_token}/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-capture expired hold for a public checkout session
+         * @description One-click re-capture of the SAME seats or GA capacity that were
+         *     originally reserved under the checkout session identified by
+         *     `checkout_token`.
+         *
+         *     Intended for the widget's "Try again" / countdown-expired recovery
+         *     path (design note §4.4 WID-0c, feature #320).
+         *
+         *     If **all** original seats/zones are still available a fresh
+         *     reservation is created, the checkout session is reset to
+         *     `created` state, re-confirmed with the original pricing snapshot,
+         *     and the new `expires_at` is returned.
+         *
+         *     If **any** original seat is no longer available the endpoint returns
+         *     `409 Conflict` with a per-seat availability map so the widget can
+         *     highlight the unavailable seats to the buyer.
+         *
+         *     No JWT is required — the opaque `checkout_token` in the path is
+         *     the credential.  Rate-limited via the shared public-feed limiter.
+         */
+        post: operations["recoverPublicCheckout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/checkout/{checkout_token}/tickets/{ticket_id}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download PDF e-ticket for an anonymous buyer
+         * @description Returns the PDF bytes for the given ticket, verifying that the ticket
+         *     belongs to the checkout session identified by `checkout_token`.
+         *     No JWT is required. Intended for the widget's "Download Ticket" button
+         *     and post-payment deep-link (feature #319 WID-0b).
+         *
+         *     Rate-limited per-token and per-IP using the shared public-feed
+         *     rate limiter.
+         */
+        get: operations["getPublicTicketPdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List sales channels for an organization */
+        get: operations["listChannels"];
+        put?: never;
+        /** Create a sales channel */
+        post: operations["createChannel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/channels/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a sales channel by ID */
+        get: operations["getChannel"];
+        put?: never;
+        post?: never;
+        /** Delete a sales channel */
+        delete: operations["deleteChannel"];
+        options?: never;
+        head?: never;
+        /** Update a sales channel */
+        patch: operations["updateChannel"];
+        trace?: never;
+    };
+    "/v1/feeds/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read raw agent feed (agent scanner credential)
+         * @description The token in the path is the long-lived bearer credential.
+         *     No JWT required.
+         */
+        get: operations["getPublicAgentFeed"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/channels/{channel_id}/feed-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List agent feed tokens for a channel */
+        get: operations["listFeedTokens"];
+        put?: never;
+        /** Create an agent feed token */
+        post: operations["createFeedToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/channels/{channel_id}/feed-tokens/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get an agent feed token by ID */
+        get: operations["getFeedToken"];
+        put?: never;
+        post?: never;
+        /** Revoke an agent feed token */
+        delete: operations["revokeFeedToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/data-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the caller's GDPR data requests */
+        get: operations["listDataRequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/data-export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit a GDPR data export request */
+        post: operations["requestDataExport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/data-delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit a GDPR data deletion request */
+        post: operations["requestDataDeletion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/consent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record a GDPR consent decision */
+        post: operations["recordConsent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/stripe/connect/authorize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Begin Stripe Connect OAuth flow */
+        get: operations["stripeConnectAuthorize"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/stripe/connect/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Handle Stripe Connect OAuth callback */
+        get: operations["stripeConnectCallback"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/barcode-batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List external barcode batches */
+        get: operations["listBarcodeBatches"];
+        put?: never;
+        /** Upload an external barcode batch */
+        post: operations["uploadBarcodeBatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/barcode-batches/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a barcode batch by ID */
+        get: operations["getBarcodeBatch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/barcode-batches/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve a barcode batch for registration */
+        post: operations["approveBarcodeBatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/barcode-batches/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject a barcode batch */
+        post: operations["rejectBarcodeBatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/reconciliation/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit an external reconciliation report */
+        post: operations["submitReconciliationReport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/reconciliation/reports/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a reconciliation report */
+        get: operations["getReconciliationReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/reconciliation/reports/{id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Mark a reconciliation report as reviewed */
+        patch: operations["reviewReconciliationReport"];
+        trace?: never;
+    };
+    "/v1/reconciliation/reports/{id}/lines/{line_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Resolve a line-level reconciliation exception */
+        patch: operations["resolveReconciliationException"];
+        trace?: never;
+    };
+    "/v1/reconciliation/exceptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List unresolved reconciliation exceptions */
+        get: operations["listReconciliationExceptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/external-allocations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List external allocations for an organization */
+        get: operations["listExternalAllocations"];
+        put?: never;
+        /** Create an external allocation quota */
+        post: operations["createExternalAllocation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/external-allocations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get an external allocation by ID */
+        get: operations["getExternalAllocation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update an external allocation quota */
+        patch: operations["updateExternalAllocation"];
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/complimentary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List complimentary ticket issuances for an organization */
+        get: operations["listComplimentaryIssuances"];
+        put?: never;
+        /** Issue a complimentary ticket */
+        post: operations["createComplimentaryIssuance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/complimentary/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a complimentary issuance by ID */
+        get: operations["getComplimentaryIssuance"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/complimentary/{id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke a complimentary ticket issuance */
+        post: operations["revokeComplimentaryIssuance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/events/{event_id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the post-event sales report */
+        get: operations["getEventReport"];
+        put?: never;
+        /** Trigger regeneration of the post-event sales report */
+        post: operations["triggerEventReport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/billing/tariffs/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the currently active billing tariff */
+        get: operations["getActiveTariff"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/billing/tariffs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a new billing tariff */
+        post: operations["createTariff"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/billing/invoices/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate invoices for the current billing period */
+        post: operations["generateInvoices"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/billing/invoices/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a billing invoice by ID */
+        get: operations["getBillingInvoice"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/billing/invoices/{id}/issue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Issue (finalize) a draft billing invoice */
+        post: operations["issueInvoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/billing/invoices/{id}/pay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a billing invoice as paid */
+        post: operations["payInvoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/billing/invoices/{id}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Void a billing invoice */
+        post: operations["voidInvoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/billing/stripe/push-invoice/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Push a billing invoice to Stripe Billing */
+        post: operations["pushInvoiceToStripe"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/billing/stripe/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive Stripe Billing webhook events
+         * @description Unauthenticated endpoint. Stripe-signature verified inside the handler.
+         */
+        post: operations["stripeBillingWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/billing/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get billing usage summary for an organization */
+        get: operations["getOrgBillingUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/billing/invoices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List billing invoices for an organization */
+        get: operations["listOrgBillingInvoices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cross-tenant list of all checkout orders (superadmin) */
+        get: operations["superadminListOrders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cross-tenant list of all tickets (superadmin) */
+        get: operations["superadminListTickets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/refunds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cross-tenant list of all refunds (superadmin) */
+        get: operations["superadminListRefunds"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/tickets/{id}/scans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List scan events for a ticket (admin support drawer) */
+        get: operations["adminListTicketScanEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -7921,6 +8813,43 @@ export interface components {
             total: number;
             /** @description ISO 4217 currency code (e.g. `USD`, `ILS`, `EUR`). */
             currency: string;
+            /**
+             * @description Multi-line breakdown (feature #310, SEAT-C2): one entry per
+             *     (tier, unit_price) group when a checkout spans several
+             *     ticket tiers — e.g. a seated reservation whose seats resolve
+             *     to different tiers, or a mixed seats+GA cart. Omitted for
+             *     single-tier checkouts. The sum of line subtotals equals the
+             *     top-level `subtotal`; the top-level `unit_price` is the
+             *     weighted average and `quantity` the sum across lines.
+             */
+            lines?: components["schemas"]["PricingLineItem"][];
+        };
+        /**
+         * @description One row of a multi-line pricing breakdown: a (tier, unit_price)
+         *     group priced by the platform pipeline (feature #310).
+         */
+        PricingLineItem: {
+            /**
+             * @description Ticket tier UUID as a string. Empty string on
+             *     general-admission checkouts whose reservation carries no
+             *     tier.
+             */
+            tier_id: string;
+            /**
+             * Format: int32
+             * @description Number of tickets in this tier group.
+             */
+            quantity: number;
+            /**
+             * Format: int64
+             * @description Per-ticket price of this group in minor units.
+             */
+            unit_price: number;
+            /**
+             * Format: int64
+             * @description `unit_price * quantity` for this group.
+             */
+            subtotal: number;
         };
         /**
          * @description Quote response wrapper. Composes a `PricingBreakdownItem` with
@@ -8102,6 +9031,269 @@ export interface components {
             checkout_session: components["schemas"]["CheckoutSessionItem"];
         };
         /**
+         * @description A single cart item (seat or general-admission) included in the
+         *     anonymous order-status response (feature #319 WID-0b).
+         */
+        CheckoutStatusItem: {
+            /**
+             * @description Item kind.
+             * @enum {string}
+             */
+            type: "seat" | "general_admission";
+            /** @description Canonical seat key (sector-row-number), present for assigned seats. */
+            seat_key?: string | null;
+            /** @description Sector/section name for display. */
+            sector?: string | null;
+            /** @description Row label for display. */
+            row?: string | null;
+            /** @description Seat number within the row for display. */
+            number?: string | null;
+            /** @description Unit price in smallest currency unit. */
+            unit_price?: number | null;
+            /** @description Number of GA tickets held (only for general_admission items). */
+            quantity?: number | null;
+        };
+        /**
+         * @description A single issued ticket included in the anonymous order-status response
+         *     when the checkout has reached the `paid` state (feature #319 WID-0b).
+         */
+        CheckoutStatusTicketItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the issued ticket.
+             */
+            ticket_id: string;
+            /** @description Sector/section name denormalized at issuance time. */
+            sector?: string | null;
+            /** @description Row label denormalized at issuance time. */
+            row?: string | null;
+            /** @description Seat number denormalized at issuance time. */
+            number?: string | null;
+            /**
+             * @description SEAT-C4 human-readable fallback code in display form (e.g. "M7KT-2QV9").
+             *     Null when the credential has not yet been generated.
+             */
+            human_code?: string | null;
+            /**
+             * @description Path to download the PDF e-ticket:
+             *     `GET /v1/public/checkout/{checkout_token}/tickets/{ticket_id}/pdf`.
+             */
+            pdf_url?: string | null;
+        };
+        PublicGAItem: {
+            /**
+             * Format: uuid
+             * @description UUID of the ticket tier.
+             */
+            tier_id: string;
+            /**
+             * Format: int32
+             * @description Number of GA tickets for this tier.
+             */
+            quantity: number;
+        };
+        /**
+         * @description Describes a single buyer-form field exposed by the sales channel.
+         *     The widget uses the `enabled` flag to decide whether to render the
+         *     field and `required` to enforce client-side validation.
+         *     Feature #321 WID-0d.
+         */
+        BuyerFieldItem: {
+            /**
+             * @description Field identifier — one of `email`, `name`, `phone`.
+             * @enum {string}
+             */
+            key: "email" | "name" | "phone";
+            /** @description When true the field must be filled before submission. */
+            required: boolean;
+            /** @description When false the field should not be shown or submitted. */
+            enabled: boolean;
+        };
+        /**
+         * @description Structured buyer contact info for `POST checkout/start` (feature #321 WID-0d).
+         *     `email` supersedes the top-level `holder_email` when both are present.
+         *     `name` and `phone` are validated against the channel's `buyer_fields` flags.
+         */
+        PublicBuyerInfo: {
+            /**
+             * Format: email
+             * @description Buyer's email address (ticket holder).
+             */
+            email: string;
+            /** @description Buyer's full name; required when the channel has collect_name enabled. */
+            name?: string | null;
+            /** @description Buyer's phone number; required when the channel has collect_phone enabled. */
+            phone?: string | null;
+        };
+        PublicFeedCheckoutStartRequest: {
+            /**
+             * Format: uuid
+             * @description UUID of the event session to check out.
+             */
+            session_id: string;
+            /**
+             * Format: email
+             * @description Email address of the ticket holder. Superseded by `buyer.email`
+             *     when the `buyer` object is present.
+             */
+            holder_email: string;
+            /** @description Optional promotional code to apply. */
+            promo_code?: string | null;
+            /** @description Seat keys for seated or hybrid sessions. */
+            seats?: string[];
+            /** @description GA items for GA or hybrid sessions. */
+            ga_items?: components["schemas"]["PublicGAItem"][];
+            /**
+             * @description Structured buyer contact info (WID-0d). When present `buyer.email`
+             *     supersedes `holder_email`; name and phone are validated against the
+             *     channel's `buyer_fields` flags.
+             */
+            buyer?: components["schemas"]["PublicBuyerInfo"];
+            /**
+             * Format: uuid
+             * @description Deprecated: use ga_items instead.
+             */
+            tier_id?: string;
+            /**
+             * Format: int32
+             * @description Deprecated: use ga_items instead.
+             */
+            qty?: number;
+        };
+        PublicFeedCheckoutStartResponse: {
+            /** @description The created checkout session with pricing snapshot and state. */
+            checkout_session: components["schemas"]["CheckoutSessionItem"];
+            /**
+             * @description Platform-computed pricing breakdown for the hold (guardrail:
+             *     totals always come from the platform — widgets must render
+             *     these numbers verbatim and never perform price arithmetic).
+             *     Carries per-tier `lines` for seated and mixed carts.
+             */
+            pricing?: components["schemas"]["PricingBreakdownItem"];
+            /** @description URL to redirect the buyer to for payment or completion. */
+            redirect_url: string;
+            /** @description Opaque high-entropy token for WID-0b anonymous order lookup. */
+            checkout_token: string;
+            /**
+             * Format: date-time
+             * @description Reservation expiry (RFC 3339 UTC).
+             */
+            expires_at: string;
+        };
+        /**
+         * @description A single widget funnel telemetry event.  No PII is stored — the only
+         *     linkage to a checkout journey is the opaque `checkout_token`.
+         *     Feature #322 WID-0e.
+         */
+        WidgetFunnelEventInput: {
+            /**
+             * @description The funnel step that triggered this event:
+             *     - `schema_viewed`: the seating plan was displayed to the user.
+             *     - `seat_selected`: the user selected one or more seats.
+             *     - `cart_opened`: the user opened the checkout cart.
+             *     - `payment_started`: the user advanced to the payment step.
+             *     - `recovered`: a previously expired hold was recovered.
+             * @enum {string}
+             */
+            event_type: "schema_viewed" | "seat_selected" | "cart_opened" | "payment_started" | "recovered";
+            /**
+             * @description Opaque checkout token — present when a checkout journey has been
+             *     started.  Not PII: it is a random 256-bit hex string with no
+             *     personally identifiable information attached.
+             */
+            checkout_token?: string;
+            /**
+             * Format: uuid
+             * @description UUID of the event session the user is browsing.
+             */
+            session_id?: string;
+            /**
+             * Format: date-time
+             * @description RFC 3339 client-side timestamp of when the event occurred.
+             *     Defaults to the server's `now()` when absent or unparseable.
+             */
+            occurred_at?: string;
+        };
+        /**
+         * @description Request body for `POST /v1/public/feeds/{feed_token}/events`
+         *     (feature #322 WID-0e).  Contains a batch of funnel telemetry events
+         *     from the embedded widget.
+         */
+        WidgetFunnelEventsBatch: {
+            /** @description Batch of funnel telemetry events (1–50 items). */
+            events: components["schemas"]["WidgetFunnelEventInput"][];
+        };
+        /**
+         * @description Response body for `POST /v1/public/checkout/{checkout_token}/recover`
+         *     (feature #320 WID-0c).  Returned when a fresh reservation was
+         *     successfully created for the same seats/zones.
+         */
+        CheckoutRecoverResponse: {
+            /**
+             * @description The updated checkout session.  State is `pricing_confirmed` because
+             *     the pricing snapshot is re-applied immediately after the new
+             *     reservation is linked.
+             */
+            checkout_session: components["schemas"]["CheckoutSessionItem"];
+            /**
+             * @description The same opaque token that was supplied in the path (echoed back
+             *     for convenience so the widget does not need to re-parse the URL).
+             */
+            checkout_token: string;
+            /**
+             * Format: date-time
+             * @description RFC 3339 UTC timestamp of the new reservation expiry.  The widget
+             *     MUST restart its countdown timer from this value.
+             */
+            expires_at: string;
+        };
+        /**
+         * @description Response body for `GET /v1/public/checkout/{checkout_token}`.
+         *     Returns the current order status and cart contents for an anonymous buyer.
+         *     No JWT required — the opaque `checkout_token` in the path is the credential.
+         */
+        CheckoutStatusResponse: {
+            /**
+             * @description Public order status derived from the checkout_session.state:
+             *     - `pending`: created | pricing_confirmed | payment_started | manual_review
+             *     - `paid`: completed
+             *     - `expired`: expired
+             *     - `failed`: abandoned
+             * @enum {string}
+             */
+            status: "pending" | "paid" | "expired" | "failed";
+            /** @description The opaque token identifying this checkout (echoed from path). */
+            checkout_token: string;
+            /**
+             * Format: uuid
+             * @description Internal UUIDv7 of the checkout_sessions row.
+             */
+            checkout_session_id: string;
+            /**
+             * Format: date-time
+             * @description RFC3339 timestamp when the underlying reservation expires.
+             */
+            expires_at?: string | null;
+            /** @description Order subtotal in smallest currency unit; null until pricing_confirmed. */
+            subtotal?: number | null;
+            /** @description Total discount applied; null until pricing_confirmed. */
+            discount?: number | null;
+            /** @description Platform service fee; null until pricing_confirmed. */
+            platform_fee?: number | null;
+            /** @description Payment provider fee; null until pricing_confirmed. */
+            provider_fee?: number | null;
+            /** @description Tax amount; null until pricing_confirmed. */
+            tax?: number | null;
+            /** @description Final total charged to the buyer; null until pricing_confirmed. */
+            total?: number | null;
+            /** @description ISO 4217 three-letter currency code; null until pricing_confirmed. */
+            currency?: string | null;
+            /** @description Cart items held at the time of the request. */
+            items: components["schemas"]["CheckoutStatusItem"][];
+            /** @description Issued tickets; non-empty only when status is `paid`. */
+            tickets: components["schemas"]["CheckoutStatusTicketItem"][];
+        };
+        /**
          * @description Request body for `POST /v1/checkout/start`. Creates a new checkout
          *     session in state `created` linked to an existing reservation. The
          *     optional `user_id` attaches the session to an authenticated buyer;
@@ -8130,34 +9322,48 @@ export interface components {
             user_id?: string | null;
         };
         /**
-         * @description Request body for `POST /v1/checkout/{id}/confirm`. Re-quotes the
-         *     pricing using the current pricing pipeline (`ComputePricing` in
-         *     `pricing.go`) and stores the immutable snapshot on the session,
-         *     transitioning `created` → `pricing_confirmed`. `chosen_price` is
-         *     required for tiers with `pricing_mode = pwyw`.
+         * @description Request body for `POST /v1/checkout/{id}/confirm`.
+         *
+         *     **PR2-08 security note**: all pricing is derived from the
+         *     server-side reservation linked to the checkout session. The
+         *     fields `tier_id`, `session_id`, `quantity`, and `org_id` are now
+         *     optional cross-validation fields — if supplied, they must match
+         *     the reservation or the server returns `422 checkout.pricing_mismatch`.
+         *     Omitting them is safe; the reservation is always the authoritative
+         *     source. Clients that previously required these fields continue to
+         *     work as long as the values match the reservation.
+         *
+         *     `chosen_price` is required for tiers with `pricing_mode = pwyw`.
          */
         ConfirmCheckoutRequest: {
             /**
              * Format: uuid
-             * @description Ticket tier to quote against.
+             * @description Optional cross-validation: must match the reservation's
+             *     `tier_id` if supplied. Returns `422 checkout.pricing_mismatch`
+             *     on disagreement.
              */
-            tier_id: string;
+            tier_id?: string | null;
             /**
              * Format: uuid
-             * @description Event session that owns the tier (NOT the checkout session
-             *     id, which is on the URL path).
+             * @description Optional cross-validation: must match the reservation's
+             *     `session_id` if supplied. Returns `422 checkout.pricing_mismatch`
+             *     on disagreement.
              */
-            session_id: string;
+            session_id?: string | null;
             /**
              * Format: uuid
-             * @description Organization that owns the session and any promo.
+             * @description Optional cross-validation: must match the reservation's
+             *     `org_id` if supplied. Returns `422 checkout.pricing_mismatch`
+             *     on disagreement.
              */
-            org_id: string;
+            org_id?: string | null;
             /**
              * Format: int32
-             * @description Number of tickets being quoted; must be > 0.
+             * @description Optional cross-validation: must match the reservation's
+             *     `quantity` if supplied (non-zero). Returns
+             *     `422 checkout.pricing_mismatch` on disagreement.
              */
-            quantity: number;
+            quantity?: number | null;
             /**
              * @description Optional promo code; when present the handler resolves and
              *     validates it before stamping `promo_code_id`.
@@ -9532,6 +10738,225 @@ export interface components {
             };
             /** @description `true` when the response is a since_version delta, `false` when it is a full snapshot. */
             delta: boolean;
+        };
+        /**
+         * @description A sales channel belonging to an organization. Channels represent
+         *     distinct distribution points (e.g. online widget, box office, API partner)
+         *     that sell tickets under a shared organizational account.
+         */
+        Channel: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 channel identifier.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Organization that owns this channel.
+             */
+            org_id: string;
+            /** @description Human-readable channel label (e.g. "Online Widget", "Box Office"). */
+            name: string;
+            /**
+             * @description Channel type discriminator. Well-known values: `online`, `box_office`,
+             *     `api_partner`, `bil24_compat`. New types may be added without a schema
+             *     version bump.
+             */
+            type: string;
+            /**
+             * @description Opaque JSONB blob of per-channel settings (e.g. `gateway_token_hash`
+             *     for Bil24 compat channels). Structure is channel-type-specific.
+             */
+            settings?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Format: date-time
+             * @description ISO-8601 timestamp when the channel was created.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description ISO-8601 timestamp of the last update, if any.
+             */
+            updated_at?: string;
+        };
+        /**
+         * @description A long-lived bearer token that grants a scanner device read access to the
+         *     agent feed for a specific sales channel. Presented as
+         *     `Authorization: Bearer <token>` to authenticated feed endpoints.
+         */
+        FeedToken: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 feed token identifier.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Sales channel this token is scoped to.
+             */
+            channel_id: string;
+            /** @description Optional human-readable label for the device or use-case. */
+            label?: string;
+            /**
+             * @description The raw bearer token value. Returned only on creation; subsequent GET
+             *     requests return a masked value (`***`) for security.
+             */
+            token: string;
+            /**
+             * Format: date-time
+             * @description ISO-8601 timestamp when the token was issued.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description ISO-8601 timestamp when the token was revoked, or null if active.
+             */
+            revoked_at?: string | null;
+        };
+        /**
+         * @description A named batch of externally-issued barcodes submitted for registration.
+         *     Batches start in `pending` status; an admin approves or rejects them.
+         *     Approved batches have their barcodes registered in the barcode authority.
+         */
+        BarcodeBatch: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 batch identifier.
+             */
+            id: string;
+            /** @description Human-readable name for this batch (e.g. "VIP Block A — 2026-08-01"). */
+            label: string;
+            /**
+             * @description Current lifecycle status of the batch.
+             * @enum {string}
+             */
+            status: "pending" | "approved" | "rejected";
+            /** @description Number of barcodes in this batch. */
+            barcode_count: number;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the user who uploaded the batch, if available.
+             */
+            submitted_by?: string | null;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the admin who approved/rejected the batch, if any.
+             */
+            reviewed_by?: string | null;
+            /**
+             * Format: date-time
+             * @description ISO-8601 timestamp of the review decision, if any.
+             */
+            reviewed_at?: string | null;
+            /**
+             * Format: date-time
+             * @description ISO-8601 timestamp when the batch was uploaded.
+             */
+            created_at: string;
+        };
+        /**
+         * @description A quota of seats pre-allocated to an external distribution partner
+         *     (e.g. a travel agency or B2B reseller). Allocations reduce available
+         *     inventory for the general public and are tracked separately for
+         *     reconciliation.
+         */
+        ExternalAllocation: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 allocation identifier.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Organization that created this allocation.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description Event session this allocation applies to.
+             */
+            session_id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the partner organization receiving the quota.
+             */
+            partner_id: string;
+            /** @description Number of seats allocated to the partner. */
+            quantity: number;
+            /**
+             * Format: date-time
+             * @description ISO-8601 timestamp when the allocation was created.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description ISO-8601 timestamp of the last quantity update, if any.
+             */
+            updated_at?: string | null;
+        };
+        /**
+         * @description A complimentary (free / comp) ticket issuance granted to a named
+         *     recipient outside the normal paid checkout flow. Issuances consume
+         *     inventory and generate a standard ticket. They can be revoked before
+         *     the event, which returns the seat to inventory.
+         */
+        ComplimentaryIssuance: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 issuance identifier.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Organization that issued this complimentary ticket.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description Event session the comp ticket is valid for.
+             */
+            session_id: string;
+            /**
+             * Format: uuid
+             * @description Ticket tier the comp ticket was issued in.
+             */
+            tier_id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the generated ticket, populated after issuance completes.
+             */
+            ticket_id?: string | null;
+            /**
+             * Format: email
+             * @description Email address of the complimentary ticket recipient.
+             */
+            recipient_email: string;
+            /** @description Optional display name of the recipient. */
+            recipient_name?: string | null;
+            /** @description Internal note explaining the reason for the comp issuance. */
+            note?: string | null;
+            /**
+             * @description `issued` — ticket is active; `revoked` — ticket has been voided.
+             * @enum {string}
+             */
+            status: "issued" | "revoked";
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the staff member who granted the comp ticket.
+             */
+            issued_by?: string | null;
+            /**
+             * Format: date-time
+             * @description ISO-8601 timestamp when the issuance was revoked, or null if active.
+             */
+            revoked_at?: string | null;
+            /**
+             * Format: date-time
+             * @description ISO-8601 timestamp when the comp ticket was issued.
+             */
+            created_at: string;
         };
     };
     responses: never;
@@ -18628,7 +20053,10 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Ticket tier not found (`checkout.tier_not_found`). */
+            /**
+             * @description Checkout session or ticket tier not found. Possible codes:
+             *     `checkout.not_found`, `checkout.tier_not_found`.
+             */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -18651,8 +20079,13 @@ export interface operations {
                 };
             };
             /**
-             * @description Promo code resolved but failed validation. Possible codes
-             *     propagated from the promo state machine: `promo.not_found`,
+             * @description Promo code resolved but failed validation, or client-supplied
+             *     tier/quantity disagrees with the reservation (PR2-08). Possible
+             *     codes: `checkout.pricing_mismatch` (client tier_id / quantity /
+             *     session_id / org_id does not match the server-side reservation),
+             *     `checkout.reservation_not_found` (reservation linked to the
+             *     checkout session was deleted), `checkout.pricing_unavailable`
+             *     (multi-tier GA reservation has no items), `promo.not_found`,
              *     `promo.not_active`, `promo.not_yet_valid`, `promo.expired`,
              *     `promo.invalid_order_amount`.
              */
@@ -18666,6 +20099,7 @@ export interface operations {
             };
             /**
              * @description Internal server error. Possible codes:
+             *     `checkout.get_failed`, `checkout.reservation_lookup_failed`,
              *     `checkout.tier_lookup_failed`,
              *     `checkout.promo_lookup_failed`,
              *     `checkout.unknown_pricing_mode`,
@@ -18682,7 +20116,8 @@ export interface operations {
             /**
              * @description Required dependency unavailable. Possible codes:
              *     `dependency.database_unavailable`,
-             *     `dependency.tier_unavailable`.
+             *     `dependency.tier_unavailable`,
+             *     `dependency.reservation_unavailable`.
              */
             503: {
                 headers: {
@@ -21900,6 +23335,3114 @@ export interface operations {
             };
         };
     };
+    listPublicFeedEvents: {
+        parameters: {
+            query?: {
+                /** @description Optional filter by publication city scope. */
+                city_id?: string;
+                /** @description Optional lower bound on `event.start_at` (inclusive). */
+                date_from?: string;
+                /** @description Optional upper bound on `event.end_at` (inclusive). */
+                date_to?: string;
+                /** @description Page size. */
+                limit?: number;
+                /** @description Pagination offset. */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Opaque feed token (from `agent_feed_tokens.token`). */
+                feed_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated list of published events for this feed token. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        events: components["schemas"]["EventItem"][];
+                        /** @description Total count of matching events (for pagination). */
+                        total: number;
+                        limit: number;
+                        offset: number;
+                    };
+                };
+            };
+            /** @description Rate limited. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postPublicFeedFunnelEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque feed token (from `agent_feed_tokens.token`). */
+                feed_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WidgetFunnelEventsBatch"];
+            };
+        };
+        responses: {
+            /** @description Batch accepted (all valid events persisted; unknown types skipped). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid JSON body, empty batch, or batch exceeds maximum size. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limited. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicFeedEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque feed token (from `agent_feed_tokens.token`). */
+                feed_token: string;
+                /** @description The UUID of the event. */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The requested event. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        event: components["schemas"]["EventItem"];
+                    };
+                };
+            };
+            /** @description Event not found or not published to this feed token. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limited. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    startPublicFeedCheckout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Public feed token that scopes the available sessions. */
+                feed_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublicFeedCheckoutStartRequest"];
+            };
+        };
+        responses: {
+            /** @description Checkout started. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicFeedCheckoutStartResponse"];
+                };
+            };
+            /** @description Invalid body or field. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not published to this feed token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Seat conflict (reservation.seats_conflict with conflicts[])
+             *     or capacity exceeded (reservation.over_capacity).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Admission mode mismatch or unsupported pricing. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limited (feed.rate_limited). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable (dependency.database_unavailable). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicCheckoutStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Opaque high-entropy hex token minted at checkout session creation.
+                 *     64 lowercase hex characters (32 random bytes).
+                 */
+                checkout_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Checkout status returned successfully. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckoutStatusResponse"];
+                };
+            };
+            /**
+             * @description No checkout session found for the given `checkout_token`
+             *     (`checkout.not_found`).
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Rate limit exceeded (`checkout.rate_limited`). The caller
+             *     has exceeded the per-token or per-IP request limit.
+             */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error while retrieving the checkout session or
+             *     reservation (`checkout.lookup_failed`, `checkout.reservation_failed`).
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    recoverPublicCheckout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Opaque high-entropy hex token (64 lowercase hex characters)
+                 *     minted at checkout session creation.
+                 */
+                checkout_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description Hold recovered successfully.  A fresh reservation was created and
+             *     the checkout session now points to it.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckoutRecoverResponse"];
+                };
+            };
+            /**
+             * @description Checkout is in a non-recoverable terminal state:
+             *
+             *     * `checkout.already_completed` — the order was already paid.
+             *     * `checkout.abandoned` — the session was explicitly abandoned.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description No checkout session found for the given `checkout_token`
+             *     (`checkout.not_found`).
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description One or more original seats are no longer available
+             *     (`reservation.seats_conflict`) or GA capacity is exhausted
+             *     (`reservation.over_capacity`).  The `details.conflicts` array
+             *     lists every requested seat_key with its current status so the
+             *     widget can highlight which seats are taken.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limit exceeded (`checkout.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error (`checkout.lookup_failed`,
+             *     `reservation.insert_failed`, `checkout.update_failed`,
+             *     `checkout.confirm_failed`).
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicTicketPdf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque checkout token identifying the session. */
+                checkout_token: string;
+                /** @description UUIDv7 of the ticket whose PDF to retrieve. */
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description PDF bytes returned successfully. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            /** @description `ticket_id` is not a valid UUID (`checkout.invalid_ticket_id`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Checkout session not found (`checkout.not_found`), ticket does
+             *     not belong to this checkout (`checkout.ticket_not_found`), or
+             *     PDF has not yet been generated (`checkout.pdf_not_found`).
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limit exceeded (`checkout.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error (`checkout.lookup_failed`,
+             *     `checkout.tickets_failed`, `checkout.credential_failed`,
+             *     `checkout.credential_malformed`).
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listChannels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of channels. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        channels?: components["schemas"]["Channel"][];
+                    };
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Insufficient permission (`channel.read`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    type: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Channel created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Channel"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Insufficient permission (`channel.create`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Channel found. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Channel"];
+                };
+            };
+            /** @description Channel not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Channel deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Channel not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Channel updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Channel"];
+                };
+            };
+            /** @description Channel not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicAgentFeed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Feed data returned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        feed_token_id?: string;
+                        /** Format: uuid */
+                        channel_id?: string;
+                    };
+                };
+            };
+            /** @description Invalid or unknown feed token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listFeedTokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of feed tokens. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        feed_tokens?: components["schemas"]["FeedToken"][];
+                    };
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Insufficient permission (`feed_token.read`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createFeedToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    label?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Feed token created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedToken"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Insufficient permission (`feed_token.create`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getFeedToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                channel_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Feed token details. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedToken"];
+                };
+            };
+            /** @description Feed token not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    revokeFeedToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                channel_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Feed token revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Feed token not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listDataRequests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of data requests for the authenticated user. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        requests?: {
+                            /** Format: uuid */
+                            id?: string;
+                            /** @enum {string} */
+                            type?: "export" | "delete";
+                            status?: string;
+                            /** Format: date-time */
+                            created_at?: string;
+                        }[];
+                    };
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    requestDataExport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Export request accepted. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        request_id?: string;
+                        status?: string;
+                    };
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    requestDataDeletion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deletion request accepted. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        request_id?: string;
+                        status?: string;
+                    };
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    recordConsent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    purpose: string;
+                    granted: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Consent recorded. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    stripeConnectAuthorize: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to Stripe OAuth authorization URL. */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Stripe Connect not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    stripeConnectCallback: {
+        parameters: {
+            query?: {
+                code?: string;
+                state?: string;
+                error?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Connected account stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        stripe_account_id?: string;
+                        connected?: boolean;
+                    };
+                };
+            };
+            /** @description OAuth error or missing code. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Stripe Connect not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listBarcodeBatches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of barcode batches. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        batches?: components["schemas"]["BarcodeBatch"][];
+                    };
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Insufficient permission (`barcode_batch.read`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    uploadBarcodeBatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    label: string;
+                    barcodes: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description Barcode batch created (pending approval). */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BarcodeBatch"];
+                };
+            };
+            /** @description Invalid batch data. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Insufficient permission (`barcode_batch.upload`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getBarcodeBatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Barcode batch details. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BarcodeBatch"];
+                };
+            };
+            /** @description Batch not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    approveBarcodeBatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Batch approved and barcodes registered. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BarcodeBatch"];
+                };
+            };
+            /** @description Batch not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    rejectBarcodeBatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Batch rejected. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BarcodeBatch"];
+                };
+            };
+            /** @description Batch not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    submitReconciliationReport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date-time */
+                    period_start: string;
+                    /** Format: date-time */
+                    period_end: string;
+                    lines?: {
+                        external_ref?: string;
+                        amount?: number;
+                        currency?: string;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description Report submitted. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        report_id?: string;
+                        status?: string;
+                    };
+                };
+            };
+            /** @description Invalid report data. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Insufficient permission (`reconciliation.submit`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getReconciliationReport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reconciliation report. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id?: string;
+                        status?: string;
+                        /** Format: date-time */
+                        period_start?: string;
+                        /** Format: date-time */
+                        period_end?: string;
+                        /** Format: date-time */
+                        created_at?: string;
+                    };
+                };
+            };
+            /** @description Report not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    reviewReconciliationReport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    decision: "approved" | "disputed";
+                    notes?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Review recorded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        report_id?: string;
+                        status?: string;
+                    };
+                };
+            };
+            /** @description Report not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    resolveReconciliationException: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                line_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    resolution: "accepted" | "disputed" | "adjusted";
+                    notes?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Exception resolved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        line_id?: string;
+                        resolution?: string;
+                    };
+                };
+            };
+            /** @description Report or line not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listReconciliationExceptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of unresolved exceptions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        exceptions?: {
+                            /** Format: uuid */
+                            line_id?: string;
+                            /** Format: uuid */
+                            report_id?: string;
+                            external_ref?: string;
+                            delta_amount?: number;
+                        }[];
+                    };
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Insufficient permission (`reconciliation.review`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listExternalAllocations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of external allocations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        allocations?: components["schemas"]["ExternalAllocation"][];
+                    };
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createExternalAllocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    session_id: string;
+                    /** Format: uuid */
+                    partner_id: string;
+                    quantity: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Allocation created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExternalAllocation"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getExternalAllocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description External allocation details. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExternalAllocation"];
+                };
+            };
+            /** @description Allocation not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateExternalAllocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    quantity?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Allocation updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExternalAllocation"];
+                };
+            };
+            /** @description Allocation not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listComplimentaryIssuances: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of complimentary issuances. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        issuances?: components["schemas"]["ComplimentaryIssuance"][];
+                    };
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createComplimentaryIssuance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    session_id: string;
+                    /** Format: uuid */
+                    tier_id: string;
+                    /** Format: email */
+                    recipient_email: string;
+                    recipient_name?: string;
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Complimentary ticket issued. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComplimentaryIssuance"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No available inventory. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getComplimentaryIssuance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Complimentary issuance details. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComplimentaryIssuance"];
+                };
+            };
+            /** @description Issuance not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    revokeComplimentaryIssuance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Issuance revoked. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        issuance_id?: string;
+                        /** Format: date-time */
+                        revoked_at?: string;
+                    };
+                };
+            };
+            /** @description Issuance not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getEventReport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Event report. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        event_id?: string;
+                        total_tickets_sold?: number;
+                        total_revenue?: number;
+                        currency?: string;
+                        /** Format: date-time */
+                        generated_at?: string;
+                    };
+                };
+            };
+            /** @description Report not yet generated for this event. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    triggerEventReport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Report generation enqueued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        event_id?: string;
+                        /** Format: date-time */
+                        queued_at?: string;
+                    };
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Insufficient permission (`report.generate`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getActiveTariff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active tariff details. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id?: string;
+                        name?: string;
+                        /** Format: date-time */
+                        effective_from?: string;
+                        fees?: {
+                            [key: string]: number;
+                        };
+                    };
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No active tariff configured. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createTariff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    /** Format: date-time */
+                    effective_from: string;
+                    fees: {
+                        [key: string]: number;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description Tariff created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id?: string;
+                        name?: string;
+                    };
+                };
+            };
+            /** @description Invalid tariff data. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Insufficient permission (`billing.admin`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    generateInvoices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** Format: date-time */
+                    period_end?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Invoices generated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        generated_count?: number;
+                        /** Format: date-time */
+                        period_end?: string;
+                    };
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Insufficient permission (`billing.admin`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getBillingInvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Invoice details. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id?: string;
+                        /** Format: uuid */
+                        org_id?: string;
+                        status?: string;
+                        amount_due?: number;
+                        currency?: string;
+                        /** Format: date-time */
+                        due_date?: string;
+                    };
+                };
+            };
+            /** @description Invoice not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    issueInvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Invoice issued. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        invoice_id?: string;
+                        status?: string;
+                        /** Format: date-time */
+                        issued_at?: string;
+                    };
+                };
+            };
+            /** @description Invoice not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    payInvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    payment_method?: string;
+                    reference?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Invoice marked paid. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        invoice_id?: string;
+                        status?: string;
+                        /** Format: date-time */
+                        paid_at?: string;
+                    };
+                };
+            };
+            /** @description Invoice not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    voidInvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Invoice voided. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        invoice_id?: string;
+                        status?: string;
+                        /** Format: date-time */
+                        voided_at?: string;
+                    };
+                };
+            };
+            /** @description Invoice not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    pushInvoiceToStripe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Invoice pushed to Stripe. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        invoice_id?: string;
+                        stripe_invoice_id?: string;
+                        /** Format: date-time */
+                        pushed_at?: string;
+                    };
+                };
+            };
+            /** @description Invoice not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Stripe Billing not configured or database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    stripeBillingWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Event acknowledged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid signature or malformed payload. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getOrgBillingUsage: {
+        parameters: {
+            query?: {
+                period_start?: string;
+                period_end?: string;
+            };
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Usage summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        org_id?: string;
+                        /** Format: date-time */
+                        period_start?: string;
+                        /** Format: date-time */
+                        period_end?: string;
+                        tickets_sold?: number;
+                        gross_revenue?: number;
+                        platform_fee?: number;
+                        currency?: string;
+                    };
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Organization not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listOrgBillingInvoices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of billing invoices. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        invoices?: {
+                            /** Format: uuid */
+                            id?: string;
+                            status?: string;
+                            amount_due?: number;
+                            currency?: string;
+                            /** Format: date-time */
+                            due_date?: string;
+                        }[];
+                    };
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Organization not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    superadminListOrders: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                org_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated list of orders across all tenants. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        orders?: {
+                            /** Format: uuid */
+                            id?: string;
+                            /** Format: uuid */
+                            org_id?: string;
+                            status?: string;
+                            total?: number;
+                            currency?: string;
+                            /** Format: date-time */
+                            created_at?: string;
+                        }[];
+                        total?: number;
+                    };
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Insufficient permission (`superadmin.read`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    superadminListTickets: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                checkout_session_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated list of tickets across all tenants. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        tickets?: {
+                            /** Format: uuid */
+                            id?: string;
+                            /** Format: uuid */
+                            checkout_session_id?: string;
+                            status?: string;
+                            /** Format: date-time */
+                            issued_at?: string;
+                        }[];
+                        total?: number;
+                    };
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Insufficient permission (`superadmin.read`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    superadminListRefunds: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated list of refunds across all tenants. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        refunds?: {
+                            /** Format: uuid */
+                            id?: string;
+                            /** Format: uuid */
+                            checkout_session_id?: string;
+                            status?: string;
+                            amount?: number;
+                            currency?: string;
+                            /** Format: date-time */
+                            created_at?: string;
+                        }[];
+                        total?: number;
+                    };
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Insufficient permission (`superadmin.read`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    adminListTicketScanEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of scan events for the ticket. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        scan_events?: {
+                            /** Format: uuid */
+                            id?: string;
+                            barcode?: string;
+                            /** @enum {string} */
+                            result?: "accepted" | "rejected" | "already_used";
+                            /** Format: date-time */
+                            scanned_at?: string;
+                            scanner_id?: string;
+                        }[];
+                    };
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Insufficient permission (`scan_event.read`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
 }
 type WithRequired<T, K extends keyof T> = T & {
     [P in K]-?: T[P];
@@ -21928,6 +26471,75 @@ export type DevTokenRequest    = components["schemas"]["DevTokenRequest"];
 export type DevTokenResponse   = components["schemas"]["DevTokenResponse"];
 export type DevAuthTokenRequest  = components["schemas"]["DevAuthTokenRequest"];
 export type DevAuthTokenResponse = components["schemas"]["DevAuthTokenResponse"];
+
+// ── Identity & auth ───────────────────────────────────────────────────────────
+export type AuthLoginRequest  = components["schemas"]["AuthLoginRequest"];
+export type AuthLoginResponse = components["schemas"]["AuthLoginResponse"];
+export type AuthRefreshRequest  = components["schemas"]["AuthRefreshRequest"];
+export type AuthRefreshResponse = components["schemas"]["AuthRefreshResponse"];
+export type MeResponse = components["schemas"]["MeResponse"];
+export type MeUser = components["schemas"]["MeUser"];
+
+// ── Organizations ─────────────────────────────────────────────────────────────
+export type OrganizationItem  = components["schemas"]["OrganizationItem"];
+export type OrganizationDetail = components["schemas"]["OrganizationDetail"];
+export type MembershipItem    = components["schemas"]["MembershipItem"];
+
+// ── Sales channels & feed tokens ─────────────────────────────────────────────
+/** A sales channel owned by an organization (online widget, box office, API partner). */
+export type Channel   = components["schemas"]["Channel"];
+/** Long-lived scanner feed bearer token scoped to a sales channel. */
+export type FeedToken = components["schemas"]["FeedToken"];
+
+// ── Events & sessions ─────────────────────────────────────────────────────────
+export type EventItem           = components["schemas"]["EventItem"];
+export type SessionItem         = components["schemas"]["SessionItem"];
+export type TicketTierItem      = components["schemas"]["TicketTierItem"];
+
+// ── Checkout & payments ───────────────────────────────────────────────────────
+export type CheckoutSessionItem = components["schemas"]["CheckoutSessionItem"];
+export type PricingLineItem     = components["schemas"]["PricingLineItem"];
+export type PricingBreakdownItem = components["schemas"]["PricingBreakdownItem"];
+export type PaymentIntentItem   = components["schemas"]["PaymentIntentItem"];
+export type RefundItem          = components["schemas"]["RefundItem"];
+
+// ── Public feed / widget checkout ────────────────────────────────────────────
+export type PublicFeedCheckoutStartRequest  = components["schemas"]["PublicFeedCheckoutStartRequest"];
+export type PublicFeedCheckoutStartResponse = components["schemas"]["PublicFeedCheckoutStartResponse"];
+export type CheckoutStatusResponse  = components["schemas"]["CheckoutStatusResponse"];
+export type CheckoutRecoverResponse = components["schemas"]["CheckoutRecoverResponse"];
+export type PublicGAItem   = components["schemas"]["PublicGAItem"];
+export type PublicBuyerInfo = components["schemas"]["PublicBuyerInfo"];
+
+// ── Promo codes ───────────────────────────────────────────────────────────────
+export type PromoCodeItem           = components["schemas"]["PromoCodeItem"];
+export type ValidatePromoCodeRequest  = components["schemas"]["ValidatePromoCodeRequest"];
+export type ValidatePromoCodeResponse = components["schemas"]["ValidatePromoCodeResponse"];
+
+// ── Barcodes & batches ────────────────────────────────────────────────────────
+export type BarcodeAuthorityItem = components["schemas"]["BarcodeAuthorityItem"];
+export type BarcodeItem          = components["schemas"]["BarcodeItem"];
+/** Externally-issued barcode batch submitted for approval and registration. */
+export type BarcodeBatch         = components["schemas"]["BarcodeBatch"];
+
+// ── Seating ───────────────────────────────────────────────────────────────────
+export type SeatingPlan            = components["schemas"]["SeatingPlan"];
+export type SeatingSeatStatusResponse = components["schemas"]["SeatingSeatStatusResponse"];
+export type SeatingSchemaResponse  = components["schemas"]["SeatingSchemaResponse"];
+
+// ── Tickets & delivery ────────────────────────────────────────────────────────
+export type TicketItem                  = components["schemas"]["TicketItem"];
+export type AdminTicketDeliveryResponse = components["schemas"]["AdminTicketDeliveryResponse"];
+
+// ── Complimentary issuances & external allocations ───────────────────────────
+/** An externally-allocated seat quota assigned to a distribution partner. */
+export type ExternalAllocation    = components["schemas"]["ExternalAllocation"];
+/** A complimentary (free/comp) ticket issuance outside the normal checkout flow. */
+export type ComplimentaryIssuance = components["schemas"]["ComplimentaryIssuance"];
+
+// ── Geo ───────────────────────────────────────────────────────────────────────
+export type GeoCountryItem = components["schemas"]["GeoCountryItem"];
+export type GeoCityItem    = components["schemas"]["GeoCityItem"];
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Error code string-literal union types.
