@@ -194,6 +194,29 @@ func run() error {
 			"/v1/debug/* routes are mounted. DO NOT use in production.")
 	}
 
+	// BIL24_COMPAT_ENABLED controls whether the Bil24 compatibility gateway
+	// (/compat/bil24/*) is mounted at all. Default FALSE — the gateway is NOT
+	// in the first-release scope (feature #385, PR2-25B). When false, no
+	// /compat/bil24/* route is registered and requests to those paths get a
+	// 404 from chi's NotFound handler; the attack surface is zero.
+	//
+	// IMPORTANT — variant-A enforcement contract: if BIL24_COMPAT_ENABLED is
+	// ever set TRUE in a future release, the PR2-25 variant-A credential
+	// enforcement (fid/token bcrypt check on ALL state-mutating commands
+	// including UN_RESERVE) becomes MANDATORY before accepting real traffic.
+	// See feature #374 (hbil24.WithRequireToken) and feature #381 (superseded
+	// variant A). Do not enable the gateway without wiring WithRequireToken(true)
+	// in the composition root and verifying that gateway_token_hash is set in
+	// the sales_channels.settings JSONB for every channel.
+	bil24GatewayEnabled := cfg.Bil24CompatEnabled
+	if bil24GatewayEnabled {
+		logger.Warn("Bil24 compatibility gateway ENABLED: BIL24_COMPAT_ENABLED=true — " +
+			"/compat/bil24/* routes are mounted. Ensure variant-A credential enforcement " +
+			"(WithRequireToken) is active before accepting production traffic.")
+	} else {
+		logger.Info("Bil24 compatibility gateway disabled")
+	}
+
 	// Emit non-fatal configuration warnings (e.g. insecure OTLP endpoint).
 	for _, w := range cfg.Warnings() {
 		logger.Warn("config warning", "detail", w)
@@ -219,7 +242,12 @@ func run() error {
 		MetricsHandler:              metrics.Handler(), // mounts the /metrics scrape endpoint
 		FaultInjectOutboxAfterAudit: faultInjectOutbox,
 		DebugRoutesEnabled:          debugRoutesEnabled,
-		Media:                       mediaRepo,
+		// Bil24 compatibility gateway — default FALSE (feature #385, PR2-25B).
+		// When false: no /compat/bil24/* routes are registered; 404 on all those
+		// paths. If ever set TRUE, variant-A credential enforcement (WithRequireToken)
+		// becomes mandatory — see comment block above and feature #381.
+		Bil24CompatEnabled: bil24GatewayEnabled,
+		Media:              mediaRepo,
 	})
 
 	listenErrCh := make(chan error, 1)

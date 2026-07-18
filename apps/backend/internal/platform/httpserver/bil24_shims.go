@@ -211,7 +211,29 @@ func (s *Server) handleBil24Command(w http.ResponseWriter, r *http.Request) {
 // mountCompatRoutes mounts the Bil24-compatible API gateway under /compat/bil24/*.
 //
 // The subtree is only mounted when bil24Enabled is true (env: BIL24_COMPAT_ENABLED).
-// When disabled the paths do not exist in the router; chi returns 404 via handleNotFound.
+// When disabled the paths do not exist in the router; chi returns 404 via
+// handleNotFound — NOT 401/403. This removes the attack surface entirely
+// (feature #385, PR2-25B).
+//
+// VARIANT-A ENFORCEMENT CONTRACT (feature #385, PR2-25B):
+// If BIL24_COMPAT_ENABLED is ever set TRUE in a future release, the PR2-25
+// variant-A credential enforcement MUST be activated before accepting real
+// traffic. Specifically:
+//   - Call h.WithRequireToken(true) when constructing the hbil24.Handler
+//     (see bil24Handler() above).
+//   - Ensure every sales_channels row has gateway_token_hash set in its
+//     settings JSONB column.
+//   - All state-mutating commands (RESERVATION, UN_RESERVE, CREATE_ORDER_EXT,
+//     CANCEL_ORDER) must be validated via bcrypt.CompareHashAndPassword against
+//     the stored hash. See feature #374 (hbil24.WithRequireToken) for the
+//     implementation.
+//   - Do NOT enable the gateway without WithRequireToken(true) — an uncredentialled
+//     gateway allows unauthenticated inventory mutation (ticket minting, etc.).
+//
+// Follow-up: feature #381 (PR2-25 variant A) documents the full credential
+// enforcement checklist; it was superseded by this variant-B flag approach for
+// the first release but should be revisited if the gateway is ever enabled.
+//
 // Feature #157.
 func (s *Server) mountCompatRoutes() {
 	if !s.bil24Enabled {

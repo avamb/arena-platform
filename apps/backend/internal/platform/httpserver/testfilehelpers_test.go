@@ -521,6 +521,16 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hbil24", "bil24_compat.go"),
 		}
+	// Bil24 gateway shim (feature #385, PR2-25B)
+	case "bil24_shims.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "bil24_shims.go"),
+		}
+	// arena-api main entry point (feature #385 variant-A doc check)
+	case "main.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "cmd", "arena-api", "main.go"),
+		}
 	// Platform config file (referenced by feature #157 tests)
 	case "config.go":
 		candidates = []string{
