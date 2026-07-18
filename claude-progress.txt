@@ -22404,3 +22404,45 @@ Marked #385 passing, skipped #381. (381/387 features passing, 98.4%)
 
 Commit: a1c1888
 Marked #387 passing. (384/387 features passing, 99.2%)
+
+## 2026-07-19 - Feature #382 (PR2-26 MAJOR): Extend org-membership enforcement to remaining org-scoped routes
+
+### Status: PASSING (385/387 features passing, 99.5%)
+
+### What was already in place
+The PR2-26 implementation was fully complete before this session:
+- `requireOrgMembership` was already in all hcatalog handlers (events.go, sessions.go, ticket_tiers.go, channels.go, venues.go)
+- `requireOrgMembership` was already in hiam/orgs.go (GET and DELETE routes)
+- `enforceOrgMembership` was already in all shim files (billing, checkout, feed, inventory, seating)
+- Both fail-closed nil-guards were in place
+- `server_orgauth.go` was already present with fail-closed `enforceOrgMembership`
+- `pr2_26_382_test.go` was already written with 13 tests
+
+### Files committed
+- `apps/backend/internal/platform/httpserver/pr2_26_382_test.go` (new - 441 lines, 13 tests)
+- `apps/backend/internal/platform/httpserver/server_orgauth.go` (new - 85 lines)
+- Shim additions: billing_shims.go, checkout_shims.go, feed_shims.go, inventory_shims.go, seating_shims.go
+- Handler guards: hcatalog/events.go, hcatalog/sessions.go, hcatalog/ticket_tiers.go, hcatalog/orgauth.go
+- IAM: hiam/orgauth.go, hiam/orgs.go
+- Test updates: events_test.go, feed_tokens_test.go, orgs_test.go, sessions_test.go, ticket_tiers_test.go
+
+### Test results
+All 13 TestPR226_* tests PASS:
+- 10 denial tests (non-member gets 403 for GET/DELETE org, events CRUD, sessions CRUD, feed tokens)
+- 2 admission tests (legitimate member passes membership gate, gets 500 from nil DB not 403)
+- 1 fail-closed test (nil membershipQueries → 403, not bypass)
+
+### Coverage of all routes mentioned in feature description
+- DELETE /v1/organizations/{id} → hiam/orgs.go:346
+- GET /v1/organizations/{id} → hiam/orgs.go:219
+- Events (5 endpoints) → hcatalog/events.go
+- Sessions (5 endpoints) → hcatalog/sessions.go
+- Tiers (5 endpoints) → hcatalog/ticket_tiers.go
+- Promo-codes (5 endpoints) → checkout_shims.go
+- Inventory (5 endpoints) → inventory_shims.go
+- Feed-tokens (4 endpoints) → feed_shims.go
+- Seating/seats (2 endpoints) → seating_shims.go
+- Billing usage/invoices (2 endpoints) → billing_shims.go
+
+Commit: ded0e24
+Marked #382 passing. (385/387 passing, 99.5%)
