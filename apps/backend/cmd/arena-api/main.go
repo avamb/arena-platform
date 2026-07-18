@@ -175,27 +175,28 @@ func run() error {
 	}
 
 	// 7. HTTP server -----------------------------------------------------------
-	// FAULT_INJECT_OUTBOX_AFTER_AUDIT is a dev/test-only flag that forces a
-	// transaction rollback between the audit_events and outbox_events writes
-	// in /v1/echo. It must NEVER be set in staging or production. We read it
-	// directly from the environment here (not via the validated Config struct)
-	// because it is intentionally not validated — its absence in production
-	// is enforced by human process and code review, not config validation.
-	faultInjectOutbox := os.Getenv("FAULT_INJECT_OUTBOX_AFTER_AUDIT") == "true"
+	// FAULT_INJECT_OUTBOX_AFTER_AUDIT forces a transaction rollback between
+	// the audit_events and outbox_events writes in /v1/echo for testing
+	// atomicity. Routed through validated Config (PR2-16); validateProduction
+	// hard-refuses this flag so it cannot be set in production.
+	faultInjectOutbox := cfg.FaultInjectOutboxAfterAudit
 	if faultInjectOutbox {
 		logger.Warn("FAULT INJECTION ACTIVE: FAULT_INJECT_OUTBOX_AFTER_AUDIT=true — " +
 			"echo endpoint will rollback after audit write. DO NOT use in production.")
 	}
 
 	// DEBUG_ROUTES_ENABLED mounts the /v1/debug/* routes (e.g. /v1/debug/panic)
-	// which exist for integration tests and developer tooling. These routes
-	// MUST NOT be enabled in production. Like FAULT_INJECT_*, we read this
-	// directly from the environment (not via validated Config) so its absence
-	// in production is enforced by human process and code review.
-	debugRoutesEnabled := os.Getenv("DEBUG_ROUTES_ENABLED") == "true"
+	// for integration tests and developer tooling. Routed through validated Config
+	// (PR2-16); validateProduction hard-refuses this flag in production.
+	debugRoutesEnabled := cfg.DebugRoutesEnabled
 	if debugRoutesEnabled {
 		logger.Warn("DEBUG ROUTES ACTIVE: DEBUG_ROUTES_ENABLED=true — " +
 			"/v1/debug/* routes are mounted. DO NOT use in production.")
+	}
+
+	// Emit non-fatal configuration warnings (e.g. insecure OTLP endpoint).
+	for _, w := range cfg.Warnings() {
+		logger.Warn("config warning", "detail", w)
 	}
 
 	// 7b. Media storage backend (feature #285 / G-1, #286 / G-2) ---------------

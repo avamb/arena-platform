@@ -268,6 +268,7 @@ Set each variable below.  A full list of *optional* tuning variables is in
 | `OTEL_SERVICE_NAME` | `arena-api` | Service name in traces |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `host:4317` | OTLP gRPC endpoint for traces; leave empty to disable |
 | `OTEL_TRACES_SAMPLER_ARG` | `0.1` | 10 % sampling; increase for debugging |
+| `OTEL_EXPORTER_OTLP_INSECURE` | `false` | Set `true` only for localhost/sidecar collectors; a startup warning is emitted when `true` with a non-localhost endpoint |
 | `JWT_ISSUER` | `arena-api` | JWT issuer claim (default: arena-dev) |
 | `JWT_AUDIENCE` | `arena-api` | JWT audience claim |
 | `JWT_DEFAULT_TTL` | `1h` | Access token lifetime |
@@ -520,6 +521,7 @@ variable.
 - [ ] `LOG_FORMAT=json`
 - [ ] `OTEL_EXPORTER_OTLP_ENDPOINT` — set if using distributed tracing
 - [ ] `OTEL_SERVICE_NAME=arena-api`
+- [ ] `OTEL_EXPORTER_OTLP_INSECURE=false` — required when collector is remote (non-localhost); `true` only for sidecar/localhost
 - [ ] `APP_VERSION` — set by CI to the deployed semver
 - [ ] `APP_COMMIT` — set by CI to the deployed git SHA
 

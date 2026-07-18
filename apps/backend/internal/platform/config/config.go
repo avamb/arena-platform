@@ -232,6 +232,21 @@ type Config struct {
 	Bil24CompatEnabled bool `env:"BIL24_COMPAT_ENABLED" required:"false" default:"false"`
 
 	// -------------------------------------------------------------------------
+	// Payment webhook authentication (feature #362, PR2-06)
+	// -------------------------------------------------------------------------
+	// StripeWebhookSecret is the Stripe webhook endpoint signing secret
+	// (begins with "whsec_"). When set, POST /v1/payment-intents/webhook and
+	// POST /v1/refunds/webhook verify the "Stripe-Signature" HMAC-SHA256 before
+	// processing the request body. Required in production to prevent unsigned
+	// forgery.
+	StripeWebhookSecret string `env:"STRIPE_WEBHOOK_SECRET" required:"false" default:""`
+	// AllPayWebhookSecret is the AllPay shared webhook signing secret.
+	// When set, POST /v1/payment-intents/webhook and POST /v1/refunds/webhook
+	// verify the "X-AllPay-Signature" HMAC-SHA256 before processing the request
+	// body.
+	AllPayWebhookSecret string `env:"ALLPAY_WEBHOOK_SECRET" required:"false" default:""`
+
+	// -------------------------------------------------------------------------
 	// Media storage backend (feature #285 / G-1, Wave G)
 	// -------------------------------------------------------------------------
 	// MediaBackend selects which adapter the storage package constructs:
@@ -333,6 +348,8 @@ func (c *Config) LogAttrs() []slog.Attr {
 		slog.String("smtp_port", c.SMTPPort),
 		slog.String("smtp_from", c.SMTPFrom),
 		slog.String("smtp_password", redact(c.SMTPPassword)),
+		slog.String("stripe_webhook_secret", redact(c.StripeWebhookSecret)),
+		slog.String("allpay_webhook_secret", redact(c.AllPayWebhookSecret)),
 		slog.String("media_backend", c.MediaBackend),
 		slog.String("media_signing_secret", redact(c.MediaSigningSecret)),
 		slog.String("media_s3_access_key_id", redact(c.MediaS3AccessKeyID)),
@@ -381,6 +398,9 @@ func Load() (*Config, error) {
 		SMTPUsername: getenv("SMTP_USERNAME", ""),
 		SMTPPassword: getenv("SMTP_PASSWORD", ""),
 		SMTPFrom:     getenv("SMTP_FROM", ""),
+
+		StripeWebhookSecret: getenv("STRIPE_WEBHOOK_SECRET", ""),
+		AllPayWebhookSecret: getenv("ALLPAY_WEBHOOK_SECRET", ""),
 
 		MediaBackend:           getenv("MEDIA_BACKEND", ""),
 		MediaLocalRoot:         getenv("MEDIA_LOCAL_ROOT", ""),
@@ -934,6 +954,19 @@ func (c *Config) validateProduction() []error {
 
 	// 11. Debug routes expose internal panic/slow endpoints and must never be
 	// enabled in production where an operator Dokploy variable could mount them.
+
+	// 10b. Payment webhook signing secrets — at least one must be configured in
+	// production. Without a secret the webhook endpoints accept unsigned JSON,
+	// which allows anyone who guesses a provider_payment_id to forge
+	// payment.succeeded events (mint tickets) or forge refunds (cancel tickets).
+	if strings.TrimSpace(c.StripeWebhookSecret) == "" &&
+		strings.TrimSpace(c.AllPayWebhookSecret) == "" {
+		errs = append(errs, errors.New(
+			"at least one of STRIPE_WEBHOOK_SECRET or ALLPAY_WEBHOOK_SECRET must be set in production;"+
+				" unsigned payment webhooks allow arbitrary ticket minting",
+		))
+	}
+
 	if c.DebugRoutesEnabled {
 		errs = append(errs, errors.New(
 			"DEBUG_ROUTES_ENABLED must be false in production;"+
