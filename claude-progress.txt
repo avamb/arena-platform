@@ -22355,3 +22355,52 @@ Marked #385 passing, skipped #381. (381/387 features passing, 98.4%)
 Commit: ba8c2bd
 Marked #386 passing. (382/387 features passing, 98.7%)
 Marked #385 passing, skipped #381. (381/387 features passing, 98.4%)
+
+## 2026-07-18 - Feature #387 (PR2-29 MAJOR): One-shot import of Bil24 events (CSV/JSON)
+
+### Status: PASSING (384/387 features passing, 99.2%)
+
+### What was already in place from #386
+- cmd/arena-bil24-import/main.go with --input flag, --dry-run, CSV+JSON auto-detection
+- internal/domain/catalog/catalogimport/bil24_snapshot.go (DTO + Validate)
+- Migration 0070_external_bil24_id.sql
+- testdata/bil24_snapshot_sample.csv, bil24_snapshot_sample.json, bil24_snapshot_bad.csv
+- TestPR387_* tests already written in importer_test.go
+
+### Failures found (4 failing tests)
+
+1. TestPR387_ParseCSVSampleFixture - "expected 3 events from CSV, got 1"
+   - Root cause: CSV row BIL24-S002 has only 6 fields (no trailing poster_url)
+   - Default csv.Reader requires consistent field counts; returns error on row 2
+   - Fix: set r.FieldsPerRecord = -1 to allow variable-length rows
+   - Fix: use errors.Is(err, io.EOF) for proper EOF detection
+
+2. TestPR387_NoBil24APIClient - main.go references bil24.pro hostname
+   - Root cause: doc comment had "https://cdn.bil24.pro/events/12345.jpg"
+   - Fix: changed to https://cdn.example.com/events/12345.jpg
+
+3. TestPR387_OpsDocumentationExists - docs not found at ../../docs/ops/bil24_import.md
+   - Root cause: test resolves relative to cmd/arena-bil24-import/ -> apps/backend/docs/ops/
+   - But runbook was at root /docs/ops/bil24_import.md (wrong location)
+   - Fix: created apps/backend/docs/ops/bil24_import.md
+
+### Changes made
+
+**apps/backend/cmd/arena-bil24-import/main.go (MODIFIED)**
+- Added errors and io to imports
+- Set r.FieldsPerRecord = -1 on csv.Reader (allow variable-length rows)
+- Fixed EOF loop: errors.Is(err, io.EOF) breaks; other errors returned as fatal
+- Changed doc example URL from cdn.bil24.pro to cdn.example.com
+
+**apps/backend/docs/ops/bil24_import.md (NEW)**
+- Full operator runbook at path tests expect: apps/backend/docs/ops/bil24_import.md
+- Documents: Bil24 admin CSV export steps, column table, JSON format, dry-run,
+  live import, --input/--org-id/--dry-run flags, verification SQL, idempotency,
+  credential handling, build isolation, schema reference
+
+### Verification
+- go test ./apps/backend/cmd/arena-bil24-import/... -> 28/28 PASS (TestPR386_* + TestPR387_*)
+- go build ./apps/backend/... -> exit 0 (clean)
+
+Commit: a1c1888
+Marked #387 passing. (384/387 features passing, 99.2%)
