@@ -438,7 +438,7 @@ func getEmailFrom(cfg *config.Config) string { return cfg.SMTPFrom }
 //
 //   - webhook  → WebhookDispatcher posting signed payloads to OUTBOX_WEBHOOK_URL.
 //   - disabled → DisabledDispatcher; the OutboxEventsDispatcher loop skips
-//                ClaimNext entirely so no rows are ever consumed.
+//     ClaimNext entirely so no rows are ever consumed.
 //   - noop/"" → NoopDispatcher (dev/test only; rejected in production by PR-00).
 func buildOutboxDispatcher(cfg *config.Config, logger *slog.Logger) outbox.Dispatcher {
 	switch cfg.OutboxMode {

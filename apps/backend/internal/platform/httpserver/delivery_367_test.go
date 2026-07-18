@@ -19,13 +19,14 @@
 //     idempotent on webhook replay without producing a new row.
 //
 // Verification steps tested here:
-//  Step 1 — InsertDeliveryJob uses ON CONFLICT (ticket_id)
-//  Step 2 — Migration 0067 adds UNIQUE index on delivery_jobs(ticket_id)
-//  Step 3 — checkout.go does NOT call h.enqueueDelivery separately
-//  Step 4 — payment_intents.go does NOT call h.enqueueDelivery separately
-//  Step 5 — hcheckout handler.go no longer declares enqueueDelivery field
-//  Step 6 — hcheckout.New() no longer accepts enqueueDelivery parameter
-//  Step 7 — EnqueueDeliveryJobs is called for newTickets only (not existing)
+//
+//	Step 1 — InsertDeliveryJob uses ON CONFLICT (ticket_id)
+//	Step 2 — Migration 0067 adds UNIQUE index on delivery_jobs(ticket_id)
+//	Step 3 — checkout.go does NOT call h.enqueueDelivery separately
+//	Step 4 — payment_intents.go does NOT call h.enqueueDelivery separately
+//	Step 5 — hcheckout handler.go no longer declares enqueueDelivery field
+//	Step 6 — hcheckout.New() no longer accepts enqueueDelivery parameter
+//	Step 7 — EnqueueDeliveryJobs is called for newTickets only (not existing)
 package httpserver
 
 import (

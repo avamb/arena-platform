@@ -9,18 +9,19 @@
 //   - Fetch failures returned an empty array, indistinguishable from "no tiers".
 //
 // Verified fixes:
-//   Step 1:  fetch_tier_availability uses /events/{event_id} not /sessions
-//   Step 2:  URL contains rawurlencode($arena_event_id) — event ID in path
-//   Step 3:  Response is parsed as $data['event']['sessions'] (nested shape)
-//   Step 4:  price_amount is normalised to 'price' key for rendering
-//   Step 5:  capacity is normalised to 'capacity_available' key for sold-out check
-//   Step 6:  Return type is ?array (nullable) to distinguish failure from empty
-//   Step 7:  is_wp_error returns null (not [])
-//   Step 8:  Non-200 HTTP status returns null (not [])
-//   Step 9:  Unexpected response shape returns null (not [])
-//   Step 10: Error extraction reads $data['error']['message'] not $data['error']
-//   Step 11: render_tiers_shortcode handles null with a visible error message
-//   Step 12: Error message uses arena-fetch-error CSS class for targeting
+//
+//	Step 1:  fetch_tier_availability uses /events/{event_id} not /sessions
+//	Step 2:  URL contains rawurlencode($arena_event_id) — event ID in path
+//	Step 3:  Response is parsed as $data['event']['sessions'] (nested shape)
+//	Step 4:  price_amount is normalised to 'price' key for rendering
+//	Step 5:  capacity is normalised to 'capacity_available' key for sold-out check
+//	Step 6:  Return type is ?array (nullable) to distinguish failure from empty
+//	Step 7:  is_wp_error returns null (not [])
+//	Step 8:  Non-200 HTTP status returns null (not [])
+//	Step 9:  Unexpected response shape returns null (not [])
+//	Step 10: Error extraction reads $data['error']['message'] not $data['error']
+//	Step 11: render_tiers_shortcode handles null with a visible error message
+//	Step 12: Error message uses arena-fetch-error CSS class for targeting
 //
 // All tests are pure file/content checks — no live WordPress required.
 package httpserver

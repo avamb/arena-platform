@@ -352,4 +352,3 @@ func TestCIWorkflowPR10_GateEnforcement(t *testing.T) {
 		t.Error("build-and-push does not declare widget-acceptance as a dependency — real acceptance gate not enforced")
 	}
 }
-

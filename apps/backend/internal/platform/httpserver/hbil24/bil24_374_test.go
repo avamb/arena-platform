@@ -68,11 +68,11 @@ func channelSettings(t *testing.T, tokenHash string) json.RawMessage {
 // fakeResCtxWithToken is a minimal ReservationContextQuerier that returns a
 // channel row whose Settings carry the provided gateway_token_hash.
 type fakeResCtxWithToken struct {
-	sessionID   uuid.UUID
-	orgID       uuid.UUID
-	channelID   uuid.UUID
-	tokenHash   string // empty string = no hash stored in settings
-	noChannel   bool   // if true, GetSalesChannelByID returns ErrNoRows
+	sessionID uuid.UUID
+	orgID     uuid.UUID
+	channelID uuid.UUID
+	tokenHash string // empty string = no hash stored in settings
+	noChannel bool   // if true, GetSalesChannelByID returns ErrNoRows
 }
 
 func (f *fakeResCtxWithToken) GetSessionOrgContext(_ context.Context, id uuid.UUID) (gen.SessionOrgContextRow, error) {

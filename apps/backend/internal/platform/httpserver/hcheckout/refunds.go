@@ -159,7 +159,18 @@ type createRefundRequest struct {
 }
 
 // HandleCreateRefund serves POST /v1/refunds.
-// Creates a new refund request in the 'requested' state.
+//
+// Creates a new refund request in the 'requested' state after validating:
+//   - The payment intent exists and is in the 'succeeded' state.
+//   - The refund currency matches the payment intent currency.
+//   - The requested amount does not exceed the remaining refundable balance
+//     (intent.amount − SUM of all non-failed refunds for that intent).
+//
+// All three checks are performed inside a single transaction that holds a
+// FOR UPDATE lock on the payment_intents row. This serialises concurrent
+// refund creation requests so that two simultaneous full-amount refund
+// attempts cannot both pass the budget check (feature #361).
+//
 // Requires JWT + "refund.create" permission.
 func (h *Handler) HandleCreateRefund(w http.ResponseWriter, r *http.Request) {
 	if h.refundQueries == nil || h.pool == nil {
@@ -214,28 +225,105 @@ func (h *Handler) HandleCreateRefund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Look up the payment intent to get org_id.
 	if h.paymentIntentQueries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "payment intent queries not available", r,
 		))
 		return
 	}
-	pi, err := h.paymentIntentQueries.GetPaymentIntentByID(ctx, paymentIntentID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("refund.payment_intent_not_found", "payment intent not found", r))
+
+	// ── Transactional protection (feature #361) ───────────────────────────────
+	// Begin a transaction and lock the payment intent row with FOR UPDATE.
+	// This serialises concurrent refund creation so concurrent duplicate
+	// full-amount requests cannot both pass the budget check.
+	tx, txErr := h.pool.BeginTx(ctx, pgx.TxOptions{})
+	if txErr != nil {
+		h.logger.Error("refund: begin tx failed", slog.String("error", txErr.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"refund.tx_failed", "failed to begin transaction", r,
+		))
+		return
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	txq := h.refundQueries.WithTx(tx)
+
+	// Lock the payment intent row — blocks concurrent refund creation/approval.
+	pi, piErr := txq.GetPaymentIntentByIDForUpdate(ctx, paymentIntentID)
+	if piErr != nil {
+		if errors.Is(piErr, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+				"refund.payment_intent_not_found", "payment intent not found", r,
+			))
 			return
 		}
 		h.logger.Error("refund: payment intent lookup failed",
 			slog.String("payment_intent_id", paymentIntentID.String()),
-			slog.String("error", err.Error()),
+			slog.String("error", piErr.Error()),
 		)
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("refund.pi_lookup_failed", "failed to look up payment intent", r))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"refund.pi_lookup_failed", "failed to look up payment intent", r,
+		))
 		return
 	}
 
-	refund, err := h.refundQueries.InsertRefund(ctx,
+	// Guard: the payment intent must be in the 'succeeded' state.
+	// Refunding a non-succeeded intent (created, processing, failed, …) is
+	// invalid because the charge was never fully captured.
+	if pi.State != "succeeded" {
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+			"refund.intent_not_succeeded",
+			"refunds can only be created for succeeded payment intents",
+			r,
+			map[string]any{"intent_state": pi.State},
+		))
+		return
+	}
+
+	// Guard: the refund currency must match the payment intent currency.
+	if pi.Currency != req.Currency {
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+			"refund.currency_mismatch",
+			"refund currency must match payment intent currency",
+			r,
+			map[string]any{
+				"intent_currency":    pi.Currency,
+				"requested_currency": req.Currency,
+			},
+		))
+		return
+	}
+
+	// Guard: the requested amount must not exceed the remaining refundable balance.
+	// remaining = intent.amount − SUM(non-failed refunds for this intent)
+	existingSum, sumErr := txq.SumNonFailedRefundsByIntent(ctx, paymentIntentID)
+	if sumErr != nil {
+		h.logger.Error("refund: sum of existing refunds failed",
+			slog.String("payment_intent_id", paymentIntentID.String()),
+			slog.String("error", sumErr.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"refund.sum_failed", "failed to compute refunded total", r,
+		))
+		return
+	}
+	remaining := pi.Amount - existingSum
+	if req.Amount > remaining {
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+			"refund.amount_exceeds_refundable",
+			"refund amount exceeds the remaining refundable balance",
+			r,
+			map[string]any{
+				"requested":     req.Amount,
+				"remaining":     remaining,
+				"intent_amount": pi.Amount,
+			},
+		))
+		return
+	}
+
+	// All validations passed — insert the refund within the same transaction.
+	refund, err := txq.InsertRefund(ctx,
 		paymentIntentID, pi.OrgID, req.Amount, req.Currency, req.Reason, req.RequestedBy,
 	)
 	if err != nil {
@@ -246,6 +334,17 @@ func (h *Handler) HandleCreateRefund(w http.ResponseWriter, r *http.Request) {
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"refund.create_failed", "failed to create refund", r,
+		))
+		return
+	}
+
+	if commitErr := tx.Commit(ctx); commitErr != nil {
+		h.logger.Error("refund: tx commit failed",
+			slog.String("payment_intent_id", paymentIntentID.String()),
+			slog.String("error", commitErr.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"refund.tx_commit_failed", "failed to commit refund transaction", r,
 		))
 		return
 	}
@@ -320,6 +419,16 @@ type approveRefundRequest struct {
 // resolution. Otherwise it transitions to 'approved' then immediately to
 // 'provider_pending' (simulating provider submission).
 //
+// Over-refund re-validation (feature #361): approval re-validates that:
+//   - The payment intent is still in 'succeeded' state.
+//   - The refund currency still matches.
+//   - The total of all non-failed refunds (including this one) does not exceed
+//     the payment intent amount.
+//
+// This check is performed inside a transaction with a FOR UPDATE lock on the
+// payment_intents row to close the TOCTOU window where two concurrent approvals
+// could both pass the budget check independently.
+//
 // Requires JWT + "refund.approve" permission.
 func (h *Handler) HandleApproveRefund(w http.ResponseWriter, r *http.Request) {
 	if h.refundQueries == nil || h.pool == nil {
@@ -350,8 +459,24 @@ func (h *Handler) HandleApproveRefund(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Fetch current refund.
-	refund, err := h.refundQueries.GetRefundByID(ctx, id)
+	// ── Transactional protection (feature #361) ───────────────────────────────
+	// Wrap the entire approve flow in a transaction that locks the payment
+	// intent row. This prevents a race where two concurrent approvals of two
+	// full-amount refunds against the same intent both succeed.
+	tx, txErr := h.pool.BeginTx(ctx, pgx.TxOptions{})
+	if txErr != nil {
+		h.logger.Error("refund: approve begin tx failed", slog.String("error", txErr.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"refund.tx_failed", "failed to begin transaction", r,
+		))
+		return
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	txq := h.refundQueries.WithTx(tx)
+
+	// Fetch current refund inside the transaction for a consistent view.
+	refund, err := txq.GetRefundByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("refund.not_found", "refund not found", r))
@@ -376,13 +501,85 @@ func (h *Handler) HandleApproveRefund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Lock the payment intent row to serialise concurrent approve operations.
+	pi, piErr := txq.GetPaymentIntentByIDForUpdate(ctx, refund.PaymentIntentID)
+	if piErr != nil {
+		if errors.Is(piErr, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+				"refund.payment_intent_not_found", "payment intent not found", r,
+			))
+			return
+		}
+		h.logger.Error("refund: approve PI lookup failed",
+			slog.String("refund_id", id.String()),
+			slog.String("payment_intent_id", refund.PaymentIntentID.String()),
+			slog.String("error", piErr.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"refund.pi_lookup_failed", "failed to look up payment intent", r,
+		))
+		return
+	}
+
+	// Re-validate: intent must still be in 'succeeded' state.
+	if pi.State != "succeeded" {
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+			"refund.intent_not_succeeded",
+			"cannot approve refund: payment intent is no longer in succeeded state",
+			r,
+			map[string]any{"intent_state": pi.State},
+		))
+		return
+	}
+
+	// Re-validate: currency must match (sanity guard against data corruption).
+	if pi.Currency != refund.Currency {
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+			"refund.currency_mismatch",
+			"refund currency does not match payment intent currency",
+			r,
+			map[string]any{
+				"intent_currency": pi.Currency,
+				"refund_currency": refund.Currency,
+			},
+		))
+		return
+	}
+
+	// Re-validate: total non-failed refunds (including this 'requested' one)
+	// must not exceed the payment intent amount. This closes the TOCTOU window
+	// where two concurrent approvals could both pass independently.
+	totalNonFailed, sumErr := txq.SumNonFailedRefundsByIntent(ctx, refund.PaymentIntentID)
+	if sumErr != nil {
+		h.logger.Error("refund: approve sum failed",
+			slog.String("refund_id", id.String()),
+			slog.String("error", sumErr.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"refund.sum_failed", "failed to compute refunded total", r,
+		))
+		return
+	}
+	if totalNonFailed > pi.Amount {
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+			"refund.over_refund_detected",
+			"approving this refund would exceed the payment intent amount",
+			r,
+			map[string]any{
+				"total_non_failed": totalNonFailed,
+				"intent_amount":    pi.Amount,
+			},
+		))
+		return
+	}
+
 	// Policy check: determine if manual review is required.
 	// Condition: partial refund AND checkout session exists AND some tickets not 'active'.
-	needsManualReview := h.refundNeedsManualReview(ctx, refund)
+	needsManualReview := h.refundNeedsManualReviewWithPI(ctx, refund, pi)
 
 	if needsManualReview {
-		// Transition directly to manual_review.
-		updated, updateErr := h.refundQueries.UpdateRefundState(ctx, id, "manual_review", nil, nil)
+		// Transition directly to manual_review within the same transaction.
+		updated, updateErr := txq.UpdateRefundState(ctx, id, "manual_review", nil, nil)
 		if updateErr != nil {
 			if errors.Is(updateErr, pgx.ErrNoRows) {
 				httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("refund.not_found", "refund not found", r))
@@ -392,7 +589,19 @@ func (h *Handler) HandleApproveRefund(w http.ResponseWriter, r *http.Request) {
 				slog.String("id", id.String()),
 				slog.String("error", updateErr.Error()),
 			)
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("refund.transition_failed", "failed to transition refund to manual_review", r))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"refund.transition_failed", "failed to transition refund to manual_review", r,
+			))
+			return
+		}
+		if commitErr := tx.Commit(ctx); commitErr != nil {
+			h.logger.Error("refund: approve→manual_review tx commit failed",
+				slog.String("id", id.String()),
+				slog.String("error", commitErr.Error()),
+			)
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"refund.tx_commit_failed", "failed to commit refund transaction", r,
+			))
 			return
 		}
 		h.logger.Info("refund: approved → manual_review (partial refund with non-active tickets)",
@@ -404,8 +613,8 @@ func (h *Handler) HandleApproveRefund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Standard path: requested → approved → provider_pending.
-	approved, approveErr := h.refundQueries.UpdateRefundState(ctx, id, "approved", nil, nil)
+	// Standard path: requested → approved → provider_pending (all inside the tx).
+	approved, approveErr := txq.UpdateRefundState(ctx, id, "approved", nil, nil)
 	if approveErr != nil {
 		if errors.Is(approveErr, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("refund.not_found", "refund not found", r))
@@ -415,21 +624,36 @@ func (h *Handler) HandleApproveRefund(w http.ResponseWriter, r *http.Request) {
 			slog.String("id", id.String()),
 			slog.String("error", approveErr.Error()),
 		)
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("refund.transition_failed", "failed to approve refund", r))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"refund.transition_failed", "failed to approve refund", r,
+		))
 		return
 	}
 
 	// Immediately advance to provider_pending (simulating provider submission).
-	updated, pendingErr := h.refundQueries.UpdateRefundState(ctx, approved.ID, "provider_pending", nil, nil)
+	updated, pendingErr := txq.UpdateRefundState(ctx, approved.ID, "provider_pending", nil, nil)
 	if pendingErr != nil {
 		// Log but return the approved state — partial progress is still useful.
 		h.logger.Error("refund: provider_pending transition failed",
 			slog.String("id", id.String()),
 			slog.String("error", pendingErr.Error()),
 		)
+		// Still commit the 'approved' transition.
+		_ = tx.Commit(ctx) //nolint:errcheck
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{
 			"refund": refundFromRow(approved),
 		})
+		return
+	}
+
+	if commitErr := tx.Commit(ctx); commitErr != nil {
+		h.logger.Error("refund: approve tx commit failed",
+			slog.String("id", id.String()),
+			slog.String("error", commitErr.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"refund.tx_commit_failed", "failed to commit refund transaction", r,
+		))
 		return
 	}
 
@@ -442,17 +666,11 @@ func (h *Handler) HandleApproveRefund(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// refundNeedsManualReview checks whether an approval should route to manual_review.
-// Returns true when the refund is partial AND the payment intent has a checkout
-// session AND at least one ticket is not in 'active' status (e.g. scanned/used).
-func (h *Handler) refundNeedsManualReview(ctx context.Context, refund gen.RefundRow) bool {
-	if h.paymentIntentQueries == nil {
-		return false
-	}
-	pi, err := h.paymentIntentQueries.GetPaymentIntentByID(ctx, refund.PaymentIntentID)
-	if err != nil {
-		return false
-	}
+// refundNeedsManualReviewWithPI is the inner implementation of
+// refundNeedsManualReview that accepts an already-fetched PaymentIntentRow.
+// Called by the transactional HandleApproveRefund path (feature #361) where the
+// PI row has already been locked with FOR UPDATE and passed in as pi.
+func (h *Handler) refundNeedsManualReviewWithPI(ctx context.Context, refund gen.RefundRow, pi gen.PaymentIntentRow) bool {
 	isPartial := refund.Amount > 0 && refund.Amount < pi.Amount
 	if !isPartial || pi.CheckoutSessionID == nil || h.ticketQueries == nil {
 		return false

@@ -12,6 +12,7 @@
 //  8. INSERT INTO email_verification_tokens with expires_at = now()+24h.
 //  9. INSERT INTO worker_jobs (auth.email_verification job) — atomically with
 //     the token row so job and token are always committed together.
+//
 // 10. COMMIT.
 // 11. Return 201 Created with the user_id and a human-readable message.
 //

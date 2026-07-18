@@ -34,7 +34,7 @@ func validBase() *Config {
 		LogLevel:           "info",
 		LogFormat:          "json",
 		OTLPEndpoint:       "",
-		JWTSecretStub:   "dev-secret",
+		JWTSecretStub:      "dev-secret",
 		EnableStubAuth:     true,
 		// New fields — zero values are valid in development
 		OutboxMode: OutboxModeNoop, // dev default: noop
@@ -66,15 +66,15 @@ func validProductionBase() *Config {
 		LogLevel:           "info",
 		LogFormat:          "json",
 		// Strong production JWT secret (>= 32 bytes)
-		JWTSecretStub: "a-very-strong-secret-for-production-use-32b",
-		EnableStubAuth:   false,
+		JWTSecretStub:  "a-very-strong-secret-for-production-use-32b",
+		EnableStubAuth: false,
 		// Explicit production modes
-		OutboxMode:      OutboxModeDisabled,
-		EmailMode:       EmailModeSMTP,
-		SMTPHost:        "smtp.example.com",
-		SMTPPort:        "587",
-		SMTPFrom:        "no-reply@example.com",
-		AppPublicURL:    "https://app.example.com",
+		OutboxMode:        OutboxModeDisabled,
+		EmailMode:         EmailModeSMTP,
+		SMTPHost:          "smtp.example.com",
+		SMTPPort:          "587",
+		SMTPFrom:          "no-reply@example.com",
+		AppPublicURL:      "https://app.example.com",
 		OTELTracesSampler: 0.1,
 	}
 }
@@ -457,7 +457,7 @@ func TestMediaSigningKey(t *testing.T) {
 	t.Run("uses MediaSigningSecret when set", func(t *testing.T) {
 		cfg := &Config{
 			MediaSigningSecret: "explicit-media-secret",
-			JWTSecretStub:   "jwt-secret",
+			JWTSecretStub:      "jwt-secret",
 		}
 		got := string(cfg.MediaSigningKey())
 		if got != "explicit-media-secret" {
@@ -468,7 +468,7 @@ func TestMediaSigningKey(t *testing.T) {
 	t.Run("falls back to JWT secret when MediaSigningSecret is empty", func(t *testing.T) {
 		cfg := &Config{
 			MediaSigningSecret: "",
-			JWTSecretStub:   "jwt-secret",
+			JWTSecretStub:      "jwt-secret",
 		}
 		got := string(cfg.MediaSigningKey())
 		if got != "jwt-secret" {

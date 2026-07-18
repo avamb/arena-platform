@@ -2,18 +2,19 @@
 // Derive checkout pricing from the reservation, not client input.
 //
 // Root cause (before fix):
-//   HandleConfirmCheckout priced client-supplied req.TierID × req.Quantity with
-//   no cross-check against the linked reservation, so a buyer holding 10 VIP
-//   seats could confirm pricing for quantity=1 of a cheap tier and still receive
-//   10 seated tickets at the cheap price.
+//
+//	HandleConfirmCheckout priced client-supplied req.TierID × req.Quantity with
+//	no cross-check against the linked reservation, so a buyer holding 10 VIP
+//	seats could confirm pricing for quantity=1 of a cheap tier and still receive
+//	10 seated tickets at the cheap price.
 //
 // Fix:
-//   1. Load the checkout session → get reservation_id.
-//   2. Load the reservation → get authoritative session_id, tier_id, quantity.
-//   3. Reject any client-supplied field that disagrees with the reservation
-//      (422 checkout.pricing_mismatch).
-//   4. Use reservation data for all pricing; support seated path via
-//      buildSeatedPricingLines and multi-tier GA path via reservation_ga_items.
+//  1. Load the checkout session → get reservation_id.
+//  2. Load the reservation → get authoritative session_id, tier_id, quantity.
+//  3. Reject any client-supplied field that disagrees with the reservation
+//     (422 checkout.pricing_mismatch).
+//  4. Use reservation data for all pricing; support seated path via
+//     buildSeatedPricingLines and multi-tier GA path via reservation_ga_items.
 //
 // Tests here are purely structural (source-file reads + HTTP shape tests);
 // no live PostgreSQL connection is required.

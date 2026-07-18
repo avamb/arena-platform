@@ -9,10 +9,10 @@
 //   - applyPromoCode now enforces max_uses and max_uses_per_customer via
 //     CountPromoCodeRedemptions / CountUserRedemptions (soft check at confirm time).
 //   - HandleCompleteCheckout uses completeCheckoutWithPromoTx which atomically:
-//       1. Locks the promo code row (SELECT … FOR UPDATE)
-//       2. Re-checks usage limits under the lock
-//       3. Completes the checkout session
-//       4. Inserts a promo_code_redemptions row
+//     1. Locks the promo code row (SELECT … FOR UPDATE)
+//     2. Re-checks usage limits under the lock
+//     3. Completes the checkout session
+//     4. Inserts a promo_code_redemptions row
 //     All in a single transaction, preventing concurrent double-use.
 package httpserver
 

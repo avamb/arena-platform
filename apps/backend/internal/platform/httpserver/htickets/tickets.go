@@ -100,10 +100,12 @@ func TicketFromRow(t gen.TicketRow) TicketResponse {
 // issuanceLockKey returns the int64 advisory-lock key for a checkout session.
 //
 // UUIDv7 layout: bytes 0-5 = unix-ts-ms, bytes 6-7 = version+rand,
-// bytes 8-15 = 64 random bits. We use the low-64-bits (the fully-random
-// portion) to minimise key collisions across concurrent sessions.
+// bytes 8-15 = 64 random bits. We use the low-63-bits (right-shift by 1 to
+// clear the sign bit) of the fully-random portion to minimise collisions while
+// keeping the result within the non-negative int64 range accepted by
+// pg_try_advisory_xact_lock. 63 bits still provides 9.2 × 10¹⁸ distinct keys.
 func issuanceLockKey(id uuid.UUID) int64 {
-	return int64(binary.BigEndian.Uint64(id[8:]))
+	return int64(binary.BigEndian.Uint64(id[8:]) >> 1)
 }
 
 // IssueTicketsForCheckout issues tickets for the given completed checkout session.

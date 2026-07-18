@@ -1,11 +1,11 @@
 // refunds_361_test.go — acceptance tests for feature #361 (over-refund / double-refund protection).
 //
 // Acceptance criteria (from feature description):
-//   1. Lock the payment intent row and validate refundable = intent.amount - SUM(non-failed refunds).
-//   2. Reject refunds on non-succeeded intents, currency mismatches, and amounts exceeding
-//      the remaining refundable.
-//   3. Make approval re-validate against the current refunded total inside the tx.
-//   4. Concurrent/duplicate full refunds and partial-then-full over-refund are rejected.
+//  1. Lock the payment intent row and validate refundable = intent.amount - SUM(non-failed refunds).
+//  2. Reject refunds on non-succeeded intents, currency mismatches, and amounts exceeding
+//     the remaining refundable.
+//  3. Make approval re-validate against the current refunded total inside the tx.
+//  4. Concurrent/duplicate full refunds and partial-then-full over-refund are rejected.
 //
 // Test strategy:
 //   - Pure structural tests verify the protection code is present in the handler and

@@ -118,9 +118,9 @@ func TestPoison369_Step1_DeadLetteredRowNotReclaimed(t *testing.T) {
 
 // TestPoison369_Step1_BackoffFuncDefault verifies the default exponential backoff.
 func TestPoison369_Step1_BackoffFuncDefault(t *testing.T) {
-	d0 := defaultBackoffFunc(0) // 1 min
-	d1 := defaultBackoffFunc(1) // 2 min
-	d2 := defaultBackoffFunc(2) // 4 min
+	d0 := defaultBackoffFunc(0)     // 1 min
+	d1 := defaultBackoffFunc(1)     // 2 min
+	d2 := defaultBackoffFunc(2)     // 4 min
 	dBig := defaultBackoffFunc(100) // capped at 1 hour
 
 	if d0 <= 0 {

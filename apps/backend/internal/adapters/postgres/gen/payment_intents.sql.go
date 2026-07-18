@@ -168,6 +168,29 @@ func (q *Queries) GetPaymentIntentByID(ctx context.Context, id uuid.UUID) (Payme
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GetPaymentIntentByIDForUpdate
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getPaymentIntentByIDForUpdate = `-- name: GetPaymentIntentByIDForUpdate :one
+SELECT id, checkout_session_id, org_id, provider, provider_payment_id, amount, currency,
+       state, sca_redirect_url, client_secret, failure_code, failure_message,
+       authorized_at, succeeded_at, failed_at, created_at, updated_at
+FROM   payment_intents
+WHERE  id = $1
+FOR UPDATE`
+
+// GetPaymentIntentByIDForUpdate is the row-locking variant of GetPaymentIntentByID.
+// It acquires a FOR UPDATE lock on the payment_intents row so that concurrent
+// refund creation and approval transactions are serialized against one another.
+// This prevents the double-refund and over-refund race conditions described in
+// feature #361. MUST be called inside a transaction; the lock releases on
+// commit or rollback.
+func (q *Queries) GetPaymentIntentByIDForUpdate(ctx context.Context, id uuid.UUID) (PaymentIntentRow, error) {
+	row := q.db.QueryRow(ctx, getPaymentIntentByIDForUpdate, id)
+	return scanPaymentIntentRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GetPaymentIntentByProviderID
 // ─────────────────────────────────────────────────────────────────────────────
 

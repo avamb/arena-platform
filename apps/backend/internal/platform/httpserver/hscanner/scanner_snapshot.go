@@ -120,7 +120,9 @@ func (h *Handler) HandleScannerSnapshot(w http.ResponseWriter, r *http.Request) 
 	ctx := r.Context()
 
 	// ── Rate limit ──────────────────────────────────────────────────────────
-	ip := httputil.ClientIP(r)
+	// trustedProxies=1: scanner requests arrive through one nginx reverse proxy;
+	// TrustedClientIP reads the penultimate XFF entry to obtain the real client IP.
+	ip := httputil.TrustedClientIP(r, 1)
 	if !h.rateLimiter.CheckIP(ip) {
 		httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorEnvelope(
 			"scanner.rate_limited", "too many requests; please slow down", r,
@@ -286,7 +288,9 @@ func (h *Handler) HandleScannerValidate(w http.ResponseWriter, r *http.Request) 
 	ctx := r.Context()
 
 	// ── Rate limit ────────────────────────────────────────────────────────────
-	ip := httputil.ClientIP(r)
+	// trustedProxies=1: scanner requests arrive through one nginx reverse proxy;
+	// TrustedClientIP reads the penultimate XFF entry to obtain the real client IP.
+	ip := httputil.TrustedClientIP(r, 1)
 	if !h.rateLimiter.CheckIP(ip) {
 		httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorEnvelope(
 			"scanner.rate_limited", "too many requests; please slow down", r,

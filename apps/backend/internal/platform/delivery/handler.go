@@ -19,15 +19,15 @@
 //     If claim fails (row not pending), return nil — another worker claimed it.
 //  8. Resolve organisation branding and generate PDF credential.
 //  9. Render transactional email (localised, feature #289 T-2).
-// 10. Send via the injected email.Sender (real SMTP).
+//  10. Send via the injected email.Sender (real SMTP).
 //     On transient failure: return error — worker retries. Status stays 'processing'
 //     until retry claims it again (reconciliation via processing_at). The delivery
 //     key is the delivery_jobs.id: a 'processing' row is never re-claimed by the
 //     same handler invocation, preventing double-sends on simple retries.
-// 11. Update delivery_jobs to 'sent'. If the status update fails after SMTP
+//  11. Update delivery_jobs to 'sent'. If the status update fails after SMTP
 //     success, log a warning but do NOT retry the send: the message was delivered
 //     and a reconciliation process can repair the status later.
-// 12. Emit an audit-log entry.
+//  12. Emit an audit-log entry.
 //
 // SMTP credentials and ticket secrets are never written to log fields.
 package delivery

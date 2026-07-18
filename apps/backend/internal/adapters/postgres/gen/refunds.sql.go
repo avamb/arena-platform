@@ -268,6 +268,38 @@ func (q *Queries) InsertRefundEvent(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SumNonFailedRefundsByIntent
+// ─────────────────────────────────────────────────────────────────────────────
+
+const sumNonFailedRefundsByIntent = `-- name: SumNonFailedRefundsByIntent :one
+SELECT COALESCE(SUM(amount), 0)::BIGINT
+FROM   refunds
+WHERE  payment_intent_id = $1
+  AND  state NOT IN ('failed', 'rejected')`
+
+// SumNonFailedRefundsByIntent returns the total amount already committed to
+// non-failed refunds for the given payment intent. This is used to compute the
+// remaining refundable balance:
+//
+//	remaining = intent.amount - SumNonFailedRefundsByIntent(intent_id)
+//
+// Non-failed states are: requested, approved, provider_pending, succeeded,
+// manual_review. Failed and rejected refunds are excluded because they do not
+// represent money that will be (or has been) returned to the customer.
+//
+// Call inside a transaction that holds a FOR UPDATE lock on the payment_intents
+// row (via GetPaymentIntentByIDForUpdate) to ensure a consistent view against
+// concurrent refund creation (feature #361).
+func (q *Queries) SumNonFailedRefundsByIntent(ctx context.Context, paymentIntentID uuid.UUID) (int64, error) {
+	var total int64
+	row := q.db.QueryRow(ctx, sumNonFailedRefundsByIntent, paymentIntentID)
+	if err := row.Scan(&total); err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GetRefundEvent
 // ─────────────────────────────────────────────────────────────────────────────
 

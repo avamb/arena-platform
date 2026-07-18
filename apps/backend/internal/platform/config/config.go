@@ -172,7 +172,7 @@ type Config struct {
 	// -------------------------------------------------------------------------
 	// Observability
 	// -------------------------------------------------------------------------
-	LogLevel          string  `env:"LOG_LEVEL"                   required:"false" default:"info"`
+	LogLevel string `env:"LOG_LEVEL"                   required:"false" default:"info"`
 	// LogFormat must be "json" in production for log aggregator compatibility.
 	LogFormat         string  `env:"LOG_FORMAT"                  required:"false" default:"json"`
 	OTLPEndpoint      string  `env:"OTEL_EXPORTER_OTLP_ENDPOINT" required:"false" default:""`
@@ -194,24 +194,24 @@ type Config struct {
 	// -------------------------------------------------------------------------
 	// OutboxMode selects the dispatch strategy. Production must be "webhook" or
 	// "disabled"; "noop" and the implicit empty value are dev/test only.
-	OutboxMode         OutboxMode    `env:"OUTBOX_MODE"         required:"false" default:"noop"`
-	OutboxWebhookURL   string        `env:"OUTBOX_WEBHOOK_URL"  required:"false" default:""`
-	OutboxSigningSecret string       `env:"OUTBOX_SIGNING_SECRET" required:"false" default:""`
-	OutboxPollInterval time.Duration `env:"OUTBOX_POLL_INTERVAL" required:"false" default:"2s"`
-	OutboxBatchSize    int           `env:"OUTBOX_BATCH_SIZE"   required:"false" default:"50"`
+	OutboxMode          OutboxMode    `env:"OUTBOX_MODE"         required:"false" default:"noop"`
+	OutboxWebhookURL    string        `env:"OUTBOX_WEBHOOK_URL"  required:"false" default:""`
+	OutboxSigningSecret string        `env:"OUTBOX_SIGNING_SECRET" required:"false" default:""`
+	OutboxPollInterval  time.Duration `env:"OUTBOX_POLL_INTERVAL" required:"false" default:"2s"`
+	OutboxBatchSize     int           `env:"OUTBOX_BATCH_SIZE"   required:"false" default:"50"`
 
 	// -------------------------------------------------------------------------
 	// Email delivery
 	// -------------------------------------------------------------------------
 	// EmailMode selects the email delivery backend. Production must be "smtp".
 	// "log" mode writes email content to the structured logger (dev/test only).
-	EmailMode   EmailMode `env:"EMAIL_MODE"    required:"false" default:"log"`
-	SMTPHost    string    `env:"SMTP_HOST"     required:"false" default:""`
-	SMTPPort    string    `env:"SMTP_PORT"     required:"false" default:"587"`
-	SMTPUsername string   `env:"SMTP_USERNAME" required:"false" default:""`
-	SMTPPassword string   `env:"SMTP_PASSWORD" required:"false" default:""`
-	SMTPFrom    string    `env:"SMTP_FROM"     required:"false" default:""`
-	SMTPUseTLS  bool      `env:"SMTP_USE_TLS"  required:"false" default:"true"`
+	EmailMode    EmailMode `env:"EMAIL_MODE"    required:"false" default:"log"`
+	SMTPHost     string    `env:"SMTP_HOST"     required:"false" default:""`
+	SMTPPort     string    `env:"SMTP_PORT"     required:"false" default:"587"`
+	SMTPUsername string    `env:"SMTP_USERNAME" required:"false" default:""`
+	SMTPPassword string    `env:"SMTP_PASSWORD" required:"false" default:""`
+	SMTPFrom     string    `env:"SMTP_FROM"     required:"false" default:""`
+	SMTPUseTLS   bool      `env:"SMTP_USE_TLS"  required:"false" default:"true"`
 
 	// -------------------------------------------------------------------------
 	// Bil24 compatibility gateway (feature #157)
@@ -333,10 +333,10 @@ func (c *Config) LogAttrs() []slog.Attr {
 // validation error.
 func Load() (*Config, error) {
 	cfg := &Config{
-		AppEnv:     AppEnv(getenv("APP_ENV", "development")),
-		AppName:    getenv("APP_NAME", "arena-api"),
-		AppVersion: getenv("APP_VERSION", "0.0.0-dev"),
-		AppCommit:  getenv("APP_COMMIT", "local"),
+		AppEnv:       AppEnv(getenv("APP_ENV", "development")),
+		AppName:      getenv("APP_NAME", "arena-api"),
+		AppVersion:   getenv("APP_VERSION", "0.0.0-dev"),
+		AppCommit:    getenv("APP_COMMIT", "local"),
 		AppPublicURL: getenv("APP_PUBLIC_URL", ""),
 
 		HTTPListenAddr:     getenv("HTTP_LISTEN_ADDR", ":8080"),
@@ -348,8 +348,8 @@ func Load() (*Config, error) {
 		RedisURL:    getenv("REDIS_URL", ""),
 
 		JWTSecretStub: getenv("JWT_SIGNING_SECRET", ""),
-		JWTIssuer:        getenv("JWT_ISSUER", "arena-dev"),
-		JWTAudience:      getenv("JWT_AUDIENCE", "arena-api"),
+		JWTIssuer:     getenv("JWT_ISSUER", "arena-dev"),
+		JWTAudience:   getenv("JWT_AUDIENCE", "arena-api"),
 
 		DefaultLocale: getenv("DEFAULT_LOCALE", "en"),
 		ActiveLocales: splitCSV(getenv("ACTIVE_LOCALES", "en")),

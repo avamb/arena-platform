@@ -80,7 +80,7 @@ func traceContext(next http.Handler) http.Handler {
 		logger.Info("http request start",
 			"method", r.Method,
 			"path", r.URL.Path,
-			"remote_ip", httputil.ClientIP(r),
+			"remote_ip", httputil.TrustedClientIP(r, 1),
 		)
 
 		ww := chimw.NewWrapResponseWriter(w, r.ProtoMajor)

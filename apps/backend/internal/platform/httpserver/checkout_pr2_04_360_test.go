@@ -76,7 +76,7 @@ func TestPR204_Step2_QuerierHasConfirmCapacity(t *testing.T) {
 // TestPR204_Step2_SellReservationSeatsTxExported verifies that
 // SellReservationSeatsTx is exported from hcheckout so the fix can be verified
 // by callers inspecting the public API.
-func TestPR204_Step2_SellReservationSeatsTxExported(t *testing.T) {
+func TestPR204_Step2_SellReservationSeatsTxExported(_ *testing.T) {
 	// Compile-time check: if hcheckout.SellReservationSeatsTx is removed or
 	// renamed, this test will fail to compile.
 	var _ = hcheckout.SellReservationSeatsTx

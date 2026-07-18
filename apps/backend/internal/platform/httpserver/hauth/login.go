@@ -24,6 +24,7 @@
 //  7. Fetch the owning user to populate the new JWT claims.
 //  8. Issue a new JWT access token (15-minute TTL).
 //  9. Generate a new refresh token; revoke old token in DB, insert new hash.
+//
 // 10. Commit transaction.
 // 11. Update Redis: revoke old raw token, track new raw token.
 // 12. Return 200 with {access_token, refresh_token, token_type, expires_at}.

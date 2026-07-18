@@ -11,19 +11,19 @@
 //
 // # Fix verified by these tests
 //
-//   Step 1: Migration 0066 adds ordinal column to tickets table
-//   Step 2: Migration 0066 adds UNIQUE (checkout_session_id, ordinal) constraint
-//   Step 3: tickets.sql InsertTicket now includes ordinal ($9) parameter
-//   Step 4: tickets.sql SELECT queries now include ordinal column
-//   Step 5: tickets.sql.go TicketRow has Ordinal field
-//   Step 6: tickets.sql.go InsertTicket accepts ordinal int32 parameter
-//   Step 7: querier.go InsertTicket interface includes ordinal int32 parameter
-//   Step 8: IssueTicketsForCheckout acquires pg_advisory_xact_lock
-//   Step 9: IssueTicketsForCheckout compares len(existing) >= expectedCount
-//           (quantity-aware, not just > 0)
-//   Step 10: IssueTicketsForCheckout uses issuedOrdinals map for gap-fill
-//   Step 11: IssueTicketsForCheckout wraps issuance in a transaction
-//   Step 12: issuanceLockKey extracts low-64-bits from UUID for the lock key
+//	Step 1: Migration 0066 adds ordinal column to tickets table
+//	Step 2: Migration 0066 adds UNIQUE (checkout_session_id, ordinal) constraint
+//	Step 3: tickets.sql InsertTicket now includes ordinal ($9) parameter
+//	Step 4: tickets.sql SELECT queries now include ordinal column
+//	Step 5: tickets.sql.go TicketRow has Ordinal field
+//	Step 6: tickets.sql.go InsertTicket accepts ordinal int32 parameter
+//	Step 7: querier.go InsertTicket interface includes ordinal int32 parameter
+//	Step 8: IssueTicketsForCheckout acquires pg_advisory_xact_lock
+//	Step 9: IssueTicketsForCheckout compares len(existing) >= expectedCount
+//	        (quantity-aware, not just > 0)
+//	Step 10: IssueTicketsForCheckout uses issuedOrdinals map for gap-fill
+//	Step 11: IssueTicketsForCheckout wraps issuance in a transaction
+//	Step 12: issuanceLockKey extracts low-64-bits from UUID for the lock key
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver

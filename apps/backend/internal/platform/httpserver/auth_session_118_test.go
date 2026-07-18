@@ -483,7 +483,7 @@ func TestSession118_FullVerification(t *testing.T) {
 		_ = s.handleAuthLogout // compile-time check
 	})
 
-	t.Run("step3_revocation_check_in_refresh_flow", func(t *testing.T) {
+	t.Run("step3_revocation_check_in_refresh_flow", func(_ *testing.T) {
 		// PR2-03: Refresh always hits DB for compromise detection.
 		// fakeLoginPool panics → proves DB path is reached.
 		ctx := context.Background()

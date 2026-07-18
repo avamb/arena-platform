@@ -40,16 +40,16 @@ type Options struct {
 	DB     Pinger
 	Probes []ReadinessProbe
 
-	Pool    PoolDB
-	Auth    *auth.StubProvider
+	Pool PoolDB
+	Auth *auth.StubProvider
 	// Verifier is the production JWT verifier. When non-nil it is used by the
 	// auth middleware on all protected routes instead of (or in addition to)
 	// the StubProvider. In production main.go passes auth.NewJWTVerifier here;
 	// tests that only supply Auth will fall back to the stub as verifier.
 	Verifier auth.Provider
 	Audit    audit.Writer
-	Idem    idempotency.Store
-	PgxPool *pgxpool.Pool
+	Idem     idempotency.Store
+	PgxPool  *pgxpool.Pool
 
 	MetricsHandler http.Handler
 	Metrics        *observability.Metrics
