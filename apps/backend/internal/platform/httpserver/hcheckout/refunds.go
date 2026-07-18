@@ -800,9 +800,10 @@ var RefundWebhookEventTypeToState = refundWebhookEventTypeToState
 
 // HandleRefundWebhook serves POST /v1/refunds/webhook.
 //
-// This endpoint is intentionally unauthenticated — payment providers deliver
-// webhooks from their own infrastructure. For this foundation milestone the
-// endpoint accepts a normalized JSON body without signature verification.
+// This endpoint is intentionally unauthenticated via JWT — payment providers
+// deliver webhooks from their own infrastructure. Authentication is performed
+// via HMAC signature verification (Stripe-Signature or X-AllPay-Signature
+// headers) before the body is parsed or any database state is mutated.
 //
 // Idempotency: each (provider_refund_id, event_type) is recorded in
 // refund_events with a UNIQUE constraint. Duplicate deliveries return 204.
@@ -810,14 +811,9 @@ var RefundWebhookEventTypeToState = refundWebhookEventTypeToState
 // Ticket revocation: when a refund succeeds, all active tickets for the linked
 // checkout session are cancelled via CancelTicketsByCheckoutSession.
 func (h *Handler) HandleRefundWebhook(w http.ResponseWriter, r *http.Request) {
-	if h.refundQueries == nil {
-		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "database is not available", r,
-		))
-		return
-	}
-	ctx := r.Context()
-
+	// Read body first so the HMAC can be verified over the raw bytes.
+	// The body is intentionally read BEFORE the DB nil guard so that forged
+	// requests are rejected with 401 without leaking service availability.
 	body, err := io.ReadAll(io.LimitReader(r.Body, 512*1024))
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("refund_webhook.invalid_body", "cannot read request body: "+err.Error(), r))
@@ -827,6 +823,30 @@ func (h *Handler) HandleRefundWebhook(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("refund_webhook.empty_body", "request body is required", r))
 		return
 	}
+
+	// Verify provider HMAC signature before processing the body. This prevents
+	// forged refund events that could cancel legitimate tickets.
+	// Returns nil in dev/mock mode (no secrets); production requires a secret.
+	if sigErr := h.verifyWebhookSignature(r, body); sigErr != nil {
+		if h.logger != nil {
+			h.logger.Warn("refund_webhook: invalid signature; rejecting request",
+				slog.String("error", sigErr.Error()),
+				slog.String("remote_addr", r.RemoteAddr),
+			)
+		}
+		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope(
+			"webhook.invalid_signature", "webhook signature verification failed", r,
+		))
+		return
+	}
+
+	if h.refundQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			"dependency.database_unavailable", "database is not available", r,
+		))
+		return
+	}
+	ctx := r.Context()
 
 	var req refundWebhookRequest
 	if err := json.Unmarshal(body, &req); err != nil {

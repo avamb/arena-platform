@@ -22154,3 +22154,90 @@ Exit code: 0
 
 Commit: ba07544
 Marked #379 passing. (374/380 passing, 98.4%)
+
+## 2026-07-18 - Feature #371 (PR2-15 MAJOR): Close the production DB TLS validation hole
+
+### Status: PASSING (376/380 features passing, 98.9%)
+
+### Root cause
+`unsafeDBTLS()` used a negative check — it only blocked `sslmode=disable` and
+`sslmode=allow`. This left two dangerous cases accepted:
+1. `sslmode=prefer` — negotiates TLS but falls back to plaintext on refusal (MitM vector)
+2. Absent sslmode — pgx defaults to `prefer`, same plaintext fallback
+
+### Fix
+
+**apps/backend/internal/platform/config/config.go**
+- Replaced `unsafeDBTLS` with two new functions:
+  - `extractSSLMode(dsn string) string` — parses sslmode from both URL-form
+    (`postgres://...?sslmode=X`) and key-value form (`host=... sslmode=X ...`)
+  - `productionDBTLSSafe(dsn string) bool` — returns true ONLY for
+    `require`, `verify-ca`, `verify-full` (positive allowlist, not negative blocklist)
+- Updated `validateProduction` check #5 to use `!productionDBTLSSafe(c.DatabaseURL)`
+- Error message updated to include "unsafe TLS mode" (preserving existing test assertions)
+  and explicitly names all rejected modes: absent, prefer, disable, allow
+
+**apps/backend/internal/platform/config/config_test.go**
+- Added 4 new table-driven cases to `TestValidate_Production_TableDriven`:
+  - `unsafe DB TLS (sslmode=prefer)` → expects "unsafe TLS mode"
+  - `unsafe DB TLS (no sslmode)` → expects "unsafe TLS mode"
+- Added `TestProductionDBTLSSafe` with 16 cases:
+  - Accepted: require/verify-full/verify-ca in URL and KV form, require mid-query
+  - Rejected: absent (no query, other params, KV), prefer/disable/allow in URL and KV
+- Added `TestValidate_Production_DBTLSAcceptedModes` with 3 positive cases:
+  - verify that require, verify-ca, verify-full all pass production Validate()
+
+### Verification
+- go build ./... → exit 0
+- go test ./internal/platform/config/... → all PASS (0.007s)
+- Full backend go test ./... → all PASS except pre-existing outbox failure
+  (TestOutboxEventsDispatcher_MarkDispatchedSQL... was already failing in test_all_out2.txt)
+
+Commit: ef709de
+Marked #371 passing. (376/380 passing, 98.9%)
+
+## 2026-07-18 - Feature #372 (PR2-16 MAJOR): Validate APP_PUBLIC_URL and refuse debug flags in production
+
+### Changes made
+
+**apps/backend/internal/platform/config/config.go (MODIFIED)**
+- Added two new Config struct fields:
+  - DebugRoutesEnabled bool `env:"DEBUG_ROUTES_ENABLED" required:"false" default:"false"`
+  - FaultInjectOutboxAfterAudit bool `env:"FAULT_INJECT_OUTBOX_AFTER_AUDIT" required:"false" default:"false"`
+- Added getenvBool() parsing for both in Load()
+- validateProduction() additions:
+  - Step 1: APP_PUBLIC_URL must be non-empty and start with https:// when EMAIL_MODE=smtp
+  - Step 2: DEBUG_ROUTES_ENABLED=true rejected in production
+  - Step 2: FAULT_INJECT_OUTBOX_AFTER_AUDIT=true rejected in production
+- Added Warnings() []string method:
+  - Warns when OTEL_EXPORTER_OTLP_INSECURE=true and endpoint is non-localhost
+  - Localhost detection: "localhost", "127.0.0.1", "::1" pass without warning
+
+**apps/backend/cmd/arena-api/main.go (MODIFIED)**
+- Removed raw os.Getenv("FAULT_INJECT_OUTBOX_AFTER_AUDIT") and os.Getenv("DEBUG_ROUTES_ENABLED")
+- Now reads cfg.FaultInjectOutboxAfterAudit and cfg.DebugRoutesEnabled
+- Added loop to emit cfg.Warnings() at warn level on startup
+
+**.env.example (MODIFIED)**
+- Added OTEL_EXPORTER_OTLP_INSECURE=true with explanation comment
+- Added DEBUG_ROUTES_ENABLED=false with comment about production prohibition
+- Added FAULT_INJECT_OUTBOX_AFTER_AUDIT=false with comment about production prohibition
+
+**deploy/DOKPLOY.md (MODIFIED)**
+- Added OTEL_EXPORTER_OTLP_INSECURE to environment variables table
+- Added OTEL_EXPORTER_OTLP_INSECURE to observability checklist
+
+**apps/backend/internal/platform/config/config_372_test.go (NEW)**
+- 30 tests covering all 4 feature steps
+- Step 1: APP_PUBLIC_URL empty rejection, non-https rejection, valid https passes, non-smtp skips check
+- Step 2: DEBUG_ROUTES_ENABLED refused, FAULT_INJECT refused, false=OK, allowed in dev, struct fields exist, field tags
+- Step 3: Warnings() with remote insecure OTLP, localhost suppressed, secure remote suppressed, empty endpoint suppressed
+- Step 4: Table-driven production rejections, aggregated errors, production base still valid, Load() wiring
+
+### Verification
+- 30/30 TestPR216_* tests PASS
+- All existing config tests PASS (TestValidateOK, TestValidate_Production_TableDriven, etc.)
+- go build ./... clean
+
+Commit: 65ce689
+Marked #372 passing. (375/380 features passing, 98.7%)

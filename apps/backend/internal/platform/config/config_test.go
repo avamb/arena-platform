@@ -76,6 +76,8 @@ func validProductionBase() *Config {
 		SMTPFrom:          "no-reply@example.com",
 		AppPublicURL:      "https://app.example.com",
 		OTELTracesSampler: 0.1,
+		// Payment webhook signing secret required in production (feature #362).
+		StripeWebhookSecret: "whsec_production_test_secret_for_valid_base",
 	}
 }
 

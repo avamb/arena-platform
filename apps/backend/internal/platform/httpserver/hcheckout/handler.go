@@ -5,11 +5,14 @@ package hcheckout
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"net/http"
 
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 )
 
 const pgUniqueViolation = "23505"
@@ -247,6 +250,18 @@ type Handler struct {
 	logger               *slog.Logger
 	pricingRules         PricingRules
 
+	// webhookStripeSecret is the Stripe webhook endpoint signing secret
+	// (whsec_…). When non-empty, HandlePaymentIntentWebhook and
+	// HandleRefundWebhook verify the "Stripe-Signature" HMAC-SHA256 header
+	// before processing the request body. Empty = dev/mock mode (allowed only
+	// when webhookAllPaySecret is also empty and APP_ENV != production).
+	webhookStripeSecret string
+
+	// webhookAllPaySecret is the AllPay webhook shared signing secret.
+	// When non-empty, HandlePaymentIntentWebhook and HandleRefundWebhook verify
+	// the "X-AllPay-Signature" HMAC-SHA256 header. Empty = dev/mock mode.
+	webhookAllPaySecret string
+
 	// Callback fields for cross-domain side effects.
 	issueTickets      func(ctx context.Context, cs gen.CheckoutSessionRow) ([]gen.TicketRow, error)
 	publishRefunded   func(ctx context.Context, checkoutSessionID, refundID, currency string, amount int64)
@@ -254,6 +269,11 @@ type Handler struct {
 }
 
 // New constructs a Handler from the caller's dependencies.
+//
+// webhookStripeSecret and webhookAllPaySecret are the provider HMAC signing
+// secrets used to authenticate inbound webhook calls. When both are empty the
+// handler operates in dev/mock mode and accepts unsigned webhooks. Production
+// deployments must supply at least one — enforced by config.validateProduction.
 func New(
 	checkoutQ *gen.Queries,
 	reservationQ *gen.Queries,
@@ -268,6 +288,8 @@ func New(
 	pool TxStarter,
 	logger *slog.Logger,
 	pricingRules PricingRules,
+	webhookStripeSecret string,
+	webhookAllPaySecret string,
 	issueTickets func(ctx context.Context, cs gen.CheckoutSessionRow) ([]gen.TicketRow, error),
 	publishRefunded func(ctx context.Context, checkoutSessionID, refundID, currency string, amount int64),
 	publishRefundedV1 func(ctx context.Context, ticketIDs []string, checkoutSessionID, refundID, currency string, amount int64),
@@ -286,8 +308,51 @@ func New(
 		pool:                 pool,
 		logger:               logger,
 		pricingRules:         pricingRules,
+		webhookStripeSecret:  webhookStripeSecret,
+		webhookAllPaySecret:  webhookAllPaySecret,
 		issueTickets:         issueTickets,
 		publishRefunded:      publishRefunded,
 		publishRefundedV1:    publishRefundedV1,
 	}
+}
+
+// verifyWebhookSignature enforces HMAC authentication on inbound webhook
+// requests from payment providers (Stripe and AllPay).
+//
+// Logic:
+//   - When both secrets are empty (dev/mock mode), returns nil. Production
+//     deployments are prevented from entering this branch by config validation.
+//   - When Stripe-Signature is present and stripeSecret is set, performs
+//     Stripe HMAC-SHA256 verification with the 5-minute replay-attack window.
+//   - When X-AllPay-Signature is present and allPaySecret is set, performs
+//     AllPay HMAC-SHA256 verification.
+//   - When secrets are configured but no recognized signature header is found,
+//     returns ErrInvalidWebhookSignature (caller → 401 Unauthorized, no state change).
+func (h *Handler) verifyWebhookSignature(r *http.Request, body []byte) error {
+	hasStripe := h.webhookStripeSecret != ""
+	hasAllPay := h.webhookAllPaySecret != ""
+
+	if !hasStripe && !hasAllPay {
+		// Dev/mock path — no secrets configured. Config validation prevents
+		// this branch from being reached in production.
+		return nil
+	}
+
+	stripeHeader := r.Header.Get("Stripe-Signature")
+	allPayHeader := r.Header.Get("X-AllPay-Signature")
+
+	if stripeHeader != "" && hasStripe {
+		return payments.VerifyStripeSignature(
+			stripeHeader, body, h.webhookStripeSecret, payments.DefaultWebhookTolerance,
+		)
+	}
+	if allPayHeader != "" && hasAllPay {
+		return payments.VerifyAllPaySignature(allPayHeader, body, h.webhookAllPaySecret)
+	}
+
+	// Secrets are configured but no recognized provider signature header found.
+	return fmt.Errorf(
+		"%w: no provider signature header present (expected Stripe-Signature or X-AllPay-Signature)",
+		payments.ErrInvalidWebhookSignature,
+	)
 }

@@ -19,6 +19,15 @@ import (
 
 // checkoutHandler constructs a hcheckout.Handler from the server's dependencies.
 func (s *Server) checkoutHandler() *hcheckout.Handler {
+	// Pass payment webhook signing secrets from config so that
+	// HandlePaymentIntentWebhook and HandleRefundWebhook enforce HMAC
+	// verification. Empty strings enable dev/mock mode (blocked in production
+	// by config.validateProduction check #10b).
+	var stripeSecret, allPaySecret string
+	if s.cfg != nil {
+		stripeSecret = s.cfg.StripeWebhookSecret
+		allPaySecret = s.cfg.AllPayWebhookSecret
+	}
 	return hcheckout.New(
 		s.checkoutQueries,
 		s.reservationQueries,
@@ -33,6 +42,8 @@ func (s *Server) checkoutHandler() *hcheckout.Handler {
 		s.pool,
 		s.logger,
 		hcheckout.PricingRules(s.pricingRules),
+		stripeSecret,
+		allPaySecret,
 		s.issueTicketsForCheckout,
 		s.publishTicketRefundedEvents,
 		s.publishTicketRefundedV1Events,

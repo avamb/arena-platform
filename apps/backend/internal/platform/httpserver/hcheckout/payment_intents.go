@@ -544,23 +544,18 @@ var WebhookEventTypeToState = webhookEventTypeToState
 
 // HandlePaymentIntentWebhook serves POST /v1/payment-intents/webhook.
 //
-// This endpoint is intentionally unauthenticated — payment providers deliver
-// webhooks from their own infrastructure and authenticate via HMAC signatures
-// in production (Stripe-Signature header). For this foundation milestone the
-// endpoint accepts a normalized JSON body without signature verification.
+// This endpoint is intentionally unauthenticated via JWT — payment providers
+// deliver webhooks from their own infrastructure. Authentication is performed
+// via HMAC signature verification (Stripe-Signature or X-AllPay-Signature
+// headers) before the body is parsed or any database state is mutated.
 //
 // Idempotency: each (provider_payment_id, event_type) is recorded in
 // payment_intent_events with a UNIQUE constraint. Duplicate deliveries return
 // 204 without reprocessing.
 func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Request) {
-	if h.paymentIntentQueries == nil || h.pool == nil {
-		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "database is not available", r,
-		))
-		return
-	}
-	ctx := r.Context()
-
+	// Read body first so the HMAC can be verified over the raw bytes.
+	// The body is intentionally read BEFORE the DB nil guard so that forged
+	// requests are rejected with 401 without leaking service availability.
 	body, err := io.ReadAll(io.LimitReader(r.Body, 512*1024))
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("webhook.invalid_body", "cannot read request body: "+err.Error(), r))
@@ -570,6 +565,31 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("webhook.empty_body", "request body is required", r))
 		return
 	}
+
+	// Verify provider HMAC signature before processing the body. This prevents
+	// anyone who knows a provider_payment_id from forging payment.succeeded to
+	// mint tickets or cancel them. Returns nil in dev/mock mode (no secrets
+	// configured); production requires at least one secret (config validation).
+	if sigErr := h.verifyWebhookSignature(r, body); sigErr != nil {
+		if h.logger != nil {
+			h.logger.Warn("webhook: invalid signature; rejecting request",
+				slog.String("error", sigErr.Error()),
+				slog.String("remote_addr", r.RemoteAddr),
+			)
+		}
+		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope(
+			"webhook.invalid_signature", "webhook signature verification failed", r,
+		))
+		return
+	}
+
+	if h.paymentIntentQueries == nil || h.pool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			"dependency.database_unavailable", "database is not available", r,
+		))
+		return
+	}
+	ctx := r.Context()
 
 	var req webhookPaymentIntentRequest
 	if err := json.Unmarshal(body, &req); err != nil {

@@ -428,3 +428,55 @@ func TestPR216_Step4_Load_DebugFlagsDefaultToFalse(t *testing.T) {
 		t.Error("FaultInjectOutboxAfterAudit should default to false")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Feature #362: Payment webhook signing secrets required in production
+// ---------------------------------------------------------------------------
+
+// TestPR206_WebhookSecretsMissingInProduction verifies that production startup
+// is refused when both STRIPE_WEBHOOK_SECRET and ALLPAY_WEBHOOK_SECRET are empty.
+func TestPR206_WebhookSecretsMissingInProduction(t *testing.T) {
+	cfg := validProductionBase()
+	cfg.StripeWebhookSecret = ""
+	cfg.AllPayWebhookSecret = ""
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error when both webhook secrets are absent in production")
+	}
+	if !strings.Contains(err.Error(), "STRIPE_WEBHOOK_SECRET") && !strings.Contains(err.Error(), "ALLPAY_WEBHOOK_SECRET") {
+		t.Errorf("error should mention STRIPE_WEBHOOK_SECRET or ALLPAY_WEBHOOK_SECRET; got: %v", err)
+	}
+}
+
+// TestPR206_StripeSecretAloneIsEnoughInProduction verifies that providing only
+// STRIPE_WEBHOOK_SECRET satisfies the production requirement.
+func TestPR206_StripeSecretAloneIsEnoughInProduction(t *testing.T) {
+	cfg := validProductionBase()
+	cfg.StripeWebhookSecret = "whsec_valid_stripe_secret_only"
+	cfg.AllPayWebhookSecret = ""
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("STRIPE_WEBHOOK_SECRET alone should be enough in production; got: %v", err)
+	}
+}
+
+// TestPR206_AllPaySecretAloneIsEnoughInProduction verifies that providing only
+// ALLPAY_WEBHOOK_SECRET satisfies the production requirement.
+func TestPR206_AllPaySecretAloneIsEnoughInProduction(t *testing.T) {
+	cfg := validProductionBase()
+	cfg.StripeWebhookSecret = ""
+	cfg.AllPayWebhookSecret = "allpay-valid-secret-only"
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("ALLPAY_WEBHOOK_SECRET alone should be enough in production; got: %v", err)
+	}
+}
+
+// TestPR206_WebhookSecretsNotRequiredInDevelopment verifies that development
+// configs without webhook secrets are accepted (dev/mock mode).
+func TestPR206_WebhookSecretsNotRequiredInDevelopment(t *testing.T) {
+	cfg := validBase()
+	cfg.StripeWebhookSecret = ""
+	cfg.AllPayWebhookSecret = ""
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("dev config without webhook secrets should be valid; got: %v", err)
+	}
+}
