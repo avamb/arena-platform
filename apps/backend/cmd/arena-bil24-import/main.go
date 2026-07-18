@@ -1,19 +1,26 @@
 // Package main is the entry point for arena-bil24-import, a one-shot operator
-// tool that reads a Bil24 event catalog snapshot and materialises the events
-// as native arena_new catalog entries (feature #386).
+// tool that reads a Bil24 event catalog snapshot (CSV or JSON) and materialises
+// the events as native arena_new catalog entries (features #386/#387).
 //
 // # Purpose
 //
 // When migrating away from Bil24, the current set of active events needs to
 // appear in arena_new without requiring a live API bridge. arena-bil24-import
-// performs a single, idempotent snapshot import: it reads a JSON file
+// performs a single, idempotent snapshot import: it reads a CSV or JSON file
 // (produced by the operator from the Bil24 admin export), validates each row,
 // and inserts events into the native events table with ON CONFLICT DO NOTHING
 // keyed on external_bil24_id.
 //
-// # Source format
+// # Source format — auto-detected by extension
 //
-// The --source flag must point to a JSON file containing an array of objects:
+// The --input flag must point to either a CSV or JSON file.
+//
+// CSV format (use a .csv extension):
+//
+//	external_bil24_id,title,starts_at,ends_at,venue_name,description,poster_url
+//	12345,Rock Night,2026-09-15T19:00:00Z,2026-09-15T22:00:00Z,Main Hall,Rock festival,https://...
+//
+// JSON format (use a .json extension):
 //
 //	[
 //	  {
@@ -23,7 +30,7 @@
 //	    "ends_at":           "2026-09-15T22:00:00Z",
 //	    "venue_name":        "Main Hall",
 //	    "description":       "Annual rock festival.",
-//	    "poster_url":        "https://cdn.bil24.pro/events/12345.jpg",
+//	    "poster_url":        "https://cdn.example.com/events/12345.jpg",
 //	    "price_tiers": [
 //	      {"name": "Standard", "price_kopeks": 150000},
 //	      {"name": "VIP",      "price_kopeks": 350000}
@@ -31,8 +38,9 @@
 //	  }
 //	]
 //
-// ends_at is optional; it defaults to starts_at + 3 hours.
-// price_tiers are optional and logged in the summary but not written to the DB.
+// ends_at is optional in both formats; it defaults to starts_at + 3 hours.
+// price_tiers are JSON-only; CSV rows have no price tier column.
+// In both formats price_tiers are logged in the summary but not written to DB.
 //
 // # Idempotency
 //
@@ -53,7 +61,7 @@
 // # Usage
 //
 //	arena-bil24-import \
-//	  --source   /path/to/export.json \
+//	  --input    /path/to/export.csv   \
 //	  --org-id   <UUID of the target organization> \
 //	  [--dry-run]
 //
@@ -62,11 +70,16 @@ package main
 
 import (
 	"context"
+	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -84,7 +97,7 @@ func main() {
 
 func run(args []string) error {
 	fs := flag.NewFlagSet("arena-bil24-import", flag.ContinueOnError)
-	sourceFile := fs.String("source", "", "path to the Bil24 JSON export file (required)")
+	inputFile := fs.String("input", "", "path to the Bil24 export file (.csv or .json, required)")
 	orgID := fs.String("org-id", "", "UUID of the arena_new organization that will own the imported events (required)")
 	dryRun := fs.Bool("dry-run", false, "print what would be imported without touching the database")
 	dbURL := fs.String("db-url", "", "PostgreSQL DSN (overrides DATABASE_URL env var)")
@@ -93,22 +106,22 @@ func run(args []string) error {
 		return err
 	}
 
-	if *sourceFile == "" {
-		return fmt.Errorf("--source is required; point it at the Bil24 JSON export file")
+	if *inputFile == "" {
+		return fmt.Errorf("--input is required; point it at the Bil24 export file (.csv or .json)")
 	}
 	if *orgID == "" {
 		return fmt.Errorf("--org-id is required; provide the UUID of the target organization")
 	}
 
 	// -------------------------------------------------------------------------
-	// Parse snapshot file
+	// Parse snapshot file (auto-detects CSV vs JSON by extension)
 	// -------------------------------------------------------------------------
-	events, err := parseSnapshotFile(*sourceFile)
+	events, err := parseSnapshotFile(*inputFile)
 	if err != nil {
-		return fmt.Errorf("parse snapshot %q: %w", *sourceFile, err)
+		return fmt.Errorf("parse snapshot %q: %w", *inputFile, err)
 	}
 
-	slog.Info("snapshot loaded", "path", *sourceFile, "rows", len(events))
+	slog.Info("snapshot loaded", "path", *inputFile, "rows", len(events))
 
 	// -------------------------------------------------------------------------
 	// Validate all rows (collect per-row errors; do NOT abort)
@@ -168,8 +181,19 @@ func run(args []string) error {
 // Parse
 // ---------------------------------------------------------------------------
 
-// parseSnapshotFile reads and JSON-decodes the Bil24 export file.
+// parseSnapshotFile reads the Bil24 export file and returns the parsed events.
+// It auto-detects the file format by extension: ".csv" → CSV parser,
+// anything else (typically ".json") → JSON parser.
 func parseSnapshotFile(path string) ([]catalogimport.Bil24SnapshotEvent, error) {
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext == ".csv" {
+		return parseCSVFile(path)
+	}
+	return parseJSONFile(path)
+}
+
+// parseJSONFile reads and JSON-decodes the Bil24 export file.
+func parseJSONFile(path string) ([]catalogimport.Bil24SnapshotEvent, error) {
 	f, err := os.Open(path) //nolint:gosec // operator-controlled path; safe for operator tools
 	if err != nil {
 		return nil, fmt.Errorf("open file: %w", err)
@@ -181,6 +205,122 @@ func parseSnapshotFile(path string) ([]catalogimport.Bil24SnapshotEvent, error) 
 		return nil, fmt.Errorf("decode JSON: %w", err)
 	}
 	return events, nil
+}
+
+// csvColumns defines the required header order for Bil24 CSV exports.
+// The CSV must have exactly this header row (case-insensitive comparison).
+var csvColumns = []string{
+	"external_bil24_id",
+	"title",
+	"starts_at",
+	"ends_at",
+	"venue_name",
+	"description",
+	"poster_url",
+}
+
+// csvColIndex maps column names to their 0-based position in the CSV header.
+type csvColIndex map[string]int
+
+// parseCSVFile reads a Bil24 admin CSV export and maps rows to
+// Bil24SnapshotEvent values. The CSV must contain a header row with these
+// columns (in any order):
+//
+//	external_bil24_id, title, starts_at, ends_at, venue_name, description, poster_url
+//
+// ends_at, venue_name, description, and poster_url are optional and may be
+// left empty. price_tiers are not supported in the CSV format.
+func parseCSVFile(path string) ([]catalogimport.Bil24SnapshotEvent, error) {
+	f, err := os.Open(path) //nolint:gosec // operator-controlled path; safe for operator tools
+	if err != nil {
+		return nil, fmt.Errorf("open file: %w", err)
+	}
+	defer func() { _ = f.Close() }() //nolint:errcheck // read-only file close
+
+	r := csv.NewReader(f)
+	r.TrimLeadingSpace = true
+	// Allow rows to have fewer fields than the header (e.g. trailing optional
+	// columns omitted). -1 means "no fixed field count check".
+	r.FieldsPerRecord = -1
+
+	// Read header
+	header, err := r.Read()
+	if err != nil {
+		return nil, fmt.Errorf("read CSV header: %w", err)
+	}
+
+	idx := make(csvColIndex, len(header))
+	for i, col := range header {
+		idx[strings.ToLower(strings.TrimSpace(col))] = i
+	}
+
+	// Validate required columns
+	required := []string{"external_bil24_id", "title", "starts_at"}
+	for _, col := range required {
+		if _, ok := idx[col]; !ok {
+			return nil, fmt.Errorf("CSV is missing required column %q", col)
+		}
+	}
+
+	var events []catalogimport.Bil24SnapshotEvent
+
+	for rowNum := 2; ; rowNum++ {
+		record, err := r.Read()
+		if err != nil {
+			// io.EOF (possibly wrapped) signals end of file — normal termination.
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			// Any other read error (malformed CSV, OS error) is fatal.
+			return nil, fmt.Errorf("row %d: %w", rowNum, err)
+		}
+
+		e := catalogimport.Bil24SnapshotEvent{}
+
+		e.ExternalBil24ID = csvField(record, idx, "external_bil24_id")
+		e.Title = csvField(record, idx, "title")
+		e.VenueName = csvField(record, idx, "venue_name")
+		e.Description = csvField(record, idx, "description")
+		e.PosterURL = csvField(record, idx, "poster_url")
+
+		startsAtStr := csvField(record, idx, "starts_at")
+		if startsAtStr != "" {
+			t, parseErr := time.Parse(time.RFC3339, startsAtStr)
+			if parseErr != nil {
+				// Try without timezone suffix (local time)
+				t, parseErr = time.Parse("2006-01-02T15:04:05", startsAtStr)
+			}
+			if parseErr == nil {
+				e.StartsAt = t
+			}
+			// If still can't parse, StartsAt stays zero → Validate() will reject the row
+		}
+
+		endsAtStr := csvField(record, idx, "ends_at")
+		if endsAtStr != "" {
+			t, parseErr := time.Parse(time.RFC3339, endsAtStr)
+			if parseErr != nil {
+				t, parseErr = time.Parse("2006-01-02T15:04:05", endsAtStr)
+			}
+			if parseErr == nil {
+				e.EndsAt = &t
+			}
+		}
+
+		events = append(events, e)
+	}
+
+	return events, nil
+}
+
+// csvField returns the trimmed value of a named column in a CSV record,
+// or an empty string if the column is not present or the record is too short.
+func csvField(record []string, idx csvColIndex, col string) string {
+	i, ok := idx[col]
+	if !ok || i >= len(record) {
+		return ""
+	}
+	return strings.TrimSpace(record[i])
 }
 
 // ---------------------------------------------------------------------------
