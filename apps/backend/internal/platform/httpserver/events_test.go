@@ -60,6 +60,10 @@ func buildEventServer(t *testing.T) *Server {
 		Pool: &dbDownPool{},
 		// EventQueries non-nil so event route conditionals pass.
 		EventQueries: gen.New(nil),
+		// MembershipQueries backed by orgMemberAdmitFromCtxDBTX so that
+		// authenticated requests through the router pass the fail-closed
+		// org-membership guard (PR2-26 feature #382).
+		MembershipQueries: gen.New(&orgMemberAdmitFromCtxDBTX{}),
 	})
 }
 

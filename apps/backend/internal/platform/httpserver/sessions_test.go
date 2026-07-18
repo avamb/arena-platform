@@ -65,6 +65,10 @@ func buildSessionServer(t *testing.T) *Server {
 		EventQueries: gen.New(nil),
 		// Audit writer required for DELETE.
 		Audit: &captureAuditWriter{},
+		// MembershipQueries backed by orgMemberAdmitFromCtxDBTX so that
+		// authenticated requests through the router pass the fail-closed
+		// org-membership guard (PR2-26 feature #382).
+		MembershipQueries: gen.New(&orgMemberAdmitFromCtxDBTX{}),
 	})
 }
 

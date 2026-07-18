@@ -100,6 +100,9 @@ func (s *Server) handleGetActiveTariff(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetUsage(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
 	s.billingHandler().HandleGetUsage(w, r)
 }
 
@@ -112,6 +115,9 @@ func (s *Server) handleGetInvoice(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListOrgInvoices(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
 	s.billingHandler().HandleListOrgInvoices(w, r)
 }
 

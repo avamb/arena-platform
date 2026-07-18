@@ -242,22 +242,37 @@ func (s *Server) handlePriceBreakdown(w http.ResponseWriter, r *http.Request) {
 // ─── promo code handler shims ─────────────────────────────────────────────────
 
 func (s *Server) handleCreatePromoCode(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
 	s.checkoutHandler().HandleCreatePromoCode(w, r)
 }
 
 func (s *Server) handleListPromoCodes(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
 	s.checkoutHandler().HandleListPromoCodes(w, r)
 }
 
 func (s *Server) handleGetPromoCode(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
 	s.checkoutHandler().HandleGetPromoCode(w, r)
 }
 
 func (s *Server) handleUpdatePromoCode(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
 	s.checkoutHandler().HandleUpdatePromoCode(w, r)
 }
 
 func (s *Server) handleDeletePromoCode(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
 	s.checkoutHandler().HandleDeletePromoCode(w, r)
 }
 

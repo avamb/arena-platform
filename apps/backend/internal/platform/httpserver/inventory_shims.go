@@ -93,22 +93,37 @@ func inventoryRowFromLedger(row gen.InventoryLedgerRow) inventoryRowResponse {
 // ─── inventory ledger handler shims ───────────────────────────────────────────
 
 func (s *Server) handleListInventory(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
 	s.inventoryHandler().HandleListInventory(w, r)
 }
 
 func (s *Server) handleInitInventory(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
 	s.inventoryHandler().HandleInitInventory(w, r)
 }
 
 func (s *Server) handleReserveCapacity(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
 	s.inventoryHandler().HandleReserveCapacity(w, r)
 }
 
 func (s *Server) handleReleaseCapacity(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
 	s.inventoryHandler().HandleReleaseCapacity(w, r)
 }
 
 func (s *Server) handleConfirmCapacity(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
 	s.inventoryHandler().HandleConfirmCapacity(w, r)
 }
 

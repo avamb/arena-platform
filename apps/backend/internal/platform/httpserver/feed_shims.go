@@ -145,18 +145,30 @@ func generateFeedToken() (string, error) {
 // ─── feed token management handler shims ──────────────────────────────────────
 
 func (s *Server) handleCreateFeedToken(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
 	s.feedHandler().HandleCreateFeedToken(w, r)
 }
 
 func (s *Server) handleListFeedTokens(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
 	s.feedHandler().HandleListFeedTokens(w, r)
 }
 
 func (s *Server) handleGetFeedToken(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
 	s.feedHandler().HandleGetFeedToken(w, r)
 }
 
 func (s *Server) handleRevokeFeedToken(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
 	s.feedHandler().HandleRevokeFeedToken(w, r)
 }
 

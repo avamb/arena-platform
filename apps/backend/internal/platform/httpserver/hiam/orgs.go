@@ -216,6 +216,10 @@ func (h *Handler) HandleGetOrg(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !h.requireOrgMembership(w, r, orgID) {
+		return
+	}
+
 	o, err := h.orgQueries.GetOrganizationByID(ctx, orgID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -336,6 +340,10 @@ func (h *Handler) HandleDeleteOrg(w http.ResponseWriter, r *http.Request) {
 
 	orgID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
+		return
+	}
+
+	if !h.requireOrgMembership(w, r, orgID) {
 		return
 	}
 

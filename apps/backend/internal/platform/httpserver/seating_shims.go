@@ -73,11 +73,17 @@ func (s *Server) handleGetPublicSessionLayoutSVG(w http.ResponseWriter, r *http.
 // ─── bind handler shim (feature #306, Wave SEAT-B2) ──────────────────────────
 
 func (s *Server) handleBindSessionSeating(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
 	s.seatingHandler().HandleBindSessionSeating(w, r)
 }
 
 // ─── seats block/unblock handler shim (feature #308, Wave SEAT-B4) ───────────
 
 func (s *Server) handlePatchSessionSeats(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
 	s.seatingHandler().HandlePatchSessionSeats(w, r)
 }

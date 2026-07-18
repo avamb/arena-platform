@@ -125,6 +125,10 @@ func (h *Handler) HandleCreateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !h.requireOrgMembership(w, r, h.eventQueries, orgID) {
+		return
+	}
+
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("event.invalid_body", "cannot read request body: "+err.Error(), r))
@@ -377,6 +381,10 @@ func (h *Handler) HandleListEventsByOrg(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if !h.requireOrgMembership(w, r, h.eventQueries, orgID) {
+		return
+	}
+
 	rows, err := h.eventQueries.ListEventsByOrg(ctx, orgID, locale)
 	if err != nil {
 		h.logger.Error("event: list by org failed", slog.String("error", err.Error()))
@@ -426,6 +434,10 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	eventID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
+		return
+	}
+
+	if !h.requireOrgMembership(w, r, h.eventQueries, orgID) {
 		return
 	}
 
@@ -594,6 +606,10 @@ func (h *Handler) HandleUpdateEventStatus(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if !h.requireOrgMembership(w, r, h.eventQueries, orgID) {
+		return
+	}
+
 	body, err := io.ReadAll(io.LimitReader(r.Body, 4*1024))
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("event.invalid_body", "cannot read request body: "+err.Error(), r))
@@ -702,6 +718,10 @@ func (h *Handler) HandleDeleteEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	eventID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
+		return
+	}
+
+	if !h.requireOrgMembership(w, r, h.eventQueries, orgID) {
 		return
 	}
 

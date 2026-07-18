@@ -39,10 +39,14 @@ func actorIsMemberOfOrg(ctx context.Context, q *gen.Queries, orgID uuid.UUID) (b
 
 // requireOrgMembership verifies the authenticated actor is an active member of
 // orgID. Writes HTTP error and returns false when not a member.
-// When membershipQueries is nil the check is skipped and true is returned.
+// When membershipQueries is nil the check fails-closed (returns false with 403)
+// to prevent accidental bypass of org-isolation enforcement.
 func (h *Handler) requireOrgMembership(w http.ResponseWriter, r *http.Request, orgID uuid.UUID) bool {
 	if h.membershipQueries == nil {
-		return true
+		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope(
+			"org.access_denied", "caller is not a member of this organization", r,
+		))
+		return false
 	}
 	ctx := r.Context()
 	member, err := actorIsMemberOfOrg(ctx, h.membershipQueries, orgID)

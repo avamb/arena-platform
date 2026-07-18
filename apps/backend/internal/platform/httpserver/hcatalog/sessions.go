@@ -168,12 +168,16 @@ func (h *Handler) HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	_, ok := httputil.UUIDPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
 	eventID, ok := httputil.UUIDPathParam(w, r, "event_id")
 	if !ok {
+		return
+	}
+
+	if !h.requireOrgMembership(w, r, h.sessionQueries, orgID) {
 		return
 	}
 
@@ -309,12 +313,16 @@ func (h *Handler) HandleListSessions(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	_, ok := httputil.UUIDPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
 	eventID, ok := httputil.UUIDPathParam(w, r, "event_id")
 	if !ok {
+		return
+	}
+
+	if !h.requireOrgMembership(w, r, h.sessionQueries, orgID) {
 		return
 	}
 
@@ -356,7 +364,7 @@ func (h *Handler) HandleGetSession(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	_, ok := httputil.UUIDPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
@@ -366,6 +374,10 @@ func (h *Handler) HandleGetSession(w http.ResponseWriter, r *http.Request) {
 	}
 	sessionID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
+		return
+	}
+
+	if !h.requireOrgMembership(w, r, h.sessionQueries, orgID) {
 		return
 	}
 
@@ -416,7 +428,7 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	_, ok := httputil.UUIDPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
@@ -426,6 +438,10 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 	}
 	sessionID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
+		return
+	}
+
+	if !h.requireOrgMembership(w, r, h.sessionQueries, orgID) {
 		return
 	}
 
@@ -594,7 +610,7 @@ func (h *Handler) HandleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	_, ok := httputil.UUIDPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
@@ -604,6 +620,10 @@ func (h *Handler) HandleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	}
 	sessionID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
+		return
+	}
+
+	if !h.requireOrgMembership(w, r, h.sessionQueries, orgID) {
 		return
 	}
 

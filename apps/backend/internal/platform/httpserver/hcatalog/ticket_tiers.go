@@ -116,7 +116,7 @@ func (h *Handler) HandleCreateTier(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	_, ok := httputil.UUIDPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
@@ -126,6 +126,10 @@ func (h *Handler) HandleCreateTier(w http.ResponseWriter, r *http.Request) {
 	}
 	sessionID, ok := httputil.UUIDPathParam(w, r, "session_id")
 	if !ok {
+		return
+	}
+
+	if !h.requireOrgMembership(w, r, h.tierQueries, orgID) {
 		return
 	}
 
@@ -264,7 +268,7 @@ func (h *Handler) HandleListTiers(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	_, ok := httputil.UUIDPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
@@ -274,6 +278,10 @@ func (h *Handler) HandleListTiers(w http.ResponseWriter, r *http.Request) {
 	}
 	sessionID, ok := httputil.UUIDPathParam(w, r, "session_id")
 	if !ok {
+		return
+	}
+
+	if !h.requireOrgMembership(w, r, h.tierQueries, orgID) {
 		return
 	}
 
@@ -308,7 +316,7 @@ func (h *Handler) HandleGetTier(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	_, ok := httputil.UUIDPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
@@ -322,6 +330,10 @@ func (h *Handler) HandleGetTier(w http.ResponseWriter, r *http.Request) {
 	}
 	tierID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
+		return
+	}
+
+	if !h.requireOrgMembership(w, r, h.tierQueries, orgID) {
 		return
 	}
 
@@ -369,7 +381,7 @@ func (h *Handler) HandleUpdateTier(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	_, ok := httputil.UUIDPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
@@ -383,6 +395,10 @@ func (h *Handler) HandleUpdateTier(w http.ResponseWriter, r *http.Request) {
 	}
 	tierID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
+		return
+	}
+
+	if !h.requireOrgMembership(w, r, h.tierQueries, orgID) {
 		return
 	}
 
@@ -552,7 +568,7 @@ func (h *Handler) HandleDeleteTier(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	_, ok := httputil.UUIDPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
@@ -566,6 +582,10 @@ func (h *Handler) HandleDeleteTier(w http.ResponseWriter, r *http.Request) {
 	}
 	tierID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
+		return
+	}
+
+	if !h.requireOrgMembership(w, r, h.tierQueries, orgID) {
 		return
 	}
 

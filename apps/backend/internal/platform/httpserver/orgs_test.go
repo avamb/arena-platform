@@ -62,6 +62,10 @@ func buildOrgServer(t *testing.T) *Server {
 		// Audit writer required for DELETE (soft-delete + audit tx).
 		Audit: &captureAuditWriter{},
 		// Idem + Outbox are not needed for org routes; leaving them nil is fine.
+		// MembershipQueries backed by orgMemberAdmitFromCtxDBTX so that
+		// authenticated requests through the router pass the fail-closed
+		// org-membership guard on GET and DELETE (PR2-26 feature #382).
+		MembershipQueries: gen.New(&orgMemberAdmitFromCtxDBTX{}),
 	})
 }
 
