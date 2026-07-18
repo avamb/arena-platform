@@ -22050,3 +22050,107 @@ Three bugs made the widget non-functional on third-party/WP embeds:
 
 Commit: 55da89e
 Marked #377 passing. (372/380 features passing, 97.9%)
+
+## 2026-07-18 - Feature #378 (PR2-22 MAJOR): Fix seat-map race, pin CDN build, translate hardcoded strings
+
+### Three bugs fixed
+
+**Step 1: SeatMapView session-switch race condition**
+- The session $effect called `loadSchema().then(startPoller)` with no stale-guard.
+  A slow schema fetch for an old session could win the race and overwrite the
+  new session's state (svgHTML, categoryPrices, canvasW/H, schemaError).
+- Fix: added `schemaGen` plain-let counter (NOT $state so it doesn't re-trigger effects).
+  Each effect run captures `const gen = ++schemaGen`. After the async fetch
+  resolves, the function returns immediately if `schemaGen !== gen`. The `finally`
+  block only clears `schemaLoading` when `schemaGen === gen`.
+
+**Step 2: WP plugin CDN pin with SRI**
+- `CDN_BASE_DEFAULT` pointed at `@master` jsDelivr URL — mutable, no integrity check.
+- Fix: Added `WIDGET_GIT_TAG = 'v0.1.0'` and `WIDGET_DIST_SRI = ''` constants.
+  CDN URL now uses `@v0.1.0` instead of `@master`.
+  Added `add_sri_attributes()` hooked to WordPress `script_loader_tag` filter.
+  When SRI hash is configured (via constant or `widget_dist_sri` settings key),
+  the method injects `integrity="sha384-..."` and `crossorigin="anonymous"` into
+  the script tag. Empty SRI disables enforcement (dev/self-hosted mode).
+
+**Step 3: SeatMapView hardcoded English strings**
+- Eight strings were hardcoded in English in `SeatMapView.svelte`:
+  "Loading seat map…", "Failed to load seat map", "Interactive seat map",
+  "Seat map controls", "Fit map to screen", "Fit seat map to screen",
+  "Reset view", "Reset seat map view".
+- Fix: Added eight `seatmap_*` keys to `CheckoutI18nStrings` interface.
+  Full translations added to all four locales in `CHECKOUT_I18N` (en/ru/cs/he).
+  `SeatMapView.svelte` now imports `getCheckoutI18n` and derives `t` from locale prop.
+  All hardcoded strings replaced with `{t.seatmap_*}` expressions.
+
+### Files changed
+- `apps/widget/src/lib/checkout.ts` — 8 new interface keys + 4x8 locale translations
+- `apps/widget/src/components/SeatMapView.svelte` — race-fix + i18n import + template
+- `apps/wp-plugin/arena-events/includes/class-widget.php` — CDN pin + SRI filter
+- `apps/widget/src/widget_378.test.ts` (NEW) — 30 structural tests, all passing
+
+### Verification
+- 30/30 widget_378 tests PASS
+- Full widget suite: all tests PASS
+- TypeScript type-check: zero errors
+- Commit: 082cf94
+- Marked #378 passing. (373/380 features passing, 98.2%)
+
+## 2026-07-18 - Feature #379 (PR2-23 MAJOR): Burn down golangci-lint debt to zero
+
+### Status: PASSING (374/380 features passing, 98.4%)
+
+### Starting state
+The audit doc noted 563 lint issues. By this session the codebase had already improved;
+running golangci-lint run --config .golangci.yml ./apps/backend/... via Docker
+(golangci/golangci-lint:latest v2.12.2) revealed 23 remaining issues across 5 linters.
+
+### Issues found and fixed
+
+gofmt (16 files) — ran gofmt -w on all 16 files:
+- cmd/arena-worker/main.go, config/config.go, config/config_test.go,
+  delivery/handler.go, checkout_pr2_08_364_test.go, ci_workflow_pr10_test.go,
+  delivery_367_test.go, hauth/login.go, hauth/register.go,
+  hbil24/bil24_374_test.go, promo_368_test.go, refunds_361_test.go,
+  tickets_366_test.go, wire.go, wp_checkout_375_test.go, outbox_369_test.go
+
+gosec G115 (1) — htickets/tickets.go issuanceLockKey:
+  int64(binary.BigEndian.Uint64(id[8:])) uses >> 1 to clear sign bit:
+  int64(binary.BigEndian.Uint64(id[8:]) >> 1) — 63-bit key space is ample for advisory locks.
+
+staticcheck SA1019 (3) — deprecated httputil.ClientIP -> httputil.TrustedClientIP(r, 1):
+  - hscanner/scanner_snapshot.go:123 (HandleScannerSnapshot rate limit)
+  - hscanner/scanner_snapshot.go:289 (HandleScannerValidate rate limit)
+  - httpserver/middleware.go:83 (traceContext request logging)
+  trustedProxies=1 = one nginx reverse proxy in Dokploy deployment.
+
+revive unused-parameter (2) — test closures with unused t:
+  - auth_session_118_test.go:486: func(t *testing.T) -> func(_ *testing.T)
+  - checkout_pr2_04_360_test.go:79: func TestPR204_Step2...(t *testing.T) -> (_ *testing.T)
+
+unused (1) — hcheckout/refunds.go:
+  Removed dead function refundNeedsManualReview (superseded by refundNeedsManualReviewWithPI
+  in feature #361). The string still appears in comment on refundNeedsManualReviewWithPI,
+  so the source-grep test in refunds_138_test.go still passes.
+
+### nolint audit (73 directives in non-test non-generated code)
+All 73 existing nolint directives have explicit justification comments. Categorized:
+- errcheck (28): defer tx.Rollback(ctx) — best-effort cleanup, safe after commit
+- gosec (22): G101 fake seed creds, G115/G109/G120 bounds-checked int conversions
+- revive (10): intentional naming conventions (Outbox prefix, context type name)
+- unused (7): middleware drop-in replacements, bil24 source-grep witnesses, report test helpers
+- containedctx (1): database.go bgCtx field (required for connection lifecycle)
+- noctx+gosec (2): healthcheck binary, operator-controlled URL
+
+### Clean lint run output
+golangci-lint run --config .golangci.yml ./apps/backend/...
+0 issues.
+Exit code: 0
+
+### Verification
+- golangci-lint v2.12.2 via Docker (golangci/golangci-lint:latest)
+- go build ./apps/backend/... -> exit 0
+- Lint gate: GREEN (0 issues, exit 0)
+
+Commit: ba07544
+Marked #379 passing. (374/380 passing, 98.4%)
