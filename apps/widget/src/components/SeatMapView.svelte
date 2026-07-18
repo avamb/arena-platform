@@ -14,6 +14,7 @@
   import { onMount, onDestroy } from 'svelte';
   import type { FeedSession, CategoryPrice, SeatStatusValue } from '../types.js';
   import { fetchSessionSchema } from '../api.js';
+  import { getCheckoutI18n } from '../lib/checkout.js';
   import {
     buildSeatMapSVG,
     applySeatStatusUpdate,
@@ -61,6 +62,9 @@
 
   const { session, locale = 'en', conflictKeys, selectedKeys = new Set(), onSeatTap, onSchemaLoaded, apiBase = '' }: Props = $props();
 
+  // ── i18n ────────────────────────────────────────────────────────────────────
+  const t = $derived(getCheckoutI18n(locale));
+
   // ── State ──────────────────────────────────────────────────────────────────
 
   let svgContainer: HTMLDivElement | undefined = $state();
@@ -79,11 +83,25 @@
 
   // ── Schema fetch ────────────────────────────────────────────────────────────
 
-  async function loadSchema(sessionId: string): Promise<void> {
+  /**
+   * Generation counter for stale-fetch guard (PR2-22).
+   *
+   * Incremented each time the session $effect fires. `loadSchema` captures the
+   * generation at call time and bails out before applying any state mutations if
+   * a newer session has already superseded it, preventing a slow fetch for an
+   * old session from overwriting the current session's data.
+   *
+   * Plain `let` — NOT $state — so writes inside effects do NOT re-trigger them.
+   */
+  let schemaGen = 0;
+
+  async function loadSchema(sessionId: string, gen: number): Promise<void> {
     schemaLoading = true;
     schemaError = null;
     try {
       const schema = await fetchSessionSchema(sessionId, apiBase);
+      // Stale-guard: bail if a newer session has superseded this fetch.
+      if (schemaGen !== gen) return;
       canvasW = schema.geometry.canvas.width || 800;
       canvasH = schema.geometry.canvas.height || 600;
       categoryPrices = schema.category_prices;
@@ -91,9 +109,11 @@
       svgHTML = buildSeatMapSVG(schema.geometry, schema.category_prices, seatStatuses);
       onSchemaLoaded?.(schema.geometry, schema.category_prices);
     } catch (err) {
-      schemaError = err instanceof Error ? err.message : 'Failed to load seat map';
+      if (schemaGen !== gen) return;
+      schemaError = err instanceof Error ? err.message : t.seatmap_error_load;
     } finally {
-      schemaLoading = false;
+      // Only clear the loading state for the current generation.
+      if (schemaGen === gen) schemaLoading = false;
     }
   }
 
@@ -397,8 +417,12 @@
   $effect(() => {
     const sessionId = session.id;
     const hasSchema = session.schema_url;
+    // Capture this generation so the async callback can detect if it's stale.
+    const gen = ++schemaGen;
 
-    void loadSchema(sessionId).then(() => {
+    void loadSchema(sessionId, gen).then(() => {
+      // Bail if superseded before applying poller/fit for the old session.
+      if (schemaGen !== gen) return;
       if (hasSchema) {
         startPoller(sessionId);
         // Auto-fit after schema loads.
@@ -492,13 +516,13 @@
 
 <div class="seat-map-wrap" data-locale={locale}>
   <!-- ── Toolbar ── -->
-  <div class="seat-map-toolbar" aria-label="Seat map controls">
-    <button class="ctrl-btn" onclick={applyFit} title="Fit map to screen" aria-label="Fit seat map to screen">
+  <div class="seat-map-toolbar" aria-label={t.seatmap_controls_label}>
+    <button class="ctrl-btn" onclick={applyFit} title={t.seatmap_fit_title} aria-label={t.seatmap_fit_aria}>
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
         <path d="M1 5V2h3M12 1h3v3M15 11v3h-3M4 15H1v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </button>
-    <button class="ctrl-btn" onclick={applyReset} title="Reset view" aria-label="Reset seat map view">
+    <button class="ctrl-btn" onclick={applyReset} title={t.seatmap_reset_title} aria-label={t.seatmap_reset_aria}>
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
         <path d="M8 1v3l3-3-3-3v3a6 6 0 1 0 5.66 4H12a4 4 0 1 1-4-4z" fill="currentColor"/>
       </svg>
@@ -523,12 +547,12 @@
     onkeydown={onContainerKeydown}
     onfocus={onContainerFocus}
     onfocusout={onContainerFocusOut}
-    aria-label="Interactive seat map"
+    aria-label={t.seatmap_aria_label}
     role="toolbar"
     tabindex="0"
   >
     {#if schemaLoading}
-      <div class="seat-map-state" aria-live="polite">Loading seat map…</div>
+      <div class="seat-map-state" aria-live="polite">{t.seatmap_loading}</div>
     {:else if schemaError}
       <div class="seat-map-state seat-map-error" role="alert">{schemaError}</div>
     {:else if svgHTML}

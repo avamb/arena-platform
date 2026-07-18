@@ -563,6 +563,23 @@ export interface CheckoutI18nStrings {
   redirecting_to_payment: string;
   /** Countdown suffix (e.g. "9:05 remaining"). */
   remaining: string;
+  // Seat map (PR2-22)
+  /** Shown while the seat map SVG schema is loading. */
+  seatmap_loading: string;
+  /** Default error message when the seat map schema fails to load. */
+  seatmap_error_load: string;
+  /** Accessible label for the interactive seat map container. */
+  seatmap_aria_label: string;
+  /** Accessible label for the seat map toolbar (fit/reset buttons). */
+  seatmap_controls_label: string;
+  /** Tooltip title for the "fit map" button. */
+  seatmap_fit_title: string;
+  /** Accessible label for the "fit map" button. */
+  seatmap_fit_aria: string;
+  /** Tooltip title for the "reset view" button. */
+  seatmap_reset_title: string;
+  /** Accessible label for the "reset view" button. */
+  seatmap_reset_aria: string;
 }
 
 /** Interpolate {key} placeholders in an i18n string. */
@@ -614,6 +631,14 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     ticket_plural: 'tickets',
     redirecting_to_payment: 'Redirecting to payment…',
     remaining: 'remaining',
+    seatmap_loading: 'Loading seat map…',
+    seatmap_error_load: 'Failed to load seat map',
+    seatmap_aria_label: 'Interactive seat map',
+    seatmap_controls_label: 'Seat map controls',
+    seatmap_fit_title: 'Fit map to screen',
+    seatmap_fit_aria: 'Fit seat map to screen',
+    seatmap_reset_title: 'Reset view',
+    seatmap_reset_aria: 'Reset seat map view',
   },
   ru: {
     email_label: 'Email',
@@ -659,6 +684,14 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     ticket_plural: 'билетов',
     redirecting_to_payment: 'Переход к оплате…',
     remaining: 'осталось',
+    seatmap_loading: 'Загрузка схемы зала…',
+    seatmap_error_load: 'Не удалось загрузить схему зала',
+    seatmap_aria_label: 'Интерактивная схема зала',
+    seatmap_controls_label: 'Управление схемой зала',
+    seatmap_fit_title: 'Вписать в экран',
+    seatmap_fit_aria: 'Вписать схему зала в экран',
+    seatmap_reset_title: 'Сбросить вид',
+    seatmap_reset_aria: 'Сбросить вид схемы зала',
   },
   cs: {
     email_label: 'E-mail',
@@ -704,6 +737,14 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     ticket_plural: 'vstupenek',
     redirecting_to_payment: 'Přesměrování na platbu…',
     remaining: 'zbývá',
+    seatmap_loading: 'Načítání mapy sedadel…',
+    seatmap_error_load: 'Nepodařilo se načíst mapu sedadel',
+    seatmap_aria_label: 'Interaktivní mapa sedadel',
+    seatmap_controls_label: 'Ovládání mapy sedadel',
+    seatmap_fit_title: 'Přizpůsobit obrazovce',
+    seatmap_fit_aria: 'Přizpůsobit mapu sedadel obrazovce',
+    seatmap_reset_title: 'Obnovit zobrazení',
+    seatmap_reset_aria: 'Obnovit zobrazení mapy sedadel',
   },
   he: {
     email_label: 'דוא"ל',
@@ -748,6 +789,14 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     ticket_plural: 'כרטיסים',
     redirecting_to_payment: 'מעביר לדף התשלום…',
     remaining: 'נותר',
+    seatmap_loading: 'טוען מפת מושבים…',
+    seatmap_error_load: 'לא ניתן היה לטעון את מפת המושבים',
+    seatmap_aria_label: 'מפת מושבים אינטראקטיבית',
+    seatmap_controls_label: 'פקדי מפת המושבים',
+    seatmap_fit_title: 'התאם למסך',
+    seatmap_fit_aria: 'התאם מפת מושבים למסך',
+    seatmap_reset_title: 'אפס תצוגה',
+    seatmap_reset_aria: 'אפס תצוגת מפת המושבים',
   },
 };
 
