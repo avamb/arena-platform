@@ -21918,3 +21918,65 @@ Two security issues in the Bil24 compatibility gateway:
 
 Commit: 02ea9ca
 Marked #374 passing.
+
+## 2026-07-18 - Feature #376 (PR2-20 MAJOR): Restore OpenAPI-first contract and add TS client-drift CI gate
+
+### Root cause
+The TypeScript client (index.d.ts) was stale — regenerating it with `openapi-typescript` failed
+because the openapi.yaml referenced 5 schemas that did not exist in components/schemas:
+- Channel (used by /v1/organizations/{org_id}/channels paths)
+- FeedToken (used by /v1/organizations/{org_id}/channels/{channel_id}/feed-tokens paths)
+- BarcodeBatch (used by /v1/barcode-batches paths)
+- ExternalAllocation (used by /v1/organizations/{org_id}/external-allocations paths)
+- ComplimentaryIssuance (used by /v1/organizations/{org_id}/complimentary paths)
+
+Additionally, there was no CI gate for TypeScript client drift — only Go types were checked.
+
+### Fix
+
+**apps/backend/openapi/openapi.yaml (MODIFIED)**
+- Added 5 missing schema definitions before the paths: section
+- Channel: id, org_id, name, type, settings, created_at, updated_at
+- FeedToken: id, channel_id, label, token, created_at, revoked_at
+- BarcodeBatch: id, label, status (enum: pending/approved/rejected), barcode_count, submitted_by, reviewed_by, reviewed_at, created_at
+- ExternalAllocation: id, org_id, session_id, partner_id, quantity, created_at, updated_at
+- ComplimentaryIssuance: id, org_id, session_id, tier_id, ticket_id, recipient_email, recipient_name, note, status, issued_by, revoked_at, created_at
+
+**apps/backend/openapi/clients/ts/index.d.ts (REGENERATED)**
+- Regenerated with node scripts/gen-ts-client.mjs
+- File grew from 21,988 lines to 26,531 lines
+- Now includes all public checkout/feed paths that were missing
+- All new schemas (Channel, FeedToken, BarcodeBatch, etc.) are now exported
+
+**scripts/gen-ts-client.mjs (MODIFIED)**
+- Added ~40 named type alias exports covering all major schema types:
+  identity/auth, organizations, sales channels/feed tokens, events/sessions/tiers,
+  checkout/payments, public feed/widget checkout, promo codes, barcodes/batches,
+  seating, tickets/delivery, complimentary/allocations, geo
+
+**.github/workflows/ci.yml (MODIFIED)**
+- Extended openapi-check job (Job 4) with TypeScript client drift gate:
+  - Added npm ci step to install openapi-typescript
+  - Added node scripts/gen-ts-client.mjs step to regenerate TS client
+  - Added git diff --exit-code apps/backend/openapi/clients/ts/index.d.ts drift check
+  - Job now fails if TS client is out of sync with openapi.yaml
+
+**apps/admin-web/src/lib/api/types.ts (MODIFIED)**
+- Added 40+ type exports from generated client covering all new schema types
+- Channel, FeedToken, EventItem, SessionItem, TicketTierItem, CheckoutSessionItem,
+  PricingLineItem, PaymentIntentItem, RefundItem, PromoCodeItem, BarcodeBatch,
+  ExternalAllocation, ComplimentaryIssuance, TicketItem, etc.
+
+**apps/backend/internal/platform/httpserver/openapi_376_test.go (COMMITTED)**
+- Pre-existing test file from earlier session, now committed with this feature
+- 20+ tests verifying all 4 feature steps
+
+### Verification
+- node scripts/gen-ts-client.mjs runs cleanly, zero errors
+- npm --prefix apps/admin-web run type-check passes (zero errors)
+- npm --prefix apps/widget run type-check passes (zero errors)
+- All paths tested by openapi_376_test.go are confirmed present in openapi.yaml
+- CI job now checks TS client drift via git diff
+
+Commit: 3eff0ff
+Marked #376 passing. (372/380 passing, 97.9%)
