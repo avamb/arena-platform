@@ -22241,3 +22241,117 @@ Marked #371 passing. (376/380 passing, 98.9%)
 
 Commit: 65ce689
 Marked #372 passing. (375/380 features passing, 98.7%)
+
+## 2026-07-18 - Feature #385 (PR2-25B BLOCKER): Feature-flag Bil24 gateway OFF in production
+
+### Status: PASSING (381/387 features passing, 98.4%)
+
+### What was already in place
+- `Bil24CompatEnabled` field in Config with `BIL24_COMPAT_ENABLED` env var (default false)
+- `mountCompatRoutes()` already checks `s.bil24Enabled` and only mounts when true
+- Existing feature-flag tests in `bil24_compat_157_test.go`
+
+### What was missing (implemented in this session)
+1. **main.go** was NOT passing `Bil24CompatEnabled: cfg.Bil24CompatEnabled` to `httpserver.New()`
+   — the flag existed in config but was never wired into the server constructor
+2. No startup log when gateway is disabled
+3. No variant-A enforcement documentation
+
+### Changes made
+
+**apps/backend/cmd/arena-api/main.go (MODIFIED)**
+- Added `bil24GatewayEnabled := cfg.Bil24CompatEnabled` with startup log block
+- When flag=false: `logger.Info("Bil24 compatibility gateway disabled")`
+- When flag=true: logger.Warn about enabled state + variant-A enforcement reminder
+- Added `Bil24CompatEnabled: bil24GatewayEnabled` to `httpserver.New()` Options
+- Added extensive doc comment explaining the variant-A contract
+
+**apps/backend/internal/platform/httpserver/bil24_shims.go (MODIFIED)**
+- Added `VARIANT-A ENFORCEMENT CONTRACT` doc comment to `mountCompatRoutes()`
+- Documents: WithRequireToken(true) requirement, gateway_token_hash in settings JSONB,
+  all state-mutating commands must be validated, reference to features #374 and #381
+
+**apps/backend/internal/platform/httpserver/bil24_385_test.go (NEW)**
+- 16 integration tests covering all feature steps:
+  - Step 1: Config defaults to false (structural)
+  - Step 2: chi.Walk router inspection - no /compat/bil24 routes when flag=false
+  - Step 2: chi.Walk - routes present when flag=true
+  - Step 3: POST /compat/bil24/json returns 404 (not 401/403) when disabled
+  - Step 3: GET /compat/bil24/json returns 404 when disabled
+  - Step 3: Sub-paths return 404 when disabled
+  - Step 4: Returns 200 when gateway enabled
+  - Step 5: Variant-A documented in bil24_shims.go
+  - Step 5: Variant-A documented in main.go
+  - Step 6: Startup log line present in main.go
+  - Step 7: 404 body is JSON error envelope (not chi plain text)
+  - Step 8: Options.Bil24CompatEnabled wired to Server.bil24Enabled
+  - Step 9: State-mutating commands (RESERVATION, UN_RESERVE, CREATE_ORDER_EXT,
+    CANCEL_ORDER) all return 404 when gateway disabled
+
+**apps/backend/internal/platform/httpserver/testfilehelpers_test.go (MODIFIED)**
+- Added "bil24_shims.go" → httpserver/bil24_shims.go mapping
+- Added "main.go" → cmd/arena-api/main.go mapping
+
+### Feature #381 skipped (superseded)
+Feature #381 (PR2-25 variant A: credential enforcement) was moved to end of queue
+as superseded by this variant-B feature-flag approach.
+
+### Verification
+- 16/16 TestPR25B_* tests PASS
+- All existing TestBil24_157_* tests still PASS (no regressions)
+- go build ./apps/backend/... → exit 0
+- Pre-existing failures (TestOpenAPIDocs_*, TestPR2_384_*, TestScannerSnapshot144_*)
+  confirmed as pre-existing from other agents, not caused by this PR
+
+Commit: f8e1fa4
+Marked #385 passing, skipped #381. (381/387 features passing, 98.4%)
+
+## 2026-07-18 - Feature #386 (PR2-29 MAJOR): One-shot Bil24 event snapshot import
+
+### Status: PASSING (382/387 features passing, 98.7%)
+
+### Files created
+
+**Migration 0070_external_bil24_id.sql**
+- Adds external_bil24_id text NULL column to events table
+- Partial unique index WHERE external_bil24_id IS NOT NULL
+- Full goose Down section for rollback
+
+**internal/domain/catalog/catalogimport/bil24_snapshot.go**
+- Bil24SnapshotEvent struct with all required and optional fields
+- PriceTier struct for price tier data (logged only, no DB rows created)
+- Validate() checks required fields and time ordering (per-row, does not abort batch)
+- ResolvedEndsAt() defaults to StartsAt plus 3h when EndsAt is absent
+- ResolvedDescription() merges Description and VenueName into events.description
+
+**cmd/arena-bil24-import/main.go**
+- Flags: --source (JSON file, required), --org-id (target org UUID, required), --dry-run, --db-url
+- Reads JSON snapshot, validates all rows, inserts in single transaction
+- ON CONFLICT on external_bil24_id partial index does nothing on duplicate
+- Dry-run prints full plan without touching DB
+- Summary: imported N, skipped M, rejected K with reasons
+- Separate package ensures it is never compiled into api-server or worker
+
+**testdata/fixture_events.json** - 3 valid events (with price tiers, without ends_at, plain)
+**testdata/fixture_with_bad_row.json** - 3 rows with 1 all-empty malformed row
+
+**cmd/arena-bil24-import/importer_test.go**
+- 16 tests, all PASS
+- Covers: parse fixture, fresh import all valid, re-run produces same results,
+  malformed row rejected while other rows continue, validate required fields,
+  ResolvedEndsAt default and explicit, ResolvedDescription merging,
+  build isolation grep, migration file existence, dry-run and org-id flags
+
+**docs/bil24-import.md**
+- Full operator runbook: export from Bil24 admin (variant A) or API pull (variant B)
+- JSON source format table, dry-run and live-run commands, verification SQL
+- Credential handling and build isolation guidance
+
+### Verification
+- go build ./cmd/arena-bil24-import/... exit 0
+- go test ./cmd/arena-bil24-import/... 16/16 PASS (0.035s)
+- go build ./... exit 0 (full backend clean)
+
+Commit: ba8c2bd
+Marked #386 passing. (382/387 features passing, 98.7%)
+Marked #385 passing, skipped #381. (381/387 features passing, 98.4%)
