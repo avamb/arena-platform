@@ -483,9 +483,11 @@ func TestSession118_FullVerification(t *testing.T) {
 		_ = s.handleAuthLogout // compile-time check
 	})
 
-	t.Run("step3_revocation_check_in_refresh_flow", func(_ *testing.T) {
+	t.Run("step3_revocation_check_in_refresh_flow", func(t *testing.T) {
 		// PR2-03: Refresh always hits DB for compromise detection.
-		// fakeLoginPool panics → proves DB path is reached.
+		// fakeLoginPool panics on BeginTx → catching the panic proves the DB
+		// path was reached. If no panic occurs, the handler returned early
+		// (bypassing the DB) and the test MUST fail.
 		ctx := context.Background()
 		store := redissession.NewMemStore()
 		exp := time.Now().UTC().Add(time.Hour)
@@ -500,8 +502,13 @@ func TestSession118_FullVerification(t *testing.T) {
 			sessionStore: store,
 		}
 
+		// CRITICAL: must assert the panic occurred, not silently swallow it.
+		// A missing panic means the handler short-circuited without hitting the
+		// DB — a security regression (PR2-03: no Redis-only short-circuit).
 		defer func() {
-			_ = recover() // fakeLoginPool panics → DB was reached (expected)
+			if r := recover(); r == nil {
+				t.Error("expected fakeLoginPool to panic: Refresh must always open a DB transaction for session-compromise detection (PR2-03); no panic = DB was not reached")
+			}
 		}()
 
 		r := httptest.NewRequest(http.MethodPost, "/v1/auth/refresh",

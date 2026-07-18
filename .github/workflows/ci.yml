@@ -161,6 +161,18 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      - name: Build arena-migrate
+        run: go build -o /tmp/arena-migrate ./apps/backend/cmd/arena-migrate
+
+      - name: Run database migrations
+        run: /tmp/arena-migrate up
+
+      - name: Build arena-seed
+        run: go build -o /tmp/arena-seed ./apps/backend/cmd/arena-seed
+
+      - name: Seed base fixtures
+        run: /tmp/arena-seed
+
       - name: Run integration tests (tagged)
         run: go test -tags=integration -timeout=25m ./...
 
