@@ -21980,3 +21980,73 @@ Additionally, there was no CI gate for TypeScript client drift — only Go types
 
 Commit: 3eff0ff
 Marked #376 passing. (372/380 passing, 97.9%)
+
+## 2026-07-18 - Feature #377 (PR2-21 BLOCKER): Make widget embeddable and wire live feed data
+
+### Status: PASSING (372/380 features passing, 97.9%)
+
+### Root cause
+Three bugs made the widget non-functional on third-party/WP embeds:
+
+1. Hardcoded relative URLs in postCheckoutStart, getCheckoutStatus, postCheckoutRecover (api.ts)
+   - These work only behind the same-origin demo proxy
+   - On WP or third-party sites, fetch /v1/... went to the host page origin (404)
+
+2. Dead code / synthetic stub - loadFromFeed was never called from onMount
+   - Instead onMount created a fake event with empty tiers:[] and buyer_fields:[]
+   - No tier pricing, no buyer form fields ever rendered
+
+3. Blank widget after dead resume token - when 401 recovery failed or token returned 404,
+   the widget cleared the token and went to selecting stage but never loaded event data,
+   leaving a completely blank widget with no error message
+
+### Fix
+
+**apps/widget/src/api.ts**
+- Added apiBase = '' parameter to postCheckoutStart, getCheckoutStatus, postCheckoutRecover
+- All 3 functions now prefix their URL with ${apiBase}
+- fetchFeedEvent, fetchSessionSchema, fetchSeatStatus, fetchSeatStatusDelta already had apiBase
+
+**apps/widget/src/ArenaTickets.svelte**
+- Added api-base attribute (type: String) to customElement props
+- Added event-id attribute (type: String) to customElement props
+- Added autoDetectedBase $state and resolvedApiBase $derived (explicit api-base OR auto-detected)
+- In onMount: auto-detect from script[src*="arena-tickets"] src origin when embedding from another domain
+- In onMount: call loadFromFeed(normFeedToken, normEventId) instead of creating synthetic stub
+- loadFromFeed: properly documented, passes resolvedApiBase to fetchFeedEvent
+- loadOrderStatus: after 401 recovery failure, sets visible loadError and re-loads event
+- loadOrderStatus: after 404, clears token, sets loadError, re-loads event data
+- All API calls now pass resolvedApiBase: postCheckoutStart, getCheckoutStatus, postCheckoutRecover
+- SeatMapView now receives apiBase={resolvedApiBase}
+
+**apps/widget/src/components/SeatMapView.svelte**
+- Added apiBase?: string prop
+- fetchSessionSchema(sessionId, apiBase) call updated
+- startPoller passes apiBase to SeatStatusPoller config
+
+**apps/widget/src/lib/poller.ts**
+- Added apiBase?: string field to PollerConfig interface
+- SeatStatusPoller stores this.apiBase and passes it to fetchSeatStatus / fetchSeatStatusDelta
+
+**apps/widget/src/widget_377_test.ts (NEW)**
+- 30 structural tests covering all 4 steps:
+  - Step 1: all 8 fetch functions accept apiBase and build correct URLs
+  - Step 1b: SeatStatusPoller accepts apiBase, threads it to first tick
+  - Step 2: fetchFeedEvent returns real tiers and buyer_fields; verifies URL shape
+  - Step 3: ArenaTickets source declares api-base/event-id, auto-detects origin,
+    calls loadFromFeed, sets loadError on recovery failure, re-loads after 404
+
+### Key design decisions
+- resolvedApiBase = $derived(explicit api-base || autoDetectedBase)
+  - Svelte reactive: if user later sets api-base attribute, it auto-updates
+  - Auto-detect fires once on mount; same-origin pages keep '' (relative URLs)
+- event-id and session-id are separate: event-id loads the event, session-id deep-links
+- No backward-compat break: existing embeds without api-base still work (same-origin proxy)
+
+### Verification
+- 457/457 vitest tests PASS (including 30 new widget_377 tests)
+- tsc --noEmit clean
+- vite build clean (no warnings)
+
+Commit: 55da89e
+Marked #377 passing. (372/380 features passing, 97.9%)
