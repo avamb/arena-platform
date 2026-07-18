@@ -1,0 +1,18 @@
+[
+  {
+    "external_bil24_id": "BIL24-2001",
+    "title": "Valid Event",
+    "starts_at": "2026-09-15T19:00:00Z"
+  },
+  {
+    "external_bil24_id": "",
+    "title": "",
+    "starts_at": "0001-01-01T00:00:00Z"
+  },
+  {
+    "external_bil24_id": "BIL24-2003",
+    "title": "Another Valid Event",
+    "starts_at": "2026-10-01T19:00:00Z",
+    "ends_at":   "2026-10-01T21:00:00Z"
+  }
+]
