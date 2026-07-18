@@ -214,6 +214,18 @@ type Config struct {
 	SMTPUseTLS   bool      `env:"SMTP_USE_TLS"  required:"false" default:"true"`
 
 	// -------------------------------------------------------------------------
+	// Debug / fault-injection flags
+	// -------------------------------------------------------------------------
+	// DebugRoutesEnabled mounts the /v1/debug/* routes (e.g. /v1/debug/panic)
+	// for integration tests and developer tooling. MUST NOT be true in
+	// production — hard-refused by validateProduction.
+	DebugRoutesEnabled bool `env:"DEBUG_ROUTES_ENABLED" required:"false" default:"false"`
+	// FaultInjectOutboxAfterAudit forces a transaction rollback between the
+	// audit_events and outbox_events writes in /v1/echo to test atomicity.
+	// MUST NOT be true in production — hard-refused by validateProduction.
+	FaultInjectOutboxAfterAudit bool `env:"FAULT_INJECT_OUTBOX_AFTER_AUDIT" required:"false" default:"false"`
+
+	// -------------------------------------------------------------------------
 	// Bil24 compatibility gateway (feature #157)
 	// -------------------------------------------------------------------------
 	// Bil24CompatEnabled mounts the /compat/bil24/* API gateway when true.
@@ -536,6 +548,20 @@ func Load() (*Config, error) {
 	}
 	cfg.OutboxBatchSize = iBatch
 
+	// Debug routes flag.
+	b, err = getenvBool("DEBUG_ROUTES_ENABLED", false)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.DebugRoutesEnabled = b
+
+	// Fault-injection flag.
+	b, err = getenvBool("FAULT_INJECT_OUTBOX_AFTER_AUDIT", false)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.FaultInjectOutboxAfterAudit = b
+
 	// Bil24 compatibility gateway.
 	b, err = getenvBool("BIL24_COMPAT_ENABLED", false)
 	if err != nil {
@@ -792,7 +818,8 @@ func (c *Config) Validate() error {
 //   - dev auth enabled
 //   - wildcard CORS
 //   - query logging enabled
-//   - unsafe DB TLS mode (sslmode=disable or sslmode=allow)
+//   - unsafe DB TLS mode (absent, prefer, disable, or allow sslmode — only
+//     require, verify-ca, and verify-full are accepted)
 //   - unsigned local media (MEDIA_BACKEND=local without MEDIA_SIGNING_SECRET)
 //   - log-only email (EMAIL_MODE=log or not configured)
 //   - implicit/noop outbox mode (OUTBOX_MODE empty or noop)
@@ -838,10 +865,15 @@ func (c *Config) validateProduction() []error {
 		))
 	}
 
-	// 5. Unsafe DB TLS mode.
-	if unsafeDBTLS(c.DatabaseURL) {
+	// 5. DB TLS mode must be explicitly safe. Absent, prefer, disable, and allow
+	// are all rejected because they permit plaintext fallback. Only require,
+	// verify-ca, and verify-full enforce an encrypted connection with server
+	// certificate validation.
+	if !productionDBTLSSafe(c.DatabaseURL) {
 		errs = append(errs, fmt.Errorf(
-			"DATABASE_URL uses an unsafe TLS mode in production; use sslmode=require or sslmode=verify-full",
+			"DATABASE_URL uses an unsafe TLS mode in production"+
+				" (absent, prefer, disable, and allow sslmode are all rejected);"+
+				" explicitly set sslmode=require, sslmode=verify-ca, or sslmode=verify-full",
 		))
 	}
 
@@ -881,7 +913,80 @@ func (c *Config) validateProduction() []error {
 		))
 	}
 
+	// 10. APP_PUBLIC_URL must be a non-empty absolute https URL in production
+	// when EMAIL_MODE=smtp. Without it, email links are derived from request
+	// headers which can be spoofed; an empty value yields host-less links.
+	if c.EmailMode == EmailModeSMTP {
+		pub := strings.TrimSpace(c.AppPublicURL)
+		if pub == "" {
+			errs = append(errs, errors.New(
+				"APP_PUBLIC_URL is required in production when EMAIL_MODE=smtp"+
+					" (must be a non-empty absolute https URL, e.g. https://app.example.com)",
+			))
+		} else if !strings.HasPrefix(strings.ToLower(pub), "https://") {
+			errs = append(errs, fmt.Errorf(
+				"APP_PUBLIC_URL must start with https:// in production (got %q);"+
+					" http:// and relative URLs are forbidden",
+				pub,
+			))
+		}
+	}
+
+	// 11. Debug routes expose internal panic/slow endpoints and must never be
+	// enabled in production where an operator Dokploy variable could mount them.
+	if c.DebugRoutesEnabled {
+		errs = append(errs, errors.New(
+			"DEBUG_ROUTES_ENABLED must be false in production;"+
+				" debug endpoints (/v1/debug/panic etc.) are forbidden in production",
+		))
+	}
+
+	// 12. Fault-injection flags simulate internal failures for testing atomicity.
+	// They must never be active in production — their presence would cause real
+	// transactions to be artificially rolled back.
+	if c.FaultInjectOutboxAfterAudit {
+		errs = append(errs, errors.New(
+			"FAULT_INJECT_OUTBOX_AFTER_AUDIT must be false in production;"+
+				" fault injection is forbidden in production",
+		))
+	}
+
 	return errs
+}
+
+// Warnings returns non-fatal configuration warnings. Unlike Validate errors,
+// warnings do not prevent the process from starting but indicate suboptimal or
+// potentially insecure settings that should be investigated. The caller should
+// log each returned warning at warn level on startup.
+func (c *Config) Warnings() []string {
+	var w []string
+
+	// Warn when OTEL is configured with insecure transport to a non-localhost
+	// endpoint. OTEL_EXPORTER_OTLP_INSECURE=true sends traces/metrics over
+	// plaintext gRPC, which is acceptable for localhost collectors (e.g. a
+	// Jaeger sidecar) but leaks telemetry in transit when the collector is
+	// remote.
+	if c.OTLPEndpoint != "" && c.OTELInsecure {
+		// Extract the host part (strip optional :port suffix).
+		host := c.OTLPEndpoint
+		if idx := strings.LastIndex(host, ":"); idx >= 0 {
+			host = host[:idx]
+		}
+		// Strip brackets from IPv6 literals (e.g. [::1]).
+		host = strings.Trim(strings.ToLower(strings.TrimSpace(host)), "[]")
+		isLocal := host == "localhost" || host == "127.0.0.1" || host == "::1"
+		if !isLocal {
+			w = append(w, fmt.Sprintf(
+				"OTEL_EXPORTER_OTLP_INSECURE=true with non-localhost endpoint %q: "+
+					"telemetry is transmitted over plaintext gRPC; set "+
+					"OTEL_EXPORTER_OTLP_INSECURE=false or use a localhost/sidecar "+
+					"collector to avoid leaking traces in transit",
+				c.OTLPEndpoint,
+			))
+		}
+	}
+
+	return w
 }
 
 // isKnownDevSecret returns true when s matches a well-known development
@@ -904,13 +1009,58 @@ func isKnownDevSecret(s string) bool {
 	return false
 }
 
-// unsafeDBTLS returns true when the DATABASE_URL contains an unsafe sslmode
-// (disable or allow). Both modes transmit credentials without server
-// verification and are forbidden in production.
-func unsafeDBTLS(dsn string) bool {
+// extractSSLMode parses the sslmode query parameter from a PostgreSQL DSN.
+// Handles both URL form (postgres://…?sslmode=X) and key-value form
+// (host=… sslmode=X …). Returns "" when sslmode is not explicitly present.
+func extractSSLMode(dsn string) string {
+	dsn = strings.TrimSpace(dsn)
 	lower := strings.ToLower(dsn)
-	return strings.Contains(lower, "sslmode=disable") ||
-		strings.Contains(lower, "sslmode=allow")
+
+	// URL form: locate the query string and scan key=value pairs.
+	if strings.HasPrefix(lower, "postgres://") || strings.HasPrefix(lower, "postgresql://") {
+		qIdx := strings.IndexByte(lower, '?')
+		if qIdx < 0 {
+			return "" // no query string — sslmode absent
+		}
+		query := lower[qIdx+1:]
+		for query != "" {
+			var param string
+			if sep := strings.IndexByte(query, '&'); sep >= 0 {
+				param, query = query[:sep], query[sep+1:]
+			} else {
+				param, query = query, ""
+			}
+			if strings.HasPrefix(param, "sslmode=") {
+				return param[len("sslmode="):]
+			}
+		}
+		return "" // sslmode absent from query string
+	}
+
+	// Key-value form: space-separated key=value tokens.
+	for _, field := range strings.Fields(lower) {
+		if strings.HasPrefix(field, "sslmode=") {
+			return field[len("sslmode="):]
+		}
+	}
+	return "" // sslmode absent
+}
+
+// productionDBTLSSafe reports whether the DATABASE_URL explicitly specifies a
+// production-safe TLS mode: require, verify-ca, or verify-full.
+//
+// Absent sslmode and the modes prefer, disable, and allow are all rejected
+// because they allow plaintext fallback (pgx defaults to prefer when sslmode is
+// absent, which negotiates encryption but does not require it). Only the three
+// modes above mandate an encrypted connection with server certificate
+// verification and are therefore accepted in production.
+func productionDBTLSSafe(dsn string) bool {
+	switch extractSSLMode(dsn) {
+	case "require", "verify-ca", "verify-full":
+		return true
+	default:
+		return false
+	}
 }
 
 // -----------------------------------------------------------------------------

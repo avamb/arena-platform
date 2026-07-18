@@ -551,6 +551,24 @@ func TestValidate_Production_TableDriven(t *testing.T) {
 			wantInError: "unsafe TLS mode",
 		},
 		{
+			// sslmode=prefer negotiates encryption but falls back to plaintext,
+			// which is indistinguishable from disable in a MitM scenario.
+			name: "unsafe DB TLS (sslmode=prefer)",
+			mutate: func(c *Config) {
+				c.DatabaseURL = "postgres://arena:pw@host:5432/db?sslmode=prefer"
+			},
+			wantInError: "unsafe TLS mode",
+		},
+		{
+			// Absent sslmode: pgx defaults to prefer (plaintext fallback) — must
+			// be rejected in production.
+			name: "unsafe DB TLS (no sslmode)",
+			mutate: func(c *Config) {
+				c.DatabaseURL = "postgres://arena:pw@host:5432/db"
+			},
+			wantInError: "unsafe TLS mode",
+		},
+		{
 			name: "local media without signing secret",
 			mutate: func(c *Config) {
 				c.MediaBackend = "local"
@@ -616,6 +634,137 @@ func TestValidate_Production_TableDriven(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tc.wantInError) {
 				t.Errorf("expected error containing %q, got: %v", tc.wantInError, err)
+			}
+		})
+	}
+}
+
+// TestProductionDBTLSSafe verifies all accepted and rejected sslmode values for
+// the production TLS safety gate introduced in feature #371.
+// Each branch is exercised for both URL-form and key-value-form DSNs.
+func TestProductionDBTLSSafe(t *testing.T) {
+	cases := []struct {
+		name string
+		dsn  string
+		want bool
+	}{
+		// ---- Accepted modes ----
+		{
+			name: "require (URL form)",
+			dsn:  "postgres://u:p@h:5432/db?sslmode=require",
+			want: true,
+		},
+		{
+			name: "verify-full (URL form)",
+			dsn:  "postgres://u:p@h:5432/db?sslmode=verify-full",
+			want: true,
+		},
+		{
+			name: "verify-ca (URL form)",
+			dsn:  "postgres://u:p@h:5432/db?sslmode=verify-ca",
+			want: true,
+		},
+		{
+			name: "require (KV form)",
+			dsn:  "host=h user=u password=p dbname=db sslmode=require",
+			want: true,
+		},
+		{
+			name: "verify-full (KV form)",
+			dsn:  "host=h user=u password=p dbname=db sslmode=verify-full",
+			want: true,
+		},
+		{
+			name: "verify-ca (KV form)",
+			dsn:  "host=h user=u password=p dbname=db sslmode=verify-ca",
+			want: true,
+		},
+		{
+			// sslmode= can appear in the middle of a query string
+			name: "require mid-query string",
+			dsn:  "postgres://u:p@h:5432/db?connect_timeout=5&sslmode=require&application_name=arena",
+			want: true,
+		},
+		// ---- Rejected modes ----
+		{
+			// pgx defaults to prefer when sslmode is absent — reject.
+			name: "absent sslmode (URL form, no query string)",
+			dsn:  "postgres://u:p@h:5432/db",
+			want: false,
+		},
+		{
+			// Query string present but sslmode missing
+			name: "absent sslmode (URL form, other params only)",
+			dsn:  "postgres://u:p@h:5432/db?connect_timeout=5",
+			want: false,
+		},
+		{
+			name: "absent sslmode (KV form)",
+			dsn:  "host=h user=u dbname=db",
+			want: false,
+		},
+		{
+			// prefer negotiates encryption but falls back to plaintext.
+			name: "prefer (URL form)",
+			dsn:  "postgres://u:p@h:5432/db?sslmode=prefer",
+			want: false,
+		},
+		{
+			name: "prefer (KV form)",
+			dsn:  "host=h sslmode=prefer dbname=db",
+			want: false,
+		},
+		{
+			name: "disable (URL form)",
+			dsn:  "postgres://u:p@h:5432/db?sslmode=disable",
+			want: false,
+		},
+		{
+			name: "disable (KV form)",
+			dsn:  "host=h sslmode=disable dbname=db",
+			want: false,
+		},
+		{
+			name: "allow (URL form)",
+			dsn:  "postgres://u:p@h:5432/db?sslmode=allow",
+			want: false,
+		},
+		{
+			name: "allow (KV form)",
+			dsn:  "host=h sslmode=allow dbname=db",
+			want: false,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			got := productionDBTLSSafe(tc.dsn)
+			if got != tc.want {
+				t.Errorf("productionDBTLSSafe(%q) = %v, want %v", tc.dsn, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestValidate_Production_DBTLSAcceptedModes verifies that all three accepted
+// sslmode values (require, verify-ca, verify-full) pass production validation.
+func TestValidate_Production_DBTLSAcceptedModes(t *testing.T) {
+	cases := []struct {
+		name string
+		dsn  string
+	}{
+		{"sslmode=require", "postgres://arena:strongpw@db.example.com:5432/arena?sslmode=require"},
+		{"sslmode=verify-ca", "postgres://arena:strongpw@db.example.com:5432/arena?sslmode=verify-ca"},
+		{"sslmode=verify-full", "postgres://arena:strongpw@db.example.com:5432/arena?sslmode=verify-full"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := validProductionBase()
+			cfg.DatabaseURL = tc.dsn
+			if err := cfg.Validate(); err != nil {
+				t.Errorf("expected valid production config with %q, got: %v", tc.dsn, err)
 			}
 		})
 	}
