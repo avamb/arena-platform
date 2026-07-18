@@ -72,13 +72,19 @@ export function clearSchemaCache(): void {
 /**
  * Fetch the full event detail (including sessions) from the public feed.
  *
+ * @param feedToken  Public feed token.
+ * @param eventId    Event UUID.
+ * @param apiBase    Optional API base URL (e.g. "https://api.example.com").
+ *                   When empty (default) the request uses a relative URL so
+ *                   same-origin deployments work without configuration.
  * @throws Error when the response is non-2xx.
  */
 export async function fetchFeedEvent(
   feedToken: string,
   eventId: string,
+  apiBase = '',
 ): Promise<FeedEventDetailResponse> {
-  const url = `/v1/public/feeds/${encodeURIComponent(feedToken)}/events/${encodeURIComponent(eventId)}`;
+  const url = `${apiBase}/v1/public/feeds/${encodeURIComponent(feedToken)}/events/${encodeURIComponent(eventId)}`;
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`fetchFeedEvent HTTP ${res.status}: ${res.statusText}`);
@@ -95,10 +101,12 @@ export async function fetchFeedEvent(
  * returned immediately without JSON parsing.  The schema is treated as
  * immutable once cached because the ETag equals the geometry_checksum.
  *
+ * @param sessionId  Event session UUID.
+ * @param apiBase    Optional API base URL (default: relative).
  * @throws Error when the response is non-2xx (and not 304).
  */
-export async function fetchSessionSchema(sessionId: string): Promise<SchemaResponse> {
-  const url = `/v1/event-sessions/${encodeURIComponent(sessionId)}/schema`;
+export async function fetchSessionSchema(sessionId: string, apiBase = ''): Promise<SchemaResponse> {
+  const url = `${apiBase}/v1/event-sessions/${encodeURIComponent(sessionId)}/schema`;
 
   const cached = schemaCache.get(sessionId);
   const headers: Record<string, string> = {};
@@ -128,10 +136,12 @@ export async function fetchSessionSchema(sessionId: string): Promise<SchemaRespo
 /**
  * Fetch the full seat-status snapshot for a session.
  *
+ * @param sessionId  Event session UUID.
+ * @param apiBase    Optional API base URL (default: relative).
  * @throws Error when the response is non-2xx.
  */
-export async function fetchSeatStatus(sessionId: string): Promise<SeatStatusResponse> {
-  const url = `/v1/event-sessions/${encodeURIComponent(sessionId)}/seat-status`;
+export async function fetchSeatStatus(sessionId: string, apiBase = ''): Promise<SeatStatusResponse> {
+  const url = `${apiBase}/v1/event-sessions/${encodeURIComponent(sessionId)}/seat-status`;
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`fetchSeatStatus HTTP ${res.status}: ${res.statusText}`);
@@ -143,14 +153,18 @@ export async function fetchSeatStatus(sessionId: string): Promise<SeatStatusResp
  * Fetch a seat-status delta since a given version cursor.
  * Returns only rows whose status changed after `sinceVersion`.
  *
+ * @param sessionId    Event session UUID.
+ * @param sinceVersion Version cursor from the last full/delta fetch.
+ * @param apiBase      Optional API base URL (default: relative).
  * @throws Error when the response is non-2xx.
  */
 export async function fetchSeatStatusDelta(
   sessionId: string,
   sinceVersion: number,
+  apiBase = '',
 ): Promise<SeatStatusResponse> {
   const url =
-    `/v1/event-sessions/${encodeURIComponent(sessionId)}/seat-status` +
+    `${apiBase}/v1/event-sessions/${encodeURIComponent(sessionId)}/seat-status` +
     `?since_version=${sinceVersion}`;
   const res = await fetch(url);
   if (!res.ok) {
@@ -168,14 +182,19 @@ export async function fetchSeatStatusDelta(
  * and returns a `redirect_url` for the payment provider plus a `checkout_token`
  * for subsequent status / recovery calls.
  *
+ * @param feedToken  Public feed token.
+ * @param payload    Checkout start payload.
+ * @param apiBase    Optional API base URL (e.g. "https://api.example.com").
+ *                   When empty (default) the request uses a relative URL.
  * @throws ApiError when the response is non-2xx — carries `status`, `code`,
  *         and `details` (e.g. `details.conflicts` on a 409 seat conflict).
  */
 export async function postCheckoutStart(
   feedToken: string,
   payload: CheckoutStartPayload,
+  apiBase = '',
 ): Promise<CheckoutStartResponse> {
-  const url = `/v1/public/feeds/${encodeURIComponent(feedToken)}/checkout/start`;
+  const url = `${apiBase}/v1/public/feeds/${encodeURIComponent(feedToken)}/checkout/start`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -228,12 +247,16 @@ export async function postCheckoutStart(
  *   expired  — hold expired; call `postCheckoutRecover` if recoverable
  *   failed   — payment abandoned; terminal
  *
+ * @param checkoutToken  Anonymous checkout token from checkout/start.
+ * @param apiBase        Optional API base URL (e.g. "https://api.example.com").
+ *                       When empty (default) the request uses a relative URL.
  * @throws Error when the response is non-2xx.
  */
 export async function getCheckoutStatus(
   checkoutToken: string,
+  apiBase = '',
 ): Promise<CheckoutStatusResponse> {
-  const url = `/v1/public/checkout/${encodeURIComponent(checkoutToken)}`;
+  const url = `${apiBase}/v1/public/checkout/${encodeURIComponent(checkoutToken)}`;
   const res = await fetch(url);
   if (!res.ok) {
     let detail = '';
@@ -279,6 +302,9 @@ export async function getCheckoutStatus(
  *
  * Should only be called when `getCheckoutStatus` returns `expired`.
  *
+ * @param checkoutToken  Anonymous checkout token from checkout/start.
+ * @param apiBase        Optional API base URL (e.g. "https://api.example.com").
+ *                       When empty (default) the request uses a relative URL.
  * @throws ApiError when the response is non-2xx.  A 409 carries:
  *   - `code = 'reservation.seats_conflict'` with `details.conflicts` (per-seat list)
  *   - `code = 'reservation.over_capacity'`  with `details.tier_id` / `details.requested`
@@ -286,8 +312,9 @@ export async function getCheckoutStatus(
  */
 export async function postCheckoutRecover(
   checkoutToken: string,
+  apiBase = '',
 ): Promise<CheckoutRecoverResponse> {
-  const url = `/v1/public/checkout/${encodeURIComponent(checkoutToken)}/recover`;
+  const url = `${apiBase}/v1/public/checkout/${encodeURIComponent(checkoutToken)}/recover`;
   const res = await fetch(url, { method: 'POST' });
   if (!res.ok) {
     let detail = '';

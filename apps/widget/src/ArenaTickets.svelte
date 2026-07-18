@@ -3,8 +3,10 @@
     tag: 'arena-tickets',
     props: {
       feedToken: { type: 'String', attribute: 'feed-token' },
+      eventId: { type: 'String', attribute: 'event-id' },
       sessionId: { type: 'String', attribute: 'session-id' },
       locale: { type: 'String', attribute: 'locale' },
+      apiBase: { type: 'String', attribute: 'api-base' },
     },
   }}
 />
@@ -49,13 +51,21 @@
   interface Props {
     /** The public feed token identifying the event/catalogue. */
     feedToken?: string;
+    /** The event UUID to load via the public feed. Required for live data. */
+    eventId?: string;
     /** Optional session ID to deep-link into a specific event session. */
     sessionId?: string;
     /** BCP-47 locale tag, e.g. "en", "ru", "de". Defaults to "en". */
     locale?: string;
+    /**
+     * Base URL of the Arena API server (e.g. "https://api.tickets.example.com").
+     * When omitted, the widget tries to infer the origin from the script src
+     * attribute on mount. Falls back to relative URLs (same-origin proxy).
+     */
+    apiBase?: string;
   }
 
-  const { feedToken = '', sessionId = '', locale = 'en' }: Props = $props();
+  const { feedToken = '', eventId = '', sessionId = '', locale = 'en', apiBase = '' }: Props = $props();
 
   /**
    * Host element reference for CustomEvent dispatch (WID-S5).
@@ -67,10 +77,27 @@
 
   const normLocale = $derived(parseLocale(locale));
   const normFeedToken = $derived(parseFeedToken(feedToken));
+  const normEventId = $derived(parseSessionId(eventId)); // reuse UUID parser
   const normSessionId = $derived(parseSessionId(sessionId));
   const hasToken = $derived(normFeedToken !== '');
   const dir = $derived(isRtlLocale(normLocale) ? 'rtl' : 'ltr');
   const t = $derived(getCheckoutI18n(normLocale));
+
+  /**
+   * Auto-detected API base from the script src origin (set once on mount).
+   * Empty string means same-origin / relative URLs.
+   */
+  let autoDetectedBase = $state('');
+
+  /**
+   * Resolved API base URL. Explicit `api-base` attribute takes precedence.
+   * When absent, auto-detected on mount from the widget script's src origin
+   * so cross-origin embeds (WordPress, third-party pages) reach the correct
+   * backend instead of sending requests to the host page's own origin.
+   */
+  const resolvedApiBase = $derived(
+    apiBase.trim().replace(/\/$/, '') || autoDetectedBase,
+  );
 
   // ── Event data ─────────────────────────────────────────────────────────────
 
@@ -162,6 +189,24 @@
   // ── Feed loading ────────────────────────────────────────────────────────────
 
   onMount(() => {
+    // Auto-detect apiBase from the widget script's src when not set explicitly.
+    if (!apiBase) {
+      try {
+        const script =
+          (document.querySelector('script[src*="arena-tickets"]') as HTMLScriptElement | null) ??
+          (document.currentScript as HTMLScriptElement | null);
+        if (script?.src) {
+          const u = new URL(script.src);
+          // Only set a cross-origin base; same-origin stays relative ('').
+          if (u.origin !== window.location.origin) {
+            autoDetectedBase = u.origin;
+          }
+        }
+      } catch {
+        // Non-browser or URL parse failure — keep empty (relative URLs).
+      }
+    }
+
     // Check for checkout_token in URL or sessionStorage first.
     const urlToken = getCheckoutTokenFromSearch(window.location.search);
     const storedToken = restoreCheckoutToken();
@@ -175,47 +220,22 @@
       return;
     }
 
-    if (!normFeedToken || !normSessionId) return;
+    if (!normFeedToken || !normEventId) return;
 
-    loading = true;
-    loadError = null;
-
-    // Set a minimal synthetic event so the seat map still renders.
-    event = {
-      id: normSessionId,
-      org_id: '',
-      name: '',
-      status: 'published',
-      start_at: new Date().toISOString(),
-      end_at: new Date().toISOString(),
-      visibility: 'public',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      sessions: [
-        {
-          id: normSessionId,
-          start_at: new Date().toISOString(),
-          end_at: new Date().toISOString(),
-          capacity_total: 0,
-          status: 'published',
-          admission_mode: 'assigned_seats',
-          schema_url: `/v1/event-sessions/${normSessionId}/schema`,
-          seat_status_url: `/v1/event-sessions/${normSessionId}/seat-status`,
-          buyer_fields: [],
-          tiers: [],
-        },
-      ],
-    };
-    selectedSession = event.sessions[0] ?? null;
-    loading = false;
+    // Load real event data from the public feed API.
+    loadFromFeed(normFeedToken, normEventId);
   });
 
-  // If an event-id is ever added as an attribute, load via the feed.
-  async function loadFromFeed(token: string, eventId: string): Promise<void> {
+  /**
+   * Load the event and its sessions from the public feed API.
+   * Populates `event`, `selectedSession`, tiers, and buyer_fields.
+   * Replaces the previous synthetic-stub approach.
+   */
+  async function loadFromFeed(token: string, evId: string): Promise<void> {
     loading = true;
     loadError = null;
     try {
-      const data = await fetchFeedEvent(token, eventId);
+      const data = await fetchFeedEvent(token, evId, resolvedApiBase);
       event = data.event;
       selectedSession = pickInitialSession(data.event, normSessionId);
     } catch (err) {
@@ -224,9 +244,6 @@
       loading = false;
     }
   }
-
-  // Expose for future use.
-  void loadFromFeed;
 
   // ── Schema loaded callback ─────────────────────────────────────────────────
 
@@ -318,7 +335,7 @@
         gaItems,
         selectedSession.buyer_fields as import('./lib/checkout.js').BuyerFieldConfig[],
       );
-      const response = await postCheckoutStart(normFeedToken, payload);
+      const response = await postCheckoutStart(normFeedToken, payload, resolvedApiBase);
       // Save token in case user returns after the payment page.
       saveCheckoutToken(response.checkout_token);
       checkoutToken = response.checkout_token;
@@ -353,7 +370,7 @@
 
   async function loadOrderStatus(token: string): Promise<void> {
     try {
-      orderStatus = await getCheckoutStatus(token);
+      orderStatus = await getCheckoutStatus(token, resolvedApiBase);
       // WID-T3: use server-side expires_at from order-status to drive countdown.
       holdExpiresAt = orderStatus.expires_at ?? null;
       // WID-S5: notify host page about terminal order outcomes.
@@ -376,7 +393,7 @@
       if (apiErr?.status === 401) {
         // WID-T3: Token may have expired — attempt silent recovery without page reload.
         try {
-          const recovered = await postCheckoutRecover(token);
+          const recovered = await postCheckoutRecover(token, resolvedApiBase);
           holdExpiresAt = recovered.expires_at;
           const newToken = recovered.checkout_token;
           checkoutToken = newToken;
@@ -388,18 +405,32 @@
           // Reload status with the refreshed token.
           await loadOrderStatus(newToken);
           return;
-        } catch {
-          // Recovery also failed — clear session and go back to seat selection.
+        } catch (recoveryErr) {
+          // Recovery also failed — clear token, set visible error, fall back
+          // to normal init so the user can start a fresh checkout.
           clearCheckoutToken();
           checkoutToken = null;
+          loadError =
+            recoveryErr instanceof Error ? recoveryErr.message : t.error_recovery;
           stage = 'selecting';
+          // Re-load event data so the widget is not left blank.
+          if (normFeedToken && normEventId) {
+            void loadFromFeed(normFeedToken, normEventId);
+          }
           return;
         }
       }
-      // 404 = token doesn't exist in the backend; clear and reset.
+      // 404 = token doesn't exist in the backend; clear and reset to normal init.
       if (apiErr?.status === 404) {
         clearCheckoutToken();
         checkoutToken = null;
+        loadError = err instanceof Error ? err.message : t.error_order_status;
+        stage = 'selecting';
+        // Re-load event data so the widget is not left blank.
+        if (normFeedToken && normEventId) {
+          void loadFromFeed(normFeedToken, normEventId);
+        }
+        return;
       }
       loadError = err instanceof Error ? err.message : t.error_order_status;
       stage = 'selecting';
@@ -411,7 +442,7 @@
     orderActionLoading = true;
     orderActionError = null;
     try {
-      const recovered = await postCheckoutRecover(checkoutToken);
+      const recovered = await postCheckoutRecover(checkoutToken, resolvedApiBase);
       // Update hold expiry with the fresh timestamp from recovery (WID-S1 fix #3).
       holdExpiresAt = recovered.expires_at;
       // WID-T2: notify host page that session was successfully recovered.
@@ -420,7 +451,7 @@
         expiresAt: recovered.expires_at,
       });
       // Re-load status after recovery attempt.
-      orderStatus = await getCheckoutStatus(checkoutToken);
+      orderStatus = await getCheckoutStatus(checkoutToken, resolvedApiBase);
     } catch (err) {
       // WID-S2: parse nested envelope 409 seat conflicts from recovery and
       // surface them on the seat map so the user sees which seats are gone.
@@ -537,6 +568,7 @@
             {conflictKeys}
             {onSeatTap}
             {onSchemaLoaded}
+            apiBase={resolvedApiBase}
           />
         {:else if selectedSession}
           <div class="arena-tickets-ga" aria-label="General admission session">

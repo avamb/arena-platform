@@ -19,6 +19,11 @@ export interface PollerConfig {
   /** Session ID to poll seat status for. */
   sessionId: string;
   /**
+   * Base URL for API requests (e.g. "https://api.example.com").
+   * When empty (default) the poller uses relative URLs (same-origin proxy).
+   */
+  apiBase?: string;
+  /**
    * Polling interval in ms when the browser tab is visible.
    * Must be between 2 000 and 5 000 ms per spec (default: 3 000).
    */
@@ -55,6 +60,7 @@ export interface PollerConfig {
  */
 export class SeatStatusPoller {
   private readonly sessionId: string;
+  private readonly apiBase: string;
   private readonly normalInterval: number;
   private readonly hiddenInterval: number;
   private readonly onUpdate: PollerConfig['onUpdate'];
@@ -67,6 +73,7 @@ export class SeatStatusPoller {
 
   constructor(config: PollerConfig) {
     this.sessionId = config.sessionId;
+    this.apiBase = config.apiBase ?? '';
     this.normalInterval = config.normalInterval ?? 3_000;
     this.hiddenInterval = config.hiddenInterval ?? 30_000;
     this.onUpdate = config.onUpdate;
@@ -132,10 +139,10 @@ export class SeatStatusPoller {
     try {
       let response;
       if (this.isFirstFetch) {
-        response = await fetchSeatStatus(this.sessionId);
+        response = await fetchSeatStatus(this.sessionId, this.apiBase);
         this.isFirstFetch = false;
       } else {
-        response = await fetchSeatStatusDelta(this.sessionId, this.currentVersion);
+        response = await fetchSeatStatusDelta(this.sessionId, this.currentVersion, this.apiBase);
       }
       this.currentVersion = response.status_version;
       this.onUpdate(response.seats, response.status_version);

@@ -51,9 +51,15 @@
     onSeatTap?: (seatKey: string, status: SeatStatusValue) => void;
     /** Called after the seat map schema is loaded with geometry + category prices. */
     onSchemaLoaded?: (geometry: import('../types.js').Geometry, categoryPrices: import('../types.js').CategoryPrice[]) => void;
+    /**
+     * Base URL for all API requests (e.g. "https://api.example.com").
+     * Passed through to fetchSessionSchema and the seat-status poller so
+     * cross-origin embeds reach the correct backend.
+     */
+    apiBase?: string;
   }
 
-  const { session, locale = 'en', conflictKeys, selectedKeys = new Set(), onSeatTap, onSchemaLoaded }: Props = $props();
+  const { session, locale = 'en', conflictKeys, selectedKeys = new Set(), onSeatTap, onSchemaLoaded, apiBase = '' }: Props = $props();
 
   // ── State ──────────────────────────────────────────────────────────────────
 
@@ -77,7 +83,7 @@
     schemaLoading = true;
     schemaError = null;
     try {
-      const schema = await fetchSessionSchema(sessionId);
+      const schema = await fetchSessionSchema(sessionId, apiBase);
       canvasW = schema.geometry.canvas.width || 800;
       canvasH = schema.geometry.canvas.height || 600;
       categoryPrices = schema.category_prices;
@@ -99,6 +105,7 @@
     poller?.stop();
     poller = new SeatStatusPoller({
       sessionId,
+      apiBase,
       normalInterval: 3_000,
       hiddenInterval: 30_000,
       onUpdate(seats, _version) {
