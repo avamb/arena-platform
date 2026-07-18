@@ -52,6 +52,7 @@ needs_owner_decision
 | ADR-030 | Launch jurisdictions | needs_owner_decision | Do not assume global legal baseline | Pricing, taxes, payment methods, SCA, privacy and accessibility depend on region |
 | ADR-031 | All-in pricing posture | proposed | Platform-owned totals with clear fee/tax breakdown and all-in presentation where required | Reduces compliance and buyer-trust risk |
 | ADR-032 | Source-of-truth precedence | proposed | Before approval: guardrails + decision log + clarification register override older research conflicts; after approval: master spec wins for implementation | Prevents stale strategy notes from driving implementation |
+| ADR-033 | Internal package layout — handler-centric monolith | accepted | Business logic lives in `internal/platform/httpserver/h*` handlers and `internal/platform/*` services directly on top of sqlc queries. `internal/domain/` and `internal/app/` directories exist but are intentionally empty. No extraction into DDD application/domain layers is planned until a concrete bounded-context boundary justifies the split. | 374 of 380 features implemented in this layout with no blocking friction. Extraction is expensive and premature; handler-centric layout is idiomatic for a Go modular monolith at this scale. Accepted on 2026-07-18. |
 
 ## Product Strategy Conflicts To Resolve
 

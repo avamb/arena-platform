@@ -1,8 +1,8 @@
 # Current Implementation Overview
 
-Обновлено: 2026-06-25
+Обновлено: 2026-07-18
 
-Статус: `living document`, синхронный с кодом по состоянию на 2026-06-25 (AutoForge Wave 20, 171/171 passing features, feature backlog 188 total).
+Статус: `living document`, синхронный с кодом по состоянию на 2026-07-18 (AutoForge PR2 audit / Wave 20+, 374/380 passing features).
 
 Цель документа: зафиксировать фактически реализованный scope backend-моноolith'а `arena_new`, чтобы устранить рассинхрон между master-спецификацией (`12_master_platform_specification_ru.md`), initial Go спецификацией (`13_backend_go_initial_specification_ru.md`) и реальным кодом в `apps/backend/`.
 
@@ -12,11 +12,11 @@
 
 - Modular monolith на Go 1.24, `net/http` + chi.
 - Layout `apps/backend/internal/`:
-  - `adapters/` — внешние интеграции: `http` (handlers + сгенерированные OpenAPI типы), `postgres` (sqlc-генерированный gen + `.sql` queries), `redis`, `stripe`, `stripebilling`, `allpay`, `email`.
+  - `adapters/` — внешние интеграции: `http` (handlers + сгенерированные OpenAPI типы), `postgres` (hand-maintained gen/ + `.sql` queries; следует sqlc v1 conventions), `redis`, `stripe`, `stripebilling`, `allpay`, `email`.
   - `platform/` — cross-cutting сервисы: `auth`, `permissions`, `audit`, `outbox`, `idempotency`, `ratelimit`, `i18n`, `ids`, `clock`, `logging`, `observability`, `telemetry`, `httpserver`, `worker`, `database`/`db`, `config`, `delivery`, `reporting`, `reportdelivery`, `redissession`, `users`.
   - `payments/` — payment provider abstraction + routing + webhook.
-  - `migrations/sql/` — embedded goose migrations 0001..0041.
-  - `domain/`, `app/` — каталоги существуют, но не используются под классические DDD-слои (use cases/aggregates). Бизнес-логика сейчас живёт в `adapters/http/openapi` и `platform/*` сервисах поверх sqlc-queries. Если будет принято решение вынести явные `application` / `domain` слои — это требует ADR (отклонение от изначального плана из doc 13).
+  - `migrations/sql/` — embedded goose migrations 0001..0069.
+  - `domain/`, `app/` — каталоги существуют, но намеренно пусты. Бизнес-логика живёт в `platform/httpserver/h*` handlers и `platform/*` сервисах поверх gen/ queries (handler-centric layout, принят как ADR-033). Вынесение в классические DDD application/domain слои отложено до появления конкретного bounded-context boundary.
 
 ## 2. Bounded Contexts / Inventory
 
@@ -24,15 +24,17 @@
 
 | Контекст | Migrations (ключевые) | Query file(s) |
 |---|---|---|
-| Identity & users | 0001..0005 | `users.sql`, `password_reset_tokens.sql`, `refresh_tokens.sql`, `sessions.sql` |
-| Organizations & memberships | early | `orgs.sql`, `memberships.sql`, `rbac.sql` |
-| Catalog (events, venues, geo) | 00xx | `events.sql`, `venues.sql`, `geo.sql`, `channels.sql`, `event_publications.sql` |
+| Identity & users | 0001..0005, 0065 | `users.sql`, `password_reset_tokens.sql`, `refresh_tokens.sql`, `sessions.sql` |
+| Organizations & memberships | early | `orgs.sql`, `memberships.sql`, `rbac.sql`, `operator_networks.sql` |
+| Catalog (events, venues, geo) | 00xx, 0050, 0051, 0052 | `events.sql`, `venues.sql`, `geo.sql`, `channels.sql`, `event_publications.sql` |
 | Ticket tiers & pricing | 0022, 0023 | `ticket_tiers.sql`, `promo_codes.sql` |
-| Inventory & reservations | early..0024 | `inventory_ledger.sql`, `reservations.sql` |
-| Checkout & payments | 0024, 0025, 0037 | `payment_intents.sql`, `stripe_billing.sql` + `internal/payments/` |
-| Tickets & credentials | 0026, 0027, 0029, 0039 | `tickets.sql`, `ticket_credentials.sql`, `barcodes.sql`, `barcode_batches.sql` |
+| Inventory & reservations | early..0024, 0063 | `inventory_ledger.sql`, `reservations.sql`, `reservation_seats.sql`, `reservation_ga_items.sql` |
+| Checkout & payments | 0024, 0025, 0037, 0060 | `checkout_sessions.sql`, `payment_intents.sql`, `payment_provider_configs.sql`, `stripe_billing.sql` + `internal/payments/` |
+| Tickets & credentials | 0026, 0027, 0029, 0039, 0059, 0066 | `tickets.sql`, `ticket_credentials.sql`, `barcodes.sql`, `barcode_batches.sql` |
 | Refunds | 0028 | `refunds.sql` |
-| Delivery (email/print/etc.) | 0030 | `delivery_jobs.sql` |
+| Delivery (email/print/etc.) | 0030, 0064, 0067 | `delivery_jobs.sql` |
+| Scanner & scan events | 0055 | `scan_events.sql` |
+| Seating plans & assigned seats | 0057, 0058 | `seating_plans.sql`, `session_seats.sql`, `session_seating_public.sql` |
 | External allocations / scanner ingestion | 0035 | `external_allocations.sql` |
 | Complimentary tickets | 0036, 0038 | `complimentary_issuances.sql` |
 | Reporting | 0032 | `event_reports.sql` |
@@ -40,11 +42,14 @@
 | Superadmin | 0034 | `superadmin.sql` |
 | Webhook delivery | 0040 | `webhook_subscribers.sql` |
 | Reconciliation | 0041 | `reconciliation.sql` |
-| Public feed (WordPress/Bil24 compat) | 00xx | `public_feed.sql`, `feed_tokens.sql` |
+| Public feed (WordPress/Bil24 compat) | 00xx, 0061 | `public_feed.sql`, `feed_tokens.sql` |
 | GDPR | 00xx | `gdpr.sql` |
+| Widget analytics | 0062 | `widget_funnel_events.sql` |
+| Outbox / background worker | 0068, 0069 | `internal/platform/outbox/`, `internal/platform/worker/` |
 | System / infra | 00xx | `system.sql` |
+| Bank accounts | 0056 | `bank_accounts.sql` |
 
-Полный набор migrations: 0001..0041 в `apps/backend/internal/migrations/sql/`.
+Полный набор migrations: 0001..0069 в `apps/backend/internal/migrations/sql/`.
 
 ## 3. WordPress Plugin
 
@@ -53,10 +58,11 @@
 ## 4. CI / Generated Clients / Tests
 
 - OpenAPI → Go server types через `oapi-codegen` (v2.4.1, known warning по OpenAPI 3.1).
-- OpenAPI → TypeScript клиенты — генерируются и проверяются `tsc --noEmit`.
-- `go test ./...` и `go test -race -coverprofile=... -covermode=atomic ./...` — зелёные (на 2026-06-24).
-- `docker-compose` runtime — healthy, миграции применяются до 0041.
-- `golangci-lint` (v2 конфиг) — 563 issues. Это блокирующий gate перед production-ready.
+- OpenAPI → TypeScript клиенты — `openapi-typescript` регенерирует `apps/backend/openapi/clients/ts/index.d.ts`; CI gate проверяет `git diff --exit-code` на drift (фича #376).
+- `go test ./...` и `go test -race -coverprofile=... -covermode=atomic ./...` — зелёные.
+- `docker-compose` runtime — healthy, миграции применяются до 0069.
+- `golangci-lint` (v2 конфиг) — 563+ issues. Это блокирующий gate перед production-ready.
+- sqlc gen/ — файлы hand-maintained (следуют sqlc v1 output conventions); `make sqlc-generate` требует `sqlc >= v1.26` на PATH.
 
 ## 5. Reconciliation Status vs Older Docs
 
@@ -67,9 +73,10 @@
 
 ## 6. Known Gaps / Follow-ups
 
-- Domain/app слои пусты — текущая фактическая архитектура отклоняется от изначально заявленной DDD-структуры в doc 13. Решение: либо ADR о принятии текущего layout, либо план миграции бизнес-логики в `domain/`+`app/`.
-- `golangci-lint`: 563 issues — блокирующий gate.
+- Domain/app слои пусты — текущая фактическая архитектура отклоняется от изначально заявленной DDD-структуры в doc 13. ADR-033 формально принимает handler-centric layout как текущий статус-кво (см. `11_architecture_decision_log_ru.md`).
+- `golangci-lint`: 563+ issues — блокирующий gate перед production-ready.
 - Master spec (doc 12) требует переписывания под фактически реализованные контексты из раздела 2 этого документа.
+- sqlc gen/: файлы были hand-maintained с заголовком `sqlc v2.3.0` (несуществующая версия). Заголовки исправлены на честное "hand-maintained, follows sqlc v1 conventions" (фича #380). Для восстановления codegen-гарантии необходимо запустить `make sqlc-generate` с реальным sqlc >= v1.26.
 
 ## 7. Update Cadence
 

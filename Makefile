@@ -69,7 +69,9 @@ gen-ts-client:
 # Re-run whenever a .sql query file is added or changed — the generated Go
 # code will then need to be committed alongside the SQL source.
 #
-# Prerequisites: sqlc v2 must be on your PATH.
+# Prerequisites: sqlc >= v1.26 must be on your PATH.
+#   NOTE: "version: 2" in sqlc.yaml refers to the config-file schema version,
+#   not the tool version. The sqlc CLI itself uses a v1.x.x release series.
 #   Install: go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
 #   Or download a pre-built binary from https://docs.sqlc.dev/en/stable/overview/install.html
 sqlc-generate:
