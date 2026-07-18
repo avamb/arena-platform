@@ -897,6 +897,16 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hcheckout", "checkout_promo_368.go"),
 		}
+	// issuejob.go — checkout.issue_tickets worker job handler (feature #363 — PR2-07)
+	case "issuejob.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "issuejob", "issuejob.go"),
+		}
+	// arena-worker main.go — worker binary entry point (feature #363 — PR2-07 registration check)
+	case "arena-worker-main.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "cmd", "arena-worker", "main.go"),
+		}
 	// hold_api.go — CreateSeatedHold/CreateGAHold/ReleaseHold (feature #365 — PR2-09)
 	case "hold_api.go":
 		candidates = []string{

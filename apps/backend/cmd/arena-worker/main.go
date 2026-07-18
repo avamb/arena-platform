@@ -50,6 +50,8 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/database"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/idempotency"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/issuejob"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/htickets"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
@@ -367,6 +369,35 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 	})
 	reg.Register(authemail.JobTypeEmailVerification, authEmailHandler.HandleEmailVerification)
 	reg.Register(authemail.JobTypePasswordResetEmail, authEmailHandler.HandlePasswordResetEmail)
+
+	// checkout.issue_tickets issues tickets after a payment.succeeded webhook
+	// (feature #363, PR2-07). The handler is enqueued atomically alongside the
+	// idempotency event INSERT and state transition UPDATE in
+	// HandlePaymentIntentWebhook. IssueTicketsForCheckout (feature #366) is
+	// idempotent — re-runs after a crash detect already-issued tickets and
+	// return them without duplicate INSERTs. Delivery is enqueued inside
+	// IssueTicketsForCheckout (feature #367).
+	ticketIssueHandler := htickets.New(
+		queries,  // ticketQ
+		queries,  // credentialQ (not used in issuance path)
+		nil,      // complimentaryQ — not needed for webhook issuance
+		nil,      // inventoryQ — not needed for webhook issuance
+		queries,  // reservationQ
+		nil,      // barcodeQ — not needed for webhook issuance
+		queries,  // deliveryJobQ — used by EnqueueDeliveryJobs inside IssueTicketsForCheckout
+		nil,      // feedTokenQ — not needed for webhook issuance
+		pool,     // workerPool for delivery job enqueue
+		pool,     // pool (TxStarter) for advisory-lock transaction
+		nil,      // audit — not required for background issuance
+		logger,
+		nil, // publishTicketIssuedEvents — scanner events not required in worker context
+		nil, // publishTicketRevokedV1Events — revocation events not required here
+	)
+	reg.Register(issuejob.JobType, issuejob.NewHandler(issuejob.HandlerOptions{
+		Queries:      queries,
+		IssueTickets: ticketIssueHandler.IssueTicketsForCheckout,
+		Logger:       logger,
+	}))
 }
 
 // registerMediaGCHandler registers the media-gc worker handler when the

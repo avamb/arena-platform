@@ -38,6 +38,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/issuejob"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -549,9 +550,19 @@ var WebhookEventTypeToState = webhookEventTypeToState
 // via HMAC signature verification (Stripe-Signature or X-AllPay-Signature
 // headers) before the body is parsed or any database state is mutated.
 //
-// Idempotency: each (provider_payment_id, event_type) is recorded in
-// payment_intent_events with a UNIQUE constraint. Duplicate deliveries return
-// 204 without reprocessing.
+// # Atomicity (feature #363, PR2-07)
+//
+// The idempotency event INSERT (InsertPaymentIntentEvent), the state transition
+// UPDATE (UpdatePaymentIntentState), and the ticket-issuance job enqueue
+// (INSERT worker_jobs "checkout.issue_tickets") are committed in a single
+// PostgreSQL transaction. If the process crashes at any point before the
+// commit, none of the three writes are visible. Provider redelivery finds no
+// idempotency row and processes the event from scratch.
+//
+// Duplicate deliveries: if the event row is already committed (i.e. a prior
+// invocation succeeded), InsertPaymentIntentEvent returns pgx.ErrNoRows
+// (ON CONFLICT DO NOTHING). The handler rolls back the empty transaction and
+// returns 204 without reprocessing.
 func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Request) {
 	// Read body first so the HMAC can be verified over the raw bytes.
 	// The body is intentionally read BEFORE the DB nil guard so that forged
@@ -624,7 +635,8 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 		targetState = mapped
 	}
 
-	// Look up the payment intent by provider ID.
+	// Look up the payment intent by provider ID (outside the transaction so
+	// we know the current state before acquiring a lock).
 	pi, err := h.paymentIntentQueries.GetPaymentIntentByProviderID(ctx, req.ProviderPaymentID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -636,34 +648,6 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("webhook.lookup_failed", "failed to locate payment intent", r))
-		return
-	}
-
-	// Idempotency check: record the event (ON CONFLICT DO NOTHING).
-	// If pgx.ErrNoRows is returned, the event was already processed → 204.
-	var eventPayload []byte
-	if req.EventPayload != nil {
-		eventPayload, _ = json.Marshal(req.EventPayload)
-	}
-	_, evtErr := h.paymentIntentQueries.InsertPaymentIntentEvent(ctx,
-		pi.ID, req.ProviderPaymentID, req.EventType, eventPayload, &targetState,
-	)
-	if errors.Is(evtErr, pgx.ErrNoRows) {
-		// Duplicate event delivery — already processed, return 204.
-		h.logger.Info("webhook: duplicate event; skipping",
-			slog.String("provider_payment_id", req.ProviderPaymentID),
-			slog.String("event_type", req.EventType),
-		)
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	if evtErr != nil {
-		h.logger.Error("webhook: event record failed",
-			slog.String("provider_payment_id", req.ProviderPaymentID),
-			slog.String("event_type", req.EventType),
-			slog.String("error", evtErr.Error()),
-		)
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("webhook.event_record_failed", "failed to record webhook event", r))
 		return
 	}
 
@@ -682,7 +666,7 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 
 	validTargets := validPaymentIntentTransitions[currentState]
 	if !validTargets[targetState] {
-		// Transition not valid — acknowledge without transitioning (event recorded).
+		// Transition not valid — acknowledge without transitioning.
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{
 			"acknowledged": true,
 			"event_type":   req.EventType,
@@ -692,19 +676,113 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	updated, err := h.paymentIntentQueries.UpdatePaymentIntentState(ctx,
+	// ── Atomic transaction (feature #363) ────────────────────────────────────
+	// Three operations committed atomically:
+	//   1. InsertPaymentIntentEvent — idempotency guard (ON CONFLICT DO NOTHING)
+	//   2. UpdatePaymentIntentState — advance the state machine
+	//   3. INSERT worker_jobs "checkout.issue_tickets" — durable ticket issuance
+	//
+	// A crash before the commit leaves no idempotency row; provider redelivery
+	// processes the event from scratch (step 3 of feature #363 acceptance criteria).
+	tx, txErr := h.pool.BeginTx(ctx, pgx.TxOptions{})
+	if txErr != nil {
+		h.logger.Error("webhook: begin tx failed",
+			slog.String("provider_payment_id", req.ProviderPaymentID),
+			slog.String("error", txErr.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("webhook.tx_begin_failed", "failed to begin transaction", r))
+		return
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	txQ := gen.New(tx)
+
+	// Step 1: Idempotency check within the transaction.
+	// InsertPaymentIntentEvent uses ON CONFLICT (provider_payment_id, event_type)
+	// DO NOTHING. If the event was already committed by a prior successful run,
+	// pgx.ErrNoRows is returned and the caller must return 204.
+	var eventPayload []byte
+	if req.EventPayload != nil {
+		eventPayload, _ = json.Marshal(req.EventPayload)
+	}
+	_, evtErr := txQ.InsertPaymentIntentEvent(ctx,
+		pi.ID, req.ProviderPaymentID, req.EventType, eventPayload, &targetState,
+	)
+	if errors.Is(evtErr, pgx.ErrNoRows) {
+		// Duplicate event delivery — the event was already processed in a prior
+		// successful invocation. Roll back (no-op on empty tx) and return 204.
+		h.logger.Info("webhook: duplicate event; skipping",
+			slog.String("provider_payment_id", req.ProviderPaymentID),
+			slog.String("event_type", req.EventType),
+		)
+		_ = tx.Rollback(ctx)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if evtErr != nil {
+		h.logger.Error("webhook: event record failed",
+			slog.String("provider_payment_id", req.ProviderPaymentID),
+			slog.String("event_type", req.EventType),
+			slog.String("error", evtErr.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("webhook.event_record_failed", "failed to record webhook event", r))
+		return
+	}
+
+	// Step 2: Advance the state machine within the same transaction.
+	updated, stateErr := txQ.UpdatePaymentIntentState(ctx,
 		pi.ID, targetState,
 		req.ScaRedirectURL, req.ClientSecret,
 		req.FailureCode, req.FailureMessage,
 		nil, // provider_payment_id already set
 	)
-	if err != nil {
+	if stateErr != nil {
 		h.logger.Error("webhook: state update failed",
 			slog.String("id", pi.ID.String()),
 			slog.String("target_state", targetState),
-			slog.String("error", err.Error()),
+			slog.String("error", stateErr.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("webhook.state_update_failed", "failed to update payment intent state", r))
+		return
+	}
+
+	// Step 3: Enqueue the ticket-issuance durable job in the same transaction
+	// (feature #363). The worker picks up checkout.issue_tickets and calls
+	// IssueTicketsForCheckout (idempotent, feature #366). Delivery jobs are
+	// enqueued inside IssueTicketsForCheckout — no separate call needed
+	// (feature #367, removes duplicate enqueueDelivery).
+	if updated.State == "succeeded" && updated.CheckoutSessionID != nil {
+		jobPayload, _ := json.Marshal(issuejob.Payload{
+			CheckoutSessionID: updated.CheckoutSessionID.String(),
+		})
+		const insertWorkerJobSQL = `
+			INSERT INTO worker_jobs (job_type, payload, max_attempts, status, scheduled_at)
+			VALUES ($1, $2::jsonb, $3, 'pending', now())`
+		if _, jobEnqErr := tx.Exec(ctx, insertWorkerJobSQL,
+			issuejob.JobType, jobPayload, 5,
+		); jobEnqErr != nil {
+			h.logger.Error("webhook: enqueue checkout.issue_tickets job failed; rolling back",
+				slog.String("payment_intent_id", pi.ID.String()),
+				slog.String("checkout_session_id", updated.CheckoutSessionID.String()),
+				slog.String("error", jobEnqErr.Error()),
+			)
+			// Rolling back ensures the idempotency row is not committed.
+			// The provider will retry and we will attempt again from scratch.
+			_ = tx.Rollback(ctx)
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"webhook.enqueue_failed", "failed to enqueue ticket issuance job", r,
+			))
+			return
+		}
+	}
+
+	// Commit: event row + state change + job enqueue are now durable.
+	if commitErr := tx.Commit(ctx); commitErr != nil {
+		h.logger.Error("webhook: commit failed",
+			slog.String("id", pi.ID.String()),
+			slog.String("error", commitErr.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("webhook.commit_failed", "failed to commit webhook transaction", r))
 		return
 	}
 
@@ -716,52 +794,36 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 		slog.String("to", updated.State),
 	)
 
-	// Issue tickets and convert reservation when payment reaches succeeded state
-	// and a checkout session is linked.
-	// Idempotent: issueTickets returns existing tickets if already issued;
-	// convertReservationTx skips if reservation is already 'converted'.
-	if updated.State == "succeeded" && updated.CheckoutSessionID != nil &&
-		h.ticketQueries != nil && h.checkoutQueries != nil && h.reservationQueries != nil && h.issueTickets != nil {
+	// Convert the reservation inline (non-fatal, has its own transaction).
+	// convertReservationTx moves held seats → sold, capacity_held → capacity_sold,
+	// and sets reservation.state = 'converted' so the TTL worker cannot release
+	// the seats (feature #360). This is idempotent: already-converted reservations
+	// are silently skipped. If this call fails, the checkout.issue_tickets worker
+	// job will still issue tickets; operators can re-trigger conversion manually.
+	if updated.State == "succeeded" && updated.CheckoutSessionID != nil && h.checkoutQueries != nil {
 		cs, csErr := h.checkoutQueries.GetCheckoutSessionByID(ctx, *updated.CheckoutSessionID)
 		if csErr != nil {
-			// Log but do not fail the webhook — payment state is already persisted.
-			h.logger.Error("webhook: checkout lookup failed for ticket issuance",
+			h.logger.Error("webhook: checkout lookup failed after payment succeeded (convert skipped)",
 				slog.String("payment_intent_id", pi.ID.String()),
 				slog.String("checkout_session_id", updated.CheckoutSessionID.String()),
 				slog.String("error", csErr.Error()),
 			)
-		} else {
-			// Convert the reservation: held seats → sold, capacity_held → capacity_sold,
-			// reservation.state → 'converted'. This is idempotent and prevents the TTL
-			// worker from releasing seats back to available (feature #360).
-			// Non-fatal: payment state is persisted; log and continue.
-			if convErr := h.convertReservationTx(ctx, cs.ReservationID); convErr != nil {
-				h.logger.Error("webhook: convert reservation failed after payment succeeded (non-fatal)",
-					slog.String("payment_intent_id", pi.ID.String()),
-					slog.String("checkout_session_id", cs.ID.String()),
-					slog.String("reservation_id", cs.ReservationID.String()),
-					slog.String("error", convErr.Error()),
-				)
-			}
-
-			tickets, ticketErr := h.issueTickets(ctx, cs)
-			if ticketErr != nil {
-				h.logger.Error("webhook: ticket issuance failed",
-					slog.String("payment_intent_id", pi.ID.String()),
-					slog.String("checkout_session_id", cs.ID.String()),
-					slog.String("error", ticketErr.Error()),
-				)
-			} else {
-				h.logger.Info("webhook: tickets issued on payment success",
-					slog.String("payment_intent_id", pi.ID.String()),
-					slog.String("checkout_session_id", cs.ID.String()),
-					slog.Int("count", len(tickets)),
-				)
-				// Delivery jobs are enqueued inside IssueTicketsForCheckout (feature #367).
-				// A separate enqueueDelivery call here was removed to prevent double-delivery.
-			}
+		} else if convErr := h.convertReservationTx(ctx, cs.ReservationID); convErr != nil {
+			h.logger.Error("webhook: convert reservation failed after payment succeeded (non-fatal)",
+				slog.String("payment_intent_id", pi.ID.String()),
+				slog.String("checkout_session_id", cs.ID.String()),
+				slog.String("reservation_id", cs.ReservationID.String()),
+				slog.String("error", convErr.Error()),
+			)
 		}
 	}
+	// NOTE: Ticket issuance is now handled exclusively by the checkout.issue_tickets
+	// worker job enqueued atomically above (feature #363). The inline h.issueTickets
+	// call was removed from this webhook handler to prevent a partial failure from
+	// poisoning the idempotency table. IssueTicketsForCheckout is idempotent
+	// (feature #366) — if the job runs multiple times, only the first issues new
+	// tickets; subsequent runs detect the complete set and return them unchanged.
+	// Delivery jobs are enqueued inside IssueTicketsForCheckout (feature #367).
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"acknowledged":   true,
