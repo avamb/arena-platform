@@ -2,6 +2,70 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+## 2026-07-19 - Feature #383 (PR2-27 MAJOR): Close the PR2-04 held→sold convert-failure window
+
+### Problem
+PR2-04 (#360) wired convertReservationTx into all checkout completion paths, but it
+ran in its OWN transaction after checkout committed, and every failure was non-fatal
+(log + continue). If the convert tx failed, the reservation stayed 'active' and the
+TTL worker could pick it up and resell paid seats — the original BLOCKER window was
+narrowed, not closed.
+
+### Fix (two complementary changes already in the codebase, tests added to verify):
+
+**Checkout API path (checkout_promo_368.go)**
+- `completeCheckoutWithPromoTx` ALWAYS opens a transaction (PR2-27)
+- `convertReservationInTx` called inside the same tx — conversion failure rolls back
+  the entire checkout (not non-fatal), checkout stays in pricing_confirmed, seats safe
+
+**Payment webhook path (payment_intents.go)**
+- `checkout.convert_reservation` durable job enqueued inside the same atomic tx as
+  idempotency event INSERT + PI state UPDATE + issue_tickets enqueue
+- If inline convertReservationTx fails after commit, worker retries until conversion succeeds
+
+### Files modified/created:
+
+**checkout_pr2_04_360_test.go (MODIFIED)**
+- Fixed TestPR204_Step3_CheckoutGoCallsConvertOnFreeCompletion: replaced check for
+  old non-fatal log ("convert reservation failed after free checkout") with check for
+  PR2-27 atomic behavior: completeCheckoutWithPromoTx, "no separate convertReservationTx
+  call needed", and rollback log in checkout_promo_368.go
+- Fixed TestPR204_Step3_CheckoutGoCallsConvertOnPaidCompletion: replaced check for old
+  log with count of completeCheckoutWithPromoTx >= 2 in checkout.go
+
+**testfilehelpers_test.go (MODIFIED)**
+- Added convertjob.go to resolveFileInRepo switch case so Step 6 test can find the file
+
+**checkout_pr2_27_383_test.go (NEW)**
+- 8 structural unit tests covering all PR2-27 production wiring aspects:
+  Step 1: completeCheckoutWithPromoTx always opens a transaction (BeginTx/Commit/Rollback)
+  Step 2: convertReservationInTx called inside the completion tx with txQ
+  Step 3: conversion failure returns "reservation conversion failed (checkout rolled back)"
+  Step 4: checkout_convert.go has all 3 function variants + idempotency guard
+  Step 5: payment_intents.go enqueues checkout.convert_reservation job atomically
+  Step 6: convertjob package has JobType constant, NewHandler, ConvertFn
+  Step 7: arena-worker registers convertjob handler wiring ConvertReservationTx
+  Step 8: checkout.go has PR2-27 atomicity comments in BOTH branches (count >= 2)
+
+**checkout_pr2_27_383_integration_test.go (NEW)**
+- //go:build integration (skipped without DATABASE_URL)
+- TestPR227Integration_DurableJobClosesConvertWindow:
+  1. Finds (org, channel, session) triple from DB
+  2. ReserveCapacity then InsertReservation with PAST expiry + UpdateState("active")
+  3. Sanity: GetExpiredReservations finds it (danger zone confirmed)
+  4. Builds minimal hcheckout.Handler, calls ConvertReservationTx (durable job)
+  5. Verifies reservation.State == "converted"
+  6. Verifies GetExpiredReservations does NOT return it
+  7. Runs ProcessExpiredReservations (TTL worker), verifies still "converted"
+
+### Verification
+- 11 new/fixed tests: ALL PASS (0.073s)
+- go build ./... zero errors
+- Pre-existing TestScannerSnapshot144_IPRateLimitReturns429 panic: pre-existing, unrelated
+
+Commit: ca520e5
+Marked #383 passing. (386/387 features passing, 99.7%)
+
 ## 2026-07-17 - Feature #370 (PR2-14 MAJOR): Add worker stale-claim reaper and retry backoff
 
 ### Root cause
@@ -22443,6 +22507,37 @@ All 13 TestPR226_* tests PASS:
 - Feed-tokens (4 endpoints) → feed_shims.go
 - Seating/seats (2 endpoints) → seating_shims.go
 - Billing usage/invoices (2 endpoints) → billing_shims.go
+
+## 2026-07-19 - Feature #381 (PR2-25 BLOCKER): Enforce Bil24 gateway credentials in production
+
+### Status: PASSING (386/387 features passing, 99.7%)
+
+### Problem addressed
+The original PR2-25 fix (#374) implemented validateGatewayToken behind a requireToken flag,
+but the flag was NEVER enabled in production wiring (bil24Handler() never called WithRequireToken(true)).
+handleBil24UnReserve had NO credential check at all, even when requireToken=true.
+Feature #385 flagged gateway OFF by default (variant-B). Feature #381 closes variant-A.
+
+### Files changed
+- config.go: added Bil24RequireToken bool (BIL24_REQUIRE_TOKEN env, default true)
+- hbil24/handler.go: extended ReservationContextQuerier with GetReservationByID
+- hbil24/bil24_compat.go: early pre-check in handleBil24Reservation; full credential enforcement
+  in handleBil24UnReserve via new validateUnReserveToken() method
+- hbil24/bil24_374_test.go + seat_d1_312_test.go: added GetReservationByID to fakes
+- server_struct.go: added bil24RequireToken bool field
+- wire.go: added Bil24RequireToken to Options; wired into New()
+- bil24_shims.go: bil24Handler() calls WithRequireToken(s.bil24RequireToken)
+- main.go: wired Bil24RequireToken: cfg.Bil24RequireToken in Options
+- bil24_381_test.go: 9 new tests using PRODUCTION httpserver.New(Options{}) wiring
+
+### Verification
+- go compile: exit 0
+- hbil24: 57/57 PASS
+- TestPR381_*: 9/9 PASS
+- TestBil24_157_* + TestPR25B_*: all PASS
+
+Commit: 4e259cb
+Marked #381 passing. (386/387 passing, 99.7%)
 
 Commit: ded0e24
 Marked #382 passing. (385/387 passing, 99.5%)
