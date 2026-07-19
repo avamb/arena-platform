@@ -247,6 +247,12 @@ func run() error {
 		// paths. If ever set TRUE, variant-A credential enforcement (WithRequireToken)
 		// becomes mandatory — see comment block above and feature #381.
 		Bil24CompatEnabled: bil24GatewayEnabled,
+		// Bil24RequireToken enables fid/token bcrypt credential enforcement for
+		// RESERVATION and UN_RESERVE when the gateway is mounted. Config default
+		// is true (BIL24_REQUIRE_TOKEN env, feature #381, PR2-25).
+		// NEVER set this to false in production — unauthenticated gateway access
+		// allows inventory mutation without credentials.
+		Bil24RequireToken: cfg.Bil24RequireToken,
 		Media:              mediaRepo,
 	})
 

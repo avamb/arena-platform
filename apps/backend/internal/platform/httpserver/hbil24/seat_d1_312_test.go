@@ -99,6 +99,13 @@ func (f *fakeResCtx) GetSalesChannelByID(_ context.Context, id, orgID uuid.UUID)
 	return ch, nil
 }
 
+// GetReservationByID satisfies ReservationContextQuerier (feature #381).
+// fakeResCtx tests run with requireToken=false so this path is never reached;
+// stub returns ErrNoRows for any id.
+func (f *fakeResCtx) GetReservationByID(_ context.Context, _ uuid.UUID) (gen.ReservationRow, error) {
+	return gen.ReservationRow{}, pgx.ErrNoRows
+}
+
 // fakeTiers implements TierPriceQuerier in memory.
 type fakeTiers struct {
 	tiers map[uuid.UUID]gen.TicketTierRow

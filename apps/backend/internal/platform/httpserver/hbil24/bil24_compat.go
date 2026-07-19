@@ -998,6 +998,23 @@ func (h *Handler) handleBil24Reservation(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
+	// Feature #381 / PR2-25 — early auth pre-check: reject obviously
+	// unauthenticated requests before any DB round-trips.
+	// The full bcrypt validation (including gateway_token_hash lookup) happens
+	// inside reservationContext() once the channel row is loaded.  This early
+	// gate surfaces a clear -4 Unauthorized instead of an opaque -99 when the
+	// operator omits the token field entirely.
+	if h.requireToken && strings.TrimSpace(req.Token) == "" {
+		h.logger.Warn("bil24_compat: RESERVATION: token missing in request; rejecting",
+			slog.String("fid", req.FID),
+		)
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeUnauthorized,
+			"authentication required: token field is required for RESERVATION",
+		))
+		return
+	}
+
 	hasSeats := len(req.SeatList) > 0
 	hasCats := len(req.CategoryList) > 0
 
@@ -1212,6 +1229,67 @@ func (h *Handler) validateGatewayToken(
 	}
 
 	return true
+}
+
+// validateUnReserveToken validates the token field for UN_RESERVE by resolving
+// the reservation's owning sales channel and comparing the supplied token
+// against the channel's stored gateway_token_hash (bcrypt). Feature #381,
+// PR2-25 variant A.
+//
+// Precondition: req.Token is non-empty (caller guards).
+//
+// On failure the Bil24 error envelope has already been written and false is
+// returned.
+func (h *Handler) validateUnReserveToken(
+	ctx context.Context,
+	w http.ResponseWriter,
+	req bil24Request,
+	reservationID uuid.UUID,
+) bool {
+	// Fail closed: cannot validate without the context querier.
+	if h.resDeps.CtxQ == nil {
+		h.logger.Warn("bil24_compat: UN_RESERVE: requireToken=true but CtxQ is nil; rejecting",
+			slog.String("reservation_id", reservationID.String()),
+		)
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInternalError,
+			"authentication service unavailable",
+		))
+		return false
+	}
+
+	res, err := h.resDeps.CtxQ.GetReservationByID(ctx, reservationID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeNotFound, "reservation not found",
+			))
+		} else {
+			h.logger.Error("bil24_compat: UN_RESERVE: reservation lookup for auth failed",
+				slog.String("reservation_id", reservationID.String()),
+				slog.String("error", err.Error()),
+			)
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeInternalError, "failed to resolve reservation",
+			))
+		}
+		return false
+	}
+
+	channel, err := h.resDeps.CtxQ.GetSalesChannelByID(ctx, res.ChannelID, res.OrgID)
+	if err != nil {
+		h.logger.Error("bil24_compat: UN_RESERVE: channel lookup for auth failed",
+			slog.String("reservation_id", reservationID.String()),
+			slog.String("channel_id", res.ChannelID.String()),
+			slog.String("error", err.Error()),
+		)
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInternalError, "failed to resolve sales channel",
+		))
+		return false
+	}
+
+	return h.validateGatewayToken(w, req, channel.Settings)
 }
 
 // bil24FinancialFields projects a platform pricing breakdown onto the
@@ -1631,6 +1709,26 @@ func (h *Handler) handleBil24UnReserve(w http.ResponseWriter, r *http.Request, r
 			"reservationId must be a valid reservation identifier",
 		))
 		return
+	}
+
+	// Feature #381 / PR2-25: credential enforcement for UN_RESERVE.
+	// Quick-reject when token is absent — no DB round-trip needed.
+	if h.requireToken && strings.TrimSpace(req.Token) == "" {
+		h.logger.Warn("bil24_compat: UN_RESERVE: token missing in request; rejecting",
+			slog.String("fid", req.FID),
+		)
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeUnauthorized,
+			"authentication required: token field is required for UN_RESERVE",
+		))
+		return
+	}
+	// Full credential validation: look up the reservation's owning channel and
+	// verify the token against its stored gateway_token_hash.
+	if h.requireToken {
+		if !h.validateUnReserveToken(r.Context(), w, req, reservationID) {
+			return
+		}
 	}
 
 	if h.resDeps.Release == nil {

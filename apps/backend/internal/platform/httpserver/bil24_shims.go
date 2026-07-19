@@ -55,6 +55,12 @@ func (s *Server) bil24Handler() *hbil24.Handler {
 	if s.seatingQueries != nil {
 		schemaQ = s.seatingQueries
 	}
+	// Feature #381 / PR2-25: wire credential enforcement from the production
+	// config (Options.Bil24RequireToken → s.bil24RequireToken). This ensures
+	// that the production composition root (main.go Options) — not a test
+	// helper — controls whether fid/token validation is active.
+	// BIL24_REQUIRE_TOKEN defaults to true in config; it is false only when
+	// explicitly overridden (e.g. in a test that has not set the field).
 	return hbil24.New(
 		s.eventQueries,
 		s.tierQueries,
@@ -66,7 +72,7 @@ func (s *Server) bil24Handler() *hbil24.Handler {
 		schemaQ,
 		s.bil24ReservationDeps(),
 		s.logger,
-	)
+	).WithRequireToken(s.bil24RequireToken)
 }
 
 // bil24ReservationDeps wires the REAL RESERVATION / UN_RESERVE machinery

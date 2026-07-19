@@ -82,6 +82,19 @@ func (f *fakeResCtxWithToken) GetSessionOrgContext(_ context.Context, id uuid.UU
 	return gen.SessionOrgContextRow{SessionID: id, OrgID: f.orgID}, nil
 }
 
+// GetReservationByID satisfies ReservationContextQuerier (feature #381).
+// Returns a minimal row with the channel/org pair so validateUnReserveToken
+// can chain into GetSalesChannelByID.
+func (f *fakeResCtxWithToken) GetReservationByID(_ context.Context, id uuid.UUID) (gen.ReservationRow, error) {
+	return gen.ReservationRow{
+		ID:        id,
+		OrgID:     f.orgID,
+		ChannelID: f.channelID,
+		SessionID: f.sessionID,
+		State:     "active",
+	}, nil
+}
+
 func (f *fakeResCtxWithToken) GetSalesChannelByID(_ context.Context, id, orgID uuid.UUID) (gen.SalesChannelRow, error) {
 	if f.noChannel || id != f.channelID || orgID != f.orgID {
 		return gen.SalesChannelRow{}, pgx.ErrNoRows

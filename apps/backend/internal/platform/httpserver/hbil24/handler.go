@@ -54,9 +54,18 @@ type SeatQuerier interface {
 // needs: the session's owning organization (sessions → events join) and the
 // sales channel addressed by the request's fid credential. *gen.Queries
 // satisfies this interface.
+//
+// GetReservationByID (feature #381) is required for UN_RESERVE credential
+// enforcement: UN_RESERVE supplies a reservationId but not a fid, so the
+// handler looks up the reservation to find its owning channel, then validates
+// the token against that channel's gateway_token_hash.
 type ReservationContextQuerier interface {
 	GetSessionOrgContext(ctx context.Context, sessionID uuid.UUID) (gen.SessionOrgContextRow, error)
 	GetSalesChannelByID(ctx context.Context, id, orgID uuid.UUID) (gen.SalesChannelRow, error)
+	// GetReservationByID fetches a reservation by ID so UN_RESERVE can resolve
+	// the owning sales channel for fid/token credential validation.
+	// Feature #381, PR2-25 variant A.
+	GetReservationByID(ctx context.Context, id uuid.UUID) (gen.ReservationRow, error)
 }
 
 // TierPriceQuerier resolves ticket-tier unit prices for the RESERVATION

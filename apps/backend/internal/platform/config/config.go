@@ -230,6 +230,12 @@ type Config struct {
 	// -------------------------------------------------------------------------
 	// Bil24CompatEnabled mounts the /compat/bil24/* API gateway when true.
 	Bil24CompatEnabled bool `env:"BIL24_COMPAT_ENABLED" required:"false" default:"false"`
+	// Bil24RequireToken enables fid/token credential enforcement (bcrypt check
+	// against gateway_token_hash in the sales_channel settings JSONB) for all
+	// state-mutating Bil24 commands (RESERVATION, UN_RESERVE). Defaults to true
+	// — NEVER set this to false unless you fully understand the security
+	// implication (unauthenticated inventory mutation). Feature #381, PR2-25.
+	Bil24RequireToken bool `env:"BIL24_REQUIRE_TOKEN" required:"false" default:"true"`
 
 	// -------------------------------------------------------------------------
 	// Payment webhook authentication (feature #362, PR2-06)

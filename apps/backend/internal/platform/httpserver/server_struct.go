@@ -105,4 +105,11 @@ type Server struct {
 	debugRoutesEnabled          bool
 	debugSlowDelay              time.Duration
 	bil24Enabled                bool
+	// bil24RequireToken mirrors BIL24_REQUIRE_TOKEN (feature #381, PR2-25).
+	// When true, bil24Handler() calls WithRequireToken(true) so every
+	// state-mutating Bil24 command (RESERVATION, UN_RESERVE) validates the
+	// fid/token credential pair against the channel's gateway_token_hash.
+	// Defaults to false at the struct level but wired to true in production
+	// via Options.Bil24RequireToken (config default: true).
+	bil24RequireToken bool
 }

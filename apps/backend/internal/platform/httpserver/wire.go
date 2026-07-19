@@ -62,6 +62,13 @@ type Options struct {
 	// var BIL24_COMPAT_ENABLED=true (feature #157). MUST remain false in
 	// production deployments unless explicitly required for a migration window.
 	Bil24CompatEnabled bool
+	// Bil24RequireToken enforces fid/token credential validation (bcrypt check
+	// against gateway_token_hash in sales_channel settings JSONB) for all
+	// state-mutating Bil24 commands (RESERVATION, UN_RESERVE). Corresponds to
+	// env var BIL24_REQUIRE_TOKEN (config default: true). Feature #381, PR2-25.
+	// NEVER set this to false in production — an uncredentialled gateway allows
+	// unauthenticated inventory mutation.
+	Bil24RequireToken bool
 
 	// Per-domain sqlc *Queries. See struct docs above.
 	SuperadminQueries     *gen.Queries
@@ -245,6 +252,7 @@ func New(opts Options) *Server {
 		debugRoutesEnabled:          opts.DebugRoutesEnabled,
 		debugSlowDelay:              opts.DebugSlowDelay,
 		bil24Enabled:                opts.Bil24CompatEnabled,
+		bil24RequireToken:           opts.Bil24RequireToken,
 
 		geoQueries:            pickQueries(opts.GeoQueries, opts.PgxPool),
 		orgQueries:            pickQueries(opts.OrgQueries, opts.PgxPool),
