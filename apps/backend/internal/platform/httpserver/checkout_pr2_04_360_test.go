@@ -88,26 +88,52 @@ func TestPR204_Step2_SellReservationSeatsTxExported(_ *testing.T) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // TestPR204_Step3_CheckoutGoCallsConvertOnFreeCompletion verifies that
-// checkout.go contains the convertReservationTx call in the free-checkout
-// completion branch.
+// checkout.go contains the conversion wiring in the free-checkout completion
+// branch.
+//
+// PR2-27 update (feature #383): conversion is now performed atomically inside
+// completeCheckoutWithPromoTx (checkout_promo_368.go). checkout.go no longer
+// makes a separate non-fatal convertReservationTx call; instead it delegates
+// to completeCheckoutWithPromoTx which wraps completion and conversion in a
+// single transaction. If conversion fails, the whole tx rolls back (checkout
+// stays in pricing_confirmed, not completed). The conversion-failure log now
+// lives in checkout_promo_368.go.
 func TestPR204_Step3_CheckoutGoCallsConvertOnFreeCompletion(t *testing.T) {
 	content := findFileByName(t, "checkout.go")
-	if !strings.Contains(content, "convertReservationTx") {
-		t.Error("checkout.go must call convertReservationTx after free checkout completion")
+	// PR2-27: checkout.go must delegate to completeCheckoutWithPromoTx, which
+	// atomically handles both completion and conversion inside a single tx.
+	if !strings.Contains(content, "completeCheckoutWithPromoTx") {
+		t.Error("checkout.go must call completeCheckoutWithPromoTx (PR2-27: atomic completion+conversion) in the free-checkout branch")
 	}
-	// Verify the free-checkout branch log message is present alongside the call.
-	if !strings.Contains(content, "convert reservation failed after free checkout") {
-		t.Error("checkout.go must log conversion failure for the free-checkout branch")
+	// PR2-27: the comment in checkout.go documents the atomic design: conversion
+	// is now inside completeCheckoutWithPromoTx, not a separate call.
+	if !strings.Contains(content, "no separate convertReservationTx call needed") {
+		t.Error("checkout.go free branch must contain the PR2-27 atomicity comment: 'no separate convertReservationTx call needed'")
+	}
+	// The conversion failure log is now in checkout_promo_368.go (stronger
+	// guarantee: conversion failure causes the completion to abort, not merely log).
+	promoContent := findFileByName(t, "checkout_promo_368.go")
+	if !strings.Contains(promoContent, "conversion failed; rolling back completion") {
+		t.Error("checkout_promo_368.go must log conversion failure before rolling back the checkout transaction (PR2-27): conversion failure → checkout aborted atomically")
 	}
 }
 
 // TestPR204_Step3_CheckoutGoCallsConvertOnPaidCompletion verifies that
-// checkout.go contains the convertReservationTx call in the paid-checkout
-// completion branch.
+// checkout.go contains the conversion wiring in the paid-checkout completion
+// branch.
+//
+// PR2-27 update (feature #383): both free and paid branches now route through
+// completeCheckoutWithPromoTx, which includes convertReservationInTx atomically.
+// A conversion failure rolls back the entire checkout transaction (stronger than
+// the previous non-fatal log-and-continue behavior).
 func TestPR204_Step3_CheckoutGoCallsConvertOnPaidCompletion(t *testing.T) {
 	content := findFileByName(t, "checkout.go")
-	if !strings.Contains(content, "convert reservation failed after paid checkout") {
-		t.Error("checkout.go must log conversion failure for the paid-checkout branch")
+	// PR2-27: both free and paid branches in checkout.go call
+	// completeCheckoutWithPromoTx, which atomically includes conversion.
+	// Count must be >= 2 (one per branch).
+	count := strings.Count(content, "completeCheckoutWithPromoTx")
+	if count < 2 {
+		t.Errorf("checkout.go must call completeCheckoutWithPromoTx in BOTH free and paid branches (PR2-27 atomic completion+conversion); found %d occurrence(s), need >= 2", count)
 	}
 }
 

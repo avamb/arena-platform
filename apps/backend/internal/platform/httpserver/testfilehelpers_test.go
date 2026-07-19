@@ -897,6 +897,11 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hreconciliation", "reconciliation.go"),
 		}
+	// convertjob.go — checkout.convert_reservation worker job handler (feature #383 — PR2-27)
+	case "convertjob.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "convertjob", "convertjob.go"),
+		}
 	// checkout_convert.go — convertReservationTx helper (feature #360 — PR2-04)
 	case "checkout_convert.go":
 		candidates = []string{
