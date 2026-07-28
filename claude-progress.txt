@@ -22541,3 +22541,61 @@ Marked #381 passing. (386/387 passing, 99.7%)
 
 Commit: ded0e24
 Marked #382 passing. (385/387 passing, 99.5%)
+
+## 2026-07-28 — PR2 Follow-up 2: features #388, #389, #390 (session: Fable 5)
+
+### #388 PR2-30 [BLOCKER] — CI integration gate actually runs the resale proofs
+Root causes (2026-07-19 adversarial audit) all reproduced live and fixed:
+1. ci.yml integration job env lacked JWT_SIGNING_SECRET -> arena-migrate died
+   at config.Load before any test ran. Reproduced: exact error, then fixed.
+2. Precondition query joined sessions.org_id (column does not exist; org goes
+   sessions -> events -> org). Fixed the join + inventory_ledger requirement;
+   precondition failures are now t.Fatal, not skips (only DATABASE_URL-unset
+   skips remain).
+3. arena-seed had no event/session/inventory rows. Seed now adds 1 published
+   event + 1 scheduled session (cap 100) + GA inventory_ledger row in Org A.
+Extras the opened gate caught: 0064 down migration recreated an index without
+dropping it (42P07 on first reset cycle); stale head pin (0069 -> 0070);
+migrate cycle tests now run in an isolated *_migrate_cycles scratch DB so
+goose reset cannot drop the schema under parallel packages.
+Verification: arena-migrate up (70) + arena-seed + TestPR204Integration_* and
+TestPR227Integration_* PASS end-to-end against ephemeral postgres:17.
+Commits: 43d1f5d (+ c1b6576 committing the PR2-27 implementation the #383
+session left uncommitted, + 5259783 gate cleanup).
+
+### #389 PR2-31 [MAJOR] — org-membership guards on allocations/complimentary
+enforceOrgMembership added to handleCreate/List/Get/PatchExternalAllocation
+and handleCreate/List/GetComplimentaryIssuance; revoke resolves the owning
+org from the issuance row via new enforceMembershipInOrg (fail-closed).
+Denial (403 org.access_denied) + admission tests for all 8 surfaces
+(pr2_31_389_test.go); also fixed the channels/venues test factories that
+PR2-26 left broken at HEAD (10 tests were failing).
+Commit: 5fc2dab.
+
+### #390 PR2-32 [MAJOR] — Bil24 SCAN_TICKET + config gaps
+SCAN_TICKET now enforces fid/token (bcrypt vs gateway_token_hash) BEFORE any
+barcode lookup/mutation via new GetSalesChannelByIDGlobal (no org in a scan
+request). Deeper find: BIL24_REQUIRE_TOKEN was documented but NEVER parsed by
+config.Load -> always false. Now parsed (default true) and production hard-
+rejects BIL24_COMPAT_ENABLED=true with BIL24_REQUIRE_TOKEN=false.
+.env.example + DOKPLOY.md synced. 7 hbil24 tests + 5 config tests.
+Commit: c86c46f.
+
+### Gate cleanup (5259783)
+openapi.yaml: 49 op descriptions, 60 param descriptions, 143 flow-style
+schema refs expanded, 10 nullable keywords removed, GET /v1/admin/organizations
+documented; Go types + TS client regenerated (tsc clean). Fixed stale tests:
+outbox SQL pins, scanner XFF, drift-server wiring (12 handles), auth
+production/email integration tests (Pool wiring, logout body, QP decoding,
+token hashing), static scans skip .gomodcache.
+
+### Verification summary
+- go build ./apps/backend/... : PASS
+- go test ./apps/backend/...  : PASS (zero failures)
+- go test -tags=integration (httpserver, arena-migrate, migrations, seed)
+  against live migrated+seeded postgres:17 : PASS
+- delivery/worker/pgtest integration need testcontainers (CI-native Docker);
+  not runnable in this docker-in-docker session.
+- npm run check-ts : PASS
+
+Marked #388, #389, #390 passing. (390/390 passing, 100%)
