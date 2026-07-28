@@ -76,34 +76,42 @@ func TestPR227Integration_DurableJobClosesConvertWindow(t *testing.T) {
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
-		t.Skipf("pgxpool.New: %v; skipping", err)
+		t.Fatalf("pgxpool.New: %v — DATABASE_URL is set, so a connection failure must fail the gate", err)
 	}
 	defer pool.Close()
 
 	if err := pool.Ping(ctx); err != nil {
-		t.Skipf("pool.Ping: %v; skipping", err)
+		t.Fatalf("pool.Ping: %v — DATABASE_URL is set, so an unreachable database must fail the gate", err)
 	}
 
 	q := gen.New(pool)
 
 	// ── Find existing data ────────────────────────────────────────────────────
 	// We need a valid (org_id, channel_id, session_id) triple for FK constraints.
+	// sessions has no org_id column — organization ownership goes through
+	// events (sessions.event_id → events.org_id). Join through events and
+	// require a GA (tier_id IS NULL) inventory_ledger row so ReserveCapacity
+	// below can succeed. arena-seed guarantees this triple exists in CI
+	// (feature #388), so failure to resolve it is a hard error, not a skip.
 	var orgID, channelID, sessionID uuid.UUID
 	row := pool.QueryRow(ctx, `
 		SELECT sc.org_id, sc.id, s.id
 		FROM   sales_channels sc
-		JOIN   sessions s ON s.org_id = sc.org_id
+		JOIN   events e   ON e.org_id = sc.org_id
+		JOIN   sessions s ON s.event_id = e.id
+		JOIN   inventory_ledger il ON il.session_id = s.id AND il.tier_id IS NULL
 		LIMIT  1
 	`)
 	if err := row.Scan(&orgID, &channelID, &sessionID); err != nil {
-		t.Skipf("no (org, channel, session) triple found in DB: %v; skipping", err)
+		t.Fatalf("no (org, channel, session) triple with GA inventory found in DB: %v — "+
+			"run arena-seed against the migrated database first (CI does this; see .github/workflows/ci.yml)", err)
 	}
 	t.Logf("using org=%s channel=%s session=%s", orgID, channelID, sessionID)
 
 	// ── Reserve capacity (simulates the hold placed when the buyer reserved) ──
 	qty := int32(1)
 	if _, err := q.ReserveCapacity(ctx, sessionID, nil, qty); err != nil {
-		t.Skipf("ReserveCapacity failed (session may not support GA): %v; skipping", err)
+		t.Fatalf("ReserveCapacity failed for seeded GA session %s: %v", sessionID, err)
 	}
 	// Cleanup: release the reserve we incremented at the start (net of what
 	// ConvertReservationTx will move to capacity_sold — restored separately below).
@@ -149,7 +157,8 @@ func TestPR227Integration_DurableJobClosesConvertWindow(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Skip("'active' reservation with past expires_at not returned by GetExpiredReservations — DB clock or test timing issue; skipping")
+		t.Fatal("'active' reservation with past expires_at not returned by GetExpiredReservations — " +
+			"the danger-zone precondition of this regression proof failed; the gate must not silently skip")
 	}
 	t.Log("sanity: 'active' reservation with past expiry IS returned by GetExpiredReservations (danger zone confirmed) ✓")
 
@@ -158,16 +167,16 @@ func TestPR227Integration_DurableJobClosesConvertWindow(t *testing.T) {
 	// hcheckout.Handler with reservationQueries + inventoryQueries + pool and
 	// calls ConvertReservationTx. We replicate that here to prove the fix works.
 	convertHandler := hcheckout.New(
-		nil, // checkoutQ — not needed for ConvertReservationTx
-		q,   // reservationQ — GetReservationByID, ListReservationSeats, UpdateReservationState
-		q,   // inventoryQ — ConfirmCapacity
-		nil, // paymentIntentQ — not needed
-		nil, // refundQ — not needed
-		nil, // promoQ — not needed
-		nil, // tierQ — not needed
-		nil, // ticketQ — not needed
-		nil, // channelQ — not needed
-		nil, // orgQ — not needed
+		nil,                      // checkoutQ — not needed for ConvertReservationTx
+		q,                        // reservationQ — GetReservationByID, ListReservationSeats, UpdateReservationState
+		q,                        // inventoryQ — ConfirmCapacity
+		nil,                      // paymentIntentQ — not needed
+		nil,                      // refundQ — not needed
+		nil,                      // promoQ — not needed
+		nil,                      // tierQ — not needed
+		nil,                      // ticketQ — not needed
+		nil,                      // channelQ — not needed
+		nil,                      // orgQ — not needed
 		pool,                     // pool (TxStarter) — required for BeginTx inside ConvertReservationTx
 		nil,                      // logger
 		hcheckout.PricingRules{}, // zero rules — not used

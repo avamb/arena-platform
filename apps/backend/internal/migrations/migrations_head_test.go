@@ -40,7 +40,7 @@ func TestHead_NumericPrefixPositive(t *testing.T) {
 }
 
 func TestHead_KnownCurrentHead(t *testing.T) {
-	const expectedHead = "0069_worker_stale_claim_reaper.sql" // updated: 0069 added by stale-claim reaper agent
+	const expectedHead = "0070_external_bil24_id.sql" // updated: 0070 added by the Bil24 import feature (#386/#387)
 	head, err := migrations.Head()
 	if err != nil {
 		t.Fatalf("Head() returned unexpected error: %v", err)

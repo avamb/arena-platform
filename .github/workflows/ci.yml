@@ -147,6 +147,11 @@ jobs:
     env:
       DATABASE_URL: postgres://arena:arena_secret@localhost:5432/arena_integration?sslmode=disable
       REDIS_URL: redis://localhost:6379/0
+      # config.Load defaults ENABLE_DEV_AUTH=true under APP_ENV=development and
+      # then requires a JWT signing secret — without it arena-migrate/arena-seed
+      # exit at boot and the gate never runs a single test (feature #388).
+      # CI-only value; never used outside this ephemeral job database.
+      JWT_SIGNING_SECRET: integration-gate-ci-only-signing-secret-0123456789
 
     steps:
       - name: Checkout

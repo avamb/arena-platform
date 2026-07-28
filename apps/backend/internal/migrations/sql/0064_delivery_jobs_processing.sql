@@ -64,5 +64,10 @@ ALTER TABLE delivery_jobs
 
 DROP INDEX IF EXISTS delivery_jobs_status_processing;
 
+-- The Up section replaced this index with an identical definition; recreate
+-- it idempotently on the way down (feature #388 — without the DROP the first
+-- goose down/reset cycle fails with SQLSTATE 42P07 "already exists").
+DROP INDEX IF EXISTS delivery_jobs_status_pending;
+
 CREATE INDEX delivery_jobs_status_pending ON delivery_jobs (queued_at)
     WHERE status = 'pending';

@@ -9,6 +9,9 @@
 //   - 3 users with different roles (superadmin, org_admin, organizer, agent)
 //   - 3 sales channels across the seeded organizations
 //   - 3 payment provider configs (test mode credentials only)
+//   - 1 event with 1 scheduled session and a GA inventory_ledger row
+//     (feature #388: the CI integration gate needs a resolvable
+//     (org, channel, session) triple for the PR2-04/PR2-27 resale proofs)
 //
 // Everything inserted by this command is CLEARLY test data: names are
 // prefixed with "TEST ", email addresses live under @test.arena.local, all
@@ -115,6 +118,9 @@ func run(args []string) error {
 		"memberships", stats.Memberships,
 		"channels", stats.Channels,
 		"payment_configs", stats.PaymentConfigs,
+		"events", stats.Events,
+		"sessions", stats.Sessions,
+		"inventory_ledgers", stats.InventoryLedgers,
 		"already_present", stats.AlreadyPresent,
 	)
 	return nil
@@ -136,6 +142,9 @@ type SeedData struct {
 	Memberships    []SeedMembership
 	Channels       []SeedChannel
 	PaymentConfigs []SeedPaymentConfig
+	Events         []SeedEvent
+	Sessions       []SeedSession
+	Inventories    []SeedInventory
 }
 
 // SeedOrganization mirrors a single row that will be inserted into the
@@ -195,6 +204,40 @@ type SeedChannel struct {
 	ReservationTTLOverride int     // 0 means NULL
 }
 
+// SeedEvent mirrors a row in the events table. StartAt/EndAt are computed
+// at apply time relative to "now" (the seed is inserted once — ON CONFLICT
+// (id) DO NOTHING keeps re-runs idempotent even though the timestamps of a
+// second run would differ).
+type SeedEvent struct {
+	ID          string
+	OrgID       string
+	VenueID     string // "" means NULL
+	Name        string
+	Status      string // draft|published|cancelled|archived
+	StartInDays int    // start_at = now + StartInDays days
+	DurationHrs int    // end_at = start_at + DurationHrs hours
+}
+
+// SeedSession mirrors a row in the sessions table. The session belongs to
+// a seeded event and carries the GA capacity used by checkout tests.
+type SeedSession struct {
+	ID            string
+	EventID       string
+	Status        string // draft|scheduled|cancelled|completed
+	StartInDays   int
+	DurationHrs   int
+	CapacityTotal int
+}
+
+// SeedInventory mirrors a row in inventory_ledger for the GA (tier_id NULL)
+// capacity of a seeded session. Without this row ReserveCapacity returns
+// ErrNoRows and the PR2-04/PR2-27 integration proofs cannot run.
+type SeedInventory struct {
+	ID            string
+	SessionID     string
+	CapacityTotal int // 0 means NULL (unlimited)
+}
+
 // SeedPaymentConfig is a per-org provider credential set in 'test' mode.
 // Secrets are intentionally fake strings — every value starts with
 // "TEST_" so a careless export cannot accidentally hit a live provider.
@@ -247,6 +290,10 @@ const (
 	PaymentCfgAStripe = "fe000006-0000-7000-8000-000000000001"
 	PaymentCfgAAllpay = "fe000006-0000-7000-8000-000000000002"
 	PaymentCfgBStripe = "fe000006-0000-7000-8000-000000000003"
+
+	EventA1     = "fe000007-0000-7000-8000-000000000001"
+	SessionA1   = "fe000008-0000-7000-8000-000000000001"
+	InventoryA1 = "fe000009-0000-7000-8000-000000000001"
 )
 
 // SeedPassword is the plaintext password assigned to every seeded user.
@@ -341,6 +388,19 @@ func BuildSeed() SeedData {
 				Status:            "configured",
 			},
 		},
+		// One published event with one scheduled GA session in Org A.
+		// Feature #388: the CI integration gate (PR2-04/PR2-27 resale proofs)
+		// resolves a (org, channel, session) triple joined through events —
+		// Org A also owns the seeded sales channels, so the triple resolves.
+		Events: []SeedEvent{
+			{ID: EventA1, OrgID: OrgA, VenueID: VenueA1, Name: "TEST Seed Concert", Status: "published", StartInDays: 30, DurationHrs: 3},
+		},
+		Sessions: []SeedSession{
+			{ID: SessionA1, EventID: EventA1, Status: "scheduled", StartInDays: 30, DurationHrs: 3, CapacityTotal: 100},
+		},
+		Inventories: []SeedInventory{
+			{ID: InventoryA1, SessionID: SessionA1, CapacityTotal: 100},
+		},
 	}
 }
 
@@ -355,14 +415,17 @@ func BuildSeed() SeedData {
 // first run will show all rows inserted, every subsequent run will show
 // all rows already present.
 type ApplyStats struct {
-	Organizations  int
-	Venues         int
-	Users          int
-	UserRoles      int
-	Memberships    int
-	Channels       int
-	PaymentConfigs int
-	AlreadyPresent int
+	Organizations    int
+	Venues           int
+	Users            int
+	UserRoles        int
+	Memberships      int
+	Channels         int
+	PaymentConfigs   int
+	Events           int
+	Sessions         int
+	InventoryLedgers int
+	AlreadyPresent   int
 }
 
 // ApplySeed runs every seed INSERT inside a single transaction so a
@@ -547,6 +610,63 @@ func applyAll(ctx context.Context, tx pgx.Tx, seed SeedData) (ApplyStats, error)
 		}
 	}
 
+	for _, e := range seed.Events {
+		var venueID any
+		if e.VenueID != "" {
+			venueID = e.VenueID
+		}
+		startAt := time.Now().UTC().AddDate(0, 0, e.StartInDays)
+		endAt := startAt.Add(time.Duration(e.DurationHrs) * time.Hour)
+		tag, err := tx.Exec(ctx, `
+			INSERT INTO events (id, org_id, venue_id, name, status, start_at, end_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+			ON CONFLICT (id) DO NOTHING
+		`, e.ID, e.OrgID, venueID, e.Name, e.Status, startAt, endAt)
+		if err != nil {
+			return stats, fmt.Errorf("insert event %q: %w", e.Name, err)
+		}
+		stats.Events += int(tag.RowsAffected())
+		if tag.RowsAffected() == 0 {
+			stats.AlreadyPresent++
+		}
+	}
+
+	for _, s := range seed.Sessions {
+		startAt := time.Now().UTC().AddDate(0, 0, s.StartInDays)
+		endAt := startAt.Add(time.Duration(s.DurationHrs) * time.Hour)
+		tag, err := tx.Exec(ctx, `
+			INSERT INTO sessions (id, event_id, start_at, end_at, capacity_total, status)
+			VALUES ($1, $2, $3, $4, $5, $6)
+			ON CONFLICT (id) DO NOTHING
+		`, s.ID, s.EventID, startAt, endAt, s.CapacityTotal, s.Status)
+		if err != nil {
+			return stats, fmt.Errorf("insert session %q: %w", s.ID, err)
+		}
+		stats.Sessions += int(tag.RowsAffected())
+		if tag.RowsAffected() == 0 {
+			stats.AlreadyPresent++
+		}
+	}
+
+	for _, il := range seed.Inventories {
+		var capacity any
+		if il.CapacityTotal > 0 {
+			capacity = il.CapacityTotal
+		}
+		tag, err := tx.Exec(ctx, `
+			INSERT INTO inventory_ledger (id, session_id, tier_id, capacity_total)
+			VALUES ($1, $2, NULL, $3)
+			ON CONFLICT (id) DO NOTHING
+		`, il.ID, il.SessionID, capacity)
+		if err != nil {
+			return stats, fmt.Errorf("insert inventory_ledger %q: %w", il.ID, err)
+		}
+		stats.InventoryLedgers += int(tag.RowsAffected())
+		if tag.RowsAffected() == 0 {
+			stats.AlreadyPresent++
+		}
+	}
+
 	return stats, nil
 }
 
@@ -586,5 +706,17 @@ func printSummary(seed SeedData) {
 	fmt.Fprintf(os.Stdout, "  payment_configs:  %d\n", len(seed.PaymentConfigs))
 	for _, pc := range seed.PaymentConfigs {
 		fmt.Fprintf(os.Stdout, "    - org=%s provider=%s mode=%s status=%s\n", pc.OrgID, pc.Provider, pc.Mode, pc.Status)
+	}
+	fmt.Fprintf(os.Stdout, "  events:           %d\n", len(seed.Events))
+	for _, e := range seed.Events {
+		fmt.Fprintf(os.Stdout, "    - %s (org=%s, status=%s)\n", e.Name, e.OrgID, e.Status)
+	}
+	fmt.Fprintf(os.Stdout, "  sessions:         %d\n", len(seed.Sessions))
+	for _, s := range seed.Sessions {
+		fmt.Fprintf(os.Stdout, "    - %s (event=%s, capacity=%d, status=%s)\n", s.ID, s.EventID, s.CapacityTotal, s.Status)
+	}
+	fmt.Fprintf(os.Stdout, "  inventory_ledger: %d\n", len(seed.Inventories))
+	for _, il := range seed.Inventories {
+		fmt.Fprintf(os.Stdout, "    - session=%s capacity_total=%d (GA tier)\n", il.SessionID, il.CapacityTotal)
 	}
 }

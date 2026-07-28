@@ -54,12 +54,12 @@ func TestPR204Integration_ConvertedReservationSurvivesTTLWorker(t *testing.T) {
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
-		t.Skipf("pgxpool.New: %v; skipping", err)
+		t.Fatalf("pgxpool.New: %v — DATABASE_URL is set, so a connection failure must fail the gate", err)
 	}
 	defer pool.Close()
 
 	if err := pool.Ping(ctx); err != nil {
-		t.Skipf("pool.Ping: %v; skipping", err)
+		t.Fatalf("pool.Ping: %v — DATABASE_URL is set, so an unreachable database must fail the gate", err)
 	}
 
 	q := gen.New(pool)
@@ -68,23 +68,30 @@ func TestPR204Integration_ConvertedReservationSurvivesTTLWorker(t *testing.T) {
 	// We need a valid (org_id, channel_id, session_id) triple to satisfy FK
 	// constraints. Use whatever exists in the DB (seed or prior test data).
 
+	// sessions has no org_id column — organization ownership goes through
+	// events (sessions.event_id → events.org_id). Join through events and
+	// require a GA (tier_id IS NULL) inventory_ledger row so ReserveCapacity
+	// below can succeed. arena-seed guarantees this triple exists in CI
+	// (feature #388), so failure to resolve it is a hard error, not a skip.
 	var orgID, channelID, sessionID uuid.UUID
 	row := pool.QueryRow(ctx, `
 		SELECT sc.org_id, sc.id, s.id
 		FROM   sales_channels sc
-		JOIN   sessions s ON s.org_id = sc.org_id
+		JOIN   events e   ON e.org_id = sc.org_id
+		JOIN   sessions s ON s.event_id = e.id
+		JOIN   inventory_ledger il ON il.session_id = s.id AND il.tier_id IS NULL
 		LIMIT  1
 	`)
 	if err := row.Scan(&orgID, &channelID, &sessionID); err != nil {
-		t.Skipf("no (org, channel, session) triple found in DB: %v; skipping", err)
+		t.Fatalf("no (org, channel, session) triple with GA inventory found in DB: %v — "+
+			"run arena-seed against the migrated database first (CI does this; see .github/workflows/ci.yml)", err)
 	}
 	t.Logf("using org=%s channel=%s session=%s", orgID, channelID, sessionID)
 
-	// ── Ensure an inventory_ledger row exists for this session (GA tier) ──────
-	// ReserveCapacity creates the row if absent; we'll undo it in cleanup.
+	// ── Reserve one unit of GA capacity for this session ──────────────────────
 	qty := int32(1)
 	if _, err := q.ReserveCapacity(ctx, sessionID, nil, qty); err != nil {
-		t.Skipf("ReserveCapacity failed (session may not support GA): %v; skipping", err)
+		t.Fatalf("ReserveCapacity failed for seeded GA session %s: %v", sessionID, err)
 	}
 	// Cleanup: release the reserve we just created.
 	defer func() {
@@ -141,7 +148,8 @@ func TestPR204Integration_ConvertedReservationSurvivesTTLWorker(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Skip("'active' reservation with past expires_at not returned by GetExpiredReservations — DB clock or test timing issue; skipping")
+		t.Fatal("'active' reservation with past expires_at not returned by GetExpiredReservations — " +
+			"the danger-zone precondition of this regression proof failed; the gate must not silently skip")
 	}
 	t.Log("sanity: 'active' reservation with past expires_at IS returned by GetExpiredReservations ✓")
 

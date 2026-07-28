@@ -82,6 +82,93 @@ func TestBuildSeed_AllIDsUnique(t *testing.T) {
 	for _, pc := range s.PaymentConfigs {
 		check(pc.ID, "payment_provider_configs")
 	}
+	for _, e := range s.Events {
+		check(e.ID, "events")
+	}
+	for _, sess := range s.Sessions {
+		check(sess.ID, "sessions")
+	}
+	for _, il := range s.Inventories {
+		check(il.ID, "inventory_ledger")
+	}
+}
+
+// TestBuildSeed_CheckoutTripleResolvable proves the seed plan contains the
+// (org, channel, session) triple the PR2-04/PR2-27 CI integration proofs
+// resolve via: sales_channels sc JOIN events e ON e.org_id = sc.org_id
+// JOIN sessions s ON s.event_id = e.id, plus a GA inventory_ledger row for
+// that session so ReserveCapacity succeeds (feature #388).
+func TestBuildSeed_CheckoutTripleResolvable(t *testing.T) {
+	t.Parallel()
+	s := BuildSeed()
+
+	channelOrgs := map[string]bool{}
+	for _, c := range s.Channels {
+		channelOrgs[c.OrgID] = true
+	}
+	eventByID := map[string]SeedEvent{}
+	for _, e := range s.Events {
+		eventByID[e.ID] = e
+	}
+	invBySession := map[string]SeedInventory{}
+	for _, il := range s.Inventories {
+		invBySession[il.SessionID] = il
+	}
+
+	resolvable := false
+	for _, sess := range s.Sessions {
+		e, ok := eventByID[sess.EventID]
+		if !ok {
+			t.Errorf("session %s references unknown event_id %s", sess.ID, sess.EventID)
+			continue
+		}
+		il, hasInv := invBySession[sess.ID]
+		if channelOrgs[e.OrgID] && hasInv && sess.Status == "scheduled" {
+			if il.CapacityTotal <= 0 || sess.CapacityTotal <= 0 {
+				t.Errorf("session %s must seed positive GA capacity for the checkout proofs", sess.ID)
+			}
+			resolvable = true
+		}
+	}
+	if !resolvable {
+		t.Error("seed plan has no (org, channel, session) triple with GA inventory — " +
+			"the PR2-04/PR2-27 CI integration proofs would skip (feature #388)")
+	}
+}
+
+// TestBuildSeed_EventsAndSessionsReferenceKnownRows guards the FKs from
+// events.org_id/venue_id and inventory_ledger.session_id.
+func TestBuildSeed_EventsAndSessionsReferenceKnownRows(t *testing.T) {
+	t.Parallel()
+	s := BuildSeed()
+	orgIDs := map[string]bool{}
+	for _, o := range s.Organizations {
+		orgIDs[o.ID] = true
+	}
+	venueIDs := map[string]bool{}
+	for _, v := range s.Venues {
+		venueIDs[v.ID] = true
+	}
+	sessionIDs := map[string]bool{}
+	for _, sess := range s.Sessions {
+		sessionIDs[sess.ID] = true
+	}
+	for _, e := range s.Events {
+		if !orgIDs[e.OrgID] {
+			t.Errorf("event %q references unknown org_id %s", e.Name, e.OrgID)
+		}
+		if e.VenueID != "" && !venueIDs[e.VenueID] {
+			t.Errorf("event %q references unknown venue_id %s", e.Name, e.VenueID)
+		}
+		if !strings.HasPrefix(e.Name, "TEST ") {
+			t.Errorf("event %q name must start with TEST so dashboards can spot fixture data", e.Name)
+		}
+	}
+	for _, il := range s.Inventories {
+		if !sessionIDs[il.SessionID] {
+			t.Errorf("inventory_ledger %s references unknown session_id %s", il.ID, il.SessionID)
+		}
+	}
 }
 
 // TestBuildSeed_VenuesReferenceKnownOrgs ensures every venue points at a
