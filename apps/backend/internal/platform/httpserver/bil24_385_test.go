@@ -17,7 +17,7 @@
 //  7. The variant-A enforcement comment is present in bil24_shims.go.
 //  8. BIL24_COMPAT_ENABLED=false is the safe production default (structural).
 //  9. main.go wires Bil24CompatEnabled from cfg into httpserver.Options.
-// 10. /compat/bil24/json disabled → 404 body contains JSON error envelope
+//  10. /compat/bil24/json disabled → 404 body contains JSON error envelope
 //     (standard arena error format, not chi plain text).
 //
 // All tests build a *Server from the production Options wiring used by

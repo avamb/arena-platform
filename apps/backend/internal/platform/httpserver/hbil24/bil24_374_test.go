@@ -117,6 +117,12 @@ func (f *fakeResCtxWithToken) GetSalesChannelByID(_ context.Context, id, orgID u
 	}, nil
 }
 
+// GetSalesChannelByIDGlobal satisfies ReservationContextQuerier (feature #390):
+// SCAN_TICKET resolves the fid channel without an org filter.
+func (f *fakeResCtxWithToken) GetSalesChannelByIDGlobal(ctx context.Context, id uuid.UUID) (gen.SalesChannelRow, error) {
+	return f.GetSalesChannelByID(ctx, id, f.orgID)
+}
+
 // buildHandlerWithToken wires a Handler whose RESERVATION path enforces
 // fid/token validation (requireToken=true). The fake reservation callbacks
 // always succeed so authentication failures are the only source of errors.

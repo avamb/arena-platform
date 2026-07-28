@@ -786,6 +786,28 @@ func (h *Handler) handleBil24ScanTicket(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
+	// Feature #390 / PR2-32: credential enforcement for SCAN_TICKET.
+	// SCAN_TICKET mutates state (MarkBarcodeScanned) and therefore requires
+	// the same fid/token validation as RESERVATION and UN_RESERVE. Quick-reject
+	// when the token is absent — no DB round-trip needed.
+	if h.requireToken && strings.TrimSpace(req.Token) == "" {
+		h.logger.Warn("bil24_compat: SCAN_TICKET: token missing in request; rejecting",
+			slog.String("fid", req.FID),
+		)
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeUnauthorized,
+			"authentication required: token field is required for SCAN_TICKET",
+		))
+		return
+	}
+	// Full credential validation: resolve the channel addressed by fid and
+	// verify the token against its stored gateway_token_hash.
+	if h.requireToken {
+		if !h.validateScanTicketToken(r.Context(), w, req) {
+			return
+		}
+	}
+
 	if req.TicketID == "" {
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeInvalidRequest, "ticketId is required",
@@ -1281,6 +1303,67 @@ func (h *Handler) validateUnReserveToken(
 		h.logger.Error("bil24_compat: UN_RESERVE: channel lookup for auth failed",
 			slog.String("reservation_id", reservationID.String()),
 			slog.String("channel_id", res.ChannelID.String()),
+			slog.String("error", err.Error()),
+		)
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInternalError, "failed to resolve sales channel",
+		))
+		return false
+	}
+
+	return h.validateGatewayToken(w, req, channel.Settings)
+}
+
+// validateScanTicketToken performs the full SCAN_TICKET credential check
+// (feature #390, PR2-32): the fid identifies the sales channel whose
+// gateway_token_hash authenticates the caller. Unlike RESERVATION, a scan
+// carries no session to derive the org from, so the channel is resolved by
+// primary key alone (GetSalesChannelByIDGlobal). On failure the Bil24 error
+// envelope has already been written and false is returned.
+func (h *Handler) validateScanTicketToken(
+	ctx context.Context,
+	w http.ResponseWriter,
+	req bil24Request,
+) bool {
+	// Fail closed: cannot validate without the context querier.
+	if h.resDeps.CtxQ == nil {
+		h.logger.Warn("bil24_compat: SCAN_TICKET: requireToken=true but CtxQ is nil; rejecting",
+			slog.String("fid", req.FID),
+		)
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInternalError,
+			"authentication service unavailable",
+		))
+		return false
+	}
+
+	if strings.TrimSpace(req.FID) == "" {
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeUnauthorized,
+			"fid is required for SCAN_TICKET (sales channel credential)",
+		))
+		return false
+	}
+	chID, err := TranslateLegacyID(req.FID)
+	if err != nil {
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeUnauthorized,
+			"fid must be a valid sales channel identifier",
+		))
+		return false
+	}
+
+	channel, err := h.resDeps.CtxQ.GetSalesChannelByIDGlobal(ctx, chID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeUnauthorized,
+				"sales channel not found for fid",
+			))
+			return false
+		}
+		h.logger.Error("bil24_compat: SCAN_TICKET: channel lookup for auth failed",
+			slog.String("fid", req.FID),
 			slog.String("error", err.Error()),
 		)
 		writeBil24JSON(w, http.StatusOK, bil24Error(

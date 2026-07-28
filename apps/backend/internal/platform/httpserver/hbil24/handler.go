@@ -66,6 +66,11 @@ type ReservationContextQuerier interface {
 	// the owning sales channel for fid/token credential validation.
 	// Feature #381, PR2-25 variant A.
 	GetReservationByID(ctx context.Context, id uuid.UUID) (gen.ReservationRow, error)
+	// GetSalesChannelByIDGlobal fetches a sales channel by primary key without
+	// an org filter so SCAN_TICKET — which carries a fid but no session or
+	// reservation to derive the org from — can validate its fid/token
+	// credential. Feature #390, PR2-32.
+	GetSalesChannelByIDGlobal(ctx context.Context, id uuid.UUID) (gen.SalesChannelRow, error)
 }
 
 // TierPriceQuerier resolves ticket-tier unit prices for the RESERVATION
@@ -125,12 +130,12 @@ type SchemaQuerier interface {
 // RESERVATION branches. Both are typed as interfaces so tests can inject
 // deterministic fakes; production wiring passes *gen.Queries values.
 //
-// requireToken (feature #374): when true, every state-mutating command
-// (RESERVATION, UN_RESERVE) validates the request's fid/token pair
-// against the gateway_token_hash stored in the sales channel's settings
-// JSON before performing any DB writes. Channels without a stored hash
-// are rejected when requireToken=true. Default false preserves backward
-// compatibility with existing deployments.
+// requireToken (feature #374, extended by #390): when true, every
+// state-mutating command (RESERVATION, UN_RESERVE, SCAN_TICKET) validates
+// the request's fid/token pair against the gateway_token_hash stored in
+// the sales channel's settings JSON before performing any DB writes.
+// Channels without a stored hash are rejected when requireToken=true.
+// Default false preserves backward compatibility with existing deployments.
 type Handler struct {
 	eventQueries    *gen.Queries
 	tierQueries     *gen.Queries
@@ -187,7 +192,7 @@ func New(
 }
 
 // WithRequireToken enables or disables fid/token authentication for
-// state-mutating commands (RESERVATION, UN_RESERVE). When enabled, every
+// state-mutating commands (RESERVATION, UN_RESERVE, SCAN_TICKET). When enabled, every
 // such command must supply a token that matches the bcrypt hash stored in
 // the target sales channel's settings JSON under the key
 // "gateway_token_hash". Channels without a stored hash are rejected when

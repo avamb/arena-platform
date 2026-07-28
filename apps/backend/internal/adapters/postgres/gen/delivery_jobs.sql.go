@@ -19,10 +19,11 @@ import (
 //
 // A DeliveryJobRow tracks the state of a single ticket email delivery attempt.
 // Status transitions (PR-03):
-//   pending → processing → sent      (terminal: SMTP accepted)
-//   pending → processing → failed    (terminal: dead-lettered)
-//   pending → disabled               (terminal: no real sender configured)
-//   pending → skipped                (terminal: no recipient email available)
+//
+//	pending → processing → sent      (terminal: SMTP accepted)
+//	pending → processing → failed    (terminal: dead-lettered)
+//	pending → disabled               (terminal: no real sender configured)
+//	pending → skipped                (terminal: no recipient email available)
 //
 // RecipientEmail is nil when the email address was not known at enqueue time;
 // the worker resolves it from ticket.holder_email at delivery time.

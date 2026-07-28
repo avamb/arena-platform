@@ -98,6 +98,26 @@ func (q *Queries) GetSalesChannelByID(ctx context.Context, id, orgID uuid.UUID) 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GetSalesChannelByIDGlobal
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getSalesChannelByIDGlobal = `-- name: GetSalesChannelByIDGlobal :one
+SELECT id, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
+FROM   sales_channels
+WHERE  id = $1
+  AND  deleted_at IS NULL`
+
+// GetSalesChannelByIDGlobal fetches an active sales channel by primary key
+// without an org filter. Used by the Bil24 gateway's SCAN_TICKET credential
+// validation (PR2-32, feature #390): scans carry a fid but no session or
+// reservation from which to derive the org first. Returns pgx.ErrNoRows when
+// not found or deleted.
+func (q *Queries) GetSalesChannelByIDGlobal(ctx context.Context, id uuid.UUID) (SalesChannelRow, error) {
+	row := q.db.QueryRow(ctx, getSalesChannelByIDGlobal, id)
+	return scanSalesChannelRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ListSalesChannelsByOrg
 // ─────────────────────────────────────────────────────────────────────────────
 

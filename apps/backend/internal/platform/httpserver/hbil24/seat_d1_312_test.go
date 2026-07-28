@@ -106,6 +106,16 @@ func (f *fakeResCtx) GetReservationByID(_ context.Context, _ uuid.UUID) (gen.Res
 	return gen.ReservationRow{}, pgx.ErrNoRows
 }
 
+// GetSalesChannelByIDGlobal satisfies ReservationContextQuerier (feature #390).
+// fakeResCtx tests run with requireToken=false so this path is never reached.
+func (f *fakeResCtx) GetSalesChannelByIDGlobal(_ context.Context, id uuid.UUID) (gen.SalesChannelRow, error) {
+	ch, ok := f.channels[id]
+	if !ok {
+		return gen.SalesChannelRow{}, pgx.ErrNoRows
+	}
+	return ch, nil
+}
+
 // fakeTiers implements TierPriceQuerier in memory.
 type fakeTiers struct {
 	tiers map[uuid.UUID]gen.TicketTierRow

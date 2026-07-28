@@ -595,6 +595,17 @@ func Load() (*Config, error) {
 	}
 	cfg.Bil24CompatEnabled = b
 
+	// Bil24 gateway credential enforcement. Defaults to TRUE — the gateway
+	// must never mount without fid/token validation unless an operator
+	// explicitly opts out (and production rejects that opt-out entirely,
+	// see validateProduction). Before feature #390 this variable was
+	// documented but never parsed, silently leaving requireToken=false.
+	b, err = getenvBool("BIL24_REQUIRE_TOKEN", true)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.Bil24RequireToken = b
+
 	// Media S3 path-style flag.
 	b, err = getenvBool("MEDIA_S3_USE_PATH_STYLE", true)
 	if err != nil {
@@ -987,6 +998,17 @@ func (c *Config) validateProduction() []error {
 		errs = append(errs, errors.New(
 			"FAULT_INJECT_OUTBOX_AFTER_AUDIT must be false in production;"+
 				" fault injection is forbidden in production",
+		))
+	}
+
+	// 13. The Bil24 gateway must never mount without credential enforcement
+	// in production (feature #390, PR2-32). BIL24_COMPAT_ENABLED=true with
+	// BIL24_REQUIRE_TOKEN=false exposes state-mutating commands (RESERVATION,
+	// UN_RESERVE, SCAN_TICKET) to unauthenticated callers.
+	if c.Bil24CompatEnabled && !c.Bil24RequireToken {
+		errs = append(errs, errors.New(
+			"BIL24_REQUIRE_TOKEN must be true when BIL24_COMPAT_ENABLED=true in production;"+
+				" mounting the Bil24 gateway without fid/token enforcement is forbidden",
 		))
 	}
 
