@@ -165,6 +165,10 @@ test.describe('1 — Cold load: Moto G / Fast 3G', () => {
     await page.goto(DEMO_PAGE);
     await page.waitForLoadState('networkidle');
 
+    // Drop the bundle route before the test ends so a late in-flight
+    // route.fetch cannot throw "Test ended" into the next test's report.
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+
     expect(
       transferBytes,
       `Bundle raw size ${transferBytes} bytes exceeds 600 KB proxy limit`,
@@ -195,10 +199,16 @@ test.describe('2 — Real schema: 260 seats from backend', () => {
 
   test('standing zone "galerie" present in SVG from real schema', async ({ page }) => {
     await waitForSVG(page);
+    // The first shadow-DOM <svg> is a zoom-toolbar icon (WID-T5); wait for the
+    // POPULATED map and query the map svg inside .seat-map-inner explicitly.
+    await page.waitForFunction(() => {
+      const el = document.querySelector('#widget-hybrid-en');
+      return (el?.shadowRoot?.querySelectorAll('[data-seat-key]').length ?? 0) > 0;
+    });
 
     const zonePresent = await page.evaluate(() => {
       const el  = document.querySelector('#widget-hybrid-en');
-      const svg = el?.shadowRoot?.querySelector('svg');
+      const svg = el?.shadowRoot?.querySelector('.seat-map-inner svg');
       return svg?.querySelector('[data-zone-key="galerie"]') !== null;
     });
 
@@ -260,6 +270,10 @@ test.describe('2 — Real schema: 260 seats from backend', () => {
       `/v1/event-sessions/${SESSION_ID}/schema`,
       { headers: { 'If-None-Match': firstEtag! } },
     );
+    // The widget keeps polling in the background; drop the schema route
+    // before the test ends so an in-flight route.fetch cannot throw
+    // "Test ended" and poison the next test's report.
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
     expect(
       secondResp.status(),
       'Second request with matching ETag should return 304 Not Modified',
@@ -571,9 +585,11 @@ test.describe('5 — Hold expiry recovery (real backend)', () => {
       { tok: token },
     );
 
-    // Accept 200 (recovered), 400 (not expired yet / invalid state), or 404.
+    // Accept 200 (recovered), 400 (not expired / already completed), 404
+    // (unknown token), or 409 (documented: re-capture finds the seats still
+    // held by this very active checkout — reservation.seats_conflict).
     expect(
-      [200, 400, 404].includes(recoverResult.httpStatus),
+      [200, 400, 404, 409].includes(recoverResult.httpStatus),
       `recover returned unexpected status ${recoverResult.httpStatus}`,
     ).toBe(true);
 
@@ -657,7 +673,7 @@ test.describe('6 — A11y: axe WCAG 2.2 AA on POPULATED real map', () => {
     expect(dir).toBe('ltr');
   });
 
-  test('seat map container has role=application and aria-label', async ({ page }) => {
+  test('seat map container has the WID-T5 composite role and aria-label', async ({ page }) => {
     const attrs = await page.evaluate(() => {
       const el        = document.querySelector('#widget-hybrid-en');
       const container = el?.shadowRoot?.querySelector('.seat-map-container');
@@ -668,7 +684,10 @@ test.describe('6 — A11y: axe WCAG 2.2 AA on POPULATED real map', () => {
       };
     });
 
-    expect(attrs.role).toBe('application');
+    // WID-T5 canonical single-stop composite: the container is the sole Tab
+    // stop with role="toolbar" (see SeatMapView.svelte and keyboard.e2e.ts).
+    expect(attrs.role).toBe('toolbar');
+    expect(attrs.tabindex).toBe('0');
     expect(attrs.ariaLabel).toBeTruthy();
   });
 });

@@ -46,9 +46,62 @@ async function waitForSVG(page: Page): Promise<void> {
 // ─── Fixture constants ────────────────────────────────────────────────────────
 
 const FEED_TOKEN = 'palac-feed-token';
+const EVENT_ID = 'event-palac-akropolis';
 const SESSION_ID = 'palac-session-1';
 const CHECKOUT_TOKEN = 'ckout-palac-test-001';
 const CHECKOUT_SESSION_ID = 'csid-palac-0000001';
+
+// ─── Feed bootstrap fixtures (PR2-21 boot contract) ──────────────────────────
+//
+// The widget resolves its event through the public feed API: with only
+// feed-token + session-id (the WordPress shortcode contract) it lists the
+// feed's events and probes details until one contains the session. These
+// fixtures cover that real resolution path — no synthetic fallback.
+
+/** Palác event summary as emitted by GET /v1/public/feeds/{token}/events. */
+function buildPalacEventSummary(): object {
+  const now = new Date();
+  const startAt = new Date(now.getTime() + 7 * 24 * 3600 * 1000).toISOString();
+  const endAt = new Date(now.getTime() + 7 * 24 * 3600 * 1000 + 3 * 3600 * 1000).toISOString();
+  return {
+    id: EVENT_ID,
+    org_id: 'org-palac',
+    venue_id: 'venue-palac',
+    name: 'Palác Akropolis — Hybrid Night',
+    description: null,
+    status: 'published',
+    start_at: startAt,
+    end_at: endAt,
+    visibility: 'public',
+    image_url: null,
+    created_at: now.toISOString(),
+    updated_at: now.toISOString(),
+  };
+}
+
+/** Palác event detail as emitted by GET /v1/public/feeds/{token}/events/{id}. */
+function buildPalacEventDetail(): object {
+  const summary = buildPalacEventSummary() as Record<string, unknown>;
+  return {
+    event: {
+      ...summary,
+      sessions: [
+        {
+          id: SESSION_ID,
+          start_at: summary['start_at'],
+          end_at: summary['end_at'],
+          capacity_total: 380,
+          status: 'published',
+          admission_mode: 'hybrid',
+          schema_url: `/v1/event-sessions/${SESSION_ID}/schema`,
+          seat_status_url: `/v1/event-sessions/${SESSION_ID}/seat-status`,
+          buyer_fields: [],
+          tiers: [],
+        },
+      ],
+    },
+  };
+}
 
 // ─── Palác Akropolis geometry helpers ────────────────────────────────────────
 
@@ -224,6 +277,24 @@ async function setupPalacRoutes(
 ): Promise<void> {
   const schema = buildPalacSchema();
   const seatStatus = buildPalacSeatStatus(opts.statusOverrides ?? {});
+
+  // GET /v1/public/feeds/{token}/events — feed event list (PR2-21 bootstrap).
+  await ctx.route(`**/v1/public/feeds/${FEED_TOKEN}/events`, (route) => {
+    void route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ events: [buildPalacEventSummary()] }),
+    });
+  });
+
+  // GET /v1/public/feeds/{token}/events/{event_id} — event detail with sessions.
+  await ctx.route(`**/v1/public/feeds/${FEED_TOKEN}/events/${EVENT_ID}`, (route) => {
+    void route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(buildPalacEventDetail()),
+    });
+  });
 
   // GET /v1/event-sessions/{id}/schema
   await ctx.route(`**/v1/event-sessions/${SESSION_ID}/schema`, (route) => {

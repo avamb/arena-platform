@@ -20,7 +20,7 @@
    */
   import { onMount } from 'svelte';
   import { parseLocale, parseFeedToken, parseSessionId, isRtlLocale } from './utils.js';
-  import { fetchFeedEvent, postCheckoutStart, getCheckoutStatus, postCheckoutRecover, ApiError } from './api.js';
+  import { fetchFeedEvent, fetchFeedEvents, postCheckoutStart, getCheckoutStatus, postCheckoutRecover, ApiError } from './api.js';
   import type { FeedSession, FeedEvent, Geometry, CategoryPrice, SeatStatusValue } from './types.js';
   import type { BuyerFormValues } from './lib/checkout.js';
   import { buildCheckoutPayload, getCheckoutI18n, parseConflictsFromApiError, conflictKeySet, filterCartWithoutConflicts } from './lib/checkout.js';
@@ -220,29 +220,120 @@
       return;
     }
 
-    if (!normFeedToken || !normEventId) return;
+    if (!normFeedToken) return;
 
     // Load real event data from the public feed API.
-    loadFromFeed(normFeedToken, normEventId);
+    void resolveAndLoadFromFeed(normFeedToken);
   });
 
   /**
-   * Load the event and its sessions from the public feed API.
-   * Populates `event`, `selectedSession`, tiers, and buyer_fields.
-   * Replaces the previous synthetic-stub approach.
+   * Resolve which event to load and populate `event` / `selectedSession`.
+   *
+   * Resolution ladder (PR2-21 regression fix — the WordPress shortcode only
+   * emits feed-token + session-id, so event-id must stay optional):
+   *
+   *  1. `event-id` attribute set → fetch that event's detail directly.
+   *  2. `session-id` only → list the feed's events and probe details until
+   *     one contains the session. If the list endpoint is unreachable (e.g.
+   *     legacy backend), fall back to a synthetic single-session event —
+   *     the pre-PR2-21 behaviour — so the seat map still boots; the real
+   *     data paths (schema / seat-status / checkout) remain fully live.
+   *  3. Neither → load the first event in the feed.
    */
-  async function loadFromFeed(token: string, evId: string): Promise<void> {
+  async function resolveAndLoadFromFeed(token: string): Promise<void> {
     loading = true;
     loadError = null;
     try {
-      const data = await fetchFeedEvent(token, evId, resolvedApiBase);
-      event = data.event;
-      selectedSession = pickInitialSession(data.event, normSessionId);
+      if (normEventId) {
+        applyFeedEvent(await fetchFeedEvent(token, normEventId, resolvedApiBase));
+        return;
+      }
+
+      let list: import('./types.js').FeedEventsListResponse;
+      try {
+        list = await fetchFeedEvents(token, resolvedApiBase);
+      } catch (listErr) {
+        if (normSessionId) {
+          // Feed listing unavailable — keep the embed alive on the
+          // session-scoped synthetic event (pre-PR2-21 contract).
+          console.warn('arena-tickets: feed event list unavailable, using session-only bootstrap:', listErr);
+          applySyntheticSessionEvent(normSessionId);
+          return;
+        }
+        throw listErr;
+      }
+
+      // Probe at most the first 20 events for the deep-linked session.
+      const candidates = (list.events ?? []).slice(0, 20);
+      if (candidates.length === 0) {
+        if (normSessionId) {
+          applySyntheticSessionEvent(normSessionId);
+          return;
+        }
+        throw new Error(t.error_load_event);
+      }
+
+      if (normSessionId) {
+        for (const candidate of candidates) {
+          const data = await fetchFeedEvent(token, candidate.id, resolvedApiBase);
+          if (data.event.sessions.some((s) => s.id === normSessionId)) {
+            applyFeedEvent(data);
+            return;
+          }
+        }
+        // Session not published under this token — surface the first event
+        // rather than a blank widget so the misconfiguration is visible.
+        console.warn(`arena-tickets: session-id ${normSessionId} not found in feed; showing first event`);
+      }
+
+      applyFeedEvent(await fetchFeedEvent(token, candidates[0]!.id, resolvedApiBase));
     } catch (err) {
       loadError = err instanceof Error ? err.message : t.error_load_event;
     } finally {
       loading = false;
     }
+  }
+
+  /** Apply a loaded feed event detail to the widget state. */
+  function applyFeedEvent(data: import('./types.js').FeedEventDetailResponse): void {
+    event = data.event;
+    selectedSession = pickInitialSession(data.event, normSessionId);
+  }
+
+  /**
+   * Build the pre-PR2-21 synthetic single-session event so a
+   * feed-token + session-id embed still boots when the feed listing is
+   * unavailable. Schema, seat-status, and checkout all use live endpoints.
+   */
+  function applySyntheticSessionEvent(sessId: string): void {
+    const now = new Date().toISOString();
+    const syntheticEvent: FeedEvent = {
+      id: sessId,
+      org_id: '',
+      name: '',
+      status: 'published',
+      start_at: now,
+      end_at: now,
+      visibility: 'public',
+      created_at: now,
+      updated_at: now,
+      sessions: [
+        {
+          id: sessId,
+          start_at: now,
+          end_at: now,
+          capacity_total: 0,
+          status: 'published',
+          admission_mode: 'assigned_seats',
+          schema_url: `/v1/event-sessions/${sessId}/schema`,
+          seat_status_url: `/v1/event-sessions/${sessId}/seat-status`,
+          buyer_fields: [],
+          tiers: [],
+        },
+      ],
+    };
+    event = syntheticEvent;
+    selectedSession = syntheticEvent.sessions[0] ?? null;
   }
 
   // ── Schema loaded callback ─────────────────────────────────────────────────

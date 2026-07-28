@@ -291,9 +291,13 @@ const (
 	PaymentCfgAAllpay = "fe000006-0000-7000-8000-000000000002"
 	PaymentCfgBStripe = "fe000006-0000-7000-8000-000000000003"
 
-	EventA1     = "fe000007-0000-7000-8000-000000000001"
-	SessionA1   = "fe000008-0000-7000-8000-000000000001"
-	InventoryA1 = "fe000009-0000-7000-8000-000000000001"
+	// The fe0000a1 prefix is deliberately distinct from the fe000007 range
+	// used by apps/widget/scripts/seed-palac-e2e.sql — both seeds run in the
+	// widget-acceptance CI job, and a colliding event ID makes the Palác
+	// fixture's ON CONFLICT (id) DO NOTHING insert silently no-op.
+	EventA1     = "fe0000a1-0000-7000-8000-000000000001"
+	SessionA1   = "fe0000a1-0000-7000-8000-000000000002"
+	InventoryA1 = "fe0000a1-0000-7000-8000-000000000003"
 )
 
 // SeedPassword is the plaintext password assigned to every seeded user.

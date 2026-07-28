@@ -16,6 +16,7 @@
 
 import type {
   FeedEventDetailResponse,
+  FeedEventsListResponse,
   SchemaResponse,
   SchemaCacheEntry,
   SeatStatusResponse,
@@ -90,6 +91,29 @@ export async function fetchFeedEvent(
     throw new Error(`fetchFeedEvent HTTP ${res.status}: ${res.statusText}`);
   }
   return res.json() as Promise<FeedEventDetailResponse>;
+}
+
+/**
+ * Fetch the published-events list for a feed token.
+ *
+ * Used by the widget to resolve which event to load when the embed only
+ * provides `feed-token` (+ optionally `session-id`) — the contract the
+ * WordPress shortcode emits — without an explicit `event-id` attribute.
+ *
+ * @param feedToken  Public feed token (path credential).
+ * @param apiBase    Optional API base URL (default: relative).
+ * @throws Error when the response is non-2xx.
+ */
+export async function fetchFeedEvents(
+  feedToken: string,
+  apiBase = '',
+): Promise<FeedEventsListResponse> {
+  const url = `${apiBase}/v1/public/feeds/${encodeURIComponent(feedToken)}/events`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`fetchFeedEvents HTTP ${res.status}: ${res.statusText}`);
+  }
+  return res.json() as Promise<FeedEventsListResponse>;
 }
 
 // ─── Session schema ──────────────────────────────────────────────────────────

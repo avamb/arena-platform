@@ -168,3 +168,15 @@ export interface FeedEvent {
 export interface FeedEventDetailResponse {
   event: FeedEvent;
 }
+
+/**
+ * One event in the GET /v1/public/feeds/{token}/events list response.
+ * The list serializer emits the event WITHOUT its sessions — session data
+ * comes from the per-event detail endpoint.
+ */
+export type FeedEventSummary = Omit<FeedEvent, 'sessions'>;
+
+/** Response from GET /v1/public/feeds/{token}/events (list). */
+export interface FeedEventsListResponse {
+  events: FeedEventSummary[];
+}
