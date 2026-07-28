@@ -58,7 +58,16 @@ func (s *Server) enforceOrgMembership(w http.ResponseWriter, r *http.Request, pa
 	if !ok {
 		return false
 	}
+	return s.enforceMembershipInOrg(w, r, orgID)
+}
 
+// enforceMembershipInOrg verifies that the authenticated actor holds an active
+// membership in the already-resolved orgID (e.g. taken from a row the caller
+// loaded, for routes where the organization is not a URL parameter — PR2-31).
+//
+// Same fail-closed contract as enforceOrgMembership: returns false and writes
+// 403 (or 500 on lookup error) when access is denied.
+func (s *Server) enforceMembershipInOrg(w http.ResponseWriter, r *http.Request, orgID uuid.UUID) bool {
 	if s.membershipQueries == nil {
 		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope(
 			"org.access_denied", "caller is not a member of this organization", r,

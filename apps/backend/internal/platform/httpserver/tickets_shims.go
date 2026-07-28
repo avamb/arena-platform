@@ -9,6 +9,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/htickets"
 )
@@ -129,20 +132,51 @@ func (s *Server) handleGetCredential(w http.ResponseWriter, r *http.Request) {
 }
 
 // ─── complimentary handler shims ─────────────────────────────────────────────
+//
+// PR2-31 (feature #389): the create/list/get routes are mounted at
+// /organizations/{org_id}/complimentary and were missing the org-membership
+// guard — RBAC (complimentary.*) alone let a permission-holder in Org A
+// read/issue Org B's complimentary tickets by supplying B's UUID in the path.
+// The revoke route (/complimentary/{id}/revoke) is not org-scoped by URL and
+// resolves ownership from the issuance row itself.
 
 func (s *Server) handleCreateComplimentaryIssuance(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
 	s.ticketsHandler().HandleCreateComplimentaryIssuance(w, r)
 }
 
 func (s *Server) handleListComplimentaryIssuances(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
 	s.ticketsHandler().HandleListComplimentaryIssuances(w, r)
 }
 
 func (s *Server) handleGetComplimentaryIssuance(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
 	s.ticketsHandler().HandleGetComplimentaryIssuance(w, r)
 }
 
 func (s *Server) handleRevokeComplimentaryIssuance(w http.ResponseWriter, r *http.Request) {
+	// PR2-31 (feature #389): revocation is org-scoped through the issuance row
+	// rather than the URL. When the issuance resolves, require the actor to be
+	// a member of its owning org before delegating; unparseable IDs and lookup
+	// failures fall through so the handler emits its canonical 400/404/5xx
+	// envelopes (the handler re-fetches and fails identically). The pool guard
+	// mirrors the handler's own nil-pool 503 short-circuit.
+	if s.complimentaryQueries != nil && s.pool != nil {
+		if id, err := uuid.Parse(chi.URLParam(r, "id")); err == nil {
+			if issuance, err := s.complimentaryQueries.GetComplimentaryIssuanceByID(r.Context(), id); err == nil {
+				if !s.enforceMembershipInOrg(w, r, issuance.OrgID) {
+					return
+				}
+			}
+		}
+	}
 	s.ticketsHandler().HandleRevokeComplimentaryIssuance(w, r)
 }
 

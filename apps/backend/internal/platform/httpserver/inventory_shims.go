@@ -128,19 +128,37 @@ func (s *Server) handleConfirmCapacity(w http.ResponseWriter, r *http.Request) {
 }
 
 // ─── external allocation handler shims ────────────────────────────────────────
+//
+// PR2-31 (feature #389): these routes are mounted at
+// /organizations/{org_id}/external-allocations and were the last inventory
+// surface missing the org-membership guard — RBAC (allocation.*) alone let a
+// permission-holder in Org A read/write Org B's allocations by supplying B's
+// UUID in the path.
 
 func (s *Server) handleCreateExternalAllocation(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
 	s.inventoryHandler().HandleCreateExternalAllocation(w, r)
 }
 
 func (s *Server) handleListExternalAllocations(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
 	s.inventoryHandler().HandleListExternalAllocations(w, r)
 }
 
 func (s *Server) handleGetExternalAllocation(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
 	s.inventoryHandler().HandleGetExternalAllocation(w, r)
 }
 
 func (s *Server) handlePatchExternalAllocation(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
 	s.inventoryHandler().HandlePatchExternalAllocation(w, r)
 }

@@ -59,6 +59,10 @@ func buildChannelServer(t *testing.T) *Server {
 		Auth:   stub,
 		// dbDownPool satisfies pool != nil guard so routes get mounted.
 		Pool: &dbDownPool{},
+		// MembershipQueries backed by orgMemberAdmitFromCtxDBTX so that
+		// authenticated requests pass the PR2-26 org-membership guard and
+		// reach the handler bodies these tests exercise.
+		MembershipQueries: gen.New(&orgMemberAdmitFromCtxDBTX{}),
 		// ChannelQueries non-nil so the channel route conditional passes.
 		ChannelQueries: gen.New(nil),
 		// OrgQueries also non-nil to not affect other route mounts.

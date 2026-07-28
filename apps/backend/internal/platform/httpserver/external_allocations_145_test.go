@@ -55,9 +55,13 @@ func buildAllocationServer(t *testing.T) *Server {
 		t.Fatalf("buildAllocationServer: NewStubProvider: %v", err)
 	}
 	return New(Options{
-		Config:            cfg,
-		Auth:              stub,
-		Pool:              &dbDownPool{},
+		Config: cfg,
+		Auth:   stub,
+		Pool:   &dbDownPool{},
+		// MembershipQueries backed by orgMemberAdmitFromCtxDBTX so that
+		// authenticated requests pass the PR2-31 org-membership guard and
+		// reach the handler bodies these tests exercise.
+		MembershipQueries: gen.New(&orgMemberAdmitFromCtxDBTX{}),
 		AllocationQueries: gen.New(nil),
 		InventoryQueries:  gen.New(nil),
 	})
