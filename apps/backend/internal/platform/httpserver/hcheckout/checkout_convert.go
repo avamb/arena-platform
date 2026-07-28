@@ -61,16 +61,56 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
+// convertReservationInTx performs the held→sold reservation conversion within
+// an already-open transaction. q must be gen.New(tx) bound to an active tx.
+// Idempotent: returns nil when reservation is already in a terminal state.
+// Does NOT commit or rollback — the caller manages the transaction.
+//
+// PR2-27 (feature #383): this function is called from within
+// completeCheckoutWithPromoTx so that completion and conversion commit
+// atomically, permanently closing the window described in PR2-04 where a
+// convert failure after a committed checkout left the reservation 'active'
+// and eligible for TTL expiry / resale.
+func (h *Handler) convertReservationInTx(ctx context.Context, q *gen.Queries, reservationID uuid.UUID) error {
+	if q == nil {
+		return nil
+	}
+	reservation, err := q.GetReservationByID(ctx, reservationID)
+	if err != nil {
+		return fmt.Errorf("convertReservationInTx: get reservation %s: %w", reservationID, err)
+	}
+	switch reservation.State {
+	case "converted", "expired", "cancelled":
+		return nil
+	}
+	sold, alreadySold, err := sellReservationSeatsTx(ctx, q, reservation.SessionID, reservationID)
+	if err != nil {
+		return fmt.Errorf("convertReservationInTx: sell seats for reservation %s: %w", reservationID, err)
+	}
+	if sold > 0 || alreadySold > 0 {
+		slog.InfoContext(ctx, "convertReservationInTx: seats transitioned",
+			slog.String("reservation_id", reservationID.String()),
+			slog.Int("sold", sold),
+			slog.Int("already_sold", alreadySold),
+		)
+	}
+	if _, err := q.ConfirmCapacity(ctx, reservation.SessionID, reservation.TierID, reservation.Quantity); err != nil {
+		return fmt.Errorf("convertReservationInTx: confirm capacity for reservation %s: %w", reservationID, err)
+	}
+	if _, err := q.UpdateReservationState(ctx, reservationID, "converted"); err != nil {
+		return fmt.Errorf("convertReservationInTx: update state to converted for reservation %s: %w", reservationID, err)
+	}
+	slog.InfoContext(ctx, "convertReservationInTx: reservation converted",
+		slog.String("reservation_id", reservationID.String()),
+		slog.String("session_id", reservation.SessionID.String()),
+		slog.Int("quantity", int(reservation.Quantity)),
+	)
+	return nil
+}
+
 // convertReservationTx atomically transitions a reservation to 'converted'
-// after checkout completion. It:
-//
-//  1. Sells all held seats (session_seats held → sold via sellReservationSeatsTx).
-//  2. Confirms capacity (inventory_ledger capacity_held → capacity_sold via
-//     ConfirmCapacity).
-//  3. Sets reservation.state = 'converted' via UpdateReservationState.
-//
-// All three operations run in a single database transaction so no partial
-// state is possible.
+// after checkout completion. It delegates all conversion logic to
+// convertReservationInTx, which runs within the transaction opened here.
 //
 // Idempotent: returns nil immediately when the reservation is already in
 // 'converted', 'expired', or 'cancelled' state (any terminal state other than
@@ -79,22 +119,14 @@ import (
 // Returns an error if any DB operation fails. Callers SHOULD log at Error
 // and continue — the checkout/payment state is already persisted; a failed
 // convert can be retried by re-triggering the completion path.
+//
+// Used by the webhook path (as an inline best-effort call after commit) and
+// by ConvertReservationTx (exported for the checkout.convert_reservation worker
+// job, PR2-27).
 func (h *Handler) convertReservationTx(ctx context.Context, reservationID uuid.UUID) error {
 	if h.reservationQueries == nil || h.inventoryQueries == nil || h.pool == nil {
 		// Dependencies unavailable (e.g. unit-test server with nil queries).
 		// Skip conversion silently — callers log at their own level.
-		return nil
-	}
-
-	// Load the reservation to obtain session_id, tier_id, quantity, and current state.
-	reservation, err := h.reservationQueries.GetReservationByID(ctx, reservationID)
-	if err != nil {
-		return fmt.Errorf("convertReservationTx: get reservation %s: %w", reservationID, err)
-	}
-
-	// Already in a terminal / converted state — pure idempotent replay.
-	switch reservation.State {
-	case "converted", "expired", "cancelled":
 		return nil
 	}
 
@@ -106,44 +138,19 @@ func (h *Handler) convertReservationTx(ctx context.Context, reservationID uuid.U
 
 	q := gen.New(tx)
 
-	// Step 1: Transition held seats → sold.
-	// GA reservations have no reservation_seats rows — sellReservationSeatsTx
-	// is a cheap no-op for them. Idempotent: already-sold seats are counted
-	// separately so webhook replays do not fail.
-	sold, alreadySold, err := sellReservationSeatsTx(ctx, q, reservation.SessionID, reservationID)
-	if err != nil {
-		return fmt.Errorf("convertReservationTx: sell seats for reservation %s: %w", reservationID, err)
-	}
-	if sold > 0 || alreadySold > 0 {
-		slog.InfoContext(ctx, "convertReservationTx: seats transitioned",
-			slog.String("reservation_id", reservationID.String()),
-			slog.Int("sold", sold),
-			slog.Int("already_sold", alreadySold),
-		)
-	}
-
-	// Step 2: Move capacity from held → sold in inventory_ledger.
-	// ConfirmCapacity(sessionID, tierID, amount) decrements capacity_held by
-	// amount and increments capacity_sold by the same amount atomically.
-	if _, err := q.ConfirmCapacity(ctx, reservation.SessionID, reservation.TierID, reservation.Quantity); err != nil {
-		return fmt.Errorf("convertReservationTx: confirm capacity for reservation %s: %w", reservationID, err)
-	}
-
-	// Step 3: Mark the reservation as converted so GetExpiredReservations
-	// (which filters on state IN ('draft','active')) can never select it again.
-	if _, err := q.UpdateReservationState(ctx, reservationID, "converted"); err != nil {
-		return fmt.Errorf("convertReservationTx: update state to converted for reservation %s: %w", reservationID, err)
+	if err := h.convertReservationInTx(ctx, q, reservationID); err != nil {
+		return err
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("convertReservationTx: commit tx for reservation %s: %w", reservationID, err)
 	}
-
-	slog.InfoContext(ctx, "convertReservationTx: reservation converted",
-		slog.String("reservation_id", reservationID.String()),
-		slog.String("session_id", reservation.SessionID.String()),
-		slog.Int("quantity", int(reservation.Quantity)),
-	)
-
 	return nil
+}
+
+// ConvertReservationTx is the exported form of convertReservationTx, for use
+// by the arena-worker binary when processing checkout.convert_reservation jobs
+// (PR2-27, feature #383).
+func (h *Handler) ConvertReservationTx(ctx context.Context, reservationID uuid.UUID) error {
+	return h.convertReservationTx(ctx, reservationID)
 }

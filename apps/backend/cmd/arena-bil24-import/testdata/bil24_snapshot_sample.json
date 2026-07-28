@@ -1,0 +1,29 @@
+[
+  {
+    "external_bil24_id": "BIL24-S001",
+    "title": "Rock Night 2026",
+    "starts_at": "2026-09-15T19:00:00Z",
+    "ends_at":   "2026-09-15T22:30:00Z",
+    "venue_name": "Main Hall",
+    "description": "Annual rock festival.",
+    "poster_url": "https://cdn.example.com/events/s001.jpg",
+    "price_tiers": [
+      {"name": "Standard", "price_kopeks": 150000},
+      {"name": "VIP",      "price_kopeks": 350000}
+    ]
+  },
+  {
+    "external_bil24_id": "BIL24-S002",
+    "title": "Jazz Evening",
+    "starts_at": "2026-10-05T20:00:00Z",
+    "venue_name": "Studio Stage",
+    "description": "Intimate jazz concert."
+  },
+  {
+    "external_bil24_id": "BIL24-S003",
+    "title": "Comedy Show",
+    "starts_at": "2026-11-20T18:30:00Z",
+    "ends_at":   "2026-11-20T20:00:00Z",
+    "poster_url": "https://cdn.example.com/events/s003.jpg"
+  }
+]

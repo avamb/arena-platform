@@ -1,0 +1,4 @@
+external_bil24_id,title,starts_at,ends_at,venue_name,description,poster_url
+BIL24-B001,Valid Event,2026-09-15T19:00:00Z,,,Valid description,
+,,,,,,
+BIL24-B003,Another Valid Event,2026-10-01T19:00:00Z,2026-10-01T21:00:00Z,,,

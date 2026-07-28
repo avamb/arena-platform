@@ -37,6 +37,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/convertjob"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/issuejob"
 )
@@ -773,6 +774,42 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 				"webhook.enqueue_failed", "failed to enqueue ticket issuance job", r,
 			))
 			return
+		}
+	}
+
+	// Step 4 (PR2-27): Enqueue the durable reservation-conversion job in the
+	// same transaction. Even if the inline convertReservationTx call below
+	// fails (e.g. transient network hiccup), the worker will retry until
+	// the reservation reaches 'converted' state.
+	// If the inline call succeeds, convertReservationInTx is idempotent and
+	// the job runs as a no-op.
+	if updated.State == "succeeded" && updated.CheckoutSessionID != nil && h.checkoutQueries != nil {
+		cs, csErr := h.checkoutQueries.GetCheckoutSessionByID(ctx, *updated.CheckoutSessionID)
+		if csErr == nil {
+			convJobPayload, _ := json.Marshal(convertjob.Payload{
+				ReservationID: cs.ReservationID.String(),
+			})
+			const insertConvertJobSQL = `
+				INSERT INTO worker_jobs (job_type, payload, max_attempts, status, scheduled_at)
+				VALUES ($1, $2::jsonb, $3, 'pending', now())`
+			if _, convJobErr := tx.Exec(ctx, insertConvertJobSQL,
+				convertjob.JobType, convJobPayload, 5,
+			); convJobErr != nil {
+				h.logger.Warn("webhook: enqueue checkout.convert_reservation job failed (non-fatal; inline conversion still attempted)",
+					slog.String("payment_intent_id", pi.ID.String()),
+					slog.String("reservation_id", cs.ReservationID.String()),
+					slog.String("error", convJobErr.Error()),
+				)
+				// Non-fatal: the inline convertReservationTx call below still runs.
+				// Only emit a warning — do NOT rollback here because the issue_tickets
+				// job is already queued and tickets must be issued.
+			}
+		} else {
+			h.logger.Warn("webhook: checkout lookup for convert job enqueue failed (non-fatal)",
+				slog.String("payment_intent_id", pi.ID.String()),
+				slog.String("checkout_session_id", updated.CheckoutSessionID.String()),
+				slog.String("error", csErr.Error()),
+			)
 		}
 	}
 

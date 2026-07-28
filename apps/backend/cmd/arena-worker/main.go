@@ -47,11 +47,13 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/storage"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/convertjob"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/database"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/htickets"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/idempotency"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/issuejob"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/htickets"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
@@ -397,6 +399,32 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 		Queries:      queries,
 		IssueTickets: ticketIssueHandler.IssueTicketsForCheckout,
 		Logger:       logger,
+	}))
+
+	// checkout.convert_reservation: durable held→sold conversion for the webhook
+	// path (PR2-27, feature #383). A minimal Handler is built here — only the
+	// fields needed by convertReservationTx (reservationQueries, inventoryQueries,
+	// pool) need to be non-nil; the rest are wired as nil/zero.
+	convertHandler := hcheckout.New(
+		nil,     // checkoutQ — not needed for conversion
+		queries, // reservationQ
+		queries, // inventoryQ
+		nil,     // paymentIntentQ — not needed
+		nil,     // refundQ — not needed
+		nil,     // promoQ — not needed
+		nil,     // tierQ — not needed
+		nil,     // ticketQ — not needed
+		nil,     // channelQ — not needed
+		nil,     // orgQ — not needed
+		pool,    // pool (TxStarter)
+		logger,
+		hcheckout.PricingRules{},
+		"", "", // webhookStripeSecret, webhookAllPaySecret
+		nil, nil, nil, // issueTickets, publishRefunded, publishRefundedV1
+	)
+	reg.Register(convertjob.JobType, convertjob.NewHandler(convertjob.HandlerOptions{
+		ConvertFn: convertHandler.ConvertReservationTx,
+		Logger:    logger,
 	}))
 }
 

@@ -382,6 +382,249 @@ func TestPR386_SnapshotTypeHasPriceTiers(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Feature #387 — CSV support, --input flag, and named sample fixtures
+// ---------------------------------------------------------------------------
+
+// TestPR387_InputFlagPresent verifies that --input is the flag used by the
+// importer command (supersedes --source from #386).
+func TestPR387_InputFlagPresent(t *testing.T) {
+	content, err := readFileContent("main.go")
+	if err != nil {
+		t.Fatalf("cannot read main.go: %v", err)
+	}
+	if !containsString(content, `"input"`) {
+		t.Error("main.go does not define an --input flag")
+	}
+}
+
+// TestPR387_SampleJSONFixtureExists verifies that the named JSON sample
+// fixture exists at the path required by the feature specification.
+func TestPR387_SampleJSONFixtureExists(t *testing.T) {
+	path := "testdata/bil24_snapshot_sample.json"
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("required fixture %s not found: %v", path, err)
+	}
+}
+
+// TestPR387_SampleCSVFixtureExists verifies that the named CSV sample
+// fixture exists at the path required by the feature specification.
+func TestPR387_SampleCSVFixtureExists(t *testing.T) {
+	path := "testdata/bil24_snapshot_sample.csv"
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("required fixture %s not found: %v", path, err)
+	}
+}
+
+// TestPR387_ParseCSVSampleFixture verifies that the CSV sample fixture parses
+// into 3 events with the expected field values.
+func TestPR387_ParseCSVSampleFixture(t *testing.T) {
+	events, err := parseSnapshotFile("testdata/bil24_snapshot_sample.csv")
+	if err != nil {
+		t.Fatalf("parseSnapshotFile (CSV): %v", err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("expected 3 events from CSV, got %d", len(events))
+	}
+
+	// Row 0 — full record
+	e0 := events[0]
+	if e0.ExternalBil24ID != "BIL24-S001" {
+		t.Errorf("row[0].ExternalBil24ID = %q, want BIL24-S001", e0.ExternalBil24ID)
+	}
+	if e0.Title != "Rock Night 2026" {
+		t.Errorf("row[0].Title = %q, want 'Rock Night 2026'", e0.Title)
+	}
+	if e0.VenueName != "Main Hall" {
+		t.Errorf("row[0].VenueName = %q, want 'Main Hall'", e0.VenueName)
+	}
+	if e0.StartsAt.IsZero() {
+		t.Error("row[0].StartsAt is zero, want parsed time")
+	}
+	if e0.EndsAt == nil {
+		t.Error("row[0].EndsAt is nil, want parsed time")
+	}
+
+	// Row 1 — no ends_at, no poster_url
+	e1 := events[1]
+	if e1.ExternalBil24ID != "BIL24-S002" {
+		t.Errorf("row[1].ExternalBil24ID = %q, want BIL24-S002", e1.ExternalBil24ID)
+	}
+	if e1.EndsAt != nil {
+		t.Errorf("row[1].EndsAt = %v, want nil", e1.EndsAt)
+	}
+
+	// Row 2 — no venue, no description
+	e2 := events[2]
+	if e2.ExternalBil24ID != "BIL24-S003" {
+		t.Errorf("row[2].ExternalBil24ID = %q, want BIL24-S003", e2.ExternalBil24ID)
+	}
+	if e2.VenueName != "" {
+		t.Errorf("row[2].VenueName = %q, want empty", e2.VenueName)
+	}
+}
+
+// TestPR387_CSVAllRowsValid verifies that all three rows in the sample CSV
+// fixture pass validation (fresh import scenario).
+func TestPR387_CSVAllRowsValid(t *testing.T) {
+	events, err := parseSnapshotFile("testdata/bil24_snapshot_sample.csv")
+	if err != nil {
+		t.Fatalf("parseSnapshotFile: %v", err)
+	}
+
+	valid, rowErrs := validateRows(events)
+	if len(rowErrs) != 0 {
+		t.Errorf("expected 0 errors, got %d: %v", len(rowErrs), rowErrs)
+	}
+	if len(valid) != 3 {
+		t.Errorf("expected 3 valid rows, got %d", len(valid))
+	}
+}
+
+// TestPR387_CSVRerunIdempotency verifies that running validateRows on the
+// same CSV slice twice produces identical results.
+func TestPR387_CSVRerunIdempotency(t *testing.T) {
+	events, err := parseSnapshotFile("testdata/bil24_snapshot_sample.csv")
+	if err != nil {
+		t.Fatalf("parseSnapshotFile: %v", err)
+	}
+
+	valid1, errs1 := validateRows(events)
+	valid2, errs2 := validateRows(events)
+
+	if len(valid1) != len(valid2) {
+		t.Errorf("first run: %d valid, second run: %d valid", len(valid1), len(valid2))
+	}
+	if len(errs1) != len(errs2) {
+		t.Errorf("first run: %d errors, second run: %d errors", len(errs1), len(errs2))
+	}
+	for i := range valid1 {
+		if valid1[i].ExternalBil24ID != valid2[i].ExternalBil24ID {
+			t.Errorf("row[%d]: first=%q, second=%q", i, valid1[i].ExternalBil24ID, valid2[i].ExternalBil24ID)
+		}
+	}
+}
+
+// TestPR387_CSVMalformedRowRejectedBatchContinues verifies that a CSV file
+// with one invalid row (empty external_bil24_id and title) rejects that row
+// while keeping the valid rows.
+func TestPR387_CSVMalformedRowRejectedBatchContinues(t *testing.T) {
+	events, err := parseSnapshotFile("testdata/bil24_snapshot_bad.csv")
+	if err != nil {
+		t.Fatalf("parseSnapshotFile: %v", err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("expected 3 rows in bad CSV fixture, got %d", len(events))
+	}
+
+	valid, rowErrs := validateRows(events)
+	if len(rowErrs) != 1 {
+		t.Errorf("expected 1 validation error (the bad row), got %d: %v", len(rowErrs), rowErrs)
+	}
+	if len(valid) != 2 {
+		t.Errorf("expected 2 valid rows, got %d", len(valid))
+	}
+	// Verify the bad row is row index 1 (the all-empty row).
+	if rowErrs[0].Index != 1 {
+		t.Errorf("bad row index = %d, want 1", rowErrs[0].Index)
+	}
+}
+
+// TestPR387_ParseJSONSampleFixture verifies that the sample JSON fixture
+// parses successfully into 3 events.
+func TestPR387_ParseJSONSampleFixture(t *testing.T) {
+	events, err := parseSnapshotFile("testdata/bil24_snapshot_sample.json")
+	if err != nil {
+		t.Fatalf("parseSnapshotFile (JSON): %v", err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("expected 3 events from JSON, got %d", len(events))
+	}
+
+	// Row 0 should have price tiers (JSON-only feature)
+	if len(events[0].PriceTiers) != 2 {
+		t.Errorf("row[0].PriceTiers len = %d, want 2", len(events[0].PriceTiers))
+	}
+}
+
+// TestPR387_AutoDetectCSVByExtension verifies that parseSnapshotFile routes
+// .csv files to the CSV parser and .json files to the JSON parser without
+// the caller specifying the format.
+func TestPR387_AutoDetectCSVByExtension(t *testing.T) {
+	csvEvents, err := parseSnapshotFile("testdata/bil24_snapshot_sample.csv")
+	if err != nil {
+		t.Fatalf("parseSnapshotFile(.csv): %v", err)
+	}
+	jsonEvents, err := parseSnapshotFile("testdata/bil24_snapshot_sample.json")
+	if err != nil {
+		t.Fatalf("parseSnapshotFile(.json): %v", err)
+	}
+
+	// Both fixtures have the same 3 events by external ID
+	if len(csvEvents) != len(jsonEvents) {
+		t.Errorf("CSV parsed %d events, JSON parsed %d; expected same count",
+			len(csvEvents), len(jsonEvents))
+	}
+	for i := range csvEvents {
+		if csvEvents[i].ExternalBil24ID != jsonEvents[i].ExternalBil24ID {
+			t.Errorf("event[%d]: CSV id=%q, JSON id=%q", i,
+				csvEvents[i].ExternalBil24ID, jsonEvents[i].ExternalBil24ID)
+		}
+	}
+}
+
+// TestPR387_DryRunFlagPreventsDBWrite verifies structurally that --dry-run
+// causes the importer to skip the importBatch call (file-grep check that
+// the dryRun flag gates the DB path).
+func TestPR387_DryRunFlagPreventsDBWrite(t *testing.T) {
+	content, err := readFileContent("main.go")
+	if err != nil {
+		t.Fatalf("cannot read main.go: %v", err)
+	}
+	// The code must have a dryRun gate before importBatch.
+	if !containsString(content, "dryRun") {
+		t.Error("main.go does not reference dryRun flag")
+	}
+	if !containsString(content, "printDryRun") {
+		t.Error("main.go does not call printDryRun (dry-run output path)")
+	}
+}
+
+// TestPR387_NoBil24APIClient verifies that the importer binary does not
+// contain any net/http calls to Bil24 hostnames — it is a file-in, DB-out
+// tool only.
+func TestPR387_NoBil24APIClient(t *testing.T) {
+	content, err := readFileContent("main.go")
+	if err != nil {
+		t.Fatalf("cannot read main.go: %v", err)
+	}
+	if containsString(content, "bil24.pro") {
+		t.Error("main.go references bil24.pro hostname — importer must not make HTTP calls to Bil24")
+	}
+	if containsString(content, "http.Get") || containsString(content, "http.Post") {
+		t.Error("main.go contains http.Get/http.Post — no network calls allowed in the importer")
+	}
+}
+
+// TestPR387_OpsDocumentationExists verifies that the operator runbook for
+// the Bil24 import exists at docs/ops/bil24_import.md.
+func TestPR387_OpsDocumentationExists(t *testing.T) {
+	path := "../../docs/ops/bil24_import.md"
+	content, err := readFileContent(path)
+	if err != nil {
+		t.Fatalf("ops runbook not found at %s: %v", path, err)
+	}
+	if !containsString(content, "external_bil24_id") {
+		t.Error("runbook does not mention external_bil24_id column")
+	}
+	if !containsString(content, "--input") {
+		t.Error("runbook does not document the --input flag")
+	}
+	if !containsString(content, ".csv") {
+		t.Error("runbook does not mention CSV format")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
 

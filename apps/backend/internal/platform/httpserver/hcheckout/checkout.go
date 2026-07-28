@@ -937,17 +937,8 @@ func (h *Handler) HandleCompleteCheckout(w http.ResponseWriter, r *http.Request)
 			slog.String("org_id", cs.OrgID.String()),
 		)
 
-		// Convert the reservation: held seats → sold, capacity_held → capacity_sold,
-		// reservation.state → 'converted'. This prevents the TTL worker from
-		// releasing the seats back to available after checkout is paid (feature #360).
-		// Non-fatal: checkout is already complete; log and continue.
-		if convErr := h.convertReservationTx(ctx, cs.ReservationID); convErr != nil {
-			h.logger.Error("checkout: convert reservation failed after free checkout (non-fatal)",
-				slog.String("checkout_session_id", id.String()),
-				slog.String("reservation_id", cs.ReservationID.String()),
-				slog.String("error", convErr.Error()),
-			)
-		}
+		// PR2-27 (feature #383): conversion is now performed atomically inside
+		// completeCheckoutWithPromoTx — no separate convertReservationTx call needed.
 
 		// Issue tickets for the free checkout (idempotent).
 		if h.ticketQueries != nil && h.reservationQueries != nil && h.issueTickets != nil {
@@ -1044,17 +1035,8 @@ func (h *Handler) HandleCompleteCheckout(w http.ResponseWriter, r *http.Request)
 		slog.String("payment_provider", req.PaymentProvider),
 	)
 
-	// Convert the reservation: held seats → sold, capacity_held → capacity_sold,
-	// reservation.state → 'converted'. This prevents the TTL worker from
-	// releasing the seats back to available after checkout is paid (feature #360).
-	// Non-fatal: checkout is already complete; log and continue.
-	if convErr := h.convertReservationTx(ctx, cs.ReservationID); convErr != nil {
-		h.logger.Error("checkout: convert reservation failed after paid checkout (non-fatal)",
-			slog.String("checkout_session_id", id.String()),
-			slog.String("reservation_id", cs.ReservationID.String()),
-			slog.String("error", convErr.Error()),
-		)
-	}
+	// PR2-27 (feature #383): conversion is now performed atomically inside
+	// completeCheckoutWithPromoTx — no separate convertReservationTx call needed.
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"checkout_session": checkoutSessionFromRow(cs),

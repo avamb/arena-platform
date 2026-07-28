@@ -20,6 +20,7 @@ package hcheckout
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -40,11 +41,19 @@ var errPromoExhausted = errors.New("promo code exhausted")
 // The HTTP 409 response has already been written; the caller must return immediately.
 var errPromoPerCustomerLimit = errors.New("promo code per-customer limit reached")
 
-// completeCheckoutWithPromoTx atomically completes a checkout session and records a
-// promo code redemption when a promo code was applied to the session.
+// completeCheckoutWithPromoTx atomically completes a checkout session, records a
+// promo code redemption (when a promo code was applied), and converts the
+// reservation (held→sold) — all within a single database transaction.
 //
-// When promoCodeID is nil, or when h.promoQueries / h.pool are unavailable, the
-// function falls back to the plain completion path (existing behaviour, no tx started).
+// When h.pool is nil (unit-test environments only), the function falls back to
+// the plain completion path via completeFn(h.checkoutQueries) without a
+// transaction and without conversion (pool is required for both).
+//
+// PR2-27 (feature #383): previously, when promoCodeID was nil, the function
+// skipped the transaction entirely. This created a window where the checkout was
+// marked 'completed' but the reservation remained 'active', allowing the TTL
+// worker to expire and resell paid seats. Now completion and conversion always
+// commit together when pool is available, permanently closing that window.
 //
 // Concurrency guarantee (when promoCodeID != nil):
 //  1. BEGIN transaction
@@ -55,7 +64,9 @@ var errPromoPerCustomerLimit = errors.New("promo code per-customer limit reached
 //     → if >= max_uses_per_customer → write 409, return errPromoPerCustomerLimit
 //  5. Complete the checkout session (free or paid path) via completeFn within the tx
 //  6. INSERT promo_code_redemptions row (non-fatal on failure — checkout is already done)
-//  7. COMMIT
+//  7. convertReservationInTx: held seats → sold, capacity_held → capacity_sold,
+//     reservation.state → 'converted' — all within the same transaction
+//  8. COMMIT: completion + conversion are now durable together
 //
 // completeFn is a closure that accepts a *gen.Queries (which may wrap a pgx.Tx)
 // and executes either CompleteFreeCheckoutSession or CompleteCheckoutSession.
@@ -70,12 +81,19 @@ func (h *Handler) completeCheckoutWithPromoTx(
 	discountAmount, orderAmount int64,
 	completeFn func(txQ *gen.Queries) (gen.CheckoutSessionRow, error),
 ) (gen.CheckoutSessionRow, error) {
-	// ── No promo code or no pool: fall back to plain completion ──────────────
-	if promoCodeID == nil || h.promoQueries == nil || h.pool == nil {
+	// ── No pool: fall back to plain completion without tx ─────────────────────
+	// This path is taken only in unit-test environments where pool is nil.
+	// It does NOT include conversion (pool required) — unit tests that need
+	// conversion should use a real or stubbed pool.
+	if h.pool == nil {
 		return completeFn(h.checkoutQueries)
 	}
 
-	// ── Start a transaction for atomic lock + complete + insert ───────────────
+	// ── PR2-27: Always use a transaction for atomic completion + conversion ────
+	// Previously, the no-promo path skipped the transaction entirely, creating a
+	// window where the checkout was marked 'completed' but the reservation was
+	// still 'active'. The TTL worker could expire and resell the paid seats.
+	// Now completion and conversion always commit together, closing the window.
 	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return gen.CheckoutSessionRow{}, err
@@ -84,60 +102,67 @@ func (h *Handler) completeCheckoutWithPromoTx(
 
 	txQ := gen.New(tx)
 
-	// ── Step 2: Lock promo code row (FOR UPDATE) ──────────────────────────────
-	pc, err := txQ.GetPromoCodeByIDForUpdate(ctx, *promoCodeID)
-	promoFound := true
-	if errors.Is(err, pgx.ErrNoRows) {
-		// Promo code was deleted between confirm and complete — proceed without
-		// the lock (no limits to check, no redemption to record).
-		promoFound = false
-	} else if err != nil {
-		return gen.CheckoutSessionRow{}, err
-	}
-
-	if promoFound {
-		// ── Step 3: Enforce total redemption limit ────────────────────────────
-		if pc.MaxUses != nil {
-			count, err := txQ.CountPromoCodeRedemptions(ctx, pc.ID)
-			if err != nil {
-				return gen.CheckoutSessionRow{}, err
-			}
-			if count >= *pc.MaxUses {
-				_ = tx.Rollback(ctx)
-				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
-					"promo.exhausted",
-					"this promo code has reached its maximum number of uses",
-					r,
-				))
-				return gen.CheckoutSessionRow{}, errPromoExhausted
-			}
+	// ── Promo code enforcement (only when a promo code was applied) ───────────
+	var (
+		promoFound bool
+		pc         gen.PromoCodeRow // zero value when !promoFound
+	)
+	if promoCodeID != nil && h.promoQueries != nil {
+		var promoErr error
+		pc, promoErr = txQ.GetPromoCodeByIDForUpdate(ctx, *promoCodeID)
+		if errors.Is(promoErr, pgx.ErrNoRows) {
+			// Promo deleted between confirm and complete — proceed without lock.
+			promoFound = false
+		} else if promoErr != nil {
+			return gen.CheckoutSessionRow{}, promoErr
+		} else {
+			promoFound = true
 		}
 
-		// ── Step 4: Enforce per-customer limit ────────────────────────────────
-		if pc.MaxUsesPerCustomer != nil && userID != nil {
-			userCount, err := txQ.CountUserRedemptions(ctx, pc.ID, *userID)
-			if err != nil {
-				return gen.CheckoutSessionRow{}, err
+		if promoFound {
+			// Enforce total redemption limit.
+			if pc.MaxUses != nil {
+				count, err := txQ.CountPromoCodeRedemptions(ctx, pc.ID)
+				if err != nil {
+					return gen.CheckoutSessionRow{}, err
+				}
+				if count >= *pc.MaxUses {
+					_ = tx.Rollback(ctx)
+					httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
+						"promo.exhausted",
+						"this promo code has reached its maximum number of uses",
+						r,
+					))
+					return gen.CheckoutSessionRow{}, errPromoExhausted
+				}
 			}
-			if userCount >= *pc.MaxUsesPerCustomer {
-				_ = tx.Rollback(ctx)
-				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
-					"promo.per_customer_limit",
-					"you have already used this promo code the maximum number of times",
-					r,
-				))
-				return gen.CheckoutSessionRow{}, errPromoPerCustomerLimit
+
+			// Enforce per-customer limit.
+			if pc.MaxUsesPerCustomer != nil && userID != nil {
+				userCount, err := txQ.CountUserRedemptions(ctx, pc.ID, *userID)
+				if err != nil {
+					return gen.CheckoutSessionRow{}, err
+				}
+				if userCount >= *pc.MaxUsesPerCustomer {
+					_ = tx.Rollback(ctx)
+					httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
+						"promo.per_customer_limit",
+						"you have already used this promo code the maximum number of times",
+						r,
+					))
+					return gen.CheckoutSessionRow{}, errPromoPerCustomerLimit
+				}
 			}
 		}
 	}
 
-	// ── Step 5: Complete the checkout session within the transaction ──────────
+	// ── Complete the checkout session ─────────────────────────────────────────
 	cs, err := completeFn(txQ)
 	if err != nil {
 		return gen.CheckoutSessionRow{}, err
 	}
 
-	// ── Step 6: Insert redemption record (non-fatal on failure) ──────────────
+	// ── Record promo redemption (when promo was applied) ─────────────────────
 	if promoFound {
 		rid := reservationID
 		if _, insErr := txQ.InsertPromoCodeRedemption(ctx, pc.ID, userID, &rid, discountAmount, orderAmount); insErr != nil {
@@ -146,11 +171,29 @@ func (h *Handler) completeCheckoutWithPromoTx(
 				slog.String("checkout_reservation_id", rid.String()),
 				slog.String("error", insErr.Error()),
 			)
-			// Non-fatal: the checkout state is already updated; proceed to COMMIT.
+			// Non-fatal: the checkout state is already updated; proceed to conversion.
 		}
 	}
 
-	// ── Step 7: Commit ────────────────────────────────────────────────────────
+	// ── PR2-27: Convert reservation atomically with completion ────────────────
+	// convertReservationInTx sets reservation.state='converted', sells held
+	// seats, and moves capacity_held→capacity_sold — all within this transaction.
+	// Once committed, GetExpiredReservations (which filters state IN
+	// ('draft','active')) cannot select this reservation, permanently closing
+	// the held→sold window described in PR2-04 follow-up.
+	//
+	// If conversion fails, the whole transaction rolls back. The checkout session
+	// stays in 'pricing_confirmed' state and the caller returns an error to the
+	// client. Seats remain held and safe. The client can retry the completion.
+	if convErr := h.convertReservationInTx(ctx, txQ, reservationID); convErr != nil {
+		h.logger.Error("completeCheckoutWithPromoTx: conversion failed; rolling back completion",
+			slog.String("reservation_id", reservationID.String()),
+			slog.String("error", convErr.Error()),
+		)
+		return gen.CheckoutSessionRow{}, fmt.Errorf("completeCheckoutWithPromoTx: reservation conversion failed (checkout rolled back): %w", convErr)
+	}
+
+	// ── Commit: completion + conversion are now durable together ──────────────
 	if err := tx.Commit(ctx); err != nil {
 		return gen.CheckoutSessionRow{}, err
 	}

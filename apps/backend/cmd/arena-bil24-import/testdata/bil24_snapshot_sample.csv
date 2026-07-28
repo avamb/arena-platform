@@ -1,0 +1,4 @@
+external_bil24_id,title,starts_at,ends_at,venue_name,description,poster_url
+BIL24-S001,Rock Night 2026,2026-09-15T19:00:00Z,2026-09-15T22:30:00Z,Main Hall,Annual rock festival.,https://cdn.example.com/events/s001.jpg
+BIL24-S002,Jazz Evening,2026-10-05T20:00:00Z,,Studio Stage,Intimate jazz concert.
+BIL24-S003,Comedy Show,2026-11-20T18:30:00Z,2026-11-20T20:00:00Z,,,https://cdn.example.com/events/s003.jpg
