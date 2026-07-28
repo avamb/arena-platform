@@ -108,16 +108,13 @@ func pr381ResultCode(t *testing.T, rec *httptest.ResponseRecorder) int {
 // production default of true comes from the env tag "default:\"true\"" and
 // requires a proper config.Load() call to activate. This test simply
 // confirms the field exists and the type is bool.
-func TestPR381_Step1_ConfigDefaultIsFalseForZeroValue(t *testing.T) {
+func TestPR381_Step1_ConfigDefaultIsFalseForZeroValue(_ *testing.T) {
 	cfg := &config.Config{}
 	// Zero-value bool is false — the env "default:\"true\"" is applied by
-	// config.Load() and its test-specific helpers, not by struct construction.
-	// This assertion confirms the field exists and compiles.
-	_ = cfg.Bil24RequireToken
-	// The following documents the intended production default: when loaded
-	// via config.Load(), the field MUST be true. We cannot call config.Load()
-	// without a full env, so we assert the field type is as expected.
-	var _ bool = cfg.Bil24RequireToken
+	// config.Load() (feature #390 made the parse real; see pr2_32_390_test.go
+	// in platform/config for the loaded-default proof). The negation below is
+	// a compile-time proof the field exists and is a bool.
+	_ = !cfg.Bil24RequireToken
 }
 
 // TestPR381_Step1_OptionsHasBil24RequireTokenField verifies that

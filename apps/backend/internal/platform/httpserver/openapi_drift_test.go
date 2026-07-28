@@ -466,7 +466,7 @@ func buildDriftTestServer(t *testing.T) *Server {
 // routes mount for the drift check; the handlers are never exercised.
 type driftFakeStripeConnect struct{}
 
-func (driftFakeStripeConnect) ConnectAuthorizeURL(redirectURI, state string) string { return "" }
+func (driftFakeStripeConnect) ConnectAuthorizeURL(_, _ string) string { return "" }
 func (driftFakeStripeConnect) ConnectExchangeCode(_ context.Context, _ string) (string, error) {
 	return "", nil
 }

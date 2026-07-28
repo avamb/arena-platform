@@ -283,9 +283,10 @@ func TestPR216_Step3_Warnings_EmptyOTLPEndpoint_NoWarn(t *testing.T) {
 // TestPR216_Step3_WarningsMethod_ReturnsSlice verifies the Warnings() method exists
 // and returns a []string (compile-time check via interface assertion not possible
 // for concrete struct methods, but we verify the return type by assigning it).
-func TestPR216_Step3_WarningsMethod_ReturnsSlice(t *testing.T) {
+func TestPR216_Step3_WarningsMethod_ReturnsSlice(_ *testing.T) {
 	cfg := validBase()
-	var _ []string = cfg.Warnings() // compile-time type check
+	w := cfg.Warnings()
+	_ = append(w, "") // compile-time proof Warnings() returns a []string
 }
 
 // ---------------------------------------------------------------------------

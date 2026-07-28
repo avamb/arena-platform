@@ -207,18 +207,6 @@ func parseJSONFile(path string) ([]catalogimport.Bil24SnapshotEvent, error) {
 	return events, nil
 }
 
-// csvColumns defines the required header order for Bil24 CSV exports.
-// The CSV must have exactly this header row (case-insensitive comparison).
-var csvColumns = []string{
-	"external_bil24_id",
-	"title",
-	"starts_at",
-	"ends_at",
-	"venue_name",
-	"description",
-	"poster_url",
-}
-
 // csvColIndex maps column names to their 0-based position in the CSV header.
 type csvColIndex map[string]int
 

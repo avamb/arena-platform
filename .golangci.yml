@@ -54,6 +54,12 @@ linters:
           - govet
           - revive
         path: queries/.*\.go$
+      # sqlc-style generated query wrappers: SQL constants named after token/
+      # credential tables trip gosec G101 ("potential hardcoded credentials")
+      # even though they contain only SQL text.
+      - linters:
+          - gosec
+        path: adapters/postgres/gen/.*\.go$
       - linters:
           - govet
           - revive

@@ -379,6 +379,9 @@ func TestPR386_SnapshotTypeHasPriceTiers(t *testing.T) {
 	if len(e.PriceTiers) != 1 {
 		t.Errorf("PriceTiers length = %d, want 1", len(e.PriceTiers))
 	}
+	if e.ExternalBil24ID != "x" || e.Title != "t" || e.StartsAt.IsZero() {
+		t.Error("core snapshot fields must round-trip through the struct literal")
+	}
 }
 
 // ---------------------------------------------------------------------------
