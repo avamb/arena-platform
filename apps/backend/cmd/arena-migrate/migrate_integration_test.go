@@ -22,8 +22,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -53,6 +55,12 @@ func integrationMigrateDB(t *testing.T) *sql.DB {
 	// Ensure the pgx database/sql driver is registered (side-effect import).
 	_ = stdlib.GetDefaultDriver
 
+	// These tests run destructive down/reset cycles. `go test ./...` runs
+	// packages in parallel, so cycling the shared DATABASE_URL database would
+	// drop the schema from under the httpserver integration proofs (feature
+	// #388 gate). Run every cycle in a dedicated scratch database instead.
+	dsn = integrationScratchDatabase(t, dsn)
+
 	db, err := goose.OpenDBWithDriver("pgx", dsn)
 	if err != nil {
 		t.Fatalf("integrationMigrateDB: open DB: %v", err)
@@ -63,6 +71,89 @@ func integrationMigrateDB(t *testing.T) *sql.DB {
 		}
 	})
 	return db
+}
+
+// scratchDBOnce guards process-wide scratch database creation: the concurrent
+// migration test opens several handles to the scratch database at once, so a
+// per-call DROP ... WITH (FORCE) would sever sibling connections mid-test.
+var (
+	scratchDBOnce sync.Once
+	scratchDBDSN  string
+	scratchDBErr  error
+)
+
+// integrationScratchDatabase creates (once per test process, recreating any
+// leftover from a previous run) a scratch database named
+// "<dbname>_migrate_cycles" on the same server as dsn, migrates it to head,
+// and returns a DSN pointing at it. The scratch database is intentionally
+// left behind after the run — the next run recreates it, and CI databases
+// are ephemeral.
+func integrationScratchDatabase(t *testing.T, dsn string) string {
+	t.Helper()
+
+	scratchDBOnce.Do(func() {
+		u, err := url.Parse(dsn)
+		if err != nil {
+			scratchDBErr = fmt.Errorf("parse DATABASE_URL: %w", err)
+			return
+		}
+		baseName := strings.TrimPrefix(u.Path, "/")
+		if baseName == "" {
+			scratchDBErr = fmt.Errorf("DATABASE_URL %q has no database name", dsn)
+			return
+		}
+		scratchName := baseName + "_migrate_cycles"
+
+		admin, err := goose.OpenDBWithDriver("pgx", dsn)
+		if err != nil {
+			scratchDBErr = fmt.Errorf("open admin DB: %w", err)
+			return
+		}
+		defer admin.Close() //nolint:errcheck
+
+		// Identifiers cannot be parameterised; scratchName derives from the
+		// DSN database name plus a fixed suffix, quoted defensively.
+		if _, err := admin.Exec(fmt.Sprintf(`DROP DATABASE IF EXISTS %q WITH (FORCE)`, scratchName)); err != nil {
+			scratchDBErr = fmt.Errorf("drop scratch DB: %w", err)
+			return
+		}
+		if _, err := admin.Exec(fmt.Sprintf(`CREATE DATABASE %q`, scratchName)); err != nil {
+			scratchDBErr = fmt.Errorf("create scratch DB: %w", err)
+			return
+		}
+
+		u.Path = "/" + scratchName
+		scratchDSN := u.String()
+
+		// The down/reset cycle tests start from a fully-migrated database
+		// (the shared DATABASE_URL database arrives pre-migrated from the CI
+		// migrate step). Bring the scratch database to head before handing
+		// it out.
+		if err := goose.SetDialect("postgres"); err != nil {
+			scratchDBErr = fmt.Errorf("goose.SetDialect: %w", err)
+			return
+		}
+		goose.SetBaseFS(migrations.FS)
+		goose.SetTableName("schema_migrations")
+		scratch, err := goose.OpenDBWithDriver("pgx", scratchDSN)
+		if err != nil {
+			scratchDBErr = fmt.Errorf("open scratch DB: %w", err)
+			return
+		}
+		defer scratch.Close() //nolint:errcheck
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		if err := goose.UpContext(ctx, scratch, migrations.Dir); err != nil {
+			scratchDBErr = fmt.Errorf("migrate scratch DB to head: %w", err)
+			return
+		}
+		scratchDBDSN = scratchDSN
+	})
+
+	if scratchDBErr != nil {
+		t.Fatalf("integrationScratchDatabase: %v", scratchDBErr)
+	}
+	return scratchDBDSN
 }
 
 // configureGooseIntegration applies the same global goose configuration that
@@ -756,7 +847,9 @@ func TestMigrateDown_NoOrphanIndexesAfterCycle(t *testing.T) {
 		"idempotency_keys_expires_at_idx",
 		"audit_events_resource_idx",
 		"audit_events_actor_idx",
-		"outbox_events_unprocessed_idx",
+		// 0068_outbox_poison_safe.sql replaced outbox_events_unprocessed_idx
+		// with the scheduling-aware outbox_events_backlog_idx (feature #369).
+		"outbox_events_backlog_idx",
 		"worker_jobs_status_scheduled_idx",
 		"worker_jobs_idem_uniq",
 		"worker_dead_letter_job_type_idx",

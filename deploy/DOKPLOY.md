@@ -136,6 +136,9 @@ into each service's env tab).
 > - `EMAIL_MODE` must be `smtp` (never `log`).
 > - `OUTBOX_MODE` must be `webhook` or `disabled` (never `noop` or empty).
 > - `LOG_FORMAT` must be `json`.
+> - `BIL24_COMPAT_ENABLED=true` requires `BIL24_REQUIRE_TOKEN=true` (the
+>   gateway never mounts without fid/token enforcement in production;
+>   feature #390 / PR2-32).
 
 #### Mandatory shared variables
 

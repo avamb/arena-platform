@@ -7439,7 +7439,6 @@ components:
         revoked_at:
           type: string
           format: date-time
-          nullable: true
           description: ISO-8601 timestamp when the token was revoked, or null if active.
 
     # ── External barcode batch schemas (feature #143) ────────────────────────
@@ -7469,17 +7468,14 @@ components:
         submitted_by:
           type: string
           format: uuid
-          nullable: true
           description: UUIDv7 of the user who uploaded the batch, if available.
         reviewed_by:
           type: string
           format: uuid
-          nullable: true
           description: UUIDv7 of the admin who approved/rejected the batch, if any.
         reviewed_at:
           type: string
           format: date-time
-          nullable: true
           description: ISO-8601 timestamp of the review decision, if any.
         created_at:
           type: string
@@ -7524,7 +7520,6 @@ components:
         updated_at:
           type: string
           format: date-time
-          nullable: true
           description: ISO-8601 timestamp of the last quantity update, if any.
 
     # ── Complimentary issuance schemas (features #148, #150) ─────────────────
@@ -7557,7 +7552,6 @@ components:
         ticket_id:
           type: string
           format: uuid
-          nullable: true
           description: UUIDv7 of the generated ticket, populated after issuance completes.
         recipient_email:
           type: string
@@ -7565,11 +7559,9 @@ components:
           description: Email address of the complimentary ticket recipient.
         recipient_name:
           type: string
-          nullable: true
           description: Optional display name of the recipient.
         note:
           type: string
-          nullable: true
           description: Internal note explaining the reason for the comp issuance.
         status:
           type: string
@@ -7578,12 +7570,10 @@ components:
         issued_by:
           type: string
           format: uuid
-          nullable: true
           description: UUIDv7 of the staff member who granted the comp ticket.
         revoked_at:
           type: string
           format: date-time
-          nullable: true
           description: ISO-8601 timestamp when the issuance was revoked, or null if active.
         created_at:
           type: string
@@ -9532,6 +9522,61 @@ paths:
   # ─────────────────────────────────────────────────────────────────────────
 
   /v1/admin/organizations:
+    get:
+      operationId: superadminListOrganizations
+      summary: Cross-tenant list of all organizations (superadmin)
+      description: Cross-tenant list of all organizations (superadmin). Requires the `superadmin.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          description: Maximum number of rows to return.
+          in: query
+          required: false
+          schema: { type: integer, default: 20, maximum: 100 }
+        - name: offset
+          description: Number of rows to skip before returning results.
+          in: query
+          required: false
+          schema: { type: integer, default: 0 }
+      responses:
+        "200":
+          description: Paginated list of organizations across all tenants.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organizations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        name: { type: string }
+                        slug: { type: string }
+                        country: { type: string }
+                        created_at: { type: string, format: date-time }
+                  total: { type: integer }
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Insufficient permission (`superadmin.read`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
     post:
       operationId: postV1AdminOrganizations
       summary: Admin — create a new organization
@@ -20494,11 +20539,13 @@ paths:
     get:
       operationId: listChannels
       summary: List sales channels for an organization
+      description: List sales channels for an organization. Requires the `channel.read` permission.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -20518,25 +20565,30 @@ paths:
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Insufficient permission (`channel.read`).
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
     post:
       operationId: createChannel
       summary: Create a sales channel
+      description: Create a sales channel. Requires the `channel.create` permission.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -20555,36 +20607,43 @@ paths:
           description: Channel created.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Channel" }
+              schema:
+                $ref: "#/components/schemas/Channel"
         "401":
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Insufficient permission (`channel.create`).
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/organizations/{org_id}/channels/{id}:
     get:
       operationId: getChannel
       summary: Get a sales channel by ID
+      description: Get a sales channel by ID.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
           in: path
           required: true
           schema: { type: string, format: uuid }
         - name: id
+          description: Resource UUID from the path.
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -20593,29 +20652,35 @@ paths:
           description: Channel found.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Channel" }
+              schema:
+                $ref: "#/components/schemas/Channel"
         "404":
           description: Channel not found.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
     patch:
       operationId: updateChannel
       summary: Update a sales channel
+      description: Update a sales channel.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
           in: path
           required: true
           schema: { type: string, format: uuid }
         - name: id
+          description: Resource UUID from the path.
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -20632,29 +20697,35 @@ paths:
           description: Channel updated.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Channel" }
+              schema:
+                $ref: "#/components/schemas/Channel"
         "404":
           description: Channel not found.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
     delete:
       operationId: deleteChannel
       summary: Delete a sales channel
+      description: Delete a sales channel.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
           in: path
           required: true
           schema: { type: string, format: uuid }
         - name: id
+          description: Resource UUID from the path.
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -20665,12 +20736,14 @@ paths:
           description: Channel not found.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   # ── Agent feed tokens (feature #122) ─────────────────────────────────────
 
@@ -20686,6 +20759,7 @@ paths:
         - agentFeedTokenAuth: []
       parameters:
         - name: token
+          description: Feed token value.
           in: path
           required: true
           schema: { type: string }
@@ -20703,26 +20777,31 @@ paths:
           description: Invalid or unknown feed token.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/organizations/{org_id}/channels/{channel_id}/feed-tokens:
     get:
       operationId: listFeedTokens
       summary: List agent feed tokens for a channel
+      description: List agent feed tokens for a channel. Requires the `feed_token.read` permission.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
           in: path
           required: true
           schema: { type: string, format: uuid }
         - name: channel_id
+          description: Sales channel UUID.
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -20742,29 +20821,35 @@ paths:
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Insufficient permission (`feed_token.read`).
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
     post:
       operationId: createFeedToken
       summary: Create an agent feed token
+      description: Create an agent feed token. Requires the `feed_token.create` permission.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
           in: path
           required: true
           schema: { type: string, format: uuid }
         - name: channel_id
+          description: Sales channel UUID.
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -20781,40 +20866,48 @@ paths:
           description: Feed token created.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/FeedToken" }
+              schema:
+                $ref: "#/components/schemas/FeedToken"
         "401":
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Insufficient permission (`feed_token.create`).
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/organizations/{org_id}/channels/{channel_id}/feed-tokens/{id}:
     get:
       operationId: getFeedToken
       summary: Get an agent feed token by ID
+      description: Get an agent feed token by ID.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
           in: path
           required: true
           schema: { type: string, format: uuid }
         - name: channel_id
+          description: Sales channel UUID.
           in: path
           required: true
           schema: { type: string, format: uuid }
         - name: id
+          description: Resource UUID from the path.
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -20823,33 +20916,40 @@ paths:
           description: Feed token details.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/FeedToken" }
+              schema:
+                $ref: "#/components/schemas/FeedToken"
         "404":
           description: Feed token not found.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
     delete:
       operationId: revokeFeedToken
       summary: Revoke an agent feed token
+      description: Revoke an agent feed token.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
           in: path
           required: true
           schema: { type: string, format: uuid }
         - name: channel_id
+          description: Sales channel UUID.
           in: path
           required: true
           schema: { type: string, format: uuid }
         - name: id
+          description: Resource UUID from the path.
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -20860,12 +20960,14 @@ paths:
           description: Feed token not found.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   # ── GDPR / data subject rights (feature #164) ────────────────────────────
 
@@ -20873,6 +20975,7 @@ paths:
     get:
       operationId: listDataRequests
       summary: List the caller's GDPR data requests
+      description: List the caller's GDPR data requests.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -20897,17 +21000,20 @@ paths:
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/me/data-export:
     post:
       operationId: requestDataExport
       summary: Submit a GDPR data export request
+      description: Submit a GDPR data export request.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -20925,17 +21031,20 @@ paths:
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/me/data-delete:
     post:
       operationId: requestDataDeletion
       summary: Submit a GDPR data deletion request
+      description: Submit a GDPR data deletion request.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -20953,17 +21062,20 @@ paths:
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/me/consent:
     post:
       operationId: recordConsent
       summary: Record a GDPR consent decision
+      description: Record a GDPR consent decision.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -20984,17 +21096,20 @@ paths:
           description: Invalid request body.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "401":
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   # ── Stripe Connect OAuth onboarding (feature #135) ────────────────────────
 
@@ -21002,6 +21117,7 @@ paths:
     get:
       operationId: stripeConnectAuthorize
       summary: Begin Stripe Connect OAuth flow
+      description: Begin Stripe Connect OAuth flow.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -21012,30 +21128,36 @@ paths:
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Stripe Connect not configured.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/stripe/connect/callback:
     get:
       operationId: stripeConnectCallback
       summary: Handle Stripe Connect OAuth callback
+      description: Handle Stripe Connect OAuth callback.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: code
+          description: OAuth authorization code returned by Stripe.
           in: query
           required: false
           schema: { type: string }
         - name: state
+          description: Opaque anti-CSRF state value from the authorize redirect.
           in: query
           required: false
           schema: { type: string }
         - name: error
+          description: OAuth error code when the user denied the connection.
           in: query
           required: false
           schema: { type: string }
@@ -21053,17 +21175,20 @@ paths:
           description: OAuth error or missing code.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "401":
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Stripe Connect not configured.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   # ── Barcode batches (feature #146) ───────────────────────────────────────
 
@@ -21071,6 +21196,7 @@ paths:
     get:
       operationId: listBarcodeBatches
       summary: List external barcode batches
+      description: List external barcode batches. Requires the `barcode_batch.read` permission.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -21090,20 +21216,24 @@ paths:
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Insufficient permission (`barcode_batch.read`).
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
     post:
       operationId: uploadBarcodeBatch
       summary: Upload an external barcode batch
+      description: Upload an external barcode batch. Requires the `barcode_batch.upload` permission.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -21124,37 +21254,44 @@ paths:
           description: Barcode batch created (pending approval).
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/BarcodeBatch" }
+              schema:
+                $ref: "#/components/schemas/BarcodeBatch"
         "400":
           description: Invalid batch data.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "401":
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Insufficient permission (`barcode_batch.upload`).
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/barcode-batches/{id}:
     get:
       operationId: getBarcodeBatch
       summary: Get a barcode batch by ID
+      description: Get a barcode batch by ID.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: id
+          description: Resource UUID from the path.
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -21163,27 +21300,32 @@ paths:
           description: Barcode batch details.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/BarcodeBatch" }
+              schema:
+                $ref: "#/components/schemas/BarcodeBatch"
         "404":
           description: Batch not found.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/barcode-batches/{id}/approve:
     post:
       operationId: approveBarcodeBatch
       summary: Approve a barcode batch for registration
+      description: Approve a barcode batch for registration.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: id
+          description: Resource UUID from the path.
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -21192,27 +21334,32 @@ paths:
           description: Batch approved and barcodes registered.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/BarcodeBatch" }
+              schema:
+                $ref: "#/components/schemas/BarcodeBatch"
         "404":
           description: Batch not found.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/barcode-batches/{id}/reject:
     post:
       operationId: rejectBarcodeBatch
       summary: Reject a barcode batch
+      description: Reject a barcode batch.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: id
+          description: Resource UUID from the path.
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -21221,17 +21368,20 @@ paths:
           description: Batch rejected.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/BarcodeBatch" }
+              schema:
+                $ref: "#/components/schemas/BarcodeBatch"
         "404":
           description: Batch not found.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   # ── Reconciliation (feature #147) ────────────────────────────────────────
 
@@ -21239,6 +21389,7 @@ paths:
     post:
       operationId: submitReconciliationReport
       summary: Submit an external reconciliation report
+      description: Submit an external reconciliation report. Requires the `reconciliation.submit` permission.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -21274,32 +21425,38 @@ paths:
           description: Invalid report data.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "401":
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Insufficient permission (`reconciliation.submit`).
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/reconciliation/reports/{id}:
     get:
       operationId: getReconciliationReport
       summary: Get a reconciliation report
+      description: Get a reconciliation report.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: id
+          description: Resource UUID from the path.
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -21320,22 +21477,26 @@ paths:
           description: Report not found.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/reconciliation/reports/{id}/review:
     patch:
       operationId: reviewReconciliationReport
       summary: Mark a reconciliation report as reviewed
+      description: Mark a reconciliation report as reviewed.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: id
+          description: Resource UUID from the path.
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -21363,26 +21524,31 @@ paths:
           description: Report not found.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/reconciliation/reports/{id}/lines/{line_id}:
     patch:
       operationId: resolveReconciliationException
       summary: Resolve a line-level reconciliation exception
+      description: Resolve a line-level reconciliation exception.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: id
+          description: Resource UUID from the path.
           in: path
           required: true
           schema: { type: string, format: uuid }
         - name: line_id
+          description: Reconciliation report line UUID.
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -21410,17 +21576,20 @@ paths:
           description: Report or line not found.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/reconciliation/exceptions:
     get:
       operationId: listReconciliationExceptions
       summary: List unresolved reconciliation exceptions
+      description: List unresolved reconciliation exceptions. Requires the `reconciliation.review` permission.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -21445,17 +21614,20 @@ paths:
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Insufficient permission (`reconciliation.review`).
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   # ── External allocations (feature #145) ──────────────────────────────────
 
@@ -21463,11 +21635,13 @@ paths:
     get:
       operationId: listExternalAllocations
       summary: List external allocations for an organization
+      description: List external allocations for an organization.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -21487,20 +21661,24 @@ paths:
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
     post:
       operationId: createExternalAllocation
       summary: Create an external allocation quota
+      description: Create an external allocation quota.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -21520,36 +21698,43 @@ paths:
           description: Allocation created.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ExternalAllocation" }
+              schema:
+                $ref: "#/components/schemas/ExternalAllocation"
         "400":
           description: Invalid request.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "401":
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/organizations/{org_id}/external-allocations/{id}:
     get:
       operationId: getExternalAllocation
       summary: Get an external allocation by ID
+      description: Get an external allocation by ID.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
           in: path
           required: true
           schema: { type: string, format: uuid }
         - name: id
+          description: Resource UUID from the path.
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -21558,29 +21743,35 @@ paths:
           description: External allocation details.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ExternalAllocation" }
+              schema:
+                $ref: "#/components/schemas/ExternalAllocation"
         "404":
           description: Allocation not found.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
     patch:
       operationId: updateExternalAllocation
       summary: Update an external allocation quota
+      description: Update an external allocation quota.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
           in: path
           required: true
           schema: { type: string, format: uuid }
         - name: id
+          description: Resource UUID from the path.
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -21597,17 +21788,20 @@ paths:
           description: Allocation updated.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ExternalAllocation" }
+              schema:
+                $ref: "#/components/schemas/ExternalAllocation"
         "404":
           description: Allocation not found.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   # ── Complimentary tickets (features #148, #150) ───────────────────────────
 
@@ -21615,11 +21809,13 @@ paths:
     get:
       operationId: listComplimentaryIssuances
       summary: List complimentary ticket issuances for an organization
+      description: List complimentary ticket issuances for an organization.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -21639,20 +21835,24 @@ paths:
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
     post:
       operationId: createComplimentaryIssuance
       summary: Issue a complimentary ticket
+      description: Issue a complimentary ticket.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -21674,41 +21874,49 @@ paths:
           description: Complimentary ticket issued.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ComplimentaryIssuance" }
+              schema:
+                $ref: "#/components/schemas/ComplimentaryIssuance"
         "400":
           description: Invalid request.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "401":
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "422":
           description: No available inventory.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/organizations/{org_id}/complimentary/{id}:
     get:
       operationId: getComplimentaryIssuance
       summary: Get a complimentary issuance by ID
+      description: Get a complimentary issuance by ID.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
           in: path
           required: true
           schema: { type: string, format: uuid }
         - name: id
+          description: Resource UUID from the path.
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -21717,27 +21925,32 @@ paths:
           description: Complimentary issuance details.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ComplimentaryIssuance" }
+              schema:
+                $ref: "#/components/schemas/ComplimentaryIssuance"
         "404":
           description: Issuance not found.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/complimentary/{id}/revoke:
     post:
       operationId: revokeComplimentaryIssuance
       summary: Revoke a complimentary ticket issuance
+      description: Revoke a complimentary ticket issuance.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: id
+          description: Resource UUID from the path.
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -21762,12 +21975,14 @@ paths:
           description: Issuance not found.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   # ── Event post-sale reports (feature #159) ───────────────────────────────
 
@@ -21775,11 +21990,13 @@ paths:
     get:
       operationId: getEventReport
       summary: Get the post-event sales report
+      description: Get the post-event sales report.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: event_id
+          description: Event UUID.
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -21800,20 +22017,24 @@ paths:
           description: Report not yet generated for this event.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
     post:
       operationId: triggerEventReport
       summary: Trigger regeneration of the post-event sales report
+      description: Trigger regeneration of the post-event sales report. Requires the `report.generate` permission.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: event_id
+          description: Event UUID.
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -21831,17 +22052,20 @@ paths:
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Insufficient permission (`report.generate`).
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   # ── Platform service billing ledger (feature #161) ───────────────────────
 
@@ -21849,6 +22073,7 @@ paths:
     get:
       operationId: getActiveTariff
       summary: Get the currently active billing tariff
+      description: Get the currently active billing tariff.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -21870,22 +22095,26 @@ paths:
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: No active tariff configured.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/billing/tariffs:
     post:
       operationId: createTariff
       summary: Create a new billing tariff
+      description: Create a new billing tariff. Requires the `billing.admin` permission.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -21916,27 +22145,32 @@ paths:
           description: Invalid tariff data.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "401":
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Insufficient permission (`billing.admin`).
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/billing/invoices/generate:
     post:
       operationId: generateInvoices
       summary: Generate invoices for the current billing period
+      description: Generate invoices for the current billing period. Requires the `billing.admin` permission.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -21961,27 +22195,32 @@ paths:
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Insufficient permission (`billing.admin`).
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/billing/invoices/{id}:
     get:
       operationId: getBillingInvoice
       summary: Get a billing invoice by ID
+      description: Get a billing invoice by ID.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: id
+          description: Resource UUID from the path.
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -22003,22 +22242,26 @@ paths:
           description: Invoice not found.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/billing/invoices/{id}/issue:
     post:
       operationId: issueInvoice
       summary: Issue (finalize) a draft billing invoice
+      description: Issue (finalize) a draft billing invoice.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: id
+          description: Resource UUID from the path.
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -22037,22 +22280,26 @@ paths:
           description: Invoice not found.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/billing/invoices/{id}/pay:
     post:
       operationId: payInvoice
       summary: Mark a billing invoice as paid
+      description: Mark a billing invoice as paid.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: id
+          description: Resource UUID from the path.
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -22079,22 +22326,26 @@ paths:
           description: Invoice not found.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/billing/invoices/{id}/void:
     post:
       operationId: voidInvoice
       summary: Void a billing invoice
+      description: Void a billing invoice.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: id
+          description: Resource UUID from the path.
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -22120,22 +22371,26 @@ paths:
           description: Invoice not found.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/billing/stripe/push-invoice/{id}:
     post:
       operationId: pushInvoiceToStripe
       summary: Push a billing invoice to Stripe Billing
+      description: Push a billing invoice to Stripe Billing.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: id
+          description: Resource UUID from the path.
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -22154,12 +22409,14 @@ paths:
           description: Invoice not found.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Stripe Billing not configured or database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/billing/stripe/webhook:
     post:
@@ -22183,30 +22440,36 @@ paths:
           description: Invalid signature or malformed payload.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/organizations/{org_id}/billing/usage:
     get:
       operationId: getOrgBillingUsage
       summary: Get billing usage summary for an organization
+      description: Get billing usage summary for an organization.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
           in: path
           required: true
           schema: { type: string, format: uuid }
         - name: period_start
+          description: Inclusive RFC 3339 start of the reporting period.
           in: query
           required: false
           schema: { type: string, format: date-time }
         - name: period_end
+          description: Exclusive RFC 3339 end of the reporting period.
           in: query
           required: false
           schema: { type: string, format: date-time }
@@ -22229,27 +22492,32 @@ paths:
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: Organization not found.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/organizations/{org_id}/billing/invoices:
     get:
       operationId: listOrgBillingInvoices
       summary: List billing invoices for an organization
+      description: List billing invoices for an organization.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -22275,17 +22543,20 @@ paths:
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: Organization not found.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   # ── Superadmin cross-tenant read (feature #166) ───────────────────────────
 
@@ -22293,19 +22564,23 @@ paths:
     get:
       operationId: superadminListOrders
       summary: Cross-tenant list of all checkout orders (superadmin)
+      description: Cross-tenant list of all checkout orders (superadmin). Requires the `superadmin.read` permission.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: limit
+          description: Maximum number of rows to return.
           in: query
           required: false
           schema: { type: integer, default: 20, maximum: 100 }
         - name: offset
+          description: Number of rows to skip before returning results.
           in: query
           required: false
           schema: { type: integer, default: 0 }
         - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
           in: query
           required: false
           schema: { type: string, format: uuid }
@@ -22333,35 +22608,42 @@ paths:
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Insufficient permission (`superadmin.read`).
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/admin/tickets:
     get:
       operationId: superadminListTickets
       summary: Cross-tenant list of all tickets (superadmin)
+      description: Cross-tenant list of all tickets (superadmin). Requires the `superadmin.read` permission.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: limit
+          description: Maximum number of rows to return.
           in: query
           required: false
           schema: { type: integer, default: 20, maximum: 100 }
         - name: offset
+          description: Number of rows to skip before returning results.
           in: query
           required: false
           schema: { type: integer, default: 0 }
         - name: checkout_session_id
+          description: Checkout session UUID.
           in: query
           required: false
           schema: { type: string, format: uuid }
@@ -22387,31 +22669,37 @@ paths:
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Insufficient permission (`superadmin.read`).
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/admin/refunds:
     get:
       operationId: superadminListRefunds
       summary: Cross-tenant list of all refunds (superadmin)
+      description: Cross-tenant list of all refunds (superadmin). Requires the `superadmin.read` permission.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: limit
+          description: Maximum number of rows to return.
           in: query
           required: false
           schema: { type: integer, default: 20, maximum: 100 }
         - name: offset
+          description: Number of rows to skip before returning results.
           in: query
           required: false
           schema: { type: integer, default: 0 }
@@ -22439,27 +22727,32 @@ paths:
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Insufficient permission (`superadmin.read`).
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/admin/tickets/{id}/scans:
     get:
       operationId: adminListTicketScanEvents
       summary: List scan events for a ticket (admin support drawer)
+      description: List scan events for a ticket (admin support drawer). Requires the `scan_event.read` permission.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
         - name: id
+          description: Resource UUID from the path.
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -22485,19 +22778,23 @@ paths:
           description: Unauthorized.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Insufficient permission (`scan_event.read`).
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: Ticket not found.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"

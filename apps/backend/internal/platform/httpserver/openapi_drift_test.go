@@ -20,6 +20,7 @@ package httpserver
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -413,7 +414,61 @@ func buildDriftTestServer(t *testing.T) *Server {
 		// /v1/barcodes/{id}, POST /v1/scan, GET /v1/scanner/snapshot,
 		// POST /v1/scanner/validate.
 		BarcodeQueries: gen.New(nil),
+		// Wire ChannelQueries so the sales-channel CRUD routes (features
+		// #121/#236) under /v1/organizations/{org_id}/channels[/{id}] are
+		// mounted for the drift check.
+		ChannelQueries: gen.New(nil),
+		// Wire FeedTokenQueries so the feed-token management routes
+		// (feature #122) under /v1/organizations/{org_id}/channels/
+		// {channel_id}/feed-tokens[/{id}], the public GET /v1/feeds/{token}
+		// read, and GET /v1/admin/tickets/{id}/scans (gated on
+		// feedTokenQueries per #295) are mounted.
+		FeedTokenQueries: gen.New(nil),
+		// Wire ComplimentaryQueries so the complimentary issuance routes
+		// (features #148/#150) under /v1/organizations/{org_id}/complimentary
+		// and /v1/complimentary/{id}/revoke are mounted.
+		ComplimentaryQueries: gen.New(nil),
+		// Wire AllocationQueries so the external allocation quota routes
+		// (feature #145) under /v1/organizations/{org_id}/external-allocations
+		// are mounted.
+		AllocationQueries: gen.New(nil),
+		// Wire ReconciliationQueries so the reconciliation report routes
+		// (feature #147) under /v1/reconciliation/* are mounted.
+		ReconciliationQueries: gen.New(nil),
+		// Wire SuperadminQueries so the cross-tenant admin list routes
+		// (feature #166): GET /v1/admin/{organizations,orders,tickets,refunds}
+		// are mounted.
+		SuperadminQueries: gen.New(nil),
+		// Wire BarcodeBatchQueries so the external barcode batch routes
+		// (feature #146) under /v1/barcode-batches are mounted.
+		BarcodeBatchQueries: gen.New(nil),
+		// Wire ReportQueries so the post-event report routes (feature #161)
+		// under /v1/events/{event_id}/report are mounted.
+		ReportQueries: gen.New(nil),
+		// Wire BillingQueries so the service-billing routes (feature #160)
+		// under /v1/billing/* and /v1/organizations/{org_id}/billing/* are
+		// mounted.
+		BillingQueries: gen.New(nil),
+		// Wire GDPRQueries so the data-privacy routes (feature #165) under
+		// /v1/me/{consent,data-export,data-delete,data-requests} are mounted.
+		GDPRQueries: gen.New(nil),
+		// Wire the Stripe helpers so the Stripe Connect OAuth routes
+		// (feature #163: GET /v1/stripe/connect/{authorize,callback}) and
+		// the Stripe Billing routes (feature #162: POST
+		// /v1/billing/stripe/push-invoice/{id}, POST /v1/billing/stripe/webhook)
+		// are mounted.
+		StripeConnect: driftFakeStripeConnect{},
+		StripeBilling: &mockStripeBillingAdapter{},
 	})
+}
+
+// driftFakeStripeConnect is a minimal StripeConnectHelper so the connect
+// routes mount for the drift check; the handlers are never exercised.
+type driftFakeStripeConnect struct{}
+
+func (driftFakeStripeConnect) ConnectAuthorizeURL(redirectURI, state string) string { return "" }
+func (driftFakeStripeConnect) ConnectExchangeCode(_ context.Context, _ string) (string, error) {
+	return "", nil
 }
 
 // chiRouteSet extracts all (path, lowercase-method) pairs from a chi router

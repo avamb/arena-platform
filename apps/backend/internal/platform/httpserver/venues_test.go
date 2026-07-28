@@ -59,6 +59,10 @@ func buildVenueServer(t *testing.T) *Server {
 		Auth:   stub,
 		// dbDownPool satisfies pool != nil guard so write routes get mounted.
 		Pool: &dbDownPool{},
+		// MembershipQueries backed by orgMemberAdmitFromCtxDBTX so that
+		// authenticated requests pass the PR2-26 org-membership guard and
+		// reach the handler bodies these tests exercise.
+		MembershipQueries: gen.New(&orgMemberAdmitFromCtxDBTX{}),
 		// VenueQueries non-nil so venue route conditionals pass.
 		VenueQueries: gen.New(nil),
 		// OrgQueries also non-nil for good measure.

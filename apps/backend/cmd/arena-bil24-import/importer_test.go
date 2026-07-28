@@ -259,10 +259,10 @@ func TestPR386_ResolvedEndsAt_Explicit(t *testing.T) {
 // TestPR386_ResolvedDescription checks venue name appending logic.
 func TestPR386_ResolvedDescription(t *testing.T) {
 	cases := []struct {
-		name      string
-		desc      string
-		venue     string
-		wantPart  string
+		name     string
+		desc     string
+		venue    string
+		wantPart string
 	}{
 		{name: "both set", desc: "Great event", venue: "Main Hall", wantPart: "(Venue: Main Hall)"},
 		{name: "no venue", desc: "Great event", venue: "", wantPart: "Great event"},

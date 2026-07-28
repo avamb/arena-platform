@@ -253,7 +253,7 @@ func run() error {
 		// NEVER set this to false in production — unauthenticated gateway access
 		// allows inventory mutation without credentials.
 		Bil24RequireToken: cfg.Bil24RequireToken,
-		Media:              mediaRepo,
+		Media:             mediaRepo,
 	})
 
 	listenErrCh := make(chan error, 1)

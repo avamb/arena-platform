@@ -774,7 +774,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Cross-tenant list of all organizations (superadmin)
+         * @description Cross-tenant list of all organizations (superadmin). Requires the `superadmin.read` permission.
+         */
+        get: operations["superadminListOrganizations"];
         put?: never;
         /**
          * Admin — create a new organization
@@ -3638,10 +3642,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List sales channels for an organization */
+        /**
+         * List sales channels for an organization
+         * @description List sales channels for an organization. Requires the `channel.read` permission.
+         */
         get: operations["listChannels"];
         put?: never;
-        /** Create a sales channel */
+        /**
+         * Create a sales channel
+         * @description Create a sales channel. Requires the `channel.create` permission.
+         */
         post: operations["createChannel"];
         delete?: never;
         options?: never;
@@ -3656,15 +3666,24 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get a sales channel by ID */
+        /**
+         * Get a sales channel by ID
+         * @description Get a sales channel by ID.
+         */
         get: operations["getChannel"];
         put?: never;
         post?: never;
-        /** Delete a sales channel */
+        /**
+         * Delete a sales channel
+         * @description Delete a sales channel.
+         */
         delete: operations["deleteChannel"];
         options?: never;
         head?: never;
-        /** Update a sales channel */
+        /**
+         * Update a sales channel
+         * @description Update a sales channel.
+         */
         patch: operations["updateChannel"];
         trace?: never;
     };
@@ -3696,10 +3715,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List agent feed tokens for a channel */
+        /**
+         * List agent feed tokens for a channel
+         * @description List agent feed tokens for a channel. Requires the `feed_token.read` permission.
+         */
         get: operations["listFeedTokens"];
         put?: never;
-        /** Create an agent feed token */
+        /**
+         * Create an agent feed token
+         * @description Create an agent feed token. Requires the `feed_token.create` permission.
+         */
         post: operations["createFeedToken"];
         delete?: never;
         options?: never;
@@ -3714,11 +3739,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get an agent feed token by ID */
+        /**
+         * Get an agent feed token by ID
+         * @description Get an agent feed token by ID.
+         */
         get: operations["getFeedToken"];
         put?: never;
         post?: never;
-        /** Revoke an agent feed token */
+        /**
+         * Revoke an agent feed token
+         * @description Revoke an agent feed token.
+         */
         delete: operations["revokeFeedToken"];
         options?: never;
         head?: never;
@@ -3732,7 +3763,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List the caller's GDPR data requests */
+        /**
+         * List the caller's GDPR data requests
+         * @description List the caller's GDPR data requests.
+         */
         get: operations["listDataRequests"];
         put?: never;
         post?: never;
@@ -3751,7 +3785,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Submit a GDPR data export request */
+        /**
+         * Submit a GDPR data export request
+         * @description Submit a GDPR data export request.
+         */
         post: operations["requestDataExport"];
         delete?: never;
         options?: never;
@@ -3768,7 +3805,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Submit a GDPR data deletion request */
+        /**
+         * Submit a GDPR data deletion request
+         * @description Submit a GDPR data deletion request.
+         */
         post: operations["requestDataDeletion"];
         delete?: never;
         options?: never;
@@ -3785,7 +3825,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record a GDPR consent decision */
+        /**
+         * Record a GDPR consent decision
+         * @description Record a GDPR consent decision.
+         */
         post: operations["recordConsent"];
         delete?: never;
         options?: never;
@@ -3800,7 +3843,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Begin Stripe Connect OAuth flow */
+        /**
+         * Begin Stripe Connect OAuth flow
+         * @description Begin Stripe Connect OAuth flow.
+         */
         get: operations["stripeConnectAuthorize"];
         put?: never;
         post?: never;
@@ -3817,7 +3863,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Handle Stripe Connect OAuth callback */
+        /**
+         * Handle Stripe Connect OAuth callback
+         * @description Handle Stripe Connect OAuth callback.
+         */
         get: operations["stripeConnectCallback"];
         put?: never;
         post?: never;
@@ -3834,10 +3883,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List external barcode batches */
+        /**
+         * List external barcode batches
+         * @description List external barcode batches. Requires the `barcode_batch.read` permission.
+         */
         get: operations["listBarcodeBatches"];
         put?: never;
-        /** Upload an external barcode batch */
+        /**
+         * Upload an external barcode batch
+         * @description Upload an external barcode batch. Requires the `barcode_batch.upload` permission.
+         */
         post: operations["uploadBarcodeBatch"];
         delete?: never;
         options?: never;
@@ -3852,7 +3907,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get a barcode batch by ID */
+        /**
+         * Get a barcode batch by ID
+         * @description Get a barcode batch by ID.
+         */
         get: operations["getBarcodeBatch"];
         put?: never;
         post?: never;
@@ -3871,7 +3929,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Approve a barcode batch for registration */
+        /**
+         * Approve a barcode batch for registration
+         * @description Approve a barcode batch for registration.
+         */
         post: operations["approveBarcodeBatch"];
         delete?: never;
         options?: never;
@@ -3888,7 +3949,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Reject a barcode batch */
+        /**
+         * Reject a barcode batch
+         * @description Reject a barcode batch.
+         */
         post: operations["rejectBarcodeBatch"];
         delete?: never;
         options?: never;
@@ -3905,7 +3969,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Submit an external reconciliation report */
+        /**
+         * Submit an external reconciliation report
+         * @description Submit an external reconciliation report. Requires the `reconciliation.submit` permission.
+         */
         post: operations["submitReconciliationReport"];
         delete?: never;
         options?: never;
@@ -3920,7 +3987,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get a reconciliation report */
+        /**
+         * Get a reconciliation report
+         * @description Get a reconciliation report.
+         */
         get: operations["getReconciliationReport"];
         put?: never;
         post?: never;
@@ -3943,7 +4013,10 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Mark a reconciliation report as reviewed */
+        /**
+         * Mark a reconciliation report as reviewed
+         * @description Mark a reconciliation report as reviewed.
+         */
         patch: operations["reviewReconciliationReport"];
         trace?: never;
     };
@@ -3960,7 +4033,10 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Resolve a line-level reconciliation exception */
+        /**
+         * Resolve a line-level reconciliation exception
+         * @description Resolve a line-level reconciliation exception.
+         */
         patch: operations["resolveReconciliationException"];
         trace?: never;
     };
@@ -3971,7 +4047,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List unresolved reconciliation exceptions */
+        /**
+         * List unresolved reconciliation exceptions
+         * @description List unresolved reconciliation exceptions. Requires the `reconciliation.review` permission.
+         */
         get: operations["listReconciliationExceptions"];
         put?: never;
         post?: never;
@@ -3988,10 +4067,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List external allocations for an organization */
+        /**
+         * List external allocations for an organization
+         * @description List external allocations for an organization.
+         */
         get: operations["listExternalAllocations"];
         put?: never;
-        /** Create an external allocation quota */
+        /**
+         * Create an external allocation quota
+         * @description Create an external allocation quota.
+         */
         post: operations["createExternalAllocation"];
         delete?: never;
         options?: never;
@@ -4006,14 +4091,20 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get an external allocation by ID */
+        /**
+         * Get an external allocation by ID
+         * @description Get an external allocation by ID.
+         */
         get: operations["getExternalAllocation"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
-        /** Update an external allocation quota */
+        /**
+         * Update an external allocation quota
+         * @description Update an external allocation quota.
+         */
         patch: operations["updateExternalAllocation"];
         trace?: never;
     };
@@ -4024,10 +4115,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List complimentary ticket issuances for an organization */
+        /**
+         * List complimentary ticket issuances for an organization
+         * @description List complimentary ticket issuances for an organization.
+         */
         get: operations["listComplimentaryIssuances"];
         put?: never;
-        /** Issue a complimentary ticket */
+        /**
+         * Issue a complimentary ticket
+         * @description Issue a complimentary ticket.
+         */
         post: operations["createComplimentaryIssuance"];
         delete?: never;
         options?: never;
@@ -4042,7 +4139,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get a complimentary issuance by ID */
+        /**
+         * Get a complimentary issuance by ID
+         * @description Get a complimentary issuance by ID.
+         */
         get: operations["getComplimentaryIssuance"];
         put?: never;
         post?: never;
@@ -4061,7 +4161,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Revoke a complimentary ticket issuance */
+        /**
+         * Revoke a complimentary ticket issuance
+         * @description Revoke a complimentary ticket issuance.
+         */
         post: operations["revokeComplimentaryIssuance"];
         delete?: never;
         options?: never;
@@ -4076,10 +4179,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get the post-event sales report */
+        /**
+         * Get the post-event sales report
+         * @description Get the post-event sales report.
+         */
         get: operations["getEventReport"];
         put?: never;
-        /** Trigger regeneration of the post-event sales report */
+        /**
+         * Trigger regeneration of the post-event sales report
+         * @description Trigger regeneration of the post-event sales report. Requires the `report.generate` permission.
+         */
         post: operations["triggerEventReport"];
         delete?: never;
         options?: never;
@@ -4094,7 +4203,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get the currently active billing tariff */
+        /**
+         * Get the currently active billing tariff
+         * @description Get the currently active billing tariff.
+         */
         get: operations["getActiveTariff"];
         put?: never;
         post?: never;
@@ -4113,7 +4225,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create a new billing tariff */
+        /**
+         * Create a new billing tariff
+         * @description Create a new billing tariff. Requires the `billing.admin` permission.
+         */
         post: operations["createTariff"];
         delete?: never;
         options?: never;
@@ -4130,7 +4245,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Generate invoices for the current billing period */
+        /**
+         * Generate invoices for the current billing period
+         * @description Generate invoices for the current billing period. Requires the `billing.admin` permission.
+         */
         post: operations["generateInvoices"];
         delete?: never;
         options?: never;
@@ -4145,7 +4263,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get a billing invoice by ID */
+        /**
+         * Get a billing invoice by ID
+         * @description Get a billing invoice by ID.
+         */
         get: operations["getBillingInvoice"];
         put?: never;
         post?: never;
@@ -4164,7 +4285,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Issue (finalize) a draft billing invoice */
+        /**
+         * Issue (finalize) a draft billing invoice
+         * @description Issue (finalize) a draft billing invoice.
+         */
         post: operations["issueInvoice"];
         delete?: never;
         options?: never;
@@ -4181,7 +4305,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Mark a billing invoice as paid */
+        /**
+         * Mark a billing invoice as paid
+         * @description Mark a billing invoice as paid.
+         */
         post: operations["payInvoice"];
         delete?: never;
         options?: never;
@@ -4198,7 +4325,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Void a billing invoice */
+        /**
+         * Void a billing invoice
+         * @description Void a billing invoice.
+         */
         post: operations["voidInvoice"];
         delete?: never;
         options?: never;
@@ -4215,7 +4345,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Push a billing invoice to Stripe Billing */
+        /**
+         * Push a billing invoice to Stripe Billing
+         * @description Push a billing invoice to Stripe Billing.
+         */
         post: operations["pushInvoiceToStripe"];
         delete?: never;
         options?: never;
@@ -4250,7 +4383,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get billing usage summary for an organization */
+        /**
+         * Get billing usage summary for an organization
+         * @description Get billing usage summary for an organization.
+         */
         get: operations["getOrgBillingUsage"];
         put?: never;
         post?: never;
@@ -4267,7 +4403,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List billing invoices for an organization */
+        /**
+         * List billing invoices for an organization
+         * @description List billing invoices for an organization.
+         */
         get: operations["listOrgBillingInvoices"];
         put?: never;
         post?: never;
@@ -4284,7 +4423,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Cross-tenant list of all checkout orders (superadmin) */
+        /**
+         * Cross-tenant list of all checkout orders (superadmin)
+         * @description Cross-tenant list of all checkout orders (superadmin). Requires the `superadmin.read` permission.
+         */
         get: operations["superadminListOrders"];
         put?: never;
         post?: never;
@@ -4301,7 +4443,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Cross-tenant list of all tickets (superadmin) */
+        /**
+         * Cross-tenant list of all tickets (superadmin)
+         * @description Cross-tenant list of all tickets (superadmin). Requires the `superadmin.read` permission.
+         */
         get: operations["superadminListTickets"];
         put?: never;
         post?: never;
@@ -4318,7 +4463,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Cross-tenant list of all refunds (superadmin) */
+        /**
+         * Cross-tenant list of all refunds (superadmin)
+         * @description Cross-tenant list of all refunds (superadmin). Requires the `superadmin.read` permission.
+         */
         get: operations["superadminListRefunds"];
         put?: never;
         post?: never;
@@ -4335,7 +4483,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List scan events for a ticket (admin support drawer) */
+        /**
+         * List scan events for a ticket (admin support drawer)
+         * @description List scan events for a ticket (admin support drawer). Requires the `scan_event.read` permission.
+         */
         get: operations["adminListTicketScanEvents"];
         put?: never;
         post?: never;
@@ -10813,7 +10964,7 @@ export interface components {
              * Format: date-time
              * @description ISO-8601 timestamp when the token was revoked, or null if active.
              */
-            revoked_at?: string | null;
+            revoked_at?: string;
         };
         /**
          * @description A named batch of externally-issued barcodes submitted for registration.
@@ -10839,17 +10990,17 @@ export interface components {
              * Format: uuid
              * @description UUIDv7 of the user who uploaded the batch, if available.
              */
-            submitted_by?: string | null;
+            submitted_by?: string;
             /**
              * Format: uuid
              * @description UUIDv7 of the admin who approved/rejected the batch, if any.
              */
-            reviewed_by?: string | null;
+            reviewed_by?: string;
             /**
              * Format: date-time
              * @description ISO-8601 timestamp of the review decision, if any.
              */
-            reviewed_at?: string | null;
+            reviewed_at?: string;
             /**
              * Format: date-time
              * @description ISO-8601 timestamp when the batch was uploaded.
@@ -10894,7 +11045,7 @@ export interface components {
              * Format: date-time
              * @description ISO-8601 timestamp of the last quantity update, if any.
              */
-            updated_at?: string | null;
+            updated_at?: string;
         };
         /**
          * @description A complimentary (free / comp) ticket issuance granted to a named
@@ -10927,16 +11078,16 @@ export interface components {
              * Format: uuid
              * @description UUIDv7 of the generated ticket, populated after issuance completes.
              */
-            ticket_id?: string | null;
+            ticket_id?: string;
             /**
              * Format: email
              * @description Email address of the complimentary ticket recipient.
              */
             recipient_email: string;
             /** @description Optional display name of the recipient. */
-            recipient_name?: string | null;
+            recipient_name?: string;
             /** @description Internal note explaining the reason for the comp issuance. */
-            note?: string | null;
+            note?: string;
             /**
              * @description `issued` — ticket is active; `revoked` — ticket has been voided.
              * @enum {string}
@@ -10946,12 +11097,12 @@ export interface components {
              * Format: uuid
              * @description UUIDv7 of the staff member who granted the comp ticket.
              */
-            issued_by?: string | null;
+            issued_by?: string;
             /**
              * Format: date-time
              * @description ISO-8601 timestamp when the issuance was revoked, or null if active.
              */
-            revoked_at?: string | null;
+            revoked_at?: string;
             /**
              * Format: date-time
              * @description ISO-8601 timestamp when the comp ticket was issued.
@@ -13179,6 +13330,69 @@ export interface operations {
              * @description Database pool or membership queries unavailable
              *     (`dependency.database_unavailable`).
              */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    superadminListOrganizations: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of rows to return. */
+                limit?: number;
+                /** @description Number of rows to skip before returning results. */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated list of organizations across all tenants. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        organizations?: {
+                            /** Format: uuid */
+                            id?: string;
+                            name?: string;
+                            slug?: string;
+                            country?: string;
+                            /** Format: date-time */
+                            created_at?: string;
+                        }[];
+                        total?: number;
+                    };
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Insufficient permission (`superadmin.read`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -23838,6 +24052,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
                 org_id: string;
             };
             cookie?: never;
@@ -23889,6 +24104,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
                 org_id: string;
             };
             cookie?: never;
@@ -23945,7 +24161,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
                 org_id: string;
+                /** @description Resource UUID from the path. */
                 id: string;
             };
             cookie?: never;
@@ -23986,7 +24204,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
                 org_id: string;
+                /** @description Resource UUID from the path. */
                 id: string;
             };
             cookie?: never;
@@ -24025,7 +24245,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
                 org_id: string;
+                /** @description Resource UUID from the path. */
                 id: string;
             };
             cookie?: never;
@@ -24072,6 +24294,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Feed token value. */
                 token: string;
             };
             cookie?: never;
@@ -24117,7 +24340,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
                 org_id: string;
+                /** @description Sales channel UUID. */
                 channel_id: string;
             };
             cookie?: never;
@@ -24169,7 +24394,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
                 org_id: string;
+                /** @description Sales channel UUID. */
                 channel_id: string;
             };
             cookie?: never;
@@ -24225,8 +24452,11 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
                 org_id: string;
+                /** @description Sales channel UUID. */
                 channel_id: string;
+                /** @description Resource UUID from the path. */
                 id: string;
             };
             cookie?: never;
@@ -24267,8 +24497,11 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
                 org_id: string;
+                /** @description Sales channel UUID. */
                 channel_id: string;
+                /** @description Resource UUID from the path. */
                 id: string;
             };
             cookie?: never;
@@ -24525,8 +24758,11 @@ export interface operations {
     stripeConnectCallback: {
         parameters: {
             query?: {
+                /** @description OAuth authorization code returned by Stripe. */
                 code?: string;
+                /** @description Opaque anti-CSRF state value from the authorize redirect. */
                 state?: string;
+                /** @description OAuth error code when the user denied the connection. */
                 error?: string;
             };
             header?: never;
@@ -24693,6 +24929,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Resource UUID from the path. */
                 id: string;
             };
             cookie?: never;
@@ -24733,6 +24970,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Resource UUID from the path. */
                 id: string;
             };
             cookie?: never;
@@ -24773,6 +25011,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Resource UUID from the path. */
                 id: string;
             };
             cookie?: never;
@@ -24887,6 +25126,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Resource UUID from the path. */
                 id: string;
             };
             cookie?: never;
@@ -24937,6 +25177,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Resource UUID from the path. */
                 id: string;
             };
             cookie?: never;
@@ -24989,7 +25230,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Resource UUID from the path. */
                 id: string;
+                /** @description Reconciliation report line UUID. */
                 line_id: string;
             };
             cookie?: never;
@@ -25098,6 +25341,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
                 org_id: string;
             };
             cookie?: never;
@@ -25140,6 +25384,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
                 org_id: string;
             };
             cookie?: never;
@@ -25199,7 +25444,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
                 org_id: string;
+                /** @description Resource UUID from the path. */
                 id: string;
             };
             cookie?: never;
@@ -25240,7 +25487,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
                 org_id: string;
+                /** @description Resource UUID from the path. */
                 id: string;
             };
             cookie?: never;
@@ -25287,6 +25536,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
                 org_id: string;
             };
             cookie?: never;
@@ -25329,6 +25579,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
                 org_id: string;
             };
             cookie?: never;
@@ -25400,7 +25651,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
                 org_id: string;
+                /** @description Resource UUID from the path. */
                 id: string;
             };
             cookie?: never;
@@ -25441,6 +25694,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Resource UUID from the path. */
                 id: string;
             };
             cookie?: never;
@@ -25492,6 +25746,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Event UUID. */
                 event_id: string;
             };
             cookie?: never;
@@ -25540,6 +25795,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Event UUID. */
                 event_id: string;
             };
             cookie?: never;
@@ -25779,6 +26035,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Resource UUID from the path. */
                 id: string;
             };
             cookie?: never;
@@ -25829,6 +26086,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Resource UUID from the path. */
                 id: string;
             };
             cookie?: never;
@@ -25875,6 +26133,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Resource UUID from the path. */
                 id: string;
             };
             cookie?: never;
@@ -25928,6 +26187,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Resource UUID from the path. */
                 id: string;
             };
             cookie?: never;
@@ -25980,6 +26240,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Resource UUID from the path. */
                 id: string;
             };
             cookie?: never;
@@ -26066,11 +26327,14 @@ export interface operations {
     getOrgBillingUsage: {
         parameters: {
             query?: {
+                /** @description Inclusive RFC 3339 start of the reporting period. */
                 period_start?: string;
+                /** @description Exclusive RFC 3339 end of the reporting period. */
                 period_end?: string;
             };
             header?: never;
             path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
                 org_id: string;
             };
             cookie?: never;
@@ -26131,6 +26395,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
                 org_id: string;
             };
             cookie?: never;
@@ -26188,8 +26453,11 @@ export interface operations {
     superadminListOrders: {
         parameters: {
             query?: {
+                /** @description Maximum number of rows to return. */
                 limit?: number;
+                /** @description Number of rows to skip before returning results. */
                 offset?: number;
+                /** @description Organization UUID that scopes this request (tenant isolation). */
                 org_id?: string;
             };
             header?: never;
@@ -26252,8 +26520,11 @@ export interface operations {
     superadminListTickets: {
         parameters: {
             query?: {
+                /** @description Maximum number of rows to return. */
                 limit?: number;
+                /** @description Number of rows to skip before returning results. */
                 offset?: number;
+                /** @description Checkout session UUID. */
                 checkout_session_id?: string;
             };
             header?: never;
@@ -26314,7 +26585,9 @@ export interface operations {
     superadminListRefunds: {
         parameters: {
             query?: {
+                /** @description Maximum number of rows to return. */
                 limit?: number;
+                /** @description Number of rows to skip before returning results. */
                 offset?: number;
             };
             header?: never;
@@ -26379,6 +26652,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Resource UUID from the path. */
                 id: string;
             };
             cookie?: never;

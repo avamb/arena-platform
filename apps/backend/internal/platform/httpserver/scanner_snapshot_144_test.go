@@ -587,8 +587,11 @@ func TestScannerSnapshot144_IPRateLimitReturns429(t *testing.T) {
 	}
 	req := httptest.NewRequest(http.MethodGet,
 		"/v1/scanner/snapshot?session_id=00000000-0000-0000-0000-000000000001", nil)
-	// Use X-Forwarded-For so clientIP() returns the same key as the pre-warm call above.
-	req.Header.Set("X-Forwarded-For", "10.0.0.1")
+	// The handler resolves the client via TrustedClientIP(r, 1): with one
+	// trusted proxy the real client is the penultimate XFF entry, so the
+	// header needs a "client, proxy" pair for the pre-warmed key to match.
+	// A single-entry XFF is treated as suspicious and falls back to RemoteAddr.
+	req.Header.Set("X-Forwarded-For", "10.0.0.1, 203.0.113.7")
 	rw := httptest.NewRecorder()
 	s.handleScannerSnapshot(rw, req)
 	if rw.Code != http.StatusTooManyRequests {

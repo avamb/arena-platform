@@ -380,17 +380,17 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 	// return them without duplicate INSERTs. Delivery is enqueued inside
 	// IssueTicketsForCheckout (feature #367).
 	ticketIssueHandler := htickets.New(
-		queries,  // ticketQ
-		queries,  // credentialQ (not used in issuance path)
-		nil,      // complimentaryQ — not needed for webhook issuance
-		nil,      // inventoryQ — not needed for webhook issuance
-		queries,  // reservationQ
-		nil,      // barcodeQ — not needed for webhook issuance
-		queries,  // deliveryJobQ — used by EnqueueDeliveryJobs inside IssueTicketsForCheckout
-		nil,      // feedTokenQ — not needed for webhook issuance
-		pool,     // workerPool for delivery job enqueue
-		pool,     // pool (TxStarter) for advisory-lock transaction
-		nil,      // audit — not required for background issuance
+		queries, // ticketQ
+		queries, // credentialQ (not used in issuance path)
+		nil,     // complimentaryQ — not needed for webhook issuance
+		nil,     // inventoryQ — not needed for webhook issuance
+		queries, // reservationQ
+		nil,     // barcodeQ — not needed for webhook issuance
+		queries, // deliveryJobQ — used by EnqueueDeliveryJobs inside IssueTicketsForCheckout
+		nil,     // feedTokenQ — not needed for webhook issuance
+		pool,    // workerPool for delivery job enqueue
+		pool,    // pool (TxStarter) for advisory-lock transaction
+		nil,     // audit — not required for background issuance
 		logger,
 		nil, // publishTicketIssuedEvents — scanner events not required in worker context
 		nil, // publishTicketRevokedV1Events — revocation events not required here

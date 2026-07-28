@@ -505,7 +505,7 @@ func scanGoFilesForCamelCaseJSONTags(t *testing.T, root string) []string {
 		if info.IsDir() {
 			// Skip vendor directories and generated code marker paths.
 			base := filepath.Base(path)
-			if base == "vendor" || base == ".git" || base == "node_modules" {
+			if base == "vendor" || base == ".git" || base == "node_modules" || base == ".gomodcache" {
 				return filepath.SkipDir
 			}
 			return nil

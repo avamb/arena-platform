@@ -58,6 +58,13 @@ const (
 	BarcodeAuthorityItemTypePlatform         BarcodeAuthorityItemType = "platform"
 )
 
+// Defines values for BarcodeBatchStatus.
+const (
+	BarcodeBatchStatusApproved BarcodeBatchStatus = "approved"
+	BarcodeBatchStatusPending  BarcodeBatchStatus = "pending"
+	BarcodeBatchStatusRejected BarcodeBatchStatus = "rejected"
+)
+
 // Defines values for BarcodeItemStatus.
 const (
 	BarcodeItemStatusActive  BarcodeItemStatus = "active"
@@ -94,6 +101,12 @@ const (
 	CheckoutStatusResponseStatusFailed  CheckoutStatusResponseStatus = "failed"
 	CheckoutStatusResponseStatusPaid    CheckoutStatusResponseStatus = "paid"
 	CheckoutStatusResponseStatusPending CheckoutStatusResponseStatus = "pending"
+)
+
+// Defines values for ComplimentaryIssuanceStatus.
+const (
+	ComplimentaryIssuanceStatusIssued  ComplimentaryIssuanceStatus = "issued"
+	ComplimentaryIssuanceStatusRevoked ComplimentaryIssuanceStatus = "revoked"
 )
 
 // Defines values for CreateBarcodeAuthorityRequestType.
@@ -540,13 +553,13 @@ const (
 
 // Defines values for TransitionPaymentIntentRequestState.
 const (
-	TransitionPaymentIntentRequestStateAuthorized     TransitionPaymentIntentRequestState = "authorized"
-	TransitionPaymentIntentRequestStateCreated        TransitionPaymentIntentRequestState = "created"
-	TransitionPaymentIntentRequestStateFailed         TransitionPaymentIntentRequestState = "failed"
-	TransitionPaymentIntentRequestStateManualReview   TransitionPaymentIntentRequestState = "manual_review"
-	TransitionPaymentIntentRequestStateProcessing     TransitionPaymentIntentRequestState = "processing"
-	TransitionPaymentIntentRequestStateRequiresAction TransitionPaymentIntentRequestState = "requires_action"
-	TransitionPaymentIntentRequestStateSucceeded      TransitionPaymentIntentRequestState = "succeeded"
+	Authorized     TransitionPaymentIntentRequestState = "authorized"
+	Created        TransitionPaymentIntentRequestState = "created"
+	Failed         TransitionPaymentIntentRequestState = "failed"
+	ManualReview   TransitionPaymentIntentRequestState = "manual_review"
+	Processing     TransitionPaymentIntentRequestState = "processing"
+	RequiresAction TransitionPaymentIntentRequestState = "requires_action"
+	Succeeded      TransitionPaymentIntentRequestState = "succeeded"
 )
 
 // Defines values for UpdateEventRequestVisibility.
@@ -637,9 +650,9 @@ const (
 
 // Defines values for VenueItemStatus.
 const (
-	VenueItemStatusActive   VenueItemStatus = "active"
-	VenueItemStatusArchived VenueItemStatus = "archived"
-	VenueItemStatusDraft    VenueItemStatus = "draft"
+	Active   VenueItemStatus = "active"
+	Archived VenueItemStatus = "archived"
+	Draft    VenueItemStatus = "draft"
 )
 
 // Defines values for WidgetFunnelEventInputEventType.
@@ -664,6 +677,19 @@ const (
 	PostV1MediaMultipartBodyOwnerTypeArtistPhoto PostV1MediaMultipartBodyOwnerType = "artist_photo"
 	PostV1MediaMultipartBodyOwnerTypeEventPoster PostV1MediaMultipartBodyOwnerType = "event_poster"
 	PostV1MediaMultipartBodyOwnerTypeOrgLogo     PostV1MediaMultipartBodyOwnerType = "org_logo"
+)
+
+// Defines values for ResolveReconciliationExceptionJSONBodyResolution.
+const (
+	ResolveReconciliationExceptionJSONBodyResolutionAccepted ResolveReconciliationExceptionJSONBodyResolution = "accepted"
+	ResolveReconciliationExceptionJSONBodyResolutionAdjusted ResolveReconciliationExceptionJSONBodyResolution = "adjusted"
+	ResolveReconciliationExceptionJSONBodyResolutionDisputed ResolveReconciliationExceptionJSONBodyResolution = "disputed"
+)
+
+// Defines values for ReviewReconciliationReportJSONBodyDecision.
+const (
+	ReviewReconciliationReportJSONBodyDecisionApproved ReviewReconciliationReportJSONBodyDecision = "approved"
+	ReviewReconciliationReportJSONBodyDecisionDisputed ReviewReconciliationReportJSONBodyDecision = "disputed"
 )
 
 // AdminAddMemberRequest Request body for POST /v1/admin/organizations/{org_id}/members
@@ -995,6 +1021,38 @@ type BarcodeAuthorityListResponse struct {
 	Authorities []BarcodeAuthorityItem `json:"authorities"`
 }
 
+// BarcodeBatch A named batch of externally-issued barcodes submitted for registration.
+// Batches start in `pending` status; an admin approves or rejects them.
+// Approved batches have their barcodes registered in the barcode authority.
+type BarcodeBatch struct {
+	// BarcodeCount Number of barcodes in this batch.
+	BarcodeCount int `json:"barcode_count"`
+
+	// CreatedAt ISO-8601 timestamp when the batch was uploaded.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id UUIDv7 batch identifier.
+	Id openapi_types.UUID `json:"id"`
+
+	// Label Human-readable name for this batch (e.g. "VIP Block A — 2026-08-01").
+	Label string `json:"label"`
+
+	// ReviewedAt ISO-8601 timestamp of the review decision, if any.
+	ReviewedAt *time.Time `json:"reviewed_at,omitempty"`
+
+	// ReviewedBy UUIDv7 of the admin who approved/rejected the batch, if any.
+	ReviewedBy *openapi_types.UUID `json:"reviewed_by,omitempty"`
+
+	// Status Current lifecycle status of the batch.
+	Status BarcodeBatchStatus `json:"status"`
+
+	// SubmittedBy UUIDv7 of the user who uploaded the batch, if available.
+	SubmittedBy *openapi_types.UUID `json:"submitted_by,omitempty"`
+}
+
+// BarcodeBatchStatus Current lifecycle status of the batch.
+type BarcodeBatchStatus string
+
 // BarcodeItem A single barcodes row in the barcode authority federation
 // (feature #142, migration 0030_barcodes.sql). Each barcode is
 // scoped to exactly one authority; `(authority_id, external_ref)`
@@ -1103,6 +1161,35 @@ type BindSessionSeatingResponse struct {
 		// SeatingPlanVersionId UUIDv7 of the bound plan version, when set.
 		SeatingPlanVersionId *openapi_types.UUID `json:"seating_plan_version_id,omitempty"`
 	} `json:"session"`
+}
+
+// Channel A sales channel belonging to an organization. Channels represent
+// distinct distribution points (e.g. online widget, box office, API partner)
+// that sell tickets under a shared organizational account.
+type Channel struct {
+	// CreatedAt ISO-8601 timestamp when the channel was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id UUIDv7 channel identifier.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Human-readable channel label (e.g. "Online Widget", "Box Office").
+	Name string `json:"name"`
+
+	// OrgId Organization that owns this channel.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// Settings Opaque JSONB blob of per-channel settings (e.g. `gateway_token_hash`
+	// for Bil24 compat channels). Structure is channel-type-specific.
+	Settings *map[string]interface{} `json:"settings,omitempty"`
+
+	// Type Channel type discriminator. Well-known values: `online`, `box_office`,
+	// `api_partner`, `bil24_compat`. New types may be added without a schema
+	// version bump.
+	Type string `json:"type"`
+
+	// UpdatedAt ISO-8601 timestamp of the last update, if any.
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
 }
 
 // CheckoutRecoverResponse Response body for `POST /v1/public/checkout/{checkout_token}/recover`
@@ -1388,11 +1475,63 @@ type CompleteCheckoutRequest struct {
 	PaymentProvider *string `json:"payment_provider,omitempty"`
 }
 
-// ConfirmCheckoutRequest Request body for `POST /v1/checkout/{id}/confirm`. Re-quotes the
-// pricing using the current pricing pipeline (`ComputePricing` in
-// `pricing.go`) and stores the immutable snapshot on the session,
-// transitioning `created` → `pricing_confirmed`. `chosen_price` is
-// required for tiers with `pricing_mode = pwyw`.
+// ComplimentaryIssuance A complimentary (free / comp) ticket issuance granted to a named
+// recipient outside the normal paid checkout flow. Issuances consume
+// inventory and generate a standard ticket. They can be revoked before
+// the event, which returns the seat to inventory.
+type ComplimentaryIssuance struct {
+	// CreatedAt ISO-8601 timestamp when the comp ticket was issued.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id UUIDv7 issuance identifier.
+	Id openapi_types.UUID `json:"id"`
+
+	// IssuedBy UUIDv7 of the staff member who granted the comp ticket.
+	IssuedBy *openapi_types.UUID `json:"issued_by,omitempty"`
+
+	// Note Internal note explaining the reason for the comp issuance.
+	Note *string `json:"note,omitempty"`
+
+	// OrgId Organization that issued this complimentary ticket.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// RecipientEmail Email address of the complimentary ticket recipient.
+	RecipientEmail openapi_types.Email `json:"recipient_email"`
+
+	// RecipientName Optional display name of the recipient.
+	RecipientName *string `json:"recipient_name,omitempty"`
+
+	// RevokedAt ISO-8601 timestamp when the issuance was revoked, or null if active.
+	RevokedAt *time.Time `json:"revoked_at,omitempty"`
+
+	// SessionId Event session the comp ticket is valid for.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// Status `issued` — ticket is active; `revoked` — ticket has been voided.
+	Status ComplimentaryIssuanceStatus `json:"status"`
+
+	// TicketId UUIDv7 of the generated ticket, populated after issuance completes.
+	TicketId *openapi_types.UUID `json:"ticket_id,omitempty"`
+
+	// TierId Ticket tier the comp ticket was issued in.
+	TierId openapi_types.UUID `json:"tier_id"`
+}
+
+// ComplimentaryIssuanceStatus `issued` — ticket is active; `revoked` — ticket has been voided.
+type ComplimentaryIssuanceStatus string
+
+// ConfirmCheckoutRequest Request body for `POST /v1/checkout/{id}/confirm`.
+//
+// **PR2-08 security note**: all pricing is derived from the
+// server-side reservation linked to the checkout session. The
+// fields `tier_id`, `session_id`, `quantity`, and `org_id` are now
+// optional cross-validation fields — if supplied, they must match
+// the reservation or the server returns `422 checkout.pricing_mismatch`.
+// Omitting them is safe; the reservation is always the authoritative
+// source. Clients that previously required these fields continue to
+// work as long as the values match the reservation.
+//
+// `chosen_price` is required for tiers with `pricing_mode = pwyw`.
 type ConfirmCheckoutRequest struct {
 	// ChosenPrice Buyer-chosen unit price for pay-what-you-want tiers
 	// (required when the tier's `pricing_mode` is `pwyw`; ignored
@@ -1400,22 +1539,29 @@ type ConfirmCheckoutRequest struct {
 	// on the tier.
 	ChosenPrice *int64 `json:"chosen_price"`
 
-	// OrgId Organization that owns the session and any promo.
-	OrgId openapi_types.UUID `json:"org_id"`
+	// OrgId Optional cross-validation: must match the reservation's
+	// `org_id` if supplied. Returns `422 checkout.pricing_mismatch`
+	// on disagreement.
+	OrgId *openapi_types.UUID `json:"org_id"`
 
 	// PromoCode Optional promo code; when present the handler resolves and
 	// validates it before stamping `promo_code_id`.
 	PromoCode *string `json:"promo_code"`
 
-	// Quantity Number of tickets being quoted; must be > 0.
-	Quantity int32 `json:"quantity"`
+	// Quantity Optional cross-validation: must match the reservation's
+	// `quantity` if supplied (non-zero). Returns
+	// `422 checkout.pricing_mismatch` on disagreement.
+	Quantity *int32 `json:"quantity"`
 
-	// SessionId Event session that owns the tier (NOT the checkout session
-	// id, which is on the URL path).
-	SessionId openapi_types.UUID `json:"session_id"`
+	// SessionId Optional cross-validation: must match the reservation's
+	// `session_id` if supplied. Returns `422 checkout.pricing_mismatch`
+	// on disagreement.
+	SessionId *openapi_types.UUID `json:"session_id"`
 
-	// TierId Ticket tier to quote against.
-	TierId openapi_types.UUID `json:"tier_id"`
+	// TierId Optional cross-validation: must match the reservation's
+	// `tier_id` if supplied. Returns `422 checkout.pricing_mismatch`
+	// on disagreement.
+	TierId *openapi_types.UUID `json:"tier_id"`
 }
 
 // CreateBankAccountRequest Request body for POST /v1/organizations/{org_id}/bank-accounts.
@@ -2310,6 +2456,57 @@ type EventTranslations map[string]struct {
 
 	// Name Translated event name for this locale.
 	Name *string `json:"name,omitempty"`
+}
+
+// ExternalAllocation A quota of seats pre-allocated to an external distribution partner
+// (e.g. a travel agency or B2B reseller). Allocations reduce available
+// inventory for the general public and are tracked separately for
+// reconciliation.
+type ExternalAllocation struct {
+	// CreatedAt ISO-8601 timestamp when the allocation was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id UUIDv7 allocation identifier.
+	Id openapi_types.UUID `json:"id"`
+
+	// OrgId Organization that created this allocation.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// PartnerId UUIDv7 of the partner organization receiving the quota.
+	PartnerId openapi_types.UUID `json:"partner_id"`
+
+	// Quantity Number of seats allocated to the partner.
+	Quantity int `json:"quantity"`
+
+	// SessionId Event session this allocation applies to.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// UpdatedAt ISO-8601 timestamp of the last quantity update, if any.
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+}
+
+// FeedToken A long-lived bearer token that grants a scanner device read access to the
+// agent feed for a specific sales channel. Presented as
+// `Authorization: Bearer <token>` to authenticated feed endpoints.
+type FeedToken struct {
+	// ChannelId Sales channel this token is scoped to.
+	ChannelId openapi_types.UUID `json:"channel_id"`
+
+	// CreatedAt ISO-8601 timestamp when the token was issued.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id UUIDv7 feed token identifier.
+	Id openapi_types.UUID `json:"id"`
+
+	// Label Optional human-readable label for the device or use-case.
+	Label *string `json:"label,omitempty"`
+
+	// RevokedAt ISO-8601 timestamp when the token was revoked, or null if active.
+	RevokedAt *time.Time `json:"revoked_at,omitempty"`
+
+	// Token The raw bearer token value. Returned only on creation; subsequent GET
+	// requests return a masked value (`***`) for security.
+	Token string `json:"token"`
 }
 
 // ForkSeatingPlanRequest Request body for POST /v1/seating-plans/{id}/fork.
@@ -5895,6 +6092,27 @@ type RemoveNetworkUserParams struct {
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 
+// SuperadminListOrdersParams defines parameters for SuperadminListOrders.
+type SuperadminListOrdersParams struct {
+	// Limit Maximum number of rows to return.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of rows to skip before returning results.
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// OrgId Organization UUID that scopes this request (tenant isolation).
+	OrgId *openapi_types.UUID `form:"org_id,omitempty" json:"org_id,omitempty"`
+}
+
+// SuperadminListOrganizationsParams defines parameters for SuperadminListOrganizations.
+type SuperadminListOrganizationsParams struct {
+	// Limit Maximum number of rows to return.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of rows to skip before returning results.
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // PostV1AdminOrganizationsParams defines parameters for PostV1AdminOrganizations.
 type PostV1AdminOrganizationsParams struct {
 	// XAdminReason Human-readable business reason for the admin write (audit trail).
@@ -5937,6 +6155,27 @@ type PatchV1AdminOrganizationsOrgIdMembersMembershipIdParams struct {
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 
+// SuperadminListRefundsParams defines parameters for SuperadminListRefunds.
+type SuperadminListRefundsParams struct {
+	// Limit Maximum number of rows to return.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of rows to skip before returning results.
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// SuperadminListTicketsParams defines parameters for SuperadminListTickets.
+type SuperadminListTicketsParams struct {
+	// Limit Maximum number of rows to return.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of rows to skip before returning results.
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// CheckoutSessionId Checkout session UUID.
+	CheckoutSessionId *openapi_types.UUID `form:"checkout_session_id,omitempty" json:"checkout_session_id,omitempty"`
+}
+
 // GetAdminTicketDeliveryParams defines parameters for GetAdminTicketDelivery.
 type GetAdminTicketDeliveryParams struct {
 	// XAdminReason Human-readable business reason for the admin read
@@ -5963,6 +6202,38 @@ type PostV1AdminUsersParams struct {
 type GetV1AuthVerifyParams struct {
 	// Token One-time verification token sent by email at registration
 	Token string `form:"token" json:"token"`
+}
+
+// UploadBarcodeBatchJSONBody defines parameters for UploadBarcodeBatch.
+type UploadBarcodeBatchJSONBody struct {
+	Barcodes []string `json:"barcodes"`
+	Label    string   `json:"label"`
+}
+
+// GenerateInvoicesJSONBody defines parameters for GenerateInvoices.
+type GenerateInvoicesJSONBody struct {
+	PeriodEnd *time.Time `json:"period_end,omitempty"`
+}
+
+// PayInvoiceJSONBody defines parameters for PayInvoice.
+type PayInvoiceJSONBody struct {
+	PaymentMethod *string `json:"payment_method,omitempty"`
+	Reference     *string `json:"reference,omitempty"`
+}
+
+// VoidInvoiceJSONBody defines parameters for VoidInvoice.
+type VoidInvoiceJSONBody struct {
+	Reason *string `json:"reason,omitempty"`
+}
+
+// StripeBillingWebhookJSONBody defines parameters for StripeBillingWebhook.
+type StripeBillingWebhookJSONBody map[string]interface{}
+
+// CreateTariffJSONBody defines parameters for CreateTariff.
+type CreateTariffJSONBody struct {
+	EffectiveFrom time.Time      `json:"effective_from"`
+	Fees          map[string]int `json:"fees"`
+	Name          string         `json:"name"`
 }
 
 // GetCheckoutQuoteParams defines parameters for GetCheckoutQuote.
@@ -5992,6 +6263,11 @@ type GetCheckoutQuoteParams struct {
 	// a non-negative integer and (when configured on the tier)
 	// within `[pwyw_min, pwyw_max]`.
 	ChosenPrice *int64 `form:"chosen_price,omitempty" json:"chosen_price,omitempty"`
+}
+
+// RevokeComplimentaryIssuanceJSONBody defines parameters for RevokeComplimentaryIssuance.
+type RevokeComplimentaryIssuanceJSONBody struct {
+	Reason *string `json:"reason,omitempty"`
 }
 
 // PostV1EchoParams defines parameters for PostV1Echo.
@@ -6059,6 +6335,12 @@ type GetV1GeoCountriesParams struct {
 	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
 }
 
+// RecordConsentJSONBody defines parameters for RecordConsent.
+type RecordConsentJSONBody struct {
+	Granted bool   `json:"granted"`
+	Purpose string `json:"purpose"`
+}
+
 // PostV1MediaMultipartBody defines parameters for PostV1Media.
 type PostV1MediaMultipartBody struct {
 	ContentType *string                           `json:"content_type,omitempty"`
@@ -6110,10 +6392,56 @@ type ArchiveOperatorNetworkParams struct {
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 
+// GetOrgBillingUsageParams defines parameters for GetOrgBillingUsage.
+type GetOrgBillingUsageParams struct {
+	// PeriodStart Inclusive RFC 3339 start of the reporting period.
+	PeriodStart *time.Time `form:"period_start,omitempty" json:"period_start,omitempty"`
+
+	// PeriodEnd Exclusive RFC 3339 end of the reporting period.
+	PeriodEnd *time.Time `form:"period_end,omitempty" json:"period_end,omitempty"`
+}
+
+// CreateChannelJSONBody defines parameters for CreateChannel.
+type CreateChannelJSONBody struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
+// CreateFeedTokenJSONBody defines parameters for CreateFeedToken.
+type CreateFeedTokenJSONBody struct {
+	Label *string `json:"label,omitempty"`
+}
+
+// UpdateChannelJSONBody defines parameters for UpdateChannel.
+type UpdateChannelJSONBody struct {
+	Name *string `json:"name,omitempty"`
+}
+
+// CreateComplimentaryIssuanceJSONBody defines parameters for CreateComplimentaryIssuance.
+type CreateComplimentaryIssuanceJSONBody struct {
+	Note           *string             `json:"note,omitempty"`
+	RecipientEmail openapi_types.Email `json:"recipient_email"`
+	RecipientName  *string             `json:"recipient_name,omitempty"`
+	SessionId      openapi_types.UUID  `json:"session_id"`
+	TierId         openapi_types.UUID  `json:"tier_id"`
+}
+
 // ListOrgEventsParams defines parameters for ListOrgEvents.
 type ListOrgEventsParams struct {
 	// Lang BCP-47 locale override.
 	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
+}
+
+// CreateExternalAllocationJSONBody defines parameters for CreateExternalAllocation.
+type CreateExternalAllocationJSONBody struct {
+	PartnerId openapi_types.UUID `json:"partner_id"`
+	Quantity  int                `json:"quantity"`
+	SessionId openapi_types.UUID `json:"session_id"`
+}
+
+// UpdateExternalAllocationJSONBody defines parameters for UpdateExternalAllocation.
+type UpdateExternalAllocationJSONBody struct {
+	Quantity *int `json:"quantity,omitempty"`
 }
 
 // ListPublicFeedEventsParams defines parameters for ListPublicFeedEvents.
@@ -6134,6 +6462,35 @@ type ListPublicFeedEventsParams struct {
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// SubmitReconciliationReportJSONBody defines parameters for SubmitReconciliationReport.
+type SubmitReconciliationReportJSONBody struct {
+	Lines *[]struct {
+		Amount      *int    `json:"amount,omitempty"`
+		Currency    *string `json:"currency,omitempty"`
+		ExternalRef *string `json:"external_ref,omitempty"`
+	} `json:"lines,omitempty"`
+	PeriodEnd   time.Time `json:"period_end"`
+	PeriodStart time.Time `json:"period_start"`
+}
+
+// ResolveReconciliationExceptionJSONBody defines parameters for ResolveReconciliationException.
+type ResolveReconciliationExceptionJSONBody struct {
+	Notes      *string                                          `json:"notes,omitempty"`
+	Resolution ResolveReconciliationExceptionJSONBodyResolution `json:"resolution"`
+}
+
+// ResolveReconciliationExceptionJSONBodyResolution defines parameters for ResolveReconciliationException.
+type ResolveReconciliationExceptionJSONBodyResolution string
+
+// ReviewReconciliationReportJSONBody defines parameters for ReviewReconciliationReport.
+type ReviewReconciliationReportJSONBody struct {
+	Decision ReviewReconciliationReportJSONBodyDecision `json:"decision"`
+	Notes    *string                                    `json:"notes,omitempty"`
+}
+
+// ReviewReconciliationReportJSONBodyDecision defines parameters for ReviewReconciliationReport.
+type ReviewReconciliationReportJSONBodyDecision string
+
 // GetScannerSnapshotParams defines parameters for GetScannerSnapshot.
 type GetScannerSnapshotParams struct {
 	// SessionId UUID of the event session whose barcodes to retrieve.
@@ -6148,6 +6505,18 @@ type GetScannerSnapshotParams struct {
 
 	// PerPage Page size (default 200, capped at 500).
 	PerPage *int `form:"per_page,omitempty" json:"per_page,omitempty"`
+}
+
+// StripeConnectCallbackParams defines parameters for StripeConnectCallback.
+type StripeConnectCallbackParams struct {
+	// Code OAuth authorization code returned by Stripe.
+	Code *string `form:"code,omitempty" json:"code,omitempty"`
+
+	// State Opaque anti-CSRF state value from the authorize redirect.
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// Error OAuth error code when the user denied the connection.
+	Error *string `form:"error,omitempty" json:"error,omitempty"`
 }
 
 // GetTicketCredentialParams defines parameters for GetTicketCredential.
@@ -6226,11 +6595,29 @@ type PostV1AuthRefreshJSONRequestBody = AuthRefreshRequest
 // PostV1AuthRegisterJSONRequestBody defines body for PostV1AuthRegister for application/json ContentType.
 type PostV1AuthRegisterJSONRequestBody = AuthRegisterRequest
 
+// UploadBarcodeBatchJSONRequestBody defines body for UploadBarcodeBatch for application/json ContentType.
+type UploadBarcodeBatchJSONRequestBody UploadBarcodeBatchJSONBody
+
 // RegisterBarcodeJSONRequestBody defines body for RegisterBarcode for application/json ContentType.
 type RegisterBarcodeJSONRequestBody = RegisterBarcodeRequest
 
 // CreateBarcodeAuthorityJSONRequestBody defines body for CreateBarcodeAuthority for application/json ContentType.
 type CreateBarcodeAuthorityJSONRequestBody = CreateBarcodeAuthorityRequest
+
+// GenerateInvoicesJSONRequestBody defines body for GenerateInvoices for application/json ContentType.
+type GenerateInvoicesJSONRequestBody GenerateInvoicesJSONBody
+
+// PayInvoiceJSONRequestBody defines body for PayInvoice for application/json ContentType.
+type PayInvoiceJSONRequestBody PayInvoiceJSONBody
+
+// VoidInvoiceJSONRequestBody defines body for VoidInvoice for application/json ContentType.
+type VoidInvoiceJSONRequestBody VoidInvoiceJSONBody
+
+// StripeBillingWebhookJSONRequestBody defines body for StripeBillingWebhook for application/json ContentType.
+type StripeBillingWebhookJSONRequestBody StripeBillingWebhookJSONBody
+
+// CreateTariffJSONRequestBody defines body for CreateTariff for application/json ContentType.
+type CreateTariffJSONRequestBody CreateTariffJSONBody
 
 // ValidatePromoCodeJSONRequestBody defines body for ValidatePromoCode for application/json ContentType.
 type ValidatePromoCodeJSONRequestBody = ValidatePromoCodeRequest
@@ -6244,6 +6631,9 @@ type CompleteCheckoutSessionJSONRequestBody = CompleteCheckoutRequest
 // ConfirmCheckoutSessionJSONRequestBody defines body for ConfirmCheckoutSession for application/json ContentType.
 type ConfirmCheckoutSessionJSONRequestBody = ConfirmCheckoutRequest
 
+// RevokeComplimentaryIssuanceJSONRequestBody defines body for RevokeComplimentaryIssuance for application/json ContentType.
+type RevokeComplimentaryIssuanceJSONRequestBody RevokeComplimentaryIssuanceJSONBody
+
 // PostV1DevAuthTokenJSONRequestBody defines body for PostV1DevAuthToken for application/json ContentType.
 type PostV1DevAuthTokenJSONRequestBody = DevAuthTokenRequest
 
@@ -6255,6 +6645,9 @@ type PostV1EchoJSONRequestBody = EchoRequest
 
 // PublishEventJSONRequestBody defines body for PublishEvent for application/json ContentType.
 type PublishEventJSONRequestBody = PublishEventRequest
+
+// RecordConsentJSONRequestBody defines body for RecordConsent for application/json ContentType.
+type RecordConsentJSONRequestBody RecordConsentJSONBody
 
 // PostV1MediaMultipartRequestBody defines body for PostV1Media for multipart/form-data ContentType.
 type PostV1MediaMultipartRequestBody PostV1MediaMultipartBody
@@ -6276,6 +6669,18 @@ type CreateOrganizationBankAccountJSONRequestBody = CreateBankAccountRequest
 
 // UpdateOrganizationBankAccountJSONRequestBody defines body for UpdateOrganizationBankAccount for application/json ContentType.
 type UpdateOrganizationBankAccountJSONRequestBody = UpdateBankAccountRequest
+
+// CreateChannelJSONRequestBody defines body for CreateChannel for application/json ContentType.
+type CreateChannelJSONRequestBody CreateChannelJSONBody
+
+// CreateFeedTokenJSONRequestBody defines body for CreateFeedToken for application/json ContentType.
+type CreateFeedTokenJSONRequestBody CreateFeedTokenJSONBody
+
+// UpdateChannelJSONRequestBody defines body for UpdateChannel for application/json ContentType.
+type UpdateChannelJSONRequestBody UpdateChannelJSONBody
+
+// CreateComplimentaryIssuanceJSONRequestBody defines body for CreateComplimentaryIssuance for application/json ContentType.
+type CreateComplimentaryIssuanceJSONRequestBody CreateComplimentaryIssuanceJSONBody
 
 // CreateEventJSONRequestBody defines body for CreateEvent for application/json ContentType.
 type CreateEventJSONRequestBody = CreateEventRequest
@@ -6316,6 +6721,12 @@ type UpdateEventJSONRequestBody = UpdateEventRequest
 // UpdateEventStatusJSONRequestBody defines body for UpdateEventStatus for application/json ContentType.
 type UpdateEventStatusJSONRequestBody = UpdateEventStatusRequest
 
+// CreateExternalAllocationJSONRequestBody defines body for CreateExternalAllocation for application/json ContentType.
+type CreateExternalAllocationJSONRequestBody CreateExternalAllocationJSONBody
+
+// UpdateExternalAllocationJSONRequestBody defines body for UpdateExternalAllocation for application/json ContentType.
+type UpdateExternalAllocationJSONRequestBody UpdateExternalAllocationJSONBody
+
 // GrantOrganizationMembershipJSONRequestBody defines body for GrantOrganizationMembership for application/json ContentType.
 type GrantOrganizationMembershipJSONRequestBody = GrantMembershipRequest
 
@@ -6354,6 +6765,15 @@ type StartPublicFeedCheckoutJSONRequestBody = PublicFeedCheckoutStartRequest
 
 // PostPublicFeedFunnelEventsJSONRequestBody defines body for PostPublicFeedFunnelEvents for application/json ContentType.
 type PostPublicFeedFunnelEventsJSONRequestBody = WidgetFunnelEventsBatch
+
+// SubmitReconciliationReportJSONRequestBody defines body for SubmitReconciliationReport for application/json ContentType.
+type SubmitReconciliationReportJSONRequestBody SubmitReconciliationReportJSONBody
+
+// ResolveReconciliationExceptionJSONRequestBody defines body for ResolveReconciliationException for application/json ContentType.
+type ResolveReconciliationExceptionJSONRequestBody ResolveReconciliationExceptionJSONBody
+
+// ReviewReconciliationReportJSONRequestBody defines body for ReviewReconciliationReport for application/json ContentType.
+type ReviewReconciliationReportJSONRequestBody ReviewReconciliationReportJSONBody
 
 // CreateRefundJSONRequestBody defines body for CreateRefund for application/json ContentType.
 type CreateRefundJSONRequestBody = CreateRefundRequest

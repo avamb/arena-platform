@@ -336,7 +336,7 @@ func scanGoFilesForTimestampFormatting(t *testing.T, root string) []string {
 		}
 		if info.IsDir() {
 			base := filepath.Base(path)
-			if base == "vendor" || base == ".git" || base == "node_modules" {
+			if base == "vendor" || base == ".git" || base == "node_modules" || base == ".gomodcache" {
 				return filepath.SkipDir
 			}
 			return nil
@@ -447,7 +447,7 @@ func TestTimestamp_StaticScan_NoHardcodedOffset(t *testing.T) {
 		}
 		if info.IsDir() {
 			base := filepath.Base(path)
-			if base == "vendor" || base == ".git" || base == "node_modules" {
+			if base == "vendor" || base == ".git" || base == "node_modules" || base == ".gomodcache" {
 				return filepath.SkipDir
 			}
 			return nil

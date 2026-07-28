@@ -240,6 +240,43 @@ func runWorkerJob(t *testing.T, pool *pgxpool.Pool, reg *worker.Registry) bool {
 	return true
 }
 
+// drainWorkerJobsUntilEmail processes pending worker jobs until the SMTP
+// capture receives a message addressed to wantTo, then returns that message.
+//
+// The gate database is shared across integration packages and runs, so the
+// queue may hold leftover auth-email jobs from other tests (or from an
+// earlier aborted run). Claiming exactly one job and asserting on the first
+// captured message therefore races; instead we drain jobs and scan the
+// capture for our own recipient.
+func drainWorkerJobsUntilEmail(
+	t *testing.T,
+	pool *pgxpool.Pool,
+	reg *worker.Registry,
+	smtp *smtpCapture,
+	wantTo string,
+) smtpMessage {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	processed := 0
+	for time.Now().Before(deadline) && processed <= 50 {
+		progressed := runWorkerJob(t, pool, reg)
+		if progressed {
+			processed++
+		}
+		for _, m := range smtp.Messages() {
+			if strings.Contains(m.To, wantTo) {
+				return m
+			}
+		}
+		if !progressed {
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+	t.Fatalf("no email addressed to %q arrived after draining %d job(s); captured: %d message(s)",
+		wantTo, processed, len(smtp.Messages()))
+	return smtpMessage{}
+}
+
 // seedEmailIntegrationUser creates a user via the register endpoint and returns
 // the user ID, email, and a cleanup function.
 func seedEmailIntegrationUser(t *testing.T, srv *Server) (string, string) {
@@ -317,17 +354,9 @@ func TestAuthEmailIntegrationPR02_VerificationEmailArrives(t *testing.T) {
 	reg.Register(authemail.JobTypeEmailVerification, authHandler.HandleEmailVerification)
 	reg.Register(authemail.JobTypePasswordResetEmail, authHandler.HandlePasswordResetEmail)
 
-	// Process the queued job.
-	if !runWorkerJob(t, pool, reg) {
-		t.Fatal("expected a pending auth.email_verification job; none found")
-	}
-
-	// Wait for the SMTP capture to receive the email.
-	msgs := smtp.WaitForMessage(t, 1, 5*time.Second)
-	if len(msgs) == 0 {
-		t.Fatal("no email received by SMTP capture")
-	}
-	msg := msgs[0]
+	// Drain queued jobs until OUR verification email arrives (the shared gate
+	// database may hold unrelated leftover jobs — see drainWorkerJobsUntilEmail).
+	msg := drainWorkerJobsUntilEmail(t, pool, reg, smtp, em)
 	t.Logf("received email from=%s to=%s (body len=%d)", msg.From, msg.To, len(msg.Body))
 
 	// Verify the email recipient.
@@ -443,16 +472,9 @@ func TestAuthEmailIntegrationPR02_PasswordResetEmailArrives(t *testing.T) {
 	reg.Register(authemail.JobTypeEmailVerification, authHandler.HandleEmailVerification)
 	reg.Register(authemail.JobTypePasswordResetEmail, authHandler.HandlePasswordResetEmail)
 
-	if !runWorkerJob(t, pool, reg) {
-		t.Fatal("expected a pending auth.password_reset_email job; none found")
-	}
-
-	// Wait for the captured email.
-	msgs := smtp.WaitForMessage(t, 1, 5*time.Second)
-	if len(msgs) == 0 {
-		t.Fatal("no email received by SMTP capture")
-	}
-	msg := msgs[0]
+	// Drain queued jobs until OUR reset email arrives (the shared gate
+	// database may hold unrelated leftover jobs — see drainWorkerJobsUntilEmail).
+	msg := drainWorkerJobsUntilEmail(t, pool, reg, smtp, em)
 	t.Logf("received reset email from=%s to=%s", msg.From, msg.To)
 
 	// Verify the recipient.
@@ -524,9 +546,10 @@ func TestAuthEmailIntegrationPR02_ExpiredTokenRejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateVerificationToken: %v", err)
 	}
-	// Insert with expiry 2 hours in the past.
+	// Insert with expiry 2 hours in the past. PR2-03: the table stores
+	// SHA-256(rawToken); the verify handler hashes the raw token from the URL.
 	expired := time.Now().UTC().Add(-2 * time.Hour)
-	if err := q.InsertEmailVerificationToken(t.Context(), token, userRow.ID, expired); err != nil {
+	if err := q.InsertEmailVerificationToken(t.Context(), users.TokenHash(token), userRow.ID, expired); err != nil {
 		t.Fatalf("InsertEmailVerificationToken: %v", err)
 	}
 
@@ -572,6 +595,14 @@ func TestAuthEmailIntegrationPR02_AntiEnumeration(t *testing.T) {
 // pathPrefix and returns the value of the ?token= query parameter.
 func extractTokenFromBody(t *testing.T, body, pathPrefix string) string {
 	t.Helper()
+	// The SMTP sender encodes text/html parts as quoted-printable: soft line
+	// breaks ("=\r\n") split the long verification URL across lines and '='
+	// is escaped as "=3D" ("token=" arrives as "token=3D"). Unfold before
+	// searching, otherwise the extracted token is a corrupt fragment and the
+	// verify endpoint 404s on its hash.
+	body = strings.ReplaceAll(body, "=\r\n", "")
+	body = strings.ReplaceAll(body, "=\n", "")
+	body = strings.ReplaceAll(body, "=3D", "=")
 	for _, line := range strings.Split(body, "\n") {
 		line = strings.TrimSpace(line)
 		if idx := strings.Index(line, pathPrefix); idx != -1 {

@@ -53,8 +53,8 @@ import (
 // signals done when the session completes. Subsequent connections are accepted
 // but not served (they close after greeting).
 type smtpCaptureServer struct {
-	ln      net.Listener
-	Addr    string
+	ln       net.Listener
+	Addr     string
 	Captured chan []byte // receives the raw DATA payload once per session
 }
 
@@ -331,7 +331,8 @@ func invokeHandler(ctx context.Context, t *testing.T, pool *pgxpool.Pool, seed s
 // ─────────────────────────────────────────────────────────────────────────────
 
 // TestDelivery_SMTPSuccess proves the full happy-path state transition:
-//   queued (pending) → processing → sent
+//
+//	queued (pending) → processing → sent
 //
 // A real in-process SMTP capture server accepts the connection.
 // The captured email must contain a PDF attachment (multipart/mixed with

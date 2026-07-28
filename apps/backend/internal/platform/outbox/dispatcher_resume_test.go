@@ -701,16 +701,24 @@ func TestOutboxEventsDispatcher_ClaimSQLContainsForUpdateSkipLocked(t *testing.T
 	}
 }
 
+// collapseSQLSpaces normalizes runs of whitespace to single spaces so the
+// substring pins below survive column-aligned SQL formatting (the production
+// constants align the assignment operators).
+func collapseSQLSpaces(sql string) string {
+	return strings.Join(strings.Fields(sql), " ")
+}
+
 // TestOutboxEventsDispatcher_MarkDispatchedSQLUpdatesProcessedAt verifies the
 // MarkDispatched SQL sets processed_at = now() and increments attempts.
 func TestOutboxEventsDispatcher_MarkDispatchedSQLUpdatesProcessedAt(t *testing.T) {
-	if !strings.Contains(markDispatchedSQL, "processed_at = now()") {
+	sql := collapseSQLSpaces(markDispatchedSQL)
+	if !strings.Contains(sql, "processed_at = now()") {
 		t.Errorf("markDispatchedSQL must set processed_at = now(); got:\n%s", markDispatchedSQL)
 	}
-	if !strings.Contains(markDispatchedSQL, "attempts = attempts + 1") {
+	if !strings.Contains(sql, "attempts = attempts + 1") {
 		t.Errorf("markDispatchedSQL must increment attempts; got:\n%s", markDispatchedSQL)
 	}
-	if !strings.Contains(markDispatchedSQL, "outbox_events") {
+	if !strings.Contains(sql, "outbox_events") {
 		t.Errorf("markDispatchedSQL must update outbox_events; got:\n%s", markDispatchedSQL)
 	}
 }
@@ -718,13 +726,14 @@ func TestOutboxEventsDispatcher_MarkDispatchedSQLUpdatesProcessedAt(t *testing.T
 // TestOutboxEventsDispatcher_MarkFailedSQLUpdatesAttempts verifies the
 // MarkFailed SQL increments attempts without touching processed_at.
 func TestOutboxEventsDispatcher_MarkFailedSQLUpdatesAttempts(t *testing.T) {
-	if !strings.Contains(markFailedSQL, "attempts = attempts + 1") {
+	sql := collapseSQLSpaces(markFailedSQL)
+	if !strings.Contains(sql, "attempts = attempts + 1") {
 		t.Errorf("markFailedSQL must increment attempts; got:\n%s", markFailedSQL)
 	}
-	if strings.Contains(markFailedSQL, "processed_at") {
+	if strings.Contains(sql, "processed_at") {
 		t.Errorf("markFailedSQL must NOT set processed_at (row remains unprocessed for retry); got:\n%s", markFailedSQL)
 	}
-	if !strings.Contains(markFailedSQL, "last_error") {
+	if !strings.Contains(sql, "last_error") {
 		t.Errorf("markFailedSQL must store last_error; got:\n%s", markFailedSQL)
 	}
 }

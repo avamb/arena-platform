@@ -86,7 +86,12 @@ func productionIntegrationServer(t *testing.T) (*Server, string) {
 	}
 
 	srv := New(Options{
-		Config:   cfg,
+		Config: cfg,
+		// Pool must be set explicitly: mountAuthRoutes gates on s.pool, which
+		// is wired from Options.Pool only (PgxPool feeds the *Queries
+		// fallbacks, not the pool guard). Without it every /v1/auth/* route
+		// is silently unmounted and the flow 404s.
+		Pool:     pool,
 		PgxPool:  pool,
 		Auth:     stub,
 		Verifier: verifier,
@@ -153,8 +158,10 @@ func TestAuthProduction_RegisterLoginMeRefreshLogout(t *testing.T) {
 		}
 	}
 
-	// POST /v1/auth/logout.
-	resp = integDoRequest(t, client, http.MethodPost, ts.URL+"/v1/auth/logout", accessToken, "")
+	// POST /v1/auth/logout — the contract requires the refresh token in the
+	// body so the server can revoke that session.
+	logoutBody := fmt.Sprintf(`{"refresh_token":%q}`, refreshToken)
+	resp = integDoRequest(t, client, http.MethodPost, ts.URL+"/v1/auth/logout", accessToken, logoutBody)
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		t.Errorf("logout: got %d, body: %s", resp.StatusCode, integReadBody(t, resp))
 	} else {
