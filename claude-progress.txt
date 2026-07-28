@@ -22599,3 +22599,35 @@ token hashing), static scans skip .gomodcache.
 - npm run check-ts : PASS
 
 Marked #388, #389, #390 passing. (390/390 passing, 100%)
+
+## 2026-07-28 (2) — WID-U1: widget E2E repair (feature #391, session: Fable 5)
+
+Root cause was NOT the WID-S backlog (already landed as #334-343): PR2-21
+(#377) made event-id mandatory in the widget bootstrap while the WordPress
+shortcode emits only feed-token+session-id. Every real embed and all mock
+E2E suites rendered an empty widget: mock job 63 waitForFunction timeouts,
+widget-acceptance 19/20 failed.
+
+Fix (commit 8899db9):
+- ArenaTickets.svelte resolution ladder: event-id -> detail (fast path);
+  session-id -> fetchFeedEvents list + per-event detail probing (cap 20);
+  list unreachable -> pre-PR2-21 synthetic single-session fallback (live
+  schema/seat-status/checkout) with console.warn; neither -> first event.
+- api.ts fetchFeedEvents + types FeedEventsListResponse/FeedEventSummary.
+- arena-seed: EventA1/SessionA1/InventoryA1 moved to fe0000a1-* — the old
+  fe000007-...-0001 collided with seed-palac-e2e.sql's event id, silently
+  no-opping the Palac fixture insert in the widget-acceptance job.
+- palac mock suite: feed list/detail mocks (real contract, no fallback).
+- real suite: map-svg query (first svg is the WID-T5 zoom icon), recover
+  accepts documented 409, WID-T5 container contract (role=toolbar), 2x
+  unrouteAll teardown fixes, demo label contrast #9ca3af -> #4b5563.
+
+### Verification (per the tightened WID-T process rule — actual pass summaries)
+- npm --prefix apps/widget run test:e2e (mock):        57 passed (34.9s)
+- npm --prefix apps/widget run test:e2e:real (live
+  migrated+seeded backend, fresh DB):                  19 passed, 1 skipped
+                                                       (STRIPE_TEST_KEY absent), 0 failed (17.4s)
+- vitest: 487/487; tsc clean; backend seed+httpserver suites: ok.
+
+Backlog: #391 rewritten to WID-U1 and marked passing; stale #392-395
+(duplicates of already-landed WID-S) deleted. (391/391 passing, 100%)
