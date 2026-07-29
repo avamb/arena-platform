@@ -16,6 +16,7 @@ import {
   setSession,
 } from "@/lib/api/tokenStore";
 import { ApiError, authedFetch, fetchMe, login, logout, refresh } from "@/lib/api/client";
+import { subscribeToPermissionRefresh } from "@/lib/auth/permissionRefresh";
 
 interface MockResponseInit {
   status: number;
@@ -270,6 +271,38 @@ describe("missing-permission surface", () => {
       code: "permissions.denied",
       message: "missing network.read",
     });
+  });
+
+  it("requests a permission refresh after a forbidden mutation, but not a read", async () => {
+    setSession({
+      accessToken: "a",
+      refreshToken: "r",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      userId: "u",
+    });
+    const refreshListener = vi.fn();
+    const unsubscribe = subscribeToPermissionRefresh(refreshListener);
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          mockResponse({ status: 403, body: errorEnvelope("permissions.denied") }),
+        )
+        .mockResolvedValueOnce(
+          mockResponse({ status: 403, body: errorEnvelope("permissions.denied") }),
+        ),
+    );
+
+    await expect(authedFetch({ method: "POST", path: "/v1/events" })).rejects.toMatchObject({
+      status: 403,
+    });
+    await expect(authedFetch({ method: "GET", path: "/v1/events" })).rejects.toMatchObject({
+      status: 403,
+    });
+
+    expect(refreshListener).toHaveBeenCalledOnce();
+    unsubscribe();
   });
 
   it("surfaces network failures as ApiError code=network.failure", async () => {

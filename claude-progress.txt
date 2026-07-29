@@ -22817,3 +22817,19 @@ required durable persistence proof.
   this Windows host because WSL lacks `/bin/bash`; equivalent Compose startup
   reached the healthy API (with its pre-existing healthcheck warning).
 - Completion after marking: 399/409 features passing.
+
+## 2026-07-29 - Feature #400 (AB-8) complete
+
+- Admin SPA now refetches the authenticated `/v1/me` profile whenever the
+  browser window regains focus, so permission-gated navigation and routes
+  update without a relogin.
+- The shared authenticated API client signals a failed 403 mutation (including
+  media upload); AuthProvider refetches the profile and shows the accessible
+  `Permissions changed - refreshed.` status toast after a successful update.
+- Added Vitest coverage for the focus subscription and forbidden-mutation
+  signal, including the guard that leaves 403 reads alone.
+- Verified: focused tests, full admin-web Vitest suite (868 tests), TypeScript
+  check, production build, `git diff --check`, and API `/readyz` (200) pass.
+  `init.sh` remains unavailable on this Windows host because WSL has no Linux
+  distribution; the already-running API was used for the readiness check.
+- Completion after marking: 400/409 features passing.

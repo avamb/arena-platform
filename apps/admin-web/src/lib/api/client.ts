@@ -32,6 +32,7 @@ import {
   requiresAdminReason,
   resolveReasonFor,
 } from "@/lib/api/reason";
+import { requestPermissionRefresh } from "@/lib/auth/permissionRefresh";
 import type {
   AdminCreateUserRequest,
   AdminCreateUserResponse,
@@ -361,6 +362,12 @@ export async function authedFetch<T>(req: AuthedRequest): Promise<T> {
         adminReason: fresh,
       });
     }
+    // A grant can happen while an operator keeps this SPA open. Let the
+    // auth owner refresh the permissions after a rejected write, while
+    // preserving the original 403 for the caller's local error handling.
+    if (err instanceof ApiError && err.status === 403 && req.method !== "GET") {
+      requestPermissionRefresh("forbidden-mutation");
+    }
     throw err;
   }
 }
@@ -541,6 +548,9 @@ export async function uploadMedia(
       }
       const env = await send();
       return env.media_object;
+    }
+    if (err instanceof ApiError && err.status === 403) {
+      requestPermissionRefresh("forbidden-mutation");
     }
     throw err;
   }
