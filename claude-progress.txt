@@ -22660,3 +22660,13 @@ cache after user creation. Backend compilation and live persistence checks
 remain blocked because this host has no Go toolchain and Docker Desktop denies
 access to its daemon pipe. #393 must remain pending verification until an
 environment with Go + PostgreSQL is available.
+
+Final verification (2026-07-29): completed in the available Docker test
+environment. Restarted `arena_e2e_api` from the current checkout and confirmed
+`GET /v1/admin/users?limit=2&search=test.arena.local` returns the persisted
+PostgreSQL directory projection (roles and memberships included, total=4).
+The same data remained available after the server restart. A seeded admin
+received 200; a user without superadmin.read received 403; no bearer token
+received 401. `go test ./internal/platform/httpserver -run TestAdminUsers
+-count=1 -v` passed in golang:1.24, and admin-web focused Vitest (79 tests)
+plus the production build passed. #393 is verified and ready to mark passing.
