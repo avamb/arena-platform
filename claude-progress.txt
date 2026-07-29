@@ -22854,3 +22854,21 @@ PostgreSQL integration test all pass. A freshly built Docker API image started
 against the live test network and returned `/readyz` 200. Existing no-JWT
 coverage still returns 401 for the organizations route. `init.sh` could not be
 run because this Windows host has no bash.
+
+## 2026-07-29 â€” Feature #402 (AB-6) complete
+
+- Removed the platform-superadmin desktop-only exception: the admin shell now
+  collapses to the mobile drawer below 768px for every role, including the
+  product owner.
+- Reworked the phone header into a brand/navigation row plus a wrapping
+  scope-and-audit-reason bar. Added mobile tap-target defaults (44px), safe
+  width guards, and internal scrolling for audit dialogs and mobile drawers.
+- Added a real Playwright 375x812 smoke suite for `/organizations`, `/users`,
+  and `/networks`, plus a CI Chromium install/run and failure artifacts.
+
+Verification: `npm --prefix apps/admin-web run type-check`, 870 Vitest tests,
+and the production build pass. `npm --prefix apps/admin-web run test:mobile`
+passes all 3 owner-route viewport checks with no horizontal body scroll and a
+44px hamburger target. Production-source mock grep found no feature data mocks;
+the only hits are the established development diagnostics/config guards and
+comments. `init.sh` remains unavailable because this Windows host has no Bash.

@@ -234,6 +234,7 @@ const closeBtnStyle: CSSProperties = {
 
 const bodyStyle: CSSProperties = {
   flex: 1,
+  minHeight: 0,
   overflowY: "auto",
   padding: "16px 20px",
 };
@@ -254,6 +255,7 @@ const mobileSheetStyle: CSSProperties = {
   background: "#ffffff",
   display: "flex",
   flexDirection: "column",
+  paddingBottom: "env(safe-area-inset-bottom)",
 };
 
 const mobileHeaderStyle: CSSProperties = {
@@ -261,6 +263,7 @@ const mobileHeaderStyle: CSSProperties = {
   flexDirection: "column",
   gap: 4,
   padding: "12px 16px",
+  paddingTop: "calc(12px + env(safe-area-inset-top))",
   borderBottom: "1px solid #e2e8f0",
 };
 

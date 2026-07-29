@@ -278,6 +278,22 @@ jobs:
       - name: Production build
         run: npm --prefix apps/admin-web run build
 
+      - name: Install Chromium for mobile owner smoke
+        run: npx --prefix apps/admin-web playwright install --with-deps chromium
+
+      - name: Mobile owner viewport smoke (375x812)
+        run: npm --prefix apps/admin-web run test:mobile
+
+      - name: Upload mobile owner smoke artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-mobile-owner-smoke
+          path: |
+            apps/admin-web/test-results/
+            apps/admin-web/playwright-report/
+          retention-days: 7
+
       - name: Upload admin-web artifact
         uses: actions/upload-artifact@v4
         with:

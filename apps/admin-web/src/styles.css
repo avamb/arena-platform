@@ -27,6 +27,29 @@ button {
   font-family: inherit;
 }
 
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+}
+
+@media (max-width: 767px) {
+  /* Phone controls are deliberately generous: 44px is the shared mobile
+     tap-target contract. Inline legacy styles cannot accidentally shrink it. */
+  button,
+  input[type="submit"],
+  input[type="button"],
+  a[role="button"] {
+    min-width: 44px !important;
+    min-height: 44px !important;
+  }
+
+  body {
+    overflow-x: clip;
+  }
+}
+
 @keyframes admin-spinner-rotate {
   to {
     transform: rotate(360deg);

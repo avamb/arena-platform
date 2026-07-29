@@ -179,6 +179,7 @@ const backdropStyle: CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   zIndex: 1000,
+  padding: 16,
 };
 
 const modalStyle: CSSProperties = {
@@ -186,7 +187,9 @@ const modalStyle: CSSProperties = {
   padding: 24,
   borderRadius: 6,
   maxWidth: 480,
-  width: "92%",
+  width: "min(480px, 100%)",
+  maxHeight: "calc(100dvh - 32px)",
+  overflowY: "auto",
   boxShadow: "0 10px 40px rgba(15, 23, 42, 0.25)",
   display: "flex",
   flexDirection: "column",

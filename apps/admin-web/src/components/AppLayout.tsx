@@ -39,11 +39,9 @@ import {
  *     switcher, the user block, and the sign-out button. Bottom padding
  *     respects iOS browser chrome via `env(safe-area-inset-bottom)`.
  *
- *   - SuperAdmin opt-out: when the caller's role list contains
- *     `platform_superadmin`, the desktop layout is kept regardless of
- *     viewport. SuperAdmins routinely operate inside multi-pane forensic
- *     surfaces that do not collapse meaningfully on a phone; forcing the
- *     desktop layout matches the spec for this milestone.
+ *   - The same responsive shell applies to every role. In particular,
+ *     platform superadmins use the drawer navigation on phones: the product
+ *     owner operates the bootstrap workflows from a phone as well as desktop.
  */
 export interface AppLayoutProps {
   /**
@@ -54,18 +52,14 @@ export interface AppLayoutProps {
   readonly forceLayout?: "desktop" | "mobile";
 }
 
-const SUPERADMIN_ROLE = "platform_superadmin";
-
 export function AppLayout({ forceLayout }: AppLayoutProps = {}) {
   const auth = useAuth();
   const { t } = useTranslation();
   const authed = auth.status === "authenticated";
 
-  const isSuperadmin =
-    auth.me?.roles.some((r) => r === SUPERADMIN_ROLE) ?? false;
   const isDesktopAuto = useIsDesktop(true);
   const effectiveLayout: "desktop" | "mobile" =
-    forceLayout ?? (isSuperadmin || isDesktopAuto ? "desktop" : "mobile");
+    forceLayout ?? (isDesktopAuto ? "desktop" : "mobile");
 
   if (effectiveLayout === "desktop") {
     return (
@@ -138,31 +132,33 @@ function MobileHeader({ authed }: { readonly authed: boolean }) {
   return (
     <>
       <header style={mobileHeaderStyle} data-testid="shell-mobile-header">
-        <button
-          type="button"
-          onClick={() => setNavOpen(true)}
-          style={hamburgerBtnStyle}
-          aria-label={t("shell.nav.open")}
-          aria-haspopup="dialog"
-          aria-expanded={navOpen}
-          data-testid="shell-mobile-hamburger"
-        >
-          <span aria-hidden="true" style={hamburgerIconStyle}>
-            <span style={hamburgerLineStyle} />
-            <span style={hamburgerLineStyle} />
-            <span style={hamburgerLineStyle} />
+        <div style={mobileHeaderTopRowStyle}>
+          <button
+            type="button"
+            onClick={() => setNavOpen(true)}
+            style={hamburgerBtnStyle}
+            aria-label={t("shell.nav.open")}
+            aria-haspopup="dialog"
+            aria-expanded={navOpen}
+            data-testid="shell-mobile-hamburger"
+          >
+            <span aria-hidden="true" style={hamburgerIconStyle}>
+              <span style={hamburgerLineStyle} />
+              <span style={hamburgerLineStyle} />
+              <span style={hamburgerLineStyle} />
+            </span>
+          </button>
+          <span style={mobileBrandStyle}>
+            <span style={brandMarkStyle} aria-hidden="true" />
+            <span>{t("shell.brand")}</span>
           </span>
-        </button>
-        <span style={mobileBrandStyle}>
-          <span style={brandMarkStyle} aria-hidden="true" />
-          <span>{t("shell.brand")}</span>
-        </span>
-        <span style={mobileHeaderSpacerStyle} />
+          <span style={mobileHeaderSpacerStyle} />
+        </div>
         {authed ? (
-          <span style={mobileHeaderActionsStyle}>
+          <div style={mobileHeaderActionsStyle}>
             <ActiveReasonBadge />
             <ScopeSelector forceLayout="mobile" />
-          </span>
+          </div>
         ) : null}
       </header>
       {navOpen ? (
@@ -467,6 +463,7 @@ const sidebarFooterStyle: CSSProperties = {
 const mainStyle: CSSProperties = {
   padding: 24,
   overflowY: "auto",
+  minWidth: 0,
 };
 
 const topBarStyle: CSSProperties = {
@@ -505,7 +502,8 @@ const mobileHeaderStyle: CSSProperties = {
   top: 0,
   zIndex: 30,
   display: "flex",
-  alignItems: "center",
+  alignItems: "stretch",
+  flexDirection: "column",
   gap: 8,
   padding: "10px 12px",
   // Respect iOS notch.
@@ -516,10 +514,19 @@ const mobileHeaderStyle: CSSProperties = {
   minHeight: 56,
 };
 
+const mobileHeaderTopRowStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  minWidth: 0,
+};
+
 const mobileMainStyle: CSSProperties = {
   flex: 1,
   padding: 16,
   overflowY: "auto",
+  minWidth: 0,
+  maxWidth: "100%",
 };
 
 const mobileBrandStyle: CSSProperties = {
@@ -535,9 +542,11 @@ const mobileHeaderSpacerStyle: CSSProperties = {
 };
 
 const mobileHeaderActionsStyle: CSSProperties = {
-  display: "inline-flex",
+  display: "flex",
   alignItems: "center",
   gap: 8,
+  flexWrap: "wrap",
+  maxWidth: "100%",
 };
 
 const hamburgerBtnStyle: CSSProperties = {
@@ -631,4 +640,3 @@ const drawerLocaleRowStyle: CSSProperties = {
   alignItems: "center",
   gap: 8,
 };
-

@@ -9,6 +9,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:mobile": "playwright test --config tests/admin-bootstrap/playwright.config.ts",
     "test:watch": "vitest",
     "type-check": "tsc -b --pretty"
   },
@@ -22,6 +23,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@tanstack/router-devtools": "^1.78.0",
     "@types/node": "^22.0.0",
     "@types/react": "^18.3.11",

@@ -72,7 +72,8 @@ const containerStyle: CSSProperties = {
   borderRadius: 4,
   fontSize: 12,
   color: "#78350f",
-  maxWidth: "60%",
+  maxWidth: "100%",
+  flexWrap: "wrap",
 };
 const labelStyle: CSSProperties = {
   fontWeight: 600,
@@ -87,7 +88,7 @@ const valueStyle: CSSProperties = {
   whiteSpace: "nowrap",
   overflow: "hidden",
   textOverflow: "ellipsis",
-  maxWidth: 360,
+  maxWidth: "min(360px, 100%)",
 };
 const valueEmptyStyle: CSSProperties = {
   ...valueStyle,
