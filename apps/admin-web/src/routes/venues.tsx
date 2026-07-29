@@ -72,6 +72,7 @@ export const Route = createRoute({
 
 export interface Venue {
   readonly id: string;
+  readonly display_number: number;
   readonly org_id: string;
   readonly city_id: string | null;
   readonly name: string;
@@ -582,7 +583,7 @@ function VenuesBody({
       header: "Name",
       primary: true,
       renderCell: (v) => (
-        <span data-testid={`venues-row-${v.id}`}>{v.name}</span>
+        <span data-testid={`venues-row-${v.id}`}>{v.name} · #{v.display_number}</span>
       ),
     },
     {

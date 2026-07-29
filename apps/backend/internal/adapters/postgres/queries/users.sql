@@ -7,7 +7,7 @@
 -- and supplying a bcrypt hash (cost ≥ 12) as password_hash.
 INSERT INTO users (email, password_hash, preferred_locale)
 VALUES ($1, $2, $3)
-RETURNING id, email, preferred_locale, created_at, email_verified_at;
+RETURNING id, display_number, email, preferred_locale, created_at, email_verified_at;
 
 -- name: GetUserByEmail :one
 -- Looks up a user by normalised email address. Used during login and to

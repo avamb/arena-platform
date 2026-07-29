@@ -50,12 +50,13 @@ type adminCreateUserResponse struct {
 }
 
 type adminCreatedUserDTO struct {
-	ID        string  `json:"id"`
-	Email     string  `json:"email"`
-	Role      string  `json:"role"`
-	Scope     string  `json:"scope"`
-	OrgID     *string `json:"org_id,omitempty"`
-	CreatedAt string  `json:"created_at"`
+	ID            string  `json:"id"`
+	DisplayNumber int64   `json:"display_number"`
+	Email         string  `json:"email"`
+	Role          string  `json:"role"`
+	Scope         string  `json:"scope"`
+	OrgID         *string `json:"org_id,omitempty"`
+	CreatedAt     string  `json:"created_at"`
 }
 
 type adminCreatedOnboardingDTO struct {
@@ -73,6 +74,7 @@ type adminUserMembershipDTO struct {
 
 type adminUserDirectoryItemDTO struct {
 	ID              string                   `json:"id"`
+	DisplayNumber   int64                    `json:"display_number"`
 	Email           string                   `json:"email"`
 	CreatedAt       string                   `json:"created_at"`
 	EmailVerifiedAt *string                  `json:"email_verified_at"`
@@ -125,8 +127,8 @@ func (h *Handler) HandleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 	items := make([]adminUserDirectoryItemDTO, 0, len(rows))
 	for _, row := range rows {
 		item := adminUserDirectoryItemDTO{
-			ID: row.ID.String(), Email: row.Email,
-			CreatedAt: row.CreatedAt.UTC().Format(time.RFC3339Nano),
+			ID: row.ID.String(), DisplayNumber: row.DisplayNumber, Email: row.Email,
+			CreatedAt:   row.CreatedAt.UTC().Format(time.RFC3339Nano),
 			GlobalRoles: []string{}, Memberships: []adminUserMembershipDTO{},
 		}
 		if row.EmailVerifiedAt != nil {
@@ -362,12 +364,13 @@ func (h *Handler) HandleAdminCreateUser(w http.ResponseWriter, r *http.Request) 
 	}
 	httputil.WriteJSON(w, http.StatusCreated, adminCreateUserResponse{
 		User: adminCreatedUserDTO{
-			ID:        userRow.ID.String(),
-			Email:     userRow.Email,
-			Role:      role,
-			Scope:     scope,
-			OrgID:     orgIDString,
-			CreatedAt: userRow.CreatedAt.UTC().Format(time.RFC3339Nano),
+			ID:            userRow.ID.String(),
+			DisplayNumber: userRow.DisplayNumber,
+			Email:         userRow.Email,
+			Role:          role,
+			Scope:         scope,
+			OrgID:         orgIDString,
+			CreatedAt:     userRow.CreatedAt.UTC().Format(time.RFC3339Nano),
 		},
 		Onboarding: adminCreatedOnboardingDTO{
 			PasswordResetIssued: true,

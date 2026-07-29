@@ -27,6 +27,7 @@ import (
 
 type venueResponse struct {
 	ID              string  `json:"id"`
+	DisplayNumber   int64   `json:"display_number"`
 	OrgID           string  `json:"org_id"`
 	CityID          *string `json:"city_id"`
 	Name            string  `json:"name"`
@@ -48,6 +49,7 @@ func VenueFromRow(v gen.VenueRow) VenueResponse { return venueFromRow(v) }
 func venueFromRow(v gen.VenueRow) venueResponse {
 	resp := venueResponse{
 		ID:              v.ID.String(),
+		DisplayNumber:   v.DisplayNumber,
 		OrgID:           v.OrgID.String(),
 		Name:            v.Name,
 		Address:         v.Address,

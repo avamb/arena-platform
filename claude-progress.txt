@@ -22767,3 +22767,19 @@ required durable persistence proof.
   Do not mark #397 passing yet. Continue by repairing/regenerating the
   hand-maintained query wrappers, then expose labels in admin pickers/tables
   and replace raw UUID form inputs with name-first selectors.
+
+## 2026-07-29 — Feature #397 (AB-22) complete
+
+- Completed the checked-in SQL bindings and API projections for durable
+  `display_number` values on organizations, venues, events, sales channels,
+  and users. UUIDv7 remains the authoritative API/DB key.
+- Admin list/picker labels now render `Name · #N` (or email for users), and
+  organization UUID is relegated to a collapsed Developer info section.
+- Updated the OpenAPI contract for the exposed organization, event, channel,
+  and directory-user display numbers.
+- Verified against a fresh PostgreSQL database: all migrations through 0072
+  apply, each entity receives a non-null, sequenced number, and the temporary
+  test database was dropped afterward. Backend HTTP/gen tests and the
+  production admin build pass. `init.sh` remains unavailable because this
+  Windows host has no POSIX bash; the compose healthcheck issue is pre-existing.
+- Completion after marking: 397/409 features passing.

@@ -112,6 +112,7 @@ export type EventVisibilityFilter = EventVisibility | "all";
 
 export interface EventItem {
   readonly id: string;
+  readonly display_number: number;
   readonly org_id: string;
   readonly venue_id: string | null;
   readonly name: string;
@@ -1240,7 +1241,7 @@ function EventsBody({
             }}
             data-testid={`events-open-${ev.id}`}
           >
-            {ev.name}
+            {ev.name} · #{ev.display_number}
           </button>
           <div style={mutedHintStyle}>
             {orgsByID.get(ev.org_id)?.name ?? shortenUUID(ev.org_id)}

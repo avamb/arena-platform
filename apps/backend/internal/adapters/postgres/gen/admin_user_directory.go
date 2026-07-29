@@ -11,6 +11,7 @@ import (
 // AdminUserDirectoryRow is the read-only projection used by GET /v1/admin/users.
 type AdminUserDirectoryRow struct {
 	ID              uuid.UUID
+	DisplayNumber   int64
 	Email           string
 	CreatedAt       time.Time
 	EmailVerifiedAt *time.Time
@@ -19,7 +20,7 @@ type AdminUserDirectoryRow struct {
 }
 
 const listAdminUsers = `
-SELECT u.id, u.email, u.created_at, u.email_verified_at,
+SELECT u.id, u.display_number, u.email, u.created_at, u.email_verified_at,
        COALESCE((SELECT jsonb_agg(x.role ORDER BY x.role)
                  FROM (SELECT DISTINCT r.name AS role FROM user_roles ur JOIN roles r ON r.id = ur.role_id
                        WHERE ur.user_id = u.id AND ur.org_id IS NULL) x), '[]'::jsonb),
@@ -42,7 +43,7 @@ func (q *Queries) ListAdminUsers(ctx context.Context, emailSearch string, limit,
 	items := make([]AdminUserDirectoryRow, 0)
 	for rows.Next() {
 		var item AdminUserDirectoryRow
-		if err := rows.Scan(&item.ID, &item.Email, &item.CreatedAt, &item.EmailVerifiedAt, &item.GlobalRoles, &item.Memberships); err != nil {
+		if err := rows.Scan(&item.ID, &item.DisplayNumber, &item.Email, &item.CreatedAt, &item.EmailVerifiedAt, &item.GlobalRoles, &item.Memberships); err != nil {
 			return nil, err
 		}
 		items = append(items, item)

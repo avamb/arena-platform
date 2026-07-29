@@ -19,6 +19,7 @@ import (
 // deleted_at is nil for active organizations and non-nil for soft-deleted ones.
 type OrganizationRow struct {
 	ID                     uuid.UUID  `json:"id"`
+	DisplayNumber          int64      `json:"display_number"`
 	Name                   string     `json:"name"`
 	Slug                   string     `json:"slug"`
 	Country                string     `json:"country"`
@@ -50,6 +51,7 @@ func scanOrganizationRow(row interface {
 	var o OrganizationRow
 	err := row.Scan(
 		&o.ID,
+		&o.DisplayNumber,
 		&o.Name,
 		&o.Slug,
 		&o.Country,
@@ -72,7 +74,7 @@ func scanOrganizationRow(row interface {
 const insertOrganization = `-- name: InsertOrganization :one
 INSERT INTO organizations (name, slug, country, default_locale, reservation_ttl_seconds)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, created_at, updated_at, deleted_at`
+RETURNING id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, created_at, updated_at, deleted_at`
 
 // InsertOrganization creates a new active organization row.
 // Returns the created row including the uuidv7 PK assigned by the database.
@@ -88,7 +90,7 @@ func (q *Queries) InsertOrganization(ctx context.Context, name, slug, country, d
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getOrganizationByID = `-- name: GetOrganizationByID :one
-SELECT id, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, created_at, updated_at, deleted_at
+SELECT id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, created_at, updated_at, deleted_at
 FROM   organizations
 WHERE  id = $1
   AND  deleted_at IS NULL`
@@ -105,7 +107,7 @@ func (q *Queries) GetOrganizationByID(ctx context.Context, id uuid.UUID) (Organi
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getOrganizationBySlug = `-- name: GetOrganizationBySlug :one
-SELECT id, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, created_at, updated_at, deleted_at
+SELECT id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, created_at, updated_at, deleted_at
 FROM   organizations
 WHERE  slug = $1
   AND  deleted_at IS NULL`
@@ -122,7 +124,7 @@ func (q *Queries) GetOrganizationBySlug(ctx context.Context, slug string) (Organ
 // ─────────────────────────────────────────────────────────────────────────────
 
 const listOrganizations = `-- name: ListOrganizations :many
-SELECT id, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, created_at, updated_at, deleted_at
+SELECT id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, created_at, updated_at, deleted_at
 FROM   organizations
 WHERE  deleted_at IS NULL
 ORDER  BY created_at ASC, id ASC`
@@ -166,7 +168,7 @@ SET    name                    = COALESCE(NULLIF($2, ''), name),
        updated_at              = now()
 WHERE  id = $1
   AND  deleted_at IS NULL
-RETURNING id, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, created_at, updated_at, deleted_at`
+RETURNING id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, created_at, updated_at, deleted_at`
 
 // UpdateOrganization applies a partial update to an active organization.
 // Empty string fields are ignored (existing value kept). reservationTTL=0
@@ -210,7 +212,7 @@ SET    deleted_at = now(),
        updated_at = now()
 WHERE  id = $1
   AND  deleted_at IS NULL
-RETURNING id, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, created_at, updated_at, deleted_at`
+RETURNING id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, created_at, updated_at, deleted_at`
 
 // SoftDeleteOrganization marks an organization as deleted by setting deleted_at
 // to the current timestamp. The row is not physically removed so the audit log

@@ -50,6 +50,7 @@ import (
 // from package httpserver via iam_shims.go).
 type OrgResponse struct {
 	ID                     string  `json:"id"`
+	DisplayNumber          int64   `json:"display_number"`
 	Name                   string  `json:"name"`
 	Slug                   string  `json:"slug"`
 	Country                string  `json:"country"`
@@ -246,7 +247,7 @@ func responseFromOrganization(o gen.OrganizationRow) orgResponse {
 		value := o.KybVerifiedAt.UTC().Format(time.RFC3339)
 		verifiedAt = &value
 	}
-	return orgResponse{ID: o.ID.String(), Name: o.Name, Slug: o.Slug, Country: o.Country, DefaultLocale: o.DefaultLocale, ReservationTTLSeconds: o.ReservationTTLSeconds,
+	return orgResponse{ID: o.ID.String(), DisplayNumber: o.DisplayNumber, Name: o.Name, Slug: o.Slug, Country: o.Country, DefaultLocale: o.DefaultLocale, ReservationTTLSeconds: o.ReservationTTLSeconds,
 		LegalName: o.LegalName, TaxID: o.TaxID, TaxIDScheme: o.TaxIDScheme, RegistrationNumber: o.RegistrationNumber, LegalAddressLine1: o.LegalAddressLine1, LegalAddressLine2: o.LegalAddressLine2, LegalAddressPostalCode: o.LegalAddressPostalCode, LegalAddressCity: o.LegalAddressCity, LegalAddressCountry: o.LegalAddressCountry, ContactEmail: o.ContactEmail, ContactPhone: o.ContactPhone, WebsiteURL: o.WebsiteURL, KybStatus: o.KybStatus, KybVerifiedAt: verifiedAt,
 		CreatedAt: o.CreatedAt.UTC().Format(time.RFC3339), UpdatedAt: o.UpdatedAt.UTC().Format(time.RFC3339)}
 }

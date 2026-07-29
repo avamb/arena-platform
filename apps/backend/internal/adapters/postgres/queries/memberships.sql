@@ -13,7 +13,7 @@
 -- name: ListAdminUsers :many
 -- Superadmin directory projection. JSON aggregates avoid N+1 role/membership
 -- lookups while deliberately excluding password and token columns.
-SELECT u.id, u.email, u.created_at, u.email_verified_at,
+SELECT u.id, u.display_number, u.email, u.created_at, u.email_verified_at,
        COALESCE((SELECT jsonb_agg(x.role ORDER BY x.role)
                  FROM (SELECT DISTINCT r.name AS role FROM user_roles ur JOIN roles r ON r.id = ur.role_id
                        WHERE ur.user_id = u.id AND ur.org_id IS NULL) x), '[]'::jsonb) AS global_roles,

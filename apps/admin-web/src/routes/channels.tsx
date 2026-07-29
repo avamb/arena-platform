@@ -80,6 +80,7 @@ export const PROVIDERS: readonly Provider[] = ["stripe", "allpay"];
 
 export interface Channel {
   readonly id: string;
+  readonly display_number: number;
   readonly org_id: string;
   readonly name: string;
   readonly payment_mode: PaymentMode | string;
@@ -486,7 +487,7 @@ function ChannelsBody({
       id: "name",
       header: "Name",
       primary: true,
-      renderCell: (c) => <span data-testid={`channels-row-${c.id}`}>{c.name}</span>,
+      renderCell: (c) => <span data-testid={`channels-row-${c.id}`}>{c.name} · #{c.display_number}</span>,
     },
     {
       id: "payment_mode",

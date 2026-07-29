@@ -100,6 +100,7 @@ export const Route = createRoute({
 
 export interface AdminOrganization {
   readonly id: string;
+  readonly display_number: number;
   readonly name: string;
   readonly slug: string;
   readonly country: string;
@@ -450,7 +451,7 @@ function OrganizationsTable({
             onClick={() => onOpen(o.id)}
             aria-label={`Open details for ${o.name}`}
           >
-            {o.name}
+            {o.name} · #{o.display_number}
           </button>
         </span>
       ),
@@ -810,7 +811,11 @@ function OverviewTab({ org }: { org: AdminOrganization }) {
     <>
       <h3 style={drawerSectionTitleStyle}>Metadata</h3>
       <dl style={metaListStyle}>
-        <MetaRow k="ID" v={<code style={monoStyle}>{org.id}</code>} />
+        <MetaRow k="Display number" v={`#${org.display_number}`} />
+        <details>
+          <summary>Developer info</summary>
+          <MetaRow k="UUID" v={<code style={monoStyle}>{org.id}</code>} />
+        </details>
         <MetaRow k="Slug" v={<code style={monoStyle}>{org.slug}</code>} />
         <MetaRow k="Country" v={org.country} />
         <MetaRow k="Default locale" v={org.default_locale} />

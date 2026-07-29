@@ -23,19 +23,20 @@ import (
 // The name and description fields reflect locale-resolved values when the
 // query joins i18n_text; for write-result rows they hold the stored values.
 type EventRow struct {
-	ID          uuid.UUID  `json:"id"`
-	OrgID       uuid.UUID  `json:"org_id"`
-	VenueID     *uuid.UUID `json:"venue_id"`
-	Name        string     `json:"name"`
-	Description *string    `json:"description"`
-	Status      string     `json:"status"`
-	StartAt     time.Time  `json:"start_at"`
-	EndAt       time.Time  `json:"end_at"`
-	Visibility  string     `json:"visibility"`
-	ImageURL    *string    `json:"image_url"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	DeletedAt   *time.Time `json:"deleted_at"`
+	ID            uuid.UUID  `json:"id"`
+	DisplayNumber int64      `json:"display_number"`
+	OrgID         uuid.UUID  `json:"org_id"`
+	VenueID       *uuid.UUID `json:"venue_id"`
+	Name          string     `json:"name"`
+	Description   *string    `json:"description"`
+	Status        string     `json:"status"`
+	StartAt       time.Time  `json:"start_at"`
+	EndAt         time.Time  `json:"end_at"`
+	Visibility    string     `json:"visibility"`
+	ImageURL      *string    `json:"image_url"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	DeletedAt     *time.Time `json:"deleted_at"`
 }
 
 // scanEventRow scans a single events row into an EventRow.
@@ -45,6 +46,7 @@ func scanEventRow(row interface {
 	var e EventRow
 	err := row.Scan(
 		&e.ID,
+		&e.DisplayNumber,
 		&e.OrgID,
 		&e.VenueID,
 		&e.Name,
@@ -68,7 +70,7 @@ func scanEventRow(row interface {
 const insertEvent = `-- name: InsertEvent :one
 INSERT INTO events (org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url)
 VALUES ($1, $2, $3, $4, COALESCE(NULLIF($5, ''), 'draft'), $6, $7, COALESCE(NULLIF($8, ''), 'public'), $9)
-RETURNING id, org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url, created_at, updated_at, deleted_at`
+RETURNING id, display_number, org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url, created_at, updated_at, deleted_at`
 
 // InsertEvent creates a new active event row owned by the given org.
 // status defaults to 'draft' when empty; visibility defaults to 'public' when empty.
@@ -87,6 +89,7 @@ func (q *Queries) InsertEvent(ctx context.Context, orgID uuid.UUID, venueID *uui
 const getEventByID = `-- name: GetEventByID :one
 SELECT
     e.id,
+    e.display_number,
     e.org_id,
     e.venue_id,
     COALESCE(n_loc.value, n_en.value, e.name)               AS name,
@@ -128,7 +131,7 @@ func (q *Queries) GetEventByID(ctx context.Context, id uuid.UUID, locale string)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getEventRaw = `-- name: GetEventRaw :one
-SELECT id, org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url, created_at, updated_at, deleted_at
 FROM   events
 WHERE  id = $1
   AND  deleted_at IS NULL`
@@ -147,6 +150,7 @@ func (q *Queries) GetEventRaw(ctx context.Context, id uuid.UUID) (EventRow, erro
 const listEvents = `-- name: ListEvents :many
 SELECT
     e.id,
+    e.display_number,
     e.org_id,
     e.venue_id,
     COALESCE(n_loc.value, n_en.value, e.name)               AS name,
@@ -204,6 +208,7 @@ func (q *Queries) ListEvents(ctx context.Context, locale, visibilityFilter strin
 const listEventsByOrg = `-- name: ListEventsByOrg :many
 SELECT
     e.id,
+    e.display_number,
     e.org_id,
     e.venue_id,
     COALESCE(n_loc.value, n_en.value, e.name)               AS name,
@@ -270,7 +275,7 @@ SET    venue_id    = CASE WHEN $3::uuid IS NOT NULL THEN $3::uuid ELSE venue_id 
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url, created_at, updated_at, deleted_at`
+RETURNING id, display_number, org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url, created_at, updated_at, deleted_at`
 
 // UpdateEvent applies a partial update to an active event (non-status fields).
 // Scoped by org_id to enforce owner-gated mutation policy.
@@ -295,7 +300,7 @@ SET    status     = $3,
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url, created_at, updated_at, deleted_at`
+RETURNING id, display_number, org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url, created_at, updated_at, deleted_at`
 
 // UpdateEventStatus transitions an event to a new status.
 // Scoped by org_id to enforce owner-gated mutation policy.
@@ -318,7 +323,7 @@ SET    deleted_at = now(),
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url, created_at, updated_at, deleted_at`
+RETURNING id, display_number, org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url, created_at, updated_at, deleted_at`
 
 // SoftDeleteEvent marks an event as deleted by setting deleted_at.
 // Scoped by org_id to enforce owner-gated mutation policy.

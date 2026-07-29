@@ -21,6 +21,7 @@ import (
 // capacity_default is nil when the venue capacity is unspecified.
 type VenueRow struct {
 	ID              uuid.UUID  `json:"id"`
+	DisplayNumber   int64      `json:"display_number"`
 	OrgID           uuid.UUID  `json:"org_id"`
 	CityID          *uuid.UUID `json:"city_id"`
 	Name            string     `json:"name"`
@@ -38,6 +39,7 @@ func scanVenueRow(row interface {
 	var v VenueRow
 	err := row.Scan(
 		&v.ID,
+		&v.DisplayNumber,
 		&v.OrgID,
 		&v.CityID,
 		&v.Name,
@@ -57,7 +59,7 @@ func scanVenueRow(row interface {
 const insertVenue = `-- name: InsertVenue :one
 INSERT INTO venues (org_id, city_id, name, address, capacity_default)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at`
+RETURNING id, display_number, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at`
 
 // InsertVenue creates a new active venue row owned by the given org.
 // Returns the created row including the uuidv7 PK assigned by the database.
@@ -73,7 +75,7 @@ func (q *Queries) InsertVenue(ctx context.Context, orgID uuid.UUID, cityID *uuid
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getVenueByID = `-- name: GetVenueByID :one
-SELECT id, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at
 FROM   venues
 WHERE  id = $1
   AND  deleted_at IS NULL`
@@ -91,7 +93,7 @@ func (q *Queries) GetVenueByID(ctx context.Context, id uuid.UUID) (VenueRow, err
 // ─────────────────────────────────────────────────────────────────────────────
 
 const listVenues = `-- name: ListVenues :many
-SELECT id, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at
 FROM   venues
 WHERE  deleted_at IS NULL
 ORDER  BY created_at ASC, id ASC`
@@ -121,7 +123,7 @@ func (q *Queries) ListVenues(ctx context.Context) ([]VenueRow, error) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const listVenuesByOrg = `-- name: ListVenuesByOrg :many
-SELECT id, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at
 FROM   venues
 WHERE  org_id = $1
   AND  deleted_at IS NULL
@@ -161,7 +163,7 @@ SET    city_id          = CASE WHEN $3::uuid IS NOT NULL THEN $3::uuid ELSE city
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at`
+RETURNING id, display_number, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at`
 
 // UpdateVenue applies a partial update to an active venue.
 // Scoped by org_id to enforce owner-gated mutation policy.
@@ -186,7 +188,7 @@ SET    deleted_at = now(),
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at`
+RETURNING id, display_number, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at`
 
 // SoftDeleteVenue marks a venue as deleted by setting deleted_at.
 // Scoped by org_id to enforce owner-gated mutation policy.

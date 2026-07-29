@@ -62,6 +62,7 @@ interface CreateUserErrors {
 // routes/organizations.tsx and this form only needs id/name/slug.
 interface OrgPickerOption {
   readonly id: string;
+  readonly display_number: number;
   readonly name: string;
   readonly slug: string;
   readonly deleted_at: string | null;
@@ -73,7 +74,7 @@ interface OrgPickerEnvelope {
 }
 
 export interface AdminDirectoryMembership { readonly id: string; readonly name: string; readonly slug: string; readonly role: string; }
-export interface AdminDirectoryUser { readonly id: string; readonly email: string; readonly created_at: string; readonly email_verified_at: string | null; readonly global_roles: readonly string[]; readonly memberships: readonly AdminDirectoryMembership[]; }
+export interface AdminDirectoryUser { readonly id: string; readonly display_number: number; readonly email: string; readonly created_at: string; readonly email_verified_at: string | null; readonly global_roles: readonly string[]; readonly memberships: readonly AdminDirectoryMembership[]; }
 export interface AdminDirectoryEnvelope { readonly users: readonly AdminDirectoryUser[]; readonly total: number; readonly limit: number; readonly offset: number; }
 
 function UsersRoute() {
@@ -270,7 +271,7 @@ function UsersProvisioning() {
                 <option value="">— Select organization —</option>
                 {orgOptions.map((o) => (
                   <option key={o.id} value={o.id}>
-                    {o.name} ({o.slug})
+                    {o.name} · #{o.display_number} ({o.slug})
                   </option>
                 ))}
               </select>
@@ -347,7 +348,7 @@ function UsersProvisioning() {
 
 function UserDirectoryTable({ users, onSelect }: { users: readonly AdminDirectoryUser[]; onSelect: (user: AdminDirectoryUser) => void }) {
   const columns: readonly ResponsiveTableColumn<AdminDirectoryUser>[] = [
-    { id: "email", header: "Email", primary: true, renderCell: (user) => <button type="button" onClick={() => onSelect(user)} style={linkButtonStyle}>{user.email}</button> },
+    { id: "email", header: "Email", primary: true, renderCell: (user) => <button type="button" onClick={() => onSelect(user)} style={linkButtonStyle}>{user.email} · #{user.display_number}</button> },
     { id: "verified", header: "Verified", renderCell: (user) => user.email_verified_at === null ? "No" : "Yes" },
     { id: "roles", header: "Global roles", renderCell: (user) => user.global_roles.length === 0 ? "—" : user.global_roles.map(formatAdminUserRole).join(", ") },
     { id: "memberships", header: "Memberships", renderCell: (user) => user.memberships.length === 0 ? "—" : `${user.memberships.length} organization${user.memberships.length === 1 ? "" : "s"}` },

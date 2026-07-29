@@ -23,6 +23,7 @@ import (
 // settings is a free-form jsonb object — never null (defaults to '{}').
 type SalesChannelRow struct {
 	ID                     uuid.UUID       `json:"id"`
+	DisplayNumber          int64           `json:"display_number"`
 	OrgID                  uuid.UUID       `json:"org_id"`
 	Name                   string          `json:"name"`
 	PaymentMode            string          `json:"payment_mode"`
@@ -43,6 +44,7 @@ func scanSalesChannelRow(row interface {
 	var ch SalesChannelRow
 	err := row.Scan(
 		&ch.ID,
+		&ch.DisplayNumber,
 		&ch.OrgID,
 		&ch.Name,
 		&ch.PaymentMode,
@@ -65,7 +67,7 @@ func scanSalesChannelRow(row interface {
 const insertSalesChannel = `-- name: InsertSalesChannel :one
 INSERT INTO sales_channels (org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings)
 VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::jsonb, '{}'::jsonb))
-RETURNING id, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at`
+RETURNING id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at`
 
 // InsertSalesChannel creates a new active sales channel row.
 // Returns the created row including the uuidv7 PK assigned by the database.
@@ -84,7 +86,7 @@ func (q *Queries) InsertSalesChannel(ctx context.Context, orgID uuid.UUID, name,
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getSalesChannelByID = `-- name: GetSalesChannelByID :one
-SELECT id, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
 FROM   sales_channels
 WHERE  id = $1
   AND  org_id = $2
@@ -102,7 +104,7 @@ func (q *Queries) GetSalesChannelByID(ctx context.Context, id, orgID uuid.UUID) 
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getSalesChannelByIDGlobal = `-- name: GetSalesChannelByIDGlobal :one
-SELECT id, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
 FROM   sales_channels
 WHERE  id = $1
   AND  deleted_at IS NULL`
@@ -122,7 +124,7 @@ func (q *Queries) GetSalesChannelByIDGlobal(ctx context.Context, id uuid.UUID) (
 // ─────────────────────────────────────────────────────────────────────────────
 
 const listSalesChannelsByOrg = `-- name: ListSalesChannelsByOrg :many
-SELECT id, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
 FROM   sales_channels
 WHERE  org_id = $1
   AND  deleted_at IS NULL
@@ -165,7 +167,7 @@ SET    name                     = COALESCE(NULLIF($3, ''), name),
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at`
+RETURNING id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at`
 
 // UpdateSalesChannel applies a partial update to an active sales channel.
 // Empty string fields are ignored (existing value kept). Returns pgx.ErrNoRows
@@ -189,7 +191,7 @@ SET    deleted_at = now(),
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at`
+RETURNING id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at`
 
 // SoftDeleteSalesChannel marks a sales channel as deleted by setting deleted_at.
 // The row is not physically removed. Returns pgx.ErrNoRows when the channel

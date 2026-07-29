@@ -14,12 +14,13 @@ import (
 const insertUser = `-- name: InsertUser :one
 INSERT INTO users (email, password_hash, preferred_locale)
 VALUES ($1, $2, $3)
-RETURNING id, email, preferred_locale, created_at, email_verified_at
+RETURNING id, display_number, email, preferred_locale, created_at, email_verified_at
 `
 
 // InsertUserRow is the result type for InsertUser.
 type InsertUserRow struct {
 	ID              uuid.UUID  `json:"id"`
+	DisplayNumber   int64      `json:"display_number"`
 	Email           string     `json:"email"`
 	PreferredLocale string     `json:"preferred_locale"`
 	CreatedAt       time.Time  `json:"created_at"`
@@ -34,6 +35,7 @@ func (q *Queries) InsertUser(ctx context.Context, email, passwordHash, preferred
 	var i InsertUserRow
 	err := row.Scan(
 		&i.ID,
+		&i.DisplayNumber,
 		&i.Email,
 		&i.PreferredLocale,
 		&i.CreatedAt,

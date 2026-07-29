@@ -1290,12 +1290,16 @@ components:
           description: Active membership role.
     AdminUserDirectoryItem:
       type: object
-      required: [id, email, created_at, global_roles, memberships]
+      required: [id, display_number, email, created_at, global_roles, memberships]
       properties:
         id:
           type: string
           format: uuid
           description: User UUID.
+        display_number:
+          type: integer
+          format: int64
+          description: Short operator-facing user number; UUID remains the API key.
         email:
           type: string
           format: email
@@ -1460,7 +1464,7 @@ components:
 
     OrganizationItem:
       type: object
-      required: [id, name, slug, country, default_locale, reservation_ttl_seconds, kyb_status, created_at, updated_at]
+      required: [id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, kyb_status, created_at, updated_at]
       description: |
         A single active organization (primary tenant boundary).
         Includes legal & contact attributes added in migration
@@ -1473,6 +1477,10 @@ components:
           format: uuid
           description: UUIDv7 primary key of the organization row
           example: "01929d0e-0e47-7000-8000-000000000001"
+        display_number:
+          type: integer
+          format: int64
+          description: Short operator-facing organization number; UUID remains the API key.
         name:
           type: string
           description: Human-readable display name (unique among active organizations)
@@ -3091,6 +3099,7 @@ components:
       type: object
       required:
         - id
+        - display_number
         - org_id
         - name
         - status
@@ -3111,6 +3120,10 @@ components:
           format: uuid
           description: UUIDv7 primary key of the event row.
           example: "01929d0e-0e47-7000-8000-000000000301"
+        display_number:
+          type: integer
+          format: int64
+          description: Short operator-facing event number; UUID remains the API key.
         org_id:
           type: string
           format: uuid
@@ -7444,7 +7457,7 @@ components:
 
     Channel:
       type: object
-      required: [id, org_id, name, type, created_at]
+      required: [id, display_number, org_id, name, type, created_at]
       description: |
         A sales channel belonging to an organization. Channels represent
         distinct distribution points (e.g. online widget, box office, API partner)
@@ -7454,6 +7467,10 @@ components:
           type: string
           format: uuid
           description: UUIDv7 channel identifier.
+        display_number:
+          type: integer
+          format: int64
+          description: Short operator-facing channel number; UUID remains the API key.
         org_id:
           type: string
           format: uuid

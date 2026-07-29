@@ -128,6 +128,7 @@ func (h *Handler) HandleAdminCreateOrg(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
 		"organization": orgResponse{
 			ID:                    org.ID.String(),
+			DisplayNumber:         org.DisplayNumber,
 			Name:                  org.Name,
 			Slug:                  org.Slug,
 			Country:               org.Country,

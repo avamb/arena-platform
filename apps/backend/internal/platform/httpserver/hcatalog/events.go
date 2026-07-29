@@ -50,18 +50,19 @@ type eventResponse = EventResponse
 // shim layer (events_test.go references eventFromRow from package httpserver via
 // a forwarder in catalog_shims.go).
 type EventResponse struct {
-	ID          string  `json:"id"`
-	OrgID       string  `json:"org_id"`
-	VenueID     *string `json:"venue_id"`
-	Name        string  `json:"name"`
-	Description *string `json:"description"`
-	Status      string  `json:"status"`
-	StartAt     string  `json:"start_at"`
-	EndAt       string  `json:"end_at"`
-	Visibility  string  `json:"visibility"`
-	ImageURL    *string `json:"image_url"`
-	CreatedAt   string  `json:"created_at"`
-	UpdatedAt   string  `json:"updated_at"`
+	ID            string  `json:"id"`
+	DisplayNumber int64   `json:"display_number"`
+	OrgID         string  `json:"org_id"`
+	VenueID       *string `json:"venue_id"`
+	Name          string  `json:"name"`
+	Description   *string `json:"description"`
+	Status        string  `json:"status"`
+	StartAt       string  `json:"start_at"`
+	EndAt         string  `json:"end_at"`
+	Visibility    string  `json:"visibility"`
+	ImageURL      *string `json:"image_url"`
+	CreatedAt     string  `json:"created_at"`
+	UpdatedAt     string  `json:"updated_at"`
 }
 
 func eventFromRow(e gen.EventRow) eventResponse {
@@ -73,17 +74,18 @@ func eventFromRow(e gen.EventRow) eventResponse {
 // forwarder in catalog_shims.go).
 func EventFromRow(e gen.EventRow) EventResponse {
 	resp := eventResponse{
-		ID:          e.ID.String(),
-		OrgID:       e.OrgID.String(),
-		Name:        e.Name,
-		Description: e.Description,
-		Status:      e.Status,
-		StartAt:     e.StartAt.UTC().Format(time.RFC3339),
-		EndAt:       e.EndAt.UTC().Format(time.RFC3339),
-		Visibility:  e.Visibility,
-		ImageURL:    e.ImageURL,
-		CreatedAt:   e.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt:   e.UpdatedAt.UTC().Format(time.RFC3339),
+		ID:            e.ID.String(),
+		DisplayNumber: e.DisplayNumber,
+		OrgID:         e.OrgID.String(),
+		Name:          e.Name,
+		Description:   e.Description,
+		Status:        e.Status,
+		StartAt:       e.StartAt.UTC().Format(time.RFC3339),
+		EndAt:         e.EndAt.UTC().Format(time.RFC3339),
+		Visibility:    e.Visibility,
+		ImageURL:      e.ImageURL,
+		CreatedAt:     e.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:     e.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 	if e.VenueID != nil {
 		s := e.VenueID.String()

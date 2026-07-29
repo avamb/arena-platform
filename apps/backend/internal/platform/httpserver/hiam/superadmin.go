@@ -191,6 +191,7 @@ func (h *Handler) HandleSuperadminListOrganizations(w http.ResponseWriter, r *ht
 	for _, o := range rows {
 		m := map[string]any{
 			"id":                        o.ID.String(),
+			"display_number":            o.DisplayNumber,
 			"name":                      o.Name,
 			"slug":                      o.Slug,
 			"country":                   o.Country,

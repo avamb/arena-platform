@@ -44,6 +44,7 @@ type channelResponse = ChannelResponse
 // from package httpserver via a type alias in catalog_shims.go).
 type ChannelResponse struct {
 	ID                     string          `json:"id"`
+	DisplayNumber          int64           `json:"display_number"`
 	OrgID                  string          `json:"org_id"`
 	Name                   string          `json:"name"`
 	PaymentMode            string          `json:"payment_mode"`
@@ -96,6 +97,7 @@ func channelFromRow(ch gen.SalesChannelRow) channelResponse {
 func ChannelFromRow(ch gen.SalesChannelRow) ChannelResponse {
 	return ChannelResponse{
 		ID:                     ch.ID.String(),
+		DisplayNumber:          ch.DisplayNumber,
 		OrgID:                  ch.OrgID.String(),
 		Name:                   ch.Name,
 		PaymentMode:            ch.PaymentMode,
