@@ -265,6 +265,42 @@ Channels, Payment Configs), which is not discoverable from the org context.
    org (or at minimum a deep link "Create venue for this organization →").
 2. Users tab: link to /users?org=<id> (pairs with AB-17 preselect).
 
+## AB-20. Venue creation: geocoding-first flow (address → name/city/coords)
+
+**Category:** SuperAdmin UI + API
+**Problem:** New-venue form demands raw UUIDs (Organization ID, City ID — "City ID
+must be a UUID"); owner typed "Prague" and dead-ended. Real-world flow (owner's
+words, mirrors the legacy Bil24 editor): organizer sends an address, operator
+verifies it on a map and the tool fills name/address/city/coordinates.
+**Steps:**
+1. Org picker (reuse AB-17 pattern) + city picker fed from the geo registry with
+   inline "create city" (admin geo endpoints already exist).
+2. Address autocomplete via a geocoding provider (Google Places or
+   Nominatim/Mapbox — decide licensing) that fills address lines, postal code,
+   city (mapped/created in geo registry), country, and lat/long; map pin preview
+   with manual adjustment; store coordinates on the venue.
+3. Fallback: fully manual entry stays possible (no hard dependency on the
+   geocoder).
+
+## AB-21. Bil24 live import: venues (and cities) via Bil24 API
+
+**Category:** Integration / Operator tooling
+**Problem:** arena-bil24-import (features #386/387) imports EVENTS from CSV/JSON
+snapshots only. Owner has an existing Bil24 account with venues (e.g. [10549]
+Palac Akropolis with address, coords, seating plan) and wants them imported
+directly via the Bil24 API instead of retyping. Official Bil24 API docs live in
+01_official_bil24_docs/.
+**Steps:**
+1. Extend the importer (or new arena-bil24-import-venues mode) to call the Bil24
+   API: auth via operator credentials/fid+token, fetch countries/cities/venues.
+2. Map Bil24 country/city to the geo registry (create-if-absent), venues into
+   venues table with external_bil24_id-style mapping column, coordinates and
+   address preserved; idempotent re-runs.
+3. Optional phase 2: seating plan import (Bil24 seating plan JSON → seating
+   assets), leveraging the existing Palac Akropolis asset format in
+   05_widgets_and_site_templates / 06_venue_maps_and_seating.
+4. CLI contract mirrors the snapshot importer (dry-run, summary, exit codes).
+
 ## AB-11. Ops: production-mode readiness checklist
 
 **Category:** Deploy / Config
