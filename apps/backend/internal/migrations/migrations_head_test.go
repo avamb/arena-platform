@@ -40,7 +40,7 @@ func TestHead_NumericPrefixPositive(t *testing.T) {
 }
 
 func TestHead_KnownCurrentHead(t *testing.T) {
-	const expectedHead = "0071_superadmin_all_permissions.sql" // updated: 0071 grants the full permission catalogue to platform_superadmin (AB-14)
+	const expectedHead = "0074_catalog_role_grants.sql" // updated: 0074 audits organizer/agent catalog permissions (AB-1 / #406)
 	head, err := migrations.Head()
 	if err != nil {
 		t.Fatalf("Head() returned unexpected error: %v", err)

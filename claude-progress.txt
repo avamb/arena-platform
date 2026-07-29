@@ -22894,3 +22894,22 @@ the focused PostgreSQL persistence proof against `arena_e2e_pg`, and
 `go build ./apps/backend/...` all pass. `init.sh` cannot run on this Windows
 host because WSL has no `/bin/bash`; the existing test database and API stack
 were available for the persistence verification. Feature #405 marked passing.
+
+## 2026-07-29 — Feature #406 (AB-1) complete
+
+- Added migration `0074_catalog_role_grants.sql`, documenting the required
+  recipient matrix for every future permission seed. It preserves the existing
+  full org_admin catalog/config/media grants, gives organizers event lifecycle
+  and media management plus venue/channel reads, and gives agents only
+  read-only venue/channel/event/media access. Payment configuration remains
+  org_admin-only.
+- Added an integration-tagged PostgreSQL proof that applies the complete
+  migration set to a fresh database, provisions an org_admin tenant assignment,
+  and verifies all required grants as well as organizer/agent least privilege.
+
+Verification: the real `TestAB1_FreshTenantRoleMatrix` PostgreSQL container
+test passes, as do focused migrations/permissions tests, `go build
+./apps/backend/...`, and the admin TypeScript type-check. The existing API
+returned `/readyz` 200. Production-source mock-data scan found only established
+development/auth infrastructure and explicit no-mock comments; no feature mock
+data was added. Feature #406 marked passing.
