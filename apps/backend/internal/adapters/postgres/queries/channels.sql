@@ -5,10 +5,10 @@
 -- name: InsertSalesChannel :one
 INSERT INTO sales_channels (org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings)
 VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::jsonb, '{}'::jsonb))
-RETURNING id, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at;
+RETURNING id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at;
 
 -- name: GetSalesChannelByID :one
-SELECT id, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
 FROM   sales_channels
 WHERE  id = $1
   AND  org_id = $2
@@ -18,13 +18,13 @@ WHERE  id = $1
 -- Cross-org lookup by primary key only. Used by the Bil24 gateway's
 -- SCAN_TICKET credential validation (PR2-32, feature #390): scans carry a
 -- fid but no session/reservation from which to derive the org first.
-SELECT id, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
 FROM   sales_channels
 WHERE  id = $1
   AND  deleted_at IS NULL;
 
 -- name: ListSalesChannelsByOrg :many
-SELECT id, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
 FROM   sales_channels
 WHERE  org_id = $1
   AND  deleted_at IS NULL
@@ -43,7 +43,7 @@ SET    name                     = COALESCE(NULLIF($3, ''), name),
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at;
+RETURNING id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at;
 
 -- name: SoftDeleteSalesChannel :one
 UPDATE sales_channels
@@ -52,4 +52,4 @@ SET    deleted_at = now(),
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at;
+RETURNING id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at;

@@ -22748,3 +22748,22 @@ required durable persistence proof.
   `/readyz` returns 200. `init.sh` cannot execute here because WSL bash is not
   installed, but the already-running stack was healthy.
 - Completion after marking: 396/409 features passing.
+
+## 2026-07-29 — Feature #397 (AB-22) in progress
+
+- Added migration `0072_display_numbers.sql` establishing durable, unique,
+  per-entity presentation numbers for organizations, venues, events, sales
+  channels, and users. Existing rows are deterministically backfilled and new
+  rows use separate owned sequences; UUIDv7 remains every entity's PK.
+- Updated sqlc source query projections to carry `display_number` for the
+  organization, venue, event, and sales-channel resource rows. The checked-in
+  query wrappers are hand-maintained and still need their parallel projection
+  updates before server responses and admin UI can consume the values.
+- Verification: `npm --prefix apps/admin-web run type-check` passed.
+- Blockers discovered: `docker compose` currently rejects the pre-existing
+  healthcheck syntax (`healthcheck.test must start either by CMD, CMD-SHELL,
+  or NONE`), and `sqlc/sqlc:1.27.0 generate` fails on unrelated ambiguous
+  legacy queries in inventory_ledger, seating_plans, and session_seats.
+  Do not mark #397 passing yet. Continue by repairing/regenerating the
+  hand-maintained query wrappers, then expose labels in admin pickers/tables
+  and replace raw UUID form inputs with name-first selectors.

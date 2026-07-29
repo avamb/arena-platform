@@ -6,22 +6,22 @@
 -- name: InsertVenue :one
 INSERT INTO venues (org_id, city_id, name, address, capacity_default)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at;
+RETURNING id, display_number, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at;
 
 -- name: GetVenueByID :one
-SELECT id, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at
 FROM   venues
 WHERE  id = $1
   AND  deleted_at IS NULL;
 
 -- name: ListVenues :many
-SELECT id, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at
 FROM   venues
 WHERE  deleted_at IS NULL
 ORDER  BY created_at ASC, id ASC;
 
 -- name: ListVenuesByOrg :many
-SELECT id, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at
 FROM   venues
 WHERE  org_id = $1
   AND  deleted_at IS NULL
@@ -37,7 +37,7 @@ SET    city_id          = CASE WHEN $3::uuid IS NOT NULL THEN $3::uuid ELSE city
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at;
+RETURNING id, display_number, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at;
 
 -- name: SoftDeleteVenue :one
 UPDATE venues
@@ -46,4 +46,4 @@ SET    deleted_at = now(),
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at;
+RETURNING id, display_number, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at;

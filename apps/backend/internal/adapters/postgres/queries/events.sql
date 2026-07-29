@@ -8,13 +8,14 @@
 -- Returns the created row including the uuidv7 PK assigned by the database.
 INSERT INTO events (org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url)
 VALUES ($1, $2, $3, $4, COALESCE(NULLIF($5, ''), 'draft'), $6, $7, COALESCE(NULLIF($8, ''), 'public'), $9)
-RETURNING id, org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url, created_at, updated_at, deleted_at;
+RETURNING id, display_number, org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url, created_at, updated_at, deleted_at;
 
 -- name: GetEventByID :one
 -- GetEventByID fetches an active event by its UUID primary key.
 -- Takes a locale for i18n_text name/description resolution (fallback: stored value).
 SELECT
     e.id,
+    e.display_number,
     e.org_id,
     e.venue_id,
     COALESCE(n_loc.value, n_en.value, e.name)               AS name,
@@ -45,7 +46,7 @@ WHERE e.id = $1
 
 -- name: GetEventRaw :one
 -- GetEventRaw fetches an active event without i18n joins (used for status transitions).
-SELECT id, org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url, created_at, updated_at, deleted_at
 FROM   events
 WHERE  id = $1
   AND  deleted_at IS NULL;
@@ -56,6 +57,7 @@ WHERE  id = $1
 -- Optionally filtered by visibility: pass empty string to return all.
 SELECT
     e.id,
+    e.display_number,
     e.org_id,
     e.venue_id,
     COALESCE(n_loc.value, n_en.value, e.name)               AS name,
@@ -90,6 +92,7 @@ ORDER BY e.start_at ASC, e.id ASC;
 -- Takes a locale for i18n_text name resolution (fallback: stored name).
 SELECT
     e.id,
+    e.display_number,
     e.org_id,
     e.venue_id,
     COALESCE(n_loc.value, n_en.value, e.name)               AS name,
@@ -135,7 +138,7 @@ SET    venue_id    = CASE WHEN $3::uuid IS NOT NULL THEN $3::uuid ELSE venue_id 
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url, created_at, updated_at, deleted_at;
+RETURNING id, display_number, org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url, created_at, updated_at, deleted_at;
 
 -- name: UpdateEventStatus :one
 -- UpdateEventStatus transitions an event to a new status.
@@ -146,7 +149,7 @@ SET    status     = $3,
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url, created_at, updated_at, deleted_at;
+RETURNING id, display_number, org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url, created_at, updated_at, deleted_at;
 
 -- name: SoftDeleteEvent :one
 -- SoftDeleteEvent marks an event as deleted by setting deleted_at.
@@ -157,7 +160,7 @@ SET    deleted_at = now(),
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url, created_at, updated_at, deleted_at;
+RETURNING id, display_number, org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url, created_at, updated_at, deleted_at;
 
 -- name: UpsertEventI18nName :exec
 -- UpsertEventI18nName stores or updates the localized name for an event.
