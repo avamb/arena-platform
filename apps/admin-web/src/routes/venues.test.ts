@@ -16,6 +16,7 @@ import {
   isVenueStatus,
   listIanaTimezones,
   mapServerError,
+  nominatimSearchURL,
   normalizeCountry,
   validateVenueAddressLine,
   validateVenueContactEmail,
@@ -59,6 +60,18 @@ describe("VENUE_STATUSES", () => {
     expect(isVenueStatus("ACTIVE")).toBe(false);
     expect(isVenueStatus("")).toBe(false);
     expect(isVenueStatus("deleted")).toBe(false);
+  });
+});
+
+describe("nominatimSearchURL", () => {
+  it("uses the public Nominatim search endpoint with bounded address details", () => {
+    const url = new URL(nominatimSearchURL("  Palác Akropolis, Prague  "));
+    expect(url.origin).toBe("https://nominatim.openstreetmap.org");
+    expect(url.pathname).toBe("/search");
+    expect(url.searchParams.get("q")).toBe("Palác Akropolis, Prague");
+    expect(url.searchParams.get("format")).toBe("jsonv2");
+    expect(url.searchParams.get("addressdetails")).toBe("1");
+    expect(url.searchParams.get("limit")).toBe("5");
   });
 });
 

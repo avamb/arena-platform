@@ -106,10 +106,69 @@ export type VenueStatus = (typeof VENUE_STATUSES)[number];
 
 interface OrganizationSummary {
   readonly id: string;
+  readonly name: string;
+  readonly slug?: string;
   readonly country?: string | null;
 }
 interface OrganizationEnvelope {
   readonly organization: OrganizationSummary;
+}
+
+interface OrganizationListEnvelope {
+  readonly organizations: readonly OrganizationSummary[];
+}
+
+interface CityItem {
+  readonly id: string;
+  readonly country_id: string;
+  readonly country_iso2: string;
+  readonly slug: string;
+  readonly name: string;
+}
+
+interface CityListEnvelope {
+  readonly cities: readonly CityItem[];
+}
+
+interface CountryItem {
+  readonly id: string;
+  readonly iso2: string;
+  readonly iso3: string;
+  readonly slug: string;
+  readonly name: string;
+}
+
+interface CountryListEnvelope {
+  readonly countries: readonly CountryItem[];
+}
+
+interface NominatimResult {
+  readonly display_name: string;
+  readonly lat: string;
+  readonly lon: string;
+  readonly name?: string;
+  readonly address?: Record<string, string>;
+}
+
+export function nominatimSearchURL(query: string): string {
+  const params = new URLSearchParams({
+    format: "jsonv2",
+    addressdetails: "1",
+    limit: "5",
+    q: query.trim(),
+  });
+  return `https://nominatim.openstreetmap.org/search?${params.toString()}`;
+}
+
+function slugifyCity(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "")
+    .slice(0, 100);
 }
 
 interface VenueListEnvelope {
@@ -815,6 +874,13 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
   const [status, setStatus] = useState<VenueStatus>(initialStatus);
   const [capacity, setCapacity] = useState(initialCapacity);
   const [serverErrors, setServerErrors] = useState<ServerFieldErrors>({});
+  const [addressSearch, setAddressSearch] = useState("");
+  const [geocodeResults, setGeocodeResults] = useState<readonly NominatimResult[]>([]);
+  const [geocodeError, setGeocodeError] = useState<string | null>(null);
+  const [isGeocoding, setIsGeocoding] = useState(false);
+  const [newCityName, setNewCityName] = useState("");
+  const [isCreatingCity, setIsCreatingCity] = useState(false);
+  const [cityCreateError, setCityCreateError] = useState<string | null>(null);
 
   // Track whether the operator has hand-edited the country so the
   // org-country prefill effect doesn't clobber their input. Refs avoid
@@ -824,6 +890,31 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
   // Preselect country from the owning organization on create. We only
   // run this when orgID is a valid UUID and the user hasn't typed yet.
   const orgIdValid = validateVenueOrgID(orgID) === null;
+  const organizationsQuery = useQuery<OrganizationListEnvelope, ApiError>({
+    queryKey: ["organizations", "venue-picker"],
+    queryFn: () =>
+      authedFetch<OrganizationListEnvelope>({
+        method: "GET",
+        path: "/v1/organizations",
+      }),
+    enabled: !isEdit,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const citiesQuery = useQuery<CityListEnvelope, ApiError>({
+    queryKey: ["geo", "cities", "venue-picker"],
+    queryFn: () =>
+      authedFetch<CityListEnvelope>({ method: "GET", path: "/v1/geo/cities" }),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const countriesQuery = useQuery<CountryListEnvelope, ApiError>({
+    queryKey: ["geo", "countries", "venue-picker"],
+    queryFn: () =>
+      authedFetch<CountryListEnvelope>({ method: "GET", path: "/v1/geo/countries" }),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
   const orgQuery = useQuery<OrganizationEnvelope, ApiError>({
     queryKey: ["venues", "form", "org", orgID.trim()],
     queryFn: () =>
@@ -847,6 +938,83 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
       setCountry(c.toUpperCase());
     }
   }, [orgQuery.data, isEdit]);
+
+  async function searchAddress() {
+    const query = addressSearch.trim();
+    if (query.length < 3) {
+      setGeocodeError("Enter at least three characters to search for an address.");
+      return;
+    }
+    setIsGeocoding(true);
+    setGeocodeError(null);
+    setGeocodeResults([]);
+    try {
+      const response = await fetch(nominatimSearchURL(query), {
+        headers: { Accept: "application/json" },
+      });
+      if (!response.ok) {
+        throw new Error(`Geocoding service returned ${response.status}`);
+      }
+      const results: unknown = await response.json();
+      setGeocodeResults(Array.isArray(results) ? (results as NominatimResult[]) : []);
+    } catch {
+      setGeocodeError("Address suggestions are unavailable. You can enter all fields manually.");
+    } finally {
+      setIsGeocoding(false);
+    }
+  }
+
+  function applyGeocodeResult(result: NominatimResult) {
+    const address = result.address ?? {};
+    const matchedCityName = address.city ?? address.town ?? address.village ?? address.municipality ?? "";
+    const matchedCountry = (address.country_code ?? "").toUpperCase();
+    const street = [address.road, address.house_number].filter(Boolean).join(" ");
+    setAddressLine1(street || result.display_name.split(",")[0] || "");
+    setPostalCode(address.postcode ?? "");
+    setCountry(matchedCountry);
+    countryTouchedRef.current = true;
+    setGeoLat(result.lat);
+    setGeoLng(result.lon);
+    if (name.trim() === "" && result.name !== undefined && result.name.trim() !== "") {
+      setName(result.name.trim());
+    }
+    const foundCity = (citiesQuery.data?.cities ?? []).find(
+      (city) =>
+        city.country_iso2.toUpperCase() === matchedCountry &&
+        city.name.localeCompare(matchedCityName, undefined, { sensitivity: "accent" }) === 0,
+    );
+    setCityID(foundCity?.id ?? "");
+    setNewCityName(foundCity === undefined ? matchedCityName : "");
+    setGeocodeResults([]);
+  }
+
+  async function createCity() {
+    const normalizedName = newCityName.trim();
+    const parent = (countriesQuery.data?.countries ?? []).find(
+      (candidate) => candidate.iso2.toUpperCase() === normalizeCountry(country),
+    );
+    const slug = slugifyCity(normalizedName);
+    if (parent === undefined || normalizedName === "" || slug === "") {
+      setCityCreateError("Choose a registry country and provide a city name before creating it.");
+      return;
+    }
+    setIsCreatingCity(true);
+    setCityCreateError(null);
+    try {
+      const response = await authedFetch<{ city: CityItem }>({
+        method: "POST",
+        path: "/v1/admin/geo/cities",
+        body: { country_id: parent.id, slug, name_en: normalizedName },
+      });
+      setCityID(response.city.id);
+      setNewCityName("");
+      await queryClient.invalidateQueries({ queryKey: ["geo", "cities"] });
+    } catch (error) {
+      setCityCreateError(error instanceof ApiError ? error.message : "Unable to create the city.");
+    } finally {
+      setIsCreatingCity(false);
+    }
+  }
 
   const nameErr = validateVenueName(name);
   const orgIDLocalErr = validateVenueOrgID(orgID);
@@ -1016,15 +1184,14 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
         <form onSubmit={onSubmit} style={formStyle} noValidate>
           {!isEdit ? (
             <FieldRow
-              label="Organization ID"
+              label="Organization"
               htmlFor="venue-org-id"
               error={serverErrors.org_id ?? null}
               localError={orgID.length > 0 ? orgIDLocalErr : null}
-              hint="UUID of the owning organization. Prefilled from the active org scope if set."
+              hint="Choose the organization that owns this venue."
             >
-              <input
+              <select
                 id="venue-org-id"
-                type="text"
                 value={orgID}
                 onChange={(e) => {
                   setOrgID(e.target.value);
@@ -1032,14 +1199,22 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
                     setServerErrors({ ...serverErrors, org_id: undefined });
                   }
                 }}
-                style={inputMonoStyle}
+                style={inputStyle}
                 required
-                maxLength={36}
-                autoCapitalize="off"
-                autoCorrect="off"
-                spellCheck={false}
                 data-testid="venues-form-org-id"
-              />
+                disabled={organizationsQuery.isPending}
+              >
+                <option value="">
+                  {organizationsQuery.isPending ? "Loading organizations…" : "Select an organization"}
+                </option>
+                {[...(organizationsQuery.data?.organizations ?? [])]
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map((organization) => (
+                    <option key={organization.id} value={organization.id}>
+                      {organization.name}{organization.slug !== undefined ? ` · ${organization.slug}` : ""}
+                    </option>
+                  ))}
+              </select>
             </FieldRow>
           ) : null}
           <FieldRow
@@ -1099,6 +1274,56 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
           <fieldset style={fieldsetStyle}>
             <legend style={legendStyle}>Address</legend>
             <FieldRow
+              label="Find an address"
+              htmlFor="venue-address-search"
+              error={null}
+              localError={null}
+              hint="Searches OpenStreetMap Nominatim. Selecting a suggestion fills the address, city, country, and coordinates; manual entry always remains available."
+            >
+              <div style={searchRowStyle}>
+                <input
+                  id="venue-address-search"
+                  type="search"
+                  value={addressSearch}
+                  onChange={(e) => setAddressSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void searchAddress();
+                    }
+                  }}
+                  style={inputStyle}
+                  placeholder="e.g. 28 Kubelíkova, Prague"
+                  data-testid="venues-form-address-search"
+                />
+                <button
+                  type="button"
+                  style={refreshButtonStyle}
+                  onClick={() => void searchAddress()}
+                  disabled={isGeocoding}
+                  data-testid="venues-form-address-search-submit"
+                >
+                  {isGeocoding ? "Searching…" : "Search"}
+                </button>
+              </div>
+              {geocodeError !== null ? <div style={fieldErrorStyle} role="status">{geocodeError}</div> : null}
+              {geocodeResults.length > 0 ? (
+                <div style={geocodeResultsStyle} data-testid="venues-form-address-suggestions">
+                  {geocodeResults.map((result, index) => (
+                    <button
+                      type="button"
+                      key={`${result.lat}-${result.lon}-${index}`}
+                      onClick={() => applyGeocodeResult(result)}
+                      style={geocodeResultButtonStyle}
+                      data-testid={`venues-form-address-suggestion-${index}`}
+                    >
+                      {result.display_name}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </FieldRow>
+            <FieldRow
               label="Country (ISO-3166-1 alpha-2)"
               htmlFor="venue-country"
               error={serverErrors.country ?? null}
@@ -1131,15 +1356,14 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
               />
             </FieldRow>
             <FieldRow
-              label="City ID"
+              label="City"
               htmlFor="venue-city-id"
               error={serverErrors.city_id ?? null}
-              localError={cityID.length > 0 ? cityIDErr : null}
-              hint="Optional UUID from the geo catalog."
+              localError={null}
+              hint="Optional city from the geo registry. Create a missing city inline after finding an address."
             >
-              <input
+              <select
                 id="venue-city-id"
-                type="text"
                 value={cityID}
                 onChange={(e) => {
                   setCityID(e.target.value);
@@ -1147,13 +1371,28 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
                     setServerErrors({ ...serverErrors, city_id: undefined });
                   }
                 }}
-                style={inputMonoStyle}
-                maxLength={36}
-                autoCapitalize="off"
-                autoCorrect="off"
-                spellCheck={false}
+                style={inputStyle}
                 data-testid="venues-form-city-id"
-              />
+                disabled={citiesQuery.isPending}
+              >
+                <option value="">{citiesQuery.isPending ? "Loading cities…" : "No city selected"}</option>
+                {[...(citiesQuery.data?.cities ?? [])]
+                  .filter((city) => country.trim() === "" || city.country_iso2 === normalizeCountry(country))
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map((city) => (
+                    <option key={city.id} value={city.id}>{city.name} ({city.country_iso2})</option>
+                  ))}
+              </select>
+              {citiesQuery.isError ? <div style={fieldErrorStyle}>City registry unavailable; retry the page or enter address details manually.</div> : null}
+              {newCityName !== "" ? (
+                <div style={inlineCityStyle} data-testid="venues-form-create-city">
+                  <span>“{newCityName}” is not in the registry.</span>
+                  <button type="button" style={refreshButtonStyle} onClick={() => void createCity()} disabled={isCreatingCity}>
+                    {isCreatingCity ? "Creating…" : "Create city"}
+                  </button>
+                  {cityCreateError !== null ? <span style={fieldErrorStyle}>{cityCreateError}</span> : null}
+                </div>
+              ) : null}
             </FieldRow>
             <FieldRow
               label="Postal code"
@@ -1290,6 +1529,17 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
                 />
               </FieldRow>
             </div>
+            {geoLat.trim() !== "" && geoLng.trim() !== "" && latErr === null && lngErr === null ? (
+              <div style={mapPreviewStyle} data-testid="venues-form-map-preview">
+                <strong>Map pin preview</strong>
+                <span>Drag is not required: adjust latitude and longitude above to move the pin.</span>
+                <iframe
+                  title="Venue location preview"
+                  style={mapFrameStyle}
+                  src={`https://www.openstreetmap.org/export/embed.html?layer=mapnik&marker=${encodeURIComponent(`${geoLat},${geoLng}`)}#map=16/${encodeURIComponent(geoLat)}/${encodeURIComponent(geoLng)}`}
+                />
+              </div>
+            ) : null}
           </fieldset>
 
           <FieldRow
@@ -2139,6 +2389,63 @@ const twoColRowStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "1fr 1fr",
   gap: 12,
+};
+
+const searchRowStyle: CSSProperties = {
+  display: "flex",
+  gap: 8,
+  alignItems: "center",
+};
+
+const geocodeResultsStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+  marginTop: 4,
+  border: "1px solid #cbd5e1",
+  borderRadius: 4,
+  background: "#ffffff",
+  padding: 4,
+};
+
+const geocodeResultButtonStyle: CSSProperties = {
+  border: "none",
+  background: "transparent",
+  textAlign: "left",
+  cursor: "pointer",
+  padding: "7px 8px",
+  borderRadius: 3,
+  color: "#0f172a",
+  fontSize: 12,
+};
+
+const inlineCityStyle: CSSProperties = {
+  display: "flex",
+  gap: 8,
+  alignItems: "center",
+  flexWrap: "wrap",
+  marginTop: 6,
+  fontSize: 11,
+  color: "#475569",
+};
+
+const mapPreviewStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  padding: 10,
+  border: "1px solid #cbd5e1",
+  borderRadius: 4,
+  fontSize: 11,
+  color: "#475569",
+  background: "#ffffff",
+};
+
+const mapFrameStyle: CSSProperties = {
+  width: "100%",
+  height: 220,
+  border: 0,
+  borderRadius: 3,
 };
 
 const statusBadgeStyle: CSSProperties = {

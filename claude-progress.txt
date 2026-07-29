@@ -22799,3 +22799,21 @@ required durable persistence proof.
   development-config, and explanatory-comment references; no feature data is
   mocked.
 - Feature #398 marked passing. Completion: 398/409 features passing.
+
+## 2026-07-29 — Feature #399 (AB-20) complete
+
+- Reworked venue creation into a geocoding-first flow: owning organization and
+  city are live name-first registry pickers, so operators no longer type UUIDs.
+- Added OpenStreetMap Nominatim address search. Selecting a result fills street,
+  postal code, country, WGS-84 coordinates, and the matching geo city; a missing
+  city can be created inline. Manual entry remains fully available.
+- Added an OpenStreetMap map-pin preview for valid coordinates. Latitude and
+  longitude fields remain the explicit manual pin-adjustment controls, and the
+  values continue through the existing authenticated PostgreSQL venue CRUD API.
+- Verified: focused venue suite (64 tests), admin type-check, and production
+  Vite build pass; API `/readyz` returns 200. Production-source mock grep found
+  no feature data mocks. Unauthorized/non-member venue-write attempts correctly
+  returned permission/organization-denied responses. `init.sh` cannot run on
+  this Windows host because WSL lacks `/bin/bash`; equivalent Compose startup
+  reached the healthy API (with its pre-existing healthcheck warning).
+- Completion after marking: 399/409 features passing.
