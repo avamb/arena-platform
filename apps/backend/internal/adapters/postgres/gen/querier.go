@@ -49,6 +49,8 @@ type Querier interface {
 	GetOrganizationByID(ctx context.Context, id uuid.UUID) (OrganizationRow, error)
 	GetOrganizationBySlug(ctx context.Context, slug string) (OrganizationRow, error)
 	ListOrganizations(ctx context.Context) ([]OrganizationRow, error)
+	ListOrganizationsPage(ctx context.Context, search string, limit, offset int32) ([]OrganizationRow, error)
+	CountOrganizationsPage(ctx context.Context, search string) (int64, error)
 	UpdateOrganization(ctx context.Context, id uuid.UUID, name, slug, country, defaultLocale string, reservationTTL int32, legalName, taxID, taxIDScheme, registrationNumber, addressLine1, addressLine2, postalCode, city, addressCountry, contactEmail, contactPhone, websiteURL *string, kybStatus string) (OrganizationRow, error)
 	SoftDeleteOrganization(ctx context.Context, id uuid.UUID) (OrganizationRow, error)
 	GetTicketPDFFormatByTicketID(ctx context.Context, ticketID uuid.UUID) (string, error)

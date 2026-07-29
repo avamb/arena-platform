@@ -22833,3 +22833,24 @@ required durable persistence proof.
   `init.sh` remains unavailable on this Windows host because WSL has no Linux
   distribution; the already-running API was used for the readiness check.
 - Completion after marking: 400/409 features passing.
+
+## 2026-07-29 - Feature #401 (AB-7) complete
+
+- `GET /v1/admin/organizations` now applies `q` (case-insensitive name/slug
+  substring), `limit`, and `offset` in PostgreSQL, and returns the matching
+  `total` plus applied pagination metadata. Query parameters are recorded in
+  the existing superadmin audit event; auth, permission, and audit-reason
+  gates remain unchanged.
+- The admin Organizations page sends debounced (300 ms) server search requests,
+  resets to the first page on a new search, and provides Previous/Next controls.
+  Country, locale, and UUID filtering remains an explicit local fallback for
+  the loaded page.
+- Added a PostgreSQL Testcontainers integration test with unique `TEST_401`
+  organizations, validating search, total count, and a second offset page.
+
+Verification: focused admin Vitest (114), admin type-check/build, generated
+OpenAPI Go/TypeScript contracts and `check-ts`, focused backend tests, and the
+PostgreSQL integration test all pass. A freshly built Docker API image started
+against the live test network and returned `/readyz` 200. Existing no-JWT
+coverage still returns 401 for the organizations route. `init.sh` could not be
+run because this Windows host has no bash.

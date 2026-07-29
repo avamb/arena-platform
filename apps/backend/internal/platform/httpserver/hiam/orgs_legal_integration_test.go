@@ -55,3 +55,40 @@ func TestAdminOrganizationLegalPatchGetRoundTrip(t *testing.T) {
 		t.Fatalf("GET legal-field roundtrip failed: %s", getRec.Body.String())
 	}
 }
+
+func TestSuperadminOrganizationSearchAndPagination(t *testing.T) {
+	pool, cleanup := pgtest.NewTestDB(t)
+	defer cleanup()
+	q := gen.New(pool)
+	for _, org := range []struct{ name, slug string }{
+		{"TEST_401 Arena North", "test-401-north"},
+		{"TEST_401 Arena South", "test-401-south"},
+		{"Unrelated organization", "unrelated-401"},
+	} {
+		if _, err := q.InsertOrganization(context.Background(), org.name, org.slug, "DE", "en", 1200); err != nil {
+			t.Fatalf("insert %q: %v", org.slug, err)
+		}
+	}
+	h := New(q, q, q, pool, nil, slog.Default(), nil, nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/admin/organizations?q=TEST_401&limit=1&offset=1", nil)
+	req.Header.Set("X-Admin-Reason", "verify TEST_401 organization search and pagination")
+	rec := httptest.NewRecorder()
+	h.HandleSuperadminListOrganizations(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET = %d: %s", rec.Code, rec.Body.String())
+	}
+	var response struct {
+		Organizations []struct {
+			Slug string `json:"slug"`
+		} `json:"organizations"`
+		Total  int64 `json:"total"`
+		Limit  int32 `json:"limit"`
+		Offset int32 `json:"offset"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Total != 2 || response.Limit != 1 || response.Offset != 1 || len(response.Organizations) != 1 || response.Organizations[0].Slug != "test-401-south" {
+		t.Fatalf("unexpected paginated response: %s", rec.Body.String())
+	}
+}

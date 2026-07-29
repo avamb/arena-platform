@@ -16,6 +16,7 @@ import {
   DRAWER_TAB_KEYS,
   MEMBERSHIP_ROLES,
   buildOrgScopedHref,
+  buildOrganizationsListPath,
   buildAddMemberBody,
   filterRows,
   formatDurationSeconds,
@@ -144,6 +145,20 @@ describe("filterRows", () => {
 
   it("treats whitespace-only filter as empty", () => {
     expect(filterRows(rows, "   ", false).map((r) => r.slug)).toEqual(["acme", "beta"]);
+  });
+});
+
+describe("buildOrganizationsListPath", () => {
+  it("sends a trimmed server search with page controls", () => {
+    expect(buildOrganizationsListPath("  Acme & Sons  ", 25, 50)).toBe(
+      "/v1/admin/organizations?limit=25&offset=50&q=Acme+%26+Sons",
+    );
+  });
+
+  it("omits q when the local fallback filter is blank", () => {
+    expect(buildOrganizationsListPath("   ", 25, 0)).toBe(
+      "/v1/admin/organizations?limit=25&offset=0",
+    );
   });
 });
 

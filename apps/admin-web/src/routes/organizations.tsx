@@ -132,6 +132,19 @@ export interface AdminOrganization {
 interface OrganizationsEnvelope {
   readonly organizations: readonly AdminOrganization[];
   readonly total: number;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+export const ORGANIZATIONS_PAGE_SIZE = 25;
+
+export function buildOrganizationsListPath(rawSearch: string, limit: number, offset: number): string {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  const search = rawSearch.trim();
+  if (search !== "") {
+    params.set("q", search);
+  }
+  return `/v1/admin/organizations?${params.toString()}`;
 }
 
 const ORG_NAV_ENTRY = NAV_BY_PATH["/organizations"];
@@ -157,6 +170,8 @@ function OrganizationsExplorer() {
   const canUpdate = permissions.has("org.update");
   const canArchive = permissions.has("org.delete");
   const [filter, setFilter] = useState("");
+  const [debouncedFilter, setDebouncedFilter] = useState("");
+  const [pageOffset, setPageOffset] = useState(0);
   const [editOrgId, setEditOrgId] = useState<string | null>(null);
   const [archiveOrgId, setArchiveOrgId] = useState<string | null>(null);
   // SAUI-#240: activeOrgId + activeTab are reflected to the URL hash so a
@@ -180,12 +195,22 @@ function OrganizationsExplorer() {
     }
   }, [activeOrgId, activeTab]);
 
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedFilter(filter);
+      setPageOffset(0);
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [filter]);
+
+  const listPath = buildOrganizationsListPath(debouncedFilter, ORGANIZATIONS_PAGE_SIZE, pageOffset);
+
   const query = useQuery<OrganizationsEnvelope, ApiError>({
-    queryKey: ["admin", "organizations"],
+    queryKey: ["admin", "organizations", debouncedFilter, pageOffset],
     queryFn: () =>
       authedFetch<OrganizationsEnvelope>({
         method: "GET",
-        path: "/v1/admin/organizations",
+        path: listPath,
       }),
     // 401/403/reason-required must surface as states, not retry storms.
     retry: (failureCount, err) => {
@@ -269,12 +294,12 @@ function OrganizationsExplorer() {
           <span style={visuallyHiddenStyle}>Filter organizations</span>
           <input
             type="search"
-            placeholder="Filter by name, slug, country, locale, or id (local)"
+            placeholder="Search name or slug (server); country, locale, or ID (page)"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             style={searchInputStyle}
             data-testid="orgs-filter"
-            aria-label="Filter organizations locally"
+            aria-label="Search organizations by name or slug"
           />
         </label>
         <label style={checkboxLabelStyle}>
@@ -287,9 +312,31 @@ function OrganizationsExplorer() {
           <span>Show soft-deleted</span>
         </label>
         <div style={countStyle} data-testid="orgs-count" aria-live="polite">
-          {renderCount(rows.length, filtered.length, query.isPending)}
+          {renderCount(query.data?.total ?? 0, rows.length, filtered.length, query.isPending)}
         </div>
       </div>
+
+      <nav aria-label="Organization result pages" style={rowActionsCellStyle}>
+        <button
+          type="button"
+          style={rowActionButtonStyle}
+          onClick={() => setPageOffset((current) => Math.max(0, current - ORGANIZATIONS_PAGE_SIZE))}
+          disabled={pageOffset === 0 || query.isFetching}
+        >
+          Previous
+        </button>
+        <span style={mutedHintStyle}>
+          {pageOffset + 1}–{Math.min(pageOffset + rows.length, query.data?.total ?? 0)} of {(query.data?.total ?? 0).toLocaleString()}
+        </span>
+        <button
+          type="button"
+          style={rowActionButtonStyle}
+          onClick={() => setPageOffset((current) => current + ORGANIZATIONS_PAGE_SIZE)}
+          disabled={query.isFetching || pageOffset + ORGANIZATIONS_PAGE_SIZE >= (query.data?.total ?? 0)}
+        >
+          Next
+        </button>
+      </nav>
 
       <OrganizationsBody
         query={query}
@@ -357,14 +404,14 @@ export function filterRows(
   });
 }
 
-function renderCount(total: number, shown: number, pending: boolean): string {
+function renderCount(total: number, pageRows: number, shown: number, pending: boolean): string {
   if (pending) {
     return "Loading…";
   }
-  if (shown === total) {
+  if (shown === pageRows) {
     return `${total.toLocaleString()} organization${total === 1 ? "" : "s"}`;
   }
-  return `${shown.toLocaleString()} of ${total.toLocaleString()} (local filter)`;
+  return `${shown.toLocaleString()} on this page (local fallback filter)`;
 }
 
 // ---------------------------------------------------------------------------

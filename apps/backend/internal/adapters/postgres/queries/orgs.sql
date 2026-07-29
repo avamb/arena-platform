@@ -24,6 +24,23 @@ FROM   organizations
 WHERE  deleted_at IS NULL
 ORDER  BY created_at ASC, id ASC;
 
+-- name: ListOrganizationsPage :many
+-- Returns a stable page of active organizations. Pass an empty search string to
+-- return all organizations; otherwise name and slug are matched case-insensitively.
+SELECT id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, created_at, updated_at, deleted_at
+FROM   organizations
+WHERE  deleted_at IS NULL
+  AND  ($1 = '' OR name ILIKE '%' || $1 || '%' OR slug ILIKE '%' || $1 || '%')
+ORDER  BY created_at ASC, id ASC
+LIMIT  $2 OFFSET $3;
+
+-- name: CountOrganizationsPage :one
+-- Returns the number of active organizations matching the name/slug search.
+SELECT COUNT(*)
+FROM   organizations
+WHERE  deleted_at IS NULL
+  AND  ($1 = '' OR name ILIKE '%' || $1 || '%' OR slug ILIKE '%' || $1 || '%');
+
 -- name: UpdateOrganization :one
 UPDATE organizations
 SET    name                    = COALESCE(NULLIF($2, ''), name),

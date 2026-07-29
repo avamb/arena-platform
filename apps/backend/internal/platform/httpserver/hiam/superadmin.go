@@ -177,15 +177,35 @@ func (h *Handler) HandleSuperadminListOrganizations(w http.ResponseWriter, r *ht
 		return
 	}
 
-	rows, err := h.superadminQueries.ListOrganizations(r.Context())
+	limit, offset, ok := parseSuperadminPagination(w, r)
+	if !ok {
+		return
+	}
+	search := strings.TrimSpace(r.URL.Query().Get("q"))
+	if len(search) > 200 {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("superadmin.invalid_query",
+			"q must be at most 200 characters", r))
+		return
+	}
+
+	rows, err := h.superadminQueries.ListOrganizationsPage(r.Context(), search, limit, offset)
 	if err != nil {
 		h.logger.Error("superadmin: list organizations failed", slog.Any("error", err))
 		httputil.WriteJSON(w, http.StatusInternalServerError,
 			httputil.ErrorEnvelope("superadmin.internal", "failed to list organizations", r))
 		return
 	}
+	total, err := h.superadminQueries.CountOrganizationsPage(r.Context(), search)
+	if err != nil {
+		h.logger.Error("superadmin: count organizations failed", slog.Any("error", err))
+		httputil.WriteJSON(w, http.StatusInternalServerError,
+			httputil.ErrorEnvelope("superadmin.internal", "failed to count organizations", r))
+		return
+	}
 
-	h.logSuperadminAudit(r, "organizations", reason, map[string]any{})
+	h.logSuperadminAudit(r, "organizations", reason, map[string]any{
+		"q": search, "limit": limit, "offset": offset,
+	})
 
 	orgs := make([]map[string]any, 0, len(rows))
 	for _, o := range rows {
@@ -228,7 +248,9 @@ func (h *Handler) HandleSuperadminListOrganizations(w http.ResponseWriter, r *ht
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"organizations": orgs,
-		"total":         len(orgs),
+		"total":         total,
+		"limit":         limit,
+		"offset":        offset,
 	})
 }
 

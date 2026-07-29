@@ -6109,6 +6109,9 @@ type SuperadminListOrdersParams struct {
 
 // SuperadminListOrganizationsParams defines parameters for SuperadminListOrganizations.
 type SuperadminListOrganizationsParams struct {
+	// Q Case-insensitive substring search across organization name and slug.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
 	// Limit Maximum number of rows to return.
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 

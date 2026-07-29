@@ -9680,11 +9680,16 @@ paths:
     get:
       operationId: superadminListOrganizations
       summary: Cross-tenant list of all organizations (superadmin)
-      description: Cross-tenant list of all organizations (superadmin). Requires the `superadmin.read` permission.
+      description: Cross-tenant list of organizations (superadmin), with name/slug search and offset pagination. Requires the `superadmin.read` permission.
       tags: [v1]
       security:
         - bearerAuth: []
       parameters:
+        - name: q
+          description: Case-insensitive substring search across organization name and slug.
+          in: query
+          required: false
+          schema: { type: string, maxLength: 200 }
         - name: limit
           description: Maximum number of rows to return.
           in: query
@@ -9714,6 +9719,8 @@ paths:
                         country: { type: string }
                         created_at: { type: string, format: date-time }
                   total: { type: integer }
+                  limit: { type: integer }
+                  offset: { type: integer }
         "401":
           description: Unauthorized.
           content:

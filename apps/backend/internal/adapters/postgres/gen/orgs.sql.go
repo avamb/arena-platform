@@ -149,6 +149,49 @@ func (q *Queries) ListOrganizations(ctx context.Context) ([]OrganizationRow, err
 	return orgs, rows.Err()
 }
 
+// ListOrganizationsPage returns one stable page of active organizations.
+// search matches organization names and slugs case-insensitively; pass an empty
+// string to return every active organization.
+const listOrganizationsPage = `-- name: ListOrganizationsPage :many
+SELECT id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, created_at, updated_at, deleted_at
+FROM   organizations
+WHERE  deleted_at IS NULL
+  AND  ($1 = '' OR name ILIKE '%' || $1 || '%' OR slug ILIKE '%' || $1 || '%')
+ORDER  BY created_at ASC, id ASC
+LIMIT  $2 OFFSET $3`
+
+func (q *Queries) ListOrganizationsPage(ctx context.Context, search string, limit, offset int32) ([]OrganizationRow, error) {
+	rows, err := q.db.Query(ctx, listOrganizationsPage, search, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var orgs []OrganizationRow
+	for rows.Next() {
+		o, err := scanOrganizationRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		orgs = append(orgs, o)
+	}
+	return orgs, rows.Err()
+}
+
+const countOrganizationsPage = `-- name: CountOrganizationsPage :one
+SELECT COUNT(*)
+FROM   organizations
+WHERE  deleted_at IS NULL
+  AND  ($1 = '' OR name ILIKE '%' || $1 || '%' OR slug ILIKE '%' || $1 || '%')`
+
+// CountOrganizationsPage returns the total number of active organizations
+// matching search, independently of a page's limit and offset.
+func (q *Queries) CountOrganizationsPage(ctx context.Context, search string) (int64, error) {
+	var total int64
+	err := q.db.QueryRow(ctx, countOrganizationsPage, search).Scan(&total)
+	return total, err
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // UpdateOrganization
 // ─────────────────────────────────────────────────────────────────────────────
