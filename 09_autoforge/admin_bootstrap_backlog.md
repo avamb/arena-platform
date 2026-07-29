@@ -232,6 +232,39 @@ inputs (AB-5).
    (deep-link /users?org=<id> from the org Users tab / AB-16 invite flow).
 3. Keep a "paste UUID" escape hatch for scale (combobox accepts raw UUID too).
 
+## AB-18. Legal-entity fields: backend PATCH/read was never implemented (SILENT DATA LOSS)
+
+**Category:** Backend / API — HIGH PRIORITY
+**Problem:** The org detail "Legal & billing" form (feature #256 UI) PATCHes
+/v1/organizations/{id} with legal_name, tax_id(+scheme), registration_number,
+legal_address_*, contact_email, contact_phone, website_url, kyb_status. The server
+returns 200 but HandleUpdateOrg only persists name/slug/country/locale/TTL and
+silently drops everything else; NO handler in httpserver references legal_name /
+contact_email at all (grep-verified 2026-07-29). Columns exist since migration 0049.
+Owner filled the form twice and lost the data twice; only bank accounts (real
+endpoint) and logo (media endpoint) survived.
+**Steps:**
+1. Extend PATCH /v1/organizations/{id} (or a dedicated /legal-entity endpoint) to
+   persist all 0049 fields; sqlc query + validation (kyb transitions need
+   legal_name; country alpha-2; tax_id per scheme as the UI copy promises).
+2. Return the fields in the org read/list endpoints the admin form hydrates from
+   (/v1/admin/organizations and single-org GET) — today they are also absent.
+3. OpenAPI schema + regenerate; integration test: PATCH → GET roundtrip.
+4. Guardrail: API must reject unknown body fields or the UI must detect
+   no-op saves — a 200 that drops fields must never happen again.
+
+## AB-19. Org detail tabs are read-only shells — no create/edit from org context
+
+**Category:** SuperAdmin UI
+**Problem:** Organization card tabs (Users/Venues/Channels/Payments) render raw
+GET output with no create/edit actions; owner concluded "нет добавления площадки,
+каналов, платежей". Real CRUD lives on the global sidebar pages (Venues, Sales
+Channels, Payment Configs), which is not discoverable from the org context.
+**Steps:**
+1. Each org tab: embed the scoped list + primary create action prefilled with the
+   org (or at minimum a deep link "Create venue for this organization →").
+2. Users tab: link to /users?org=<id> (pairs with AB-17 preselect).
+
 ## AB-11. Ops: production-mode readiness checklist
 
 **Category:** Deploy / Config
