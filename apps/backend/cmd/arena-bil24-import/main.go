@@ -101,16 +101,27 @@ func run(args []string) error {
 	orgID := fs.String("org-id", "", "UUID of the arena_new organization that will own the imported events (required)")
 	dryRun := fs.Bool("dry-run", false, "print what would be imported without touching the database")
 	dbURL := fs.String("db-url", "", "PostgreSQL DSN (overrides DATABASE_URL env var)")
+	venuesMode := fs.Bool("venues", false, "import countries, cities, and venues from the live Bil24 API")
+	bil24URL := fs.String("bil24-url", "", "Bil24 JSON RPC URL (overrides BIL24_API_URL)")
+	bil24FID := fs.String("bil24-fid", "", "Bil24 frontend ID (overrides BIL24_FID)")
+	bil24Token := fs.String("bil24-token", "", "Bil24 API token (overrides BIL24_TOKEN)")
+	bil24Locale := fs.String("bil24-locale", "ru-RU", "Bil24 response locale")
 
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	if *inputFile == "" {
+	if !*venuesMode && *inputFile == "" {
 		return fmt.Errorf("--input is required; point it at the Bil24 export file (.csv or .json)")
 	}
 	if *orgID == "" {
 		return fmt.Errorf("--org-id is required; provide the UUID of the target organization")
+	}
+	if *venuesMode {
+		return runLiveVenueImport(liveVenueImportOptions{
+			OrgID: *orgID, DryRun: *dryRun, DBURL: *dbURL, APIURL: *bil24URL,
+			FID: *bil24FID, Token: *bil24Token, Locale: *bil24Locale,
+		})
 	}
 
 	// -------------------------------------------------------------------------

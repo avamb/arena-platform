@@ -22872,3 +22872,25 @@ passes all 3 owner-route viewport checks with no horizontal body scroll and a
 44px hamburger target. Production-source mock grep found no feature data mocks;
 the only hits are the established development diagnostics/config guards and
 comments. `init.sh` remains unavailable because this Windows host has no Bash.
+
+## 2026-07-29 — Feature #405 (AB-21) complete
+
+- Added the `arena-bil24-import --venues` live Bil24 JSON-RPC mode. It sends
+  authenticated `GET_COUNTRIES`, `GET_CITIES`, and `GET_VENUES` requests,
+  maps the resulting geo data into the durable registry, and imports venues
+  for the selected organization.
+- Migration `0073_bil24_venue_external_id.sql` provides the nullable, unique
+  `venues.external_bil24_id` source mapping. Addresses, coordinates, and
+  city/country values are written in a single transaction. Unchanged re-runs
+  are skipped; changed source records update safely. Cyrillic source names
+  retain their exact i18n display value and use a stable source-ID slug.
+- Added recorded-RPC and RPC-error tests, plus a PostgreSQL durability proof
+  that creates a unique `TEST_405` venue, verifies the persisted mapping, and
+  confirms a second import is unchanged before cleanup. The operator runbook
+  documents credentials, dry-run, and exit behavior.
+
+Verification: containerized `go test ./apps/backend/cmd/arena-bil24-import`,
+the focused PostgreSQL persistence proof against `arena_e2e_pg`, and
+`go build ./apps/backend/...` all pass. `init.sh` cannot run on this Windows
+host because WSL has no `/bin/bash`; the existing test database and API stack
+were available for the persistence verification. Feature #405 marked passing.

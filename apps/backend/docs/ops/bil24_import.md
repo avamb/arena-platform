@@ -1,9 +1,36 @@
-# Bil24 One-Shot Event Import — Operator Runbook
+# Bil24 Import — Operator Runbook
 
 **Feature #387** — One-time snapshot import of current Bil24 events as native arena_new catalog entries.
 
 This runbook describes how to export events from the Bil24 admin UI and import
 them into the arena_new database using the `arena-bil24-import` CLI tool.
+
+## Live venue, city, and country import
+
+Feature #405 adds a separate live API mode. It makes authenticated JSON-RPC
+calls to `GET_COUNTRIES`, `GET_CITIES`, and `GET_VENUES`; it does not require
+an event snapshot. Country and city registry values are created when absent.
+Venues retain their `external_bil24_id`, street address, and WGS-84
+coordinates. Re-running the same import is safe: unchanged rows are skipped.
+
+Credentials are supplied at run time and never written to the database or
+printed. Use a production HTTPS endpoint and keep the token in the operator's
+secret store:
+
+```bash
+export BIL24_FID=1271
+export BIL24_TOKEN='...'
+export BIL24_API_URL=https://api.bil24.pro/json
+
+arena-bil24-import --venues --org-id <arena-org-uuid> --dry-run
+arena-bil24-import --venues --org-id <arena-org-uuid>
+```
+
+`--bil24-fid`, `--bil24-token`, and `--bil24-url` override these environment
+variables. `--dry-run` authenticates and reads the source but makes no
+database writes. A successful run prints country/city and imported/updated/
+unchanged counts; a non-zero exit status means the source call or transaction
+failed.
 
 ---
 
