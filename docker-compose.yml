@@ -204,6 +204,16 @@ services:
       DB_POOL_MAX_CONN_IDLE_TIME: "30m"
       DB_LOG_QUERIES: "false"
 
+      # Development defaults. Production is configured in Dokploy, where the
+      # worker must receive real Brevo SMTP_* secrets and EMAIL_MODE=smtp.
+      EMAIL_MODE: "log"
+      SMTP_HOST: ""
+      SMTP_PORT: "587"
+      SMTP_USERNAME: ""
+      SMTP_PASSWORD: ""
+      SMTP_FROM: ""
+      SMTP_USE_TLS: "true"
+
       # arena-worker exposes /healthz and /metrics on the sidecar metrics
       # server (WORKER_METRICS_ADDR) rather than on the api port.
       # HEALTH_ADDR overrides the arena-healthcheck default so it probes

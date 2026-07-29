@@ -22913,3 +22913,28 @@ test passes, as do focused migrations/permissions tests, `go build
 returned `/readyz` 200. Production-source mock-data scan found only established
 development/auth infrastructure and explicit no-mock comments; no feature mock
 data was added. Feature #406 marked passing.
+
+## 2026-07-29 — Feature #408 (AB-11) complete
+
+- Added the explicit `ALLOW_PRIVATE_DB_PLAINTEXT` production exception for a
+  PostgreSQL instance that is only reachable over a private Docker network.
+  TLS remains mandatory by default: the exception only accepts loopback,
+  private/link-local IPs, or an unqualified Docker service hostname, and still
+  requires the operator to set the flag deliberately. Dotted/public hosts
+  remain rejected.
+- Added regression coverage for private Docker/RFC1918/ULA hosts, public
+  hostname/IP rejection, and the requirement that the override be explicit.
+- Wired the worker SMTP environment variables into the compose template and
+  documented the Brevo secret/sender configuration plus the exact Dokploy
+  private-Postgres flip procedure in `deploy/DOKPLOY.md`.
+
+Verification: `go test ./apps/backend/internal/platform/config
+./apps/backend/internal/platform/httpserver` passes; a fresh production image
+build succeeds; and a direct production-mode worker container smoke connected
+to the running PostgreSQL container, selected the SMTP sender, and reached its
+ready state using the private-network override. `docker compose config` still
+reports pre-existing invalid healthcheck syntax, so it was not altered for this
+scoped feature. The final operator action is to add the actual Brevo SMTP key
+and a verified sender to Dokploy before the production flip. Feature #408 was
+skipped (not marked passing) because that external Brevo credential and sender
+verification are required to complete the live production flip.

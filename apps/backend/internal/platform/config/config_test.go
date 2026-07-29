@@ -772,6 +772,43 @@ func TestValidate_Production_DBTLSAcceptedModes(t *testing.T) {
 	}
 }
 
+func TestValidate_Production_PrivateDatabasePlaintextOverride(t *testing.T) {
+	cases := []struct {
+		name string
+		dsn  string
+		want bool
+	}{
+		{"unqualified Docker service", "postgres://arena:pw@postgres:5432/arena?sslmode=disable", true},
+		{"RFC1918 address", "postgres://arena:pw@10.42.0.10:5432/arena?sslmode=disable", true},
+		{"IPv6 ULA", "postgres://arena:pw@[fd12::10]:5432/arena?sslmode=disable", true},
+		{"public DNS hostname", "postgres://arena:pw@db.example.com:5432/arena?sslmode=disable", false},
+		{"public IP address", "postgres://arena:pw@198.51.100.10:5432/arena?sslmode=disable", false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := validProductionBase()
+			cfg.DatabaseURL = tc.dsn
+			cfg.AllowPrivateDBPlaintext = true
+			err := cfg.Validate()
+			if tc.want && err != nil {
+				t.Fatalf("expected private plaintext override to pass, got: %v", err)
+			}
+			if !tc.want && (err == nil || !strings.Contains(err.Error(), "unsafe TLS mode")) {
+				t.Fatalf("expected unsafe TLS rejection, got: %v", err)
+			}
+		})
+	}
+}
+
+func TestValidate_Production_PrivateDatabasePlaintextStillRequiresExplicitFlag(t *testing.T) {
+	cfg := validProductionBase()
+	cfg.DatabaseURL = "postgres://arena:pw@postgres:5432/arena?sslmode=disable"
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "unsafe TLS mode") {
+		t.Fatalf("private host without explicit flag must be rejected, got: %v", err)
+	}
+}
+
 // TestValidate_ProductionWebhookOutbox ensures the webhook mode with URL is
 // also a valid production profile (not just disabled).
 func TestValidate_ProductionWebhookOutbox(t *testing.T) {

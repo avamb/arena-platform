@@ -131,7 +131,8 @@ into each service's env tab).
 > - `ENABLE_DEV_AUTH` must be `false`.
 > - `CORS_ALLOWED_ORIGINS` must not contain `*`.
 > - `DB_LOG_QUERIES` must be `false`.
-> - `DATABASE_URL` must use `sslmode=require` or `sslmode=verify-full`.
+> - `DATABASE_URL` must use `sslmode=require` or `sslmode=verify-full`, unless
+>   the narrowly-scoped private Docker-network override below is explicitly used.
 > - `MEDIA_BACKEND=local` requires a strong `MEDIA_SIGNING_SECRET` (≥ 32 bytes).
 > - `EMAIL_MODE` must be `smtp` (never `log`).
 > - `OUTBOX_MODE` must be `webhook` or `disabled` (never `noop` or empty).
@@ -156,6 +157,7 @@ into each service's env tab).
 | `APP_PUBLIC_URL` | api / worker | `https://app.example.com` | Canonical URL for emails and webhooks; never derived from request headers |
 | `OUTBOX_MODE` | worker | `webhook` or `disabled` | `noop` and empty are forbidden in production |
 | `EMAIL_MODE` | worker | `smtp` | `log` is forbidden in production |
+| `ALLOW_PRIVATE_DB_PLAINTEXT` | api / worker / migrate | `false` | Set `true` only for an unqualified Docker service host or private IP when in-network PostgreSQL has no TLS. Never use for a managed/external DB. |
 
 #### Email delivery (when EMAIL_MODE=smtp)
 
@@ -167,6 +169,26 @@ into each service's env tab).
 | `SMTP_PASSWORD` | worker | SMTP auth password |
 | `SMTP_FROM` | worker | Envelope from address, e.g. `tickets@arena.example.com` |
 | `SMTP_USE_TLS` | worker | `true` recommended |
+
+#### Brevo SMTP production values
+
+Create a Brevo SMTP key in the Brevo console and store it as a Dokploy secret;
+do not put it in Git or a shared non-secret environment group. Set these on
+**arena-worker** (the only process that sends mail):
+
+| Variable | Brevo value |
+|---|---|
+| `EMAIL_MODE` | `smtp` |
+| `SMTP_HOST` | `smtp-relay.brevo.com` |
+| `SMTP_PORT` | `587` |
+| `SMTP_USERNAME` | Brevo SMTP login (usually the account email) |
+| `SMTP_PASSWORD` | Brevo SMTP key (Dokploy secret) |
+| `SMTP_FROM` | A Brevo-verified sender address |
+| `SMTP_USE_TLS` | `true` |
+
+Use the same `EMAIL_MODE=smtp` on API and migrate too, because all three load
+the shared production config. SMTP credentials only need to be present on the
+worker; API and migrate never instantiate an SMTP sender.
 
 #### Outbox webhook (when OUTBOX_MODE=webhook)
 
@@ -221,6 +243,22 @@ into each service's env tab).
    will need it for `DATABASE_URL` in §4.
 3. Once the database service is `Running`, connect it to your `arena-api`
    application via **Service Links** (or set `DATABASE_URL` manually).
+
+#### Private Docker-network PostgreSQL without TLS
+
+Prefer enabling TLS on PostgreSQL or using a managed TLS endpoint. If the
+Dokploy PostgreSQL 17 service is reachable only through its private Docker
+network and does not support TLS, this release supports an audited temporary
+exception. Set the following on API, worker, and migrate:
+
+```text
+DATABASE_URL=postgres://USER:PASSWORD@postgres:5432/DB?sslmode=disable
+ALLOW_PRIVATE_DB_PLAINTEXT=true
+```
+
+The application rejects this flag for dotted/public hostnames; it only accepts
+loopback, private/link-local IPs, or an unqualified Docker service name. Do not
+publish port 5432 and remove the override once PostgreSQL TLS is enabled.
 
 ### Option B — External PostgreSQL
 

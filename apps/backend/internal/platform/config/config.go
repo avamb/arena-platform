@@ -23,6 +23,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -133,6 +135,9 @@ type Config struct {
 	// DBLogQueries enables per-statement SQL logging. Forbidden in production
 	// because it leaks PII and degrades performance.
 	DBLogQueries bool `env:"DB_LOG_QUERIES" required:"false" default:"false"`
+	// AllowPrivateDBPlaintext is an explicit, limited exception for a PostgreSQL
+	// service on the same private Docker network that does not have TLS enabled.
+	AllowPrivateDBPlaintext bool `env:"ALLOW_PRIVATE_DB_PLAINTEXT" required:"false" default:"false"`
 
 	// -------------------------------------------------------------------------
 	// Redis
@@ -499,6 +504,13 @@ func Load() (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.DBLogQueries = b
+
+	// This remains off by default and is constrained again by validateProduction.
+	b, err = getenvBool("ALLOW_PRIVATE_DB_PLAINTEXT", false)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.AllowPrivateDBPlaintext = b
 
 	// Stub auth defaults to on in development so /v1/echo is testable without
 	// wiring a real IdP, and off otherwise so a forgotten variable in
@@ -906,11 +918,12 @@ func (c *Config) validateProduction() []error {
 	// are all rejected because they permit plaintext fallback. Only require,
 	// verify-ca, and verify-full enforce an encrypted connection with server
 	// certificate validation.
-	if !productionDBTLSSafe(c.DatabaseURL) {
+	if !productionDBTLSSafe(c.DatabaseURL) && !c.privateDBPlaintextAllowed() {
 		errs = append(errs, fmt.Errorf(
 			"DATABASE_URL uses an unsafe TLS mode in production"+
 				" (absent, prefer, disable, and allow sslmode are all rejected);"+
-				" explicitly set sslmode=require, sslmode=verify-ca, or sslmode=verify-full",
+				" explicitly set sslmode=require, sslmode=verify-ca, or sslmode=verify-full"+
+				" (or set ALLOW_PRIVATE_DB_PLAINTEXT=true only for a private Docker-network host)",
 		))
 	}
 
@@ -1122,6 +1135,47 @@ func productionDBTLSSafe(dsn string) bool {
 	default:
 		return false
 	}
+}
+
+// privateDBPlaintextAllowed permits a narrowly-scoped production exception for
+// a PostgreSQL instance reachable only within a private container network.
+func (c Config) privateDBPlaintextAllowed() bool {
+	return c.AllowPrivateDBPlaintext && privateDatabaseHost(c.DatabaseURL)
+}
+
+func privateDatabaseHost(dsn string) bool {
+	host := databaseHost(dsn)
+	if host == "" {
+		return false
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()
+	}
+	// Docker Compose service names are single labels (for example "postgres").
+	// A dotted hostname is rejected because its network location cannot be
+	// established safely during config validation.
+	return !strings.Contains(host, ".")
+}
+
+func databaseHost(dsn string) string {
+	dsn = strings.TrimSpace(dsn)
+	lower := strings.ToLower(dsn)
+	if strings.HasPrefix(lower, "postgres://") || strings.HasPrefix(lower, "postgresql://") {
+		u, err := url.Parse(dsn)
+		if err != nil {
+			return ""
+		}
+		return u.Hostname()
+	}
+	for _, field := range strings.Fields(dsn) {
+		if strings.HasPrefix(strings.ToLower(field), "host=") {
+			return strings.Trim(field[len("host="):], "'\"")
+		}
+	}
+	return ""
 }
 
 // -----------------------------------------------------------------------------
