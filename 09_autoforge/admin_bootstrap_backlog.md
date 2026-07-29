@@ -14,6 +14,11 @@ openapi AuthRefreshResponse gained the missing refresh_token field), AB-17 (org
 picker select with UUID-input fallback). Remaining open: AB-1 (audit beyond
 superadmin), AB-3, AB-4, AB-5, AB-6, AB-7, AB-8, AB-9, AB-10, AB-11, AB-12, AB-16.
 
+IMPORTED 2026-07-29: all open items installed into the AutoForge queue as
+features #392-#408 (category "Admin Bootstrap AB") via
+import_admin_bootstrap_features.py. AB-18 is first (CRITICAL). AB-11 (#408) is
+blocked on Brevo SMTP credentials from the owner.
+
 Context notes for the implementing agent:
 - Live DB was hand-patched during bootstrap: `platform_superadmin` was granted
   `org.create/read/update/delete` manually; org `abhteam` and network `aso` created.
