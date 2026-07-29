@@ -1,5 +1,5 @@
 import { createRoute } from "@tanstack/react-router";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   useMemo,
   useState,
@@ -9,7 +9,7 @@ import {
 } from "react";
 import { Route as RootRoute } from "./__root";
 import { RequirePermission } from "@/components/RequirePermission";
-import { ApiError, createAdminUser } from "@/lib/api/client";
+import { ApiError, authedFetch, createAdminUser } from "@/lib/api/client";
 import type {
   AdminCreateUserRequest,
   AdminCreateUserResponse,
@@ -56,6 +56,21 @@ interface CreateUserErrors {
   form?: string;
 }
 
+// Minimal slice of the /v1/admin/organizations envelope used by the
+// organization picker (AB-17). Kept local — the full shape lives in
+// routes/organizations.tsx and this form only needs id/name/slug.
+interface OrgPickerOption {
+  readonly id: string;
+  readonly name: string;
+  readonly slug: string;
+  readonly deleted_at: string | null;
+}
+
+interface OrgPickerEnvelope {
+  readonly organizations: readonly OrgPickerOption[];
+  readonly total: number;
+}
+
 function UsersRoute() {
   return (
     <RequirePermission entry={USERS_NAV_ENTRY}>
@@ -78,6 +93,28 @@ function UsersProvisioning() {
     () => ({ ...localErrors, ...serverErrors }),
     [localErrors, serverErrors],
   );
+
+  // AB-17: feed the organization picker. When the list cannot be loaded the
+  // form falls back to the raw UUID input so provisioning is never blocked.
+  const orgsQuery = useQuery<OrgPickerEnvelope, ApiError>({
+    queryKey: ["admin", "organizations", "picker"],
+    queryFn: () =>
+      authedFetch<OrgPickerEnvelope>({
+        method: "GET",
+        path: "/v1/admin/organizations",
+      }),
+    enabled: orgScoped,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const orgOptions = useMemo(
+    () =>
+      (orgsQuery.data?.organizations ?? []).filter(
+        (o) => o.deleted_at === null,
+      ),
+    [orgsQuery.data?.organizations],
+  );
+  const showOrgSelect = orgsQuery.isSuccess && orgOptions.length > 0;
 
   const mutation = useMutation<
     AdminCreateUserResponse,
@@ -181,21 +218,45 @@ function UsersProvisioning() {
 
         {orgScoped ? (
           <Field
-            label="Organization ID"
+            label="Organization"
             htmlFor="users-org-id"
             error={visibleErrors.orgId}
-            hint="Required for organizer, agent, network operator, and external operator."
+            hint={
+              showOrgSelect
+                ? "Required for organizer, agent, network operator, and external operator."
+                : orgsQuery.isPending
+                  ? "Loading organizations..."
+                  : "Organization list unavailable — paste the organization UUID (Organizations → Details → ID)."
+            }
           >
-            <input
-              id="users-org-id"
-              type="text"
-              value={orgId}
-              onChange={(e) => setOrgId(e.target.value)}
-              style={inputMonoStyle}
-              autoComplete="off"
-              spellCheck={false}
-              data-testid="users-org-id"
-            />
+            {showOrgSelect ? (
+              <select
+                id="users-org-id"
+                value={orgId}
+                onChange={(e) => setOrgId(e.target.value)}
+                style={inputStyle}
+                data-testid="users-org-id"
+              >
+                <option value="">— Select organization —</option>
+                {orgOptions.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name} ({o.slug})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                id="users-org-id"
+                type="text"
+                value={orgId}
+                onChange={(e) => setOrgId(e.target.value)}
+                style={inputMonoStyle}
+                autoComplete="off"
+                spellCheck={false}
+                disabled={orgsQuery.isPending}
+                data-testid="users-org-id"
+              />
+            )}
           </Field>
         ) : null}
 

@@ -248,6 +248,11 @@ export async function refresh(): Promise<AuthRefreshResponse> {
     .then((res) => {
       setSession({
         accessToken: res.access_token,
+        // PR2-03: the server rotates the refresh token on every call and
+        // revokes the old one. Persist the rotated token or the SECOND
+        // refresh of the session fails and the operator is logged out
+        // with a raw auth.token_expired error (backlog AB-15).
+        refreshToken: res.refresh_token,
         expiresAt: res.expires_at,
         userId: res.user_id,
       });
@@ -686,7 +691,15 @@ export async function fetchMediaObject(
     method: "GET",
     path: `/v1/media/${encodeURIComponent(id)}`,
   });
-  return res.media_object;
+  const obj = res.media_object;
+  // AB-13: the local storage backend signs a RELATIVE URL
+  // (/v1/media-files/{id}?...). This SPA is served from a different origin
+  // than the API, so a relative src would resolve against the admin host
+  // and render a broken image. Anchor it to the API base instead.
+  if (obj.signed_url !== undefined && obj.signed_url.startsWith("/")) {
+    return { ...obj, signed_url: `${config.apiBaseUrl}${obj.signed_url}` };
+  }
+  return obj;
 }
 
 /** Soft-delete a media object. */

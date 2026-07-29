@@ -1061,12 +1061,19 @@ components:
 
     AuthRefreshResponse:
       type: object
-      required: [access_token, token_type, expires_at, user_id]
+      required: [access_token, refresh_token, token_type, expires_at, user_id]
       properties:
         access_token:
           type: string
           description: New short-lived HS256 JWT access token (15-minute TTL)
           example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        refresh_token:
+          type: string
+          description: >-
+            Rotated opaque refresh token (PR2-03). The previous refresh token
+            is revoked server-side on every call; clients MUST persist this
+            value and use it for the next refresh.
+          example: "6f1d2c3b4a5968778695a4b3c2d1e0f1..."
         token_type:
           type: string
           description: Token type — always "Bearer"

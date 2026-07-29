@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -52,12 +53,12 @@ type MembershipQuerier interface {
 // # Caching
 //
 // DBChecker maintains an in-process, per-role-set permission cache (sync.Map).
-// The cache is keyed by the sorted, comma-joined role names. Cache entries are
-// never evicted during a single server lifetime — role→permission mappings are
-// stable configuration data that changes only when an operator explicitly updates
-// the database, triggering a deployment restart. This avoids the complexity of
-// TTL-based invalidation for the foundation milestone; the cache can be made
-// TTL-aware in a later milestone without changing the Checker interface.
+// The cache is keyed by the sorted, comma-joined role names. Entries expire
+// after permCacheTTL: role→permission mappings change rarely (operator edits
+// role_permissions), but when they do the running process must converge
+// without a restart — during the first production bootstrap a hand-applied
+// grant kept returning 403 until the container was recycled (backlog AB-2).
+// A short TTL keeps the hot path cached while bounding staleness.
 //
 // Membership-derived roles are resolved fresh on each request (not cached) so
 // that grant/revoke operations take effect immediately without a server restart.
@@ -69,10 +70,22 @@ type DBChecker struct {
 	db          RBACQuerier
 	memberships MembershipQuerier // optional; nil = no membership lookup (feature #120)
 
-	// permCache maps a sorted-role-set key to the set of permission names.
+	// permCache maps a sorted-role-set key to a permCacheEntry.
 	// key: strings.Join(sortedRoles, ",")
-	// value: map[string]struct{} — the set of permission names
 	permCache sync.Map
+
+	// now returns the current time; overridable in tests. Nil means time.Now.
+	now func() time.Time
+}
+
+// permCacheTTL bounds how long a cached role→permission set is served before
+// the database is consulted again (AB-2: grants must apply without restart).
+const permCacheTTL = 60 * time.Second
+
+// permCacheEntry is a cached permission set plus its storage timestamp.
+type permCacheEntry struct {
+	perms    map[string]struct{}
+	storedAt time.Time
 }
 
 // NewDBChecker constructs a DBChecker that uses db to resolve permissions.
@@ -150,12 +163,22 @@ func (c *DBChecker) Check(ctx context.Context, action, resource string) error {
 // roles. Results are cached in-process keyed by the sorted role combination.
 func (c *DBChecker) resolvePermissions(ctx context.Context, roles []string) (map[string]struct{}, error) {
 	key := roleSetKey(roles)
-
-	if cached, ok := c.permCache.Load(key); ok {
-		return cached.(map[string]struct{}), nil
+	nowFn := c.now
+	if nowFn == nil {
+		nowFn = time.Now
 	}
 
-	// Cache miss — query the database.
+	if cached, ok := c.permCache.Load(key); ok {
+		entry := cached.(permCacheEntry)
+		if nowFn().Sub(entry.storedAt) < permCacheTTL {
+			return entry.perms, nil
+		}
+		// Expired — fall through to a fresh DB read; the successful result
+		// below overwrites the stale entry. On DB error the stale entry is
+		// left in place but unused (next call retries the database).
+	}
+
+	// Cache miss or expired entry — query the database.
 	names, err := c.db.GetPermissionsForRoles(ctx, roles)
 	if err != nil {
 		return nil, err
@@ -166,10 +189,8 @@ func (c *DBChecker) resolvePermissions(ctx context.Context, roles []string) (map
 		set[n] = struct{}{}
 	}
 
-	// Store in cache. If another goroutine raced us and stored first, use the
-	// already-stored value (LoadOrStore semantics) to keep the cache consistent.
-	actual, _ := c.permCache.LoadOrStore(key, set)
-	return actual.(map[string]struct{}), nil
+	c.permCache.Store(key, permCacheEntry{perms: set, storedAt: nowFn()})
+	return set, nil
 }
 
 // InvalidateCache clears the in-process permission cache. Call this in tests

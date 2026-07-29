@@ -40,7 +40,7 @@ func TestHead_NumericPrefixPositive(t *testing.T) {
 }
 
 func TestHead_KnownCurrentHead(t *testing.T) {
-	const expectedHead = "0070_external_bil24_id.sql" // updated: 0070 added by the Bil24 import feature (#386/#387)
+	const expectedHead = "0071_superadmin_all_permissions.sql" // updated: 0071 grants the full permission catalogue to platform_superadmin (AB-14)
 	head, err := migrations.Head()
 	if err != nil {
 		t.Fatalf("Head() returned unexpected error: %v", err)

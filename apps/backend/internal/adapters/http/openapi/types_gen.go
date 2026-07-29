@@ -891,6 +891,9 @@ type AuthRefreshResponse struct {
 	// ExpiresAt RFC 3339 expiry timestamp of the new access token
 	ExpiresAt time.Time `json:"expires_at"`
 
+	// RefreshToken Rotated opaque refresh token (PR2-03). The previous refresh token is revoked server-side on every call; clients MUST persist this value and use it for the next refresh.
+	RefreshToken string `json:"refresh_token"`
+
 	// TokenType Token type — always "Bearer"
 	TokenType string `json:"token_type"`
 

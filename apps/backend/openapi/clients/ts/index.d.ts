@@ -5385,6 +5385,11 @@ export interface components {
              */
             access_token: string;
             /**
+             * @description Rotated opaque refresh token (PR2-03). The previous refresh token is revoked server-side on every call; clients MUST persist this value and use it for the next refresh.
+             * @example 6f1d2c3b4a5968778695a4b3c2d1e0f1...
+             */
+            refresh_token: string;
+            /**
              * @description Token type — always "Bearer"
              * @example Bearer
              */
