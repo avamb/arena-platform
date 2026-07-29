@@ -23,6 +23,7 @@ import (
 	"mime/multipart"
 	"mime/quotedprintable"
 	"net"
+	"net/mail"
 	"net/smtp"
 	"net/textproto"
 )
@@ -33,6 +34,10 @@ type Message struct {
 	To string
 	// Subject is the email subject line (UTF-8; will be Q-encoded in headers).
 	Subject string
+	// ReplyTo is the optional address recipients' mail clients use for replies.
+	// It affects only the RFC 5322 message header; the SMTP envelope sender
+	// remains the configured platform address.
+	ReplyTo string
 	// HTMLBody is the primary body of the email in HTML format.
 	HTMLBody string
 	// TextBody is the plain-text fallback body. Displayed by clients that
@@ -274,11 +279,17 @@ var _ Sender = (*SMTPSender)(nil)
 // With attachments → multipart/mixed containing text/plain + text/html + attachments.
 // Without attachments → single text/html part (simpler, sufficient for tickets).
 func buildMIMEMessage(from string, msg Message) ([]byte, error) {
+	if msg.ReplyTo != "" {
+		if _, err := mail.ParseAddress(msg.ReplyTo); err != nil {
+			return nil, fmt.Errorf("buildMIMEMessage: invalid Reply-To address: %w", err)
+		}
+	}
+
 	var buf bytes.Buffer
 
 	if len(msg.Attachments) == 0 {
 		// Simple single-part HTML email (most common for ticket delivery without PDF).
-		writeRFC5322Header(&buf, from, msg.To, msg.Subject, "text/html; charset=utf-8")
+		writeRFC5322HeaderWithReplyTo(&buf, from, msg.To, msg.Subject, "text/html; charset=utf-8", msg.ReplyTo)
 		buf.WriteString("Content-Transfer-Encoding: quoted-printable\r\n\r\n")
 		qpw := quotedprintable.NewWriter(&buf)
 		if _, err := qpw.Write([]byte(msg.HTMLBody)); err != nil {
@@ -290,8 +301,8 @@ func buildMIMEMessage(from string, msg Message) ([]byte, error) {
 
 	// Multipart/mixed for emails with attachments.
 	mw := multipart.NewWriter(&buf)
-	writeRFC5322Header(&buf, from, msg.To, msg.Subject,
-		"multipart/mixed; boundary=\""+mw.Boundary()+"\"")
+	writeRFC5322HeaderWithReplyTo(&buf, from, msg.To, msg.Subject,
+		"multipart/mixed; boundary=\""+mw.Boundary()+"\"", msg.ReplyTo)
 
 	// text/plain part
 	if msg.TextBody != "" {
@@ -355,12 +366,23 @@ func buildMIMEMessage(from string, msg Message) ([]byte, error) {
 // It does NOT write the blank line separator — that is the caller's
 // responsibility (or handled by the multipart writer for mixed messages).
 func writeRFC5322Header(buf *bytes.Buffer, from, to, subject, contentType string) {
+	writeRFC5322HeaderWithReplyTo(buf, from, to, subject, contentType, "")
+}
+
+// writeRFC5322HeaderWithReplyTo writes the standard email headers plus an
+// optional Reply-To. Keeping the compatibility wrapper above avoids widening
+// the helper's call sites while ensuring every MIME shape emits the header.
+func writeRFC5322HeaderWithReplyTo(buf *bytes.Buffer, from, to, subject, contentType, replyTo string) {
 	buf.WriteString("From: ")
 	buf.WriteString(from)
 	buf.WriteString("\r\nTo: ")
 	buf.WriteString(to)
 	buf.WriteString("\r\nSubject: ")
 	buf.WriteString(mime.QEncoding.Encode("utf-8", subject))
+	if replyTo != "" {
+		buf.WriteString("\r\nReply-To: ")
+		buf.WriteString(replyTo)
+	}
 	buf.WriteString("\r\nMIME-Version: 1.0\r\nContent-Type: ")
 	buf.WriteString(contentType)
 	buf.WriteString("\r\n")

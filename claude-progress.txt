@@ -22670,3 +22670,25 @@ received 200; a user without superadmin.read received 403; no bearer token
 received 401. `go test ./internal/platform/httpserver -run TestAdminUsers
 -count=1 -v` passed in golang:1.24, and admin-web focused Vitest (79 tests)
 plus the production build passed. #393 is verified and ready to mark passing.
+
+## 2026-07-29 — Feature #403 (AB-9): organizer Reply-To for ticket delivery
+
+Implemented ticket-delivery Reply-To support:
+- Added `ReplyTo` to the transactional email message and emit a validated RFC
+  5322 `Reply-To` header for both simple and multipart emails.
+- Ticket delivery now reads `OrgContactEmail` already present in the durable
+  payload, trims it, and uses it only as Reply-To; the configured global SMTP
+  sender remains the envelope/From address.
+- Added unit coverage for populated and absent organiser contacts, plus MIME
+  header coverage for populated and empty Reply-To values.
+
+Verification:
+- `go test ./apps/backend/internal/adapters/email ./apps/backend/internal/platform/delivery`
+  passed in `golang:1.24-alpine`.
+- `go build ./...` passed in the same pinned toolchain.
+- Repository-wide `go test ./...` produced no failure output but exceeded the
+  four-minute command timeout; focused tests above completed successfully.
+- `docker compose` could not start because the pre-existing API healthcheck
+  uses an invalid Compose command form; no change was made outside #403.
+
+Feature #403 marked passing. (393/409 passing, 96.1%)

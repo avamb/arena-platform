@@ -464,12 +464,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 			}
 		}
 
-		msg := email.Message{
-			To:       recipientEmail,
-			Subject:  subject,
-			HTMLBody: htmlBody,
-			TextBody: textBody,
-		}
+		msg := ticketEmailMessage(p, recipientEmail, subject, htmlBody, textBody)
 		if len(pdfBytes) > 0 {
 			msg.Attachments = []email.Attachment{
 				{
@@ -535,6 +530,20 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 		)
 
 		return nil
+	}
+}
+
+// ticketEmailMessage constructs the ticket-delivery message after the handler
+// has resolved its recipient and rendered its localized content. Replies go to
+// the organiser contact when one was supplied in the durable job payload;
+// delivery still originates from the platform's configured SMTP sender.
+func ticketEmailMessage(p Payload, recipientEmail, subject, htmlBody, textBody string) email.Message {
+	return email.Message{
+		To:       recipientEmail,
+		Subject:  subject,
+		ReplyTo:  strings.TrimSpace(p.OrgContactEmail),
+		HTMLBody: htmlBody,
+		TextBody: textBody,
 	}
 }
 
