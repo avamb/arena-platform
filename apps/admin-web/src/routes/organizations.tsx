@@ -127,6 +127,8 @@ export interface AdminOrganization {
   readonly logo_media_id?: string | null;
   readonly kyb_status?: string | null;
   readonly kyb_verified_at?: string | null;
+  readonly sender_email?: string | null;
+  readonly sender_verification_status?: "not_configured" | "pending" | "verified" | "failed";
 }
 
 interface OrganizationsEnvelope {
@@ -3776,6 +3778,7 @@ function EditOrganizationDialog({
   const [country, setCountry] = useState(org.country);
   const [locale, setLocale] = useState(org.default_locale);
   const [ttl, setTtl] = useState(String(org.reservation_ttl_seconds));
+  const [senderEmail, setSenderEmail] = useState(org.sender_email ?? "");
   const [serverErrors, setServerErrors] = useState<UpdateOrgFieldErrors>({});
   const [success, setSuccess] = useState<AdminOrganization | null>(null);
 
@@ -3806,7 +3809,8 @@ function EditOrganizationDialog({
     slug.trim().toLowerCase() !== org.slug ||
     country.trim() !== org.country ||
     locale.trim() !== org.default_locale ||
-    (ttl.trim() !== "" && Number(ttl) !== org.reservation_ttl_seconds);
+    (ttl.trim() !== "" && Number(ttl) !== org.reservation_ttl_seconds) ||
+    senderEmail.trim() !== (org.sender_email ?? "");
 
   const mutation = useMutation<UpdateOrgEnvelope, ApiError, void>({
     mutationFn: () => {
@@ -3816,6 +3820,7 @@ function EditOrganizationDialog({
         country: country.trim(),
         default_locale: locale.trim(),
         reservation_ttl_seconds: Number(ttl),
+        sender_email: senderEmail.trim() === "" ? null : senderEmail.trim(),
       };
       return authedFetch<UpdateOrgEnvelope>({
         method: "PATCH",
@@ -4010,6 +4015,24 @@ function EditOrganizationDialog({
               step={1}
               required
               data-testid="orgs-edit-ttl"
+            />
+          </FieldRow>
+          <FieldRow
+            label="Ticket sender email"
+            htmlFor="orgs-edit-sender-email"
+            error={null}
+            localError={null}
+            hint={`Brevo verifies this address before ticket mail can use it. Current status: ${org.sender_verification_status ?? "not configured"}.`}
+          >
+            <input
+              id="orgs-edit-sender-email"
+              type="email"
+              value={senderEmail}
+              onChange={(e) => setSenderEmail(e.target.value)}
+              style={inputStyle}
+              maxLength={320}
+              placeholder="tickets@organizer.example"
+              data-testid="orgs-edit-sender-email"
             />
           </FieldRow>
 

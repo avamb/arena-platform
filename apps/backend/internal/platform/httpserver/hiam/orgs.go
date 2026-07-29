@@ -108,6 +108,7 @@ type updateOrgRequest struct {
 	ContactPhone           optionalString `json:"contact_phone"`
 	WebsiteURL             optionalString `json:"website_url"`
 	KybStatus              optionalString `json:"kyb_status"`
+	SenderEmail            optionalString `json:"sender_email"`
 }
 
 // optionalString preserves the difference between an omitted PATCH member and

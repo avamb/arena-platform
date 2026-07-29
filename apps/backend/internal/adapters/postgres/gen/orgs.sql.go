@@ -44,6 +44,7 @@ type OrganizationRow struct {
 	DeletedAt              *time.Time `json:"deleted_at"`
 }
 
+
 // scanOrganizationRow scans a single organizations row into an OrganizationRow.
 func scanOrganizationRow(row interface {
 	Scan(dest ...any) error
@@ -178,6 +179,7 @@ func (q *Queries) ListOrganizationsPage(ctx context.Context, search string, limi
 	return orgs, rows.Err()
 }
 
+
 const countOrganizationsPage = `-- name: CountOrganizationsPage :one
 SELECT COUNT(*)
 FROM   organizations
@@ -243,6 +245,42 @@ func (q *Queries) GetTicketPDFFormatByTicketID(ctx context.Context, ticketID uui
 	var format string
 	err := q.db.QueryRow(ctx, getTicketPDFFormatByTicketID, ticketID).Scan(&format)
 	return format, err
+}
+
+// GetSenderIdentityByTicketID resolves the owning organization's Brevo sender
+// identity immediately before delivery. This deliberately avoids trusting a
+// stale worker payload after an identity is revoked.
+const getSenderIdentityByTicketID = `-- name: GetSenderIdentityByTicketID :one
+SELECT o.sender_email, o.sender_verification_status
+FROM tickets t
+JOIN sessions s ON s.id = t.session_id
+JOIN events e ON e.id = s.event_id
+JOIN organizations o ON o.id = e.org_id
+WHERE t.id = $1`
+
+func (q *Queries) GetSenderIdentityByTicketID(ctx context.Context, ticketID uuid.UUID) (*string, string, error) {
+	var senderEmail *string
+	var status string
+	err := q.db.QueryRow(ctx, getSenderIdentityByTicketID, ticketID).Scan(&senderEmail, &status)
+	return senderEmail, status, err
+}
+
+// UpdateOrganizationSenderEmail stores a requested Brevo sender address. Any
+// change resets verification: callers cannot mark an address verified.
+const updateOrganizationSenderEmail = `-- name: UpdateOrganizationSenderEmail :one
+UPDATE organizations
+SET sender_email = $2,
+    sender_verification_status = CASE WHEN $2 IS NULL THEN 'not_configured' ELSE 'pending' END,
+    sender_verified_at = NULL,
+    updated_at = now()
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING sender_email, sender_verification_status`
+
+func (q *Queries) UpdateOrganizationSenderEmail(ctx context.Context, id uuid.UUID, senderEmail *string) (*string, string, error) {
+	var email *string
+	var status string
+	err := q.db.QueryRow(ctx, updateOrganizationSenderEmail, id, senderEmail).Scan(&email, &status)
+	return email, status, err
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -23012,3 +23012,10 @@ the running API `/readyz` returned 200. Feature #394 marked passing.
   the 114 organization-route UI tests, and the admin production build pass.
 
 Feature #404 marked passing. Overall feature status: 408/409 passing.
+## 2026-07-29 — Feature #407 (AB-10) partial implementation
+
+- Added durable organization sender-identity columns and migrated the local PostgreSQL database to version 75.
+- Admin organization editing now stores a requested sender address as pending; server validation prevents malformed addresses and callers cannot self-mark an address verified.
+- Ticket delivery resolves the sender identity directly from the current organization row immediately before SMTP and only uses an organizer address when the stored status is `verified`; all other states retain the global SMTP sender and existing Reply-To behavior.
+- Added SMTP override validation and focused delivery/email tests; `npm run type-check` and focused Go tests passed. Rebuilt worker started healthy.
+- Not marked passing: the remaining AB-10 requirements are a Brevo API client/UI DNS-record display and a polling job that updates the persisted verification state. Those must be implemented before this feature can be accepted. API container integration was also blocked locally by an unrelated host port 8080 conflict.

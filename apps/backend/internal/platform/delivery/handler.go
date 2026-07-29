@@ -150,6 +150,10 @@ type Payload struct {
 	OrgLegalAddressCity    string `json:"org_legal_address_city,omitempty"`
 	OrgLegalAddressCountry string `json:"org_legal_address_country,omitempty"`
 	OrgContactEmail        string `json:"org_contact_email,omitempty"`
+	// SenderEmail is used only while SenderVerificationStatus is "verified".
+	// It is populated from the organization record by the enqueueing path.
+	SenderEmail              string `json:"sender_email,omitempty"`
+	SenderVerificationStatus string `json:"sender_verification_status,omitempty"`
 }
 
 // HandlerOptions bundles the dependencies required by the delivery handler.
@@ -244,7 +248,6 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 			)
 			return nil // return nil to prevent infinite retries on bad payload
 		}
-
 		ticketID, err := uuid.Parse(p.TicketID)
 		if err != nil {
 			logger.Error("delivery: invalid ticket_id in payload",
@@ -261,6 +264,17 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 		// Production config validation (PR-00) already blocks EMAIL_MODE≠smtp in
 		// APP_ENV=production; this guard ensures the handler is also honest at
 		// the domain level regardless of config.
+		// Resolve sender identity immediately before delivery. A queued email
+		// cannot retain an address that Brevo has since revoked.
+		if opts.TicketQueries != nil {
+			senderEmail, senderStatus, senderErr := opts.TicketQueries.GetSenderIdentityByTicketID(ctx, ticketID)
+			if senderErr == nil && senderEmail != nil {
+				p.SenderEmail, p.SenderVerificationStatus = *senderEmail, senderStatus
+			} else if senderErr != nil && !errors.Is(senderErr, pgx.ErrNoRows) {
+				logger.Warn("delivery: sender identity lookup failed; using platform sender", slog.String("ticket_id", ticketID.String()), slog.String("error", senderErr.Error()))
+			}
+		}
+
 		if opts.Sender == nil || email.IsDevOnly(opts.Sender) {
 			logger.Warn("delivery: no production email sender configured; marking delivery disabled",
 				slog.String("ticket_id", ticketID.String()),
@@ -538,7 +552,12 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 // the organiser contact when one was supplied in the durable job payload;
 // delivery still originates from the platform's configured SMTP sender.
 func ticketEmailMessage(p Payload, recipientEmail, subject, htmlBody, textBody string) email.Message {
+	from := ""
+	if p.SenderVerificationStatus == "verified" {
+		from = strings.TrimSpace(p.SenderEmail)
+	}
 	return email.Message{
+		From:     from,
 		To:       recipientEmail,
 		Subject:  subject,
 		ReplyTo:  strings.TrimSpace(p.OrgContactEmail),

@@ -30,6 +30,9 @@ import (
 
 // Message holds all fields required to send a single transactional email.
 type Message struct {
+	// From optionally overrides the configured platform sender. It is used only
+	// for an organizer identity that has already been verified by Brevo.
+	From string
 	// To is the recipient email address (envelope and header).
 	To string
 	// Subject is the email subject line (UTF-8; will be Q-encoded in headers).
@@ -186,7 +189,15 @@ func NewSMTPSender(cfg SMTPConfig) *SMTPSender {
 //
 //	text/html (quoted-printable, simple single-part message)
 func (s *SMTPSender) Send(_ context.Context, msg Message) error {
-	raw, err := buildMIMEMessage(s.cfg.From, msg)
+	from := s.cfg.From
+	if msg.From != "" {
+		parsed, err := mail.ParseAddress(msg.From)
+		if err != nil || parsed.Address != msg.From {
+			return fmt.Errorf("smtp: invalid From address")
+		}
+		from = msg.From
+	}
+	raw, err := buildMIMEMessage(from, msg)
 	if err != nil {
 		return fmt.Errorf("smtp: build MIME message: %w", err)
 	}
@@ -199,12 +210,12 @@ func (s *SMTPSender) Send(_ context.Context, msg Message) error {
 	}
 
 	if s.cfg.UseTLS {
-		return s.sendImplicitTLS(addr, auth, msg.To, raw)
+		return s.sendImplicitTLS(addr, auth, from, msg.To, raw)
 	}
-	return s.sendSTARTTLS(addr, auth, msg.To, raw)
+	return s.sendSTARTTLS(addr, auth, from, msg.To, raw)
 }
 
-func (s *SMTPSender) sendImplicitTLS(addr string, auth smtp.Auth, to string, raw []byte) error {
+func (s *SMTPSender) sendImplicitTLS(addr string, auth smtp.Auth, from, to string, raw []byte) error {
 	tlsCfg := &tls.Config{
 		ServerName: s.cfg.Host,
 		MinVersion: tls.VersionTLS12,
@@ -218,10 +229,10 @@ func (s *SMTPSender) sendImplicitTLS(addr string, auth smtp.Auth, to string, raw
 		return fmt.Errorf("smtp: new client (TLS): %w", err)
 	}
 	defer client.Close()
-	return deliverMessage(client, auth, s.cfg.From, to, raw)
+	return deliverMessage(client, auth, from, to, raw)
 }
 
-func (s *SMTPSender) sendSTARTTLS(addr string, auth smtp.Auth, to string, raw []byte) error {
+func (s *SMTPSender) sendSTARTTLS(addr string, auth smtp.Auth, from, to string, raw []byte) error {
 	client, err := smtp.Dial(addr)
 	if err != nil {
 		return fmt.Errorf("smtp: dial %s: %w", addr, err)
@@ -238,7 +249,7 @@ func (s *SMTPSender) sendSTARTTLS(addr string, auth smtp.Auth, to string, raw []
 		}
 	}
 
-	return deliverMessage(client, auth, s.cfg.From, to, raw)
+	return deliverMessage(client, auth, from, to, raw)
 }
 
 // deliverMessage performs the SMTP envelope commands and data transfer.

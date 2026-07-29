@@ -28,6 +28,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/mail"
 	"strings"
 	"time"
 
@@ -198,6 +199,14 @@ func (h *Handler) HandleAdminUpdateOrg(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails("admin_org."+validationCode, strings.ReplaceAll(validationCode, "_", " "), r, map[string]any{"field": strings.TrimPrefix(validationCode, "invalid_")}))
 		return
 	}
+	if req.SenderEmail.Present && req.SenderEmail.Value != nil {
+		candidate := strings.TrimSpace(*req.SenderEmail.Value)
+		parsed, parseErr := mail.ParseAddress(candidate)
+		if parseErr != nil || parsed.Address != candidate {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails("admin_org.invalid_sender_email", "sender email must be a valid address", r, map[string]any{"field": "sender_email"}))
+			return
+		}
+	}
 
 	updated, err := h.orgQueries.UpdateOrganization(ctx,
 		orgID, req.Name, req.Slug, req.Country, req.DefaultLocale, req.ReservationTTLSeconds,
@@ -223,6 +232,13 @@ func (h *Handler) HandleAdminUpdateOrg(w http.ResponseWriter, r *http.Request) {
 			"admin_org.update_failed", "failed to update organization", r,
 		))
 		return
+	}
+	if req.SenderEmail.Present {
+		if _, _, senderErr := h.orgQueries.UpdateOrganizationSenderEmail(ctx, orgID, optionalValue(req.SenderEmail, nil)); senderErr != nil {
+			h.logger.Error("admin_org: sender update failed", slog.String("error", senderErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("admin_org.sender_update_failed", "failed to update sender identity", r))
+			return
+		}
 	}
 
 	h.writeAdminOrgAudit(r, "v1.admin.org.update", updated.ID.String(), reason, map[string]any{

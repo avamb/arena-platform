@@ -48,6 +48,8 @@ type Querier interface {
 	InsertOrganization(ctx context.Context, name, slug, country, defaultLocale string, reservationTTL int32) (OrganizationRow, error)
 	GetOrganizationByID(ctx context.Context, id uuid.UUID) (OrganizationRow, error)
 	GetOrganizationBySlug(ctx context.Context, slug string) (OrganizationRow, error)
+	GetSenderIdentityByTicketID(ctx context.Context, ticketID uuid.UUID) (*string, string, error)
+	UpdateOrganizationSenderEmail(ctx context.Context, id uuid.UUID, senderEmail *string) (*string, string, error)
 	ListOrganizations(ctx context.Context) ([]OrganizationRow, error)
 	ListOrganizationsPage(ctx context.Context, search string, limit, offset int32) ([]OrganizationRow, error)
 	CountOrganizationsPage(ctx context.Context, search string) (int64, error)

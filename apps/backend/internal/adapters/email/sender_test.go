@@ -33,3 +33,10 @@ func TestBuildMIMEMessageOmitsReplyToWhenEmpty(t *testing.T) {
 		t.Fatalf("MIME message unexpectedly contains Reply-To header:\n%s", raw)
 	}
 }
+
+func TestSMTPSenderRejectsInvalidSenderOverride(t *testing.T) {
+	s := NewSMTPSender(SMTPConfig{From: "tickets@arena.example"})
+	if err := s.Send(t.Context(), Message{From: "not an email", To: "buyer@example.test"}); err == nil {
+		t.Fatal("expected invalid From error")
+	}
+}
