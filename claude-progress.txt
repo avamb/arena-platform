@@ -22960,3 +22960,19 @@ against PostgreSQL at localhost:5432. The running API returned `/readyz` 200.
 Mock-pattern grep found only established test setup, development diagnostics,
 and explicit no-mock comments; no feature mock data was added. Feature #409
 marked passing (405/409).
+
+## 2026-07-29 - Feature #408 (AB-11) verification follow-up
+
+- Fixed the Docker Compose API and worker healthcheck commands to use Docker's
+  required `CMD` form. `docker compose config --quiet` now validates and the
+  worker starts healthy.
+- Verified the private-network TLS exception with focused config tests and an
+  isolated `APP_ENV=production` container smoke against the Compose PostgreSQL
+  network. The API connected and began listening with `EMAIL_MODE=smtp` and
+  `ALLOW_PRIVATE_DB_PLAINTEXT=true` for the unqualified `postgres` host.
+- Direct Go builds of API, worker, migrate, and healthcheck succeed. The local
+  environment lacks `make` and `golangci-lint`, so lint could not be run.
+
+Feature #408 marked passing. The live deployment still requires the operator
+to enter a real Brevo SMTP key and verified sender in Dokploy; no credential is
+stored in the repository.

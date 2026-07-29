@@ -160,7 +160,7 @@ services:
     healthcheck:
       # arena-healthcheck is built into the image and performs
       # GET $HEALTH_ADDR/healthz, exiting 0 on HTTP 200.
-      test: ["/app/arena-healthcheck"]
+      test: ["CMD", "/app/arena-healthcheck"]
       interval: 30s
       timeout: 5s
       start_period: 15s
@@ -234,7 +234,7 @@ services:
     healthcheck:
       # arena-healthcheck reads HEALTH_ADDR (set to http://localhost:9091
       # above) and performs GET /healthz on the worker sidecar server.
-      test: ["/app/arena-healthcheck"]
+      test: ["CMD", "/app/arena-healthcheck"]
       interval: 30s
       timeout: 5s
       start_period: 15s
