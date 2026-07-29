@@ -41,6 +41,12 @@ func actorIsMemberOfOrg(ctx context.Context, q *gen.Queries, orgID uuid.UUID) (b
 // orgID. Writes HTTP error and returns false when not a member.
 // When membershipQueries is nil the check is skipped and true is returned.
 func (h *Handler) requireOrgMembership(w http.ResponseWriter, r *http.Request, orgID uuid.UUID) bool {
+	if auth.HasSuperadminOrgAccess(r.Context()) {
+		if _, ok := httputil.RequireAdminReason(w, r); !ok {
+			return false
+		}
+		return true
+	}
 	if h.membershipQueries == nil {
 		return true
 	}

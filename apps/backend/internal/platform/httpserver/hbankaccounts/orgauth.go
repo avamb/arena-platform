@@ -43,6 +43,12 @@ func actorIsMemberOfOrg(ctx context.Context, q *gen.Queries, orgID uuid.UUID) (b
 // When membershipQueries is nil (test environments without the field wired),
 // the check is skipped and true is returned so existing tests continue to pass.
 func (h *Handler) requireOrgMembership(w http.ResponseWriter, r *http.Request, orgID uuid.UUID) bool {
+	if auth.HasSuperadminOrgAccess(r.Context()) {
+		if _, ok := httputil.RequireAdminReason(w, r); !ok {
+			return false
+		}
+		return true
+	}
 	if h.membershipQueries == nil {
 		return true
 	}

@@ -112,7 +112,10 @@ func (a Actor) IsAuthenticated() bool {
 
 type ctxKey int
 
-const actorKey ctxKey = iota
+const (
+	actorKey ctxKey = iota
+	superadminOrgAccessKey
+)
 
 // WithActor returns a context carrying the supplied actor.
 func WithActor(ctx context.Context, a Actor) context.Context {
@@ -127,6 +130,22 @@ func ActorFromContext(ctx context.Context) (Actor, bool) {
 	}
 	a, ok := ctx.Value(actorKey).(Actor)
 	return a, ok
+}
+
+// WithSuperadminOrgAccess marks a request after the server has verified the
+// actor's superadmin.read permission. It is intentionally unexported from the
+// token format: this privilege is derived server-side on every request, never
+// trusted from a caller-supplied claim.
+func WithSuperadminOrgAccess(ctx context.Context) context.Context {
+	return context.WithValue(ctx, superadminOrgAccessKey, true)
+}
+
+// HasSuperadminOrgAccess reports whether the server has verified that this
+// request holds superadmin.read and may be considered for an audited
+// organization-membership bypass.
+func HasSuperadminOrgAccess(ctx context.Context) bool {
+	allowed, _ := ctx.Value(superadminOrgAccessKey).(bool)
+	return allowed
 }
 
 // -----------------------------------------------------------------------------

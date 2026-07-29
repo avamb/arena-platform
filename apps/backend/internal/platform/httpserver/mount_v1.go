@@ -2,12 +2,17 @@ package httpserver
 
 import (
 	"context"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/idempotency"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
 )
 
@@ -74,6 +79,60 @@ func (s *Server) mountV1Routes() {
 func (s *Server) applyAuth(pr chi.Router, perm, scope string) {
 	pr.Use(auth.Middleware(s.authProvider(), auth.MiddlewareOptions{Logger: s.logger}))
 	pr.Use(permissions.RequirePermission(s.perms, perm, scope))
+	pr.Use(s.markSuperadminOrgAccess)
+}
+
+// markSuperadminOrgAccess derives the cross-tenant marker from the actual
+// permission checker. Membership guards consume this marker only after also
+// requiring X-Admin-Reason, so a JWT role label alone can never bypass org
+// isolation.
+func (s *Server) markSuperadminOrgAccess(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		actor, authenticated := auth.ActorFromContext(r.Context())
+		if authenticated && hasRole(actor.Roles, "platform_superadmin") &&
+			s.perms.Check(r.Context(), "superadmin.read", "organizations") == nil {
+			r = r.WithContext(auth.WithSuperadminOrgAccess(r.Context()))
+			s.auditSuperadminOrgAccess(r)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func hasRole(roles []string, wanted string) bool {
+	for _, role := range roles {
+		if role == wanted {
+			return true
+		}
+	}
+	return false
+}
+
+// auditSuperadminOrgAccess records every request that has received the
+// permission-derived superadmin marker. The membership guard additionally
+// rejects missing X-Admin-Reason before any bypass occurs; recording at this
+// shared boundary prevents sub-package handlers from omitting the audit trail.
+func (s *Server) auditSuperadminOrgAccess(r *http.Request) {
+	if s.audit == nil {
+		return
+	}
+	if strings.TrimSpace(r.Header.Get("X-Admin-Reason")) == "" {
+		return
+	}
+	actor, _ := auth.ActorFromContext(r.Context())
+	_ = s.audit.Write(r.Context(), audit.Event{OccurredAt: time.Now().UTC(), ActorType: "user", ActorID: actor.ID,
+		Action: "superadmin.organization_access", ResourceType: "organization", ResourceID: organizationIDFromPath(r.URL.Path),
+		RequestID: logging.RequestID(r.Context()), TraceID: logging.TraceID(r.Context()), IP: httputil.ExtractClientIP(r),
+		Metadata: map[string]any{"reason": strings.TrimSpace(r.Header.Get("X-Admin-Reason")), "path": r.URL.Path}})
+}
+
+func organizationIDFromPath(path string) string {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	for i := range parts {
+		if parts[i] == "organizations" && i+1 < len(parts) {
+			return parts[i+1]
+		}
+	}
+	return ""
 }
 
 // mountInfoRoutes mounts /v1/info, /v1/server-info, and /v1/info-slow.

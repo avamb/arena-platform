@@ -68,6 +68,12 @@ func (s *Server) enforceOrgMembership(w http.ResponseWriter, r *http.Request, pa
 // Same fail-closed contract as enforceOrgMembership: returns false and writes
 // 403 (or 500 on lookup error) when access is denied.
 func (s *Server) enforceMembershipInOrg(w http.ResponseWriter, r *http.Request, orgID uuid.UUID) bool {
+	if auth.HasSuperadminOrgAccess(r.Context()) {
+		if _, ok := httputil.RequireAdminReason(w, r); !ok {
+			return false
+		}
+		return true
+	}
 	if s.membershipQueries == nil {
 		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope(
 			"org.access_denied", "caller is not a member of this organization", r,

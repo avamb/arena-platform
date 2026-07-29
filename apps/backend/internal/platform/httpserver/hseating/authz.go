@@ -18,12 +18,27 @@ package hseating
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
+
+// requireOrgMembership applies the same audited superadmin exception as the
+// path-based organization guards. Seating plans carry their owner org in the
+// resource/body rather than the URL, so the gate lives here.
+func requireOrgMembership(w http.ResponseWriter, r *http.Request, q *gen.Queries, orgID uuid.UUID) (bool, error) {
+	if auth.HasSuperadminOrgAccess(r.Context()) {
+		if _, ok := httputil.RequireAdminReason(w, r); !ok {
+			return false, nil
+		}
+		return true, nil
+	}
+	return actorIsMemberOfOrg(r.Context(), q, orgID)
+}
 
 // actorIsMemberOfOrg reports whether the authenticated actor holds an
 // active membership in orgID. An unauthenticated request, an actor whose

@@ -22714,3 +22714,20 @@ Verification: focused integration tests passed against fresh PostgreSQL 17;
 passed. `docker compose` startup remains blocked by the pre-existing invalid
 healthcheck syntax, so the Testcontainers integration test was used for the
 required durable persistence proof.
+## 2026-07-29 — Feature #395 (AB-12) complete
+
+- Implemented the audited organization-membership bypass for platform superadmins.
+  The request must carry the `platform_superadmin` role, pass the real
+  `superadmin.read` RBAC check, and provide a non-empty `X-Admin-Reason`.
+- Applied the guard to server, IAM, bank-account, payment-config, catalog, and
+  seating ownership membership checks. Normal, non-member, and suspended
+  membership behavior remains fail-closed.
+- Added an audit event (`superadmin.organization_access`) with reason/path and
+  a focused regression test for role + permission + reason + audit gates.
+- Added `docs/ops/superadmin_org_access.md`; deployment must not insert a
+  synthetic `platform_superadmin` membership. Documented that `org_admin` is
+  RBAC-only and not a valid memberships.role value.
+- Verified: `go test ./internal/platform/httpserver/... ./internal/platform/auth/...`
+  and `go build ./cmd/...` both pass. `init.sh` could not run because this
+  Windows environment has no bash executable.
+- Completion after marking: 395/409 features passing.

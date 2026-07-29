@@ -44,6 +44,12 @@ func actorIsMemberOfOrg(ctx context.Context, q *gen.Queries, orgID uuid.UUID) (b
 // When h.membershipQueries is nil the check fails-closed (returns false with
 // 403) to prevent accidental bypass of org-isolation enforcement.
 func (h *Handler) requireOrgMembership(w http.ResponseWriter, r *http.Request, q *gen.Queries, orgID uuid.UUID) bool {
+	if auth.HasSuperadminOrgAccess(r.Context()) {
+		if _, ok := httputil.RequireAdminReason(w, r); !ok {
+			return false
+		}
+		return true
+	}
 	// Fail-closed: membershipQueries must be wired for org-scoped routes.
 	if h.membershipQueries == nil {
 		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope(

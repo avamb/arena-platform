@@ -95,7 +95,7 @@ func (h *Handler) HandleCreateSeatingPlan(w http.ResponseWriter, r *http.Request
 		invalidField(w, r, "owner_org_id", "a UUID string")
 		return
 	}
-	member, err := actorIsMemberOfOrg(ctx, h.queries, ownerOrgID)
+	member, err := requireOrgMembership(w, r, h.queries, ownerOrgID)
 	if err != nil {
 		h.logger.Error("seating_plan: create membership lookup failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
@@ -306,7 +306,7 @@ func (h *Handler) HandleUpdateSeatingPlan(w http.ResponseWriter, r *http.Request
 	// actor's org scope is its active memberships (authz.go); a caller
 	// outside existing.OwnerOrgID gets the same 404 as a missing plan so
 	// foreign plan ids do not leak existence.
-	member, err := actorIsMemberOfOrg(ctx, qtx, existing.OwnerOrgID)
+	member, err := requireOrgMembership(w, r, qtx, existing.OwnerOrgID)
 	if err != nil {
 		h.logger.Error("seating_plan: update membership lookup failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
@@ -407,7 +407,7 @@ func (h *Handler) HandleForkSeatingPlan(w http.ResponseWriter, r *http.Request) 
 	// The fork target org is NOT trusted from the body alone: it must be an
 	// organization the authenticated actor holds an active membership in
 	// (authz.go), otherwise a caller could fork plans into a foreign org.
-	member, err := actorIsMemberOfOrg(ctx, h.queries, ownerOrgID)
+	member, err := requireOrgMembership(w, r, h.queries, ownerOrgID)
 	if err != nil {
 		h.logger.Error("seating_plan: fork membership lookup failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
