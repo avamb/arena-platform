@@ -326,6 +326,13 @@ counter) — the fix is presentation, not a PK migration.
 5. Global admin search by name (header omnibox: orgs/venues/events/users) —
    phase 2.
 
+## AB-23. Password-reset confirm flow broken end-to-end (feature #409)
+
+**Category:** SuperAdmin UI + API / Auth — found live 2026-07-29 after Brevo SMTP
+went live. The reset email links APP_PUBLIC_URL (SPA origin) + /v1/... (API path):
+the link opens the admin SPA shell, and no set-new-password page exists at all.
+Steps captured in AutoForge feature #409.
+
 ## AB-11. Ops: production-mode readiness checklist
 
 **Category:** Deploy / Config
