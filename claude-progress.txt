@@ -22976,3 +22976,20 @@ marked passing (405/409).
 Feature #408 marked passing. The live deployment still requires the operator
 to enter a real Brevo SMTP key and verified sender in Dokploy; no credential is
 stored in the repository.
+
+## 2026-07-29 — Feature #394 (AB-4) complete
+
+- Added authenticated, audit-logged admin endpoints to grant and revoke global
+  platform roles for an existing user. Every write requires `superadmin.read`
+  and `X-Admin-Reason`; audit writes occur in the same transaction.
+- Revoking `platform_superadmin` serializes on a PostgreSQL transaction advisory
+  lock and refuses the final active global superadmin, preventing both ordinary
+  and concurrent lockout attempts.
+- Extended the real directory membership projection with the membership and
+  organization IDs. The user detail drawer now supports confirmed add/remove
+  operations for global roles and organization memberships and refetches its
+  PostgreSQL-backed directory after each successful change.
+
+Verification: focused backend user-route/auth tests and an API build passed in
+golang:1.24; admin user tests, TypeScript check, and production build passed;
+the running API `/readyz` returned 200. Feature #394 marked passing.

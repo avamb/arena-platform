@@ -17,7 +17,7 @@ SELECT u.id, u.display_number, u.email, u.created_at, u.email_verified_at,
        COALESCE((SELECT jsonb_agg(x.role ORDER BY x.role)
                  FROM (SELECT DISTINCT r.name AS role FROM user_roles ur JOIN roles r ON r.id = ur.role_id
                        WHERE ur.user_id = u.id AND ur.org_id IS NULL) x), '[]'::jsonb) AS global_roles,
-       COALESCE((SELECT jsonb_agg(jsonb_build_object('id', o.id, 'name', o.name, 'slug', o.slug, 'role', m.role)
+       COALESCE((SELECT jsonb_agg(jsonb_build_object('id', m.id, 'org_id', o.id, 'name', o.name, 'slug', o.slug, 'role', m.role)
                                   ORDER BY o.name, m.role)
                  FROM memberships m JOIN organizations o ON o.id = m.org_id
                  WHERE m.user_id = u.id AND m.status = 'active'), '[]'::jsonb) AS memberships

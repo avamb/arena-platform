@@ -176,6 +176,14 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 	s.iamHandler().HandleAdminCreateUser(w, r)
 }
 
+func (s *Server) handleAdminGrantGlobalRole(w http.ResponseWriter, r *http.Request) {
+	s.iamHandler().HandleAdminGrantGlobalRole(w, r)
+}
+
+func (s *Server) handleAdminRevokeGlobalRole(w http.ResponseWriter, r *http.Request) {
+	s.iamHandler().HandleAdminRevokeGlobalRole(w, r)
+}
+
 // ─── current-user context handler shim ───────────────────────────────────────
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {

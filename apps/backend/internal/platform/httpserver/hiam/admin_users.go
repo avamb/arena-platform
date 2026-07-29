@@ -66,10 +66,11 @@ type adminCreatedOnboardingDTO struct {
 }
 
 type adminUserMembershipDTO struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Slug string `json:"slug"`
-	Role string `json:"role"`
+	ID    string `json:"id"`
+	OrgID string `json:"org_id"`
+	Name  string `json:"name"`
+	Slug  string `json:"slug"`
+	Role  string `json:"role"`
 }
 
 type adminUserDirectoryItemDTO struct {

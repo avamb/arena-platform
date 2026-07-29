@@ -74,7 +74,7 @@ interface OrgPickerEnvelope {
   readonly total: number;
 }
 
-export interface AdminDirectoryMembership { readonly id: string; readonly name: string; readonly slug: string; readonly role: string; }
+export interface AdminDirectoryMembership { readonly id: string; readonly org_id: string; readonly name: string; readonly slug: string; readonly role: string; }
 export interface AdminDirectoryUser { readonly id: string; readonly display_number: number; readonly email: string; readonly created_at: string; readonly email_verified_at: string | null; readonly global_roles: readonly string[]; readonly memberships: readonly AdminDirectoryMembership[]; }
 export interface AdminDirectoryEnvelope { readonly users: readonly AdminDirectoryUser[]; readonly total: number; readonly limit: number; readonly offset: number; }
 
@@ -346,7 +346,7 @@ function UsersProvisioning() {
           </span>
         </div>
       ) : null}
-      <UserDirectoryDrawer user={selectedUser} onClose={() => setSelectedUser(null)} />
+      <UserDirectoryDrawer user={selectedUser} organizations={orgOptions} onClose={() => setSelectedUser(null)} onChanged={() => void queryClient.invalidateQueries({ queryKey: ["admin", "users"] })} />
     </section>
   );
 }
@@ -362,12 +362,21 @@ function UserDirectoryTable({ users, onSelect }: { users: readonly AdminDirector
   return <ResponsiveTable id="users-directory-table" caption="User directory" columns={columns} rows={users} rowKey={(user) => user.id} empty={<p>No users match this search.</p>} />;
 }
 
-function UserDirectoryDrawer({ user, onClose }: { user: AdminDirectoryUser | null; onClose: () => void }) {
+function UserDirectoryDrawer({ user, organizations, onClose, onChanged }: { user: AdminDirectoryUser | null; organizations: readonly OrgPickerOption[]; onClose: () => void; onChanged: () => void }) {
+	const [globalRole, setGlobalRole] = useState<AdminUserRole>("platform_operator");
+	const [membershipRole, setMembershipRole] = useState<AdminUserRole>("organizer");
+	const [membershipOrgID, setMembershipOrgID] = useState("");
+	const [error, setError] = useState<string | null>(null);
+	const mutation = useMutation<void, ApiError, { method: "POST" | "DELETE"; path: string; body?: unknown }>({ mutationFn: ({ method, path, body }) => authedFetch<void>({ method, path, body }), onSuccess: () => { setError(null); onChanged(); }, onError: (err) => setError(err.message) });
+	const confirm = (message: string, run: () => void) => { if (window.confirm(message)) run(); };
   return <ResponsiveDrawer id="user-directory-drawer" open={user !== null} onClose={onClose} closeLabel="Close user" title={user?.email ?? "User"} subtitle={user === null ? undefined : `Created ${formatDateTime(user.created_at)}`}>
     {user === null ? null : <div style={drawerContentStyle}>
-      <div><strong>Global roles</strong><p>{user.global_roles.length === 0 ? "No global roles" : user.global_roles.map(formatAdminUserRole).join(", ")}</p></div>
+      <div><strong>Global roles</strong><p>{user.global_roles.length === 0 ? "No global roles" : user.global_roles.map(formatAdminUserRole).join(", ")}</p><div style={drawerActionStyle}>{user.global_roles.map((role) => <button key={role} type="button" style={secondaryButtonStyle} disabled={mutation.isPending} onClick={() => confirm(`Remove ${formatAdminUserRole(role)} from ${user.email}?`, () => mutation.mutate({ method: "DELETE", path: `/v1/admin/users/${user.id}/global-roles/${encodeURIComponent(role)}` }))}>Remove {formatAdminUserRole(role)}</button>)}<select aria-label="Global role" value={globalRole} onChange={(e) => setGlobalRole(e.target.value as AdminUserRole)} style={inputStyle}>{GLOBAL_USER_ROLES.map((role) => <option key={role} value={role}>{formatAdminUserRole(role)}</option>)}</select><button type="button" style={secondaryButtonStyle} disabled={mutation.isPending} onClick={() => confirm(`Grant ${formatAdminUserRole(globalRole)} to ${user.email}?`, () => mutation.mutate({ method: "POST", path: `/v1/admin/users/${user.id}/global-roles`, body: { role: globalRole } }))}>Add role</button></div></div>
       <div><strong>Organization memberships</strong>{user.memberships.length === 0 ? <p>No active organization memberships.</p> : <ul>{user.memberships.map((membership) => <li key={`${membership.id}-${membership.role}`}>{membership.name} ({membership.slug}) — {formatAdminUserRole(membership.role)}</li>)}</ul>}</div>
+      <div style={drawerActionStyle}><select aria-label="Membership organization" value={membershipOrgID} onChange={(e) => setMembershipOrgID(e.target.value)} style={inputStyle}><option value="">Select organization</option>{organizations.map((org) => <option key={org.id} value={org.id}>{org.name} · #{org.display_number}</option>)}</select><select aria-label="Membership role" value={membershipRole} onChange={(e) => setMembershipRole(e.target.value as AdminUserRole)} style={inputStyle}>{ORG_SCOPED_USER_ROLES.map((role) => <option key={role} value={role}>{formatAdminUserRole(role)}</option>)}</select><button type="button" style={secondaryButtonStyle} disabled={mutation.isPending || membershipOrgID === ""} onClick={() => confirm(`Add ${formatAdminUserRole(membershipRole)} membership to ${user.email}?`, () => mutation.mutate({ method: "POST", path: `/v1/admin/organizations/${membershipOrgID}/members`, body: { user_id: user.id, role: membershipRole } }))}>Add membership</button></div>
+      <div style={drawerActionStyle}>{user.memberships.map((membership) => <button key={membership.id} type="button" style={secondaryButtonStyle} disabled={mutation.isPending} onClick={() => confirm(`Remove ${formatAdminUserRole(membership.role)} membership in ${membership.name}?`, () => mutation.mutate({ method: "DELETE", path: `/v1/admin/organizations/${membership.org_id}/members/${membership.id}` }))}>Remove {membership.name} membership</button>)}</div>
       <div><strong>Email verified</strong><p>{user.email_verified_at === null ? "Not verified" : formatDateTime(user.email_verified_at)}</p></div>
+      {error === null ? null : <p role="alert" style={formErrorStyle}>{error}</p>}
     </div>}
   </ResponsiveDrawer>;
 }
@@ -647,5 +656,6 @@ const directoryHeaderStyle: CSSProperties = {
 const directoryHeadingStyle: CSSProperties = { margin: 0, fontSize: 16, fontWeight: 600 };
 const searchFormStyle: CSSProperties = { display: "flex", gap: 8, flexWrap: "wrap" };
 const secondaryButtonStyle: CSSProperties = { fontSize: 12, padding: "7px 14px", background: "#ffffff", border: "1px solid #94a3b8", borderRadius: 4, cursor: "pointer", color: "#0f172a", fontWeight: 600 };
+const drawerActionStyle: CSSProperties = { display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" };
 const linkButtonStyle: CSSProperties = { padding: 0, border: 0, background: "transparent", color: "#0369a1", cursor: "pointer", font: "inherit", fontWeight: 600, textAlign: "left" };
 const drawerContentStyle: CSSProperties = { display: "flex", flexDirection: "column", gap: 16, color: "#334155", fontSize: 13 };
