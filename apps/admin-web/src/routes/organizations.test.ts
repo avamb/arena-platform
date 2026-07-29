@@ -34,6 +34,8 @@ import {
   validateOrgName,
   validateOrgReservationTTL,
   validateOrgSlug,
+  CURATED_ORGANIZATION_LOCALES,
+  normalizeCountryPickerValue,
   // Feature #256 — Legal & billing tab helpers.
   KYB_STATUSES,
   TAX_ID_SCHEMES,
@@ -84,6 +86,20 @@ const otherOrg: AdminOrganization = {
   country: "DE",
   default_locale: "de-DE",
 };
+
+describe("organization geo pickers", () => {
+  it("normalizes a selected or manually-entered country to the stored alpha-2 form", () => {
+    expect(normalizeCountryPickerValue(" ee ")).toBe("EE");
+    expect(normalizeCountryPickerValue("us")).toBe("US");
+  });
+
+  it("offers the operator locales while preserving free BCP-47 entry validation", () => {
+    expect(CURATED_ORGANIZATION_LOCALES).toEqual(
+      expect.arrayContaining(["en", "ru", "et", "uk"]),
+    );
+    expect(validateOrgLocale("pt-BR")).toBeNull();
+  });
+});
 
 describe("filterRows", () => {
   const rows: readonly AdminOrganization[] = [baseOrg, deletedOrg, otherOrg];
@@ -179,7 +195,7 @@ describe("Create-organization form validators (feature #238)", () => {
   it("validateOrgCountry tolerates blank and rejects malformed codes", () => {
     expect(validateOrgCountry("")).toBeNull();
     expect(validateOrgCountry("US")).toBeNull();
-    expect(validateOrgCountry("GBR")).toBeNull();
+    expect(validateOrgCountry("GBR")).not.toBeNull();
     expect(validateOrgCountry("U")).not.toBeNull();
     expect(validateOrgCountry("USAA")).not.toBeNull();
     expect(validateOrgCountry("U1")).not.toBeNull();

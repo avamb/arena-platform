@@ -1386,19 +1386,14 @@ function LegalEntitySection({ org }: { org: AdminOrganization }) {
             htmlFor="addr-country"
             error={serverErrors.legal_address_country ?? null}
             localError={localErrors.legal_address_country ?? null}
-            hint="ISO 3166-1 alpha-2 (e.g. DE)"
+            hint="Search the country registry by name or code. Raw ISO entry remains available."
           >
-            <input
+            <CountryPicker
               id="addr-country"
-              type="text"
+              listId="addr-country-options"
               value={addrCountry}
-              onChange={(e) => setAddrCountry(e.target.value.toUpperCase())}
-              style={inputMonoStyle}
-              maxLength={2}
-              autoCapitalize="characters"
-              autoCorrect="off"
-              spellCheck={false}
-              data-testid="addr-country"
+              onChange={setAddrCountry}
+              testId="addr-country"
             />
           </FieldRow>
         </div>
@@ -3065,8 +3060,8 @@ export function validateOrgCountry(raw: string): string | null {
   if (trimmed === "") {
     return null;
   }
-  if (trimmed.length < 2 || trimmed.length > 3) {
-    return "Country must be a 2- or 3-letter ISO code";
+  if (trimmed.length !== 2) {
+    return "Country must be a 2-letter ISO 3166-1 alpha-2 code";
   }
   if (!/^[A-Za-z]+$/.test(trimmed)) {
     return "Country must be alphabetic";
@@ -3084,6 +3079,146 @@ export function validateOrgLocale(raw: string): string | null {
     return "Locale must look like 'en' or 'en-US'";
   }
   return null;
+}
+
+// The geo registry is the source of truth for country suggestions.  These
+// locales are deliberately curated rather than inferred from it: a country
+// can have several valid UI locales and operators may need a locale not in
+// this initial set.  LocalePicker remains editable for that reason.
+export const CURATED_ORGANIZATION_LOCALES = [
+  "en",
+  "en-US",
+  "en-GB",
+  "ru",
+  "et",
+  "uk",
+  "de",
+  "fr",
+  "lv",
+  "lt",
+  "fi",
+  "sv",
+  "he",
+] as const;
+
+export interface GeoCountry {
+  readonly iso2: string;
+  readonly name: string;
+}
+
+interface GeoCountriesEnvelope {
+  readonly countries: readonly GeoCountry[];
+}
+
+export function normalizeCountryPickerValue(raw: string): string {
+  return raw.trim().toUpperCase();
+}
+
+function useGeoCountries() {
+  return useQuery<GeoCountriesEnvelope, ApiError>({
+    queryKey: ["geo", "countries"],
+    queryFn: () =>
+      authedFetch<GeoCountriesEnvelope>({
+        method: "GET",
+        path: "/v1/geo/countries",
+      }),
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+/**
+ * An editable datalist is a searchable country picker in browsers while
+ * retaining the previous raw-code path when the registry has no data or is
+ * temporarily unavailable. Validation ensures submitted values are alpha-2.
+ */
+function CountryPicker({
+  id,
+  listId,
+  value,
+  onChange,
+  testId,
+}: {
+  id: string;
+  listId: string;
+  value: string;
+  onChange: (value: string) => void;
+  testId: string;
+}) {
+  const countries = useGeoCountries();
+  const options = countries.data?.countries ?? [];
+  const hasRegistryOptions = options.length > 0;
+  return (
+    <>
+      <input
+        id={id}
+        type="search"
+        list={hasRegistryOptions ? listId : undefined}
+        value={value}
+        onChange={(e) => onChange(normalizeCountryPickerValue(e.target.value))}
+        style={inputMonoStyle}
+        maxLength={100}
+        placeholder="Search country or enter ISO code"
+        autoCapitalize="characters"
+        autoCorrect="off"
+        spellCheck={false}
+        data-testid={testId}
+        aria-describedby={hasRegistryOptions ? undefined : `${id}-registry-hint`}
+      />
+      {hasRegistryOptions ? (
+        <datalist id={listId} data-testid={`${testId}-options`}>
+          {options.map((country) => (
+            <option key={country.iso2} value={country.iso2}>
+              {country.name} ({country.iso2})
+            </option>
+          ))}
+        </datalist>
+      ) : (
+        <div id={`${id}-registry-hint`} style={fieldHintStyle} data-testid={`${testId}-fallback`}>
+          Country registry is unavailable or empty; enter a 2-letter ISO code.
+        </div>
+      )}
+    </>
+  );
+}
+
+function LocalePicker({
+  id,
+  listId,
+  value,
+  onChange,
+  testId,
+}: {
+  id: string;
+  listId: string;
+  value: string;
+  onChange: (value: string) => void;
+  testId: string;
+}) {
+  return (
+    <>
+      <input
+        id={id}
+        type="search"
+        list={listId}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={inputMonoStyle}
+        maxLength={20}
+        placeholder="Search or enter locale"
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={false}
+        data-testid={testId}
+      />
+      <datalist id={listId} data-testid={`${testId}-options`}>
+        {CURATED_ORGANIZATION_LOCALES.map((locale) => (
+          <option key={locale} value={locale} />
+        ))}
+      </datalist>
+    </>
+  );
 }
 
 export function validateOrgReservationTTL(raw: string): string | null {
@@ -3366,19 +3501,14 @@ function CreateOrganizationDialog({ onClose }: { onClose: () => void }) {
             htmlFor="orgs-create-country"
             error={serverErrors.country ?? null}
             localError={country.length > 0 ? countryErr : null}
-            hint="2-letter ISO 3166-1 country code (e.g. US, GB). Optional."
+            hint="Search the country registry by name or code. Optional; raw ISO entry remains available."
           >
-            <input
+            <CountryPicker
               id="orgs-create-country"
-              type="text"
+              listId="orgs-create-country-options"
               value={country}
-              onChange={(e) => setCountry(e.target.value.toUpperCase())}
-              style={inputMonoStyle}
-              maxLength={3}
-              autoCapitalize="characters"
-              autoCorrect="off"
-              spellCheck={false}
-              data-testid="orgs-create-country"
+              onChange={setCountry}
+              testId="orgs-create-country"
             />
           </FieldRow>
           <FieldRow
@@ -3386,20 +3516,14 @@ function CreateOrganizationDialog({ onClose }: { onClose: () => void }) {
             htmlFor="orgs-create-locale"
             error={serverErrors.default_locale ?? null}
             localError={locale.length > 0 ? localeErr : null}
-            hint="BCP-47 locale tag. Server defaults to 'en' if blank."
+            hint="Choose a common locale or enter any valid BCP-47 locale. Server defaults to 'en' if blank."
           >
-            <input
+            <LocalePicker
               id="orgs-create-locale"
-              type="text"
+              listId="orgs-create-locale-options"
               value={locale}
-              onChange={(e) => setLocale(e.target.value)}
-              style={inputMonoStyle}
-              maxLength={20}
-              placeholder="en"
-              autoCapitalize="off"
-              autoCorrect="off"
-              spellCheck={false}
-              data-testid="orgs-create-locale"
+              onChange={setLocale}
+              testId="orgs-create-locale"
             />
           </FieldRow>
           <FieldRow
@@ -3740,19 +3864,14 @@ function EditOrganizationDialog({
             htmlFor="orgs-edit-country"
             error={serverErrors.country ?? null}
             localError={country.length > 0 ? countryErr : null}
-            hint="2-letter ISO 3166-1 country code (e.g. US, GB). Optional."
+            hint="Search the country registry by name or code. Optional; raw ISO entry remains available."
           >
-            <input
+            <CountryPicker
               id="orgs-edit-country"
-              type="text"
+              listId="orgs-edit-country-options"
               value={country}
-              onChange={(e) => setCountry(e.target.value.toUpperCase())}
-              style={inputMonoStyle}
-              maxLength={3}
-              autoCapitalize="characters"
-              autoCorrect="off"
-              spellCheck={false}
-              data-testid="orgs-edit-country"
+              onChange={setCountry}
+              testId="orgs-edit-country"
             />
           </FieldRow>
           <FieldRow
@@ -3760,20 +3879,14 @@ function EditOrganizationDialog({
             htmlFor="orgs-edit-locale"
             error={serverErrors.default_locale ?? null}
             localError={locale.length > 0 ? localeErr : null}
-            hint="BCP-47 locale tag (e.g. en, en-US). Required."
+            hint="Choose a common locale or enter any valid BCP-47 locale. Required."
           >
-            <input
+            <LocalePicker
               id="orgs-edit-locale"
-              type="text"
+              listId="orgs-edit-locale-options"
               value={locale}
-              onChange={(e) => setLocale(e.target.value)}
-              style={inputMonoStyle}
-              maxLength={20}
-              placeholder="en"
-              autoCapitalize="off"
-              autoCorrect="off"
-              spellCheck={false}
-              data-testid="orgs-edit-locale"
+              onChange={setLocale}
+              testId="orgs-edit-locale"
             />
           </FieldRow>
           <FieldRow

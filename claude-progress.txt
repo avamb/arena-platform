@@ -22731,3 +22731,20 @@ required durable persistence proof.
   and `go build ./cmd/...` both pass. `init.sh` could not run because this
   Windows environment has no bash executable.
 - Completion after marking: 395/409 features passing.
+
+## 2026-07-29 — Feature #396 (AB-5) complete
+
+- Replaced raw organization country fields with searchable, editable geo-registry
+  pickers in create, edit, and legal-address forms. Selected values are stored
+  as ISO 3166-1 alpha-2 codes; an explicit raw-code fallback remains available
+  whenever the registry is empty or unavailable.
+- Added curated locale suggestions (`en`, `ru`, `et`, `uk`, and related
+  locales) while keeping BCP-47 free entry for unsupported locales.
+- Tightened organization-country validation to alpha-2 so alpha-3 inputs such
+  as `EST` cannot dead-end the organization workflow.
+- Added Vitest coverage for picker normalization and locale curation/free entry.
+- Verified: live `GET /v1/geo/countries` returned PostgreSQL-backed name/code
+  data; 861 Vitest tests, admin type-check, and production build pass; API
+  `/readyz` returns 200. `init.sh` cannot execute here because WSL bash is not
+  installed, but the already-running stack was healthy.
+- Completion after marking: 396/409 features passing.
