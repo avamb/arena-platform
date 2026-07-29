@@ -186,6 +186,10 @@ do not put it in Git or a shared non-secret environment group. Set these on
 | `SMTP_FROM` | A Brevo-verified sender address |
 | `SMTP_USE_TLS` | `true` |
 
+For per-organizer sender identities, also set `BREVO_API_KEY` as a Dokploy
+secret on **arena-api** and **arena-worker**. This API key only reads Brevo
+sender/DNS verification state; organizers never supply SMTP credentials.
+
 Use the same `EMAIL_MODE=smtp` on API and migrate too, because all three load
 the shared production config. SMTP credentials only need to be present on the
 worker; API and migrate never instantiate an SMTP sender.

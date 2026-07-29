@@ -46,6 +46,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/storage"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/brevo"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/convertjob"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/database"
@@ -149,6 +150,11 @@ func run() error {
 	})
 	pollerErrCh := make(chan error, 1)
 	go func() { pollerErrCh <- poller.Run(rootCtx) }()
+
+	// Brevo sender verification is separate from transactional mail delivery.
+	// It only reads platform-owned API credentials and updates durable org state.
+	senderVerificationPoller := brevo.NewPoller(pool.Pool, brevo.New(cfg.BrevoAPIKey, cfg.BrevoAPIBaseURL, nil), logger, cfg.SenderVerificationPollInterval)
+	go senderVerificationPoller.Run(rootCtx)
 
 	// 6b. Outbox events dispatcher (feature #110) --------------------------------
 	// Polls the outbox_events table (populated transactionally by domain

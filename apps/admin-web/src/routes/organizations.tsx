@@ -138,6 +138,9 @@ interface OrganizationsEnvelope {
   readonly offset?: number;
 }
 
+interface SenderDNSRecord { readonly type: string; readonly host: string; readonly value: string }
+interface SenderDNSEnvelope { readonly sender_email: string; readonly status: string; readonly dns_records: readonly SenderDNSRecord[] }
+
 export const ORGANIZATIONS_PAGE_SIZE = 25;
 
 export function buildOrganizationsListPath(rawSearch: string, limit: number, offset: number): string {
@@ -3781,6 +3784,9 @@ function EditOrganizationDialog({
   const [senderEmail, setSenderEmail] = useState(org.sender_email ?? "");
   const [serverErrors, setServerErrors] = useState<UpdateOrgFieldErrors>({});
   const [success, setSuccess] = useState<AdminOrganization | null>(null);
+  const senderDNS = useMutation<SenderDNSEnvelope, ApiError, void>({
+    mutationFn: () => authedFetch<SenderDNSEnvelope>({ method: "GET", path: `/v1/admin/organizations/${encodeURIComponent(org.id)}/sender-dns` }),
+  });
 
   const closeRef = useRef<HTMLButtonElement | null>(null);
   useEscapeClose(true, onClose);
@@ -4034,6 +4040,15 @@ function EditOrganizationDialog({
               placeholder="tickets@organizer.example"
               data-testid="orgs-edit-sender-email"
             />
+            {org.sender_email ? (
+              <div style={{ marginTop: 8 }}>
+                <button type="button" style={secondaryButtonStyle} disabled={senderDNS.isPending} onClick={() => senderDNS.mutate()} data-testid="orgs-edit-sender-dns">
+                  {senderDNS.isPending ? "Loading DNS records…" : "Show Brevo DNS records"}
+                </button>
+                {senderDNS.data ? <div role="status" style={{ marginTop: 8 }}><strong>{senderDNS.data.status}</strong>{senderDNS.data.dns_records.map((record) => <div key={`${record.type}-${record.host}`}><code style={monoStyle}>{record.type} {record.host} {record.value}</code></div>)}</div> : null}
+                {senderDNS.error ? <div role="alert" style={formErrorStyle}>{senderDNS.error.message}</div> : null}
+              </div>
+            ) : null}
           </FieldRow>
 
           {serverErrors.form !== undefined ? (

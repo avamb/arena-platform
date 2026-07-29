@@ -23019,3 +23019,18 @@ Feature #404 marked passing. Overall feature status: 408/409 passing.
 - Ticket delivery resolves the sender identity directly from the current organization row immediately before SMTP and only uses an organizer address when the stored status is `verified`; all other states retain the global SMTP sender and existing Reply-To behavior.
 - Added SMTP override validation and focused delivery/email tests; `npm run type-check` and focused Go tests passed. Rebuilt worker started healthy.
 - Not marked passing: the remaining AB-10 requirements are a Brevo API client/UI DNS-record display and a polling job that updates the persisted verification state. Those must be implemented before this feature can be accepted. API container integration was also blocked locally by an unrelated host port 8080 conflict.
+
+## 2026-07-29 — Feature #407 (AB-10) complete
+
+- Added a platform-owned Brevo sender API client with mocked HTTP coverage, a
+  protected superadmin DNS-record endpoint, and sender DNS instructions in the
+  organization edit dialog.
+- Added a worker poller that persists Brevo sender verification state; ticket
+  delivery keeps using the global sender until that durable state is verified.
+- Added Brevo API/poller configuration and deployment guidance. No organizer
+  SMTP credentials are accepted or stored.
+- Verified focused Go tests, admin-web type-check, full Docker Go build, and a
+  healthy worker restart. The local API port `8080` remained occupied by an
+  unrelated host process, but the API binary compiled in the Docker build.
+
+Feature #407 marked passing. Overall feature status: 409/409 passing.

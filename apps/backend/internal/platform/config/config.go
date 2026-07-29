@@ -217,6 +217,11 @@ type Config struct {
 	SMTPPassword string    `env:"SMTP_PASSWORD" required:"false" default:""`
 	SMTPFrom     string    `env:"SMTP_FROM"     required:"false" default:""`
 	SMTPUseTLS   bool      `env:"SMTP_USE_TLS"  required:"false" default:"true"`
+	// BrevoAPIKey is used only to query domain verification state; it is never
+	// an organizer credential and must be stored as a platform secret.
+	BrevoAPIKey                    string        `env:"BREVO_API_KEY" required:"false" default:""`
+	BrevoAPIBaseURL                string        `env:"BREVO_API_BASE_URL" required:"false" default:"https://api.brevo.com"`
+	SenderVerificationPollInterval time.Duration `env:"SENDER_VERIFICATION_POLL_INTERVAL" required:"false" default:"15m"`
 
 	// -------------------------------------------------------------------------
 	// Debug / fault-injection flags
@@ -403,12 +408,14 @@ func Load() (*Config, error) {
 		OutboxSigningSecret: getenv("OUTBOX_SIGNING_SECRET", ""),
 		OutboxMode:          OutboxMode(getenv("OUTBOX_MODE", "")),
 
-		EmailMode:    EmailMode(getenv("EMAIL_MODE", "")),
-		SMTPHost:     getenv("SMTP_HOST", ""),
-		SMTPPort:     getenv("SMTP_PORT", "587"),
-		SMTPUsername: getenv("SMTP_USERNAME", ""),
-		SMTPPassword: getenv("SMTP_PASSWORD", ""),
-		SMTPFrom:     getenv("SMTP_FROM", ""),
+		EmailMode:       EmailMode(getenv("EMAIL_MODE", "")),
+		SMTPHost:        getenv("SMTP_HOST", ""),
+		SMTPPort:        getenv("SMTP_PORT", "587"),
+		SMTPUsername:    getenv("SMTP_USERNAME", ""),
+		SMTPPassword:    getenv("SMTP_PASSWORD", ""),
+		SMTPFrom:        getenv("SMTP_FROM", ""),
+		BrevoAPIKey:     getenv("BREVO_API_KEY", ""),
+		BrevoAPIBaseURL: getenv("BREVO_API_BASE_URL", "https://api.brevo.com"),
 
 		StripeWebhookSecret: getenv("STRIPE_WEBHOOK_SECRET", ""),
 		AllPayWebhookSecret: getenv("ALLPAY_WEBHOOK_SECRET", ""),
@@ -554,6 +561,11 @@ func Load() (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.WorkerPollInterval = d
+	d, err = getenvDuration("SENDER_VERIFICATION_POLL_INTERVAL", 15*time.Minute, false)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.SenderVerificationPollInterval = d
 
 	d, err = getenvDuration("WORKER_JOB_TIMEOUT", 5*time.Minute, false)
 	if err != nil {

@@ -124,6 +124,7 @@ func (s *Server) mountAdminOrgRoutes(r chi.Router) {
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "org.update", "organizations")
 		pr.Patch("/admin/organizations/{id}", s.handleAdminUpdateOrg)
+		pr.Get("/admin/organizations/{id}/sender-dns", s.handleAdminOrganizationSenderDNS)
 	})
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "org.delete", "organizations")

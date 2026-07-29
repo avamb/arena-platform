@@ -152,6 +152,9 @@ services:
       JWT_ISSUER: "arena-dev"
       JWT_AUDIENCE: "arena-api"
       JWT_DEFAULT_TTL: "1h"
+      # API reads Brevo DNS instructions for the superadmin sender UI.
+      BREVO_API_KEY: "${BREVO_API_KEY:-}"
+      BREVO_API_BASE_URL: "${BREVO_API_BASE_URL:-https://api.brevo.com}"
       # arena-healthcheck reads HEALTH_ADDR to know which URL to probe.
       # For arena-api: the main HTTP server on :8080.
       HEALTH_ADDR: "http://localhost:8080"
@@ -213,6 +216,9 @@ services:
       SMTP_PASSWORD: ""
       SMTP_FROM: ""
       SMTP_USE_TLS: "true"
+      BREVO_API_KEY: "${BREVO_API_KEY:-}"
+      BREVO_API_BASE_URL: "${BREVO_API_BASE_URL:-https://api.brevo.com}"
+      SENDER_VERIFICATION_POLL_INTERVAL: "${SENDER_VERIFICATION_POLL_INTERVAL:-15m}"
 
       # arena-worker exposes /healthz and /metrics on the sidecar metrics
       # server (WORKER_METRICS_ADDR) rather than on the api port.
