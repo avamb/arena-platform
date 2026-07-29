@@ -365,7 +365,7 @@ func TestAuthEmailIntegrationPR02_VerificationEmailArrives(t *testing.T) {
 	}
 
 	// Verify the link is built from AppPublicURL, not from r.Host.
-	if !strings.Contains(msg.Body, testPublicURL+"/v1/auth/verify?token=") {
+	if !strings.Contains(msg.Body, testPublicURL+"/verify-email?token=") {
 		t.Errorf("email body does not contain canonical verify link (AppPublicURL=%s)", testPublicURL)
 	}
 
@@ -376,7 +376,7 @@ func TestAuthEmailIntegrationPR02_VerificationEmailArrives(t *testing.T) {
 	t.Log("token is embedded in email link (not in logs) ✓")
 
 	// Extract the token from the body to complete the verify flow.
-	token := extractTokenFromBody(t, msg.Body, "/v1/auth/verify?token=")
+	token := extractTokenFromBody(t, msg.Body, "/verify-email?token=")
 	if token == "" {
 		t.Fatal("could not extract verification token from email body")
 	}
@@ -444,6 +444,12 @@ func TestAuthEmailIntegrationPR02_PasswordResetEmailArrives(t *testing.T) {
 	t.Cleanup(func() {
 		pool.Exec(t.Context(), "DELETE FROM users WHERE id = $1", userRow.ID)
 	})
+	// A password reset must invalidate pre-existing sessions atomically with
+	// the password update. Seed a real refresh-token row to prove that contract.
+	oldRefreshToken := "pr02-old-session-" + uniqueID
+	if err := q.InsertRefreshToken(t.Context(), oldRefreshToken, userRow.ID, time.Now().Add(24*time.Hour)); err != nil {
+		t.Fatalf("InsertRefreshToken: %v", err)
+	}
 
 	// Request password reset — enqueues auth.password_reset_email job.
 	reqBody := fmt.Sprintf(`{"email":%q}`, em)
@@ -483,12 +489,12 @@ func TestAuthEmailIntegrationPR02_PasswordResetEmailArrives(t *testing.T) {
 	}
 
 	// Verify the link uses canonical AppPublicURL.
-	if !strings.Contains(msg.Body, testPublicURL+"/v1/auth/password-reset/confirm?token=") {
+	if !strings.Contains(msg.Body, testPublicURL+"/reset-password?token=") {
 		t.Errorf("email body does not contain canonical reset link (AppPublicURL=%s)", testPublicURL)
 	}
 
 	// Extract the reset token.
-	token := extractTokenFromBody(t, msg.Body, "/v1/auth/password-reset/confirm?token=")
+	token := extractTokenFromBody(t, msg.Body, "/reset-password?token=")
 	if token == "" {
 		t.Fatal("could not extract reset token from email body")
 	}
@@ -502,6 +508,21 @@ func TestAuthEmailIntegrationPR02_PasswordResetEmailArrives(t *testing.T) {
 	srv.handleAuthPasswordResetConfirm(w1, r1)
 	if w1.Code != http.StatusOK {
 		t.Errorf("first confirm: status = %d; want 200 (body: %s)", w1.Code, w1.Body.String())
+	}
+
+	updatedUser, err := q.GetUserByID(t.Context(), userRow.ID)
+	if err != nil {
+		t.Fatalf("GetUserByID after reset: %v", err)
+	}
+	if err := users.CheckPassword(updatedUser.PasswordHash, "NewPassword1!"); err != nil {
+		t.Errorf("new password does not authenticate: %v", err)
+	}
+	oldSession, err := q.GetRefreshToken(t.Context(), oldRefreshToken)
+	if err != nil {
+		t.Fatalf("GetRefreshToken after reset: %v", err)
+	}
+	if oldSession.RevokedAt == nil {
+		t.Error("password reset did not revoke the existing refresh-token session")
 	}
 
 	// Second use: must return 410 Gone (single-use).

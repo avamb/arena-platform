@@ -233,6 +233,8 @@ const NON_NAV_ROUTE_IDS: ReadonlySet<string> = new Set([
   // Wave M-3, feature #296: public auth flows (no permission gate; the
   // backend endpoints enforce token validity).
   "PasswordResetRoute",
+  "ResetPasswordRoute",
+  "VerifyEmailRoute",
   "AcceptInviteRoute",
   // Wave SEAT-E3, feature #317: interactive seat management detail
   // route. Inherits its permission gate (event_session.assign_seating_plan)

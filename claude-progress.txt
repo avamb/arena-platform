@@ -22938,3 +22938,25 @@ scoped feature. The final operator action is to add the actual Brevo SMTP key
 and a verified sender to Dokploy before the production flip. Feature #408 was
 skipped (not marked passing) because that external Brevo credential and sender
 verification are required to complete the live production flip.
+
+## 2026-07-29 — Feature #409 (AB-23) complete
+
+- Password-reset emails now link to the SPA at `/reset-password?token=...`,
+  which resolves to the existing password form and posts the selected password
+  to the separately configured API base URL.
+- Added a public `/verify-email?token=...` SPA route so verification emails no
+  longer link directly to the API either.
+- Documented `APP_PUBLIC_URL` as the SPA origin in `.env.example` and
+  `deploy/DOKPLOY.md`; the API base URL remains a separate configuration.
+- Added focused worker email-link unit coverage and extended the real
+  PostgreSQL/SMTP-capture integration test: it extracts the SPA link, confirms
+  the new password works, and proves a pre-existing refresh-token session is
+  revoked.
+
+Verification: admin-web type-check, production build, and all 870 Vitest tests
+pass. `go test ./internal/platform/authemail` and the real
+`TestAuthEmailIntegrationPR02_PasswordResetEmailArrives` integration test pass
+against PostgreSQL at localhost:5432. The running API returned `/readyz` 200.
+Mock-pattern grep found only established test setup, development diagnostics,
+and explicit no-mock comments; no feature mock data was added. Feature #409
+marked passing (405/409).

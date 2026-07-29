@@ -22,6 +22,8 @@ import {
 import { GeoRoute } from "@/routes/guarded";
 import { Route as WebhooksRoute } from "@/routes/webhooks";
 import { Route as PasswordResetRoute } from "@/routes/passwordReset";
+import { Route as ResetPasswordRoute } from "@/routes/resetPassword";
+import { Route as VerifyEmailRoute } from "@/routes/verifyEmail";
 import { Route as AcceptInviteRoute } from "@/routes/acceptInvite";
 import { Route as SessionSeatsRoute } from "@/routes/sessionSeats";
 
@@ -59,6 +61,8 @@ export const routeTree = RootRoute.addChildren([
   GeoRoute,
   WebhooksRoute,
   PasswordResetRoute,
+  ResetPasswordRoute,
+  VerifyEmailRoute,
   AcceptInviteRoute,
   SessionSeatsRoute,
 ]);

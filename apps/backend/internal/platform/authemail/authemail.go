@@ -93,10 +93,10 @@ type HandlerOptions struct {
 	// Sender delivers email messages. Required. Use email.SMTPSender in
 	// production and email.LogSender in development / CI.
 	Sender emailadapter.Sender
-	// AppPublicURL is the canonical public base URL of the application
-	// (e.g. "https://app.example.com"). Links in emails are built as
-	// AppPublicURL + path + "?token=" + token. Never derived from request
-	// headers. Defaults to "http://localhost:8080" when empty.
+	// AppPublicURL is the canonical SPA origin (e.g. "https://app.example.com").
+	// Links land on a SPA route, which calls its separately configured API base
+	// URL. Never derive this value from request headers. It defaults to
+	// "http://localhost:8080" when empty for local development.
 	AppPublicURL string
 	// FromAddress is the envelope sender. Passed to the Sender when non-empty;
 	// Sender implementations may use their own configured from-address otherwise.
@@ -147,10 +147,9 @@ func (h *Handler) HandleEmailVerification(ctx context.Context, payload []byte) e
 		return fmt.Errorf("authemail: verification payload missing email or token")
 	}
 
-	// Build the clickable link from the validated canonical public URL.
-	// This is the only place where the token is combined into a URL;
-	// the resulting URL is embedded in the email body but NOT in logs.
-	verifyURL := h.appPublicURL + "/v1/auth/verify?token=" + p.Token
+	// Send recipients to the SPA, not an API path. The SPA owns the success
+	// state and calls GET /v1/auth/verify with its configured API URL.
+	verifyURL := h.appPublicURL + "/verify-email?token=" + p.Token
 
 	h.logger.Info("authemail: sending email verification",
 		slog.String("user_id", p.UserID),
@@ -190,7 +189,9 @@ func (h *Handler) HandlePasswordResetEmail(ctx context.Context, payload []byte) 
 	}
 
 	// Build the reset URL from canonical AppPublicURL — not from request headers.
-	resetURL := h.appPublicURL + "/v1/auth/password-reset/confirm?token=" + p.Token
+	// Send recipients to the SPA password form, which POSTs to the separately
+	// configured API URL.
+	resetURL := h.appPublicURL + "/reset-password?token=" + p.Token
 
 	h.logger.Info("authemail: sending password reset email",
 		slog.String("user_id", p.UserID),

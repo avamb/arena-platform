@@ -154,7 +154,7 @@ into each service's env tab).
 | `APP_COMMIT` | api / worker / migrate | *(injected by CI)* | |
 | `JWT_SIGNING_SECRET` | api / worker | *(strong random, ≥ 32 bytes)* | Shared symmetric key; must not be a dev placeholder |
 | `ENABLE_DEV_AUTH` | api / worker | `false` | **Must be false** |
-| `APP_PUBLIC_URL` | api / worker | `https://app.example.com` | Canonical URL for emails and webhooks; never derived from request headers |
+| `APP_PUBLIC_URL` | api / worker | `https://app.example.com` | Canonical **SPA origin** for emails and webhooks; distinct from the API base URL and never derived from request headers |
 | `OUTBOX_MODE` | worker | `webhook` or `disabled` | `noop` and empty are forbidden in production |
 | `EMAIL_MODE` | worker | `smtp` | `log` is forbidden in production |
 | `ALLOW_PRIVATE_DB_PLAINTEXT` | api / worker / migrate | `false` | Set `true` only for an unqualified Docker service host or private IP when in-network PostgreSQL has no TLS. Never use for a managed/external DB. |
@@ -290,7 +290,7 @@ Set each variable below.  A full list of *optional* tuning variables is in
 | `DB_LOG_QUERIES` | `false` | **`true` is rejected** |
 | `EMAIL_MODE` | `smtp` | **`log` and empty are rejected** |
 | `OUTBOX_MODE` | `webhook` or `disabled` | **`noop` and empty are rejected** |
-| `APP_PUBLIC_URL` | `https://app.example.com` | Required when EMAIL_MODE=smtp for canonical email links |
+| `APP_PUBLIC_URL` | `https://app.example.com` | Required when EMAIL_MODE=smtp; the SPA origin used for canonical email links, separate from the API base URL |
 | `SMTP_HOST` | SMTP server hostname | Required when EMAIL_MODE=smtp |
 | `SMTP_FROM` | `tickets@arena.example.com` | Required when EMAIL_MODE=smtp |
 
