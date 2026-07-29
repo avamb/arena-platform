@@ -29,12 +29,16 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/mail"
+	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
@@ -45,14 +49,28 @@ import (
 // for use by the httpserver shim layer (orgs_test.go references orgResponse
 // from package httpserver via iam_shims.go).
 type OrgResponse struct {
-	ID                    string `json:"id"`
-	Name                  string `json:"name"`
-	Slug                  string `json:"slug"`
-	Country               string `json:"country"`
-	DefaultLocale         string `json:"default_locale"`
-	ReservationTTLSeconds int32  `json:"reservation_ttl_seconds"`
-	CreatedAt             string `json:"created_at"`
-	UpdatedAt             string `json:"updated_at"`
+	ID                     string  `json:"id"`
+	Name                   string  `json:"name"`
+	Slug                   string  `json:"slug"`
+	Country                string  `json:"country"`
+	DefaultLocale          string  `json:"default_locale"`
+	ReservationTTLSeconds  int32   `json:"reservation_ttl_seconds"`
+	LegalName              *string `json:"legal_name"`
+	TaxID                  *string `json:"tax_id"`
+	TaxIDScheme            *string `json:"tax_id_scheme"`
+	RegistrationNumber     *string `json:"registration_number"`
+	LegalAddressLine1      *string `json:"legal_address_line1"`
+	LegalAddressLine2      *string `json:"legal_address_line2"`
+	LegalAddressPostalCode *string `json:"legal_address_postal_code"`
+	LegalAddressCity       *string `json:"legal_address_city"`
+	LegalAddressCountry    *string `json:"legal_address_country"`
+	ContactEmail           *string `json:"contact_email"`
+	ContactPhone           *string `json:"contact_phone"`
+	WebsiteURL             *string `json:"website_url"`
+	KybStatus              string  `json:"kyb_status"`
+	KybVerifiedAt          *string `json:"kyb_verified_at"`
+	CreatedAt              string  `json:"created_at"`
+	UpdatedAt              string  `json:"updated_at"`
 }
 
 // orgResponse is a package-level alias for OrgResponse so existing handler code
@@ -71,11 +89,166 @@ type createOrgRequest struct {
 // updateOrgRequest is the request body for PATCH /v1/organizations/{id}.
 // All fields are optional; empty/zero values leave the existing value unchanged.
 type updateOrgRequest struct {
-	Name                  string `json:"name"`
-	Slug                  string `json:"slug"`
-	Country               string `json:"country"`
-	DefaultLocale         string `json:"default_locale"`
-	ReservationTTLSeconds int32  `json:"reservation_ttl_seconds"`
+	Name                   string         `json:"name"`
+	Slug                   string         `json:"slug"`
+	Country                string         `json:"country"`
+	DefaultLocale          string         `json:"default_locale"`
+	ReservationTTLSeconds  int32          `json:"reservation_ttl_seconds"`
+	LegalName              optionalString `json:"legal_name"`
+	TaxID                  optionalString `json:"tax_id"`
+	TaxIDScheme            optionalString `json:"tax_id_scheme"`
+	RegistrationNumber     optionalString `json:"registration_number"`
+	LegalAddressLine1      optionalString `json:"legal_address_line1"`
+	LegalAddressLine2      optionalString `json:"legal_address_line2"`
+	LegalAddressPostalCode optionalString `json:"legal_address_postal_code"`
+	LegalAddressCity       optionalString `json:"legal_address_city"`
+	LegalAddressCountry    optionalString `json:"legal_address_country"`
+	ContactEmail           optionalString `json:"contact_email"`
+	ContactPhone           optionalString `json:"contact_phone"`
+	WebsiteURL             optionalString `json:"website_url"`
+	KybStatus              optionalString `json:"kyb_status"`
+}
+
+// optionalString preserves the difference between an omitted PATCH member and
+// an explicit JSON null. That distinction prevents a basic org PATCH from
+// clearing legal data submitted by a previous save.
+type optionalString struct {
+	Present bool
+	Value   *string
+}
+
+func (v *optionalString) UnmarshalJSON(data []byte) error {
+	v.Present = true
+	if string(data) == "null" {
+		v.Value = nil
+		return nil
+	}
+	var value string
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	v.Value = &value
+	return nil
+}
+
+func decodeUpdateOrgRequest(body []byte, req *updateOrgRequest) error {
+	decoder := json.NewDecoder(strings.NewReader(string(body)))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(req); err != nil {
+		return err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return errors.New("request body contains multiple JSON values")
+		}
+		return err
+	}
+	return nil
+}
+
+func optionalValue(value optionalString, existing *string) *string {
+	if !value.Present {
+		return existing
+	}
+	if value.Value == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*value.Value)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
+}
+
+var (
+	alpha2Country = regexp.MustCompile(`^[A-Z]{2}$`)
+	euVAT         = regexp.MustCompile(`^[A-Z]{2}[A-Z0-9]{2,12}$`)
+	gbVAT         = regexp.MustCompile(`^GB(?:[0-9]{9}|[0-9]{12}|GD[0-9]{3}|HA[0-9]{3})$`)
+	ilVAT         = regexp.MustCompile(`^[0-9]{9}$`)
+	usEIN         = regexp.MustCompile(`^[0-9]{2}-?[0-9]{7}$`)
+)
+
+func validateLegalUpdate(req updateOrgRequest, current gen.OrganizationRow) (legalName, taxID, taxScheme, registrationNumber, line1, line2, postalCode, city, addressCountry, email, phone, website *string, kybStatus string, code string) {
+	legalName = optionalValue(req.LegalName, current.LegalName)
+	taxID = optionalValue(req.TaxID, current.TaxID)
+	taxScheme = optionalValue(req.TaxIDScheme, current.TaxIDScheme)
+	registrationNumber = optionalValue(req.RegistrationNumber, current.RegistrationNumber)
+	line1 = optionalValue(req.LegalAddressLine1, current.LegalAddressLine1)
+	line2 = optionalValue(req.LegalAddressLine2, current.LegalAddressLine2)
+	postalCode = optionalValue(req.LegalAddressPostalCode, current.LegalAddressPostalCode)
+	city = optionalValue(req.LegalAddressCity, current.LegalAddressCity)
+	addressCountry = optionalValue(req.LegalAddressCountry, current.LegalAddressCountry)
+	email = optionalValue(req.ContactEmail, current.ContactEmail)
+	phone = optionalValue(req.ContactPhone, current.ContactPhone)
+	website = optionalValue(req.WebsiteURL, current.WebsiteURL)
+	kybStatus = current.KybStatus
+	if req.KybStatus.Present {
+		if req.KybStatus.Value == nil {
+			return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", "invalid_kyb_status"
+		}
+		kybStatus = strings.TrimSpace(*req.KybStatus.Value)
+	}
+	if kybStatus != "unverified" && kybStatus != "pending" && kybStatus != "verified" && kybStatus != "rejected" {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", "invalid_kyb_status"
+	}
+	if (kybStatus == "pending" || kybStatus == "verified") && legalName == nil {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", "legal_name_required"
+	}
+	if addressCountry != nil {
+		country := strings.ToUpper(*addressCountry)
+		if !alpha2Country.MatchString(country) {
+			return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", "invalid_legal_address_country"
+		}
+		addressCountry = &country
+	}
+	if (taxID == nil) != (taxScheme == nil) {
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", "invalid_tax_id_scheme"
+	}
+	if taxID != nil {
+		valid := false
+		switch *taxScheme {
+		case "eu_vat":
+			valid = euVAT.MatchString(strings.ToUpper(*taxID))
+		case "gb_vat":
+			valid = gbVAT.MatchString(strings.ToUpper(*taxID))
+		case "il_vat":
+			valid = ilVAT.MatchString(*taxID)
+		case "us_ein":
+			valid = usEIN.MatchString(*taxID)
+		case "other":
+			valid = len(*taxID) >= 2 && len(*taxID) <= 64
+		default:
+			return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", "invalid_tax_id_scheme"
+		}
+		if !valid {
+			return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", "invalid_tax_id"
+		}
+	}
+	if email != nil {
+		parsed, err := mail.ParseAddress(*email)
+		if err != nil || parsed.Address != *email {
+			return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", "invalid_contact_email"
+		}
+	}
+	if website != nil {
+		parsed, err := url.ParseRequestURI(*website)
+		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+			return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", "invalid_website_url"
+		}
+	}
+	return legalName, taxID, taxScheme, registrationNumber, line1, line2, postalCode, city, addressCountry, email, phone, website, kybStatus, ""
+}
+
+func responseFromOrganization(o gen.OrganizationRow) orgResponse {
+	var verifiedAt *string
+	if o.KybVerifiedAt != nil {
+		value := o.KybVerifiedAt.UTC().Format(time.RFC3339)
+		verifiedAt = &value
+	}
+	return orgResponse{ID: o.ID.String(), Name: o.Name, Slug: o.Slug, Country: o.Country, DefaultLocale: o.DefaultLocale, ReservationTTLSeconds: o.ReservationTTLSeconds,
+		LegalName: o.LegalName, TaxID: o.TaxID, TaxIDScheme: o.TaxIDScheme, RegistrationNumber: o.RegistrationNumber, LegalAddressLine1: o.LegalAddressLine1, LegalAddressLine2: o.LegalAddressLine2, LegalAddressPostalCode: o.LegalAddressPostalCode, LegalAddressCity: o.LegalAddressCity, LegalAddressCountry: o.LegalAddressCountry, ContactEmail: o.ContactEmail, ContactPhone: o.ContactPhone, WebsiteURL: o.WebsiteURL, KybStatus: o.KybStatus, KybVerifiedAt: verifiedAt,
+		CreatedAt: o.CreatedAt.UTC().Format(time.RFC3339), UpdatedAt: o.UpdatedAt.UTC().Format(time.RFC3339)}
 }
 
 // HandleCreateOrg serves POST /v1/organizations.
@@ -151,16 +324,7 @@ func (h *Handler) HandleCreateOrg(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
-		"organization": orgResponse{
-			ID:                    org.ID.String(),
-			Name:                  org.Name,
-			Slug:                  org.Slug,
-			Country:               org.Country,
-			DefaultLocale:         org.DefaultLocale,
-			ReservationTTLSeconds: org.ReservationTTLSeconds,
-			CreatedAt:             org.CreatedAt.UTC().Format(time.RFC3339),
-			UpdatedAt:             org.UpdatedAt.UTC().Format(time.RFC3339),
-		},
+		"organization": responseFromOrganization(org),
 	})
 }
 
@@ -186,16 +350,7 @@ func (h *Handler) HandleListOrgs(w http.ResponseWriter, r *http.Request) {
 
 	result := make([]orgResponse, 0, len(rows))
 	for _, o := range rows {
-		result = append(result, orgResponse{
-			ID:                    o.ID.String(),
-			Name:                  o.Name,
-			Slug:                  o.Slug,
-			Country:               o.Country,
-			DefaultLocale:         o.DefaultLocale,
-			ReservationTTLSeconds: o.ReservationTTLSeconds,
-			CreatedAt:             o.CreatedAt.UTC().Format(time.RFC3339),
-			UpdatedAt:             o.UpdatedAt.UTC().Format(time.RFC3339),
-		})
+		result = append(result, responseFromOrganization(o))
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"organizations": result})
 }
@@ -234,16 +389,7 @@ func (h *Handler) HandleGetOrg(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"organization": orgResponse{
-			ID:                    o.ID.String(),
-			Name:                  o.Name,
-			Slug:                  o.Slug,
-			Country:               o.Country,
-			DefaultLocale:         o.DefaultLocale,
-			ReservationTTLSeconds: o.ReservationTTLSeconds,
-			CreatedAt:             o.CreatedAt.UTC().Format(time.RFC3339),
-			UpdatedAt:             o.UpdatedAt.UTC().Format(time.RFC3339),
-		},
+		"organization": responseFromOrganization(o),
 	})
 }
 
@@ -278,7 +424,7 @@ func (h *Handler) HandleUpdateOrg(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req updateOrgRequest
-	if err := json.Unmarshal(body, &req); err != nil {
+	if err := decodeUpdateOrgRequest(body, &req); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("org.invalid_json", "request body is not valid JSON", r))
 		return
 	}
@@ -287,9 +433,24 @@ func (h *Handler) HandleUpdateOrg(w http.ResponseWriter, r *http.Request) {
 	req.Slug = strings.TrimSpace(strings.ToLower(req.Slug))
 	req.Country = strings.TrimSpace(req.Country)
 	req.DefaultLocale = strings.TrimSpace(req.DefaultLocale)
+	current, err := h.orgQueries.GetOrganizationByID(ctx, orgID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("org.not_found", "organization not found", r))
+			return
+		}
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("org.get_failed", "failed to get organization", r))
+		return
+	}
+	legalName, taxID, taxScheme, registrationNumber, line1, line2, postalCode, city, addressCountry, email, phone, website, kybStatus, validationCode := validateLegalUpdate(req, current)
+	if validationCode != "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails("org."+validationCode, strings.ReplaceAll(validationCode, "_", " "), r, map[string]any{"field": strings.TrimPrefix(validationCode, "invalid_")}))
+		return
+	}
 
 	updated, err := h.orgQueries.UpdateOrganization(ctx,
 		orgID, req.Name, req.Slug, req.Country, req.DefaultLocale, req.ReservationTTLSeconds,
+		legalName, taxID, taxScheme, registrationNumber, line1, line2, postalCode, city, addressCountry, email, phone, website, kybStatus,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -313,16 +474,7 @@ func (h *Handler) HandleUpdateOrg(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"organization": orgResponse{
-			ID:                    updated.ID.String(),
-			Name:                  updated.Name,
-			Slug:                  updated.Slug,
-			Country:               updated.Country,
-			DefaultLocale:         updated.DefaultLocale,
-			ReservationTTLSeconds: updated.ReservationTTLSeconds,
-			CreatedAt:             updated.CreatedAt.UTC().Format(time.RFC3339),
-			UpdatedAt:             updated.UpdatedAt.UTC().Format(time.RFC3339),
-		},
+		"organization": responseFromOrganization(updated),
 	})
 }
 

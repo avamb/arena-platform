@@ -173,7 +173,7 @@ func (h *Handler) HandleAdminUpdateOrg(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req updateOrgRequest
-	if err := json.Unmarshal(body, &req); err != nil {
+	if err := decodeUpdateOrgRequest(body, &req); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("admin_org.invalid_json",
 			"request body is not valid JSON", r))
 		return
@@ -183,9 +183,24 @@ func (h *Handler) HandleAdminUpdateOrg(w http.ResponseWriter, r *http.Request) {
 	req.Slug = strings.TrimSpace(strings.ToLower(req.Slug))
 	req.Country = strings.TrimSpace(req.Country)
 	req.DefaultLocale = strings.TrimSpace(req.DefaultLocale)
+	current, err := h.orgQueries.GetOrganizationByID(ctx, orgID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("admin_org.not_found", "organization not found", r))
+			return
+		}
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("admin_org.get_failed", "failed to get organization", r))
+		return
+	}
+	legalName, taxID, taxScheme, registrationNumber, line1, line2, postalCode, city, addressCountry, email, phone, website, kybStatus, validationCode := validateLegalUpdate(req, current)
+	if validationCode != "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails("admin_org."+validationCode, strings.ReplaceAll(validationCode, "_", " "), r, map[string]any{"field": strings.TrimPrefix(validationCode, "invalid_")}))
+		return
+	}
 
 	updated, err := h.orgQueries.UpdateOrganization(ctx,
 		orgID, req.Name, req.Slug, req.Country, req.DefaultLocale, req.ReservationTTLSeconds,
+		legalName, taxID, taxScheme, registrationNumber, line1, line2, postalCode, city, addressCountry, email, phone, website, kybStatus,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -222,16 +237,7 @@ func (h *Handler) HandleAdminUpdateOrg(w http.ResponseWriter, r *http.Request) {
 	})
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"organization": orgResponse{
-			ID:                    updated.ID.String(),
-			Name:                  updated.Name,
-			Slug:                  updated.Slug,
-			Country:               updated.Country,
-			DefaultLocale:         updated.DefaultLocale,
-			ReservationTTLSeconds: updated.ReservationTTLSeconds,
-			CreatedAt:             updated.CreatedAt.UTC().Format(time.RFC3339),
-			UpdatedAt:             updated.UpdatedAt.UTC().Format(time.RFC3339),
-		},
+		"organization": responseFromOrganization(updated),
 	})
 }
 

@@ -22692,3 +22692,25 @@ Verification:
   uses an invalid Compose command form; no change was made outside #403.
 
 Feature #403 marked passing. (393/409 passing, 96.1%)
+
+## 2026-07-29 — Feature #392 (AB-18): Legal entity backend persistence
+
+Implemented the previously silent legal-entity PATCH data loss path.
+
+- Extended the organization SQL query/read projection and typed wrapper with
+  every migration-0049 legal/contact/KYB field.
+- Both normal and SuperAdmin organization PATCH handlers now persist those
+  fields, preserve omitted PATCH members, reject unknown JSON fields, and
+  return the persisted legal projection.
+- Added server validation for KYB transitions, legal-address country shape,
+  tax-id scheme/value pairing and formats, email, and website URLs.
+- SuperAdmin organization GET now returns the legal/KYB fields used by the
+  admin form.
+- Added PostgreSQL Testcontainers roundtrip coverage for both SQL and
+  `PATCH /v1/admin/organizations/{id}` → `GET /v1/admin/organizations`.
+
+Verification: focused integration tests passed against fresh PostgreSQL 17;
+`go vet`, HTTP-server tests, full backend build, and admin-web type-check/build
+passed. `docker compose` startup remains blocked by the pre-existing invalid
+healthcheck syntax, so the Testcontainers integration test was used for the
+required durable persistence proof.

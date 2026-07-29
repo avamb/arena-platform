@@ -190,14 +190,32 @@ func (h *Handler) HandleSuperadminListOrganizations(w http.ResponseWriter, r *ht
 	orgs := make([]map[string]any, 0, len(rows))
 	for _, o := range rows {
 		m := map[string]any{
-			"id":                      o.ID.String(),
-			"name":                    o.Name,
-			"slug":                    o.Slug,
-			"country":                 o.Country,
-			"default_locale":          o.DefaultLocale,
-			"reservation_ttl_seconds": o.ReservationTTLSeconds,
-			"created_at":              o.CreatedAt.Format(time.RFC3339),
-			"updated_at":              o.UpdatedAt.Format(time.RFC3339),
+			"id":                        o.ID.String(),
+			"name":                      o.Name,
+			"slug":                      o.Slug,
+			"country":                   o.Country,
+			"default_locale":            o.DefaultLocale,
+			"reservation_ttl_seconds":   o.ReservationTTLSeconds,
+			"created_at":                o.CreatedAt.Format(time.RFC3339),
+			"updated_at":                o.UpdatedAt.Format(time.RFC3339),
+			"legal_name":                o.LegalName,
+			"tax_id":                    o.TaxID,
+			"tax_id_scheme":             o.TaxIDScheme,
+			"registration_number":       o.RegistrationNumber,
+			"legal_address_line1":       o.LegalAddressLine1,
+			"legal_address_line2":       o.LegalAddressLine2,
+			"legal_address_postal_code": o.LegalAddressPostalCode,
+			"legal_address_city":        o.LegalAddressCity,
+			"legal_address_country":     o.LegalAddressCountry,
+			"contact_email":             o.ContactEmail,
+			"contact_phone":             o.ContactPhone,
+			"website_url":               o.WebsiteURL,
+			"kyb_status":                o.KybStatus,
+		}
+		if o.KybVerifiedAt != nil {
+			m["kyb_verified_at"] = o.KybVerifiedAt.Format(time.RFC3339)
+		} else {
+			m["kyb_verified_at"] = nil
 		}
 		if o.DeletedAt != nil {
 			m["deleted_at"] = o.DeletedAt.Format(time.RFC3339)
