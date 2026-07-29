@@ -2242,8 +2242,8 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
  * Validate the "user" field of the add-member form. The operator may
- * type either a UUIDv7 user_id OR an email address; the backend resolves
- * email -> user_id via GetUserByEmail. Whitespace is ignored.
+ * type either a UUIDv7 user_id OR an email address. Existing emails are
+ * added directly; new emails receive an invitation and setup link.
  */
 export function validateMemberUserInput(raw: string): string | null {
   const trimmed = raw.trim();
@@ -2260,9 +2260,8 @@ export function validateMemberUserInput(raw: string): string | null {
 }
 
 /**
- * Decide whether the operator typed a UUID or an email. Returns the
- * canonical request body shape for
- * POST /v1/admin/organizations/{org_id}/members.
+ * Decide whether the operator typed a UUID or an email. A new email uses the
+ * server-side invitation path on POST /v1/admin/organizations/{org_id}/members.
  */
 export function buildAddMemberBody(
   userInput: string,
@@ -2444,7 +2443,7 @@ function UsersTab({ org }: { org: AdminOrganization }) {
               onClick={() => setAddOpen(true)}
               data-testid="orgs-drawer-users-add-open"
             >
-              Add member
+              Invite member
             </button>
           ) : (
             <span style={mutedHintStyle} title="Requires membership.grant">
@@ -2694,7 +2693,7 @@ function AddMemberDialog({
       <div style={dialogStyle}>
         <header style={dialogHeaderStyle}>
           <h2 id="orgs-add-member-title" style={dialogTitleStyle}>
-            Add member
+            Invite or add member
           </h2>
           <button
             type="button"
@@ -2709,7 +2708,7 @@ function AddMemberDialog({
         </header>
         <form onSubmit={onSubmit} style={formStyle} noValidate>
           <FieldRow
-            label="User (user_id or email)"
+            label="User ID or email"
             htmlFor="orgs-add-member-user"
             error={serverErrors.user ?? null}
             localError={userErr}
@@ -2786,7 +2785,7 @@ function AddMemberDialog({
               disabled={!localValid || mutation.isPending}
               data-testid="orgs-drawer-users-add-submit"
             >
-              {mutation.isPending ? "Adding…" : "Add member"}
+              {mutation.isPending ? "Sending…" : "Invite or add member"}
             </button>
           </div>
         </form>

@@ -22993,3 +22993,22 @@ stored in the repository.
 Verification: focused backend user-route/auth tests and an API build passed in
 golang:1.24; admin user tests, TypeScript check, and production build passed;
 the running API `/readyz` returned 200. Feature #394 marked passing.
+
+## 2026-07-29 â€” Feature #404 (AB-16) complete
+
+- The admin organization-membership endpoint now treats a new email as an
+  invitation: it creates the user and membership in one PostgreSQL transaction,
+  stores a one-time password setup token with a one-hour expiry, audit-logs the
+  invitation, and logs the `/accept-invite` URL when `EMAIL_MODE=log`.
+- Existing users continue through the normal membership-add path. The admin UI
+  now clearly labels the action as "Invite or add member", while retaining UUID
+  support for known users. OpenAPI documents the invitation metadata returned
+  for new-email requests.
+- Verification: built the Docker API image, applied pending migrations, then
+  created a unique invitation via the authenticated API. Confirmed the user,
+  membership, reset token, audit event, and dev-mode email log; restarted the
+  API and confirmed the membership/token persisted; removed the test user and
+  organization. `go test ./apps/backend/internal/platform/httpserver/hiam`,
+  the 114 organization-route UI tests, and the admin production build pass.
+
+Feature #404 marked passing. Overall feature status: 408/409 passing.

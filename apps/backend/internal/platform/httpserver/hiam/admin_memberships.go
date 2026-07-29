@@ -47,18 +47,21 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/users"
 )
 
 // adminAddMemberRequest is the request body for
 // POST /v1/admin/organizations/{org_id}/members.
 //
 // Exactly one of UserID / Email must be supplied. When Email is supplied, the
-// user is resolved via GetUserByEmail; a missing user yields 422
-// "admin_membership.user_not_found".
+// user is resolved via GetUserByEmail. A new email is provisioned as an
+// invited user, assigned this membership, and given a one-time password setup
+// link. This keeps adding an organization member a single operator action.
 type adminAddMemberRequest struct {
 	UserID string `json:"user_id,omitempty"`
 	Email  string `json:"email,omitempty"`
@@ -201,6 +204,9 @@ func (h *Handler) HandleAdminAddMember(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var userID uuid.UUID
+	invited := false
+	var invitationExpiresAt time.Time
+	var invitationToken string
 	if req.UserID != "" {
 		parsed, err := uuid.Parse(req.UserID)
 		if err != nil {
@@ -212,28 +218,70 @@ func (h *Handler) HandleAdminAddMember(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		userID = parsed
-	} else {
-		row, err := h.membershipQueries.GetUserByEmail(ctx, req.Email)
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
-					"admin_membership.user_not_found",
-					"no user exists with that email", r,
-					map[string]any{"field": "email"},
-				))
-				return
-			}
-			h.logger.Error("admin_membership: GetUserByEmail failed", slog.String("error", err.Error()))
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"admin_membership.user_lookup_failed",
-				"failed to resolve user by email", r,
+	}
+
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			"dependency.database_unavailable", "database is not available", r,
+		))
+		return
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	q := gen.New(tx)
+
+	if req.Email != "" {
+		email, normalizeErr := users.NormalizeEmail(req.Email)
+		if normalizeErr != nil || !strings.Contains(email, "@") {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+				"admin_membership.invalid_email", "email address is invalid", r,
+				map[string]any{"field": "email"},
 			))
 			return
 		}
-		userID = row.ID
+		row, lookupErr := q.GetUserByEmail(ctx, email)
+		if lookupErr == nil {
+			userID = row.ID
+		} else if !errors.Is(lookupErr, pgx.ErrNoRows) {
+			h.logger.Error("admin_membership: GetUserByEmail failed", slog.String("error", lookupErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"admin_membership.user_lookup_failed", "failed to resolve user by email", r,
+			))
+			return
+		} else {
+			tempPassword, tokenErr := users.GenerateVerificationToken()
+			if tokenErr != nil {
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.token_generation_failed", "failed to generate invitation secret", r))
+				return
+			}
+			hash, hashErr := users.HashPassword(tempPassword)
+			if hashErr != nil {
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.password_hash_failed", "failed to hash invitation secret", r))
+				return
+			}
+			created, createErr := q.InsertUser(ctx, email, hash, "en")
+			if createErr != nil {
+				h.logger.Error("admin_membership: create invited user failed", slog.String("error", createErr.Error()))
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("admin_membership.invite_failed", "failed to create invited user", r))
+				return
+			}
+			userID = created.ID
+			invited = true
+			invitationToken, tokenErr = users.GenerateVerificationToken()
+			if tokenErr != nil {
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.token_generation_failed", "failed to generate invitation token", r))
+				return
+			}
+			invitationExpiresAt = time.Now().UTC().Add(passwordResetTokenTTL)
+			if tokenErr = q.InsertPasswordResetToken(ctx, invitationToken, userID, invitationExpiresAt); tokenErr != nil {
+				h.logger.Error("admin_membership: save invitation token failed", slog.String("error", tokenErr.Error()))
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.token_insert_failed", "failed to save invitation token", r))
+				return
+			}
+		}
 	}
 
-	m, err := h.membershipQueries.InsertMembership(ctx, userID, orgID, req.Role)
+	m, err := q.InsertMembership(ctx, userID, orgID, req.Role)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
@@ -258,14 +306,32 @@ func (h *Handler) HandleAdminAddMember(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	if err := tx.Commit(ctx); err != nil {
+		h.logger.Error("admin_membership: commit failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "failed to save membership", r))
+		return
+	}
 
-	h.writeAdminMembershipAudit(r, "v1.admin.membership.create", m.ID.String(), reason, map[string]any{
+	action := "v1.admin.membership.create"
+	if invited {
+		action = "v1.admin.membership.invite"
+	}
+	h.writeAdminMembershipAudit(r, action, m.ID.String(), reason, map[string]any{
 		"org_id":  m.OrgID.String(),
 		"user_id": m.UserID.String(),
 		"role":    m.Role,
+		"invited": invited,
 	})
+	if invited {
+		inviteURL := requestBaseURL(r) + "/accept-invite?token=" + invitationToken + "&email=" + req.Email
+		slog.Info("EMAIL DELIVERY (dev-mode): organization member invitation",
+			"to", req.Email, "subject", "You are invited to Arena Platform",
+			"invite_url", inviteURL, "expires_at", invitationExpiresAt.Format(time.RFC3339),
+			"user_id", userID.String(), "org_id", orgID.String(),
+		)
+	}
 
-	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
+	response := map[string]any{
 		"membership": membershipResponse{
 			ID:       m.ID.String(),
 			UserID:   m.UserID.String(),
@@ -274,7 +340,13 @@ func (h *Handler) HandleAdminAddMember(w http.ResponseWriter, r *http.Request) {
 			Status:   m.Status,
 			JoinedAt: m.JoinedAt.UTC().Format(time.RFC3339),
 		},
-	})
+	}
+	if invited {
+		response["invitation"] = map[string]any{
+			"issued": true, "expires_at": invitationExpiresAt.Format(time.RFC3339), "delivery": "email",
+		}
+	}
+	httputil.WriteJSON(w, http.StatusCreated, response)
 }
 
 // HandleAdminChangeMemberRole serves
