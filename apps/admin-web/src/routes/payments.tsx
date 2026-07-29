@@ -57,6 +57,7 @@ import { RequirePermission } from "@/components/RequirePermission";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useScope } from "@/lib/auth/ScopeContext";
 import { NAV_BY_PATH } from "@/lib/auth/navConfig";
+import { orgContextFromLocation } from "@/lib/routing/orgContext";
 import {
   ResponsiveTable,
   ResponsiveDrawer,
@@ -218,9 +219,10 @@ function PaymentsModule() {
   const canWrite = permissions.has("payment_config.write");
 
   const scopeOrgID =
-    activeScope?.kind === "organization" && activeScope.id !== null
+    orgContextFromLocation() ||
+    (activeScope?.kind === "organization" && activeScope.id !== null
       ? activeScope.id
-      : "";
+      : "");
 
   const [orgID, setOrgID] = useState(scopeOrgID);
   const trimmedOrgID = orgID.trim();

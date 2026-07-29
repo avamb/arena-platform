@@ -22783,3 +22783,19 @@ required durable persistence proof.
   production admin build pass. `init.sh` remains unavailable because this
   Windows host has no POSIX bash; the compose healthcheck issue is pre-existing.
 - Completion after marking: 397/409 features passing.
+
+## 2026-07-29 — Feature #398 (AB-19) complete
+
+- Organization drawer Users, Venues, Channels, and Payments tabs now retain
+  their real org-scoped lists and expose context-preserving actions into the
+  corresponding full CRUD page.
+- The Users tab links to `/users?org=<id>`; all CRUD pages read that URL
+  context before active scope, so the organization is preselected. Users also
+  defaults to the organization-scoped organizer role for this entry flow.
+- Added unit coverage for all four scoped links and URL context parsing.
+- Verified: 864 admin Vitest tests, TypeScript check, and production build
+  pass. Temporary Vite startup returned HTTP 200; backend `/readyz` returned
+  HTTP 200. Production-source mock-data grep found only existing framework,
+  development-config, and explanatory-comment references; no feature data is
+  mocked.
+- Feature #398 marked passing. Completion: 398/409 features passing.

@@ -52,6 +52,7 @@ import { RequirePermission } from "@/components/RequirePermission";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useScope } from "@/lib/auth/ScopeContext";
 import { NAV_BY_PATH } from "@/lib/auth/navConfig";
+import { orgContextFromLocation } from "@/lib/routing/orgContext";
 import {
   ResponsiveTable,
   type ResponsiveTableColumn,
@@ -423,9 +424,10 @@ function VenuesModule() {
   const canDelete = permissions.has("venue.delete");
 
   const defaultOrgID =
-    activeScope?.kind === "organization" && activeScope.id !== null
+    orgContextFromLocation() ||
+    (activeScope?.kind === "organization" && activeScope.id !== null
       ? activeScope.id
-      : "";
+      : "");
 
   const [form, setForm] = useState<FormMode>({ kind: "closed" });
   const [pendingDelete, setPendingDelete] = useState<Venue | null>(null);

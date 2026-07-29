@@ -78,6 +78,7 @@ import {
 } from "@/components/layout";
 import { NAV_BY_PATH } from "@/lib/auth/navConfig";
 import { useAuth } from "@/lib/auth/useAuth";
+import { buildOrgContextHref } from "@/lib/routing/orgContext";
 import {
   useEscapeClose,
   useFocusOnMount,
@@ -698,6 +699,11 @@ export function serializeDrawerHash(
     params.set("tab", tab);
   }
   return `#${params.toString()}`;
+}
+
+/** Build a safe deep link that keeps the current organization in context. */
+export function buildOrgScopedHref(path: string, orgId: string): string {
+  return buildOrgContextHref(path, orgId);
 }
 
 function OrganizationDrawer({
@@ -2376,20 +2382,29 @@ function UsersTab({ org }: { org: AdminOrganization }) {
     <>
       <div style={tabHeaderStyle}>
         <h3 style={drawerSectionTitleStyle}>Users (memberships)</h3>
-        {canGrant ? (
-          <button
-            type="button"
-            style={smallPrimaryButtonStyle}
-            onClick={() => setAddOpen(true)}
-            data-testid="orgs-drawer-users-add-open"
+        <div style={tabHeaderActionsStyle}>
+          <a
+            href={buildOrgScopedHref("/users", org.id)}
+            style={smallSecondaryLinkStyle}
+            data-testid="orgs-drawer-users-manage"
           >
-            Add member
-          </button>
-        ) : (
-          <span style={mutedHintStyle} title="Requires membership.grant">
-            Add requires membership.grant
-          </span>
-        )}
+            Manage users
+          </a>
+          {canGrant ? (
+            <button
+              type="button"
+              style={smallPrimaryButtonStyle}
+              onClick={() => setAddOpen(true)}
+              data-testid="orgs-drawer-users-add-open"
+            >
+              Add member
+            </button>
+          ) : (
+            <span style={mutedHintStyle} title="Requires membership.grant">
+              Add requires membership.grant
+            </span>
+          )}
+        </div>
       </div>
       <p style={drawerHelpStyle}>
         <code>GET /v1/admin/organizations/{org.id}/members</code>
@@ -2748,6 +2763,7 @@ interface VenuesEnvelope {
 function VenuesTab({ org }: { org: AdminOrganization }) {
   const { permissions } = useAuth();
   const canRead = permissions.has("venue.read") || permissions.has("superadmin.read");
+  const canCreate = permissions.has("venue.create") || permissions.has("superadmin.read");
   const query = useQuery<VenuesEnvelope, ApiError>({
     queryKey: ["admin", "organizations", org.id, "venues"],
     queryFn: () =>
@@ -2763,7 +2779,18 @@ function VenuesTab({ org }: { org: AdminOrganization }) {
 
   return (
     <>
-      <h3 style={drawerSectionTitleStyle}>Venues</h3>
+      <div style={tabHeaderStyle}>
+        <h3 style={drawerSectionTitleStyle}>Venues</h3>
+        {canCreate ? (
+          <a
+            href={buildOrgScopedHref("/venues", org.id)}
+            style={smallPrimaryLinkStyle}
+            data-testid="orgs-drawer-venues-create"
+          >
+            Create venue
+          </a>
+        ) : null}
+      </div>
       <p style={drawerHelpStyle}>
         <code>GET /v1/venues</code> — filtered to org_id <code>{org.id}</code>{" "}
         client-side.
@@ -2829,6 +2856,7 @@ interface ChannelsEnvelope {
 function ChannelsTab({ org }: { org: AdminOrganization }) {
   const { permissions } = useAuth();
   const canRead = permissions.has("channel.read") || permissions.has("superadmin.read");
+  const canCreate = permissions.has("channel.create") || permissions.has("superadmin.read");
   const query = useQuery<ChannelsEnvelope, ApiError>({
     queryKey: ["admin", "organizations", org.id, "channels"],
     queryFn: () =>
@@ -2846,7 +2874,18 @@ function ChannelsTab({ org }: { org: AdminOrganization }) {
 
   return (
     <>
-      <h3 style={drawerSectionTitleStyle}>Sales channels</h3>
+      <div style={tabHeaderStyle}>
+        <h3 style={drawerSectionTitleStyle}>Sales channels</h3>
+        {canCreate ? (
+          <a
+            href={buildOrgScopedHref("/channels", org.id)}
+            style={smallPrimaryLinkStyle}
+            data-testid="orgs-drawer-channels-create"
+          >
+            Create channel
+          </a>
+        ) : null}
+      </div>
       <p style={drawerHelpStyle}>
         <code>GET /v1/organizations/{org.id}/channels</code>
       </p>
@@ -2911,6 +2950,8 @@ function PaymentsTab({ org }: { org: AdminOrganization }) {
     permissions.has("payment_config.read") ||
     permissions.has("payment_config.write") ||
     permissions.has("superadmin.read");
+  const canWrite =
+    permissions.has("payment_config.write") || permissions.has("superadmin.read");
   const query = useQuery<PaymentConfigsEnvelope, ApiError>({
     queryKey: ["admin", "organizations", org.id, "payment-configs"],
     queryFn: () =>
@@ -2928,7 +2969,18 @@ function PaymentsTab({ org }: { org: AdminOrganization }) {
 
   return (
     <>
-      <h3 style={drawerSectionTitleStyle}>Payment providers</h3>
+      <div style={tabHeaderStyle}>
+        <h3 style={drawerSectionTitleStyle}>Payment providers</h3>
+        {canWrite ? (
+          <a
+            href={buildOrgScopedHref("/payments", org.id)}
+            style={smallPrimaryLinkStyle}
+            data-testid="orgs-drawer-payments-create"
+          >
+            Create payment config
+          </a>
+        ) : null}
+      </div>
       <p style={drawerHelpStyle}>
         <code>GET /v1/organizations/{org.id}/payment-configs</code>
       </p>
@@ -4632,6 +4684,12 @@ const tabHeaderStyle: CSSProperties = {
   justifyContent: "space-between",
   gap: 8,
 };
+const tabHeaderActionsStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  flexWrap: "wrap",
+};
 const smallPrimaryButtonStyle: CSSProperties = {
   fontSize: 11,
   padding: "4px 10px",
@@ -4641,6 +4699,21 @@ const smallPrimaryButtonStyle: CSSProperties = {
   cursor: "pointer",
   color: "#ffffff",
   fontWeight: 600,
+};
+const smallPrimaryLinkStyle: CSSProperties = {
+  ...smallPrimaryButtonStyle,
+  textDecoration: "none",
+  display: "inline-block",
+};
+const smallSecondaryLinkStyle: CSSProperties = {
+  fontSize: 11,
+  padding: "4px 10px",
+  background: "#ffffff",
+  border: "1px solid #cbd5e1",
+  borderRadius: 4,
+  color: "#0f172a",
+  textDecoration: "none",
+  display: "inline-block",
 };
 const tabRowButtonStyle: CSSProperties = {
   fontSize: 11,

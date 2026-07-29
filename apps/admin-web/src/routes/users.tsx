@@ -16,6 +16,7 @@ import type {
   AdminCreateUserResponse,
 } from "@/lib/api/types";
 import { NAV_BY_PATH } from "@/lib/auth/navConfig";
+import { orgContextFromLocation } from "@/lib/routing/orgContext";
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -87,9 +88,12 @@ function UsersRoute() {
 
 function UsersProvisioning() {
   const queryClient = useQueryClient();
+  const deepLinkedOrgID = orgContextFromLocation();
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<AdminUserRole>("platform_operator");
-  const [orgId, setOrgId] = useState("");
+  const [role, setRole] = useState<AdminUserRole>(
+    deepLinkedOrgID === "" ? "platform_operator" : "organizer",
+  );
+  const [orgId, setOrgId] = useState(deepLinkedOrgID);
   const [locale, setLocale] = useState("en");
   const [localErrors, setLocalErrors] = useState<CreateUserErrors>({});
   const [serverErrors, setServerErrors] = useState<CreateUserErrors>({});
@@ -187,6 +191,7 @@ function UsersProvisioning() {
           </h1>
           <p style={subheadingStyle}>
             Create a new account and assign its first role.
+            {deepLinkedOrgID !== "" ? " This organization was preselected from the organization directory." : ""}
           </p>
         </div>
       </header>

@@ -15,6 +15,7 @@ import { describe, it, expect } from "vitest";
 import {
   DRAWER_TAB_KEYS,
   MEMBERSHIP_ROLES,
+  buildOrgScopedHref,
   buildAddMemberBody,
   filterRows,
   formatDurationSeconds,
@@ -451,6 +452,17 @@ describe("Drawer tab model (feature #240)", () => {
         expect(parseDrawerHash(hash)).toEqual({ org: id, tab });
       }
     });
+  });
+});
+
+describe("Organization-scoped tab actions (feature #398)", () => {
+  const orgID = "00000000-0000-0000-0000-000000000001";
+
+  it("builds the same preselected organization link for every CRUD tab", () => {
+    expect(buildOrgScopedHref("/users", orgID)).toBe(`/users?org=${orgID}`);
+    expect(buildOrgScopedHref("/venues", orgID)).toBe(`/venues?org=${orgID}`);
+    expect(buildOrgScopedHref("/channels", orgID)).toBe(`/channels?org=${orgID}`);
+    expect(buildOrgScopedHref("/payments", orgID)).toBe(`/payments?org=${orgID}`);
   });
 });
 

@@ -52,6 +52,7 @@ import { RequirePermission } from "@/components/RequirePermission";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useScope } from "@/lib/auth/ScopeContext";
 import { NAV_BY_PATH } from "@/lib/auth/navConfig";
+import { orgContextFromLocation } from "@/lib/routing/orgContext";
 import {
   ResponsiveTable,
   ResponsiveDrawer,
@@ -251,9 +252,10 @@ function ChannelsModule() {
   const canDelete = permissions.has("channel.delete");
 
   const scopeOrgID =
-    activeScope?.kind === "organization" && activeScope.id !== null
+    orgContextFromLocation() ||
+    (activeScope?.kind === "organization" && activeScope.id !== null
       ? activeScope.id
-      : "";
+      : "");
 
   // The org being viewed. Defaults to the active scope org; the operator
   // can paste a different UUID when working outside an org scope (e.g.
