@@ -301,6 +301,26 @@ directly via the Bil24 API instead of retyping. Official Bil24 API docs live in
    05_widgets_and_site_templates / 06_venue_maps_and_seating.
 4. CLI contract mirrors the snapshot importer (dry-run, summary, exit codes).
 
+## AB-22. Human-readable identifiers platform-wide (name-first UI + short display numbers)
+
+**Category:** SuperAdmin UI + API / Design principle — owner priority
+**Problem:** Internal UUIDv7 PKs leak into every operator surface (Organization ID,
+City ID, member lists showing raw UUIDs). Legacy Bil24 shows short numeric ids +
+names ("[267438] Lampyris s.r.o.", "[10549] Palac Akropolis") and operators are
+used to that. UUIDs stay internally correct (non-enumerable, sortable, no central
+counter) — the fix is presentation, not a PK migration.
+**Steps (layered):**
+1. UI RULE: no form ever asks for a raw id — name-first pickers/typeahead
+   everywhere (generalize AB-17; applies to AB-5 country/locale, AB-20 venue org/
+   city, event→promoter/org binding, member lists show email+name not UUID).
+2. Short display numbers: secondary per-entity sequence column (org, venue,
+   event, channel, user) surfaced as "Palac Akropolis · #23" in pickers, tables,
+   support conversations, printed docs. UUID remains the PK and API identifier.
+3. Slugs in admin URLs where entities have them (org/venue) instead of UUIDs.
+4. UUID visible only in a collapsed "developer info" block with copy button.
+5. Global admin search by name (header omnibox: orgs/venues/events/users) —
+   phase 2.
+
 ## AB-11. Ops: production-mode readiness checklist
 
 **Category:** Deploy / Config
