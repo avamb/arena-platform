@@ -1271,6 +1271,73 @@ components:
           description: Human-readable confirmation of the create action.
           example: "User created. A password setup link has been issued to the email address."
 
+    AdminUserDirectoryMembership:
+      type: object
+      required: [id, name, slug, role]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Organization UUID.
+        name:
+          type: string
+          description: Organization display name.
+        slug:
+          type: string
+          description: Organization URL slug.
+        role:
+          type: string
+          description: Active membership role.
+    AdminUserDirectoryItem:
+      type: object
+      required: [id, email, created_at, global_roles, memberships]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: User UUID.
+        email:
+          type: string
+          format: email
+          description: Normalized email address.
+        created_at:
+          type: string
+          format: date-time
+          description: Account creation timestamp.
+        email_verified_at:
+          type: [string, "null"]
+          format: date-time
+          description: Email verification timestamp, when verified.
+        global_roles:
+          type: array
+          description: Global platform roles.
+          items:
+            type: string
+        memberships:
+          type: array
+          description: Active organization memberships.
+          items:
+            $ref: "#/components/schemas/AdminUserDirectoryMembership"
+    AdminUserDirectoryResponse:
+      type: object
+      required: [users, total, limit, offset]
+      properties:
+        users:
+          type: array
+          description: Directory page.
+          items:
+            $ref: "#/components/schemas/AdminUserDirectoryItem"
+        total:
+          type: integer
+          format: int64
+          description: Total matching users.
+        limit:
+          type: integer
+          description: Applied page size.
+        offset:
+          type: integer
+          description: Applied page offset.
+
     AuthVerifyResponse:
       type: object
       required: [user_id, email, email_verified_at, message]
@@ -7898,6 +7965,70 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/admin/users:
+    get:
+      operationId: getV1AdminUsers
+      summary: Admin - list and search users
+      description: Returns a paginated directory of user identities with global roles and active organization memberships. Requires JWT, superadmin.read, and X-Admin-Reason.
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: search
+          in: query
+          description: Case-insensitive email substring.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum rows to return (1-200; default 50).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: offset
+          in: query
+          description: Number of matching rows to skip.
+          schema:
+            type: integer
+            minimum: 0
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for cross-tenant access.
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Paginated user directory.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserDirectoryResponse"
+        "400":
+          description: Invalid pagination or missing audit reason.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold superadmin.read.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
     post:
       operationId: postV1AdminUsers
       summary: Admin - create a user and assign a role

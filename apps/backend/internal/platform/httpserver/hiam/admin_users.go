@@ -64,6 +64,91 @@ type adminCreatedOnboardingDTO struct {
 	Delivery            string `json:"delivery"`
 }
 
+type adminUserMembershipDTO struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+	Role string `json:"role"`
+}
+
+type adminUserDirectoryItemDTO struct {
+	ID              string                   `json:"id"`
+	Email           string                   `json:"email"`
+	CreatedAt       string                   `json:"created_at"`
+	EmailVerifiedAt *string                  `json:"email_verified_at"`
+	GlobalRoles     []string                 `json:"global_roles"`
+	Memberships     []adminUserMembershipDTO `json:"memberships"`
+}
+
+type adminUserDirectoryResponse struct {
+	Users  []adminUserDirectoryItemDTO `json:"users"`
+	Total  int64                       `json:"total"`
+	Limit  int32                       `json:"limit"`
+	Offset int32                       `json:"offset"`
+}
+
+// HandleAdminListUsers serves GET /v1/admin/users. It deliberately exposes
+// only the superadmin directory projection: no password, token, or sensitive
+// profile data is selected.
+func (h *Handler) HandleAdminListUsers(w http.ResponseWriter, r *http.Request) {
+	if h.membershipQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			"dependency.database_unavailable", "database is not available", r,
+		))
+		return
+	}
+	reason, ok := requireAdminReason(w, r)
+	if !ok {
+		return
+	}
+	limit, offset, ok := parseSuperadminPagination(w, r)
+	if !ok {
+		return
+	}
+	search := strings.TrimSpace(r.URL.Query().Get("search"))
+	rows, err := h.membershipQueries.ListAdminUsers(r.Context(), search, limit, offset)
+	if err != nil {
+		h.logger.Error("admin_user: list failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			"dependency.database_unavailable", "failed to list users", r,
+		))
+		return
+	}
+	total, err := h.membershipQueries.CountAdminUsers(r.Context(), search)
+	if err != nil {
+		h.logger.Error("admin_user: count failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			"dependency.database_unavailable", "failed to count users", r,
+		))
+		return
+	}
+	items := make([]adminUserDirectoryItemDTO, 0, len(rows))
+	for _, row := range rows {
+		item := adminUserDirectoryItemDTO{
+			ID: row.ID.String(), Email: row.Email,
+			CreatedAt: row.CreatedAt.UTC().Format(time.RFC3339Nano),
+			GlobalRoles: []string{}, Memberships: []adminUserMembershipDTO{},
+		}
+		if row.EmailVerifiedAt != nil {
+			value := row.EmailVerifiedAt.UTC().Format(time.RFC3339Nano)
+			item.EmailVerifiedAt = &value
+		}
+		if err := json.Unmarshal(row.GlobalRoles, &item.GlobalRoles); err != nil {
+			h.logger.Error("admin_user: decode global roles failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.unexpected", "failed to decode user directory", r))
+			return
+		}
+		if err := json.Unmarshal(row.Memberships, &item.Memberships); err != nil {
+			h.logger.Error("admin_user: decode memberships failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.unexpected", "failed to decode user directory", r))
+			return
+		}
+		items = append(items, item)
+	}
+	h.logSuperadminAudit(r, "users", reason, map[string]any{"search": search, "limit": limit, "offset": offset})
+	httputil.WriteJSON(w, http.StatusOK, adminUserDirectoryResponse{Users: items, Total: total, Limit: limit, Offset: offset})
+}
+
 // HandleAdminCreateUser serves POST /v1/admin/users.
 // It creates a new account by email and immediately assigns the requested role.
 // handleAdminCreateUser is the legacy name for this operation.

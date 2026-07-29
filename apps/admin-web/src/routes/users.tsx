@@ -1,5 +1,5 @@
 import { createRoute } from "@tanstack/react-router";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useMemo,
   useState,
@@ -9,6 +9,7 @@ import {
 } from "react";
 import { Route as RootRoute } from "./__root";
 import { RequirePermission } from "@/components/RequirePermission";
+import { ResponsiveDrawer, ResponsiveTable, type ResponsiveTableColumn } from "@/components/layout";
 import { ApiError, authedFetch, createAdminUser } from "@/lib/api/client";
 import type {
   AdminCreateUserRequest,
@@ -71,6 +72,10 @@ interface OrgPickerEnvelope {
   readonly total: number;
 }
 
+export interface AdminDirectoryMembership { readonly id: string; readonly name: string; readonly slug: string; readonly role: string; }
+export interface AdminDirectoryUser { readonly id: string; readonly email: string; readonly created_at: string; readonly email_verified_at: string | null; readonly global_roles: readonly string[]; readonly memberships: readonly AdminDirectoryMembership[]; }
+export interface AdminDirectoryEnvelope { readonly users: readonly AdminDirectoryUser[]; readonly total: number; readonly limit: number; readonly offset: number; }
+
 function UsersRoute() {
   return (
     <RequirePermission entry={USERS_NAV_ENTRY}>
@@ -80,6 +85,7 @@ function UsersRoute() {
 }
 
 function UsersProvisioning() {
+  const queryClient = useQueryClient();
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<AdminUserRole>("platform_operator");
   const [orgId, setOrgId] = useState("");
@@ -87,6 +93,9 @@ function UsersProvisioning() {
   const [localErrors, setLocalErrors] = useState<CreateUserErrors>({});
   const [serverErrors, setServerErrors] = useState<CreateUserErrors>({});
   const [created, setCreated] = useState<AdminCreateUserResponse | null>(null);
+  const [search, setSearch] = useState("");
+  const [submittedSearch, setSubmittedSearch] = useState("");
+  const [selectedUser, setSelectedUser] = useState<AdminDirectoryUser | null>(null);
 
   const orgScoped = isOrgScopedAdminRole(role);
   const visibleErrors = useMemo(
@@ -115,6 +124,11 @@ function UsersProvisioning() {
     [orgsQuery.data?.organizations],
   );
   const showOrgSelect = orgsQuery.isSuccess && orgOptions.length > 0;
+  const usersQuery = useQuery<AdminDirectoryEnvelope, ApiError>({
+    queryKey: ["admin", "users", submittedSearch],
+    queryFn: () => authedFetch<AdminDirectoryEnvelope>({ method: "GET", path: buildAdminUserDirectoryPath(submittedSearch) }),
+    retry: false,
+  });
 
   const mutation = useMutation<
     AdminCreateUserResponse,
@@ -127,6 +141,9 @@ function UsersProvisioning() {
       setServerErrors({});
       setEmail("");
       setOrgId("");
+      // The directory is real server data; refresh it after provisioning so
+      // the newly created account appears without a manual page reload.
+      void queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
     },
     onError: (err) => {
       setServerErrors(mapCreateUserServerError(err));
@@ -172,6 +189,19 @@ function UsersProvisioning() {
           </p>
         </div>
       </header>
+
+      <section aria-labelledby="user-directory-heading" style={directoryStyle}>
+        <div style={directoryHeaderStyle}>
+          <div><h2 id="user-directory-heading" style={directoryHeadingStyle}>User directory</h2><p style={subheadingStyle}>Search users and review their current access.</p></div>
+          <form onSubmit={(event) => { event.preventDefault(); setSubmittedSearch(search.trim()); }} style={searchFormStyle}>
+            <input aria-label="Search users by email" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search email" style={inputStyle} data-testid="users-search" />
+            <button type="submit" style={secondaryButtonStyle}>Search</button>
+          </form>
+        </div>
+        {usersQuery.isPending ? <p role="status">Loading users…</p> : null}
+        {usersQuery.isError ? <p role="alert" style={formErrorStyle}>Unable to load users: {usersQuery.error.message}</p> : null}
+        {usersQuery.isSuccess ? <UserDirectoryTable users={usersQuery.data.users} onSelect={setSelectedUser} /> : null}
+      </section>
 
       <form onSubmit={onSubmit} style={formStyle} noValidate>
         <Field
@@ -310,8 +340,30 @@ function UsersProvisioning() {
           </span>
         </div>
       ) : null}
+      <UserDirectoryDrawer user={selectedUser} onClose={() => setSelectedUser(null)} />
     </section>
   );
+}
+
+function UserDirectoryTable({ users, onSelect }: { users: readonly AdminDirectoryUser[]; onSelect: (user: AdminDirectoryUser) => void }) {
+  const columns: readonly ResponsiveTableColumn<AdminDirectoryUser>[] = [
+    { id: "email", header: "Email", primary: true, renderCell: (user) => <button type="button" onClick={() => onSelect(user)} style={linkButtonStyle}>{user.email}</button> },
+    { id: "verified", header: "Verified", renderCell: (user) => user.email_verified_at === null ? "No" : "Yes" },
+    { id: "roles", header: "Global roles", renderCell: (user) => user.global_roles.length === 0 ? "—" : user.global_roles.map(formatAdminUserRole).join(", ") },
+    { id: "memberships", header: "Memberships", renderCell: (user) => user.memberships.length === 0 ? "—" : `${user.memberships.length} organization${user.memberships.length === 1 ? "" : "s"}` },
+    { id: "created", header: "Created", renderCell: (user) => formatDateTime(user.created_at) },
+  ];
+  return <ResponsiveTable id="users-directory-table" caption="User directory" columns={columns} rows={users} rowKey={(user) => user.id} empty={<p>No users match this search.</p>} />;
+}
+
+function UserDirectoryDrawer({ user, onClose }: { user: AdminDirectoryUser | null; onClose: () => void }) {
+  return <ResponsiveDrawer id="user-directory-drawer" open={user !== null} onClose={onClose} closeLabel="Close user" title={user?.email ?? "User"} subtitle={user === null ? undefined : `Created ${formatDateTime(user.created_at)}`}>
+    {user === null ? null : <div style={drawerContentStyle}>
+      <div><strong>Global roles</strong><p>{user.global_roles.length === 0 ? "No global roles" : user.global_roles.map(formatAdminUserRole).join(", ")}</p></div>
+      <div><strong>Organization memberships</strong>{user.memberships.length === 0 ? <p>No active organization memberships.</p> : <ul>{user.memberships.map((membership) => <li key={`${membership.id}-${membership.role}`}>{membership.name} ({membership.slug}) — {formatAdminUserRole(membership.role)}</li>)}</ul>}</div>
+      <div><strong>Email verified</strong><p>{user.email_verified_at === null ? "Not verified" : formatDateTime(user.email_verified_at)}</p></div>
+    </div>}
+  </ResponsiveDrawer>;
 }
 
 function Field({
@@ -357,6 +409,10 @@ export function validateAdminUserEmail(raw: string): string | null {
     return "Enter a valid email address.";
   }
   return null;
+}
+
+export function buildAdminUserDirectoryPath(search: string): string {
+  return `/v1/admin/users?limit=50&search=${encodeURIComponent(search.trim())}`;
 }
 
 export function validateAdminUserOrgId(raw: string): string | null {
@@ -565,3 +621,25 @@ const successStyle: CSSProperties = {
   color: "#14532d",
   fontSize: 12,
 };
+
+const directoryStyle: CSSProperties = {
+  padding: 16,
+  border: "1px solid #e2e8f0",
+  borderRadius: 6,
+  background: "#ffffff",
+};
+
+const directoryHeaderStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 12,
+  alignItems: "flex-start",
+  flexWrap: "wrap",
+  marginBottom: 12,
+};
+
+const directoryHeadingStyle: CSSProperties = { margin: 0, fontSize: 16, fontWeight: 600 };
+const searchFormStyle: CSSProperties = { display: "flex", gap: 8, flexWrap: "wrap" };
+const secondaryButtonStyle: CSSProperties = { fontSize: 12, padding: "7px 14px", background: "#ffffff", border: "1px solid #94a3b8", borderRadius: 4, cursor: "pointer", color: "#0f172a", fontWeight: 600 };
+const linkButtonStyle: CSSProperties = { padding: 0, border: 0, background: "transparent", color: "#0369a1", cursor: "pointer", font: "inherit", fontWeight: 600, textAlign: "left" };
+const drawerContentStyle: CSSProperties = { display: "flex", flexDirection: "column", gap: 16, color: "#334155", fontSize: 13 };

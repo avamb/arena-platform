@@ -22631,3 +22631,32 @@ Fix (commit 8899db9):
 
 Backlog: #391 rewritten to WID-U1 and marked passing; stale #392-395
 (duplicates of already-landed WID-S) deleted. (391/391 passing, 100%)
+
+## 2026-07-29 — Feature #393 (AB-3): SuperAdmin user directory
+
+Implemented the unverified first pass for the user directory:
+- `GET /v1/admin/users` is JWT + `superadmin.read` protected, paginated,
+  email-substring searchable, audit-reason gated, and returns only the
+  directory projection (identity, verification timestamp, global roles, and
+  active organization memberships; never password/token data).
+- `/users` now contains a `ResponsiveTable` directory, search form, and a
+  responsive detail drawer while keeping the existing create-user form.
+- OpenAPI documents the GET contract; the client audit-reason predicate now
+  treats user-directory reads as cross-tenant reads.
+
+Verification completed: admin-web TypeScript check passes; Vitest passes
+(79 tests across users + audit-reason suites); `git diff --check` clean.
+
+Verification blocker: this Windows environment has no Go/gofmt executable and
+Docker daemon access is denied, so Go compilation, PostgreSQL integration, and
+browser verification could not run. Feature #393 was returned to the backlog
+(skipped) on 2026-07-29 and must not be marked passing until those checks run.
+
+Follow-up verification (2026-07-29): regenerated the TypeScript OpenAPI client
+from the AB-3 contract; `npm.cmd run check-ts`, the admin production build, and
+the focused users Vitest suite pass. The implementation reads directly from
+PostgreSQL through a paginated SQL projection and invalidates the directory
+cache after user creation. Backend compilation and live persistence checks
+remain blocked because this host has no Go toolchain and Docker Desktop denies
+access to its daemon pipe. #393 must remain pending verification until an
+environment with Go + PostgreSQL is available.

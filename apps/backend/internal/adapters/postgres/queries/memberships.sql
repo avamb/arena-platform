@@ -10,6 +10,25 @@
 --   - GetActiveRolesForUser → called by permissions.DBChecker to union
 --     membership-derived roles with JWT roles during permission checks.
 
+-- name: ListAdminUsers :many
+-- Superadmin directory projection. JSON aggregates avoid N+1 role/membership
+-- lookups while deliberately excluding password and token columns.
+SELECT u.id, u.email, u.created_at, u.email_verified_at,
+       COALESCE((SELECT jsonb_agg(x.role ORDER BY x.role)
+                 FROM (SELECT DISTINCT r.name AS role FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+                       WHERE ur.user_id = u.id AND ur.org_id IS NULL) x), '[]'::jsonb) AS global_roles,
+       COALESCE((SELECT jsonb_agg(jsonb_build_object('id', o.id, 'name', o.name, 'slug', o.slug, 'role', m.role)
+                                  ORDER BY o.name, m.role)
+                 FROM memberships m JOIN organizations o ON o.id = m.org_id
+                 WHERE m.user_id = u.id AND m.status = 'active'), '[]'::jsonb) AS memberships
+FROM users u
+WHERE lower(u.email) LIKE '%' || lower($1) || '%'
+ORDER BY u.created_at DESC, u.id DESC
+LIMIT $2 OFFSET $3;
+
+-- name: CountAdminUsers :one
+SELECT count(*) FROM users WHERE lower(email) LIKE '%' || lower($1) || '%';
+
 -- name: InsertMembership :one
 -- Inserts a new membership (user in org with role) and returns the created row.
 -- Callers must handle the unique constraint violation (23505) when the user

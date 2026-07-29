@@ -25,6 +25,20 @@ func TestAdminUsers_CreateUserRouteMounted(t *testing.T) {
 	}
 }
 
+func TestAdminUsers_ListUserRouteMounted(t *testing.T) {
+	t.Parallel()
+	s := buildMembershipServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/v1/admin/users", nil)
+	rec := httptest.NewRecorder()
+	s.router.ServeHTTP(rec, req)
+	if rec.Code == http.StatusNotFound || rec.Code == http.StatusMethodNotAllowed {
+		t.Fatalf("GET /v1/admin/users must be mounted, got %d", rec.Code)
+	}
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("GET /v1/admin/users must require JWT, got %d", rec.Code)
+	}
+}
+
 func TestAdminUsers_CreateUserRequiresAuth(t *testing.T) {
 	t.Parallel()
 	s := buildMembershipServer(t)

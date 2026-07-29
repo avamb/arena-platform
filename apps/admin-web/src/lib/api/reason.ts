@@ -49,6 +49,7 @@ const REASON_REQUIRED_PREFIXES: readonly string[] = [
   "/v1/admin/orders",
   "/v1/admin/tickets",
   "/v1/admin/refunds",
+  "/v1/admin/users",
   "/v1/admin/impersonate",
 ];
 
@@ -62,7 +63,6 @@ const REASON_REQUIRED_PREFIXES: readonly string[] = [
 const REASON_REQUIRED_MUTATION_PREFIXES: readonly string[] = [
   "/v1/operator-networks",
   "/v1/admin/networks",
-  "/v1/admin/users",
 ];
 
 /**

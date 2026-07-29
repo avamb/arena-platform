@@ -168,6 +168,10 @@ func (s *Server) handleAdminDeactivateMember(w http.ResponseWriter, r *http.Requ
 
 // ─── admin user handler shims ─────────────────────────────────────────────────
 
+func (s *Server) handleAdminListUsers(w http.ResponseWriter, r *http.Request) {
+	s.iamHandler().HandleAdminListUsers(w, r)
+}
+
 func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 	s.iamHandler().HandleAdminCreateUser(w, r)
 }

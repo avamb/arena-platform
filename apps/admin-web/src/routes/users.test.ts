@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api/client";
 import {
   ADMIN_USER_ROLES,
+  buildAdminUserDirectoryPath,
   buildAdminCreateUserBody,
   formatAdminUserRole,
   isOrgScopedAdminRole,
@@ -12,6 +13,12 @@ import {
 } from "./users";
 
 describe("Users provisioning helpers", () => {
+  it("uses a bounded, encoded directory search request", () => {
+    expect(buildAdminUserDirectoryPath(" Ada+Ops@example.com ")).toBe(
+      "/v1/admin/users?limit=50&search=Ada%2BOps%40example.com",
+    );
+  });
+
   it("exposes the supported admin role set", () => {
     expect(ADMIN_USER_ROLES).toEqual([
       "platform_operator",

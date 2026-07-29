@@ -229,7 +229,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Admin - list and search users
+         * @description Returns a paginated directory of user identities with global roles and active organization memberships. Requires JWT, superadmin.read, and X-Admin-Reason.
+         */
+        get: operations["getV1AdminUsers"];
         put?: never;
         /**
          * Admin - create a user and assign a role
@@ -5569,6 +5573,58 @@ export interface components {
              * @example User created. A password setup link has been issued to the email address.
              */
             message: string;
+        };
+        AdminUserDirectoryMembership: {
+            /**
+             * Format: uuid
+             * @description Organization UUID.
+             */
+            id: string;
+            /** @description Organization display name. */
+            name: string;
+            /** @description Organization URL slug. */
+            slug: string;
+            /** @description Active membership role. */
+            role: string;
+        };
+        AdminUserDirectoryItem: {
+            /**
+             * Format: uuid
+             * @description User UUID.
+             */
+            id: string;
+            /**
+             * Format: email
+             * @description Normalized email address.
+             */
+            email: string;
+            /**
+             * Format: date-time
+             * @description Account creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description Email verification timestamp, when verified.
+             */
+            email_verified_at?: string | null;
+            /** @description Global platform roles. */
+            global_roles: string[];
+            /** @description Active organization memberships. */
+            memberships: components["schemas"]["AdminUserDirectoryMembership"][];
+        };
+        AdminUserDirectoryResponse: {
+            /** @description Directory page. */
+            users: components["schemas"]["AdminUserDirectoryItem"][];
+            /**
+             * Format: int64
+             * @description Total matching users.
+             */
+            total: number;
+            /** @description Applied page size. */
+            limit: number;
+            /** @description Applied page offset. */
+            offset: number;
         };
         AuthVerifyResponse: {
             /**
@@ -11493,6 +11549,72 @@ export interface operations {
                 };
             };
             /** @description Echo dependencies not wired (pool, audit, or idempotency store missing) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1AdminUsers: {
+        parameters: {
+            query?: {
+                /** @description Case-insensitive email substring. */
+                search?: string;
+                /** @description Maximum rows to return (1-200; default 50). */
+                limit?: number;
+                /** @description Number of matching rows to skip. */
+                offset?: number;
+            };
+            header: {
+                /** @description Human-readable business reason for cross-tenant access. */
+                "X-Admin-Reason": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated user directory. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserDirectoryResponse"];
+                };
+            };
+            /** @description Invalid pagination or missing audit reason. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold superadmin.read. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;
