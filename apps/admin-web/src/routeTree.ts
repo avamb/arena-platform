@@ -19,7 +19,7 @@ import {
   ContentRoute,
   PosRoute,
 } from "@/routes/legacyPlaceholders";
-import { GeoRoute } from "@/routes/guarded";
+import { Route as GeoRoute } from "@/routes/geo";
 import { Route as WebhooksRoute } from "@/routes/webhooks";
 import { Route as PasswordResetRoute } from "@/routes/passwordReset";
 import { Route as ResetPasswordRoute } from "@/routes/resetPassword";

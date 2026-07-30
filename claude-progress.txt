@@ -23034,3 +23034,12 @@ Feature #404 marked passing. Overall feature status: 408/409 passing.
   unrelated host process, but the API binary compiled in the Docker build.
 
 Feature #407 marked passing. Overall feature status: 409/409 passing.
+
+## 2026-07-30 — Feature #413 (AB-27) complete
+
+- Replaced the `/geo` permission-gated shell with the real Geo Registry: it fetches countries and cities from the live API, renders responsive country rows with expandable city lists, and provides create-country/create-city forms (localized names, ISO codes, and slugs).
+- The page remains gated by `geo.admin`, explains that organizations, venues, and events consume the registry, and uses no browser-side fixture or mock data.
+- Browser verification signed in as the seeded platform admin and created `TEST Geo Country 413` (`QZ`/`QZZ`) via the UI. It appeared in the fetched table and was still present after the service restart. The final repeated city-creation check was interrupted by a Docker DNS failure resolving the `postgres` service; the API was not modified by this feature.
+- Verification: focused Geo + route-registry Vitest tests (36 assertions), TypeScript type-check, and production admin-web build pass. Mock-pattern grep found only existing development diagnostics and explicit no-mock documentation; no feature mock data was introduced.
+
+Feature #413 marked passing. Overall feature status: 410/413 passing.
