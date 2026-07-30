@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:mobile": "playwright test --config tests/admin-bootstrap/playwright.config.ts",
+    "test:channels-payments": "playwright test --config tests/channels-payments/playwright.config.ts",
     "test:watch": "vitest",
     "type-check": "tsc -b --pretty"
   },

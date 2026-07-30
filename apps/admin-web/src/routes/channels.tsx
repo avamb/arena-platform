@@ -70,6 +70,16 @@ export const Route = createRoute({
 // Backend response shapes
 // ---------------------------------------------------------------------------
 
+interface OrganizationSummary {
+  readonly id: string;
+  readonly name: string;
+  readonly slug?: string;
+}
+
+interface OrganizationListEnvelope {
+  readonly organizations: readonly OrganizationSummary[];
+}
+
 export type PaymentMode = "direct_merchant" | "merchant_of_record";
 export type Provider = "stripe" | "allpay";
 
@@ -265,6 +275,24 @@ function ChannelsModule() {
   const orgIDError = orgID === "" ? null : validateChannelOrgID(orgID);
   const orgReady = trimmedOrgID !== "" && orgIDError === null;
 
+  const orgsQuery = useQuery<OrganizationListEnvelope, ApiError>({
+    queryKey: ["organizations", "channels-picker"],
+    queryFn: () =>
+      authedFetch<OrganizationListEnvelope>({
+        method: "GET",
+        path: "/v1/organizations",
+      }),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const orgsSorted = useMemo(
+    () =>
+      [...(orgsQuery.data?.organizations ?? [])].sort((a, b) =>
+        a.name.localeCompare(b.name),
+      ),
+    [orgsQuery.data],
+  );
+
   const [form, setForm] = useState<FormMode>({ kind: "closed" });
   const [pendingDelete, setPendingDelete] = useState<Channel | null>(null);
   const isDesktop = useIsDesktop(true);
@@ -345,37 +373,54 @@ function ChannelsModule() {
       {(() => {
         const toolbar = (
           <div style={orgPickerStyle}>
-            <label htmlFor="channels-org-id" style={fieldLabelStyle}>
-              Organization ID
+            <label htmlFor="channels-org-picker" style={fieldLabelStyle}>
+              Organization
             </label>
-            <input
-              id="channels-org-id"
-              type="text"
-              value={orgID}
+            <select
+              id="channels-org-picker"
+              value={UUID_RE.test(trimmedOrgID) ? trimmedOrgID : ""}
               onChange={(e) => setOrgID(e.target.value)}
-              style={inputMonoStyle}
-              placeholder="00000000-0000-0000-0000-000000000000"
-              maxLength={36}
-              autoCapitalize="off"
-              autoCorrect="off"
-              spellCheck={false}
-              data-testid="channels-org-id"
-            />
-            {orgIDError !== null ? (
-              <div
-                style={fieldErrorStyle}
-                role="alert"
-                data-testid="channels-org-id-error"
-              >
-                {orgIDError}
-              </div>
-            ) : (
-              <div style={fieldHintStyle}>
-                {scopeOrgID !== ""
-                  ? "Prefilled from the active organization scope. Paste a different UUID to switch."
-                  : "Paste the UUID of the organization to manage. Activate an organization scope to prefill."}
-              </div>
-            )}
+              style={inputStyle}
+              disabled={orgsQuery.isPending}
+              data-testid="channels-org-picker"
+            >
+              <option value="">
+                {orgsQuery.isPending
+                  ? "Loading organizations…"
+                  : "Select an organization"}
+              </option>
+              {orgsSorted.map((org) => (
+                <option key={org.id} value={org.id}>
+                  {org.name}
+                  {org.slug !== undefined ? ` · ${org.slug}` : ""}
+                </option>
+              ))}
+            </select>
+            <details style={{ marginTop: 4 }}>
+              <summary style={fieldHintStyle}>Paste UUID instead</summary>
+              <input
+                id="channels-org-id"
+                type="text"
+                value={orgID}
+                onChange={(e) => setOrgID(e.target.value)}
+                style={{ ...inputMonoStyle, marginTop: 4 }}
+                placeholder="00000000-0000-0000-0000-000000000000"
+                maxLength={36}
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+                data-testid="channels-org-id"
+              />
+              {orgIDError !== null ? (
+                <div
+                  style={fieldErrorStyle}
+                  role="alert"
+                  data-testid="channels-org-id-error"
+                >
+                  {orgIDError}
+                </div>
+              ) : null}
+            </details>
           </div>
         );
         if (isDesktop) {

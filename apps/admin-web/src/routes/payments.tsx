@@ -75,6 +75,16 @@ export const Route = createRoute({
 // Backend response shapes
 // ---------------------------------------------------------------------------
 
+interface OrganizationSummary {
+  readonly id: string;
+  readonly name: string;
+  readonly slug?: string;
+}
+
+interface OrganizationListEnvelope {
+  readonly organizations: readonly OrganizationSummary[];
+}
+
 export type PaymentProvider =
   | "stripe"
   | "allpay"
@@ -229,6 +239,24 @@ function PaymentsModule() {
   const orgIDError = orgID === "" ? null : validateOrgID(orgID);
   const orgReady = trimmedOrgID !== "" && orgIDError === null;
 
+  const orgsQuery = useQuery<OrganizationListEnvelope, ApiError>({
+    queryKey: ["organizations", "payments-picker"],
+    queryFn: () =>
+      authedFetch<OrganizationListEnvelope>({
+        method: "GET",
+        path: "/v1/organizations",
+      }),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const orgsSorted = useMemo(
+    () =>
+      [...(orgsQuery.data?.organizations ?? [])].sort((a, b) =>
+        a.name.localeCompare(b.name),
+      ),
+    [orgsQuery.data],
+  );
+
   const [form, setForm] = useState<FormMode>({ kind: "closed" });
   const [pendingDelete, setPendingDelete] =
     useState<PaymentConfig | null>(null);
@@ -319,37 +347,54 @@ function PaymentsModule() {
       {(() => {
         const toolbar = (
           <div style={orgPickerStyle}>
-            <label htmlFor="payments-org-id" style={fieldLabelStyle}>
-              Organization ID
+            <label htmlFor="payments-org-picker" style={fieldLabelStyle}>
+              Organization
             </label>
-            <input
-              id="payments-org-id"
-              type="text"
-              value={orgID}
+            <select
+              id="payments-org-picker"
+              value={UUID_RE.test(trimmedOrgID) ? trimmedOrgID : ""}
               onChange={(e) => setOrgID(e.target.value)}
-              style={inputMonoStyle}
-              placeholder="00000000-0000-0000-0000-000000000000"
-              maxLength={36}
-              autoCapitalize="off"
-              autoCorrect="off"
-              spellCheck={false}
-              data-testid="payments-org-id"
-            />
-            {orgIDError !== null ? (
-              <div
-                style={fieldErrorStyle}
-                role="alert"
-                data-testid="payments-org-id-error"
-              >
-                {orgIDError}
-              </div>
-            ) : (
-              <div style={fieldHintStyle}>
-                {scopeOrgID !== ""
-                  ? "Prefilled from the active organization scope. Paste a different UUID to switch."
-                  : "Paste the UUID of the organization to manage. Activate an organization scope to prefill."}
-              </div>
-            )}
+              style={inputStyle}
+              disabled={orgsQuery.isPending}
+              data-testid="payments-org-picker"
+            >
+              <option value="">
+                {orgsQuery.isPending
+                  ? "Loading organizations…"
+                  : "Select an organization"}
+              </option>
+              {orgsSorted.map((org) => (
+                <option key={org.id} value={org.id}>
+                  {org.name}
+                  {org.slug !== undefined ? ` · ${org.slug}` : ""}
+                </option>
+              ))}
+            </select>
+            <details style={{ marginTop: 4 }}>
+              <summary style={fieldHintStyle}>Paste UUID instead</summary>
+              <input
+                id="payments-org-id"
+                type="text"
+                value={orgID}
+                onChange={(e) => setOrgID(e.target.value)}
+                style={{ ...inputMonoStyle, marginTop: 4 }}
+                placeholder="00000000-0000-0000-0000-000000000000"
+                maxLength={36}
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+                data-testid="payments-org-id"
+              />
+              {orgIDError !== null ? (
+                <div
+                  style={fieldErrorStyle}
+                  role="alert"
+                  data-testid="payments-org-id-error"
+                >
+                  {orgIDError}
+                </div>
+              ) : null}
+            </details>
           </div>
         );
         if (isDesktop) {
