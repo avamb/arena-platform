@@ -150,8 +150,9 @@ func TestLocalStorage_PutGetStatDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	defer got.Body.Close()
 	body, _ := io.ReadAll(got.Body)
+	// Close explicitly before Delete: on Windows an open file cannot be removed.
+	got.Body.Close()
 	if !bytes.Equal(body, payload) {
 		t.Fatalf("Get returned %q, want %q", body, payload)
 	}
