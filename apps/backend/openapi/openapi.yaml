@@ -9703,16 +9703,26 @@ paths:
           description: Human-readable business reason for this lifecycle action.
           schema: {type: string, minLength: 1}
       responses:
-        "200": {description: User deleted or deactivated.}
+        "200":
+          description: User deleted or deactivated.
         "401":
           description: Unauthenticated
-          content: {application/json: {schema: {$ref: "#/components/schemas/ErrorEnvelope"}}}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Permission denied
-          content: {application/json: {schema: {$ref: "#/components/schemas/ErrorEnvelope"}}}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "409":
           description: Last active platform superadmin cannot be removed
-          content: {application/json: {schema: {$ref: "#/components/schemas/ErrorEnvelope"}}}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/admin/users/{user_id}/deactivate:
     post:
@@ -9733,16 +9743,26 @@ paths:
           description: Human-readable business reason for this lifecycle action.
           schema: {type: string, minLength: 1}
       responses:
-        "200": {description: User deactivated.}
+        "200":
+          description: User deactivated.
         "401":
           description: Unauthenticated
-          content: {application/json: {schema: {$ref: "#/components/schemas/ErrorEnvelope"}}}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Permission denied
-          content: {application/json: {schema: {$ref: "#/components/schemas/ErrorEnvelope"}}}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "409":
           description: User already deactivated or last superadmin
-          content: {application/json: {schema: {$ref: "#/components/schemas/ErrorEnvelope"}}}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/admin/users/{user_id}/reactivate:
     post:
@@ -9763,16 +9783,26 @@ paths:
           description: Human-readable business reason for this lifecycle action.
           schema: {type: string, minLength: 1}
       responses:
-        "200": {description: User reactivated.}
+        "200":
+          description: User reactivated.
         "401":
           description: Unauthenticated
-          content: {application/json: {schema: {$ref: "#/components/schemas/ErrorEnvelope"}}}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Permission denied
-          content: {application/json: {schema: {$ref: "#/components/schemas/ErrorEnvelope"}}}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "409":
           description: User is not deactivated
-          content: {application/json: {schema: {$ref: "#/components/schemas/ErrorEnvelope"}}}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/admin/users/{user_id}/global-roles:
     post:
