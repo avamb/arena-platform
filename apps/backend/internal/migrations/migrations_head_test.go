@@ -40,7 +40,7 @@ func TestHead_NumericPrefixPositive(t *testing.T) {
 }
 
 func TestHead_KnownCurrentHead(t *testing.T) {
-	const expectedHead = "0075_organizer_sender_identity.sql" // updated: 0075 adds per-organizer sender identity fields (AB-10 / #407)
+	const expectedHead = "0077_restore_outbox_unprocessed_index.sql"
 	head, err := migrations.Head()
 	if err != nil {
 		t.Fatalf("Head() returned unexpected error: %v", err)
