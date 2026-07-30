@@ -355,10 +355,24 @@ Owner: drawer manages roles but a user cannot be blocked or removed. Soft-deacti
 with session revocation + audit; hard delete only for never-active accounts;
 last-superadmin guard.
 
-## AB-25. Venue seating plans: dead Create plan button, no SVG upload (#411)
-Seating plans tab renders empty and Create plan does nothing; no way to upload the
-SVG plan. Existing seating assets (Palac Akropolis) and Bil24 plans are the model.
-Upload/attach/list only — the visual editor remains deferred.
+## AB-25. Venue seating plans: versions with SVG upload (#411) — RE-SPECIFIED 2026-07-30
+
+First attempt was marked passing with zero code written (no seating diff, no
+progress note); reopened and re-specified from a live diagnosis:
+
+- The backend is COMPLETE (migration 0057 + mount_seating.go: list/get/create/
+  patch/versions/fork/bind). Verified live: GET list 200, POST create 201.
+- "Create plan does nothing" = silent-disabled submit in
+  venueSeatingPlans.tsx (~L862): disabled until Name is typed, with no reason
+  shown. Plus the raw "Owner org UUID" field (AB-17/AB-22 violation).
+- The REAL gap: no UI to create a plan VERSION, and a plan without a version has
+  current_version_id NULL — hence "no seating plan, no SVG". POST
+  /v1/seating-plans/{id}/versions exists (geometry jsonb, svg_asset_media_id,
+  capacity_seated/standing) and is unused by the admin.
+- Media blocks it: mediastore owner_type allowlist is {org_logo, event_poster,
+  artist_photo} and SVG is not an advertised/accepted type.
+- Visual seat editor remains DEFERRED; this is upload/attach/list/preview only.
+  Reference assets: Palac Akropolis package (05_/06_ dirs), Bil24 plan model.
 
 ## AB-26. Sales Channels + Payment Configs: UUID gate and broken create (#412)
 Both pages still demand a pasted org UUID and the New channel / New payment config
