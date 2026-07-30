@@ -4763,6 +4763,11 @@ export interface components {
             checks: {
                 [key: string]: string;
             };
+            /**
+             * @description Legacy alias for checks.database, present when the database probe is registered
+             * @example ok
+             */
+            db?: string;
         };
         InfoResponse: {
             /**
@@ -13616,9 +13621,11 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                /** @description Human-readable business reason for this lifecycle action. */
                 "X-Admin-Reason": string;
             };
             path: {
+                /** @description UUID of the target user. */
                 user_id: string;
             };
             cookie?: never;
@@ -13665,9 +13672,11 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                /** @description Human-readable business reason for this lifecycle action. */
                 "X-Admin-Reason": string;
             };
             path: {
+                /** @description UUID of the target user. */
                 user_id: string;
             };
             cookie?: never;
@@ -13714,9 +13723,11 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                /** @description Human-readable business reason for this lifecycle action. */
                 "X-Admin-Reason": string;
             };
             path: {
+                /** @description UUID of the target user. */
                 user_id: string;
             };
             cookie?: never;

@@ -237,6 +237,10 @@ components:
           description: Map of probe name to status string ("ok" or error message)
           example:
             database: "ok"
+        db:
+          type: string
+          description: Legacy alias for checks.database, present when the database probe is registered
+          example: "ok"
 
     InfoResponse:
       type: object
@@ -9606,7 +9610,6 @@ paths:
         - name: user_id
           in: path
           required: true
-          description: UUID of the target user.
           description: UUIDv7 primary key of the user whose role binding to revoke.
           schema:
             type: string

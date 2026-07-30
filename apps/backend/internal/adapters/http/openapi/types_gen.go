@@ -4203,6 +4203,9 @@ type ReadyzResponse struct {
 	// Checks Map of probe name to status string ("ok" or error message)
 	Checks map[string]string `json:"checks"`
 
+	// Db Legacy alias for checks.database, present when the database probe is registered
+	Db *string `json:"db,omitempty"`
+
 	// Status "ready" when all probes pass, "not_ready" when any probe fails
 	Status ReadyzResponseStatus `json:"status"`
 }
@@ -6293,11 +6296,13 @@ type PostV1AdminUsersParams struct {
 
 // DeleteV1AdminUserParams defines parameters for DeleteV1AdminUser.
 type DeleteV1AdminUserParams struct {
+	// XAdminReason Human-readable business reason for this lifecycle action.
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 
 // PostV1AdminUserDeactivateParams defines parameters for PostV1AdminUserDeactivate.
 type PostV1AdminUserDeactivateParams struct {
+	// XAdminReason Human-readable business reason for this lifecycle action.
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 
@@ -6321,6 +6326,7 @@ type DeleteV1AdminUserGlobalRoleParams struct {
 
 // PostV1AdminUserReactivateParams defines parameters for PostV1AdminUserReactivate.
 type PostV1AdminUserReactivateParams struct {
+	// XAdminReason Human-readable business reason for this lifecycle action.
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 

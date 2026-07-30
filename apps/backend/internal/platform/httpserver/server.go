@@ -215,7 +215,9 @@ func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 // handleReadyz is a readiness probe: iterates through all registered
 // ReadinessProbes and aggregates their results into the /readyz checks map.
 // Returns 200 {"status":"ready","checks":{...}} when every probe passes, or
-// 503 {"status":"not_ready","checks":{...}} when any probe fails.
+// 503 {"status":"not_ready","checks":{...}} when any probe fails. When a
+// database probe is registered, the response also includes the legacy
+// top-level "db" field for backward compatibility.
 func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	checks := make(map[string]string, len(s.probes))
@@ -228,17 +230,17 @@ func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
 			checks[p.ProbeName()] = "ok"
 		}
 	}
+	response := map[string]any{"checks": checks}
+	if dbStatus, ok := checks["database"]; ok {
+		response["db"] = dbStatus
+	}
 	if failed {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
-			"status": "not_ready",
-			"checks": checks,
-		})
+		response["status"] = "not_ready"
+		writeJSON(w, http.StatusServiceUnavailable, response)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"status": "ready",
-		"checks": checks,
-	})
+	response["status"] = "ready"
+	writeJSON(w, http.StatusOK, response)
 }
 
 // -----------------------------------------------------------------------------

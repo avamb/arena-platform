@@ -136,6 +136,30 @@ func TestReadinessProbe112_DBProbePassesWhenHealthy(t *testing.T) {
 	}
 }
 
+// TestReadinessProbe112_DBProbeIncludesLegacyAlias keeps the original
+// readiness contract available to clients while the checks map supports
+// additional dependency probes.
+func TestReadinessProbe112_DBProbeIncludesLegacyAlias(t *testing.T) {
+	t.Parallel()
+	ts := buildProbeTestServer(t, []ReadinessProbe{
+		&succeedingReadinessProbe{name: "database"},
+	})
+
+	resp, err := ts.Client().Get(ts.URL + "/readyz")
+	if err != nil {
+		t.Fatalf("GET /readyz: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode /readyz body: %v", err)
+	}
+	if body["db"] != "ok" {
+		t.Fatalf("body[\"db\"] = %v, want \"ok\"", body["db"])
+	}
+}
+
 // TestReadinessProbe112_DBProbeFailsReturns503 simulates killing the DB
 // (feature spec: "kill DB, /readyz returns 503").
 func TestReadinessProbe112_DBProbeFailsReturns503(t *testing.T) {
@@ -157,6 +181,28 @@ func TestReadinessProbe112_DBProbeFailsReturns503(t *testing.T) {
 	}
 	if checks["database"] == "ok" {
 		t.Error("checks[\"database\"] must not be \"ok\" when DB is down")
+	}
+}
+
+func TestReadinessProbe112_DBProbeFailureIncludesLegacyAlias(t *testing.T) {
+	t.Parallel()
+	const errMsg = "dial tcp: connection refused"
+	ts := buildProbeTestServer(t, []ReadinessProbe{
+		&failingReadinessProbe{name: "database", err: errors.New(errMsg)},
+	})
+
+	resp, err := ts.Client().Get(ts.URL + "/readyz")
+	if err != nil {
+		t.Fatalf("GET /readyz: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode /readyz body: %v", err)
+	}
+	if body["db"] != errMsg {
+		t.Fatalf("body[\"db\"] = %v, want %q", body["db"], errMsg)
 	}
 }
 
