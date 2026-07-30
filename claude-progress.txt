@@ -23035,6 +23035,27 @@ Feature #404 marked passing. Overall feature status: 408/409 passing.
 
 Feature #407 marked passing. Overall feature status: 409/409 passing.
 
+## 2026-07-30 — Feature #1 complete
+
+- Verified the production PostgreSQL connectivity path already implemented in
+  `internal/platform/database`: pgx/v5 pool configuration is sourced from the
+  validated environment config, initial boot retries exponentially (500 ms to
+  10 s), and successful startup logs `database connection established` with
+  configured min/max connection counts.
+- Exercised the live API on port 18080: `/healthz` and `/readyz` initially
+  returned 200. After stopping the Compose PostgreSQL container, `/readyz`
+  returned 503 with a database error while `/healthz` remained live. Restarting
+  PostgreSQL restored `/readyz` to 200 within five seconds without restarting
+  the API; logs recorded `database connection restored`.
+- Browser verification rendered the ready response
+  `{"checks":{"database":"ok"},"status":"ready"}`. The only browser
+  console entry was Chrome's automatic `/favicon.ico` 404 for this JSON-only
+  operational endpoint, not an application JavaScript error.
+- Focused readiness/liveness tests pass: `go test
+  ./internal/platform/httpserver -run 'Test(AnonymousAccess_(Healthz|Readyz)|DBUnavailable_)' -count=1`.
+
+Feature #1 marked passing. Overall feature status: 410/413 passing.
+
 ## 2026-07-30 — Feature #413 (AB-27) complete
 
 - Replaced the `/geo` permission-gated shell with the real Geo Registry: it fetches countries and cities from the live API, renders responsive country rows with expandable city lists, and provides create-country/create-city forms (localized names, ISO codes, and slugs).
