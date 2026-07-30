@@ -23071,3 +23071,12 @@ Feature #413 marked passing. Overall feature status: 410/413 passing.
 - Login and refresh now return `auth.user_deactivated` and do not mint sessions for soft-deactivated accounts. Directory responses/UI display account status; the user drawer has confirmed deactivate, reactivate, and safe-delete actions.
 - Regenerated OpenAPI Go and TypeScript artifacts. Focused OpenAPI/auth route checks, Go builds, admin type-check, and UI users tests pass. PostgreSQL was migrated through 0076 and the API restarted successfully.
 - Not yet marked passing: browser login succeeds against the new local API but the admin SPA remains stuck on its pre-existing “Restoring session…” screen after a successful refresh, so the drawer actions have not been interactively clicked. Resume by resolving that existing SPA restore state, then perform the full deactivate/reactivate/delete browser workflow and mark #410.
+## 2026-07-30 — Feature #410 (AB-24) complete
+
+- Browser-verified the user drawer against PostgreSQL: an active agent became
+  Deactivated after confirmation and then Active after confirmed reactivation.
+- Fixed the drawer synchronization defect found during verification: a
+  successful mutation now refetches the directory and updates (or closes) the
+  selected drawer user, keeping status and lifecycle actions current.
+- Focused lifecycle/auth Go tests, admin users tests, TypeScript check, and
+  browser console check pass. Feature #410 marked passing.

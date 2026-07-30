@@ -134,6 +134,21 @@ function UsersProvisioning() {
     queryFn: () => authedFetch<AdminDirectoryEnvelope>({ method: "GET", path: buildAdminUserDirectoryPath(submittedSearch) }),
     retry: false,
   });
+  const refreshDirectoryAfterChange = async (): Promise<void> => {
+    // Keep the drawer in sync with the server response as well as the table.
+    // In particular, a lifecycle change swaps its Deactivate/Reactivate action
+    // while the drawer remains open.
+    const result = await usersQuery.refetch();
+    if (result.data === undefined) {
+      return;
+    }
+    setSelectedUser((current) => {
+      if (current === null) {
+        return null;
+      }
+      return result.data.users.find((candidate) => candidate.id === current.id) ?? null;
+    });
+  };
 
   const mutation = useMutation<
     AdminCreateUserResponse,
@@ -346,7 +361,7 @@ function UsersProvisioning() {
           </span>
         </div>
       ) : null}
-      <UserDirectoryDrawer user={selectedUser} organizations={orgOptions} onClose={() => setSelectedUser(null)} onChanged={() => void queryClient.invalidateQueries({ queryKey: ["admin", "users"] })} />
+      <UserDirectoryDrawer user={selectedUser} organizations={orgOptions} onClose={() => setSelectedUser(null)} onChanged={refreshDirectoryAfterChange} />
     </section>
   );
 }
@@ -363,12 +378,12 @@ function UserDirectoryTable({ users, onSelect }: { users: readonly AdminDirector
   return <ResponsiveTable id="users-directory-table" caption="User directory" columns={columns} rows={users} rowKey={(user) => user.id} empty={<p>No users match this search.</p>} />;
 }
 
-function UserDirectoryDrawer({ user, organizations, onClose, onChanged }: { user: AdminDirectoryUser | null; organizations: readonly OrgPickerOption[]; onClose: () => void; onChanged: () => void }) {
+function UserDirectoryDrawer({ user, organizations, onClose, onChanged }: { user: AdminDirectoryUser | null; organizations: readonly OrgPickerOption[]; onClose: () => void; onChanged: () => Promise<void> }) {
 	const [globalRole, setGlobalRole] = useState<AdminUserRole>("platform_operator");
 	const [membershipRole, setMembershipRole] = useState<AdminUserRole>("organizer");
 	const [membershipOrgID, setMembershipOrgID] = useState("");
 	const [error, setError] = useState<string | null>(null);
-	const mutation = useMutation<void, ApiError, { method: "POST" | "DELETE"; path: string; body?: unknown }>({ mutationFn: ({ method, path, body }) => authedFetch<void>({ method, path, body }), onSuccess: () => { setError(null); onChanged(); }, onError: (err) => setError(err.message) });
+	const mutation = useMutation<void, ApiError, { method: "POST" | "DELETE"; path: string; body?: unknown }>({ mutationFn: ({ method, path, body }) => authedFetch<void>({ method, path, body }), onSuccess: async () => { setError(null); await onChanged(); }, onError: (err) => setError(err.message) });
 	const confirm = (message: string, run: () => void) => { if (window.confirm(message)) run(); };
   return <ResponsiveDrawer id="user-directory-drawer" open={user !== null} onClose={onClose} closeLabel="Close user" title={user?.email ?? "User"} subtitle={user === null ? undefined : `Created ${formatDateTime(user.created_at)}`}>
     {user === null ? null : <div style={drawerContentStyle}>
