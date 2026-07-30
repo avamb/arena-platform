@@ -26,17 +26,29 @@ interface AuthGateProps {
   readonly children: ReactNode;
 }
 
+// Routes an anonymous visitor may open directly. /password-reset and its
+// email-link alias /reset-password MUST be reachable without a session —
+// the reset email lands in a browser that has never signed in (AB-23/#409:
+// gating them on /login stranded the operator on an eternal
+// "Redirecting to sign-in" spinner).
+const PUBLIC_PATHS: ReadonlySet<string> = new Set([
+  "/login",
+  "/password-reset",
+  "/reset-password",
+]);
+
 export function AuthGate({ children }: AuthGateProps) {
   const auth = useAuth();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const onLogin = pathname === "/login";
+  const onPublic = PUBLIC_PATHS.has(pathname);
 
   useEffect(() => {
-    if (auth.status === "unauthenticated" && !onLogin) {
+    if (auth.status === "unauthenticated" && !onPublic) {
       void navigate({ to: "/login", replace: true });
     }
-  }, [auth.status, onLogin, navigate]);
+  }, [auth.status, onPublic, navigate]);
 
   // Already authenticated and the operator landed on /login -> push them
   // to the workspace.
@@ -50,7 +62,7 @@ export function AuthGate({ children }: AuthGateProps) {
     return <LoadingScreen label="Restoring session…" />;
   }
 
-  if (auth.status === "authenticating" && !onLogin) {
+  if (auth.status === "authenticating" && !onPublic) {
     return <LoadingScreen label="Signing in…" />;
   }
 
@@ -79,7 +91,7 @@ export function AuthGate({ children }: AuthGateProps) {
     );
   }
 
-  if (auth.status === "unauthenticated" && !onLogin) {
+  if (auth.status === "unauthenticated" && !onPublic) {
     // Effect above will navigate momentarily; show a loader instead of
     // flashing protected content.
     return <LoadingScreen label="Redirecting to sign-in…" />;

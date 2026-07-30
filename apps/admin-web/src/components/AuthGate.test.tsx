@@ -64,4 +64,38 @@ describe("AuthGate", () => {
     expect(html).toContain("Signing in");
     expect(html).not.toContain("protected content sentinel");
   });
+
+  // AB-23 (#409): the reset email opens in a browser with no session. The
+  // password-reset routes are public — an unauthenticated visitor must see
+  // the form, not the "Redirecting to sign-in" loader.
+  it.each(["/password-reset", "/reset-password"])(
+    "renders %s for unauthenticated visitors instead of bouncing to /login",
+    (path) => {
+      mocks.pathname = path;
+      mocks.status = "unauthenticated";
+
+      const html = renderToString(
+        <AuthGate>
+          <div>reset form sentinel</div>
+        </AuthGate>,
+      );
+
+      expect(html).toContain("reset form sentinel");
+      expect(html).not.toContain("Redirecting to sign-in");
+    },
+  );
+
+  it("still bounces unauthenticated visitors off protected routes", () => {
+    mocks.pathname = "/organizations";
+    mocks.status = "unauthenticated";
+
+    const html = renderToString(
+      <AuthGate>
+        <div>protected content sentinel</div>
+      </AuthGate>,
+    );
+
+    expect(html).toContain("Redirecting to sign-in");
+    expect(html).not.toContain("protected content sentinel");
+  });
 });
