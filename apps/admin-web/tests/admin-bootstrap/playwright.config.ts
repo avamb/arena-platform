@@ -22,9 +22,17 @@ export default defineConfig({
   webServer: process.env.ADMIN_WEB_BASE_URL
     ? undefined
     : {
-        command: "npm run dev -- --host 127.0.0.1",
+        command: "npm run dev -- --host 127.0.0.1 --port 5174",
         port: 5174,
         reuseExistingServer: !process.env.CI,
-        timeout: 30_000,
+        timeout: 60_000,
+        env: {
+          // config.ts throws on boot when VITE_API_BASE_URL is unset, which
+          // renders the ErrorBoundary screen instead of the shell and fails
+          // every locator (CI run 30510302440). The smoke only asserts layout,
+          // so any syntactically valid base URL is fine.
+          VITE_API_BASE_URL:
+            process.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8080",
+        },
       },
 });
