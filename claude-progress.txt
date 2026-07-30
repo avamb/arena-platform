@@ -23043,3 +23043,10 @@ Feature #407 marked passing. Overall feature status: 409/409 passing.
 - Verification: focused Geo + route-registry Vitest tests (36 assertions), TypeScript type-check, and production admin-web build pass. Mock-pattern grep found only existing development diagnostics and explicit no-mock documentation; no feature mock data was introduced.
 
 Feature #413 marked passing. Overall feature status: 410/413 passing.
+
+## 2026-07-30 — Feature #410 (AB-24) implementation checkpoint
+
+- Implemented durable user lifecycle support with migration 0076: `deactivated_at`, protected deactivate/reactivate/delete endpoints, refresh-token revocation, audit events, and a transaction advisory-lock guard against deactivating the final active platform superadmin.
+- Login and refresh now return `auth.user_deactivated` and do not mint sessions for soft-deactivated accounts. Directory responses/UI display account status; the user drawer has confirmed deactivate, reactivate, and safe-delete actions.
+- Regenerated OpenAPI Go and TypeScript artifacts. Focused OpenAPI/auth route checks, Go builds, admin type-check, and UI users tests pass. PostgreSQL was migrated through 0076 and the API restarted successfully.
+- Not yet marked passing: browser login succeeds against the new local API but the admin SPA remains stuck on its pre-existing “Restoring session…” screen after a successful refresh, so the drawer actions have not been interactively clicked. Resume by resolving that existing SPA restore state, then perform the full deactivate/reactivate/delete browser workflow and mark #410.

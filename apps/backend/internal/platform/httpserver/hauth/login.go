@@ -161,6 +161,12 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	if userRow.DeactivatedAt != nil {
+		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope(
+			"auth.user_deactivated", "this account has been deactivated", r,
+		))
+		return
+	}
 
 	h.rateLimiter.Reset(rlKey) // clear on successful login
 
@@ -361,6 +367,19 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		}
 		logger.Error("auth.refresh: get user failed", "error", err)
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "database is not available", r))
+		return
+	}
+	if userRow.DeactivatedAt != nil {
+		if err := q.RevokeAllUserRefreshTokens(ctx, row.UserID); err != nil {
+			logger.Error("auth.refresh: revoke deactivated user sessions failed", "error", err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			logger.Error("auth.refresh: commit deactivated user rejection failed", "error", err)
+		}
+		if h.sessionStore != nil {
+			_ = h.sessionStore.ClearUserSessions(ctx, row.UserID.String())
+		}
+		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope("auth.user_deactivated", "this account has been deactivated", r))
 		return
 	}
 

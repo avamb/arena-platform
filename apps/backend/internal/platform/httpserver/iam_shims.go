@@ -166,6 +166,16 @@ func (s *Server) handleAdminDeactivateMember(w http.ResponseWriter, r *http.Requ
 	s.iamHandler().HandleAdminDeactivateMember(w, r)
 }
 
+func (s *Server) handleAdminDeactivateUser(w http.ResponseWriter, r *http.Request) {
+	s.iamHandler().HandleAdminDeactivateUser(w, r)
+}
+func (s *Server) handleAdminReactivateUser(w http.ResponseWriter, r *http.Request) {
+	s.iamHandler().HandleAdminReactivateUser(w, r)
+}
+func (s *Server) handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
+	s.iamHandler().HandleAdminDeleteUser(w, r)
+}
+
 // ─── admin user handler shims ─────────────────────────────────────────────────
 
 func (s *Server) handleAdminListUsers(w http.ResponseWriter, r *http.Request) {

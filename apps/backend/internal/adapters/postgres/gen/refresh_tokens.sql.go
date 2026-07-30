@@ -80,7 +80,7 @@ func (q *Queries) RevokeAllUserRefreshTokens(ctx context.Context, userID uuid.UU
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, password_hash, preferred_locale, created_at, email_verified_at
+SELECT id, email, password_hash, preferred_locale, created_at, email_verified_at, deactivated_at
 FROM users
 WHERE id = $1
 `
@@ -97,6 +97,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByEmail
 		&i.PreferredLocale,
 		&i.CreatedAt,
 		&i.EmailVerifiedAt,
+		&i.DeactivatedAt,
 	)
 	return i, err
 }

@@ -1312,6 +1312,10 @@ components:
           type: [string, "null"]
           format: date-time
           description: Email verification timestamp, when verified.
+        deactivated_at:
+          type: [string, "null"]
+          format: date-time
+          description: Soft-deactivation timestamp. A deactivated user cannot log in or refresh a session.
         global_roles:
           type: array
           description: Global platform roles.
@@ -9602,6 +9606,7 @@ paths:
         - name: user_id
           in: path
           required: true
+          description: UUID of the target user.
           description: UUIDv7 primary key of the user whose role binding to revoke.
           schema:
             type: string
@@ -9675,6 +9680,96 @@ paths:
   # ─────────────────────────────────────────────────────────────────────────
   # Admin Organizations CRUD (feature #233)
   # ─────────────────────────────────────────────────────────────────────────
+
+  /v1/admin/users/{user_id}:
+    delete:
+      operationId: deleteV1AdminUser
+      summary: Admin - delete a never-active user or deactivate a retained user
+      description: Permanently removes only a user with no session, order, or audit evidence. A retained user is soft-deactivated and all refresh tokens are revoked. Requires JWT, superadmin.read, and X-Admin-Reason.
+      tags: [v1, admin]
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          description: UUID of the target user.
+          schema: {type: string, format: uuid}
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this lifecycle action.
+          schema: {type: string, minLength: 1}
+      responses:
+        "200": {description: User deleted or deactivated.}
+        "401":
+          description: Unauthenticated
+          content: {application/json: {schema: {$ref: "#/components/schemas/ErrorEnvelope"}}}
+        "403":
+          description: Permission denied
+          content: {application/json: {schema: {$ref: "#/components/schemas/ErrorEnvelope"}}}
+        "409":
+          description: Last active platform superadmin cannot be removed
+          content: {application/json: {schema: {$ref: "#/components/schemas/ErrorEnvelope"}}}
+
+  /v1/admin/users/{user_id}/deactivate:
+    post:
+      operationId: postV1AdminUserDeactivate
+      summary: Admin - soft-deactivate a user
+      description: Blocks login and refresh for this account, revokes all refresh sessions, preserves memberships, and writes an audit event. Requires JWT, superadmin.read, and X-Admin-Reason.
+      tags: [v1, admin]
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          description: UUID of the target user.
+          schema: {type: string, format: uuid}
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this lifecycle action.
+          schema: {type: string, minLength: 1}
+      responses:
+        "200": {description: User deactivated.}
+        "401":
+          description: Unauthenticated
+          content: {application/json: {schema: {$ref: "#/components/schemas/ErrorEnvelope"}}}
+        "403":
+          description: Permission denied
+          content: {application/json: {schema: {$ref: "#/components/schemas/ErrorEnvelope"}}}
+        "409":
+          description: User already deactivated or last superadmin
+          content: {application/json: {schema: {$ref: "#/components/schemas/ErrorEnvelope"}}}
+
+  /v1/admin/users/{user_id}/reactivate:
+    post:
+      operationId: postV1AdminUserReactivate
+      summary: Admin - reactivate a user
+      description: Restores a soft-deactivated account. It does not restore old sessions. Requires JWT, superadmin.read, and X-Admin-Reason.
+      tags: [v1, admin]
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          description: UUID of the target user.
+          schema: {type: string, format: uuid}
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this lifecycle action.
+          schema: {type: string, minLength: 1}
+      responses:
+        "200": {description: User reactivated.}
+        "401":
+          description: Unauthenticated
+          content: {application/json: {schema: {$ref: "#/components/schemas/ErrorEnvelope"}}}
+        "403":
+          description: Permission denied
+          content: {application/json: {schema: {$ref: "#/components/schemas/ErrorEnvelope"}}}
+        "409":
+          description: User is not deactivated
+          content: {application/json: {schema: {$ref: "#/components/schemas/ErrorEnvelope"}}}
 
   /v1/admin/users/{user_id}/global-roles:
     post:

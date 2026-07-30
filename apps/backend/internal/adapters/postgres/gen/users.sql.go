@@ -45,7 +45,7 @@ func (q *Queries) InsertUser(ctx context.Context, email, passwordHash, preferred
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, password_hash, preferred_locale, created_at, email_verified_at
+SELECT id, email, password_hash, preferred_locale, created_at, email_verified_at, deactivated_at
 FROM users
 WHERE email = $1
 `
@@ -58,6 +58,7 @@ type GetUserByEmailRow struct {
 	PreferredLocale string     `json:"preferred_locale"`
 	CreatedAt       time.Time  `json:"created_at"`
 	EmailVerifiedAt *time.Time `json:"email_verified_at"`
+	DeactivatedAt   *time.Time `json:"deactivated_at"`
 }
 
 // GetUserByEmail fetches a user row by normalised email address.
@@ -72,6 +73,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEm
 		&i.PreferredLocale,
 		&i.CreatedAt,
 		&i.EmailVerifiedAt,
+		&i.DeactivatedAt,
 	)
 	return i, err
 }

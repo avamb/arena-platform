@@ -46,6 +46,9 @@ func TestAdminUsers_GlobalRoleRoutesRequireAuth(t *testing.T) {
 	for _, tc := range []struct{ method, path string }{
 		{http.MethodPost, "/v1/admin/users/" + userID + "/global-roles"},
 		{http.MethodDelete, "/v1/admin/users/" + userID + "/global-roles/platform_superadmin"},
+		{http.MethodPost, "/v1/admin/users/" + userID + "/deactivate"},
+		{http.MethodPost, "/v1/admin/users/" + userID + "/reactivate"},
+		{http.MethodDelete, "/v1/admin/users/" + userID},
 	} {
 		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{"role":"platform_operator"}`))
 		req.Header.Set("Content-Type", "application/json")

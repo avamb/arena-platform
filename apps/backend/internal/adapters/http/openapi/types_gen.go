@@ -827,6 +827,9 @@ type AdminUserDirectoryItem struct {
 	// CreatedAt Account creation timestamp.
 	CreatedAt time.Time `json:"created_at"`
 
+	// DeactivatedAt Soft-deactivation timestamp. A deactivated user cannot log in or refresh a session.
+	DeactivatedAt *time.Time `json:"deactivated_at"`
+
 	// DisplayNumber Short operator-facing user number; UUID remains the API key.
 	DisplayNumber int64 `json:"display_number"`
 
@@ -6288,6 +6291,16 @@ type PostV1AdminUsersParams struct {
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 
+// DeleteV1AdminUserParams defines parameters for DeleteV1AdminUser.
+type DeleteV1AdminUserParams struct {
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PostV1AdminUserDeactivateParams defines parameters for PostV1AdminUserDeactivate.
+type PostV1AdminUserDeactivateParams struct {
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
 // PostV1AdminUserGlobalRoleJSONBody defines parameters for PostV1AdminUserGlobalRole.
 type PostV1AdminUserGlobalRoleJSONBody struct {
 	// Role Global role name (platform_operator or platform_superadmin).
@@ -6303,6 +6316,11 @@ type PostV1AdminUserGlobalRoleParams struct {
 // DeleteV1AdminUserGlobalRoleParams defines parameters for DeleteV1AdminUserGlobalRole.
 type DeleteV1AdminUserGlobalRoleParams struct {
 	// XAdminReason Human-readable business reason for cross-tenant access.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PostV1AdminUserReactivateParams defines parameters for PostV1AdminUserReactivate.
+type PostV1AdminUserReactivateParams struct {
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 

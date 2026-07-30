@@ -771,6 +771,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/users/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Admin - delete a never-active user or deactivate a retained user
+         * @description Permanently removes only a user with no session, order, or audit evidence. A retained user is soft-deactivated and all refresh tokens are revoked. Requires JWT, superadmin.read, and X-Admin-Reason.
+         */
+        delete: operations["deleteV1AdminUser"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{user_id}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - soft-deactivate a user
+         * @description Blocks login and refresh for this account, revokes all refresh sessions, preserves memberships, and writes an audit event. Requires JWT, superadmin.read, and X-Admin-Reason.
+         */
+        post: operations["postV1AdminUserDeactivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{user_id}/reactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - reactivate a user
+         * @description Restores a soft-deactivated account. It does not restore old sessions. Requires JWT, superadmin.read, and X-Admin-Reason.
+         */
+        post: operations["postV1AdminUserReactivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/users/{user_id}/global-roles": {
         parameters: {
             query?: never;
@@ -5673,6 +5733,11 @@ export interface components {
              * @description Email verification timestamp, when verified.
              */
             email_verified_at?: string | null;
+            /**
+             * Format: date-time
+             * @description Soft-deactivation timestamp. A deactivated user cannot log in or refresh a session.
+             */
+            deactivated_at?: string | null;
             /** @description Global platform roles. */
             global_roles: string[];
             /** @description Active organization memberships. */
@@ -13538,6 +13603,153 @@ export interface operations {
              *     (`dependency.database_unavailable`).
              */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteV1AdminUser: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Admin-Reason": string;
+            };
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description User deleted or deactivated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Last active platform superadmin cannot be removed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminUserDeactivate: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Admin-Reason": string;
+            };
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description User deactivated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description User already deactivated or last superadmin */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminUserReactivate: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Admin-Reason": string;
+            };
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description User reactivated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description User is not deactivated */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

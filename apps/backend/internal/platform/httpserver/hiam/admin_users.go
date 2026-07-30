@@ -79,6 +79,7 @@ type adminUserDirectoryItemDTO struct {
 	Email           string                   `json:"email"`
 	CreatedAt       string                   `json:"created_at"`
 	EmailVerifiedAt *string                  `json:"email_verified_at"`
+	DeactivatedAt   *string                  `json:"deactivated_at"`
 	GlobalRoles     []string                 `json:"global_roles"`
 	Memberships     []adminUserMembershipDTO `json:"memberships"`
 }
@@ -135,6 +136,10 @@ func (h *Handler) HandleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 		if row.EmailVerifiedAt != nil {
 			value := row.EmailVerifiedAt.UTC().Format(time.RFC3339Nano)
 			item.EmailVerifiedAt = &value
+		}
+		if row.DeactivatedAt != nil {
+			value := row.DeactivatedAt.UTC().Format(time.RFC3339Nano)
+			item.DeactivatedAt = &value
 		}
 		if err := json.Unmarshal(row.GlobalRoles, &item.GlobalRoles); err != nil {
 			h.logger.Error("admin_user: decode global roles failed", slog.String("error", err.Error()))

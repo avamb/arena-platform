@@ -12,7 +12,7 @@ RETURNING id, display_number, email, preferred_locale, created_at, email_verifie
 -- name: GetUserByEmail :one
 -- Looks up a user by normalised email address. Used during login and to
 -- detect duplicate-email conflicts during registration.
-SELECT id, email, password_hash, preferred_locale, created_at, email_verified_at
+SELECT id, email, password_hash, preferred_locale, created_at, email_verified_at, deactivated_at
 FROM users
 WHERE email = $1;
 

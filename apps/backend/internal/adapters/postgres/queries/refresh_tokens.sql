@@ -22,6 +22,6 @@ SET revoked_at = now()
 WHERE user_id = $1 AND revoked_at IS NULL;
 
 -- name: GetUserByID :one
-SELECT id, email, password_hash, preferred_locale, created_at, email_verified_at
+SELECT id, email, password_hash, preferred_locale, created_at, email_verified_at, deactivated_at
 FROM users
 WHERE id = $1;
