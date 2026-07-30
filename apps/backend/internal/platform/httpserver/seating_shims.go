@@ -46,6 +46,10 @@ func (s *Server) handleForkSeatingPlan(w http.ResponseWriter, r *http.Request) {
 
 // ─── version handler shims ────────────────────────────────────────────────────
 
+func (s *Server) handleListSeatingPlanVersions(w http.ResponseWriter, r *http.Request) {
+	s.seatingHandler().HandleListSeatingPlanVersions(w, r)
+}
+
 func (s *Server) handleCreateSeatingPlanVersion(w http.ResponseWriter, r *http.Request) {
 	s.seatingHandler().HandleCreateSeatingPlanVersion(w, r)
 }

@@ -36,6 +36,7 @@ func (s *Server) mountSeatingRoutes(r chi.Router) {
 		s.applyAuth(pr, "seating_plan.read", "seating")
 		pr.Get("/venues/{venue_id}/seating-plans", s.handleListSeatingPlansByVenue)
 		pr.Get("/seating-plans/{id}", s.handleGetSeatingPlan)
+		pr.Get("/seating-plans/{id}/versions", s.handleListSeatingPlanVersions)
 		pr.Get("/seating-plans/{id}/versions/{n}", s.handleGetSeatingPlanVersion)
 	})
 

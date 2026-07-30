@@ -245,6 +245,58 @@ type ImportOutcome struct {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /v1/seating-plans/{id}/versions
+// ─────────────────────────────────────────────────────────────────────────────
+
+// HandleListSeatingPlanVersions serves the list-all-versions endpoint.
+// Returns all versions for a plan in descending version_number order so the
+// admin UI can display a version history table (number, capacity, created_at,
+// locked state, current marker). The plan's current_version_id is resolved by
+// the caller from the parent plan object.
+func (h *Handler) HandleListSeatingPlanVersions(w http.ResponseWriter, r *http.Request) {
+	if h.queries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			"dependency.database_unavailable", "database is not available", r,
+		))
+		return
+	}
+	ctx := r.Context()
+	planID, ok := httputil.UUIDPathParam(w, r, "id")
+	if !ok {
+		return
+	}
+	// Verify the plan exists and is visible to the caller.
+	if _, err := h.queries.GetSeatingPlanByID(ctx, planID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+				"seating_plan.not_found", "seating plan not found", r,
+			))
+			return
+		}
+		h.logger.Error("seating_plan: get for version list failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"seating_plan.get_failed", "failed to look up seating plan", r,
+		))
+		return
+	}
+	rows, err := h.queries.ListSeatingPlanVersionsByPlan(ctx, planID)
+	if err != nil {
+		h.logger.Error("seating_plan: list versions failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"seating_plan.versions_list_failed", "failed to list seating plan versions", r,
+		))
+		return
+	}
+	out := make([]SeatingPlanVersionResponse, 0, len(rows))
+	for _, v := range rows {
+		out = append(out, SeatingPlanVersionFromRow(v))
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
+		"seating_plan_versions": out,
+	})
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /v1/seating-plans/{id}/versions/{n}
 // ─────────────────────────────────────────────────────────────────────────────
 

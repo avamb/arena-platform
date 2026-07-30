@@ -10,6 +10,7 @@ import {
   parseVersionValidationErrors,
   renderGeometryToSVG,
   resolveCurrentVersionNumber,
+  validateCreatePlanForm,
   type SeatingGeometry,
   type SeatingPlan,
 } from "@/routes/venueSeatingPlans";
@@ -333,5 +334,42 @@ describe("parseVersionValidationErrors", () => {
     const issues = parseVersionValidationErrors(err);
     expect(issues).toHaveLength(1);
     expect(issues[0]?.code).toBe("kept");
+  });
+});
+
+describe("validateCreatePlanForm", () => {
+  it("returns null when name and ownerOrgID are both non-empty", () => {
+    expect(validateCreatePlanForm("Main Floor", "org-uuid-1234")).toBeNull();
+  });
+
+  it("returns an error when name is empty string", () => {
+    const msg = validateCreatePlanForm("", "org-uuid-1234");
+    expect(msg).not.toBeNull();
+    expect(msg).toContain("name");
+  });
+
+  it("returns an error when name is whitespace-only", () => {
+    const msg = validateCreatePlanForm("   ", "org-uuid-1234");
+    expect(msg).not.toBeNull();
+    expect(msg).toContain("name");
+  });
+
+  it("returns an error when ownerOrgID is empty string", () => {
+    const msg = validateCreatePlanForm("Main Floor", "");
+    expect(msg).not.toBeNull();
+    expect(msg).toContain("organization");
+  });
+
+  it("returns an error when ownerOrgID is whitespace-only", () => {
+    const msg = validateCreatePlanForm("Main Floor", "   ");
+    expect(msg).not.toBeNull();
+    expect(msg).toContain("organization");
+  });
+
+  it("checks name before ownerOrgID (name error has priority)", () => {
+    // Both empty — should report name error first
+    const msg = validateCreatePlanForm("", "");
+    expect(msg).not.toBeNull();
+    expect(msg).toContain("name");
   });
 });

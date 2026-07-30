@@ -9,7 +9,7 @@ import (
 )
 
 func TestAllowedOwnerTypesCanonical(t *testing.T) {
-	for _, want := range []string{"org_logo", "event_poster", "artist_photo"} {
+	for _, want := range []string{"org_logo", "event_poster", "artist_photo", "seating_plan_svg"} {
 		if _, ok := AllowedOwnerTypes[want]; !ok {
 			t.Errorf("AllowedOwnerTypes missing %q", want)
 		}

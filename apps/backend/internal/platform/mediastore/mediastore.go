@@ -51,9 +51,10 @@ type Object struct {
 // AllowedOwnerTypes is the canonical set of owner_type values accepted by
 // POST /v1/media. Mirrors the CHECK constraint on media_objects.
 var AllowedOwnerTypes = map[string]struct{}{
-	"org_logo":     {},
-	"event_poster": {},
-	"artist_photo": {},
+	"org_logo":         {},
+	"event_poster":     {},
+	"artist_photo":     {},
+	"seating_plan_svg": {}, // AB-25: binary SVG asset attached to a seating_plan_versions row
 }
 
 // Repo is the persistence + storage facade used by HTTP handlers and the

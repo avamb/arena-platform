@@ -380,7 +380,11 @@ export async function authedFetch<T>(req: AuthedRequest): Promise<T> {
  * The string literal is duplicated here intentionally so this client
  * does not need to import the generated OpenAPI types at runtime.
  */
-export type MediaOwnerType = "org_logo" | "event_poster" | "artist_photo";
+export type MediaOwnerType =
+  | "org_logo"
+  | "event_poster"
+  | "artist_photo"
+  | "seating_plan_svg"; // AB-25: binary SVG asset for a seating_plan_versions row
 
 export interface UploadProgress {
   readonly loaded: number;

@@ -86,6 +86,8 @@ export const OWNER_TYPE_CONSTRAINTS: Record<MediaOwnerType, OwnerTypeConstraint>
   org_logo: { minWidth: null, minHeight: null, label: "Organization logo" },
   event_poster: { minWidth: 600, minHeight: 400, label: "Event poster" },
   artist_photo: { minWidth: null, minHeight: null, label: "Artist photo" },
+  // AB-25: seating plan SVG — no dimension constraints (vector, not raster)
+  seating_plan_svg: { minWidth: null, minHeight: null, label: "Seating plan SVG" },
 };
 
 // ---------------------------------------------------------------------------
