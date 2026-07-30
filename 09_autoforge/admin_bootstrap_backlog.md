@@ -345,3 +345,29 @@ docker-network Postgres has no TLS).
    requirement for private-network DSNs with explicit override flag) — then
    APP_ENV=production.
 3. Document the flip procedure in deploy/DOKPLOY.md §10.
+
+---
+
+## Wave 2 findings — 2026-07-30 walkthrough of the deployed AB wave (queued as #410-#413)
+
+## AB-24. User lifecycle: deactivate/block/delete from the user drawer (#410)
+Owner: drawer manages roles but a user cannot be blocked or removed. Soft-deactivate
+with session revocation + audit; hard delete only for never-active accounts;
+last-superadmin guard.
+
+## AB-25. Venue seating plans: dead Create plan button, no SVG upload (#411)
+Seating plans tab renders empty and Create plan does nothing; no way to upload the
+SVG plan. Existing seating assets (Palac Akropolis) and Bil24 plans are the model.
+Upload/attach/list only — the visual editor remains deferred.
+
+## AB-26. Sales Channels + Payment Configs: UUID gate and broken create (#412)
+Both pages still demand a pasted org UUID and the New channel / New payment config
+buttons do not lead to a working create flow. Org picker + fixed modal forms.
+
+## AB-27. Geo Registry page is a shell (#413)
+Page still shows the SAUI placeholder while the admin geo API already works (used
+via curl to seed CZ/Prague). Wire countries/cities list + create forms.
+
+Answered in-session (not a defect): "Verified" flips when the user confirms their
+email — via the verification link or by completing the provisioning password-setup
+link; the owner's own account was seeded pre-verified.
