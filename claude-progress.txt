@@ -23080,3 +23080,30 @@ Feature #413 marked passing. Overall feature status: 410/413 passing.
   selected drawer user, keeping status and lifecycle actions current.
 - Focused lifecycle/auth Go tests, admin users tests, TypeScript check, and
   browser console check pass. Feature #410 marked passing.
+
+## 2026-07-30 — Integration gate (wave AB complete, 413/413)
+
+All 413/413 features passing at 100%.
+
+### Gates run
+- **Backend `go test ./apps/backend/...`**: Found 2 pre-existing defects fixed here (see below). All packages green after fixes.
+- **Admin-web Vitest** (`npm run test --run`): 971/971 tests pass, 41 suites.
+- **TypeScript type-check**: clean.
+- **`go build ./apps/backend/...`**: clean.
+- **OpenAPI codegen drift** (`make gen-openapi` + `node scripts/gen-ts-client.mjs`): no diff in `types_gen.go` or `clients/ts/index.d.ts` after fixes.
+- **Migration pin**: `migrations_head_test.go` correctly pinned to `0077_restore_outbox_unprocessed_index.sql` — no action needed.
+- **`git diff --check`**: no trailing-whitespace drift.
+- **CI**: all jobs green (`conclusion: success`).
+
+### Drifts fixed
+
+**Commit 8992ca3** — `integration: fix OpenAPI spec flow-style YAML breaking error-envelope test`
+- Feature #410 (user lifecycle) added three routes (`DELETE /v1/admin/users/{user_id}`, `POST .../deactivate`, `POST .../reactivate`) using inline YAML flow-style for their 401/403/409 error responses. The repo's custom line-by-line YAML parser (used by `TestErrorResponses_AllErrorsUseErrorEnvelopeRef`) cannot expand flow-style mappings into children, so 9 error responses reported "schema/$ref missing". Fixed by expanding to block-style YAML. No codegen surface change.
+
+**Commit e165c55** — `integration: fix LocalStorage test close-before-delete for Windows`
+- `TestLocalStorage_PutGetStatDelete` consistently failed on this Windows host: `Get` returns an open `*os.File`; the test had `defer got.Body.Close()` which kept the handle open past the `Delete` call; Windows forbids deleting open files. Fixed by reading body then closing explicitly before `Delete`. Linux/CI unaffected.
+
+### Notes
+- `make` is not available on this Windows host; codegen run directly via `go run` + `node`.
+- `golangci-lint` is not available locally; lint runs in CI (Lint job is green).
+- `init.sh` / POSIX bash unavailable on this Windows host; API smoke uses running Docker stack.
