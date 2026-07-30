@@ -516,6 +516,15 @@ func scanGoFilesForCamelCaseJSONTags(t *testing.T, root string) []string {
 		if strings.HasSuffix(path, "_test.go") {
 			return nil // skip test files
 		}
+		// External-API adapters mirror THIRD-PARTY wire formats and are out of
+		// this guardrail's jurisdiction (it protects arena_new's own JSON
+		// surface). Brevo's v3 API genuinely uses camelCase keys
+		// (dkimRecord.hostName etc., feature #407/AB-10). Keep this list to
+		// dedicated adapter packages only — never exempt handler code.
+		normalized := filepath.ToSlash(path)
+		if strings.Contains(normalized, "internal/platform/brevo/") {
+			return nil
+		}
 
 		f, ferr := os.Open(path)
 		if ferr != nil {

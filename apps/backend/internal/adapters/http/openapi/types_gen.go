@@ -695,7 +695,7 @@ const (
 // AdminAddMemberRequest Request body for POST /v1/admin/organizations/{org_id}/members
 // (feature #234). Exactly one of user_id and email must be supplied.
 type AdminAddMemberRequest struct {
-	// Email Email of the existing user to add (case-insensitive lookup). Mutually exclusive with user_id.
+	// Email Email of a user to add (case-insensitive lookup). A new email creates an invited user and issues a one-time password setup link. Mutually exclusive with user_id.
 	Email *openapi_types.Email `json:"email,omitempty"`
 
 	// Role Role to grant. Must satisfy the memberships_role_check CHECK constraint.
@@ -820,6 +820,60 @@ type AdminTicketDeliveryResponse struct {
 	// picks them up via `FOR UPDATE SKIP LOCKED` and updates
 	// `status`, `attempts`, `last_error`, and `sent_at` in place.
 	Delivery DeliveryJob `json:"delivery"`
+}
+
+// AdminUserDirectoryItem defines model for AdminUserDirectoryItem.
+type AdminUserDirectoryItem struct {
+	// CreatedAt Account creation timestamp.
+	CreatedAt time.Time `json:"created_at"`
+
+	// DisplayNumber Short operator-facing user number; UUID remains the API key.
+	DisplayNumber int64 `json:"display_number"`
+
+	// Email Normalized email address.
+	Email openapi_types.Email `json:"email"`
+
+	// EmailVerifiedAt Email verification timestamp, when verified.
+	EmailVerifiedAt *time.Time `json:"email_verified_at"`
+
+	// GlobalRoles Global platform roles.
+	GlobalRoles []string `json:"global_roles"`
+
+	// Id User UUID.
+	Id openapi_types.UUID `json:"id"`
+
+	// Memberships Active organization memberships.
+	Memberships []AdminUserDirectoryMembership `json:"memberships"`
+}
+
+// AdminUserDirectoryMembership defines model for AdminUserDirectoryMembership.
+type AdminUserDirectoryMembership struct {
+	// Id Organization UUID.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Organization display name.
+	Name string `json:"name"`
+
+	// Role Active membership role.
+	Role string `json:"role"`
+
+	// Slug Organization URL slug.
+	Slug string `json:"slug"`
+}
+
+// AdminUserDirectoryResponse defines model for AdminUserDirectoryResponse.
+type AdminUserDirectoryResponse struct {
+	// Limit Applied page size.
+	Limit int `json:"limit"`
+
+	// Offset Applied page offset.
+	Offset int `json:"offset"`
+
+	// Total Total matching users.
+	Total int64 `json:"total"`
+
+	// Users Directory page.
+	Users []AdminUserDirectoryItem `json:"users"`
 }
 
 // ApproveRefundRequest Request body for `POST /v1/refunds/{id}/approve` and
@@ -1172,6 +1226,9 @@ type BindSessionSeatingResponse struct {
 type Channel struct {
 	// CreatedAt ISO-8601 timestamp when the channel was created.
 	CreatedAt time.Time `json:"created_at"`
+
+	// DisplayNumber Short operator-facing channel number; UUID remains the API key.
+	DisplayNumber int64 `json:"display_number"`
 
 	// Id UUIDv7 channel identifier.
 	Id openapi_types.UUID `json:"id"`
@@ -2358,6 +2415,9 @@ type EventItem struct {
 	// Description Optional long-form description. Locale-resolved like `name`.
 	Description *string `json:"description"`
 
+	// DisplayNumber Short operator-facing event number; UUID remains the API key.
+	DisplayNumber int64 `json:"display_number"`
+
 	// EndAt Event end time in RFC 3339 / ISO 8601 UTC. Must be strictly
 	// after `start_at`.
 	EndAt time.Time `json:"end_at"`
@@ -3260,6 +3320,9 @@ type OrganizationItem struct {
 
 	// DefaultLocale BCP 47 locale tag used as default for this organization
 	DefaultLocale string `json:"default_locale"`
+
+	// DisplayNumber Short operator-facing organization number; UUID remains the API key.
+	DisplayNumber int64 `json:"display_number"`
 
 	// Id UUIDv7 primary key of the organization row
 	Id openapi_types.UUID `json:"id"`
@@ -6137,6 +6200,12 @@ type PostV1AdminOrganizationsIdArchiveParams struct {
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 
+// GetV1AdminOrganizationSenderDnsParams defines parameters for GetV1AdminOrganizationSenderDns.
+type GetV1AdminOrganizationSenderDnsParams struct {
+	// XAdminReason Human-readable business reason for cross-tenant access.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
 // GetV1AdminOrganizationsOrgIdMembersParams defines parameters for GetV1AdminOrganizationsOrgIdMembers.
 type GetV1AdminOrganizationsOrgIdMembersParams struct {
 	// XAdminReason Human-readable business reason for the admin read (audit trail).
@@ -6198,9 +6267,42 @@ type ResendAdminTicketDeliveryParams struct {
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 
+// GetV1AdminUsersParams defines parameters for GetV1AdminUsers.
+type GetV1AdminUsersParams struct {
+	// Search Case-insensitive email substring.
+	Search *string `form:"search,omitempty" json:"search,omitempty"`
+
+	// Limit Maximum rows to return (1-200; default 50).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of matching rows to skip.
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// XAdminReason Human-readable business reason for cross-tenant access.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
 // PostV1AdminUsersParams defines parameters for PostV1AdminUsers.
 type PostV1AdminUsersParams struct {
 	// XAdminReason Human-readable business reason for the admin write (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PostV1AdminUserGlobalRoleJSONBody defines parameters for PostV1AdminUserGlobalRole.
+type PostV1AdminUserGlobalRoleJSONBody struct {
+	// Role Global role name (platform_operator or platform_superadmin).
+	Role string `json:"role"`
+}
+
+// PostV1AdminUserGlobalRoleParams defines parameters for PostV1AdminUserGlobalRole.
+type PostV1AdminUserGlobalRoleParams struct {
+	// XAdminReason Human-readable business reason for cross-tenant access.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// DeleteV1AdminUserGlobalRoleParams defines parameters for DeleteV1AdminUserGlobalRole.
+type DeleteV1AdminUserGlobalRoleParams struct {
+	// XAdminReason Human-readable business reason for cross-tenant access.
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 
@@ -6582,6 +6684,9 @@ type PatchV1AdminOrganizationsOrgIdMembersMembershipIdJSONRequestBody = AdminCha
 
 // PostV1AdminUsersJSONRequestBody defines body for PostV1AdminUsers for application/json ContentType.
 type PostV1AdminUsersJSONRequestBody = AdminCreateUserRequest
+
+// PostV1AdminUserGlobalRoleJSONRequestBody defines body for PostV1AdminUserGlobalRole for application/json ContentType.
+type PostV1AdminUserGlobalRoleJSONRequestBody PostV1AdminUserGlobalRoleJSONBody
 
 // PostV1AuthLoginJSONRequestBody defines body for PostV1AuthLogin for application/json ContentType.
 type PostV1AuthLoginJSONRequestBody = AuthLoginRequest

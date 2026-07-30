@@ -62,7 +62,7 @@ func TestBil24LiveVenueClientRecordedFixture(t *testing.T) {
 }
 
 func TestBil24LiveVenueClientRejectsRPCError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"resultCode":1,"description":"bad token"}`))
 	}))
 	defer server.Close()

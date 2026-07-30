@@ -9676,6 +9676,247 @@ paths:
   # Admin Organizations CRUD (feature #233)
   # ─────────────────────────────────────────────────────────────────────────
 
+  /v1/admin/users/{user_id}/global-roles:
+    post:
+      operationId: postV1AdminUserGlobalRole
+      summary: Admin - grant a global platform role
+      description: Assigns a platform-wide role (org_id NULL) to an existing user. Requires JWT, membership.grant, and X-Admin-Reason. Audit-logged.
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          description: UUID of the target user.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for cross-tenant access.
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  type: string
+                  description: Global role name (platform_operator or platform_superadmin).
+                  example: "platform_operator"
+      responses:
+        "201":
+          description: Role granted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user_id, role, scope]
+                properties:
+                  user_id:
+                    type: string
+                    format: uuid
+                  role:
+                    type: string
+                  scope:
+                    type: string
+                    example: "global"
+        "400":
+          description: Invalid body, non-global role, or missing audit reason.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold membership.grant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: User already holds this global role.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: User or global role does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/users/{user_id}/global-roles/{role}:
+    delete:
+      operationId: deleteV1AdminUserGlobalRole
+      summary: Admin - revoke a global platform role
+      description: Removes a platform-wide role from a user. Refuses to remove the last active platform_superadmin (lockout guard). Requires JWT, membership.grant, and X-Admin-Reason. Audit-logged.
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          description: UUID of the target user.
+          schema:
+            type: string
+            format: uuid
+        - name: role
+          in: path
+          required: true
+          description: Global role name to revoke.
+          schema:
+            type: string
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for cross-tenant access.
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Role revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user_id, role, revoked]
+                properties:
+                  user_id:
+                    type: string
+                    format: uuid
+                  role:
+                    type: string
+                  revoked:
+                    type: boolean
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold membership.grant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: User does not hold this global role.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Cannot remove the last active platform superadmin.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/organizations/{id}/sender-dns:
+    get:
+      operationId: getV1AdminOrganizationSenderDns
+      summary: Admin - sender domain DNS instructions
+      description: Returns the DNS records (DKIM/SPF) an organizer must publish to verify their sender domain via Brevo, plus current verification status. Requires JWT, superadmin.read, and X-Admin-Reason.
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for cross-tenant access.
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Sender verification status and DNS records to publish.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sender_email, status, dns_records]
+                properties:
+                  sender_email:
+                    type: string
+                    format: email
+                  status:
+                    type: string
+                    enum: [pending, verified]
+                  dns_records:
+                    type: array
+                    items:
+                      type: object
+                      required: [type, host, value]
+                      properties:
+                        type:
+                          type: string
+                          example: "DKIM"
+                        host:
+                          type: string
+                        value:
+                          type: string
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold superadmin.read.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Organization not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Organization has no sender email configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "502":
+          description: Brevo lookup failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Sender verification is not configured on this deployment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/admin/organizations:
     get:
       operationId: superadminListOrganizations

@@ -771,6 +771,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/users/{user_id}/global-roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - grant a global platform role
+         * @description Assigns a platform-wide role (org_id NULL) to an existing user. Requires JWT, membership.grant, and X-Admin-Reason. Audit-logged.
+         */
+        post: operations["postV1AdminUserGlobalRole"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{user_id}/global-roles/{role}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Admin - revoke a global platform role
+         * @description Removes a platform-wide role from a user. Refuses to remove the last active platform_superadmin (lockout guard). Requires JWT, membership.grant, and X-Admin-Reason. Audit-logged.
+         */
+        delete: operations["deleteV1AdminUserGlobalRole"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/organizations/{id}/sender-dns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - sender domain DNS instructions
+         * @description Returns the DNS records (DKIM/SPF) an organizer must publish to verify their sender domain via Brevo, plus current verification status. Requires JWT, superadmin.read, and X-Admin-Reason.
+         */
+        get: operations["getV1AdminOrganizationSenderDns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/organizations": {
         parameters: {
             query?: never;
@@ -5594,6 +5654,11 @@ export interface components {
              */
             id: string;
             /**
+             * Format: int64
+             * @description Short operator-facing user number; UUID remains the API key.
+             */
+            display_number: number;
+            /**
              * Format: email
              * @description Normalized email address.
              */
@@ -5707,7 +5772,7 @@ export interface components {
             user_id?: string;
             /**
              * Format: email
-             * @description Email of the existing user to add (case-insensitive lookup). Mutually exclusive with user_id.
+             * @description Email of a user to add (case-insensitive lookup). A new email creates an invited user and issues a one-time password setup link. Mutually exclusive with user_id.
              * @example operator@example.com
              */
             email?: string;
@@ -5744,6 +5809,11 @@ export interface components {
              * @example 01929d0e-0e47-7000-8000-000000000001
              */
             id: string;
+            /**
+             * Format: int64
+             * @description Short operator-facing organization number; UUID remains the API key.
+             */
+            display_number: number;
             /**
              * @description Human-readable display name (unique among active organizations)
              * @example My Ticket Company
@@ -7241,6 +7311,11 @@ export interface components {
              * @example 01929d0e-0e47-7000-8000-000000000301
              */
             id: string;
+            /**
+             * Format: int64
+             * @description Short operator-facing event number; UUID remains the API key.
+             */
+            display_number: number;
             /**
              * Format: uuid
              * @description Owning organization. Immutable after creation. Only this org may
@@ -10963,6 +11038,11 @@ export interface components {
              */
             id: string;
             /**
+             * Format: int64
+             * @description Short operator-facing channel number; UUID remains the API key.
+             */
+            display_number: number;
+            /**
              * Format: uuid
              * @description Organization that owns this channel.
              */
@@ -13467,6 +13547,253 @@ export interface operations {
             };
         };
     };
+    postV1AdminUserGlobalRole: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for cross-tenant access. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description UUID of the target user. */
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * @description Global role name (platform_operator or platform_superadmin).
+                     * @example platform_operator
+                     */
+                    role: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Role granted. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        user_id: string;
+                        role: string;
+                        /** @example global */
+                        scope: string;
+                    };
+                };
+            };
+            /** @description Invalid body, non-global role, or missing audit reason. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold membership.grant. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description User already holds this global role. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description User or global role does not exist. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteV1AdminUserGlobalRole: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for cross-tenant access. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description UUID of the target user. */
+                user_id: string;
+                /** @description Global role name to revoke. */
+                role: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Role revoked. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        user_id: string;
+                        role: string;
+                        revoked: boolean;
+                    };
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold membership.grant. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description User does not hold this global role. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Cannot remove the last active platform superadmin. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1AdminOrganizationSenderDns: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for cross-tenant access. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description UUID of the organization. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sender verification status and DNS records to publish. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: email */
+                        sender_email: string;
+                        /** @enum {string} */
+                        status: "pending" | "verified";
+                        dns_records: {
+                            /** @example DKIM */
+                            type: string;
+                            host: string;
+                            value: string;
+                        }[];
+                    };
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold superadmin.read. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Organization not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Organization has no sender email configured. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Brevo lookup failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Sender verification is not configured on this deployment. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     superadminListOrganizations: {
         parameters: {
             query?: {
@@ -13889,7 +14216,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Membership created */
+            /** @description Membership created. New-email invitations additionally return invitation metadata. */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -13897,6 +14224,13 @@ export interface operations {
                 content: {
                     "application/json": {
                         membership: components["schemas"]["MembershipItem"];
+                        invitation?: {
+                            issued: boolean;
+                            /** Format: date-time */
+                            expires_at: string;
+                            /** @enum {string} */
+                            delivery: "email";
+                        };
                     };
                 };
             };
@@ -13936,7 +14270,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description user_id / org_id does not exist, or email lookup found no user. */
+            /** @description user_id or org_id does not exist. */
             422: {
                 headers: {
                     [name: string]: unknown;

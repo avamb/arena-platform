@@ -51,7 +51,9 @@ func TestAdminUsers_GlobalRoleRoutesRequireAuth(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		s.router.ServeHTTP(rec, req)
-		if rec.Code != http.StatusUnauthorized { t.Fatalf("%s must require JWT, got %d: %s", tc.path, rec.Code, rec.Body.String()) }
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("%s must require JWT, got %d: %s", tc.path, rec.Code, rec.Body.String())
+		}
 	}
 }
 

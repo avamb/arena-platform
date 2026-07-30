@@ -40,7 +40,7 @@ func TestHead_NumericPrefixPositive(t *testing.T) {
 }
 
 func TestHead_KnownCurrentHead(t *testing.T) {
-	const expectedHead = "0074_catalog_role_grants.sql" // updated: 0074 audits organizer/agent catalog permissions (AB-1 / #406)
+	const expectedHead = "0075_organizer_sender_identity.sql" // updated: 0075 adds per-organizer sender identity fields (AB-10 / #407)
 	head, err := migrations.Head()
 	if err != nil {
 		t.Fatalf("Head() returned unexpected error: %v", err)

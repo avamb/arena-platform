@@ -373,16 +373,10 @@ func buildMIMEMessage(from string, msg Message) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// writeRFC5322Header writes the standard email headers to buf.
-// It does NOT write the blank line separator — that is the caller's
-// responsibility (or handled by the multipart writer for mixed messages).
-func writeRFC5322Header(buf *bytes.Buffer, from, to, subject, contentType string) {
-	writeRFC5322HeaderWithReplyTo(buf, from, to, subject, contentType, "")
-}
-
 // writeRFC5322HeaderWithReplyTo writes the standard email headers plus an
-// optional Reply-To. Keeping the compatibility wrapper above avoids widening
-// the helper's call sites while ensuring every MIME shape emits the header.
+// optional Reply-To (empty string omits the header). It does NOT write the
+// blank line separator — that is the caller's responsibility (or handled by
+// the multipart writer for mixed messages).
 func writeRFC5322HeaderWithReplyTo(buf *bytes.Buffer, from, to, subject, contentType, replyTo string) {
 	buf.WriteString("From: ")
 	buf.WriteString(from)
