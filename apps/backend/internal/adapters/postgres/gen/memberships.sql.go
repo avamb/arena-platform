@@ -23,14 +23,14 @@ import (
 // in rows returned by other queries (InsertMembership, RevokeMembership, etc.)
 // which do not need the org metadata.
 type MembershipRow struct {
-	ID              uuid.UUID `json:"id"`
-	UserID          uuid.UUID `json:"user_id"`
-	OrgID           uuid.UUID `json:"org_id"`
-	Role            string    `json:"role"`
-	Status          string    `json:"status"`
-	JoinedAt        time.Time `json:"joined_at"`
-	OrgName         string    `json:"org_name,omitempty"`
-	OrgDisplayNumber int64    `json:"org_display_number,omitempty"`
+	ID               uuid.UUID `json:"id"`
+	UserID           uuid.UUID `json:"user_id"`
+	OrgID            uuid.UUID `json:"org_id"`
+	Role             string    `json:"role"`
+	Status           string    `json:"status"`
+	JoinedAt         time.Time `json:"joined_at"`
+	OrgName          string    `json:"org_name,omitempty"`
+	OrgDisplayNumber int64     `json:"org_display_number,omitempty"`
 }
 
 // scanMembershipRow scans a single memberships row into a MembershipRow.

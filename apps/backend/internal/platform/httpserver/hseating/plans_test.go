@@ -67,13 +67,13 @@ type fakeMemRows struct {
 	index   int
 }
 
-func (f *fakeMemRows) Close()                                      {}
-func (f *fakeMemRows) Err() error                                  { return nil }
-func (f *fakeMemRows) CommandTag() pgconn.CommandTag               { return pgconn.CommandTag{} }
+func (f *fakeMemRows) Close()                                       {}
+func (f *fakeMemRows) Err() error                                   { return nil }
+func (f *fakeMemRows) CommandTag() pgconn.CommandTag                { return pgconn.CommandTag{} }
 func (f *fakeMemRows) FieldDescriptions() []pgconn.FieldDescription { return nil }
-func (f *fakeMemRows) Values() ([]any, error)                      { return nil, nil }
-func (f *fakeMemRows) RawValues() [][]byte                         { return nil }
-func (f *fakeMemRows) Conn() *pgx.Conn                             { return nil }
+func (f *fakeMemRows) Values() ([]any, error)                       { return nil, nil }
+func (f *fakeMemRows) RawValues() [][]byte                          { return nil }
+func (f *fakeMemRows) Conn() *pgx.Conn                              { return nil }
 
 // Next advances the cursor and prepares the current row for Scan.
 func (f *fakeMemRows) Next() bool {
