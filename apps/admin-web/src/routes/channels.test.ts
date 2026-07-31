@@ -21,6 +21,9 @@ import {
   validateReservationTTL,
   validateSettingsJSON,
   mapServerError,
+  providerFieldsFromSettings,
+  settingsFromProviderFields,
+  validateStatementDescriptor,
 } from "./channels";
 
 // ---------------------------------------------------------------------------
@@ -276,5 +279,111 @@ describe("mapServerError", () => {
   it("maps unknown code with no field to form-level error", () => {
     const err = makeError("totally.unknown", "something wrong");
     expect(mapServerError(err).form).toContain("something wrong");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// providerFieldsFromSettings
+// ---------------------------------------------------------------------------
+describe("providerFieldsFromSettings", () => {
+  it("extracts stripe statement_descriptor", () => {
+    const result = providerFieldsFromSettings("stripe", {
+      statement_descriptor: "Arena Tel Aviv",
+    });
+    expect(result.stripeStatementDescriptor).toBe("Arena Tel Aviv");
+    expect(result.allpayTerminalId).toBe("");
+    expect(result.advancedJSON).toBe("");
+  });
+
+  it("extracts allpay terminal_id", () => {
+    const result = providerFieldsFromSettings("allpay", {
+      terminal_id: "TID-001",
+    });
+    expect(result.allpayTerminalId).toBe("TID-001");
+    expect(result.stripeStatementDescriptor).toBe("");
+    expect(result.advancedJSON).toBe("");
+  });
+
+  it("puts unknown keys into advancedJSON", () => {
+    const result = providerFieldsFromSettings("stripe", {
+      statement_descriptor: "Arena",
+      feature_flag_waitlist: true,
+    });
+    expect(result.stripeStatementDescriptor).toBe("Arena");
+    const advanced = JSON.parse(result.advancedJSON) as Record<string, unknown>;
+    expect(advanced["feature_flag_waitlist"]).toBe(true);
+    expect("statement_descriptor" in advanced).toBe(false);
+  });
+
+  it("returns empty fields for null settings", () => {
+    const result = providerFieldsFromSettings("stripe", null);
+    expect(result.stripeStatementDescriptor).toBe("");
+    expect(result.advancedJSON).toBe("");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// settingsFromProviderFields
+// ---------------------------------------------------------------------------
+describe("settingsFromProviderFields", () => {
+  it("builds stripe settings object", () => {
+    const result = settingsFromProviderFields("stripe", "Arena Venue", "", "");
+    expect(result["statement_descriptor"]).toBe("Arena Venue");
+  });
+
+  it("builds allpay settings object", () => {
+    const result = settingsFromProviderFields("allpay", "", "TID-001", "");
+    expect(result["terminal_id"]).toBe("TID-001");
+  });
+
+  it("merges advanced JSON with provider fields", () => {
+    const result = settingsFromProviderFields(
+      "stripe",
+      "Venue",
+      "",
+      '{"feature_flag":true}',
+    );
+    expect(result["statement_descriptor"]).toBe("Venue");
+    expect(result["feature_flag"]).toBe(true);
+  });
+
+  it("provider fields override advanced JSON keys", () => {
+    // structured field wins over advanced JSON for the same key
+    const result = settingsFromProviderFields(
+      "stripe",
+      "Structured",
+      "",
+      '{"statement_descriptor":"Advanced"}',
+    );
+    expect(result["statement_descriptor"]).toBe("Structured");
+  });
+
+  it("returns empty object when nothing is set", () => {
+    const result = settingsFromProviderFields("stripe", "", "", "");
+    expect(Object.keys(result).length).toBe(0);
+  });
+
+  it("provider switch: stripe fields ignored for allpay", () => {
+    // When provider=allpay, stripeStatementDescriptor should not be included
+    const result = settingsFromProviderFields("allpay", "some-stripe-value", "", "");
+    expect("statement_descriptor" in result).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateStatementDescriptor
+// ---------------------------------------------------------------------------
+describe("validateStatementDescriptor", () => {
+  it("accepts empty string (optional)", () => {
+    expect(validateStatementDescriptor("")).toBeNull();
+  });
+  it("accepts valid descriptor", () => {
+    expect(validateStatementDescriptor("Arena Tel Aviv")).toBeNull();
+  });
+  it("rejects descriptor over 22 characters", () => {
+    expect(validateStatementDescriptor("A".repeat(23))).not.toBeNull();
+  });
+  it("rejects descriptor with forbidden characters", () => {
+    expect(validateStatementDescriptor("Arena <test>")).not.toBeNull();
   });
 });

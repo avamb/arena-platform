@@ -229,6 +229,96 @@ export function validateSettingsJSON(raw: string): string | null {
 }
 
 // ---------------------------------------------------------------------------
+// Per-provider structured settings helpers (exported for Vitest)
+// ---------------------------------------------------------------------------
+
+/** Known settings keys for each provider. */
+export const STRIPE_SETTINGS_KEYS = ["statement_descriptor"] as const;
+export const ALLPAY_SETTINGS_KEYS = ["terminal_id"] as const;
+
+export interface ProviderFields {
+  stripeStatementDescriptor: string; // settings.statement_descriptor
+  allpayTerminalId: string; // settings.terminal_id
+  advancedJSON: string; // remaining unknown keys as pretty JSON string
+}
+
+/**
+ * Extract structured provider fields from an existing settings object.
+ * Known keys are moved to their structured fields; any remaining
+ * unknown keys are preserved in advancedJSON for the escape hatch.
+ */
+export function providerFieldsFromSettings(
+  provider: string,
+  settings: Record<string, unknown> | null,
+): ProviderFields {
+  const fields: ProviderFields = {
+    stripeStatementDescriptor: "",
+    allpayTerminalId: "",
+    advancedJSON: "",
+  };
+  if (settings === null || typeof settings !== "object") return fields;
+  const remaining = { ...settings };
+  if (provider === "stripe") {
+    const val = remaining["statement_descriptor"];
+    if (typeof val === "string") fields.stripeStatementDescriptor = val;
+    delete remaining["statement_descriptor"];
+  } else if (provider === "allpay") {
+    const val = remaining["terminal_id"];
+    if (typeof val === "string") fields.allpayTerminalId = val;
+    delete remaining["terminal_id"];
+  }
+  if (Object.keys(remaining).length > 0) {
+    fields.advancedJSON = JSON.stringify(remaining, null, 2);
+  }
+  return fields;
+}
+
+/**
+ * Build the settings object from structured provider fields and
+ * any advanced JSON. Returns {} when nothing is set (caller
+ * decides whether to omit or send empty object).
+ */
+export function settingsFromProviderFields(
+  provider: string,
+  stripeStatementDescriptor: string,
+  allpayTerminalId: string,
+  advancedJSON: string,
+): Record<string, unknown> {
+  const obj: Record<string, unknown> = {};
+  if (advancedJSON.trim() !== "") {
+    try {
+      const parsed = JSON.parse(advancedJSON) as Record<string, unknown>;
+      if (
+        parsed !== null &&
+        typeof parsed === "object" &&
+        !Array.isArray(parsed)
+      ) {
+        Object.assign(obj, parsed);
+      }
+    } catch {
+      /* invalid JSON; validateSettingsJSON handles the error display */
+    }
+  }
+  if (provider === "stripe" && stripeStatementDescriptor.trim() !== "") {
+    obj["statement_descriptor"] = stripeStatementDescriptor.trim();
+  }
+  if (provider === "allpay" && allpayTerminalId.trim() !== "") {
+    obj["terminal_id"] = allpayTerminalId.trim();
+  }
+  return obj;
+}
+
+export function validateStatementDescriptor(val: string): string | null {
+  const trimmed = val.trim();
+  if (trimmed === "") return null;
+  if (trimmed.length > 22)
+    return "Statement descriptor must be at most 22 characters";
+  if (/[<>"']/.test(trimmed))
+    return "Statement descriptor may not contain <, >, \", or '";
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Nav entry binding
 // ---------------------------------------------------------------------------
 
@@ -703,9 +793,9 @@ function ChannelFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
     isEdit && mode.channel.reservation_ttl_override !== null
       ? String(mode.channel.reservation_ttl_override)
       : "";
-  const initialSettings = isEdit && mode.channel.settings !== null
-    ? JSON.stringify(mode.channel.settings, null, 2)
-    : "";
+  const initialFields = isEdit
+    ? providerFieldsFromSettings(initialProvider, mode.channel.settings)
+    : { stripeStatementDescriptor: "", allpayTerminalId: "", advancedJSON: "" };
 
   const [name, setName] = useState(initialName);
   const [paymentMode, setPaymentMode] = useState<string>(initialMode);
@@ -714,7 +804,16 @@ function ChannelFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
   const [replaceCredential, setReplaceCredential] = useState(!isEdit);
   const [feePercent, setFeePercent] = useState(initialFee);
   const [reservationTTL, setReservationTTL] = useState(initialTTL);
-  const [settingsJSON, setSettingsJSON] = useState(initialSettings);
+  const [stripeDescriptor, setStripeDescriptor] = useState(
+    initialFields.stripeStatementDescriptor,
+  );
+  const [allpayTerminalId, setAllpayTerminalId] = useState(
+    initialFields.allpayTerminalId,
+  );
+  const [advancedJSON, setAdvancedJSON] = useState(initialFields.advancedJSON);
+  const [advancedOpen, setAdvancedOpen] = useState(
+    initialFields.advancedJSON !== "",
+  );
   const [serverErrors, setServerErrors] = useState<ServerFieldErrors>({});
 
   const nameErr = validateChannelName(name);
@@ -725,7 +824,8 @@ function ChannelFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
     : null;
   const feeErr = validateFeePercent(feePercent);
   const ttlErr = validateReservationTTL(reservationTTL);
-  const settingsErr = validateSettingsJSON(settingsJSON);
+  const descriptorErr = validateStatementDescriptor(stripeDescriptor);
+  const advancedErr = validateSettingsJSON(advancedJSON);
 
   const localValid =
     nameErr === null &&
@@ -734,7 +834,8 @@ function ChannelFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
     accountErr === null &&
     feeErr === null &&
     ttlErr === null &&
-    settingsErr === null;
+    descriptorErr === null &&
+    advancedErr === null;
 
   const dirty =
     !isEdit ||
@@ -744,7 +845,9 @@ function ChannelFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
     replaceCredential ||
     feePercent.trim() !== initialFee ||
     reservationTTL.trim() !== initialTTL ||
-    settingsJSON.trim() !== initialSettings.trim();
+    stripeDescriptor !== initialFields.stripeStatementDescriptor ||
+    allpayTerminalId !== initialFields.allpayTerminalId ||
+    advancedJSON.trim() !== initialFields.advancedJSON.trim();
 
   const mutation = useMutation<ChannelEnvelope, ApiError, void>({
     mutationFn: () => {
@@ -770,11 +873,17 @@ function ChannelFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
           body.reservation_ttl_override =
             reservationTTL.trim() === "" ? null : Number(reservationTTL);
         }
-        if (settingsJSON.trim() !== initialSettings.trim()) {
-          body.settings =
-            settingsJSON.trim() === ""
-              ? {}
-              : (JSON.parse(settingsJSON) as Record<string, unknown>);
+        if (
+          stripeDescriptor !== initialFields.stripeStatementDescriptor ||
+          allpayTerminalId !== initialFields.allpayTerminalId ||
+          advancedJSON.trim() !== initialFields.advancedJSON.trim()
+        ) {
+          body.settings = settingsFromProviderFields(
+            provider,
+            stripeDescriptor,
+            allpayTerminalId,
+            advancedJSON,
+          );
         }
         return authedFetch<ChannelEnvelope>({
           method: "PATCH",
@@ -792,8 +901,14 @@ function ChannelFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
       if (reservationTTL.trim() !== "") {
         body.reservation_ttl_override = Number(reservationTTL);
       }
-      if (settingsJSON.trim() !== "") {
-        body.settings = JSON.parse(settingsJSON) as Record<string, unknown>;
+      const currentSettings = settingsFromProviderFields(
+        provider,
+        stripeDescriptor,
+        allpayTerminalId,
+        advancedJSON,
+      );
+      if (Object.keys(currentSettings).length > 0) {
+        body.settings = currentSettings;
       }
       return authedFetch<ChannelEnvelope>({
         method: "POST",
@@ -895,7 +1010,7 @@ function ChannelFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
             htmlFor="channel-payment-mode"
             error={serverErrors.payment_mode ?? null}
             localError={modeErr}
-            hint="direct_merchant routes funds to the merchant's own provider account; merchant_of_record routes to the platform's account."
+            hint="How the payment flows: Direct Merchant means funds go directly to your provider account (you manage taxes and compliance yourself). Merchant of Record means the platform handles taxes, compliance, and payouts on your behalf."
           >
             <select
               id="channel-payment-mode"
@@ -928,7 +1043,12 @@ function ChannelFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
               id="channel-provider"
               value={provider}
               onChange={(e) => {
-                setProvider(e.target.value);
+                const newProvider = e.target.value;
+                if (newProvider !== provider) {
+                  setStripeDescriptor("");
+                  setAllpayTerminalId("");
+                }
+                setProvider(newProvider);
                 if (serverErrors.provider !== undefined) {
                   setServerErrors({ ...serverErrors, provider: undefined });
                 }
@@ -950,9 +1070,17 @@ function ChannelFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
             error={serverErrors.provider_account_id ?? null}
             localError={accountErr}
             hint={
-              paymentMode === "direct_merchant"
-                ? "Required for direct_merchant. The merchant account credential at the provider (Stripe acct_*, AllPay merchant id, …)."
-                : "Optional for merchant_of_record."
+              provider === "stripe"
+                ? paymentMode === "direct_merchant"
+                  ? "Your Stripe connected account ID — starts with 'acct_'. Find it in your Stripe Dashboard → Settings → Account details."
+                  : "Your Stripe account ID (optional for Merchant of Record mode). Starts with 'acct_'."
+                : provider === "allpay"
+                  ? paymentMode === "direct_merchant"
+                    ? "Your AllPay merchant account ID. Find it in the AllPay merchant portal under Settings → Account."
+                    : "Your AllPay merchant account ID (optional for Merchant of Record mode)."
+                  : paymentMode === "direct_merchant"
+                    ? "Required: the merchant account credential at the payment provider."
+                    : "Optional: the merchant account credential at the payment provider."
             }
           >
             {isEdit && !replaceCredential ? (
@@ -1006,7 +1134,7 @@ function ChannelFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
             htmlFor="channel-fee-percent"
             error={serverErrors.fee_percent ?? null}
             localError={feePercent.length > 0 ? feeErr : null}
-            hint="Commission charged on this channel, expressed as a decimal between 0 and 100 (e.g. 2.50 for 2.5%)."
+            hint="Platform fee charged on each transaction through this channel, as a percentage (e.g. enter 2.50 for 2.5%). Set to 0.00 if there is no platform fee."
           >
             <input
               id="channel-fee-percent"
@@ -1052,28 +1180,82 @@ function ChannelFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
             />
           </FieldRow>
 
-          <FieldRow
-            label="Settings (JSON object)"
-            htmlFor="channel-settings"
-            error={serverErrors.settings ?? null}
-            localError={settingsJSON.length > 0 ? settingsErr : null}
-            hint="Optional JSON object for provider-specific or channel-specific configuration. Must be an object — arrays and scalars are rejected."
-          >
-            <textarea
-              id="channel-settings"
-              value={settingsJSON}
-              onChange={(e) => {
-                setSettingsJSON(e.target.value);
-                if (serverErrors.settings !== undefined) {
-                  setServerErrors({ ...serverErrors, settings: undefined });
-                }
-              }}
-              style={textareaStyle}
-              rows={5}
-              spellCheck={false}
-              data-testid="channels-form-settings"
-            />
-          </FieldRow>
+          {/* Stripe-specific fields */}
+          {provider === "stripe" && (
+            <FieldRow
+              label="Statement descriptor"
+              htmlFor="channel-stripe-descriptor"
+              error={null}
+              localError={stripeDescriptor.length > 0 ? descriptorErr : null}
+              hint="Appears on your customer's bank or card statement. Must be 22 characters or fewer. Leave blank to use the platform default."
+            >
+              <input
+                id="channel-stripe-descriptor"
+                type="text"
+                value={stripeDescriptor}
+                onChange={(e) => setStripeDescriptor(e.target.value)}
+                maxLength={22}
+                style={inputStyle}
+                data-testid="channels-form-stripe-descriptor"
+              />
+            </FieldRow>
+          )}
+
+          {/* AllPay-specific fields */}
+          {provider === "allpay" && (
+            <FieldRow
+              label="Terminal ID"
+              htmlFor="channel-allpay-terminal-id"
+              error={null}
+              localError={null}
+              hint="Your AllPay merchant terminal ID. Find it in the AllPay merchant portal under Settings → Terminals."
+            >
+              <input
+                id="channel-allpay-terminal-id"
+                type="text"
+                value={allpayTerminalId}
+                onChange={(e) => setAllpayTerminalId(e.target.value)}
+                style={inputMonoStyle}
+                data-testid="channels-form-allpay-terminal-id"
+              />
+            </FieldRow>
+          )}
+
+          {/* Advanced JSON escape hatch */}
+          <div style={{ marginBottom: 12 }}>
+            <button
+              type="button"
+              onClick={() => setAdvancedOpen((o) => !o)}
+              style={advancedToggleStyle}
+              data-testid="channels-form-advanced-toggle"
+            >
+              {advancedOpen ? "▾ Advanced settings" : "▸ Advanced settings"}
+            </button>
+            {advancedOpen && (
+              <FieldRow
+                label="Additional settings JSON"
+                htmlFor="channel-settings-advanced"
+                error={serverErrors.settings ?? null}
+                localError={advancedJSON.length > 0 ? advancedErr : null}
+                hint="Optional JSON object for additional provider configuration not covered above (e.g. feature flags). Must be a JSON object — arrays and scalars are rejected."
+              >
+                <textarea
+                  id="channel-settings-advanced"
+                  value={advancedJSON}
+                  onChange={(e) => {
+                    setAdvancedJSON(e.target.value);
+                    if (serverErrors.settings !== undefined) {
+                      setServerErrors({ ...serverErrors, settings: undefined });
+                    }
+                  }}
+                  style={{ ...textareaStyle, fontFamily: "monospace", fontSize: 11 }}
+                  rows={4}
+                  spellCheck={false}
+                  data-testid="channels-form-advanced-json"
+                />
+              </FieldRow>
+            )}
+          </div>
 
           {serverErrors.form !== undefined ? (
             <div
@@ -1624,4 +1806,14 @@ const archiveParaStyle: CSSProperties = {
 const monoStyle: CSSProperties = {
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
   fontSize: 12,
+};
+
+const advancedToggleStyle: CSSProperties = {
+  background: "none",
+  border: "none",
+  color: "#4f46e5",
+  cursor: "pointer",
+  fontSize: 12,
+  padding: "4px 0",
+  fontWeight: 500,
 };

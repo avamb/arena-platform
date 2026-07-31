@@ -106,6 +106,35 @@ export const PAYMENT_PROVIDERS: readonly PaymentProvider[] = [
 
 export const PAYMENT_MODES: readonly PaymentMode[] = ["test", "live"];
 
+// ---------------------------------------------------------------------------
+// Stripe webhook URL + events (AB-34)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the canonical payment-intent webhook URL from the configured API base.
+ * The base URL may have a trailing slash; we strip it before appending the path.
+ * Ground truth: POST /v1/payment-intents/webhook (mount_commerce.go).
+ */
+export function buildStripeWebhookUrl(apiBaseUrl: string): string {
+  const base = apiBaseUrl.replace(/\/+$/, "");
+  return `${base}/v1/payment-intents/webhook`;
+}
+
+/**
+ * Stripe event types consumed by the platform webhook handler.
+ * Derived from webhookEventTypeToState in
+ * apps/backend/internal/platform/httpserver/hcheckout/payment_intents.go.
+ * Update this list if the Go map is extended.
+ */
+export const STRIPE_WEBHOOK_EVENTS: readonly string[] = [
+  "payment_intent.succeeded",
+  "payment_intent.payment_failed",
+  "payment_intent.requires_action",
+  "payment_intent.processing",
+  "payment_intent.amount_capturable",
+  "payment_intent.manual_review",
+];
+
 /**
  * Required secret field names per provider. Mirrors
  * apps/backend/internal/platform/httpserver/payment_configs_types.go
