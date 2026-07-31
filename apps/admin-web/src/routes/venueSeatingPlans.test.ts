@@ -4,6 +4,8 @@
  * We pin the client-side geometry->SVG renderer and the 422 error parser
  * so a regression surfaces without needing to boot the DOM.
  */
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api/client";
 import {
@@ -13,13 +15,17 @@ import {
   issueForField,
   parseStandingCapacity,
   parseVersionValidationErrors,
+  planHasGeneralAdmission,
   renderGeometryToSVG,
   resolveCurrentVersionNumber,
   resolveSelectedVersion,
   validateCreatePlanForm,
+  UploadSVGFormView,
+  VersionHistoryTable,
   type SeatingGeometry,
   type SeatingPlan,
   type SeatingPlanVersion,
+  type VersionHistoryTableProps,
 } from "@/routes/venueSeatingPlans";
 
 const geometry: SeatingGeometry = {
@@ -518,6 +524,21 @@ describe("formatVersionTimestamp (AB-25c)", () => {
   });
 });
 
+describe("planHasGeneralAdmission", () => {
+  it("returns true for general_admission", () => {
+    expect(planHasGeneralAdmission("general_admission")).toBe(true);
+  });
+  it("returns true for mixed", () => {
+    expect(planHasGeneralAdmission("mixed")).toBe(true);
+  });
+  it("returns false for assigned_seats", () => {
+    expect(planHasGeneralAdmission("assigned_seats")).toBe(false);
+  });
+  it("returns false for tables", () => {
+    expect(planHasGeneralAdmission("tables")).toBe(false);
+  });
+});
+
 describe("resolveSelectedVersion (AB-25c)", () => {
   const plan: SeatingPlan = {
     id: "01929d0e-0e47-7000-8000-000000000301",
@@ -579,5 +600,74 @@ describe("resolveSelectedVersion (AB-25c)", () => {
       current_version_number: 99,
     };
     expect(resolveSelectedVersion(orphan, versions, null)?.id).toBe("ver-3");
+  });
+});
+
+describe("UploadSVGFormView — GA field visibility (AB-30)", () => {
+  const baseProps = {
+    planID: "plan-1",
+    capacityStanding: "",
+    pending: false,
+    step: null,
+    okMessage: null,
+    fileError: null,
+    issues: [],
+    warnings: [],
+    uploadError: null,
+    onCapacityStandingChange: () => {},
+    onFileSelected: () => {},
+  };
+
+  it("shows GA capacity field for general_admission plan", () => {
+    const html = renderToStaticMarkup(
+      createElement(UploadSVGFormView, { ...baseProps, showGAField: true }),
+    );
+    expect(html).toContain("venues-plan-upload-ga-plan-1");
+    expect(html).toContain("GA capacity");
+  });
+
+  it("hides GA capacity field for assigned_seats plan", () => {
+    const html = renderToStaticMarkup(
+      createElement(UploadSVGFormView, { ...baseProps, showGAField: false }),
+    );
+    expect(html).not.toContain("venues-plan-upload-ga-plan-1");
+    expect(html).not.toContain("GA capacity");
+  });
+});
+
+describe("VersionHistoryTable — GA column (AB-30)", () => {
+  const baseVersion: SeatingPlanVersion = {
+    id: "v1",
+    seating_plan_id: "p1",
+    version_number: 1,
+    geometry: {},
+    geometry_checksum: "abc",
+    svg_asset_media_id: null,
+    capacity_seated: 100,
+    capacity_standing: 200,
+    locked_at: null,
+    created_at: "2026-01-01T00:00:00Z",
+  };
+  const baseProps: VersionHistoryTableProps = {
+    versions: [baseVersion],
+    currentVersionID: null,
+    selectedVersionID: null,
+    onSelect: () => {},
+    hasGA: false,
+  };
+
+  it("shows dash for GA column when hasGA=false", () => {
+    const html = renderToStaticMarkup(
+      createElement(VersionHistoryTable, baseProps),
+    );
+    expect(html).toContain("—");
+    expect(html).not.toContain("200");
+  });
+
+  it("shows capacity_standing when hasGA=true", () => {
+    const html = renderToStaticMarkup(
+      createElement(VersionHistoryTable, { ...baseProps, hasGA: true }),
+    );
+    expect(html).toContain("200");
   });
 });

@@ -132,6 +132,7 @@ function uploadMarkup(
       uploadError={null}
       onCapacityStandingChange={NOOP}
       onFileSelected={NOOP}
+      showGAField={true}
       {...overrides}
     />,
   );
@@ -145,9 +146,9 @@ describe("UploadSVGFormView (AB-25b)", () => {
     expect(html).toContain("2.00 MiB");
   });
 
-  it("renders the standing-capacity input carried into the version", () => {
+  it("renders the GA-capacity input carried into the version", () => {
     const html = uploadMarkup({ capacityStanding: "120" });
-    expect(html).toContain('data-testid="venues-plan-upload-standing-plan-1"');
+    expect(html).toContain('data-testid="venues-plan-upload-ga-plan-1"');
     expect(html).toContain('value="120"');
   });
 
@@ -253,6 +254,7 @@ function historyMarkup(
       currentVersionID="v3"
       selectedVersionID="v3"
       onSelect={NOOP}
+      hasGA={true}
       {...overrides}
     />,
   );
@@ -421,6 +423,7 @@ describe("VersionPreview (AB-25c)", () => {
         })}
         signedURL={null}
         loading={false}
+        hasGA={true}
       />,
     );
     expect(html).toContain("Version 2");

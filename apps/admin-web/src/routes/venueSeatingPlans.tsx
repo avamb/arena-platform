@@ -298,6 +298,14 @@ export function statusLabel(s: SeatingPlanStatus): string {
   return s;
 }
 
+/**
+ * Returns true when a plan type supports General Admission (GA) capacity.
+ * GA types: general_admission, mixed. Non-GA types: assigned_seats, tables.
+ */
+export function planHasGeneralAdmission(planType: SeatingPlanType): boolean {
+  return planType === "general_admission" || planType === "mixed";
+}
+
 /** Field discriminator for create-plan validation issues. */
 export type CreatePlanField = "name" | "owner_org_id";
 
@@ -647,10 +655,11 @@ function SeatingPlanBody({ plan, venue }: { plan: SeatingPlan; venue: Venue }) {
             currentVersionID={plan.current_version_id}
             selectedVersionID={selectedVersion?.id ?? null}
             onSelect={(id) => setSelectedVersionID(id)}
+            hasGA={planHasGeneralAdmission(plan.plan_type)}
           />
         )}
       </div>
-      <PlanPreviewSection version={selectedVersion} />
+      <PlanPreviewSection version={selectedVersion} hasGA={planHasGeneralAdmission(plan.plan_type)} />
       <PlanActions plan={plan} venue={venue} />
     </div>
   );
@@ -768,15 +777,17 @@ function UploadSVGForm({
   // never reaches the network.
   const [fileError, setFileError] = useState<string | null>(null);
 
+  const hasGA = planHasGeneralAdmission(plan.plan_type);
+
   const mutation = useMutation<CreateVersionResponse, ApiError, File>({
     mutationFn: async (file: File) => {
-      const standing = parseStandingCapacity(capacityStanding);
+      const standing = hasGA ? parseStandingCapacity(capacityStanding) : { value: 0 };
       if (standing === null) {
         // Guarded by onFile as well; this keeps the invariant local to the
         // mutation in case another caller is added later.
         throw new ApiError(0, {
           code: "validation.capacity_standing",
-          message: "Standing capacity must be a whole number of 0 or more.",
+          message: "GA capacity must be a whole number of 0 or more.",
         });
       }
       // Step 1: store the SVG as a binary media object so the signed URL
@@ -843,8 +854,8 @@ function UploadSVGForm({
       setFileError(failure.message);
       return;
     }
-    if (parseStandingCapacity(capacityStanding) === null) {
-      setFileError("Standing capacity must be a whole number of 0 or more.");
+    if (hasGA && parseStandingCapacity(capacityStanding) === null) {
+      setFileError("GA capacity must be a whole number of 0 or more.");
       return;
     }
     mutation.mutate(file);
@@ -866,6 +877,7 @@ function UploadSVGForm({
         setFileError(null);
       }}
       onFileSelected={onFile}
+      showGAField={hasGA}
     />
   );
 }
@@ -883,6 +895,8 @@ export interface UploadSVGFormViewProps {
   readonly warnings: readonly SeatingImportIssue[];
   readonly uploadError: ApiError | null;
   readonly onCapacityStandingChange: (v: string) => void;
+  /** When false the GA-capacity input is hidden and the caller submits 0 instead. */
+  readonly showGAField: boolean;
   readonly onFileSelected: (file: File) => void;
 }
 
@@ -901,6 +915,7 @@ export function UploadSVGFormView({
   warnings,
   uploadError,
   onCapacityStandingChange,
+  showGAField,
   onFileSelected,
 }: UploadSVGFormViewProps): JSX.Element {
   const onChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -922,25 +937,27 @@ export function UploadSVGFormView({
         {formatBytes(OWNER_TYPE_MAX_BYTES[SEATING_PLAN_SVG_OWNER_TYPE])}.
         Per-element validation errors appear below.
       </p>
-      <div style={fieldRowStyle}>
-        <label style={miniLabelStyle} htmlFor={`venue-plan-standing-${planID}`}>
-          Standing capacity (optional)
-        </label>
-        <input
-          id={`venue-plan-standing-${planID}`}
-          type="text"
-          inputMode="numeric"
-          value={capacityStanding}
-          onChange={(e) => onCapacityStandingChange(e.target.value)}
-          style={inputStyle}
-          placeholder="0"
-          disabled={pending}
-          data-testid={`venues-plan-upload-standing-${planID}`}
-        />
-        <span style={hintStyle}>
-          Seated capacity is derived from the SVG and cannot be set by hand.
-        </span>
-      </div>
+      {showGAField ? (
+        <div style={fieldRowStyle}>
+          <label style={miniLabelStyle} htmlFor={`venue-plan-standing-${planID}`}>
+            GA capacity (optional)
+          </label>
+          <input
+            id={`venue-plan-standing-${planID}`}
+            type="text"
+            inputMode="numeric"
+            value={capacityStanding}
+            onChange={(e) => onCapacityStandingChange(e.target.value)}
+            style={inputStyle}
+            placeholder="0"
+            disabled={pending}
+            data-testid={`venues-plan-upload-ga-${planID}`}
+          />
+          <span style={hintStyle}>
+            Seated capacity is derived from the SVG and cannot be set by hand.
+          </span>
+        </div>
+      ) : null}
       <label style={fileButtonStyle}>
         <input
           type="file"
@@ -1033,6 +1050,7 @@ export interface VersionHistoryTableProps {
   readonly currentVersionID: string | null;
   readonly selectedVersionID: string | null;
   readonly onSelect: (versionID: string) => void;
+  readonly hasGA: boolean;
 }
 
 /**
@@ -1048,6 +1066,7 @@ export function VersionHistoryTable({
   currentVersionID,
   selectedVersionID,
   onSelect,
+  hasGA,
 }: VersionHistoryTableProps): JSX.Element {
   if (versions.length === 0) {
     return (
@@ -1077,7 +1096,7 @@ export function VersionHistoryTable({
               Seated
             </th>
             <th style={versionThNumStyle} scope="col">
-              Standing
+              GA
             </th>
             <th style={versionThStyle} scope="col">
               Created
@@ -1115,7 +1134,7 @@ export function VersionHistoryTable({
                 </th>
                 <td style={versionTdNumStyle}>{v.capacity_seated.toLocaleString()}</td>
                 <td style={versionTdNumStyle}>
-                  {v.capacity_standing.toLocaleString()}
+                  {hasGA ? v.capacity_standing.toLocaleString() : "—"}
                 </td>
                 <td style={versionTdStyle}>
                   <time dateTime={v.created_at}>
@@ -1162,7 +1181,7 @@ export function VersionHistoryTable({
  * history list (which already carries the geometry), so the only request made
  * here is for the short-lived signed URL of the stored SVG asset.
  */
-function PlanPreviewSection({ version }: { version: SeatingPlanVersion | null }) {
+function PlanPreviewSection({ version, hasGA }: { version: SeatingPlanVersion | null; hasGA: boolean }) {
   const svgMediaID = version?.svg_asset_media_id ?? null;
 
   // Fetch a signed download URL for the SVG media asset when it exists.
@@ -1204,6 +1223,7 @@ function PlanPreviewSection({ version }: { version: SeatingPlanVersion | null })
           signedURL={mediaQuery.data?.signed_url ?? null}
           loading={svgMediaID !== null && mediaQuery.isPending}
           error={mediaQuery.error ?? null}
+          hasGA={hasGA}
         />
       )}
     </div>
@@ -1216,6 +1236,7 @@ export interface VersionPreviewProps {
   readonly signedURL: string | null;
   readonly loading?: boolean;
   readonly error?: ApiError | null;
+  readonly hasGA?: boolean;
 }
 
 /**
@@ -1235,6 +1256,7 @@ export function VersionPreview({
   signedURL,
   loading = false,
   error = null,
+  hasGA = false,
 }: VersionPreviewProps): JSX.Element {
   const hasAsset = version.svg_asset_media_id !== null;
 
@@ -1243,8 +1265,8 @@ export function VersionPreview({
       <div style={previewCaptionStyle}>
         Version {version.version_number} ·{" "}
         {version.capacity_seated.toLocaleString()} seated
-        {version.capacity_standing > 0
-          ? ` · ${version.capacity_standing.toLocaleString()} standing`
+        {hasGA && version.capacity_standing > 0
+          ? ` · ${version.capacity_standing.toLocaleString()} GA`
           : ""}
       </div>
       {hasAsset && loading ? (
