@@ -412,3 +412,30 @@ fabrication (feature marked passing with zero diff). Restored to `@AGENTS.md`.
 Follow-up during review: the restored file carried a UTF-8 BOM before the `@`
 import directive (the PowerShell encoding trap AGENTS.md itself documents), which
 risks silently breaking the AGENTS.md import; BOM stripped.
+
+---
+
+## Wave 3 findings — 2026-07-31 walkthrough of cfd058e (queued as #418-#423)
+
+Positive: AB-25 verified live by the owner — SVG upload produced v1 with 90 seated
++ 500 GA, preview rendered.
+
+- **AB-30 (#418)** — terminology: "standing" is called **General admission** on the
+  market; rename all operator-facing strings (presentation only, DB/API fields
+  unchanged). GA-capacity input must appear only for plan_type
+  general_admission/mixed, never for assigned_seats.
+- **AB-31 (#419)** — /events directory and the scope bar still show raw org UUIDs;
+  render name + short display number (#397 infra) per the AB-22 rule.
+- **AB-32 (#420, CRITICAL)** — no way to create an event from the UI ("later wave"
+  copy). Core product loop blocked: event -> session -> seating bind -> channel ->
+  widget sale. Deliver event+session create/edit with status transitions.
+- **AB-33 (#421)** — new-channel dialog incomprehensible even to the owner;
+  "Settings (JSON object)" is provider-specific config (0045: Stripe statement
+  descriptor, AllPay terminal id) — replace with structured per-provider fields +
+  advanced JSON escape hatch + field guidance.
+- **AB-34 (#422)** — Stripe asks for a webhook URL; surface the copyable
+  POST /v1/payment-intents/webhook URL and the signing-secret flow in Payment
+  Configs (webhook_secret already tracked as required there).
+- **AB-35 (#423)** — one Bil24-style cascading flow country -> city -> venue with
+  inline create at each level; Geo Registry repositioned as optional/advanced
+  maintenance (owner: "зачем она нужна" as a standalone page).
