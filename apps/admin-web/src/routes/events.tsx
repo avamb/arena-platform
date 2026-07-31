@@ -145,6 +145,79 @@ interface OrganizationListEnvelope {
   readonly organizations: readonly OrganizationSummary[];
 }
 
+interface VenueSummary {
+  readonly id: string;
+  readonly name: string;
+  readonly display_number?: number;
+}
+
+interface VenueListEnvelope {
+  readonly venues: readonly VenueSummary[];
+}
+
+// ---------------------------------------------------------------------------
+// Event form helpers (create / edit)
+// ---------------------------------------------------------------------------
+
+interface EventFormValues {
+  name: string;
+  description: string;
+  org_id: string;
+  venue_id: string; // "" = no venue
+  start_at: string; // datetime-local string (YYYY-MM-DDTHH:MM)
+  end_at: string;
+  visibility: EventVisibility | "";
+}
+
+function emptyEventForm(): EventFormValues {
+  return {
+    name: "",
+    description: "",
+    org_id: "",
+    venue_id: "",
+    start_at: "",
+    end_at: "",
+    visibility: "",
+  };
+}
+
+function eventToForm(e: EventItem): EventFormValues {
+  return {
+    name: e.name,
+    description: e.description ?? "",
+    org_id: e.org_id,
+    venue_id: e.venue_id ?? "",
+    start_at: toLocalDatetimeValue(e.start_at),
+    end_at: toLocalDatetimeValue(e.end_at),
+    visibility: e.visibility,
+  };
+}
+
+interface EventFormErrors {
+  name?: string;
+  org_id?: string;
+  start_at?: string;
+  end_at?: string;
+}
+
+function validateEventForm(
+  v: EventFormValues,
+  requireOrg: boolean,
+): EventFormErrors {
+  const errors: EventFormErrors = {};
+  if (v.name.trim() === "") errors.name = "Name is required.";
+  if (requireOrg && v.org_id.trim() === "")
+    errors.org_id = "Organization is required.";
+  const start = parseLocalDatetime(v.start_at);
+  if (start === null) errors.start_at = "Start is required.";
+  const end = parseLocalDatetime(v.end_at);
+  if (end === null) errors.end_at = "End is required.";
+  if (start !== null && end !== null && end.getTime() <= start.getTime()) {
+    errors.end_at = "End must be after start.";
+  }
+  return errors;
+}
+
 export interface SessionItem {
   readonly id: string;
   readonly event_id: string;
@@ -900,6 +973,9 @@ function EventsRoute() {
 function EventsModule() {
   const { permissions } = useAuth();
   const canPublish = permissions.has("event.publish");
+  const canCreateEvent = permissions.has("event.create");
+  const canUpdateEvent = permissions.has("event.update");
+  const canDeleteEvent = permissions.has("event.delete");
   const canReadPublications = permissions.has("publication.read");
   const canCreatePublication = permissions.has("publication.create");
   const canDeletePublication = permissions.has("publication.delete");
@@ -918,6 +994,7 @@ function EventsModule() {
   const [endBefore, setEndBefore] = useState<string>("");
   const [page, setPage] = useState<number>(1);
   const [selectedID, setSelectedID] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const listQuery = useQuery<EventListEnvelope, ApiError>({
     queryKey: ["events", "list", visibilityFilter],
@@ -996,11 +1073,20 @@ function EventsModule() {
             Cross-organization events directory. List is shared across
             organizations; status transitions (draft, published, cancelled,
             archived) are owner-gated and require the{" "}
-            <code style={monoStyle}>event.publish</code> permission. Full
-            create / edit / delete will land in a later wave.
+            <code style={monoStyle}>event.publish</code> permission.
           </p>
         </div>
         <div style={refreshWrapStyle}>
+          {canCreateEvent ? (
+            <button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              style={primaryButtonStyle}
+              data-testid="events-create-open"
+            >
+              Create Event
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => listQuery.refetch()}
@@ -1058,7 +1144,10 @@ function EventsModule() {
         <EventDrawer
           event={selectedEvent}
           orgsByID={orgsByID}
+          orgs={orgsQuery.data?.organizations ?? []}
           canPublish={canPublish}
+          canUpdateEvent={canUpdateEvent}
+          canDeleteEvent={canDeleteEvent}
           canReadPublications={canReadPublications}
           canCreatePublication={canCreatePublication}
           canDeletePublication={canDeletePublication}
@@ -1069,6 +1158,24 @@ function EventsModule() {
           canUpdateTier={canUpdateTier}
           canDeleteTier={canDeleteTier}
           onClose={() => setSelectedID(null)}
+          onDeleted={() => {
+            setSelectedID(null);
+            void listQuery.refetch();
+          }}
+          onUpdated={() => {
+            void listQuery.refetch();
+          }}
+        />
+      ) : null}
+
+      {createOpen ? (
+        <CreateEventPanel
+          orgs={orgsQuery.data?.organizations ?? []}
+          onSuccess={() => {
+            setCreateOpen(false);
+            void listQuery.refetch();
+          }}
+          onClose={() => setCreateOpen(false)}
         />
       ) : null}
     </section>
@@ -1447,7 +1554,10 @@ const DRAWER_TABS: ReadonlyArray<{ id: DrawerTab; label: string }> = [
 interface DrawerProps {
   event: EventItem;
   orgsByID: ReadonlyMap<string, OrganizationSummary>;
+  orgs: readonly OrganizationSummary[];
   canPublish: boolean;
+  canUpdateEvent: boolean;
+  canDeleteEvent: boolean;
   canReadPublications: boolean;
   canCreatePublication: boolean;
   canDeletePublication: boolean;
@@ -1458,12 +1568,17 @@ interface DrawerProps {
   canUpdateTier: boolean;
   canDeleteTier: boolean;
   onClose: () => void;
+  onDeleted: () => void;
+  onUpdated: () => void;
 }
 
 function EventDrawer({
   event,
   orgsByID,
+  orgs,
   canPublish,
+  canUpdateEvent,
+  canDeleteEvent,
   canReadPublications,
   canCreatePublication,
   canDeletePublication,
@@ -1474,6 +1589,8 @@ function EventDrawer({
   canUpdateTier,
   canDeleteTier,
   onClose,
+  onDeleted,
+  onUpdated,
 }: DrawerProps) {
   const [tab, setTab] = useState<DrawerTab>("overview");
   return (
@@ -1521,7 +1638,16 @@ function EventDrawer({
         </nav>
         <div style={drawerContentStyle}>
           {tab === "overview" ? (
-            <OverviewTab event={event} orgsByID={orgsByID} canPublish={canPublish} />
+            <OverviewTab
+              event={event}
+              orgsByID={orgsByID}
+              orgs={orgs}
+              canPublish={canPublish}
+              canUpdateEvent={canUpdateEvent}
+              canDeleteEvent={canDeleteEvent}
+              onDeleted={onDeleted}
+              onUpdated={onUpdated}
+            />
           ) : null}
           {tab === "sessions" ? (
             <SessionsTab
@@ -1557,16 +1683,44 @@ function EventDrawer({
 function OverviewTab({
   event,
   orgsByID,
+  orgs,
   canPublish,
+  canUpdateEvent,
+  canDeleteEvent,
+  onDeleted,
+  onUpdated,
 }: {
   event: EventItem;
   orgsByID: ReadonlyMap<string, OrganizationSummary>;
+  orgs: readonly OrganizationSummary[];
   canPublish: boolean;
+  canUpdateEvent: boolean;
+  canDeleteEvent: boolean;
+  onDeleted: () => void;
+  onUpdated: () => void;
 }) {
   const queryClient = useQueryClient();
   const [errMsg, setErrMsg] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteErr, setDeleteErr] = useState<string | null>(null);
   const transitions = allowedTransitions(event.status);
+
+  const deleteMutation = useMutation<void, ApiError, void>({
+    mutationFn: () =>
+      authedFetch<void>({
+        method: "DELETE",
+        path: `/v1/organizations/${event.org_id}/events/${event.id}`,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["events"] });
+      onDeleted();
+    },
+    onError: (err) => {
+      setDeleteErr(`${err.message} (${err.code})`);
+    },
+  });
 
   const mutation = useMutation<EventEnvelope, ApiError, EventStatus>({
     mutationFn: (target) =>
@@ -1603,6 +1757,90 @@ function OverviewTab({
 
   return (
     <div style={tabBodyStyle}>
+      {/* Edit / Delete action buttons */}
+      {(canUpdateEvent || canDeleteEvent) ? (
+        <div style={rowActionsStyle}>
+          {canUpdateEvent ? (
+            <button
+              type="button"
+              style={refreshButtonStyle}
+              onClick={() => {
+                setEditOpen(true);
+                setConfirmDelete(false);
+              }}
+              data-testid="events-edit-open"
+              disabled={editOpen}
+            >
+              Edit
+            </button>
+          ) : null}
+          {canDeleteEvent ? (
+            <button
+              type="button"
+              style={dangerButtonStyle}
+              onClick={() => {
+                setConfirmDelete(true);
+                setEditOpen(false);
+                setDeleteErr(null);
+              }}
+              data-testid="events-delete-open"
+              disabled={deleteMutation.isPending}
+            >
+              Delete
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {confirmDelete ? (
+        <div style={confirmDeleteStyle} data-testid="events-delete-confirm">
+          <span>
+            Are you sure you want to delete this event? This cannot be undone.
+          </span>
+          <div style={rowActionsStyle}>
+            <button
+              type="button"
+              style={dangerButtonStyle}
+              onClick={() => deleteMutation.mutate()}
+              disabled={deleteMutation.isPending}
+              data-testid="events-delete-confirm-yes"
+            >
+              {deleteMutation.isPending ? "Deleting…" : "Yes, delete"}
+            </button>
+            <button
+              type="button"
+              style={refreshButtonStyle}
+              onClick={() => {
+                setConfirmDelete(false);
+                setDeleteErr(null);
+              }}
+              disabled={deleteMutation.isPending}
+              data-testid="events-delete-confirm-cancel"
+            >
+              Cancel
+            </button>
+          </div>
+          {deleteErr !== null ? (
+            <div style={formErrorStyle} role="alert" data-testid="events-delete-error">
+              {deleteErr}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {editOpen ? (
+        <EditEventPanel
+          event={event}
+          orgs={orgs}
+          onSuccess={() => {
+            setEditOpen(false);
+            void queryClient.invalidateQueries({ queryKey: ["events"] });
+            onUpdated();
+          }}
+          onClose={() => setEditOpen(false)}
+        />
+      ) : null}
+
       <DetailRow label="Status">
         <EventStatusBadge status={event.status} />
       </DetailRow>
@@ -1679,6 +1917,494 @@ function OverviewTab({
         ) : null}
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CreateEventPanel — modal overlay for creating a new event
+// ---------------------------------------------------------------------------
+
+interface CreateEventPanelProps {
+  orgs: readonly OrganizationSummary[];
+  onSuccess: (event: EventItem) => void;
+  onClose: () => void;
+}
+
+function CreateEventPanel({ orgs, onSuccess, onClose }: CreateEventPanelProps) {
+  const [values, setValues] = useState<EventFormValues>(emptyEventForm());
+  const errors = useMemo(() => validateEventForm(values, true), [values]);
+  const [submitErr, setSubmitErr] = useState<string | null>(null);
+
+  const venuesQuery = useQuery<VenueListEnvelope, ApiError>({
+    queryKey: ["events", "venues", values.org_id],
+    queryFn: () =>
+      authedFetch<VenueListEnvelope>({
+        method: "GET",
+        path: `/v1/organizations/${values.org_id}/venues`,
+      }),
+    enabled: values.org_id !== "",
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+
+  const mutation = useMutation<EventEnvelope, ApiError, EventFormValues>({
+    mutationFn: (v) => {
+      const body: Record<string, unknown> = {
+        name: v.name.trim(),
+        start_at: toRFC3339(v.start_at),
+        end_at: toRFC3339(v.end_at),
+      };
+      if (v.description.trim() !== "") body.description = v.description.trim();
+      if (v.venue_id !== "") body.venue_id = v.venue_id;
+      if (v.visibility !== "") body.visibility = v.visibility;
+      return authedFetch<EventEnvelope>({
+        method: "POST",
+        path: `/v1/organizations/${v.org_id}/events`,
+        body,
+      });
+    },
+    onSuccess: (data) => {
+      onSuccess(data.event);
+    },
+    onError: (err) => {
+      setSubmitErr(`${err.message} (${err.code})`);
+    },
+  });
+
+  const hasErrors = Object.keys(errors).length > 0;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="create-event-title"
+      style={createPanelBackdropStyle}
+      data-testid="events-create-panel"
+      onClick={onClose}
+    >
+      <div style={createPanelStyle} onClick={(e) => e.stopPropagation()}>
+        <header style={drawerHeaderStyle}>
+          <h2 id="create-event-title" style={drawerTitleStyle}>
+            Create Event
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            style={dialogCloseStyle}
+            aria-label="Close"
+            data-testid="events-create-close"
+          >
+            ×
+          </button>
+        </header>
+        <div style={createPanelBodyStyle}>
+          <form
+            style={editorFormStyle}
+            data-testid="events-create-form"
+            onSubmit={(e: FormEvent) => {
+              e.preventDefault();
+              if (hasErrors) return;
+              setSubmitErr(null);
+              mutation.mutate(values);
+            }}
+          >
+            <div style={editorGridStyle}>
+              <label style={editorFieldStyle}>
+                <span style={editorLabelStyle}>Organization *</span>
+                <select
+                  value={values.org_id}
+                  onChange={(e) =>
+                    setValues({ ...values, org_id: e.target.value, venue_id: "" })
+                  }
+                  style={editorInputStyle}
+                  required
+                  data-testid="events-create-org"
+                >
+                  <option value="">— select org —</option>
+                  {orgs.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.display_number !== undefined
+                        ? `#${o.display_number} ${o.name}`
+                        : o.name}
+                    </option>
+                  ))}
+                </select>
+                {errors.org_id !== undefined ? (
+                  <span style={fieldErrorStyle}>{errors.org_id}</span>
+                ) : null}
+              </label>
+
+              <label style={editorFieldStyle}>
+                <span style={editorLabelStyle}>Name *</span>
+                <input
+                  type="text"
+                  value={values.name}
+                  onChange={(e) => setValues({ ...values, name: e.target.value })}
+                  style={editorInputStyle}
+                  required
+                  data-testid="events-create-name"
+                />
+                {errors.name !== undefined ? (
+                  <span style={fieldErrorStyle}>{errors.name}</span>
+                ) : null}
+              </label>
+
+              <label style={editorFieldStyle}>
+                <span style={editorLabelStyle}>Visibility</span>
+                <select
+                  value={values.visibility}
+                  onChange={(e) =>
+                    setValues({
+                      ...values,
+                      visibility: isEventVisibility(e.target.value)
+                        ? e.target.value
+                        : "",
+                    })
+                  }
+                  style={editorInputStyle}
+                  data-testid="events-create-visibility"
+                >
+                  <option value="">— default (public) —</option>
+                  {EVENT_VISIBILITIES.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label style={editorFieldStyle}>
+                <span style={editorLabelStyle}>Start (UTC) *</span>
+                <input
+                  type="datetime-local"
+                  value={values.start_at}
+                  onChange={(e) =>
+                    setValues({ ...values, start_at: e.target.value })
+                  }
+                  style={editorInputStyle}
+                  required
+                  data-testid="events-create-start"
+                />
+                {errors.start_at !== undefined ? (
+                  <span style={fieldErrorStyle}>{errors.start_at}</span>
+                ) : null}
+              </label>
+
+              <label style={editorFieldStyle}>
+                <span style={editorLabelStyle}>End (UTC) *</span>
+                <input
+                  type="datetime-local"
+                  value={values.end_at}
+                  onChange={(e) =>
+                    setValues({ ...values, end_at: e.target.value })
+                  }
+                  style={editorInputStyle}
+                  required
+                  data-testid="events-create-end"
+                />
+                {errors.end_at !== undefined ? (
+                  <span style={fieldErrorStyle}>{errors.end_at}</span>
+                ) : null}
+              </label>
+
+              {values.org_id !== "" ? (
+                <label style={editorFieldStyle}>
+                  <span style={editorLabelStyle}>Venue (optional)</span>
+                  <select
+                    value={values.venue_id}
+                    onChange={(e) =>
+                      setValues({ ...values, venue_id: e.target.value })
+                    }
+                    style={editorInputStyle}
+                    data-testid="events-create-venue"
+                    disabled={venuesQuery.isPending}
+                  >
+                    <option value="">— no fixed venue —</option>
+                    {(venuesQuery.data?.venues ?? []).map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.display_number !== undefined
+                          ? `#${v.display_number} ${v.name}`
+                          : v.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+            </div>
+
+            <label style={editorFieldStyle}>
+              <span style={editorLabelStyle}>Description (optional)</span>
+              <textarea
+                value={values.description}
+                onChange={(e) =>
+                  setValues({ ...values, description: e.target.value })
+                }
+                style={{ ...editorInputStyle, minHeight: 72, resize: "vertical" }}
+                rows={3}
+                data-testid="events-create-description"
+              />
+            </label>
+
+            {submitErr !== null ? (
+              <div
+                style={formErrorStyle}
+                role="alert"
+                data-testid="events-create-error"
+              >
+                {submitErr}
+              </div>
+            ) : null}
+
+            <div style={mobileFormBarStyle}>
+              <button
+                type="button"
+                style={refreshButtonStyle}
+                onClick={onClose}
+                disabled={mutation.isPending}
+                data-testid="events-create-cancel"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                style={primaryButtonStyle}
+                disabled={mutation.isPending || hasErrors}
+                data-testid="events-create-submit"
+              >
+                {mutation.isPending ? "Creating…" : "Create Event"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// EditEventPanel — inline panel for editing an existing event
+// ---------------------------------------------------------------------------
+
+interface EditEventPanelProps {
+  event: EventItem;
+  orgs: readonly OrganizationSummary[];
+  onSuccess: () => void;
+  onClose: () => void;
+}
+
+function EditEventPanel({ event, orgs, onSuccess, onClose }: EditEventPanelProps) {
+  const [values, setValues] = useState<EventFormValues>(() =>
+    eventToForm(event),
+  );
+  const errors = useMemo(() => validateEventForm(values, false), [values]);
+  const [submitErr, setSubmitErr] = useState<string | null>(null);
+
+  const venuesQuery = useQuery<VenueListEnvelope, ApiError>({
+    queryKey: ["events", "venues", event.org_id],
+    queryFn: () =>
+      authedFetch<VenueListEnvelope>({
+        method: "GET",
+        path: `/v1/organizations/${event.org_id}/venues`,
+      }),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+
+  const mutation = useMutation<EventEnvelope, ApiError, EventFormValues>({
+    mutationFn: (v) => {
+      const body: Record<string, unknown> = {};
+      if (v.name.trim() !== "") body.name = v.name.trim();
+      // description: null clears it, string sets it
+      body.description = v.description.trim() !== "" ? v.description.trim() : null;
+      // venue_id: null clears it
+      body.venue_id = v.venue_id !== "" ? v.venue_id : null;
+      if (v.start_at !== "") body.start_at = toRFC3339(v.start_at);
+      if (v.end_at !== "") body.end_at = toRFC3339(v.end_at);
+      if (v.visibility !== "") body.visibility = v.visibility;
+      return authedFetch<EventEnvelope>({
+        method: "PATCH",
+        path: `/v1/organizations/${event.org_id}/events/${event.id}`,
+        body,
+      });
+    },
+    onSuccess: () => {
+      onSuccess();
+    },
+    onError: (err) => {
+      setSubmitErr(`${err.message} (${err.code})`);
+    },
+  });
+
+  const hasErrors = Object.keys(errors).length > 0;
+
+  // Org selector is read-only for edit — org cannot be changed.
+  const currentOrg = orgs.find((o) => o.id === event.org_id);
+
+  return (
+    <form
+      style={editorFormStyle}
+      data-testid="events-edit-form"
+      onSubmit={(e: FormEvent) => {
+        e.preventDefault();
+        if (hasErrors) return;
+        setSubmitErr(null);
+        mutation.mutate(values);
+      }}
+    >
+      <div style={detailLabelStyle}>Edit Event</div>
+      <div style={editorGridStyle}>
+        <label style={editorFieldStyle}>
+          <span style={editorLabelStyle}>Organization</span>
+          <input
+            type="text"
+            value={
+              currentOrg !== undefined
+                ? currentOrg.display_number !== undefined
+                  ? `#${currentOrg.display_number} ${currentOrg.name}`
+                  : currentOrg.name
+                : event.org_id
+            }
+            readOnly
+            style={{ ...editorInputStyle, background: "#f1f5f9", color: "#64748b" }}
+            data-testid="events-edit-org"
+          />
+        </label>
+
+        <label style={editorFieldStyle}>
+          <span style={editorLabelStyle}>Name *</span>
+          <input
+            type="text"
+            value={values.name}
+            onChange={(e) => setValues({ ...values, name: e.target.value })}
+            style={editorInputStyle}
+            required
+            data-testid="events-edit-name"
+          />
+          {errors.name !== undefined ? (
+            <span style={fieldErrorStyle}>{errors.name}</span>
+          ) : null}
+        </label>
+
+        <label style={editorFieldStyle}>
+          <span style={editorLabelStyle}>Visibility</span>
+          <select
+            value={values.visibility}
+            onChange={(e) =>
+              setValues({
+                ...values,
+                visibility: isEventVisibility(e.target.value)
+                  ? e.target.value
+                  : "",
+              })
+            }
+            style={editorInputStyle}
+            data-testid="events-edit-visibility"
+          >
+            <option value="">— keep current —</option>
+            {EVENT_VISIBILITIES.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label style={editorFieldStyle}>
+          <span style={editorLabelStyle}>Start (UTC) *</span>
+          <input
+            type="datetime-local"
+            value={values.start_at}
+            onChange={(e) => setValues({ ...values, start_at: e.target.value })}
+            style={editorInputStyle}
+            required
+            data-testid="events-edit-start"
+          />
+          {errors.start_at !== undefined ? (
+            <span style={fieldErrorStyle}>{errors.start_at}</span>
+          ) : null}
+        </label>
+
+        <label style={editorFieldStyle}>
+          <span style={editorLabelStyle}>End (UTC) *</span>
+          <input
+            type="datetime-local"
+            value={values.end_at}
+            onChange={(e) => setValues({ ...values, end_at: e.target.value })}
+            style={editorInputStyle}
+            required
+            data-testid="events-edit-end"
+          />
+          {errors.end_at !== undefined ? (
+            <span style={fieldErrorStyle}>{errors.end_at}</span>
+          ) : null}
+        </label>
+
+        <label style={editorFieldStyle}>
+          <span style={editorLabelStyle}>Venue (optional)</span>
+          <select
+            value={values.venue_id}
+            onChange={(e) =>
+              setValues({ ...values, venue_id: e.target.value })
+            }
+            style={editorInputStyle}
+            data-testid="events-edit-venue"
+            disabled={venuesQuery.isPending}
+          >
+            <option value="">— no fixed venue —</option>
+            {(venuesQuery.data?.venues ?? []).map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.display_number !== undefined
+                  ? `#${v.display_number} ${v.name}`
+                  : v.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <label style={editorFieldStyle}>
+        <span style={editorLabelStyle}>Description (optional)</span>
+        <textarea
+          value={values.description}
+          onChange={(e) =>
+            setValues({ ...values, description: e.target.value })
+          }
+          style={{ ...editorInputStyle, minHeight: 72, resize: "vertical" }}
+          rows={3}
+          data-testid="events-edit-description"
+        />
+      </label>
+
+      {submitErr !== null ? (
+        <div
+          style={formErrorStyle}
+          role="alert"
+          data-testid="events-edit-error"
+        >
+          {submitErr}
+        </div>
+      ) : null}
+
+      <div style={mobileFormBarStyle}>
+        <button
+          type="button"
+          style={refreshButtonStyle}
+          onClick={onClose}
+          disabled={mutation.isPending}
+          data-testid="events-edit-cancel"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          style={primaryButtonStyle}
+          disabled={mutation.isPending || hasErrors}
+          data-testid="events-edit-submit"
+        >
+          {mutation.isPending ? "Saving…" : "Save Changes"}
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -3908,4 +4634,31 @@ const confirmDeleteStyle: CSSProperties = {
   borderRadius: 4,
   fontSize: 12,
   color: "#7f1d1d",
+};
+
+const createPanelBackdropStyle: CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(15, 23, 42, 0.4)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 200,
+};
+
+const createPanelStyle: CSSProperties = {
+  background: "#ffffff",
+  width: "min(600px, 96vw)",
+  maxHeight: "90vh",
+  display: "flex",
+  flexDirection: "column",
+  borderRadius: 8,
+  boxShadow: "0 8px 32px rgba(15, 23, 42, 0.22)",
+  overflow: "hidden",
+};
+
+const createPanelBodyStyle: CSSProperties = {
+  padding: 16,
+  overflowY: "auto",
+  flex: 1,
 };
