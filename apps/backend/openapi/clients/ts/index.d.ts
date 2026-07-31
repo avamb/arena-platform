@@ -1218,7 +1218,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List every version of a seating plan
+         * @description Returns all seating_plan_versions rows for a plan, newest first
+         *     (version_number descending), so the admin drawer can render a version
+         *     history table. The plan's current version is identified by matching
+         *     each row's `id` against the parent plan's `current_version_id`.
+         *     Requires JWT authentication and the seating_plan.read permission.
+         */
+        get: operations["listSeatingPlanVersions"];
         put?: never;
         /**
          * Append a new canonical geometry version to a seating plan
@@ -4689,9 +4697,11 @@ export interface components {
             /**
              * @description Polymorphic owner kind. Future migrations widen the
              *     enumeration as new media-bearing surfaces appear.
+             *     `seating_plan_svg` (migration 0078) carries the authoring SVG
+             *     referenced by a seating_plan_versions row.
              * @enum {string}
              */
-            owner_type: "org_logo" | "event_poster" | "artist_photo";
+            owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg";
             /**
              * Format: uuid
              * @description UUID of the owning row in the table implied by
@@ -15612,6 +15622,86 @@ export interface operations {
             };
         };
     };
+    listSeatingPlanVersions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 primary key of the parent seating plan */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Version history for the seating plan, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description Versions ordered by version_number descending; empty until the first version is created. */
+                        seating_plan_versions: components["schemas"]["SeatingPlanVersion"][];
+                    };
+                };
+            };
+            /** @description Path id is not a valid UUID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (seating_plan.read) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Parent seating plan not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or seating queries unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     createSeatingPlanVersion: {
         parameters: {
             query?: never;
@@ -23681,7 +23771,7 @@ export interface operations {
                     /** Format: binary */
                     file: string;
                     /** @enum {string} */
-                    owner_type: "org_logo" | "event_poster" | "artist_photo";
+                    owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg";
                     /** Format: uuid */
                     owner_id?: string;
                     /** Format: uuid */

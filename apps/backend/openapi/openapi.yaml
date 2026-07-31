@@ -157,10 +157,12 @@ components:
             assets (default branding, system icons).
         owner_type:
           type: string
-          enum: [org_logo, event_poster, artist_photo]
+          enum: [org_logo, event_poster, artist_photo, seating_plan_svg]
           description: |
             Polymorphic owner kind. Future migrations widen the
             enumeration as new media-bearing surfaces appear.
+            `seating_plan_svg` (migration 0078) carries the authoring SVG
+            referenced by a seating_plan_versions row.
         owner_id:
           type: string
           format: uuid
@@ -11500,6 +11502,76 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/seating-plans/{id}/versions:
+    get:
+      operationId: listSeatingPlanVersions
+      summary: List every version of a seating plan
+      description: |
+        Returns all seating_plan_versions rows for a plan, newest first
+        (version_number descending), so the admin drawer can render a version
+        history table. The plan's current version is identified by matching
+        each row's `id` against the parent plan's `current_version_id`.
+        Requires JWT authentication and the seating_plan.read permission.
+      tags: [v1, seating]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the parent seating plan
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Version history for the seating plan, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [seating_plan_versions]
+                properties:
+                  seating_plan_versions:
+                    type: array
+                    description: Versions ordered by version_number descending; empty until the first version is created.
+                    items:
+                      $ref: "#/components/schemas/SeatingPlanVersion"
+        "400":
+          description: Path id is not a valid UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (seating_plan.read)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Parent seating plan not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or seating queries unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
     post:
       operationId: createSeatingPlanVersion
       summary: Append a new canonical geometry version to a seating plan
@@ -19801,7 +19873,7 @@ paths:
                   format: binary
                 owner_type:
                   type: string
-                  enum: [org_logo, event_poster, artist_photo]
+                  enum: [org_logo, event_poster, artist_photo, seating_plan_svg]
                 owner_id:
                   type: string
                   format: uuid

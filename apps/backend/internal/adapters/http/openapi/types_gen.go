@@ -253,9 +253,10 @@ const (
 
 // Defines values for MediaObjectOwnerType.
 const (
-	MediaObjectOwnerTypeArtistPhoto MediaObjectOwnerType = "artist_photo"
-	MediaObjectOwnerTypeEventPoster MediaObjectOwnerType = "event_poster"
-	MediaObjectOwnerTypeOrgLogo     MediaObjectOwnerType = "org_logo"
+	MediaObjectOwnerTypeArtistPhoto    MediaObjectOwnerType = "artist_photo"
+	MediaObjectOwnerTypeEventPoster    MediaObjectOwnerType = "event_poster"
+	MediaObjectOwnerTypeOrgLogo        MediaObjectOwnerType = "org_logo"
+	MediaObjectOwnerTypeSeatingPlanSvg MediaObjectOwnerType = "seating_plan_svg"
 )
 
 // Defines values for MediaObjectStorageBackend.
@@ -674,9 +675,10 @@ const (
 
 // Defines values for PostV1MediaMultipartBodyOwnerType.
 const (
-	PostV1MediaMultipartBodyOwnerTypeArtistPhoto PostV1MediaMultipartBodyOwnerType = "artist_photo"
-	PostV1MediaMultipartBodyOwnerTypeEventPoster PostV1MediaMultipartBodyOwnerType = "event_poster"
-	PostV1MediaMultipartBodyOwnerTypeOrgLogo     PostV1MediaMultipartBodyOwnerType = "org_logo"
+	PostV1MediaMultipartBodyOwnerTypeArtistPhoto    PostV1MediaMultipartBodyOwnerType = "artist_photo"
+	PostV1MediaMultipartBodyOwnerTypeEventPoster    PostV1MediaMultipartBodyOwnerType = "event_poster"
+	PostV1MediaMultipartBodyOwnerTypeOrgLogo        PostV1MediaMultipartBodyOwnerType = "org_logo"
+	PostV1MediaMultipartBodyOwnerTypeSeatingPlanSvg PostV1MediaMultipartBodyOwnerType = "seating_plan_svg"
 )
 
 // Defines values for ResolveReconciliationExceptionJSONBodyResolution.
@@ -3022,6 +3024,8 @@ type MediaObject struct {
 
 	// OwnerType Polymorphic owner kind. Future migrations widen the
 	// enumeration as new media-bearing surfaces appear.
+	// `seating_plan_svg` (migration 0078) carries the authoring SVG
+	// referenced by a seating_plan_versions row.
 	OwnerType MediaObjectOwnerType `json:"owner_type"`
 
 	// SignedUrl Short-lived download URL. Present on `GET /v1/media/{id}`
@@ -3046,6 +3050,8 @@ type MediaObject struct {
 
 // MediaObjectOwnerType Polymorphic owner kind. Future migrations widen the
 // enumeration as new media-bearing surfaces appear.
+// `seating_plan_svg` (migration 0078) carries the authoring SVG
+// referenced by a seating_plan_versions row.
 type MediaObjectOwnerType string
 
 // MediaObjectStorageBackend Which storage adapter holds the bytes. `s3` covers any
