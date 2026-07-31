@@ -7,6 +7,8 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api/client";
 import {
+  createPlanFormIssues,
+  issueForField,
   parseVersionValidationErrors,
   renderGeometryToSVG,
   resolveCurrentVersionNumber,
@@ -371,5 +373,52 @@ describe("validateCreatePlanForm", () => {
     const msg = validateCreatePlanForm("", "");
     expect(msg).not.toBeNull();
     expect(msg).toContain("name");
+  });
+});
+
+describe("createPlanFormIssues", () => {
+  it("returns no issues when both requirements are met", () => {
+    expect(createPlanFormIssues("Main Floor", "org-uuid-1234")).toEqual([]);
+  });
+
+  it("reports EVERY unmet requirement, not just the first", () => {
+    // AB-25a: the form must be able to explain all of its blockers at once.
+    const issues = createPlanFormIssues("", "");
+    expect(issues).toHaveLength(2);
+    expect(issues.map((i) => i.field)).toEqual(["name", "owner_org_id"]);
+  });
+
+  it("treats whitespace-only values as missing", () => {
+    expect(createPlanFormIssues("   ", "   ")).toHaveLength(2);
+  });
+
+  it("reports only the unmet requirement when the other is satisfied", () => {
+    const nameOnly = createPlanFormIssues("", "org-uuid-1234");
+    expect(nameOnly).toHaveLength(1);
+    expect(nameOnly[0]?.field).toBe("name");
+
+    const orgOnly = createPlanFormIssues("Main Floor", "");
+    expect(orgOnly).toHaveLength(1);
+    expect(orgOnly[0]?.field).toBe("owner_org_id");
+  });
+
+  it("agrees with validateCreatePlanForm's single-message projection", () => {
+    const issues = createPlanFormIssues("", "");
+    expect(validateCreatePlanForm("", "")).toBe(issues[0]?.message);
+    expect(validateCreatePlanForm("Main Floor", "org-1")).toBeNull();
+  });
+});
+
+describe("issueForField", () => {
+  it("returns the message attached to the requested field", () => {
+    const issues = createPlanFormIssues("", "");
+    expect(issueForField(issues, "name")).toContain("name");
+    expect(issueForField(issues, "owner_org_id")).toContain("organization");
+  });
+
+  it("returns null for a field with no issue", () => {
+    const issues = createPlanFormIssues("Main Floor", "");
+    expect(issueForField(issues, "name")).toBeNull();
+    expect(issueForField(issues, "owner_org_id")).not.toBeNull();
   });
 });

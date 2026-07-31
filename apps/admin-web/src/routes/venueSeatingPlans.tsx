@@ -154,7 +154,7 @@ export interface SeatingImportIssue {
 }
 
 // Organization summary used by the owner-org picker in CreatePlanForm.
-interface OrganizationSummary {
+export interface OrganizationSummary {
   readonly id: string;
   readonly name: string;
 }
@@ -282,15 +282,55 @@ export function statusLabel(s: SeatingPlanStatus): string {
   return s;
 }
 
+/** Field discriminator for create-plan validation issues. */
+export type CreatePlanField = "name" | "owner_org_id";
+
+export interface CreatePlanFormIssue {
+  readonly field: CreatePlanField;
+  readonly message: string;
+}
+
+/**
+ * Collect EVERY unmet requirement of the create-plan form, in field order.
+ *
+ * Returning the full list (rather than the first failure) is what lets the
+ * form explain itself: repo UI guidance forbids a silently disabled submit
+ * button, so the operator must be able to see all the reasons the form is
+ * not ready at once instead of fixing them one round-trip at a time.
+ */
+export function createPlanFormIssues(
+  name: string,
+  ownerOrgID: string,
+): readonly CreatePlanFormIssue[] {
+  const issues: CreatePlanFormIssue[] = [];
+  if (name.trim() === "") {
+    issues.push({ field: "name", message: "Plan name is required." });
+  }
+  if (ownerOrgID.trim() === "") {
+    issues.push({
+      field: "owner_org_id",
+      message: "Owner organization is required.",
+    });
+  }
+  return issues;
+}
+
+/** First issue attached to `field`, or null when that field is satisfied. */
+export function issueForField(
+  issues: readonly CreatePlanFormIssue[],
+  field: CreatePlanField,
+): string | null {
+  return issues.find((i) => i.field === field)?.message ?? null;
+}
+
 /**
  * Validate the create-plan form inputs. Returns a human-readable error
- * string when invalid, or null when the form is ready to submit. Exported
- * for Vitest coverage.
+ * string when invalid, or null when the form is ready to submit. Retained
+ * as the single-message projection of createPlanFormIssues for callers that
+ * only need a yes/no answer. Exported for Vitest coverage.
  */
 export function validateCreatePlanForm(name: string, ownerOrgID: string): string | null {
-  if (name.trim() === "") return "Plan name is required.";
-  if (ownerOrgID.trim() === "") return "Owner organization is required.";
-  return null;
+  return createPlanFormIssues(name, ownerOrgID)[0]?.message ?? null;
 }
 
 /**
@@ -1017,7 +1057,9 @@ function CreatePlanForm({ venue }: { venue: Venue }) {
   const [planType, setPlanType] = useState<SeatingPlanType>("assigned_seats");
   const [ownerOrgID, setOwnerOrgID] = useState<string>(venue.org_id);
   const [apiError, setApiError] = useState<ApiError | null>(null);
-  const [validationMsg, setValidationMsg] = useState<string | null>(null);
+  // Issues are surfaced only after the operator has tried to submit once,
+  // then kept live so each message disappears as its requirement is met.
+  const [submitAttempted, setSubmitAttempted] = useState<boolean>(false);
 
   // Fetch the organization list so the operator can pick by name instead of
   // pasting a raw UUID — the same picker pattern used by Sales Channels and
@@ -1053,28 +1095,90 @@ function CreatePlanForm({ venue }: { venue: Venue }) {
       }),
     onSuccess: () => {
       setApiError(null);
-      setValidationMsg(null);
+      setSubmitAttempted(false);
       setName("");
       qc.invalidateQueries({ queryKey: ["seating-plans", "by-venue", venue.id] });
     },
     onError: (err) => setApiError(err),
   });
 
+  const issues = createPlanFormIssues(name, ownerOrgID);
+
+  return (
+    <CreatePlanFormView
+      name={name}
+      planType={planType}
+      ownerOrgID={ownerOrgID}
+      organizations={orgsSorted}
+      organizationsPending={orgsQuery.isPending}
+      // Before the first submit the operator has not asked for anything yet,
+      // so an empty form is "not yet filled in", not "wrong".
+      issues={submitAttempted ? issues : []}
+      submitting={mutation.isPending}
+      apiError={apiError}
+      onNameChange={setName}
+      onPlanTypeChange={setPlanType}
+      onOwnerOrgChange={setOwnerOrgID}
+      onSubmit={() => {
+        // Validate on submit — the button is never silently disabled, so the
+        // operator always learns which requirements are unmet.
+        setSubmitAttempted(true);
+        if (issues.length > 0) return;
+        mutation.mutate();
+      }}
+    />
+  );
+}
+
+export interface CreatePlanFormViewProps {
+  readonly name: string;
+  readonly planType: SeatingPlanType;
+  readonly ownerOrgID: string;
+  readonly organizations: readonly OrganizationSummary[];
+  readonly organizationsPending: boolean;
+  /** Unmet requirements to display; empty renders no validation feedback. */
+  readonly issues: readonly CreatePlanFormIssue[];
+  readonly submitting: boolean;
+  readonly apiError: ApiError | null;
+  readonly onNameChange: (v: string) => void;
+  readonly onPlanTypeChange: (v: SeatingPlanType) => void;
+  readonly onOwnerOrgChange: (v: string) => void;
+  readonly onSubmit: () => void;
+}
+
+/**
+ * Presentational half of the create-plan form. Holds no state and issues no
+ * queries so it can be rendered directly in a Vitest (node environment,
+ * renderToStaticMarkup) test to assert the validation display.
+ *
+ * The submit button is deliberately enabled whenever a request is not in
+ * flight: a disabled button with no explanation is the defect AB-25a fixes.
+ */
+export function CreatePlanFormView({
+  name,
+  planType,
+  ownerOrgID,
+  organizations,
+  organizationsPending,
+  issues,
+  submitting,
+  apiError,
+  onNameChange,
+  onPlanTypeChange,
+  onOwnerOrgChange,
+  onSubmit,
+}: CreatePlanFormViewProps): JSX.Element {
+  const nameIssue = issueForField(issues, "name");
+  const ownerIssue = issueForField(issues, "owner_org_id");
+
   return (
     <form
       style={createFormStyle}
       onSubmit={(e) => {
         e.preventDefault();
-        // Validate on submit — never silently disable the button so the
-        // operator always gets feedback about what is missing.
-        const msg = validateCreatePlanForm(name, ownerOrgID);
-        if (msg !== null) {
-          setValidationMsg(msg);
-          return;
-        }
-        setValidationMsg(null);
-        mutation.mutate();
+        onSubmit();
       }}
+      noValidate
       data-testid="venues-plan-create-form"
     >
       <div style={sectionTitleStyle}>New seating plan</div>
@@ -1086,14 +1190,24 @@ function CreatePlanForm({ venue }: { venue: Venue }) {
           id="venue-plan-name"
           type="text"
           value={name}
-          onChange={(e) => {
-            setName(e.target.value);
-            if (validationMsg !== null) setValidationMsg(null);
-          }}
-          style={inputStyle}
+          onChange={(e) => onNameChange(e.target.value)}
+          style={nameIssue !== null ? inputInvalidStyle : inputStyle}
           placeholder="e.g. Main Hall — Assigned Seating"
+          aria-invalid={nameIssue !== null}
+          aria-describedby={
+            nameIssue !== null ? "venue-plan-name-error" : undefined
+          }
           data-testid="venues-plan-create-name"
         />
+        {nameIssue !== null ? (
+          <div
+            id="venue-plan-name-error"
+            style={fieldErrorStyle}
+            data-testid="venues-plan-create-name-error"
+          >
+            {nameIssue}
+          </div>
+        ) : null}
       </div>
       <div style={fieldRowStyle}>
         <label style={miniLabelStyle} htmlFor="venue-plan-type">
@@ -1102,7 +1216,7 @@ function CreatePlanForm({ venue }: { venue: Venue }) {
         <select
           id="venue-plan-type"
           value={planType}
-          onChange={(e) => setPlanType(e.target.value as SeatingPlanType)}
+          onChange={(e) => onPlanTypeChange(e.target.value as SeatingPlanType)}
           style={inputStyle}
           data-testid="venues-plan-create-type"
         >
@@ -1120,20 +1234,21 @@ function CreatePlanForm({ venue }: { venue: Venue }) {
         <select
           id="venue-plan-owner"
           value={ownerOrgID}
-          onChange={(e) => {
-            setOwnerOrgID(e.target.value);
-            if (validationMsg !== null) setValidationMsg(null);
-          }}
-          style={inputStyle}
-          disabled={orgsQuery.isPending}
+          onChange={(e) => onOwnerOrgChange(e.target.value)}
+          style={ownerIssue !== null ? inputInvalidStyle : inputStyle}
+          disabled={organizationsPending}
+          aria-invalid={ownerIssue !== null}
+          aria-describedby={
+            ownerIssue !== null ? "venue-plan-owner-error" : undefined
+          }
           data-testid="venues-plan-create-owner"
         >
-          {orgsQuery.isPending ? (
+          {organizationsPending ? (
             <option value="">Loading organizations…</option>
           ) : (
             <>
               <option value="">Select organization</option>
-              {orgsSorted.map((org) => (
+              {organizations.map((org) => (
                 <option key={org.id} value={org.id}>
                   {org.name}
                 </option>
@@ -1141,14 +1256,28 @@ function CreatePlanForm({ venue }: { venue: Venue }) {
             </>
           )}
         </select>
+        {ownerIssue !== null ? (
+          <div
+            id="venue-plan-owner-error"
+            style={fieldErrorStyle}
+            data-testid="venues-plan-create-owner-error"
+          >
+            {ownerIssue}
+          </div>
+        ) : null}
       </div>
-      {validationMsg !== null ? (
+      {issues.length > 0 ? (
         <div
           style={validationMsgStyle}
           role="alert"
           data-testid="venues-plan-create-validation"
         >
-          {validationMsg}
+          <strong>Cannot create this plan yet:</strong>
+          <ul style={validationListStyle}>
+            {issues.map((i) => (
+              <li key={i.field}>{i.message}</li>
+            ))}
+          </ul>
         </div>
       ) : null}
       {apiError !== null ? (
@@ -1160,10 +1289,10 @@ function CreatePlanForm({ venue }: { venue: Venue }) {
       <button
         type="submit"
         style={primaryButtonStyle}
-        disabled={mutation.isPending}
+        disabled={submitting}
         data-testid="venues-plan-create-submit"
       >
-        {mutation.isPending ? "Creating…" : "Create plan"}
+        {submitting ? "Creating…" : "Create plan"}
       </button>
     </form>
   );
@@ -1529,7 +1658,7 @@ const versionMetaStyle: CSSProperties = {
   marginLeft: 4,
 };
 
-// Inline validation message for the create-plan form (AB-25)
+// Inline validation message for the create-plan form (AB-25a)
 const validationMsgStyle: CSSProperties = {
   fontSize: 12,
   color: "#b45309",
@@ -1537,4 +1666,20 @@ const validationMsgStyle: CSSProperties = {
   border: "1px solid #fde68a",
   borderRadius: 4,
   padding: "6px 8px",
+};
+
+const validationListStyle: CSSProperties = {
+  margin: "4px 0 0 0",
+  paddingLeft: 18,
+};
+
+// Per-field message rendered directly beneath the offending control.
+const fieldErrorStyle: CSSProperties = {
+  fontSize: 11,
+  color: "#b45309",
+};
+
+const inputInvalidStyle: CSSProperties = {
+  ...inputStyle,
+  border: "1px solid #f59e0b",
 };
