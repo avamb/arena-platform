@@ -172,6 +172,24 @@ func (h *Handler) HandleCreateSeatingPlanVersion(w http.ResponseWriter, r *http.
 		))
 		return
 	}
+	// Ownership gate: only the owning org may add new versions. Foreign plan
+	// IDs resolve as 404 (same as the update handler) so plan existence is
+	// not leaked to non-members. Superadmins bypass membership with an
+	// audited X-Admin-Reason (requireOrgMembership in authz.go).
+	versionMember, err := requireOrgMembership(w, r, qtx, plan.OwnerOrgID)
+	if err != nil {
+		h.logger.Error("seating_plan: version create membership lookup failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"seating_plan.version_create_failed", "failed to create seating plan version", r,
+		))
+		return
+	}
+	if !versionMember {
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+			"seating_plan.not_found", "seating plan not found", r,
+		))
+		return
+	}
 	latest, err := qtx.GetLatestSeatingPlanVersionNumber(ctx, plan.ID)
 	if err != nil {
 		h.logger.Error("seating_plan: latest version lookup failed", slog.String("error", err.Error()))
