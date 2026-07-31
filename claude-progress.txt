@@ -23107,3 +23107,36 @@ All 413/413 features passing at 100%.
 - `make` is not available on this Windows host; codegen run directly via `go run` + `node`.
 - `golangci-lint` is not available locally; lint runs in CI (Lint job is green).
 - `init.sh` / POSIX bash unavailable on this Windows host; API smoke uses running Docker stack.
+
+## 2026-07-31 - Features #411/#414/#415 (AB-25a/b/c) complete
+
+Implemented outside AutoForge (Claude Code session) after two Sonnet windows
+were burned by the CLAUDE.md chat-prompt poisoning (fixed: CLAUDE.md now
+imports AGENTS.md; the AutoForge fork got backup/restore + self-heal).
+
+- AB-25a: create-plan form shows every unmet requirement inline + role=alert
+  summary (no silently disabled button). Browser-verified: empty submit shows
+  'Plan name is required.'; filled submit -> 201 and list refetch.
+- AB-25b: owner-type-aware upload validation (seating_plan_svg: image/svg+xml,
+  2 MiB), standing-capacity input, version create via POST /versions
+  (svg + svg_asset_media_id [+ capacity_standing]; seated derives from
+  geometry). Migration 0078 extends media_objects.owner_type CHECK - the
+  missing piece that made every earlier SVG upload die with 23514.
+- AB-25c: version history table (desc, capacities, UTC created, current/locked
+  badges, selectable rows) + signed-URL SVG preview; per-version GET removed
+  (list already carries geometry).
+- Fixed on arrival: GET /versions was mounted but absent from openapi.yaml
+  (drift test red).
+- Verification: full gates green (go build/test incl. httpserver 10.3s suite,
+  admin Vitest 1037/1037, tsc, codegen no-drift). Live e2e on migrated dev DB:
+  API flow (login -> plan 201 -> multipart SVG upload 201 as seating_plan_svg
+  -> version 201 with capacity_seated=260 derived from the Akropolis fixture
+  -> list [(1,120,260)] -> current_version_id set) and browser flow as
+  organizer@ (create plan via form, upload SVG via drawer -> 'Uploaded as
+  version 1 (260 seats)', history row v1/260/current, preview IMG rendered
+  from signed media URL, zero console errors).
+- Known follow-up: superadmin without org membership gets 403 on plan create
+  (owner_org check has no superadmin bypass - AB-12 class); SPA 'Restoring
+  session...' hang on full reload with stored session remains pre-existing.
+
+All 415/415 features passing.
