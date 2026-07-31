@@ -9,14 +9,17 @@ import { ApiError } from "@/lib/api/client";
 import {
   buildCreateVersionBody,
   createPlanFormIssues,
+  formatVersionTimestamp,
   issueForField,
   parseStandingCapacity,
   parseVersionValidationErrors,
   renderGeometryToSVG,
   resolveCurrentVersionNumber,
+  resolveSelectedVersion,
   validateCreatePlanForm,
   type SeatingGeometry,
   type SeatingPlan,
+  type SeatingPlanVersion,
 } from "@/routes/venueSeatingPlans";
 
 const geometry: SeatingGeometry = {
@@ -494,5 +497,87 @@ describe("buildCreateVersionBody (AB-25b)", () => {
       capacityStanding: 1,
     });
     expect(body).not.toHaveProperty("capacity_seated");
+  });
+});
+
+describe("formatVersionTimestamp (AB-25c)", () => {
+  it("renders a locale-independent UTC stamp", () => {
+    expect(formatVersionTimestamp("2026-07-30T10:00:00Z")).toBe(
+      "2026-07-30 10:00 UTC",
+    );
+  });
+
+  it("normalises an offset timestamp to UTC", () => {
+    expect(formatVersionTimestamp("2026-07-30T12:00:00+02:00")).toBe(
+      "2026-07-30 10:00 UTC",
+    );
+  });
+
+  it("passes through an unparseable value rather than rendering NaN", () => {
+    expect(formatVersionTimestamp("not-a-date")).toBe("not-a-date");
+  });
+});
+
+describe("resolveSelectedVersion (AB-25c)", () => {
+  const plan: SeatingPlan = {
+    id: "01929d0e-0e47-7000-8000-000000000301",
+    venue_id: "01929d0e-0e47-7000-8000-000000000201",
+    owner_org_id: "01929d0e-0e47-7000-8000-000000000001",
+    name: "Main Hall",
+    plan_type: "assigned_seats",
+    visibility: "private",
+    status: "draft",
+    source_seating_plan_id: null,
+    current_version_id: "ver-2",
+    current_version_number: 2,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  };
+
+  const mkVersion = (id: string, n: number): SeatingPlanVersion => ({
+    id,
+    seating_plan_id: plan.id,
+    version_number: n,
+    geometry: {},
+    geometry_checksum: "sum",
+    svg_asset_media_id: null,
+    capacity_seated: n * 10,
+    capacity_standing: 0,
+    locked_at: null,
+    created_at: "2026-01-01T00:00:00Z",
+  });
+
+  const versions = [mkVersion("ver-3", 3), mkVersion("ver-2", 2), mkVersion("ver-1", 1)];
+
+  it("returns null when the plan has no versions", () => {
+    expect(resolveSelectedVersion(plan, [], null)).toBeNull();
+    expect(resolveSelectedVersion(plan, [], "ver-2")).toBeNull();
+  });
+
+  it("defaults to the plan's current version", () => {
+    expect(resolveSelectedVersion(plan, versions, null)?.id).toBe("ver-2");
+  });
+
+  it("honours an explicit operator selection", () => {
+    expect(resolveSelectedVersion(plan, versions, "ver-1")?.id).toBe("ver-1");
+  });
+
+  it("falls back to the current version when the selection no longer exists", () => {
+    // e.g. a stale id left over from a plan whose history was refetched.
+    expect(resolveSelectedVersion(plan, versions, "ver-gone")?.id).toBe("ver-2");
+  });
+
+  it("resolves by current_version_number when the id does not match a row", () => {
+    const legacy: SeatingPlan = { ...plan, current_version_id: "unknown-id" };
+    expect(resolveSelectedVersion(legacy, versions, null)?.version_number).toBe(2);
+  });
+
+  it("falls back to the newest version when the pointer is unresolvable", () => {
+    const orphan: SeatingPlan = {
+      ...plan,
+      current_version_id: "unknown-id",
+      current_version_number: 99,
+    };
+    expect(resolveSelectedVersion(orphan, versions, null)?.id).toBe("ver-3");
   });
 });

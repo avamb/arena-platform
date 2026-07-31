@@ -18,7 +18,8 @@
  *   PATCH  /v1/seating-plans/{id}          (archive via status="archived")
  *   POST /v1/seating-plans/{id}/fork                        (SEAT-A3 fork)
  *   POST /v1/seating-plans/{id}/versions                    (SEAT-A3 upload)
- *   GET  /v1/seating-plans/{id}/versions/{n}                (used for preview)
+ *   GET  /v1/seating-plans/{id}/versions      (AB-25c history + preview src)
+ *   GET  /v1/media/{id}              (signed URL for the stored SVG asset)
  *
  * 422 error shape from POST versions:
  *
@@ -116,9 +117,6 @@ export interface SeatingPlanVersion {
   readonly capacity_standing: number;
   readonly locked_at: string | null;
   readonly created_at: string;
-}
-interface SeatingPlanVersionEnvelope {
-  readonly seating_plan_version: SeatingPlanVersion;
 }
 interface CreateVersionResponse {
   readonly seating_plan: SeatingPlan;
@@ -601,14 +599,102 @@ function SeatingPlanRow({
 }
 
 function SeatingPlanBody({ plan, venue }: { plan: SeatingPlan; venue: Venue }) {
+  // The version history and the preview address the same version, so the
+  // selection lives here rather than in either child. `null` means "follow
+  // the plan's current version", which is what a freshly-opened drawer — and
+  // a drawer that has just published a new version — should show.
+  const [selectedVersionID, setSelectedVersionID] = useState<string | null>(null);
+
+  const versionsQuery = useQuery<SeatingPlanVersionListEnvelope, ApiError>({
+    queryKey: ["seating-plan-versions", plan.id],
+    queryFn: () =>
+      authedFetch<SeatingPlanVersionListEnvelope>({
+        method: "GET",
+        path: `/v1/seating-plans/${plan.id}/versions`,
+      }),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+
+  const versions = versionsQuery.data?.seating_plan_versions ?? [];
+  const selectedVersion = resolveSelectedVersion(plan, versions, selectedVersionID);
+
   return (
     <div style={planBodyStyle}>
-      <UploadSVGForm plan={plan} venue={venue} />
-      <VersionList plan={plan} />
-      <PlanPreview plan={plan} />
+      <UploadSVGForm
+        plan={plan}
+        venue={venue}
+        // Snap back to the (new) current version rather than leaving the
+        // preview pinned to whichever historical version was selected.
+        onVersionCreated={() => setSelectedVersionID(null)}
+      />
+      <div style={sectionStyle} data-testid={`venues-plan-versions-${plan.id}`}>
+        <div style={sectionTitleStyle}>Version history</div>
+        {versionsQuery.isPending ? (
+          <div style={statusBoxStyle} role="status">
+            Loading versions…
+          </div>
+        ) : versionsQuery.isError ? (
+          <div style={errorBoxStyle} role="alert">
+            <strong>Could not load version history.</strong>
+            <div style={errorCodeStyle}>
+              {versionsQuery.error?.code ?? "unknown.error"}
+            </div>
+          </div>
+        ) : (
+          <VersionHistoryTable
+            versions={versions}
+            currentVersionID={plan.current_version_id}
+            selectedVersionID={selectedVersion?.id ?? null}
+            onSelect={(id) => setSelectedVersionID(id)}
+          />
+        )}
+      </div>
+      <PlanPreviewSection version={selectedVersion} />
       <PlanActions plan={plan} venue={venue} />
     </div>
   );
+}
+
+/**
+ * Decide which version the drawer previews.
+ *
+ * Explicit operator selection wins. Otherwise the plan's current version is
+ * used, resolved first by `current_version_id` and — for server payloads that
+ * predate that field being echoed — by `current_version_number`. The newest
+ * row is the final fallback so a plan whose pointer is somehow unresolvable
+ * still previews something rather than nothing.
+ */
+export function resolveSelectedVersion(
+  plan: SeatingPlan,
+  versions: readonly SeatingPlanVersion[],
+  selectedVersionID: string | null,
+): SeatingPlanVersion | null {
+  if (versions.length === 0) return null;
+  if (selectedVersionID !== null) {
+    const picked = versions.find((v) => v.id === selectedVersionID);
+    if (picked !== undefined) return picked;
+  }
+  const current = versions.find((v) => v.id === plan.current_version_id);
+  if (current !== undefined) return current;
+  const currentNumber = resolveCurrentVersionNumber(plan);
+  if (currentNumber !== null) {
+    const byNumber = versions.find((v) => v.version_number === currentNumber);
+    if (byNumber !== undefined) return byNumber;
+  }
+  return [...versions].sort((a, b) => b.version_number - a.version_number)[0] ?? null;
+}
+
+/**
+ * Render a version's created_at as a stable, locale-independent UTC stamp.
+ * Admin operators compare these against server logs, so a fixed format beats
+ * a browser-localised one.
+ */
+export function formatVersionTimestamp(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const s = d.toISOString();
+  return `${s.slice(0, 10)} ${s.slice(11, 16)} UTC`;
 }
 
 // ---------------------------------------------------------------------------
@@ -662,7 +748,15 @@ export function buildCreateVersionBody(params: {
   return body;
 }
 
-function UploadSVGForm({ plan, venue }: { plan: SeatingPlan; venue: Venue }) {
+function UploadSVGForm({
+  plan,
+  venue,
+  onVersionCreated,
+}: {
+  plan: SeatingPlan;
+  venue: Venue;
+  onVersionCreated: () => void;
+}) {
   const qc = useQueryClient();
   const [issues, setIssues] = useState<readonly SeatingImportIssue[]>([]);
   const [warnings, setWarnings] = useState<readonly SeatingImportIssue[]>([]);
@@ -719,11 +813,12 @@ function UploadSVGForm({ plan, venue }: { plan: SeatingPlan; venue: Venue }) {
           `(${res.seating_plan_version.capacity_seated} seats). ` +
           `Version ${res.seating_plan_version.version_number} is now current.`,
       );
-      // Refetch the plan (current_version_id / _number), the version history
-      // table, and the preview so the drawer reflects the new current version.
+      // Refetch the plan (current_version_id / _number) and the version
+      // history, which also feeds the preview, so the drawer reflects the
+      // newly-published version.
       qc.invalidateQueries({ queryKey: ["seating-plans", "by-venue", venue.id] });
-      qc.invalidateQueries({ queryKey: ["seating-plan-version", plan.id] });
       qc.invalidateQueries({ queryKey: ["seating-plan-versions", plan.id] });
+      onVersionCreated();
     },
     onError: (err) => {
       setUploadStep(null);
@@ -932,82 +1027,128 @@ export function UploadSVGFormView({
 // Version history list (AB-25)
 // ---------------------------------------------------------------------------
 
+export interface VersionHistoryTableProps {
+  /** Versions as returned by the API: version_number descending. */
+  readonly versions: readonly SeatingPlanVersion[];
+  readonly currentVersionID: string | null;
+  readonly selectedVersionID: string | null;
+  readonly onSelect: (versionID: string) => void;
+}
+
 /**
- * Shows all versions for a plan in descending order. Each row shows the
- * version number, capacity, creation date, and whether the version is
- * locked or is the currently-published version. The geometry payload is
- * fetched by the server but not rendered here — it is only needed by the
- * Preview section.
+ * Version history for a plan: one row per version, newest first, carrying
+ * both capacities, the creation stamp, the lock state, and a marker for the
+ * plan's published (current) version. Selecting a row targets it for preview.
+ *
+ * Stateless and query-free so it renders under renderToStaticMarkup in tests.
+ * The rows are sorted defensively rather than trusting the transport order.
  */
-function VersionList({ plan }: { plan: SeatingPlan }) {
-  const query = useQuery<SeatingPlanVersionListEnvelope, ApiError>({
-    queryKey: ["seating-plan-versions", plan.id],
-    queryFn: () =>
-      authedFetch<SeatingPlanVersionListEnvelope>({
-        method: "GET",
-        path: `/v1/seating-plans/${plan.id}/versions`,
-      }),
-    retry: false,
-    refetchOnWindowFocus: false,
-  });
-
-  if (query.isPending) {
-    return (
-      <div style={sectionStyle}>
-        <div style={sectionTitleStyle}>Versions</div>
-        <div style={statusBoxStyle}>Loading versions…</div>
-      </div>
-    );
-  }
-
-  const versions = query.data?.seating_plan_versions ?? [];
-
+export function VersionHistoryTable({
+  versions,
+  currentVersionID,
+  selectedVersionID,
+  onSelect,
+}: VersionHistoryTableProps): JSX.Element {
   if (versions.length === 0) {
     return (
-      <div style={sectionStyle} data-testid={`venues-plan-versions-${plan.id}`}>
-        <div style={sectionTitleStyle}>Versions</div>
-        <p style={hintStyle}>
-          A plan is a container. Upload an SVG above to create version 1 — the
-          version carries the parsed geometry, seat capacity, and the original
-          SVG asset stored in the media library.
-        </p>
-      </div>
+      <p style={hintStyle} data-testid="venues-plan-versions-empty">
+        No versions yet. A plan is only a container — Upload an SVG above to
+        create version 1, which carries the parsed geometry, the derived seat
+        capacity, and the original SVG asset stored in the media library.
+      </p>
     );
   }
 
+  const ordered = [...versions].sort((a, b) => b.version_number - a.version_number);
+
   return (
-    <div style={sectionStyle} data-testid={`venues-plan-versions-${plan.id}`}>
-      <div style={sectionTitleStyle}>
-        Versions ({versions.length})
-      </div>
-      <ul style={versionListStyle}>
-        {versions.map((v) => {
-          const isCurrent = plan.current_version_id === v.id;
-          return (
-            <li
-              key={v.id}
-              style={isCurrent ? versionRowCurrentStyle : versionRowStyle}
-              data-testid={`venues-plan-version-row-${v.id}`}
-            >
-              <span style={versionNumberStyle}>v{v.version_number}</span>
-              {isCurrent ? (
-                <span style={currentBadgeStyle}>current</span>
-              ) : null}
-              {v.locked_at !== null ? (
-                <span style={lockedBadgeStyle}>locked</span>
-              ) : null}
-              <span style={versionMetaStyle}>
-                {v.capacity_seated.toLocaleString()} seated
-                {v.capacity_standing > 0
-                  ? ` + ${v.capacity_standing.toLocaleString()} standing`
-                  : ""}
-                {" · "}
-                {new Date(v.created_at).toLocaleDateString()}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
+    <div style={versionTableWrapStyle}>
+      <table style={versionTableStyle}>
+        <caption style={versionCaptionStyle}>
+          {ordered.length} version{ordered.length === 1 ? "" : "s"}, newest first.
+          Select a row to preview it.
+        </caption>
+        <thead>
+          <tr>
+            <th style={versionThStyle} scope="col">
+              Version
+            </th>
+            <th style={versionThNumStyle} scope="col">
+              Seated
+            </th>
+            <th style={versionThNumStyle} scope="col">
+              Standing
+            </th>
+            <th style={versionThStyle} scope="col">
+              Created
+            </th>
+            <th style={versionThStyle} scope="col">
+              State
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {ordered.map((v) => {
+            const isCurrent = currentVersionID !== null && currentVersionID === v.id;
+            const isSelected = selectedVersionID === v.id;
+            return (
+              <tr key={v.id} style={isSelected ? versionTrSelectedStyle : undefined}>
+                <th style={versionRowHeaderStyle} scope="row">
+                  <button
+                    type="button"
+                    onClick={() => onSelect(v.id)}
+                    aria-pressed={isSelected}
+                    aria-label={`Preview version ${v.version_number}`}
+                    style={isSelected ? versionSelectButtonActiveStyle : versionSelectButtonStyle}
+                    data-testid={`venues-plan-version-row-${v.id}`}
+                  >
+                    v{v.version_number}
+                  </button>
+                  {isSelected ? (
+                    <span
+                      style={selectedBadgeStyle}
+                      data-testid={`venues-plan-version-selected-${v.id}`}
+                    >
+                      previewing
+                    </span>
+                  ) : null}
+                </th>
+                <td style={versionTdNumStyle}>{v.capacity_seated.toLocaleString()}</td>
+                <td style={versionTdNumStyle}>
+                  {v.capacity_standing.toLocaleString()}
+                </td>
+                <td style={versionTdStyle}>
+                  <time dateTime={v.created_at}>
+                    {formatVersionTimestamp(v.created_at)}
+                  </time>
+                </td>
+                <td style={versionTdStyle}>
+                  {isCurrent ? (
+                    <span
+                      style={currentBadgeStyle}
+                      data-testid={`venues-plan-version-current-${v.id}`}
+                    >
+                      current
+                    </span>
+                  ) : null}
+                  {v.locked_at !== null ? (
+                    <span
+                      style={lockedBadgeStyle}
+                      title={`Locked ${formatVersionTimestamp(v.locked_at)}`}
+                      data-testid={`venues-plan-version-locked-${v.id}`}
+                    >
+                      locked
+                    </span>
+                  ) : null}
+                  {!isCurrent && v.locked_at === null ? (
+                    <span style={versionMetaStyle}>—</span>
+                  ) : null}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -1016,29 +1157,13 @@ function VersionList({ plan }: { plan: SeatingPlan }) {
 // Preview: fetch current version and render inline SVG
 // ---------------------------------------------------------------------------
 
-function PlanPreview({ plan }: { plan: SeatingPlan }) {
-  // Fetch the plan's CURRENT version: the list payload carries
-  // current_version_number alongside current_version_id, so the preview
-  // addresses /versions/{n} directly instead of hard-coding n=1 (which
-  // silently rendered stale geometry once a second version was
-  // uploaded). When a new version is uploaded the plans list query is
-  // invalidated (see UploadSVGForm.onSuccess), the plan re-renders with
-  // the bumped number, and this query keys off it.
-  const versionN = resolveCurrentVersionNumber(plan);
-  const versionQuery = useQuery<SeatingPlanVersionEnvelope, ApiError>({
-    queryKey: ["seating-plan-version", plan.id, versionN],
-    enabled: versionN !== null,
-    queryFn: () =>
-      authedFetch<SeatingPlanVersionEnvelope>({
-        method: "GET",
-        path: `/v1/seating-plans/${plan.id}/versions/${versionN}`,
-      }),
-    retry: false,
-    refetchOnWindowFocus: false,
-  });
-
-  const svgMediaID =
-    versionQuery.data?.seating_plan_version.svg_asset_media_id ?? null;
+/**
+ * Container for the inline preview. The version object itself comes from the
+ * history list (which already carries the geometry), so the only request made
+ * here is for the short-lived signed URL of the stored SVG asset.
+ */
+function PlanPreviewSection({ version }: { version: SeatingPlanVersion | null }) {
+  const svgMediaID = version?.svg_asset_media_id ?? null;
 
   // Fetch a signed download URL for the SVG media asset when it exists.
   // The URL expires after 7 minutes; react-query will refetch on remount.
@@ -1064,51 +1189,87 @@ function PlanPreview({ plan }: { plan: SeatingPlan }) {
     staleTime: 5 * 60 * 1000, // 5 min — well within the 7-min signed URL TTL
   });
 
-  if (plan.current_version_id === null) {
-    return (
-      <div style={sectionStyle} data-testid={`venues-plan-preview-${plan.id}`}>
-        <div style={sectionTitleStyle}>Preview</div>
+  return (
+    <div style={sectionStyle} data-testid="venues-plan-preview">
+      <div style={sectionTitleStyle}>Preview</div>
+      {version === null ? (
         <p style={hintStyle}>
           No version yet. Upload an SVG above to create version 1. A seating
           plan is a container — the version carries the geometry, seat
           capacity, and the original SVG asset.
         </p>
-      </div>
-    );
-  }
+      ) : (
+        <VersionPreview
+          version={version}
+          signedURL={mediaQuery.data?.signed_url ?? null}
+          loading={svgMediaID !== null && mediaQuery.isPending}
+          error={mediaQuery.error ?? null}
+        />
+      )}
+    </div>
+  );
+}
+
+export interface VersionPreviewProps {
+  readonly version: SeatingPlanVersion;
+  /** Signed download URL for version.svg_asset_media_id, when resolved. */
+  readonly signedURL: string | null;
+  readonly loading?: boolean;
+  readonly error?: ApiError | null;
+}
+
+/**
+ * Inline preview of a single version.
+ *
+ * Prefers the stored SVG binary rendered through an `<img>`: the browser
+ * treats an SVG image resource as inert — no script execution, no external
+ * fetches — so operator-supplied markup can never become an XSS channel here.
+ * Versions predating the media pipeline (or whose asset URL cannot be signed)
+ * fall back to the client-side geometry renderer, which emits only circle
+ * primitives built from numeric coordinates.
+ *
+ * Stateless and query-free so it renders under renderToStaticMarkup in tests.
+ */
+export function VersionPreview({
+  version,
+  signedURL,
+  loading = false,
+  error = null,
+}: VersionPreviewProps): JSX.Element {
+  const hasAsset = version.svg_asset_media_id !== null;
 
   return (
-    <div style={sectionStyle} data-testid={`venues-plan-preview-${plan.id}`}>
-      <div style={sectionTitleStyle}>Preview</div>
-      {versionQuery.isPending ? (
-        <div style={statusBoxStyle}>Loading current version…</div>
-      ) : versionQuery.isError ? (
-        <div style={errorBoxStyle} role="alert">
-          <strong>Could not load version.</strong>
-          <div style={errorCodeStyle}>
-            {versionQuery.error?.code ?? "unknown.error"}
-          </div>
+    <div style={previewWrapStyle}>
+      <div style={previewCaptionStyle}>
+        Version {version.version_number} ·{" "}
+        {version.capacity_seated.toLocaleString()} seated
+        {version.capacity_standing > 0
+          ? ` · ${version.capacity_standing.toLocaleString()} standing`
+          : ""}
+      </div>
+      {hasAsset && loading ? (
+        <div style={statusBoxStyle} role="status">
+          Loading SVG asset…
         </div>
-      ) : versionQuery.data !== undefined ? (
-        // Prefer the stored SVG binary (preview via signed URL) when available.
-        // Displaying via <img> is XSS-safe — the browser treats SVG as an image
-        // resource and does not execute scripts or load external refs.
-        // Fall back to the client-side geometry renderer for older versions
-        // that pre-date the media upload pipeline.
-        svgMediaID !== null && mediaQuery.data?.signed_url !== undefined ? (
-          <div style={svgWrapStyle} data-testid="venues-plan-preview-svg-img">
-            <img
-              src={mediaQuery.data.signed_url}
-              alt="Seating plan SVG preview"
-              style={{ maxWidth: "100%", height: "auto", display: "block" }}
-            />
-          </div>
-        ) : (
-          <GeometrySVG
-            geometry={versionQuery.data.seating_plan_version.geometry}
+      ) : hasAsset && signedURL !== null ? (
+        <div style={svgWrapStyle} data-testid="venues-plan-preview-svg-img">
+          <img
+            src={signedURL}
+            alt={`Seating plan SVG preview, version ${version.version_number}`}
+            style={{ maxWidth: "100%", height: "auto", display: "block" }}
           />
-        )
-      ) : null}
+        </div>
+      ) : (
+        <>
+          {hasAsset && error !== null ? (
+            <div style={hintStyle} data-testid="venues-plan-preview-asset-error">
+              Stored SVG could not be loaded ({error.code}); showing the parsed
+              geometry instead.
+            </div>
+          ) : null}
+          <GeometrySVG geometry={version.geometry} />
+        </>
+      )}
     </div>
   );
 }
@@ -1786,39 +1947,104 @@ const svgWrapStyle: CSSProperties = {
   maxHeight: 320,
 };
 
-// Version list styles (AB-25)
-const versionListStyle: CSSProperties = {
-  listStyle: "none",
-  padding: 0,
-  margin: 0,
-  display: "flex",
-  flexDirection: "column",
-  gap: 4,
+// Version history table styles (AB-25c)
+const versionTableWrapStyle: CSSProperties = {
+  // Narrow drawers must scroll the table rather than the page body.
+  overflowX: "auto",
 };
 
-const versionRowStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 6,
-  padding: "6px 8px",
-  borderRadius: 4,
-  background: "#f8fafc",
-  border: "1px solid #e2e8f0",
+const versionTableStyle: CSSProperties = {
+  width: "100%",
+  borderCollapse: "collapse",
   fontSize: 12,
 };
 
-const versionRowCurrentStyle: CSSProperties = {
-  ...versionRowStyle,
-  border: "1px solid #93c5fd",
+const versionCaptionStyle: CSSProperties = {
+  captionSide: "bottom",
+  textAlign: "left",
+  fontSize: 11,
+  color: "#64748b",
+  paddingTop: 4,
+};
+
+const versionThStyle: CSSProperties = {
+  textAlign: "left",
+  fontSize: 11,
+  fontWeight: 700,
+  color: "#475569",
+  borderBottom: "1px solid #e2e8f0",
+  padding: "4px 6px",
+  whiteSpace: "nowrap",
+};
+
+const versionThNumStyle: CSSProperties = {
+  ...versionThStyle,
+  textAlign: "right",
+};
+
+const versionRowHeaderStyle: CSSProperties = {
+  textAlign: "left",
+  padding: "4px 6px",
+  borderBottom: "1px solid #f1f5f9",
+  whiteSpace: "nowrap",
+};
+
+const versionTdStyle: CSSProperties = {
+  padding: "4px 6px",
+  borderBottom: "1px solid #f1f5f9",
+  color: "#334155",
+  whiteSpace: "nowrap",
+};
+
+const versionTdNumStyle: CSSProperties = {
+  ...versionTdStyle,
+  textAlign: "right",
+  fontVariantNumeric: "tabular-nums",
+};
+
+const versionTrSelectedStyle: CSSProperties = {
   background: "#eff6ff",
 };
 
-const versionNumberStyle: CSSProperties = {
+const versionSelectButtonStyle: CSSProperties = {
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
   fontSize: 12,
   fontWeight: 700,
+  color: "#0369a1",
+  background: "transparent",
+  border: 0,
+  padding: 0,
+  cursor: "pointer",
+  textDecoration: "underline",
+};
+
+const versionSelectButtonActiveStyle: CSSProperties = {
+  ...versionSelectButtonStyle,
   color: "#0f172a",
-  minWidth: 28,
+  textDecoration: "none",
+};
+
+const selectedBadgeStyle: CSSProperties = {
+  marginLeft: 6,
+  fontSize: 10,
+  fontWeight: 700,
+  padding: "1px 5px",
+  borderRadius: 3,
+  background: "#e2e8f0",
+  color: "#0f172a",
+  letterSpacing: 0.3,
+};
+
+const previewWrapStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+};
+
+const previewCaptionStyle: CSSProperties = {
+  fontSize: 11,
+  color: "#475569",
+  fontWeight: 600,
 };
 
 const currentBadgeStyle: CSSProperties = {

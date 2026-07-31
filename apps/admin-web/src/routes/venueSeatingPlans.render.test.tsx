@@ -8,11 +8,15 @@
  */
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { ApiError } from "@/lib/api/client";
 import {
   CreatePlanFormView,
   UploadSVGFormView,
+  VersionHistoryTable,
+  VersionPreview,
   createPlanFormIssues,
   type OrganizationSummary,
+  type SeatingPlanVersion,
 } from "@/routes/venueSeatingPlans";
 
 const ORGS: readonly OrganizationSummary[] = [
@@ -194,5 +198,233 @@ describe("UploadSVGFormView (AB-25b)", () => {
     expect(html).toContain('data-testid="venues-plan-upload-ok-plan-1"');
     expect(html).toContain("version 3");
     expect(html).toContain("now current");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AB-25c — version history table + preview
+// ---------------------------------------------------------------------------
+
+function version(
+  overrides: Partial<SeatingPlanVersion> & { id: string; version_number: number },
+): SeatingPlanVersion {
+  return {
+    seating_plan_id: "plan-1",
+    geometry: {},
+    geometry_checksum: "abc123",
+    svg_asset_media_id: null,
+    capacity_seated: 100,
+    capacity_standing: 0,
+    locked_at: null,
+    created_at: "2026-07-30T10:00:00Z",
+    ...overrides,
+  };
+}
+
+const VERSIONS: readonly SeatingPlanVersion[] = [
+  version({
+    id: "v3",
+    version_number: 3,
+    capacity_seated: 450,
+    capacity_standing: 120,
+    created_at: "2026-07-30T10:00:00Z",
+  }),
+  version({
+    id: "v2",
+    version_number: 2,
+    capacity_seated: 300,
+    locked_at: "2026-07-29T09:00:00Z",
+    created_at: "2026-07-29T08:00:00Z",
+  }),
+  version({
+    id: "v1",
+    version_number: 1,
+    capacity_seated: 100,
+    created_at: "2026-07-28T08:00:00Z",
+  }),
+];
+
+function historyMarkup(
+  overrides: Partial<Parameters<typeof VersionHistoryTable>[0]> = {},
+): string {
+  return renderToStaticMarkup(
+    <VersionHistoryTable
+      versions={VERSIONS}
+      currentVersionID="v3"
+      selectedVersionID="v3"
+      onSelect={NOOP}
+      {...overrides}
+    />,
+  );
+}
+
+describe("VersionHistoryTable (AB-25c)", () => {
+  it("renders one selectable row per version", () => {
+    const html = historyMarkup();
+    expect(html).toContain('data-testid="venues-plan-version-row-v3"');
+    expect(html).toContain('data-testid="venues-plan-version-row-v2"');
+    expect(html).toContain('data-testid="venues-plan-version-row-v1"');
+  });
+
+  it("orders rows by version_number descending regardless of transport order", () => {
+    // Deliberately shuffled input: the table must not trust the array order.
+    const html = historyMarkup({
+      versions: [VERSIONS[1]!, VERSIONS[2]!, VERSIONS[0]!],
+    });
+    const idxV3 = html.indexOf("venues-plan-version-row-v3");
+    const idxV2 = html.indexOf("venues-plan-version-row-v2");
+    const idxV1 = html.indexOf("venues-plan-version-row-v1");
+    expect(idxV3).toBeLessThan(idxV2);
+    expect(idxV2).toBeLessThan(idxV1);
+  });
+
+  it("renders both capacities and the creation timestamp", () => {
+    const html = historyMarkup();
+    expect(html).toContain("450");
+    expect(html).toContain("120");
+    expect(html).toContain("2026-07-30 10:00 UTC");
+    expect(html).toContain("2026-07-28 08:00 UTC");
+    // The machine-readable stamp rides along on <time>. HTML attribute names
+    // are case-insensitive and React emits the JSX spelling here, so match
+    // without pinning the casing.
+    expect(html.toLowerCase()).toContain('datetime="2026-07-30t10:00:00z"');
+  });
+
+  it("marks the plan's current version", () => {
+    const html = historyMarkup();
+    expect(html).toContain('data-testid="venues-plan-version-current-v3"');
+    expect(html).toContain("current");
+    expect(html).not.toContain('data-testid="venues-plan-version-current-v1"');
+  });
+
+  it("marks locked versions only", () => {
+    const html = historyMarkup();
+    expect(html).toContain('data-testid="venues-plan-version-locked-v2"');
+    expect(html).toContain("locked");
+    expect(html).not.toContain('data-testid="venues-plan-version-locked-v3"');
+    expect(html).not.toContain('data-testid="venues-plan-version-locked-v1"');
+  });
+
+  it("marks the row currently targeted by the preview", () => {
+    const html = historyMarkup({ selectedVersionID: "v2" });
+    expect(html).toContain('data-testid="venues-plan-version-selected-v2"');
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).not.toContain('data-testid="venues-plan-version-selected-v3"');
+  });
+
+  it("labels each selector for screen readers", () => {
+    expect(historyMarkup()).toContain('aria-label="Preview version 3"');
+  });
+
+  it("explains the empty state instead of rendering an empty table", () => {
+    const html = historyMarkup({
+      versions: [],
+      currentVersionID: null,
+      selectedVersionID: null,
+    });
+    expect(html).toContain('data-testid="venues-plan-versions-empty"');
+    expect(html).toContain("Upload an SVG");
+    expect(html).not.toContain("<table");
+  });
+});
+
+describe("VersionPreview (AB-25c)", () => {
+  it("renders the stored SVG asset as an <img> when a signed URL is available", () => {
+    const html = renderToStaticMarkup(
+      <VersionPreview
+        version={version({ id: "v3", version_number: 3, svg_asset_media_id: "media-1" })}
+        signedURL="http://test.invalid/v1/media-files/media-1?sig=x"
+        loading={false}
+      />,
+    );
+    expect(html).toContain('data-testid="venues-plan-preview-svg-img"');
+    expect(html).toContain("http://test.invalid/v1/media-files/media-1?sig=x");
+    expect(html).toContain("<img");
+  });
+
+  it("falls back to the client-side geometry renderer with no stored asset", () => {
+    const html = renderToStaticMarkup(
+      <VersionPreview
+        version={version({
+          id: "v1",
+          version_number: 1,
+          geometry: {
+            canvas: { width: 100, height: 80 },
+            categories: [{ index: 0, name: "Stalls", color: "#ff0000" }],
+            sections: [
+              {
+                key: "A",
+                name: "A",
+                rows: [
+                  {
+                    key: "1",
+                    name: "1",
+                    seats: [
+                      {
+                        key: "A|1|1",
+                        number: "1",
+                        x: 10,
+                        y: 10,
+                        radius: 4,
+                        category_index: 0,
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        })}
+        signedURL={null}
+        loading={false}
+      />,
+    );
+    expect(html).toContain('data-testid="venues-plan-preview-svg"');
+    expect(html).toContain("<circle");
+    expect(html).not.toContain('data-testid="venues-plan-preview-svg-img"');
+  });
+
+  it("shows a loading state while the signed URL is being fetched", () => {
+    const html = renderToStaticMarkup(
+      <VersionPreview
+        version={version({ id: "v3", version_number: 3, svg_asset_media_id: "media-1" })}
+        signedURL={null}
+        loading
+      />,
+    );
+    expect(html).toContain("Loading SVG asset…");
+    expect(html).not.toContain('data-testid="venues-plan-preview-svg-img"');
+  });
+
+  it("degrades to geometry and says why when the asset URL cannot be signed", () => {
+    const html = renderToStaticMarkup(
+      <VersionPreview
+        version={version({ id: "v3", version_number: 3, svg_asset_media_id: "media-1" })}
+        signedURL={null}
+        loading={false}
+        error={new ApiError(404, { code: "media.not_found", message: "gone" })}
+      />,
+    );
+    expect(html).toContain('data-testid="venues-plan-preview-asset-error"');
+    expect(html).toContain("media.not_found");
+    expect(html).toContain('data-testid="venues-plan-preview-svg"');
+  });
+
+  it("labels which version is being previewed and its capacities", () => {
+    const html = renderToStaticMarkup(
+      <VersionPreview
+        version={version({
+          id: "v2",
+          version_number: 2,
+          capacity_seated: 300,
+          capacity_standing: 40,
+        })}
+        signedURL={null}
+        loading={false}
+      />,
+    );
+    expect(html).toContain("Version 2");
+    expect(html).toContain("300");
+    expect(html).toContain("40");
   });
 });
