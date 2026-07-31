@@ -19,6 +19,8 @@ import {
   validateMode,
   validatePublicConfigJSON,
   mapServerError,
+  buildStripeWebhookUrl,
+  STRIPE_WEBHOOK_EVENTS,
 } from "./payments";
 
 // ---------------------------------------------------------------------------
@@ -216,5 +218,62 @@ describe("mapServerError", () => {
   it("maps unknown code with no field to form-level error", () => {
     const err = makeError("totally.unknown", "something broke");
     expect(mapServerError(err).form).toContain("something broke");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildStripeWebhookUrl (AB-34)
+// ---------------------------------------------------------------------------
+describe("buildStripeWebhookUrl", () => {
+  it("appends the webhook path to a plain base URL", () => {
+    const url = buildStripeWebhookUrl("https://api.arenasoldout.com");
+    expect(url).toBe("https://api.arenasoldout.com/v1/payment-intents/webhook");
+  });
+
+  it("strips trailing slashes from the base before appending", () => {
+    const url = buildStripeWebhookUrl("https://api.arenasoldout.com/");
+    expect(url).toBe("https://api.arenasoldout.com/v1/payment-intents/webhook");
+  });
+
+  it("handles multiple trailing slashes", () => {
+    const url = buildStripeWebhookUrl("https://api.example.com//");
+    expect(url).toBe("https://api.example.com/v1/payment-intents/webhook");
+  });
+
+  it("works with a localhost development base", () => {
+    const url = buildStripeWebhookUrl("http://localhost:18080");
+    expect(url).toBe("http://localhost:18080/v1/payment-intents/webhook");
+  });
+
+  it("works with a path-prefixed base URL", () => {
+    const url = buildStripeWebhookUrl("https://api.example.com/arena");
+    expect(url).toBe("https://api.example.com/arena/v1/payment-intents/webhook");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// STRIPE_WEBHOOK_EVENTS (AB-34)
+// ---------------------------------------------------------------------------
+describe("STRIPE_WEBHOOK_EVENTS", () => {
+  it("includes all events the Go handler consumes", () => {
+    expect(STRIPE_WEBHOOK_EVENTS).toContain("payment_intent.succeeded");
+    expect(STRIPE_WEBHOOK_EVENTS).toContain("payment_intent.payment_failed");
+    expect(STRIPE_WEBHOOK_EVENTS).toContain("payment_intent.requires_action");
+    expect(STRIPE_WEBHOOK_EVENTS).toContain("payment_intent.processing");
+    expect(STRIPE_WEBHOOK_EVENTS).toContain("payment_intent.amount_capturable");
+    expect(STRIPE_WEBHOOK_EVENTS).toContain("payment_intent.manual_review");
+  });
+
+  it("does not include mock provider aliases", () => {
+    // Mock aliases are test-only shorthands that must not be registered in Stripe
+    for (const evt of STRIPE_WEBHOOK_EVENTS) {
+      expect(evt).not.toMatch(/^mock\./);
+    }
+  });
+
+  it("only includes payment_intent.* events (Stripe naming convention)", () => {
+    for (const evt of STRIPE_WEBHOOK_EVENTS) {
+      expect(evt).toMatch(/^payment_intent\./);
+    }
   });
 });

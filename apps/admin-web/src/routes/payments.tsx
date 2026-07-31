@@ -45,6 +45,8 @@
 import { createRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  useCallback,
+  useEffect,
   useMemo,
   useState,
   type CSSProperties,
@@ -53,6 +55,7 @@ import {
 } from "react";
 import { Route as RootRoute } from "./__root";
 import { ApiError, authedFetch } from "@/lib/api/client";
+import { config as appConfig } from "@/lib/config";
 import { RequirePermission } from "@/components/RequirePermission";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useScope } from "@/lib/auth/ScopeContext";
@@ -451,6 +454,8 @@ function PaymentsModule() {
         );
       })()}
 
+      <StripeWebhookSetupPanel apiBaseUrl={appConfig.apiBaseUrl} />
+
       <PaymentsBody
         query={query}
         orgReady={orgReady}
@@ -475,6 +480,123 @@ function PaymentsModule() {
         />
       ) : null}
     </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Stripe webhook setup panel (AB-34)
+// ---------------------------------------------------------------------------
+
+/**
+ * StripeWebhookSetupPanel renders a collapsible info box that guides the
+ * operator through the Stripe webhook registration flow:
+ *
+ *  1. Copy the platform's webhook endpoint URL.
+ *  2. Register it in the Stripe Dashboard → Developers → Webhooks.
+ *  3. Select the platform's consumed event types.
+ *  4. Copy the whsec_... signing secret back into the Payment Config form.
+ *
+ * The webhook URL is derived from VITE_API_BASE_URL so it automatically
+ * reflects the deployment (staging vs. production) without hardcoding.
+ */
+function StripeWebhookSetupPanel({ apiBaseUrl }: { apiBaseUrl: string }) {
+  const webhookUrl = buildStripeWebhookUrl(apiBaseUrl);
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    void navigator.clipboard.writeText(webhookUrl).then(() => {
+      setCopied(true);
+    });
+  }, [webhookUrl]);
+
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(t);
+  }, [copied]);
+
+  return (
+    <div style={setupPanelWrapStyle} data-testid="stripe-webhook-setup-panel">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={setupPanelToggleStyle}
+        aria-expanded={open}
+        data-testid="stripe-webhook-setup-toggle"
+      >
+        {open ? "▾" : "▸"} Stripe webhook setup
+      </button>
+      {open && (
+        <div style={setupPanelBodyStyle} data-testid="stripe-webhook-setup-body">
+          <p style={setupPanelTextStyle}>
+            Stripe requires you to register a webhook endpoint so it can
+            notify the platform when payment events occur. Follow these steps:
+          </p>
+          <ol style={setupPanelListStyle}>
+            <li>
+              Copy the platform webhook URL below and register it in your
+              <strong> Stripe Dashboard → Developers → Webhooks → Add endpoint</strong>.
+            </li>
+            <li>
+              Under <strong>Events to listen to</strong>, add every event in
+              the list below (the platform ignores unknown types, but
+              missing types delay order status updates).
+            </li>
+            <li>
+              After saving, click <strong>Reveal signing secret</strong> to
+              get the <code style={monoStyle}>whsec_…</code> value.
+            </li>
+            <li>
+              Open the Stripe payment config for this organization (or create
+              one), and paste the signing secret into the{" "}
+              <strong>webhook_secret</strong> field.
+            </li>
+          </ol>
+
+          <div style={setupPanelUrlBoxStyle}>
+            <label style={setupPanelLabelStyle} htmlFor="stripe-webhook-url">
+              Webhook endpoint URL
+            </label>
+            <div style={setupPanelUrlRowStyle}>
+              <input
+                id="stripe-webhook-url"
+                type="text"
+                readOnly
+                value={webhookUrl}
+                style={setupPanelUrlInputStyle}
+                data-testid="stripe-webhook-url"
+              />
+              <button
+                type="button"
+                onClick={handleCopy}
+                style={copied ? setupPanelCopiedButtonStyle : setupPanelCopyButtonStyle}
+                data-testid="stripe-webhook-copy"
+              >
+                {copied ? "Copied!" : "Copy"}
+              </button>
+            </div>
+          </div>
+
+          <div style={setupPanelEventBoxStyle}>
+            <div style={setupPanelLabelStyle}>Required event types</div>
+            <ul style={setupPanelEventListStyle} data-testid="stripe-webhook-events">
+              {STRIPE_WEBHOOK_EVENTS.map((evt) => (
+                <li key={evt} style={setupPanelEventItemStyle}>
+                  <code style={monoStyle}>{evt}</code>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <p style={{ ...setupPanelTextStyle, color: "#854d0e", marginTop: 8 }}>
+            <strong>Test vs. live:</strong> Stripe issues separate webhook signing
+            secrets for test mode and live mode. Create one Payment Config for
+            each mode and store the matching signing secret.
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1798,4 +1920,126 @@ const checkboxRowStyle: CSSProperties = {
   gap: 8,
   fontSize: 13,
   color: "#0f172a",
+};
+
+// ---------------------------------------------------------------------------
+// Stripe webhook setup panel styles (AB-34)
+// ---------------------------------------------------------------------------
+
+const setupPanelWrapStyle: CSSProperties = {
+  border: "1px solid #bae6fd",
+  borderRadius: 6,
+  background: "#f0f9ff",
+  overflow: "hidden",
+};
+
+const setupPanelToggleStyle: CSSProperties = {
+  width: "100%",
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  padding: "10px 12px",
+  background: "transparent",
+  border: "none",
+  cursor: "pointer",
+  fontSize: 12,
+  fontWeight: 600,
+  color: "#0369a1",
+  textAlign: "left",
+};
+
+const setupPanelBodyStyle: CSSProperties = {
+  padding: "0 12px 12px 12px",
+  display: "flex",
+  flexDirection: "column",
+  gap: 10,
+};
+
+const setupPanelTextStyle: CSSProperties = {
+  margin: 0,
+  fontSize: 12,
+  color: "#334155",
+  lineHeight: 1.5,
+};
+
+const setupPanelListStyle: CSSProperties = {
+  margin: 0,
+  paddingLeft: 18,
+  fontSize: 12,
+  color: "#334155",
+  lineHeight: 1.8,
+  display: "flex",
+  flexDirection: "column",
+  gap: 2,
+};
+
+const setupPanelLabelStyle: CSSProperties = {
+  fontSize: 11,
+  fontWeight: 600,
+  color: "#334155",
+  marginBottom: 4,
+};
+
+const setupPanelUrlBoxStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  padding: 8,
+  border: "1px solid #bae6fd",
+  borderRadius: 4,
+  background: "#ffffff",
+};
+
+const setupPanelUrlRowStyle: CSSProperties = {
+  display: "flex",
+  gap: 6,
+  alignItems: "center",
+};
+
+const setupPanelUrlInputStyle: CSSProperties = {
+  flex: 1,
+  fontSize: 12,
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+  padding: "6px 8px",
+  border: "1px solid #cbd5e1",
+  borderRadius: 4,
+  background: "#f8fafc",
+  color: "#0f172a",
+  minWidth: 0,
+};
+
+const setupPanelCopyButtonStyle: CSSProperties = {
+  fontSize: 11,
+  padding: "6px 10px",
+  background: "#0369a1",
+  border: "1px solid #0369a1",
+  borderRadius: 4,
+  cursor: "pointer",
+  color: "#ffffff",
+  fontWeight: 600,
+  flexShrink: 0,
+};
+
+const setupPanelCopiedButtonStyle: CSSProperties = {
+  ...setupPanelCopyButtonStyle,
+  background: "#15803d",
+  border: "1px solid #15803d",
+};
+
+const setupPanelEventBoxStyle: CSSProperties = {
+  padding: 8,
+  border: "1px solid #bae6fd",
+  borderRadius: 4,
+  background: "#ffffff",
+};
+
+const setupPanelEventListStyle: CSSProperties = {
+  margin: "4px 0 0 0",
+  paddingLeft: 16,
+  fontSize: 12,
+  color: "#334155",
+  lineHeight: 1.6,
+};
+
+const setupPanelEventItemStyle: CSSProperties = {
+  marginBottom: 2,
 };

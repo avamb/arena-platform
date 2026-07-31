@@ -524,7 +524,30 @@ SELECT status, count(*) FROM worker_jobs GROUP BY status;
 -- → expect mostly 'done'; investigate any 'failed' rows.
 ```
 
-### 9.5 Logs sanity
+### 9.5 Stripe webhook registration
+
+After deploying, register the platform's payment webhook in your Stripe Dashboard
+(**Developers → Webhooks → Add endpoint**):
+
+1. **Endpoint URL:** `https://api.arenasoldout.com/v1/payment-intents/webhook`
+   *(or your deployment's API base URL — visible in Admin → Payment Configs → "Stripe webhook setup").*
+2. **Events to listen to:** select all of the following:
+   - `payment_intent.succeeded`
+   - `payment_intent.payment_failed`
+   - `payment_intent.requires_action`
+   - `payment_intent.processing`
+   - `payment_intent.amount_capturable`
+   - `payment_intent.manual_review`
+3. Save the endpoint, then click **Reveal signing secret** to get the `whsec_…` value.
+4. In Admin → Payment Configs, open (or create) the Stripe config for the org and
+   paste the signing secret into the **webhook_secret** field. The status badge
+   changes from "missing required fields" to "configured" once both `api_key`
+   and `webhook_secret` are stored.
+
+> **Test vs. live:** Stripe issues separate signing secrets for test mode and live
+> mode. Create a separate Payment Config for each mode.
+
+### 9.6 Logs sanity
 
 In Dokploy **Logs** for both `arena-api` and `arena-worker`, verify:
 
