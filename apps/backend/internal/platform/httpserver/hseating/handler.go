@@ -13,6 +13,7 @@
 //	PATCH  /v1/seating-plans/{id}                    — mutate metadata
 //	POST   /v1/seating-plans/{id}/fork               — fork (copy latest)
 //	POST   /v1/seating-plans/{id}/versions           — new version (svg | geometry)
+//	GET    /v1/seating-plans/{id}/versions           — version history, newest first
 //	GET    /v1/seating-plans/{id}/versions/{n}       — read a single version
 //
 // The geometry importer / canonicaliser lives under internal/domain/seating
