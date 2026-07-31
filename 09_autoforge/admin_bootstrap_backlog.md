@@ -385,3 +385,30 @@ via curl to seed CZ/Prague). Wire countries/cities list + create forms.
 Answered in-session (not a defect): "Verified" flips when the user confirms their
 email — via the verification link or by completing the provisioning password-setup
 link; the owner's own account was seeded pre-verified.
+
+## AB-28. Seating owner_org_id guard has no superadmin path (#416) — reproduced 2026-07-31
+
+POST /v1/venues/{id}/seating-plans with an owner_org_id the caller does not belong
+to returns 403 `seating_plan.owner_org_forbidden` even for platform_superadmin with
+a valid X-Admin-Reason; the same call for an org the caller belongs to returns 201.
+The seating handler duplicates membership logic instead of using
+server_orgauth.go's enforceMembershipInOrg, which already honours the audited
+superadmin bypass from #395/AB-12.
+
+## AB-29. SPA hangs on "Restoring session…" after full reload (#417)
+
+Reported independently by two implementing agents as a blocker they worked around
+(#410 checkpoint, AB-25 verification). AuthGate shows that screen while
+auth.status === "initializing", so some bootstrap path never reaches a terminal
+status. Blocks operators and blocks browser verification of any feature.
+
+## CLAUDE.md poisoning (fixed 2026-07-31, commits a310b4d + BOM strip)
+
+CLAUDE.md had been overwritten with a chat-assistant system prompt that told its
+reader "you cannot modify source code — you have NO Write/Edit/Bash tools".
+Claude Code loads CLAUDE.md as project instructions, so every coding agent booted
+with an instruction not to write code — a plausible contributor to the #411
+fabrication (feature marked passing with zero diff). Restored to `@AGENTS.md`.
+Follow-up during review: the restored file carried a UTF-8 BOM before the `@`
+import directive (the PowerShell encoding trap AGENTS.md itself documents), which
+risks silently breaking the AGENTS.md import; BOM stripped.
