@@ -85,7 +85,7 @@ function GeoRegistry() {
 
   return <section aria-labelledby="geo-heading" style={pageStyle}>
     <header style={headerStyle}>
-      <div><h1 id="geo-heading" style={headingStyle}>Geo Registry</h1><p style={subStyle}>Maintain the countries and cities consumed by organization country suggestions, venue address forms, and event location pickers.</p></div>
+      <div><h1 id="geo-heading" style={headingStyle}>Geo Registry</h1><p style={subStyle}>Advanced maintenance: add countries and cities to the geo catalog. In normal operation you can create missing countries and cities directly from the venue form — this page is for bulk setup or fixing registry errors.</p></div>
       <button type="button" onClick={refresh} disabled={countries.isFetching || cities.isFetching} style={buttonStyle}>{countries.isFetching || cities.isFetching ? "Refreshing…" : "Refresh"}</button>
     </header>
     <div style={hintStyle}><strong>Usage:</strong> add a country before adding its cities. Venue forms can create a missing city inline, but this page is the authoritative registry.</div>

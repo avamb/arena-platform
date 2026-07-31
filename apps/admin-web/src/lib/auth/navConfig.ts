@@ -295,7 +295,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   },
   {
     id: "geo",
-    label: "Geo Registry",
+    label: "Geo Registry (advanced)",
     to: "/geo",
     permission: { anyOf: ["geo.admin"] },
     scopeKinds: ["global", "platform"],

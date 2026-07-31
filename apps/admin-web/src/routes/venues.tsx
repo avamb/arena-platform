@@ -881,6 +881,15 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
   const [newCityName, setNewCityName] = useState("");
   const [isCreatingCity, setIsCreatingCity] = useState(false);
   const [cityCreateError, setCityCreateError] = useState<string | null>(null);
+  // Inline "+ Add city" toggle (AB-35: always available, not just from geocoding)
+  const [addCityOpen, setAddCityOpen] = useState(false);
+  // Inline country creation (AB-35)
+  const [countryCreateOpen, setCountryCreateOpen] = useState(false);
+  const [newCountryName, setNewCountryName] = useState("");
+  const [newCountryIso2, setNewCountryIso2] = useState("");
+  const [newCountryIso3, setNewCountryIso3] = useState("");
+  const [isCreatingCountry, setIsCreatingCountry] = useState(false);
+  const [countryCreateError, setCountryCreateError] = useState<string | null>(null);
 
   // Track whether the operator has hand-edited the country so the
   // org-country prefill effect doesn't clobber their input. Refs avoid
@@ -1013,6 +1022,37 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
       setCityCreateError(error instanceof ApiError ? error.message : "Unable to create the city.");
     } finally {
       setIsCreatingCity(false);
+    }
+  }
+
+  async function createCountry() {
+    const nameEn = newCountryName.trim();
+    const iso2 = newCountryIso2.trim().toUpperCase();
+    const iso3 = newCountryIso3.trim().toUpperCase();
+    if (nameEn === "" || iso2.length !== 2 || iso3.length !== 3) {
+      setCountryCreateError("Provide a 2-letter ISO-2, 3-letter ISO-3, and country name.");
+      return;
+    }
+    setIsCreatingCountry(true);
+    setCountryCreateError(null);
+    try {
+      const slug = slugifyCity(nameEn); // reuse slug builder for simplicity
+      await authedFetch<{ country: CountryItem }>({
+        method: "POST",
+        path: "/v1/admin/geo/countries",
+        body: { iso2, iso3, slug, name_en: nameEn },
+      });
+      setCountry(iso2);
+      countryTouchedRef.current = true;
+      setNewCountryName("");
+      setNewCountryIso2("");
+      setNewCountryIso3("");
+      setCountryCreateOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ["geo", "countries"] });
+    } catch (error) {
+      setCountryCreateError(error instanceof ApiError ? error.message : "Unable to create the country.");
+    } finally {
+      setIsCreatingCountry(false);
     }
   }
 
@@ -1333,63 +1373,163 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
                 orgQuery.data.organization.country !== null &&
                 !isEdit
                   ? `Prefilled from the owning organization (${orgQuery.data.organization.country.toUpperCase()}). Override if the venue lives elsewhere.`
-                  : "Two-letter country code (e.g., RU, US, GB)."
+                  : "Choose a country from the registry, or create one if it's not listed yet."
               }
             >
-              <input
-                id="venue-country"
-                type="text"
-                value={country}
-                onChange={(e) => {
-                  countryTouchedRef.current = true;
-                  setCountry(e.target.value.toUpperCase());
-                  if (serverErrors.country !== undefined) {
-                    setServerErrors({ ...serverErrors, country: undefined });
-                  }
-                }}
-                style={inputMonoStyle}
-                maxLength={2}
-                autoCapitalize="characters"
-                autoCorrect="off"
-                spellCheck={false}
-                data-testid="venues-form-country"
-              />
+              {/* AB-35: select from geo registry + inline create affordance */}
+              <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                <select
+                  id="venue-country"
+                  value={country}
+                  onChange={(e) => {
+                    countryTouchedRef.current = true;
+                    setCountry(e.target.value);
+                    setCityID(""); // reset city when country changes
+                    if (serverErrors.country !== undefined) {
+                      setServerErrors({ ...serverErrors, country: undefined });
+                    }
+                  }}
+                  style={{ ...inputStyle, flex: 1 }}
+                  data-testid="venues-form-country"
+                  disabled={countriesQuery.isPending}
+                >
+                  <option value="">
+                    {countriesQuery.isPending ? "Loading countries…" : "No country selected"}
+                  </option>
+                  {[...(countriesQuery.data?.countries ?? [])]
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map((c) => (
+                      <option key={c.id} value={c.iso2}>{c.name} ({c.iso2})</option>
+                    ))}
+                </select>
+                <button
+                  type="button"
+                  style={inlineCreateButtonStyle}
+                  onClick={() => setCountryCreateOpen((o) => !o)}
+                  data-testid="venues-form-country-create-toggle"
+                  title="Create a new country in the geo registry"
+                >
+                  {countryCreateOpen ? "- Cancel" : "+ Country"}
+                </button>
+              </div>
+              {countriesQuery.isError ? (
+                <div style={fieldErrorStyle}>Country registry unavailable; try refreshing the page.</div>
+              ) : null}
+              {countryCreateOpen && (
+                <div style={inlineCreateFormStyle} data-testid="venues-form-create-country">
+                  <strong style={{ fontSize: 11, color: "#334155" }}>New country</strong>
+                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                    <input
+                      type="text"
+                      placeholder="Name (English)"
+                      value={newCountryName}
+                      onChange={(e) => setNewCountryName(e.target.value)}
+                      style={{ ...inputStyle, flex: 2, minWidth: 120 }}
+                      maxLength={100}
+                      data-testid="venues-form-country-name"
+                    />
+                    <input
+                      type="text"
+                      placeholder="ISO-2 (e.g., IL)"
+                      value={newCountryIso2}
+                      onChange={(e) => setNewCountryIso2(e.target.value.toUpperCase())}
+                      style={{ ...inputMonoStyle, width: 72 }}
+                      maxLength={2}
+                      autoCapitalize="characters"
+                      data-testid="venues-form-country-iso2"
+                    />
+                    <input
+                      type="text"
+                      placeholder="ISO-3 (e.g., ISR)"
+                      value={newCountryIso3}
+                      onChange={(e) => setNewCountryIso3(e.target.value.toUpperCase())}
+                      style={{ ...inputMonoStyle, width: 84 }}
+                      maxLength={3}
+                      autoCapitalize="characters"
+                      data-testid="venues-form-country-iso3"
+                    />
+                    <button
+                      type="button"
+                      style={primaryButtonStyle}
+                      onClick={() => void createCountry()}
+                      disabled={isCreatingCountry || newCountryName.trim() === "" || newCountryIso2.trim().length !== 2 || newCountryIso3.trim().length !== 3}
+                      data-testid="venues-form-country-create-submit"
+                    >
+                      {isCreatingCountry ? "Creating…" : "Create"}
+                    </button>
+                  </div>
+                  {countryCreateError !== null ? (
+                    <span style={fieldErrorStyle}>{countryCreateError}</span>
+                  ) : null}
+                </div>
+              )}
             </FieldRow>
             <FieldRow
               label="City"
               htmlFor="venue-city-id"
               error={serverErrors.city_id ?? null}
               localError={null}
-              hint="Optional city from the geo registry. Create a missing city inline after finding an address."
+              hint="Optional city from the geo registry. Use '+ City' to create a missing city without leaving this form."
             >
-              <select
-                id="venue-city-id"
-                value={cityID}
-                onChange={(e) => {
-                  setCityID(e.target.value);
-                  if (serverErrors.city_id !== undefined) {
-                    setServerErrors({ ...serverErrors, city_id: undefined });
-                  }
-                }}
-                style={inputStyle}
-                data-testid="venues-form-city-id"
-                disabled={citiesQuery.isPending}
-              >
-                <option value="">{citiesQuery.isPending ? "Loading cities…" : "No city selected"}</option>
-                {[...(citiesQuery.data?.cities ?? [])]
-                  .filter((city) => country.trim() === "" || city.country_iso2 === normalizeCountry(country))
-                  .sort((a, b) => a.name.localeCompare(b.name))
-                  .map((city) => (
-                    <option key={city.id} value={city.id}>{city.name} ({city.country_iso2})</option>
-                  ))}
-              </select>
+              {/* AB-35: city select filtered by country, with persistent + Add city button */}
+              <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                <select
+                  id="venue-city-id"
+                  value={cityID}
+                  onChange={(e) => {
+                    setCityID(e.target.value);
+                    if (serverErrors.city_id !== undefined) {
+                      setServerErrors({ ...serverErrors, city_id: undefined });
+                    }
+                  }}
+                  style={{ ...inputStyle, flex: 1 }}
+                  data-testid="venues-form-city-id"
+                  disabled={citiesQuery.isPending}
+                >
+                  <option value="">{citiesQuery.isPending ? "Loading cities…" : "No city selected"}</option>
+                  {[...(citiesQuery.data?.cities ?? [])]
+                    .filter((city) => country.trim() === "" || city.country_iso2 === normalizeCountry(country))
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map((city) => (
+                      <option key={city.id} value={city.id}>{city.name} ({city.country_iso2})</option>
+                    ))}
+                </select>
+                <button
+                  type="button"
+                  style={inlineCreateButtonStyle}
+                  onClick={() => {
+                    setAddCityOpen((o) => !o);
+                    if (!addCityOpen) {
+                      setNewCityName("");
+                      setCityCreateError(null);
+                    }
+                  }}
+                  data-testid="venues-form-city-create-toggle"
+                  title="Create a new city in the geo registry"
+                >
+                  {addCityOpen ? "- Cancel" : "+ City"}
+                </button>
+              </div>
               {citiesQuery.isError ? <div style={fieldErrorStyle}>City registry unavailable; retry the page or enter address details manually.</div> : null}
-              {newCityName !== "" ? (
+              {(newCityName !== "" || addCityOpen) ? (
                 <div style={inlineCityStyle} data-testid="venues-form-create-city">
-                  <span>“{newCityName}” is not in the registry.</span>
-                  <button type="button" style={refreshButtonStyle} onClick={() => void createCity()} disabled={isCreatingCity}>
-                    {isCreatingCity ? "Creating…" : "Create city"}
-                  </button>
+                  {newCityName !== "" && !addCityOpen ? (
+                    <span>"{newCityName}" is not in the registry.</span>
+                  ) : null}
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                    <input
+                      type="text"
+                      placeholder="City name (English)"
+                      value={newCityName}
+                      onChange={(e) => setNewCityName(e.target.value)}
+                      style={{ ...inputStyle, flex: 1, minWidth: 120 }}
+                      maxLength={100}
+                      data-testid="venues-form-city-name"
+                    />
+                    <button type="button" style={primaryButtonStyle} onClick={() => void createCity()} disabled={isCreatingCity || newCityName.trim() === ""}>
+                      {isCreatingCity ? "Creating…" : "Create city"}
+                    </button>
+                  </div>
                   {cityCreateError !== null ? <span style={fieldErrorStyle}>{cityCreateError}</span> : null}
                 </div>
               ) : null}
@@ -2427,6 +2567,28 @@ const inlineCityStyle: CSSProperties = {
   marginTop: 6,
   fontSize: 11,
   color: "#475569",
+};
+
+const inlineCreateButtonStyle: CSSProperties = {
+  fontSize: 11,
+  padding: "3px 8px",
+  border: "1px dashed #94a3b8",
+  borderRadius: 3,
+  background: "transparent",
+  color: "#475569",
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};
+
+const inlineCreateFormStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  marginTop: 6,
+  padding: "8px 10px",
+  border: "1px solid #cbd5e1",
+  borderRadius: 4,
+  background: "#f8fafc",
 };
 
 const mapPreviewStyle: CSSProperties = {
