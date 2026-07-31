@@ -11,8 +11,13 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   ACCEPTED_MIME_TYPES,
+  MAX_SVG_UPLOAD_BYTES,
   MAX_UPLOAD_BYTES,
   OWNER_TYPE_CONSTRAINTS,
+  OWNER_TYPE_MAX_BYTES,
+  OWNER_TYPE_MIME_TYPES,
+  SVG_MIME_TYPE,
+  acceptedExtensionsLabel,
   formatBytes,
   formatUploadProgress,
   validateDimensions,
@@ -35,6 +40,13 @@ describe("ImageUpload constraints", () => {
     expect(OWNER_TYPE_CONSTRAINTS.org_logo.minHeight).toBeNull();
     expect(OWNER_TYPE_CONSTRAINTS.artist_photo.minWidth).toBeNull();
     expect(OWNER_TYPE_CONSTRAINTS.artist_photo.minHeight).toBeNull();
+  });
+
+  it("imposes no pixel minimum on vector seating plans", () => {
+    // A dimension probe decodes the file into an <img>; SVGs have no
+    // intrinsic raster size, so the component must skip that path entirely.
+    expect(OWNER_TYPE_CONSTRAINTS.seating_plan_svg.minWidth).toBeNull();
+    expect(OWNER_TYPE_CONSTRAINTS.seating_plan_svg.minHeight).toBeNull();
   });
 });
 
@@ -69,6 +81,64 @@ describe("validateFile", () => {
     const v = validateFile({ type: "", size: 1024 }, "org_logo");
     expect(v?.code).toBe("type");
     expect(v?.message).toContain("(unknown)");
+  });
+});
+
+describe("validateFile for seating_plan_svg (AB-25b)", () => {
+  it("accepts an SVG document within the vector size cap", () => {
+    expect(
+      validateFile({ type: SVG_MIME_TYPE, size: 4096 }, "seating_plan_svg"),
+    ).toBeNull();
+    expect(
+      validateFile(
+        { type: SVG_MIME_TYPE, size: MAX_SVG_UPLOAD_BYTES },
+        "seating_plan_svg",
+      ),
+    ).toBeNull();
+  });
+
+  it("rejects raster images for a seating plan", () => {
+    const v = validateFile({ type: "image/png", size: 1024 }, "seating_plan_svg");
+    expect(v?.code).toBe("type");
+    expect(v?.message).toContain("image/png");
+    expect(v?.message).toContain("svg");
+  });
+
+  it("rejects SVG uploads over the 2 MiB vector cap", () => {
+    const v = validateFile(
+      { type: SVG_MIME_TYPE, size: MAX_SVG_UPLOAD_BYTES + 1 },
+      "seating_plan_svg",
+    );
+    expect(v?.code).toBe("size");
+    expect(v?.message).toContain("2.00 MiB");
+  });
+
+  it("still rejects SVG uploads for raster owner types", () => {
+    const v = validateFile({ type: SVG_MIME_TYPE, size: 1024 }, "org_logo");
+    expect(v?.code).toBe("type");
+  });
+
+  it("keeps the vector cap under the backend version-create body limit", () => {
+    // hseating/versions.go caps the version-create JSON body at 4 MiB and the
+    // same document travels inline in that request.
+    expect(MAX_SVG_UPLOAD_BYTES).toBeLessThan(4 * 1024 * 1024);
+    expect(OWNER_TYPE_MAX_BYTES.seating_plan_svg).toBe(MAX_SVG_UPLOAD_BYTES);
+    expect(OWNER_TYPE_MAX_BYTES.org_logo).toBe(MAX_UPLOAD_BYTES);
+  });
+
+  it("exposes the per-owner-type MIME allowlist", () => {
+    expect(OWNER_TYPE_MIME_TYPES.seating_plan_svg).toEqual([SVG_MIME_TYPE]);
+    expect(OWNER_TYPE_MIME_TYPES.org_logo).toEqual(ACCEPTED_MIME_TYPES);
+  });
+});
+
+describe("acceptedExtensionsLabel", () => {
+  it("renders the raster list with the jpeg alias normalised", () => {
+    expect(acceptedExtensionsLabel("org_logo")).toBe("jpg, png, webp");
+  });
+
+  it("renders svg for seating plans", () => {
+    expect(acceptedExtensionsLabel("seating_plan_svg")).toBe("svg");
   });
 });
 

@@ -15,9 +15,10 @@
  *
  * Owner-type table:
  *
- *   org_logo       jpg / png / webp, <= 5 MiB, no min dimensions
- *   event_poster   jpg / png / webp, <= 5 MiB, min 600 x 400
- *   artist_photo   jpg / png / webp, <= 5 MiB, no min dimensions
+ *   org_logo          jpg / png / webp, <= 5 MiB, no min dimensions
+ *   event_poster      jpg / png / webp, <= 5 MiB, min 600 x 400
+ *   artist_photo      jpg / png / webp, <= 5 MiB, no min dimensions
+ *   seating_plan_svg  svg,              <= 2 MiB, no min dimensions
  *
  * The constraints are intentionally enforced in the browser AND in
  * the backend (`apps/backend/internal/adapters/storage`): the
@@ -71,6 +72,51 @@ export type AcceptedMimeType = (typeof ACCEPTED_MIME_TYPES)[number];
 /** Hard ceiling on the uploaded file size: 5 MiB. */
 export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 
+/** MIME type of an SVG document (AB-25 seating plan authoring assets). */
+export const SVG_MIME_TYPE = "image/svg+xml";
+
+/**
+ * Ceiling for seating-plan SVG uploads. Lower than MAX_UPLOAD_BYTES on
+ * purpose: the same document is also POSTed inline as the `svg` field of
+ * `POST /v1/seating-plans/{id}/versions`, whose body limit is 4 MiB
+ * (`versionBodyLimit` in hseating/versions.go). Capping the file at 2 MiB
+ * leaves room for JSON escaping so the operator learns about an oversized
+ * plan at file-pick time rather than from a 413 after the media upload has
+ * already succeeded.
+ */
+export const MAX_SVG_UPLOAD_BYTES = 2 * 1024 * 1024;
+
+/**
+ * Accepted MIME types per owner_type. Raster surfaces share the canonical
+ * jpg/png/webp list; `seating_plan_svg` is a vector document and accepts
+ * nothing else.
+ */
+export const OWNER_TYPE_MIME_TYPES: Record<MediaOwnerType, readonly string[]> = {
+  org_logo: ACCEPTED_MIME_TYPES,
+  event_poster: ACCEPTED_MIME_TYPES,
+  artist_photo: ACCEPTED_MIME_TYPES,
+  seating_plan_svg: [SVG_MIME_TYPE],
+};
+
+/** Byte ceiling per owner_type. */
+export const OWNER_TYPE_MAX_BYTES: Record<MediaOwnerType, number> = {
+  org_logo: MAX_UPLOAD_BYTES,
+  event_poster: MAX_UPLOAD_BYTES,
+  artist_photo: MAX_UPLOAD_BYTES,
+  seating_plan_svg: MAX_SVG_UPLOAD_BYTES,
+};
+
+/**
+ * Human-readable extension list used in "Allowed: …" messages and in the
+ * hint rendered next to the file picker.
+ */
+export function acceptedExtensionsLabel(ownerType: MediaOwnerType): string {
+  return OWNER_TYPE_MIME_TYPES[ownerType]
+    .map((mime) => mime.replace(/^image\//, "").replace(/\+xml$/, ""))
+    .map((ext) => (ext === "jpeg" ? "jpg" : ext))
+    .join(", ");
+}
+
 export interface OwnerTypeConstraint {
   readonly minWidth: number | null;
   readonly minHeight: number | null;
@@ -106,10 +152,11 @@ export interface ValidationFailure {
 }
 
 /**
- * Validates the MIME type and byte size of a candidate upload.
- * Dimension validation requires an actual decoded image, so it lives
- * in `validateDimensions` and is called only after the browser has
- * loaded the file into an `Image` element.
+ * Validates the MIME type and byte size of a candidate upload against the
+ * rules for `ownerType`. Dimension validation requires an actual decoded
+ * image, so it lives in `validateDimensions` and is called only after the
+ * browser has loaded the file into an `Image` element (never for vector
+ * owner types, which have no intrinsic pixel size).
  */
 export function validateFile(
   file: { type: string; size: number },
@@ -121,21 +168,22 @@ export function validateFile(
       message: "File is empty.",
     };
   }
-  if (
-    !ACCEPTED_MIME_TYPES.includes(file.type as AcceptedMimeType)
-  ) {
+  const acceptedTypes = OWNER_TYPE_MIME_TYPES[ownerType];
+  if (!acceptedTypes.includes(file.type)) {
     return {
       code: "type",
-      message: `Unsupported file type ${file.type || "(unknown)"}. Allowed: jpg, png, webp.`,
+      message:
+        `Unsupported file type ${file.type || "(unknown)"}. ` +
+        `Allowed: ${acceptedExtensionsLabel(ownerType)}.`,
     };
   }
-  if (file.size > MAX_UPLOAD_BYTES) {
+  const maxBytes = OWNER_TYPE_MAX_BYTES[ownerType];
+  if (file.size > maxBytes) {
     return {
       code: "size",
-      message: `File is ${formatBytes(file.size)}; maximum is ${formatBytes(MAX_UPLOAD_BYTES)}.`,
+      message: `File is ${formatBytes(file.size)}; maximum is ${formatBytes(maxBytes)}.`,
     };
   }
-  void ownerType; // size + type are uniform across owner_types today.
   return null;
 }
 
@@ -419,7 +467,10 @@ export function ImageUpload({
     return null;
   }, [pendingPreview, previewQuery.data?.signed_url]);
 
-  const hintBits: string[] = ["jpg, png, webp", `≤ ${formatBytes(MAX_UPLOAD_BYTES)}`];
+  const hintBits: string[] = [
+    acceptedExtensionsLabel(ownerType),
+    `≤ ${formatBytes(OWNER_TYPE_MAX_BYTES[ownerType])}`,
+  ];
   if (constraint.minWidth !== null && constraint.minHeight !== null) {
     hintBits.push(`min ${constraint.minWidth}×${constraint.minHeight}`);
   }
