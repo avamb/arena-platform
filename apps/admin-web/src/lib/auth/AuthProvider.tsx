@@ -24,6 +24,7 @@ import {
   type ReactNode,
 } from "react";
 import { ApiError, fetchMe, login as apiLogin, logout as apiLogout, refresh } from "@/lib/api/client";
+import { runBootstrap } from "@/lib/auth/authBootstrap";
 import { getRefreshToken } from "@/lib/api/tokenStore";
 import type { MeResponse } from "@/lib/api/types";
 import { AuthContext, type AuthContextValue, type AuthStatus } from "@/lib/auth/AuthContext";
@@ -96,35 +97,46 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // One-shot bootstrap: try to resume an existing session via the
   // refresh token. Subsequent component remounts MUST NOT re-run this
   // (would cause a spurious refresh storm).
+  //
+  // AB-29 fix: two changes from the original implementation.
+  //
+  //  1. The `if (cancelled) return` guard before loadMe() has been removed.
+  //     In React 18 StrictMode, effects fire → cleanup → fire again. The
+  //     second fire sees bootstrappedRef.current === true and returns early,
+  //     so only the first run ever calls refresh(). But the first run also had
+  //     cancelled set to true by the StrictMode cleanup; returning early before
+  //     loadMe() left status === "initializing" forever.  React 18 preserves
+  //     component state through StrictMode's simulated unmount/remount, so
+  //     calling setStatus() from the first run's loadMe() still reaches the
+  //     mounted component — the early return was actively harmful.
+  //
+  //  2. A bounded timeout is added so that a hanging refresh() or /v1/me
+  //     request (e.g. network stall) fails closed to the login screen after
+  //     BOOTSTRAP_TIMEOUT_MS rather than spinning forever.
+  const BOOTSTRAP_TIMEOUT_MS = 10_000;
   useEffect(() => {
     if (bootstrappedRef.current) {
       return;
     }
     bootstrappedRef.current = true;
     let cancelled = false;
-    const run = async (): Promise<void> => {
-      if (getRefreshToken() === null) {
-        if (!cancelled) {
-          setStatus("unauthenticated");
-        }
-        return;
+    const timeoutId = window.setTimeout(() => {
+      if (!cancelled) {
+        setStatus("unauthenticated");
       }
-      try {
-        await refresh();
-      } catch {
-        if (!cancelled) {
-          setStatus("unauthenticated");
-        }
-        return;
-      }
-      if (cancelled) {
-        return;
-      }
-      await loadMe();
-    };
-    void run();
+    }, BOOTSTRAP_TIMEOUT_MS);
+    void runBootstrap({
+      getRefreshToken,
+      refresh,
+      loadMe,
+      setUnauthenticated: () => { if (!cancelled) setStatus("unauthenticated"); },
+      isCancelled: () => cancelled,
+    }).finally(() => {
+      window.clearTimeout(timeoutId);
+    });
     return () => {
       cancelled = true;
+      window.clearTimeout(timeoutId);
     };
   }, [loadMe]);
 

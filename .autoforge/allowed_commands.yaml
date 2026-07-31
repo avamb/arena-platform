@@ -46,9 +46,11 @@ commands:
   - name: arena-api
     description: Arena API binary
 
-  # Node.js tools for OpenAPI validation
+  # Node.js tools for OpenAPI validation and frontend development
   - name: node
     description: Node.js runtime
+  - name: npm
+    description: Node package manager (type-check, test, build)
   - name: npx
     description: Node package runner
   - name: spectral
