@@ -37,10 +37,28 @@ import {
   type ChangeEvent,
   type ReactNode,
 } from "react";
-import { ApiError, authedFetch, uploadMedia } from "@/lib/api/client";
+import {
+  ApiError,
+  authedFetch,
+  uploadMedia,
+  type MediaOwnerType,
+} from "@/lib/api/client";
+import {
+  OWNER_TYPE_MAX_BYTES,
+  acceptedExtensionsLabel,
+  formatBytes,
+  validateFile,
+} from "@/components/ImageUpload";
 import { config } from "@/lib/config";
 import { ResponsiveDrawer } from "@/components/layout";
 import type { Venue } from "./venues";
+
+/**
+ * media_objects.owner_type discriminator for seating-plan authoring assets
+ * (migration 0078). Pinned to a constant so the upload call, the client-side
+ * validator, and the hint copy cannot drift apart.
+ */
+const SEATING_PLAN_SVG_OWNER_TYPE: MediaOwnerType = "seating_plan_svg";
 
 // ---------------------------------------------------------------------------
 // Wire types (mirror openapi/clients/ts/index.d.ts)
@@ -597,6 +615,53 @@ function SeatingPlanBody({ plan, venue }: { plan: SeatingPlan; venue: Venue }) {
 // Upload SVG form
 // ---------------------------------------------------------------------------
 
+/**
+ * Parse the standing-capacity input. Returns `undefined` when the field is
+ * blank (the backend then defaults it to 0) and null when the text is not a
+ * non-negative integer, which the caller surfaces as a validation message.
+ *
+ * Seated capacity is deliberately NOT an input: the backend derives it from
+ * the imported geometry's seat count (`geometry.SeatCount()` in
+ * hseating/versions.go) and rejects a `capacity_seated` body field outright.
+ */
+export function parseStandingCapacity(
+  raw: string,
+): { readonly value: number | undefined } | null {
+  const trimmed = raw.trim();
+  if (trimmed === "") return { value: undefined };
+  if (!/^\d+$/.test(trimmed)) return null;
+  const n = Number(trimmed);
+  if (!Number.isSafeInteger(n)) return null;
+  return { value: n };
+}
+
+/**
+ * Build the exact request body for POST /v1/seating-plans/{id}/versions.
+ *
+ * The endpoint accepts exactly one of `svg` or `geometry`; this flow always
+ * sends `svg` and lets the server-side importer canonicalise, checksum, and
+ * count seats. `svg_asset_media_id` links the already-uploaded binary so the
+ * drawer can preview the original artwork. Optional keys are omitted rather
+ * than sent as null because the handler rejects unknown/ill-typed fields.
+ *
+ * The endpoint bumps the plan's current_version_id to the new row inside the
+ * same transaction, so no follow-up PATCH is required to publish it.
+ */
+export function buildCreateVersionBody(params: {
+  readonly svg: string;
+  readonly svgAssetMediaID: string;
+  readonly capacityStanding: number | undefined;
+}): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    svg: params.svg,
+    svg_asset_media_id: params.svgAssetMediaID,
+  };
+  if (params.capacityStanding !== undefined) {
+    body.capacity_standing = params.capacityStanding;
+  }
+  return body;
+}
+
 function UploadSVGForm({ plan, venue }: { plan: SeatingPlan; venue: Venue }) {
   const qc = useQueryClient();
   const [issues, setIssues] = useState<readonly SeatingImportIssue[]>([]);
@@ -604,26 +669,44 @@ function UploadSVGForm({ plan, venue }: { plan: SeatingPlan; venue: Venue }) {
   const [uploadError, setUploadError] = useState<ApiError | null>(null);
   const [okMessage, setOkMessage] = useState<string | null>(null);
   const [uploadStep, setUploadStep] = useState<string | null>(null);
+  const [capacityStanding, setCapacityStanding] = useState<string>("");
+  // Client-side rejection (bad MIME, oversized file, malformed capacity) that
+  // never reaches the network.
+  const [fileError, setFileError] = useState<string | null>(null);
 
   const mutation = useMutation<CreateVersionResponse, ApiError, File>({
     mutationFn: async (file: File) => {
+      const standing = parseStandingCapacity(capacityStanding);
+      if (standing === null) {
+        // Guarded by onFile as well; this keeps the invariant local to the
+        // mutation in case another caller is added later.
+        throw new ApiError(0, {
+          code: "validation.capacity_standing",
+          message: "Standing capacity must be a whole number of 0 or more.",
+        });
+      }
       // Step 1: store the SVG as a binary media object so the signed URL
       // can be used for preview without re-parsing geometry.
       setUploadStep("Uploading SVG asset (1/2)…");
       const mediaObj = await uploadMedia({
         file,
-        ownerType: "seating_plan_svg",
+        ownerType: SEATING_PLAN_SVG_OWNER_TYPE,
         orgId: plan.owner_org_id,
         ownerId: plan.id,
       });
       // Step 2: read SVG as text, import geometry, and persist a new version
       // row that carries both the canonical geometry and the media asset ID.
+      // The handler makes this version current in the same transaction.
       setUploadStep("Creating version (2/2)…");
       const svg = await readFileAsText(file);
       return authedFetch<CreateVersionResponse>({
         method: "POST",
         path: `/v1/seating-plans/${plan.id}/versions`,
-        body: { svg, svg_asset_media_id: mediaObj.id },
+        body: buildCreateVersionBody({
+          svg,
+          svgAssetMediaID: mediaObj.id,
+          capacityStanding: standing.value,
+        }),
       });
     },
     onSuccess: (res) => {
@@ -633,8 +716,11 @@ function UploadSVGForm({ plan, venue }: { plan: SeatingPlan; venue: Venue }) {
       setWarnings(res.warnings ?? []);
       setOkMessage(
         `Uploaded as version ${res.seating_plan_version.version_number} ` +
-          `(${res.seating_plan_version.capacity_seated} seats).`,
+          `(${res.seating_plan_version.capacity_seated} seats). ` +
+          `Version ${res.seating_plan_version.version_number} is now current.`,
       );
+      // Refetch the plan (current_version_id / _number), the version history
+      // table, and the preview so the drawer reflects the new current version.
       qc.invalidateQueries({ queryKey: ["seating-plans", "by-venue", venue.id] });
       qc.invalidateQueries({ queryKey: ["seating-plan-version", plan.id] });
       qc.invalidateQueries({ queryKey: ["seating-plan-versions", plan.id] });
@@ -648,41 +734,144 @@ function UploadSVGForm({ plan, venue }: { plan: SeatingPlan; venue: Venue }) {
     },
   });
 
-  const onFile = (e: ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (f === undefined) return;
+  const onFile = (file: File) => {
     setIssues([]);
     setWarnings([]);
     setUploadError(null);
     setOkMessage(null);
-    mutation.mutate(f);
-    e.target.value = "";
+    setFileError(null);
+    // Reject bad input before any bytes leave the machine: an SVG that fails
+    // the MIME/size gate would otherwise be stored as an orphan media object
+    // whose version-create call then fails.
+    const failure = validateFile(file, SEATING_PLAN_SVG_OWNER_TYPE);
+    if (failure !== null) {
+      setFileError(failure.message);
+      return;
+    }
+    if (parseStandingCapacity(capacityStanding) === null) {
+      setFileError("Standing capacity must be a whole number of 0 or more.");
+      return;
+    }
+    mutation.mutate(file);
   };
 
   return (
-    <div style={sectionStyle} data-testid={`venues-plan-upload-${plan.id}`}>
-      <div style={sectionTitleStyle}>Upload SVG</div>
+    <UploadSVGFormView
+      planID={plan.id}
+      capacityStanding={capacityStanding}
+      pending={mutation.isPending}
+      step={uploadStep}
+      okMessage={okMessage}
+      fileError={fileError}
+      issues={issues}
+      warnings={warnings}
+      uploadError={uploadError}
+      onCapacityStandingChange={(v) => {
+        setCapacityStanding(v);
+        setFileError(null);
+      }}
+      onFileSelected={onFile}
+    />
+  );
+}
+
+export interface UploadSVGFormViewProps {
+  readonly planID: string;
+  readonly capacityStanding: string;
+  readonly pending: boolean;
+  /** Which of the two upload steps is running, shown on the picker button. */
+  readonly step: string | null;
+  readonly okMessage: string | null;
+  /** Client-side rejection that never reached the network. */
+  readonly fileError: string | null;
+  readonly issues: readonly SeatingImportIssue[];
+  readonly warnings: readonly SeatingImportIssue[];
+  readonly uploadError: ApiError | null;
+  readonly onCapacityStandingChange: (v: string) => void;
+  readonly onFileSelected: (file: File) => void;
+}
+
+/**
+ * Presentational half of the SVG upload / version-create control. Stateless
+ * and query-free so it renders under renderToStaticMarkup in tests.
+ */
+export function UploadSVGFormView({
+  planID,
+  capacityStanding,
+  pending,
+  step,
+  okMessage,
+  fileError,
+  issues,
+  warnings,
+  uploadError,
+  onCapacityStandingChange,
+  onFileSelected,
+}: UploadSVGFormViewProps): JSX.Element {
+  const onChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    // Allow re-picking the same path after a rejection.
+    e.target.value = "";
+    if (f === undefined) return;
+    onFileSelected(f);
+  };
+
+  return (
+    <div style={sectionStyle} data-testid={`venues-plan-upload-${planID}`}>
+      <div style={sectionTitleStyle}>Upload SVG · new version</div>
       <p style={hintStyle}>
-        Upload an SVG file to create a new version. The importer canonicalises
-        geometry, records seat capacity, and stores the original SVG for
-        preview. Per-element validation errors appear below.
+        Upload an SVG file to create a new version and publish it as the plan&apos;s
+        current version. The importer canonicalises geometry and derives seated
+        capacity from the parsed seats; the original SVG is stored for preview.
+        Accepted: {acceptedExtensionsLabel(SEATING_PLAN_SVG_OWNER_TYPE)} up to{" "}
+        {formatBytes(OWNER_TYPE_MAX_BYTES[SEATING_PLAN_SVG_OWNER_TYPE])}.
+        Per-element validation errors appear below.
       </p>
+      <div style={fieldRowStyle}>
+        <label style={miniLabelStyle} htmlFor={`venue-plan-standing-${planID}`}>
+          Standing capacity (optional)
+        </label>
+        <input
+          id={`venue-plan-standing-${planID}`}
+          type="text"
+          inputMode="numeric"
+          value={capacityStanding}
+          onChange={(e) => onCapacityStandingChange(e.target.value)}
+          style={inputStyle}
+          placeholder="0"
+          disabled={pending}
+          data-testid={`venues-plan-upload-standing-${planID}`}
+        />
+        <span style={hintStyle}>
+          Seated capacity is derived from the SVG and cannot be set by hand.
+        </span>
+      </div>
       <label style={fileButtonStyle}>
         <input
           type="file"
           accept="image/svg+xml,.svg"
-          onChange={onFile}
-          disabled={mutation.isPending}
+          onChange={onChange}
+          disabled={pending}
           style={{ display: "none" }}
-          data-testid={`venues-plan-upload-input-${plan.id}`}
+          data-testid={`venues-plan-upload-input-${planID}`}
         />
-        <span>{mutation.isPending ? (uploadStep ?? "Uploading…") : "Choose SVG file"}</span>
+        <span>{pending ? (step ?? "Uploading…") : "Choose SVG file"}</span>
       </label>
+      {fileError !== null ? (
+        <div
+          style={errorBoxStyle}
+          role="alert"
+          data-testid={`venues-plan-upload-file-error-${planID}`}
+        >
+          <strong>File rejected.</strong>
+          <div style={errorParaStyle}>{fileError}</div>
+        </div>
+      ) : null}
       {okMessage !== null ? (
         <div
           style={okBoxStyle}
           role="status"
-          data-testid={`venues-plan-upload-ok-${plan.id}`}
+          data-testid={`venues-plan-upload-ok-${planID}`}
         >
           {okMessage}
         </div>
@@ -691,7 +880,7 @@ function UploadSVGForm({ plan, venue }: { plan: SeatingPlan; venue: Venue }) {
         <ul
           style={issueListStyle}
           role="alert"
-          data-testid={`venues-plan-upload-errors-${plan.id}`}
+          data-testid={`venues-plan-upload-errors-${planID}`}
         >
           {issues.map((i, idx) => (
             <li key={`${i.code}-${idx}`} style={issueRowStyle}>
@@ -709,7 +898,7 @@ function UploadSVGForm({ plan, venue }: { plan: SeatingPlan; venue: Venue }) {
       {warnings.length > 0 ? (
         <ul
           style={warningListStyle}
-          data-testid={`venues-plan-upload-warnings-${plan.id}`}
+          data-testid={`venues-plan-upload-warnings-${planID}`}
         >
           {warnings.map((i, idx) => (
             <li key={`${i.code}-${idx}`} style={issueRowStyle}>
@@ -728,7 +917,7 @@ function UploadSVGForm({ plan, venue }: { plan: SeatingPlan; venue: Venue }) {
         <div
           style={errorBoxStyle}
           role="alert"
-          data-testid={`venues-plan-upload-fatal-${plan.id}`}
+          data-testid={`venues-plan-upload-fatal-${planID}`}
         >
           <strong>Upload failed.</strong>
           <div style={errorCodeStyle}>{uploadError.code}</div>

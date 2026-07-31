@@ -7,8 +7,10 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api/client";
 import {
+  buildCreateVersionBody,
   createPlanFormIssues,
   issueForField,
+  parseStandingCapacity,
   parseVersionValidationErrors,
   renderGeometryToSVG,
   resolveCurrentVersionNumber,
@@ -420,5 +422,77 @@ describe("issueForField", () => {
     const issues = createPlanFormIssues("Main Floor", "");
     expect(issueForField(issues, "name")).toBeNull();
     expect(issueForField(issues, "owner_org_id")).not.toBeNull();
+  });
+});
+
+describe("parseStandingCapacity (AB-25b)", () => {
+  it("treats a blank field as absent so the server default applies", () => {
+    expect(parseStandingCapacity("")).toEqual({ value: undefined });
+    expect(parseStandingCapacity("   ")).toEqual({ value: undefined });
+  });
+
+  it("accepts zero and positive whole numbers", () => {
+    expect(parseStandingCapacity("0")).toEqual({ value: 0 });
+    expect(parseStandingCapacity("120")).toEqual({ value: 120 });
+    expect(parseStandingCapacity(" 45 ")).toEqual({ value: 45 });
+  });
+
+  it("rejects non-integers, negatives, and junk", () => {
+    expect(parseStandingCapacity("12.5")).toBeNull();
+    expect(parseStandingCapacity("-1")).toBeNull();
+    expect(parseStandingCapacity("1e3")).toBeNull();
+    expect(parseStandingCapacity("many")).toBeNull();
+  });
+});
+
+describe("buildCreateVersionBody (AB-25b)", () => {
+  it("sends svg plus the uploaded asset id", () => {
+    const body = buildCreateVersionBody({
+      svg: "<svg/>",
+      svgAssetMediaID: "media-uuid",
+      capacityStanding: undefined,
+    });
+    expect(body).toEqual({ svg: "<svg/>", svg_asset_media_id: "media-uuid" });
+  });
+
+  it("includes capacity_standing only when supplied", () => {
+    const body = buildCreateVersionBody({
+      svg: "<svg/>",
+      svgAssetMediaID: "media-uuid",
+      capacityStanding: 120,
+    });
+    expect(body).toEqual({
+      svg: "<svg/>",
+      svg_asset_media_id: "media-uuid",
+      capacity_standing: 120,
+    });
+  });
+
+  it("sends an explicit zero when the operator typed one", () => {
+    const body = buildCreateVersionBody({
+      svg: "<svg/>",
+      svgAssetMediaID: "media-uuid",
+      capacityStanding: 0,
+    });
+    expect(body.capacity_standing).toBe(0);
+  });
+
+  it("never sends geometry alongside svg", () => {
+    // The handler rejects a body carrying both (400 version_body_invalid).
+    const body = buildCreateVersionBody({
+      svg: "<svg/>",
+      svgAssetMediaID: "media-uuid",
+      capacityStanding: 1,
+    });
+    expect(body).not.toHaveProperty("geometry");
+  });
+
+  it("never sends capacity_seated, which the server derives", () => {
+    const body = buildCreateVersionBody({
+      svg: "<svg/>",
+      svgAssetMediaID: "media-uuid",
+      capacityStanding: 1,
+    });
+    expect(body).not.toHaveProperty("capacity_seated");
   });
 });
