@@ -2929,8 +2929,14 @@ type MeOrganizationMembership struct {
 	// JoinedAt When the membership was granted
 	JoinedAt time.Time `json:"joined_at"`
 
+	// OrgDisplayNumber Short operator-facing org number (AB-31); UUID remains the API key
+	OrgDisplayNumber int64 `json:"org_display_number"`
+
 	// OrgId Organization UUID
 	OrgId string `json:"org_id"`
+
+	// OrgName Organization display name (joined from organizations; used by the scope bar)
+	OrgName string `json:"org_name"`
 
 	// Role Role name held by the user inside the organization
 	Role string `json:"role"`

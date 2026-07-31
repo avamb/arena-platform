@@ -5192,6 +5192,13 @@ export interface components {
             id: string;
             /** @description Organization UUID */
             org_id: string;
+            /** @description Organization display name (joined from organizations; used by the scope bar) */
+            org_name: string;
+            /**
+             * Format: int64
+             * @description Short operator-facing org number (AB-31); UUID remains the API key
+             */
+            org_display_number: number;
             /** @description Role name held by the user inside the organization */
             role: string;
             /** @description Membership lifecycle status (always "active" in this response) */

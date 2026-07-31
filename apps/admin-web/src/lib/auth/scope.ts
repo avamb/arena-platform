@@ -69,10 +69,19 @@ export function parseScope(
       return null;
     }
     const membership = meta.memberships?.find((m) => m.org_id === id);
-    const label =
-      membership !== undefined
-        ? `Organization: ${shortenUuid(id)} (${membership.role})`
-        : `Organization: ${shortenUuid(id)}`;
+    let label: string;
+    if (membership !== undefined) {
+      // Prefer the enriched org name + display_number from the /v1/me response
+      // (AB-31). Fall back gracefully to shortened UUID when the fields are
+      // absent (e.g. degraded JWT-only response).
+      const orgLabel =
+        membership.org_name && membership.org_display_number
+          ? `${membership.org_name} · #${membership.org_display_number}`
+          : shortenUuid(id);
+      label = `${orgLabel} (${membership.role})`;
+    } else {
+      label = `Organization: ${shortenUuid(id)}`;
+    }
     return { raw, kind: "organization", id, label };
   }
   return null;

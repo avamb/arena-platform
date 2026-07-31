@@ -670,7 +670,7 @@ components:
 
     MeOrganizationMembership:
       type: object
-      required: [id, org_id, role, status, joined_at]
+      required: [id, org_id, org_name, org_display_number, role, status, joined_at]
       properties:
         id:
           type: string
@@ -678,6 +678,13 @@ components:
         org_id:
           type: string
           description: Organization UUID
+        org_name:
+          type: string
+          description: Organization display name (joined from organizations; used by the scope bar)
+        org_display_number:
+          type: integer
+          format: int64
+          description: Short operator-facing org number (AB-31); UUID remains the API key
         role:
           type: string
           description: Role name held by the user inside the organization

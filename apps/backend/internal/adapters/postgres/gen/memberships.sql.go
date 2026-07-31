@@ -17,16 +17,24 @@ import (
 
 // MembershipRow is the result type returned by all membership queries.
 // It represents a single user → org → role binding with its lifecycle state.
+//
+// OrgName and OrgDisplayNumber are populated only by queries that JOIN the
+// organizations table (currently ListMembershipsByUser). They are zero values
+// in rows returned by other queries (InsertMembership, RevokeMembership, etc.)
+// which do not need the org metadata.
 type MembershipRow struct {
-	ID       uuid.UUID `json:"id"`
-	UserID   uuid.UUID `json:"user_id"`
-	OrgID    uuid.UUID `json:"org_id"`
-	Role     string    `json:"role"`
-	Status   string    `json:"status"`
-	JoinedAt time.Time `json:"joined_at"`
+	ID              uuid.UUID `json:"id"`
+	UserID          uuid.UUID `json:"user_id"`
+	OrgID           uuid.UUID `json:"org_id"`
+	Role            string    `json:"role"`
+	Status          string    `json:"status"`
+	JoinedAt        time.Time `json:"joined_at"`
+	OrgName         string    `json:"org_name,omitempty"`
+	OrgDisplayNumber int64    `json:"org_display_number,omitempty"`
 }
 
 // scanMembershipRow scans a single memberships row into a MembershipRow.
+// Used by queries that select only the memberships columns (no org JOIN).
 func scanMembershipRow(row interface {
 	Scan(dest ...any) error
 }) (MembershipRow, error) {
@@ -38,6 +46,25 @@ func scanMembershipRow(row interface {
 		&m.Role,
 		&m.Status,
 		&m.JoinedAt,
+	)
+	return m, err
+}
+
+// scanMembershipWithOrgRow scans a memberships + organizations JOIN row.
+// Used by ListMembershipsByUser which needs the org name and display_number.
+func scanMembershipWithOrgRow(row interface {
+	Scan(dest ...any) error
+}) (MembershipRow, error) {
+	var m MembershipRow
+	err := row.Scan(
+		&m.ID,
+		&m.UserID,
+		&m.OrgID,
+		&m.Role,
+		&m.Status,
+		&m.JoinedAt,
+		&m.OrgName,
+		&m.OrgDisplayNumber,
 	)
 	return m, err
 }
@@ -205,17 +232,20 @@ func (q *Queries) GetActiveRolesForUserInOrg(ctx context.Context, userID, orgID 
 // ─────────────────────────────────────────────────────────────────────────────
 
 const listMembershipsByUser = `-- name: ListMembershipsByUser :many
-SELECT id, user_id, org_id, role, status, joined_at
-FROM   memberships
-WHERE  user_id = $1
-  AND  status  = 'active'
-ORDER  BY joined_at ASC, id ASC`
+SELECT m.id, m.user_id, m.org_id, m.role, m.status, m.joined_at,
+       o.name AS org_name, o.display_number AS org_display_number
+FROM   memberships m
+JOIN   organizations o ON o.id = m.org_id
+WHERE  m.user_id = $1
+  AND  m.status  = 'active'
+ORDER  BY m.joined_at ASC, m.id ASC`
 
 // ListMembershipsByUser returns every active membership held by the supplied
 // user across all organizations, ordered by join time ascending. Used by the
 // current-user context endpoint (GET /v1/me — feature #211) to populate
 // organization_memberships and the organization-scoped entries inside
-// available_scopes.
+// available_scopes. The JOIN against organizations populates OrgName and
+// OrgDisplayNumber so the scope bar can render friendly labels (AB-31).
 func (q *Queries) ListMembershipsByUser(ctx context.Context, userID uuid.UUID) ([]MembershipRow, error) {
 	rows, err := q.db.Query(ctx, listMembershipsByUser, userID)
 	if err != nil {
@@ -225,7 +255,7 @@ func (q *Queries) ListMembershipsByUser(ctx context.Context, userID uuid.UUID) (
 
 	var memberships []MembershipRow
 	for rows.Next() {
-		m, err := scanMembershipRow(rows)
+		m, err := scanMembershipWithOrgRow(rows)
 		if err != nil {
 			return nil, err
 		}

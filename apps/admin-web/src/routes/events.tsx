@@ -138,6 +138,7 @@ interface OrganizationSummary {
   readonly id: string;
   readonly name: string;
   readonly slug?: string;
+  readonly display_number?: number;
 }
 
 interface OrganizationListEnvelope {
@@ -1056,6 +1057,7 @@ function EventsModule() {
       {selectedEvent !== null ? (
         <EventDrawer
           event={selectedEvent}
+          orgsByID={orgsByID}
           canPublish={canPublish}
           canReadPublications={canReadPublications}
           canCreatePublication={canCreatePublication}
@@ -1108,8 +1110,10 @@ function FilterBar(props: FilterBarProps) {
           {[...props.orgs]
             .sort((a, b) => a.name.localeCompare(b.name))
             .map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
+              <option key={o.id} value={o.id} title={o.id}>
+                {o.display_number !== undefined
+                  ? `${o.name} · #${o.display_number}`
+                  : o.name}
               </option>
             ))}
         </select>
@@ -1243,8 +1247,14 @@ function EventsBody({
           >
             {ev.name} · #{ev.display_number}
           </button>
-          <div style={mutedHintStyle}>
-            {orgsByID.get(ev.org_id)?.name ?? shortenUUID(ev.org_id)}
+          <div style={mutedHintStyle} title={ev.org_id}>
+            {(() => {
+              const org = orgsByID.get(ev.org_id);
+              if (org === undefined) return shortenUUID(ev.org_id);
+              return org.display_number !== undefined
+                ? `${org.name} · #${org.display_number}`
+                : org.name;
+            })()}
           </div>
         </span>
       ),
@@ -1436,6 +1446,7 @@ const DRAWER_TABS: ReadonlyArray<{ id: DrawerTab; label: string }> = [
 
 interface DrawerProps {
   event: EventItem;
+  orgsByID: ReadonlyMap<string, OrganizationSummary>;
   canPublish: boolean;
   canReadPublications: boolean;
   canCreatePublication: boolean;
@@ -1451,6 +1462,7 @@ interface DrawerProps {
 
 function EventDrawer({
   event,
+  orgsByID,
   canPublish,
   canReadPublications,
   canCreatePublication,
@@ -1509,7 +1521,7 @@ function EventDrawer({
         </nav>
         <div style={drawerContentStyle}>
           {tab === "overview" ? (
-            <OverviewTab event={event} canPublish={canPublish} />
+            <OverviewTab event={event} orgsByID={orgsByID} canPublish={canPublish} />
           ) : null}
           {tab === "sessions" ? (
             <SessionsTab
@@ -1544,9 +1556,11 @@ function EventDrawer({
 
 function OverviewTab({
   event,
+  orgsByID,
   canPublish,
 }: {
   event: EventItem;
+  orgsByID: ReadonlyMap<string, OrganizationSummary>;
   canPublish: boolean;
 }) {
   const queryClient = useQueryClient();
@@ -1594,7 +1608,17 @@ function OverviewTab({
       </DetailRow>
       <DetailRow label="Visibility">{event.visibility}</DetailRow>
       <DetailRow label="Organization">
-        <code style={monoStyle}>{event.org_id}</code>
+        {(() => {
+          const org = orgsByID.get(event.org_id);
+          if (org === undefined) {
+            return <code style={monoStyle}>{event.org_id}</code>;
+          }
+          const orgLabel =
+            org.display_number !== undefined
+              ? `${org.name} · #${org.display_number}`
+              : org.name;
+          return <span title={event.org_id}>{orgLabel}</span>;
+        })()}
       </DetailRow>
       <DetailRow label="Venue">
         {event.venue_id !== null ? (

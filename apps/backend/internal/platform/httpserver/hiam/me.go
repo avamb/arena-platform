@@ -80,12 +80,16 @@ type meUserDTO struct {
 }
 
 // meMembershipDTO mirrors a single row from organization_memberships.
+// OrgName and OrgDisplayNumber are included so the SPA scope-selector can
+// render "OrgName · #N" labels without an additional round-trip (AB-31).
 type meMembershipDTO struct {
-	ID       string `json:"id"`
-	OrgID    string `json:"org_id"`
-	Role     string `json:"role"`
-	Status   string `json:"status"`
-	JoinedAt string `json:"joined_at"`
+	ID               string `json:"id"`
+	OrgID            string `json:"org_id"`
+	OrgName          string `json:"org_name"`
+	OrgDisplayNumber int64  `json:"org_display_number"`
+	Role             string `json:"role"`
+	Status           string `json:"status"`
+	JoinedAt         string `json:"joined_at"`
 }
 
 // meNetworkDTO mirrors a single row from assigned_networks.
@@ -337,15 +341,20 @@ func mergeRoles(jwtRoles, membershipRoles []string) []string {
 }
 
 // membershipsToDTO projects the sqlc rows down to JSON-tagged DTOs.
+// OrgName and OrgDisplayNumber are populated when rows come from
+// ListMembershipsByUser (which JOINs organizations); they are zero values
+// for rows from other queries.
 func membershipsToDTO(rows []gen.MembershipRow) []meMembershipDTO {
 	out := make([]meMembershipDTO, 0, len(rows))
 	for _, m := range rows {
 		out = append(out, meMembershipDTO{
-			ID:       m.ID.String(),
-			OrgID:    m.OrgID.String(),
-			Role:     m.Role,
-			Status:   m.Status,
-			JoinedAt: m.JoinedAt.UTC().Format(time.RFC3339Nano),
+			ID:               m.ID.String(),
+			OrgID:            m.OrgID.String(),
+			OrgName:          m.OrgName,
+			OrgDisplayNumber: m.OrgDisplayNumber,
+			Role:             m.Role,
+			Status:           m.Status,
+			JoinedAt:         m.JoinedAt.UTC().Format(time.RFC3339Nano),
 		})
 	}
 	return out

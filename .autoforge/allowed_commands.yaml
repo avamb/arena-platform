@@ -40,6 +40,12 @@ commands:
   - name: ./init.sh
     description: Project initialization script
 
+  # Local API binary for testing (built from source)
+  - name: .tmp/arena-api-419
+    description: Local test build of the arena API binary (feature #419)
+  - name: arena-api
+    description: Arena API binary
+
   # Node.js tools for OpenAPI validation
   - name: node
     description: Node.js runtime
