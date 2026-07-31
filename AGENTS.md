@@ -10,6 +10,12 @@ entries short and factual.
 <!-- Fill in: exact build/run commands for backend and frontends. -->
 - Backend is Go; this host has Go natively AND docker (golang:1.24 image used
   for pinned-version verification).
+- `go` is NOT on the default shell PATH on this Windows host. Prefix commands
+  with `$env:PATH = "C:\Program Files\Go\bin;$env:PATH"` (PowerShell) or the
+  bash equivalent, otherwise every `go` invocation fails with
+  "command not found" — and note that a bash `cmd | head` pipeline can mask
+  the failure behind a `0` exit code.
+- Admin-web type-check script is `npm run type-check` (not `check-ts`).
 
 ## Tests
 
@@ -48,6 +54,13 @@ entries short and factual.
 
 - When adding a migration, update the migration-head pin in tests (a test
   asserts the latest migration number; it was left at 0074 when 0075 landed).
+- Enum-like values enforced by a CHECK constraint have Go-side mirrors that
+  drift silently. `media_objects.owner_type` is the known case: widening
+  `mediastore.AllowedOwnerTypes` without a migration makes POST /v1/media
+  stream the bytes to storage and *then* fail the INSERT with a 23514.
+  `mediastore.TestAllowedOwnerTypes_MatchMigrationCheckConstraint` now guards
+  that pair by reading the embedded migration FS — extend the same pattern for
+  any new allowlist/CHECK pair.
 
 ## Gotchas
 
