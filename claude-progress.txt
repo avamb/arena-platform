@@ -23140,3 +23140,37 @@ imports AGENTS.md; the AutoForge fork got backup/restore + self-heal).
   session...' hang on full reload with stored session remains pre-existing.
 
 All 415/415 features passing.
+
+## 2026-07-31 — Integration gate (wave AB-28..AB-35, 423/423)
+
+All 423/423 features passing at 100%.
+
+### Commits pushed (8 ahead of origin before this gate)
+- dce74a0 feat(admin): AB-31 org name+number labels
+- e6ed5c9 fix(seating): AB-28 version-create org-membership gate
+- 739ac15 feat(admin): AB-32 event create/edit/delete UI with venue picker
+- d52c443 fix(auth): AB-29 StrictMode hang fix
+- 6a7860a feat(payments): per-provider structured settings + Stripe webhook URL
+- e76402b feat(seating): AB-30 rename standing→GA + conditional GA capacity
+- 96e91bc feat(payments): AB-34 Stripe webhook setup panel
+- 2e0157c feat(AB-35): one-step country-city-venue creation flow
+
+### Gates run
+- **`go build ./apps/backend/...`**: clean.
+- **`go test ./apps/backend/...`**: all 39 packages green (includes staticanalysis, migrations, httpserver suites).
+- **Admin-web Vitest** (`npm run test --run`): 1074/1074 tests pass, 43 suites.
+- **TypeScript type-check**: clean.
+- **OpenAPI codegen drift** (openapi30gen + oapi-codegen + gen-ts-client.mjs): no diff in types_gen.go or clients/ts/index.d.ts.
+- **Migration pin** (internal/migrations): green.
+- **git status**: only untracked temp/log files; no tracked-file drift.
+
+### Drifts fixed
+None. All artifacts were already in sync.
+
+### Notes
+- `gh` CLI is blocked by org policy; CI status cannot be watched via CLI.
+  Check https://github.com/avamb/arena-platform/actions after push.
+- `make` unavailable on this Windows host; codegen run via `go run` + `node` directly.
+- `golangci-lint` unavailable locally; lint gate runs in CI Lint job.
+- The staged changes visible in the initial git status (navConfig.ts, geo.tsx, venues.tsx)
+  were already included in commit 2e0157c (AB-35) — not orphaned work.
