@@ -498,7 +498,8 @@ Added 2026-08-01:
    service; the platform feeds it (AB-50). Check-in/check-out is MACS's concern, not ours.
 5. **GA places are materialized with real identity** — one row, one id per place (AB-51).
 6. **Posters bind to the session**, deliberately diverging from the reference (AB-47).
-7. **One order = one event. Multi-event carts are OUT OF SCOPE for this wave.**
+7. **One order = one SESSION (owner-confirmed 2026-08-01). Multi-event and multi-session
+   carts are OUT OF SCOPE.**
    The reference supports them — the Reporter fans one order into ticket rows carrying
    different Session/Venue/Event ids, the export nests `actionEvent` inside each
    `ticketList` item rather than at order level, and the order carries `filtered*` twins of
@@ -513,11 +514,9 @@ Added 2026-08-01:
    - The export/webhook format is per-ticket by design. Emit `actionEvent` per ticket and
      emit the `filtered*` fields even though they will always equal their plain twins. A
      receiver written against the reference must not have to special-case us.
-   - **Note the constraint is actually narrower than the decision:** we enforce one
-     *session* per order, while "one event per order" would still permit two dates of the
-     same run in one basket. Under today's schema a buyer wanting two dates must place two
-     orders. Confirm that is acceptable; if not, it is a small relaxation (reservations
-     grouped under one checkout, same event) and not the full multi-event build.
+   - **One session, not merely one event** — confirmed as the intended constraint, so a
+     buyer wanting two dates of the same run places two orders. That is the accepted
+     behaviour, not a gap to close.
 
 Sequencing is load-bearing: AB-36 -> AB-37 -> AB-38 must land before AB-42, or the event
 wizard gets written twice. Migration head is **0078**; this wave takes 0079-0081.
@@ -1102,13 +1101,15 @@ derived by joining tickets, never a state that blocks resale.
 Seat status set: **`available | held | sold | unavailable`**. `held` is ours (cart TTL); the
 reference expresses that through reservations rather than a seat state, but we need it.
 
-**Recommended rename:** our current DB value is `blocked`; the domain word everywhere else —
-reference UI, owner, this spec — is `unavailable`. Rename the CHECK value now rather than
-maintaining a `blocked`↔`Unavailable` translation in every surface. It is a wire-visible
-change to the seat-status endpoints, but this wave already breaks those, and the cost only
-grows later. (Contrast AB-30, where `capacity_standing` was left alone because renaming
-would have rippled through stable API contracts; a status enum value in one CHECK is a much
-smaller blast radius.)
+**Rename — DECIDED 2026-08-01, do it:** the current DB value is `blocked`; the domain word
+everywhere else — reference UI, owner, this spec — is `unavailable`. **Rename the CHECK
+value in the database**, do not maintain a `blocked`↔`Unavailable` translation layer. It is
+a wire-visible change to the seat-status endpoints, but this wave already breaks those and
+the cost only grows later. (Contrast AB-30, where `capacity_standing` was deliberately left
+alone because renaming would have rippled through stable API contracts; a status enum value
+in one CHECK is a far smaller blast radius.) Update the CHECK, every query, the OpenAPI
+schema, the TS client and the admin UI in one commit — a half-renamed enum is worse than
+either end state.
 
 **Transition table — implement exactly this, reject everything else:**
 
