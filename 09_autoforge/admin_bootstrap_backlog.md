@@ -1190,6 +1190,20 @@ this is a real workflow an operator will attempt.
    financial task — never as a rolled-back cancellation.
 6. Wire seat release into the **other** terminal transitions too: complimentary revocation,
    and the inbound refund webhook in its new defensive role.
+   **A Stripe-initiated refund is ORDER-level** (owner, 2026-08-01): the money comes back
+   for the order, and an order may hold several tickets — so a full inbound refund must
+   move **every ticket of that order** to refunded, releasing every one of their seats.
+   The existing `CancelTicketsByCheckoutSession`
+   (`WHERE checkout_session_id = $1 AND status = 'active'`) already has the right scope,
+   since one order is one checkout session (scope decision 7); it simply never released the
+   seats. Keep the scope, add the release.
+   **Open question — partial inbound refunds.** A partial amount refunded directly in
+   Stripe cannot be attributed to particular tickets: the platform has no way to know which
+   two of five seats the organizer meant. Cancelling all of them would be destructive and
+   cancelling none would be silently wrong. **Recommendation: do not auto-cancel anything on
+   a partial inbound refund — record it and raise it for operator review**, so a human
+   decides which tickets it covers. Confirm before implementing; do not let an agent invent
+   a proportional-allocation rule.
 7. Decrement `inventory_ledger.capacity_sold` on every cancellation (GA and seated alike),
    using the existing `RestoreSoldCapacity`. Delete the stale "separate domain events"
    comment in 0020 or implement what it promises.
@@ -1380,8 +1394,21 @@ integer only at the boundary.
 
 **The gate already does the right thing** (`app/api/tickets.py:385-391`): on validate, if
 `current_status == 3` it returns `400` with `"Ticket was refunded <date>"`. So propagating a
-refund is *sufficient* to close the admission hole — MACS needs no change, only a truthful
-feed. This is the concrete mechanism AB-50 exists to deliver.
+cancellation is *sufficient* to close the admission hole — MACS needs no change, only a
+truthful feed. This is the concrete mechanism AB-50 exists to deliver.
+
+**"Refunded" is the deliberate word at the door — keep it** (owner, 2026-08-01). It is a
+customer-service decision, not a technicality: told "invalid ticket", a holder argues *"but
+I bought it"* and the door staff have no answer. Told **"this ticket was refunded"**, the
+conversation is already settled — yes, you bought it; it was subsequently returned. Use
+"refunded" in operator- and customer-facing text; do not "correct" it to
+*cancelled* / *void* / *invalid* anywhere on the admission path.
+
+One honest limitation to accept: MACS has exactly four integer statuses, so a ticket
+cancelled with `refund_mode = none` (a revoked comp, say) still reaches the door as
+"refunded". That is the best available message and matches the reasoning above. If we ever
+need to distinguish "cancelled, nothing owed" at the gate, that is a **MACS-side** change,
+not something to work around here (see the MVP note above).
 
 **Webhook receiver:** `POST /_wh/tickets`, envelope
 `{id: int, created: datetime, type: str, data: Ticket | TicketList | null}`.
