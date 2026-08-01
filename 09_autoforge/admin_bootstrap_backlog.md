@@ -1277,13 +1277,10 @@ payload.
 5. **Sign our webhooks** even though the reference does not. Unsigned webhooks were already
    raised as a BLOCKER in the PR2 audit; `webhook_subscribers` carries a secret. Signature
    verification must be optional on the receiver so the existing service keeps working.
-6. `holderStatus` — evidence now spans three sources: the JSON sample shows `NEVER_USE`;
-   the MACS UI shows `Not Used / Checked In / Check out`; the BIL24 Reporter's
-   **Owner status** column shows `Not used`, `Check in`, and `Ticket was refunded`.
-   Note the trap: the Reporter **merges refund into the usage column for display**, while
-   the wire format keeps them apart (`holderStatus` plus separate `refundDate`/
-   `refundPrice`). **Keep usage state and refund fact separate in our model and merge only
-   at render time.** Still get the authoritative enum from MACS before implementing.
+6. Status enum — **RESOLVED from the MACS source** (owner supplied the repo 2026-08-01;
+   FastAPI + MongoDB, `app/models/tickets.py`, `app/api/tickets.py`). See the MACS contract
+   section below. In short: it is an **integer**, not a string — `NEVER_USE` is the *Bil24*
+   wire value and is not what MACS stores.
 7. Per-ticket report fields, confirmed from the Reporter's ticket pane — the export must be
    able to produce all of them:
    `Order ID | Ticket ID | Seat ID | Sector | Row | Seat | Category | Tariff | Price |
@@ -1300,6 +1297,72 @@ payload.
    forever.
 7. End-to-end test against a stub receiver: sell → export/notify → refund → assert the
    refund notification is delivered and retried on a non-200.
+
+### The MACS contract — read from its source, not inferred
+
+Owner supplied the MACS repo (`backend-develop`: FastAPI + MongoDB + Pydantic, ~26 files).
+Everything below is quoted behaviour, not a guess. **Build against this, not against the
+Bil24 docs, wherever the two differ** — Bil24 is the format's ancestor, MACS is the actual
+receiver.
+
+**Ticket status is an INTEGER on one field** (`app/models/tickets.py`, `TicketStatusStats`):
+
+| value | meaning |
+|---|---|
+| `0` | not used |
+| `1` | checked in |
+| `2` | checked out |
+| `3` | **refunded** |
+
+`NEVER_USE` from the Bil24 sample is *not* what MACS stores. Note the consequence, which
+contradicts the guidance previously written here: **MACS deliberately conflates usage and
+refund in one field** — marking a ticket refunded (`3`) overwrites its check-in state. Keep
+them separate in *our* model (usage vs `refund_date`/`refund_price`) and collapse to the
+integer only at the boundary.
+
+**The gate already does the right thing** (`app/api/tickets.py:385-391`): on validate, if
+`current_status == 3` it returns `400` with `"Ticket was refunded <date>"`. So propagating a
+refund is *sufficient* to close the admission hole — MACS needs no change, only a truthful
+feed. This is the concrete mechanism AB-50 exists to deliver.
+
+**Webhook receiver:** `POST /_wh/tickets`, envelope
+`{id: int, created: datetime, type: str, data: Ticket | TicketList | null}`.
+Handled `type` values are **only `order.paid` and `ticket.refunded`**
+(`app/api/tickets.py:674-686`) — MACS does **not** consume `order.cancelled` or the
+`event.*` triggers the Bil24 docs describe. A whole-order cancellation must therefore be
+emitted as one `ticket.refunded` per ticket, which lines up with the owner's rule that
+admission is decided per ticket. (`/_wh/test` and `/_wh/reprocess/{id}` exist for
+debugging.)
+
+**Required ticket fields** (Pydantic, so a missing one is a validation error):
+`id: int`, `seatId: int`, `barcode: str`, `actionEvent: Event` — and `Event` requires
+`id`, `cityName`, `venueName`, `actionName`, `actionLegalOwner`, `showTime`.
+Optional: `seatLocation{sector,row,number}`, `barcodeFormat`, `category`, `refundDate`,
+`sold_at`, `ticket_system`, `system_ticket_id`.
+
+**Identifier mismatch — plan for it.** `Ticket.id` and `Ticket.seatId` are typed `int`;
+our ids are `uuidv7`. (`Event.id` is `Union[int, str]` and so is tolerant, but the ticket
+fields are not.) MACS is explicitly multi-system — `ticket_system: str` (slug),
+`system_ticket_id: str`, `BsonEvent.system_ids: Dict[slug, external_event_id]`, and a
+generic `POST /tickets/import/{ticket_system_slug}` endpoint alongside per-vendor ones for
+TicketTailor and TicketsCloud. So: **register as a ticket system with our own slug, carry
+our UUIDs in the string fields (`system_ticket_id`, `system_ids`), and supply a stable
+integer for `id`/`seatId`.** Decide that integer scheme deliberately — it must be stable
+across re-imports and unique per ticket/seat, because MACS keys on it.
+
+**The importer is dangerously permissive — send complete data.** `app/importers/
+json_importer.py` silently repairs anything missing rather than rejecting it: a missing
+order `id` becomes `random.randint(1000000, 9999999)`; missing `status` becomes `"PAID"`;
+missing `seatId` is copied from the ticket `id`; a missing `actionEvent` is either borrowed
+from a sibling ticket or fabricated as `Unknown City` / `Unknown Venue` /
+`Event #<id>`; a missing `barcodeFormat` defaults to `EAN-13`. An incomplete export will
+therefore import "successfully" and produce plausible garbage. Our export must be complete
+by construction, and the round-trip test must assert on what MACS *stored*, not on the HTTP
+status it returned.
+
+Also note the import UI can bind an upload to a pre-selected event, in which case it
+**overwrites `actionEvent` on every ticket** in the file — useful, and a footgun worth
+knowing when reconciling.
 
 ## AB-51. GA units get real identity — one row per place, decided
 
