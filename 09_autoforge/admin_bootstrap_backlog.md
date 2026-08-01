@@ -1364,6 +1364,24 @@ Also note the import UI can bind an upload to a pre-selected event, in which cas
 **overwrites `actionEvent` on every ticket** in the file — useful, and a footgun worth
 knowing when reconciling.
 
+**MACS is an MVP and will be developed further; we do not touch it in this wave**
+(owner, 2026-08-01). It works today and stays as-is. Four consequences for how we build
+against it:
+
+1. **Isolate the contract behind an adapter.** All MACS-shaped mapping (int status,
+   int `id`/`seatId`, envelope, field names) lives in one boundary package. Nothing
+   MACS-specific leaks into the catalog/ticketing domain. When MACS changes, one file
+   changes.
+2. **Do not invent an elaborate permanent numbering scheme** for the int `id`/`seatId`
+   mismatch. Pick the simplest stable, collision-free mapping that survives re-import, and
+   record that the cleaner long-term fix is widening MACS to accept string ids — a change
+   for the MACS backlog, not something to engineer around forever here.
+3. **Do not compensate on our side for MACS defects.** The silently-fabricating importer is
+   a MACS bug; the fix belongs there. Our job is to send complete, correct data and to fail
+   loudly if we cannot — not to build workarounds that will outlive the bug.
+4. Findings about MACS that we hit while integrating go into a MACS-side note for the owner,
+   not into this repo's code.
+
 ## AB-51. GA units get real identity — one row per place, decided
 
 **Category:** Inventory — model change, decision taken
