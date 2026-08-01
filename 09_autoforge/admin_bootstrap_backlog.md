@@ -1197,13 +1197,24 @@ this is a real workflow an operator will attempt.
    (`WHERE checkout_session_id = $1 AND status = 'active'`) already has the right scope,
    since one order is one checkout session (scope decision 7); it simply never released the
    seats. Keep the scope, add the release.
-   **Open question — partial inbound refunds.** A partial amount refunded directly in
-   Stripe cannot be attributed to particular tickets: the platform has no way to know which
-   two of five seats the organizer meant. Cancelling all of them would be destructive and
-   cancelling none would be silently wrong. **Recommendation: do not auto-cancel anything on
-   a partial inbound refund — record it and raise it for operator review**, so a human
-   decides which tickets it covers. Confirm before implementing; do not let an agent invent
-   a proportional-allocation rule.
+   **Partial inbound refunds — owner-decided 2026-08-01.** A partial amount refunded
+   directly in Stripe cannot be attributed to particular tickets: the platform cannot know
+   which two of five seats the organizer meant. This is rare and non-standard, so it is
+   handled by escalation, not by logic: **auto-cancel nothing, notify the operator and the
+   organizer, and put the order's tickets into a review hold until a human resolves which
+   tickets the refund covers.** An agent must not invent a proportional-allocation rule.
+   **One sub-decision still open — what "review hold" means at the door.** The two options
+   have opposite failure modes:
+   - *Hold blocks admission:* nobody who was refunded gets in, but legitimate holders from
+     the same order are turned away at the gate — irreversible in the moment, in front of
+     the customer.
+   - *Hold flags but keeps admitting:* nobody legitimate is embarrassed at the door, but a
+     refunded holder may get in once before the operator resolves it.
+   **Recommendation: flag, do not block.** The operator normally has days between the refund
+   landing and the event, so the resolution window is long; whereas turning away a paying
+   customer at the door cannot be undone and costs far more than one unearned admission.
+   Escalate loudly (operator + organizer notification, prominent in the admin) rather than
+   defending the gate. Confirm before implementing.
 7. Decrement `inventory_ledger.capacity_sold` on every cancellation (GA and seated alike),
    using the existing `RestoreSoldCapacity`. Delete the stale "separate domain events"
    comment in 0020 or implement what it promises.
