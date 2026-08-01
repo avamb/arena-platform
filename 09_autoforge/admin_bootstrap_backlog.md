@@ -1041,7 +1041,7 @@ early-bird price switches to standard on the configured date with no operator ac
 cart held across that switch keeps the price it was quoted; and every post-sale price edit
 appears in the audit log.
 
-## AB-49. Cancelling a ticket never releases the seat or the capacity
+## AB-49. Ticket cancellation: the operator action that does not exist
 
 **Category:** Inventory / Ticketing — CRITICAL, permanent inventory loss
 
@@ -1049,8 +1049,42 @@ appears in the audit log.
 
 > A seat and a ticket are separate entities. We do not sell seats — we sell tickets, and a
 > ticket *reserves* a seat. Over the life of a session several tickets may exist for the
-> same seat (sold → refunded → sold again); only one is valid at a time. When a ticket is
+> same seat (sold → cancelled → sold again); only one is valid at a time. When a ticket is
 > cancelled the seat returns to sale **immediately**.
+
+### Cancellation and money refund are two different things (owner, 2026-08-01)
+
+This governs the whole item — read it before anything else.
+
+**Ticket cancellation is the primary operator action and the sole driver of inventory and
+gate state.** The organizer cancels a ticket in the admin panel. That act, by itself and
+immediately, and regardless of any money movement:
+- invalidates the ticket,
+- returns its seat to sale,
+- restores capacity,
+- notifies MACS so the ticket stops admitting at the door.
+
+**The money refund is a separate, optional, possibly-later action.** At cancellation the
+organizer picks one of:
+- **automatic** — where the payment provider supports it and is configured: the organizer
+  confirms the amount (**full or partial**) and the platform calls the provider;
+- **manual** — the organizer will refund from the provider's own dashboard later; the
+  platform records the obligation and performs no financial operation;
+- **none** — nothing is owed (comp ticket, no-refund policy).
+
+**The money outcome must never gate inventory or admission.** A cancelled ticket frees its
+seat and stops admitting the moment it is cancelled — whether or not money has moved,
+whether or not it ever will, and whether or not the provider call succeeds. Wiring the seat
+release behind a successful refund would reintroduce the exact failure this item exists to
+remove.
+
+**Today the code has this backwards.** The *only* path that cancels a ticket is the inbound
+payment-refund webhook (`hcheckout/refunds.go` → `CancelTicketsByCheckoutSession`) — money
+drives cancellation, and **there is no admin "cancel ticket" action at all**. Undo the
+inversion: cancellation becomes the operator-facing primitive; refund becomes its optional
+financial consequence. Keep the inbound-refund path, but demote it to a *defensive
+secondary trigger* — a refund initiated directly in Stripe must also cancel the ticket, so
+the two systems cannot drift apart.
 
 **The structural half is correct — do not "fix" it.** `tickets` and `session_seats` are
 separate tables; `tickets` holds no FK to `session_seats`, only denormalized
@@ -1135,21 +1169,40 @@ this is a real workflow an operator will attempt.
 0. Implement the status set and transition table above as guarded conditional UPDATEs (one
    query per legal edge, `WHERE status = <from>`), so an illegal transition is impossible at
    the SQL layer rather than merely discouraged in a handler.
-1. New query `ReleaseSoldSessionSeat`: conditional `sold -> available`, clearing
+1. **Build the missing operator action: `POST /v1/tickets/{id}/cancel`.** Body: a reason,
+   plus the refund decision — `mode: none | manual | automatic` and, for `automatic`, the
+   confirmed amount (defaulting to the full paid amount, editable down for a partial).
+   Permission-gated and audited: who cancelled what, when, why, and which refund mode was
+   chosen. Admin UI: a Cancel action on the ticket, with the refund choice presented as a
+   deliberate step, not a hidden default.
+2. In **one transaction**, cancellation performs: ticket → `cancelled`; seat
+   `sold -> available`; capacity restored; barcodes and credentials revoked; a MACS
+   notification enqueued (AB-50). None of these may be conditional on the money.
+3. New query `ReleaseSoldSessionSeat`: conditional `sold -> available`, clearing
    `reservation_id` and bumping `status_version`. Guard it so it cannot fire while a valid
    active ticket still references that seat.
-2. Wire it into **every** terminal ticket transition — refund/cancel, complimentary
-   revocation, and any admin void — inside the same transaction as the status change.
-3. Decrement `inventory_ledger.capacity_sold` on paid refunds (GA and seated alike), using
-   the existing `RestoreSoldCapacity`. Delete the stale "separate domain events" comment in
-   0020 or implement what it promises.
-4. Re-selling a released seat must work end to end: refund → seat available → new
+4. Record the financial side on the ticket without letting it block anything:
+   `cancelled_at`, `cancellation_reason`, `refund_mode`, and — for `automatic` — a link to
+   the `refunds` row (0028). `manual` is an **outstanding obligation**, visible in the
+   admin as "refund pending, handled outside the platform"; it must not read as done.
+5. Only for `mode = automatic`: call the provider with the confirmed amount. A provider
+   failure leaves the ticket cancelled and the seat on sale, and surfaces as a retryable
+   financial task — never as a rolled-back cancellation.
+6. Wire seat release into the **other** terminal transitions too: complimentary revocation,
+   and the inbound refund webhook in its new defensive role.
+7. Decrement `inventory_ledger.capacity_sold` on every cancellation (GA and seated alike),
+   using the existing `RestoreSoldCapacity`. Delete the stale "separate domain events"
+   comment in 0020 or implement what it promises.
+8. Re-selling a released seat must work end to end: cancel → seat available → new
    reservation → new ticket, with both ticket rows retained in history.
-5. Regression tests per path: assigned-seat refund, GA refund, comp revocation, and a
-   full sell → refund → resell cycle.
+9. Regression tests per path: admin cancel of an assigned seat, admin cancel of a GA place,
+   comp revocation, inbound Stripe refund, and a full sell → cancel → resell cycle. Plus the
+   one that matters most: **cancel with `mode = manual` must free the seat and notify MACS
+   with no provider call at all.**
 
-**Done when:** for each cancellation path a released seat is immediately purchasable again,
-capacity counters return to their pre-sale values, and the cancelled ticket row is retained.
+**Done when:** an organizer can cancel a ticket from the admin, the seat is purchasable
+again within the same request, MACS stops admitting it, and the money decision — automatic,
+manual or none — is recorded without ever having gated any of the above.
 
 ## AB-50. Integrate the EXTERNAL scanning service (JSON export + Bil24-shaped webhooks)
 
@@ -1268,9 +1321,14 @@ payload.
    already have `webhook_subscribers` (0040) and a `v1.*` catalog
    (`08_architecture/15_webhook_event_catalog.md`) — add a **Bil24-compat flavour** rather
    than renaming our native events.
-3. **Refund propagation is the acceptance criterion.** A refund must emit `ticket.refunded`
-   (and `order.cancelled` where the whole order goes), reliably, through the existing outbox
-   with retry — this is what actually closes the gate hole.
+3. **Cancellation propagation is the acceptance criterion.** The trigger is the operator
+   **cancelling a ticket** (AB-49), not a money refund — a ticket cancelled with
+   `refund_mode = manual` or `none` must reach MACS exactly like one refunded
+   automatically, because admission has nothing to do with whether money moved. Emit
+   `ticket.refunded` per ticket — that is MACS's name for "no longer valid", and its gate
+   check is `status == 3`, not "was money returned". Deliver through the existing outbox
+   with retry; a whole-order cancellation becomes one `ticket.refunded` per ticket, since
+   MACS does not consume `order.cancelled`.
 4. Delivery semantics per the docs: POST, success = HTTP 200, retry over 24h. Our outbox
    already has `next_attempt_at` / `dead_lettered_at` (0068) — reuse it, do not invent a
    second retry mechanism.
