@@ -521,6 +521,40 @@ Added 2026-08-01:
 Sequencing is load-bearing: AB-36 -> AB-37 -> AB-38 must land before AB-42, or the event
 wizard gets written twice. Migration head is **0078**; this wave takes 0079-0081.
 
+## Execution plan — alternating passes
+
+**Operational constraint (owner, 2026-08-01):** the strongest model (Fable 5) is available
+**only in the interactive session**, not to AutoForge. So this wave is not a one-time split
+of work but an **alternation**: do the passes that need the strongest reasoning here, hand
+the bounded breadth to AutoForge, come back, repeat. Quality bar is production, not MVP.
+
+Assignment rule — by blast radius and reversibility, not by apparent difficulty:
+**interactive** takes anything whose failure is silent and expensive (migrations touching
+the whole catalog, inventory, money); **AutoForge** takes anything whose failure is visible
+and contained (UI, tests, mappers with round-trip assertions).
+
+| Pass | Where | Features | Why here |
+|---|---|---|---|
+| 1 | interactive | AB-36, AB-37, AB-38, plus the `blocked→unavailable` rename from AB-49 | Three migrations in one series touching nearly every catalog query and the Bil24 gateway. Blocks everything downstream. Rename folded in so the CHECK is touched once, not twice |
+| 2 | AutoForge | AB-42, AB-43, AB-44, AB-46, AB-47 | UI breadth on the new foundation; each is bounded and fails visibly |
+| 3 | interactive | AB-40 A/B/C, AB-51 | The seating model as one coherent piece. Part B's failure mode is silent data loss; AB-51 carries a volume/contention risk needing a benchmark |
+| 4 | AutoForge | AB-39, AB-40 D | Both are large UI over a model that is now settled |
+| 5 | interactive | AB-49, AB-48, AB-41 | Inventory and money correctness — cancellation semantics, price locking, provider credentials |
+| 6 | AutoForge | AB-50, AB-45 | MACS mapper/adapter behind round-trip tests; dead-schema cleanup against decisions already recorded |
+
+Dependencies this ordering satisfies: AB-42 needs 36-38; AB-47 needs 36; AB-39 needs
+AB-40 A (categories carry a kind) and AB-51 (GA rows exist to list); AB-48 needs AB-39
+(categories defined before prices attach to them); AB-50 needs AB-49 (there must be a
+cancellation event to propagate).
+
+**Between every pass, run the full gate — no exceptions.** `go test ./...` in golang:1.24,
+golangci-lint over `apps/backend`, `npm run admin:test` + type-check + build, `test:mobile`,
+`make gen-openapi` and `gen-ts-client` with a drift check, clean working tree, push, and CI
+green **verified via `gh run view`** rather than trusted from a commit message. Waves 1-3
+lost time to every one of these, and AB-28..AB-35 was pushed claiming "423/423 all green"
+while CI Lint was red. Also diff each delivered feature against its spec here — feature
+#411 was once marked passing with zero lines of code.
+
 ---
 
 ## AB-36. Session owns venue and seating (migration 0079) — CRITICAL, foundation
@@ -1203,18 +1237,14 @@ this is a real workflow an operator will attempt.
    handled by escalation, not by logic: **auto-cancel nothing, notify the operator and the
    organizer, and put the order's tickets into a review hold until a human resolves which
    tickets the refund covers.** An agent must not invent a proportional-allocation rule.
-   **One sub-decision still open — what "review hold" means at the door.** The two options
-   have opposite failure modes:
-   - *Hold blocks admission:* nobody who was refunded gets in, but legitimate holders from
-     the same order are turned away at the gate — irreversible in the moment, in front of
-     the customer.
-   - *Hold flags but keeps admitting:* nobody legitimate is embarrassed at the door, but a
-     refunded holder may get in once before the operator resolves it.
-   **Recommendation: flag, do not block.** The operator normally has days between the refund
-   landing and the event, so the resolution window is long; whereas turning away a paying
-   customer at the door cannot be undone and costs far more than one unearned admission.
-   Escalate loudly (operator + organizer notification, prominent in the admin) rather than
-   defending the gate. Confirm before implementing.
+   **What "review hold" means at the door — DECIDED: flag, do not block.** Admission stays
+   allowed until the operator resolves it. The reasoning, recorded so it is not reversed by
+   someone optimising for gate strictness: the operator normally has days between the refund
+   landing and the event, so the resolution window is wide; whereas turning away a paying
+   customer at the door is irreversible in the moment, happens in front of the customer, and
+   costs far more than one unearned admission. Escalate loudly — operator **and** organizer
+   notification, prominent in the admin — rather than defending the turnstile. The hold is a
+   review flag, never an admission state, and it must not be sent to MACS as status 3.
 7. Decrement `inventory_ledger.capacity_sold` on every cancellation (GA and seated alike),
    using the existing `RestoreSoldCapacity`. Delete the stale "separate domain events"
    comment in 0020 or implement what it promises.
