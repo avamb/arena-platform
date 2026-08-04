@@ -241,7 +241,11 @@ func importLiveVenues(ctx context.Context, pool *pgxpool.Pool, orgID string, cou
 			return stats, fmt.Errorf("Bil24 country %q lacks a supported ISO-3166 code", country.Name)
 		}
 		var id string
-		err = tx.QueryRow(ctx, `INSERT INTO countries (iso2, iso3, slug) VALUES ($1,$2,$3) ON CONFLICT (iso2) DO UPDATE SET iso3=EXCLUDED.iso3 RETURNING id`, iso2, iso3, slugFor(country.Name, iso2)).Scan(&id)
+		// countries.currency is NOT NULL since migration 0081 (AB-38).
+		// New rows get the ISO-4217 code for the country; existing rows
+		// keep whatever currency they already carry (the ON CONFLICT
+		// branch deliberately does not touch it).
+		err = tx.QueryRow(ctx, `INSERT INTO countries (iso2, iso3, slug, currency) VALUES ($1,$2,$3,$4) ON CONFLICT (iso2) DO UPDATE SET iso3=EXCLUDED.iso3 RETURNING id`, iso2, iso3, slugFor(country.Name, iso2), currencyForISO2(iso2)).Scan(&id)
 		if err != nil {
 			return stats, fmt.Errorf("upsert country %q: %w", country.Name, err)
 		}
@@ -317,6 +321,22 @@ func countryCodes(country bil24Country) (string, string) {
 		return "", ""
 	}
 	return iso2, iso3
+}
+
+// currencyForISO2 maps an ISO-3166 alpha-2 country code to its ISO-4217
+// currency for the countries this importer can encounter (the countryCodes
+// allowlist plus the 0006 seed set). Unknown codes fall back to USD — the
+// same defensive default migration 0081 applies.
+func currencyForISO2(iso2 string) string {
+	known := map[string]string{
+		"EE": "EUR", "RU": "RUB", "IL": "ILS", "LV": "EUR", "LT": "EUR",
+		"DE": "EUR", "FR": "EUR", "FI": "EUR", "SE": "SEK", "UA": "UAH",
+		"US": "USD", "GB": "GBP",
+	}
+	if cur, ok := known[iso2]; ok {
+		return cur
+	}
+	return "USD"
 }
 
 var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
