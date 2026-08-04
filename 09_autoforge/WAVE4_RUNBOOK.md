@@ -32,7 +32,7 @@ Quality bar is **production, not MVP** (owner, explicit).
 | Pass | Where | Features | Status |
 |---|---|---|---|
 | 1 | interactive (Fable 5) | AB-36, AB-37, AB-38 + `blocked→unavailable` rename | **DONE 2026-08-04** — commits a8fae78 + 87ddc20 + aa7acfb; migrations verified live (78→81: venue/currency backfill, 0080 trigger, tier-currency cascade + mismatch rejection); **CI run 30891031484 fully green** (`gh run view`), image published by the Docker job. **Stand redeployed 2026-08-04 on aa7acfb**: migrate 78→81 clean, api/worker healthy, backfill verified in the stand DB, admin rebuilt from Git (bundle carries first_session_at/venue_names/capacity_override). Follow-up a7e79a5 (CI run 30905497551 green): Geo Registry country create/update now carries the ISO-4217 currency (was broken by 0081's NOT NULL); stand geo data fixed live — CZ=CZK, Prague added, Palac Akropolis linked, its session re-derived to CZK with the tier following via the FK cascade. a7e79a5 is NOT yet on the stand — deploy together with pass 2 |
-| 2 | AutoForge | AB-42, AB-47, AB-43, AB-44, AB-46 | **imported 2026-08-04** (features 424–428; passes 4/6 are 429–432) — base is a7e79a5, CI run 30905497551 green. STOP AutoForge after 427/428: 429–430 depend on interactive pass 3 |
+| 2 | AutoForge | AB-42, AB-47, AB-43, AB-44, AB-46 | **implemented 2026-08-04, REVIEW IN PROGRESS** — all 5 features passes=1; 6 local commits on top of bfdea96 (8322863 AB-43, 1b8ecf6 AB-46, c3cb458 docs, 80cc281 AB-42 publish gate, 5f4318f AB-47 + migration 0082 + head-pin bump, 0b5adf6 AB-44). **NOT PUSHED.** See 'Pass 2 review — handoff state' below for exactly what remains |
 | 3 | interactive (Fable 5) | AB-40 A/B/C, AB-51 | not started |
 | 4 | AutoForge | AB-39, AB-40D | in script, not imported |
 | 5 | interactive (Fable 5) | AB-49, AB-48, AB-41 | not started — NOTE: the `blocked→unavailable` rename part of AB-49 already landed with pass 1 (folded into 0081) |
@@ -57,6 +57,60 @@ session may need:
 - Events API: `first_session_at`/`last_session_at` (trigger cache) +
   `venue_names[]`; public feed events follow the same shape.
 
+---
+
+## Pass 2 review — handoff state (2026-08-04, mid-review)
+
+AutoForge ran features 424–428 in two batches (a UI/server restart killed the
+first #424 attempt mid-flight; its dangling diffs were folded into 8322863 and
+finished by 80cc281 — the agent documented this honestly in claude-progress.txt).
+
+**Review done so far:**
+- Fabrication check PASSED: every feature has a real diff (stats: 8322863
+  events.tsx +1099 incl. the AB-42 EventWizard UI; 1b8ecf6 +926 lines of
+  domain tests across 8 packages; 80cc281 +56 publish gate; 5f4318f AB-47
+  incl. migration 0082 + mediastore allowlist + head pin → 0082; 0b5adf6 +34).
+- claude-progress.txt entries exist for every feature; #429 correctly
+  NOT ATTEMPTED (gate #433 worked — agent released it).
+- Migration 0082 read and sane: `session_poster` added to the media
+  owner_type CHECK, `sessions.poster_media_id` FK with resolution order
+  session ?? event ?? none.
+- Gates already green on the local tree: `go test ./...` exit 0 (54 pkgs ok);
+  admin type-check + 1095/1095 tests + build + test:mobile (chain exit 0).
+
+**Review REMAINING (do these before push):**
+1. Spec-vs-diff AB-42: inspect the EventWizard in events.tsx (inside commit
+   8322863) against backlog steps 1–5 — three steps, capacity read-only +
+   currency-derived display, resumability ("reopening a draft lands on the
+   first incomplete step"), and the publish-gate error codes in
+   events.go (80cc281): refuse publish without session / without priced tier.
+2. Spec-vs-diff AB-47 step 4: poster resolution must reach the PUBLIC FEED,
+   the WIDGET and ticket PDF/email. The 5f4318f diffstat did not obviously
+   touch apps/widget — verify the full stat (`git show --stat 5f4318f`) and
+   close the gap or record it as follow-up. Also confirm
+   `TestAllowedOwnerTypes_MatchMigrationCheckConstraint` was extended and the
+   WordPress contract doc update (spec step 4) — likely NOT done.
+   AB-47 spec step 5 is an OPEN OWNER QUESTION (two image slots) — do not
+   guess, ask.
+3. Spec-vs-diff AB-44: commit is only +34 lines vs 4 spec items (modal
+   dismiss/Escape+confirm via ResponsiveDrawer, venue column name+number,
+   pricing-mode help, Activity tab) — check which items actually landed.
+4. golangci-lint (`GOLANGCI_LINT_CACHE=.golangci-cache go run
+   github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run` from
+   apps/backend) + gofmt.
+5. Codegen drift check (openapi30gen + oapi-codegen + gen-ts-client, then
+   `git status` must stay clean).
+6. Push, CI via `gh run view`, THEN redeploy the stand (owner decision:
+   stand updates only after pass 2; it is still on aa7acfb and the a7e79a5
+   geo fix is not deployed either — one deploy covers both, same procedure:
+   Raw-compose tag ×4 + admin Deploy from Git).
+
+**AutoForge queue state:** 424–428 passes=1; 429/430 blocked by human-gate
+feature #433 (interactive pass 3), 431/432 by #434 (pass 5). The gates are
+features with needs_human_input=1 — resolve #433 (boolean confirm) only after
+pass 3 lands. NOTE: gate rows' `human_input_request` column MUST be valid
+JSON ({prompt, fields[]}) — a raw string there 500s the whole Kanban API
+(learned the hard way).
 ---
 
 ## Step 0 — import the AutoForge queue (once, before pass 2)
