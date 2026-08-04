@@ -21,6 +21,7 @@ SELECT
     c.iso2,
     c.iso3,
     c.slug,
+    c.currency,
     COALESCE(t_loc.value, t_en.value, c.iso2) AS name
 FROM countries c
 LEFT JOIN i18n_text t_loc ON t_loc.namespace = 'geo.countries'
@@ -32,13 +33,15 @@ LEFT JOIN i18n_text t_en ON t_en.namespace = 'geo.countries'
 ORDER BY c.iso2
 `
 
-// ListCountryRow is the result type for ListCountries.
+// ListCountryRow is the result type for ListCountries. Currency is the
+// ISO 4217 code (NOT NULL since migration 0081, AB-38).
 type ListCountryRow struct {
-	ID   uuid.UUID `json:"id"`
-	Iso2 string    `json:"iso2"`
-	Iso3 string    `json:"iso3"`
-	Slug string    `json:"slug"`
-	Name string    `json:"name"`
+	ID       uuid.UUID `json:"id"`
+	Iso2     string    `json:"iso2"`
+	Iso3     string    `json:"iso3"`
+	Slug     string    `json:"slug"`
+	Currency string    `json:"currency"`
+	Name     string    `json:"name"`
 }
 
 // ListCountries returns all countries ordered by iso2, with localized names
@@ -57,6 +60,7 @@ func (q *Queries) ListCountries(ctx context.Context, locale string) ([]ListCount
 			&i.Iso2,
 			&i.Iso3,
 			&i.Slug,
+			&i.Currency,
 			&i.Name,
 		); err != nil {
 			return nil, err
@@ -129,17 +133,20 @@ func (q *Queries) ListCities(ctx context.Context, locale string, countryID *uuid
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getCountryByISO2 = `-- name: GetCountryByISO2 :one
-SELECT id, iso2, iso3, slug, created_at
+SELECT id, iso2, iso3, slug, currency, created_at
 FROM countries
 WHERE iso2 = $1
 `
 
-// CountryRow is the full countries table row type.
+// CountryRow is the full countries table row type. Currency is the ISO 4217
+// code of the country (NOT NULL since migration 0081, AB-38) — the base of
+// the session currency derivation chain.
 type CountryRow struct {
 	ID        uuid.UUID `json:"id"`
 	Iso2      string    `json:"iso2"`
 	Iso3      string    `json:"iso3"`
 	Slug      string    `json:"slug"`
+	Currency  string    `json:"currency"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -148,7 +155,7 @@ type CountryRow struct {
 func (q *Queries) GetCountryByISO2(ctx context.Context, iso2 string) (CountryRow, error) {
 	row := q.db.QueryRow(ctx, getCountryByISO2, iso2)
 	var i CountryRow
-	err := row.Scan(&i.ID, &i.Iso2, &i.Iso3, &i.Slug, &i.CreatedAt)
+	err := row.Scan(&i.ID, &i.Iso2, &i.Iso3, &i.Slug, &i.Currency, &i.CreatedAt)
 	return i, err
 }
 
@@ -157,7 +164,7 @@ func (q *Queries) GetCountryByISO2(ctx context.Context, iso2 string) (CountryRow
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getCountryBySlug = `-- name: GetCountryBySlug :one
-SELECT id, iso2, iso3, slug, created_at
+SELECT id, iso2, iso3, slug, currency, created_at
 FROM countries
 WHERE slug = $1
 `
@@ -167,7 +174,7 @@ WHERE slug = $1
 func (q *Queries) GetCountryBySlug(ctx context.Context, slug string) (CountryRow, error) {
 	row := q.db.QueryRow(ctx, getCountryBySlug, slug)
 	var i CountryRow
-	err := row.Scan(&i.ID, &i.Iso2, &i.Iso3, &i.Slug, &i.CreatedAt)
+	err := row.Scan(&i.ID, &i.Iso2, &i.Iso3, &i.Slug, &i.Currency, &i.CreatedAt)
 	return i, err
 }
 
@@ -176,17 +183,18 @@ func (q *Queries) GetCountryBySlug(ctx context.Context, slug string) (CountryRow
 // ─────────────────────────────────────────────────────────────────────────────
 
 const insertCountry = `-- name: InsertCountry :one
-INSERT INTO countries (iso2, iso3, slug)
-VALUES ($1, $2, $3)
-RETURNING id, iso2, iso3, slug, created_at
+INSERT INTO countries (iso2, iso3, slug, currency)
+VALUES ($1, $2, $3, $4)
+RETURNING id, iso2, iso3, slug, currency, created_at
 `
 
 // InsertCountry creates a new country row and returns the full row.
-// iso2 and iso3 must be uppercase; slug must be lowercase + hyphenated.
-func (q *Queries) InsertCountry(ctx context.Context, iso2, iso3, slug string) (CountryRow, error) {
-	row := q.db.QueryRow(ctx, insertCountry, iso2, iso3, slug)
+// iso2 and iso3 must be uppercase; slug must be lowercase + hyphenated;
+// currency is the uppercase ISO 4217 code (NOT NULL since 0081).
+func (q *Queries) InsertCountry(ctx context.Context, iso2, iso3, slug, currency string) (CountryRow, error) {
+	row := q.db.QueryRow(ctx, insertCountry, iso2, iso3, slug, currency)
 	var i CountryRow
-	err := row.Scan(&i.ID, &i.Iso2, &i.Iso3, &i.Slug, &i.CreatedAt)
+	err := row.Scan(&i.ID, &i.Iso2, &i.Iso3, &i.Slug, &i.Currency, &i.CreatedAt)
 	return i, err
 }
 
@@ -197,17 +205,19 @@ func (q *Queries) InsertCountry(ctx context.Context, iso2, iso3, slug string) (C
 const updateCountry = `-- name: UpdateCountry :one
 UPDATE countries
 SET iso3 = $2,
-    slug = $3
+    slug = $3,
+    currency = COALESCE(NULLIF($4, ''), currency)
 WHERE iso2 = $1
-RETURNING id, iso2, iso3, slug, created_at
+RETURNING id, iso2, iso3, slug, currency, created_at
 `
 
-// UpdateCountry updates the iso3 and slug of a country identified by iso2.
+// UpdateCountry updates the iso3, slug and currency of a country identified
+// by iso2. Empty currency keeps the existing value.
 // Returns pgx.ErrNoRows when no matching country exists.
-func (q *Queries) UpdateCountry(ctx context.Context, iso2, iso3, slug string) (CountryRow, error) {
-	row := q.db.QueryRow(ctx, updateCountry, iso2, iso3, slug)
+func (q *Queries) UpdateCountry(ctx context.Context, iso2, iso3, slug, currency string) (CountryRow, error) {
+	row := q.db.QueryRow(ctx, updateCountry, iso2, iso3, slug, currency)
 	var i CountryRow
-	err := row.Scan(&i.ID, &i.Iso2, &i.Iso3, &i.Slug, &i.CreatedAt)
+	err := row.Scan(&i.ID, &i.Iso2, &i.Iso3, &i.Slug, &i.Currency, &i.CreatedAt)
 	return i, err
 }
 

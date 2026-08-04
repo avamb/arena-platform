@@ -2808,7 +2808,7 @@ components:
     # Geo schemas — feature #123
     GeoCountryItem:
       type: object
-      required: [id, iso2, iso3, slug, name]
+      required: [id, iso2, iso3, slug, currency, name]
       properties:
         id:
           type: string
@@ -2831,6 +2831,14 @@ components:
           type: string
           description: URL-safe slug
           example: "israel"
+        currency:
+          type: string
+          pattern: "^[A-Z]{3}$"
+          description: |
+            ISO 4217 currency of the country (AB-38). Base of the session
+            currency derivation chain: a venue in this country derives this
+            currency unless its city carries an override.
+          example: "ILS"
         name:
           type: string
           description: Localised display name (resolved from i18n_text)
@@ -2893,7 +2901,7 @@ components:
 
     GeoCountryResponse:
       type: object
-      required: [id, iso2, iso3, slug, created_at]
+      required: [id, iso2, iso3, slug, currency, created_at]
       properties:
         id:
           type: string
@@ -2916,6 +2924,11 @@ components:
           type: string
           description: URL-safe identifier slug
           example: "israel"
+        currency:
+          type: string
+          pattern: "^[A-Z]{3}$"
+          description: ISO 4217 currency of the country (AB-38)
+          example: "ILS"
         created_at:
           type: string
           format: date-time
@@ -2948,7 +2961,7 @@ components:
 
     GeoCreateCountryRequest:
       type: object
-      required: [iso2, iso3, slug]
+      required: [iso2, iso3, slug, currency]
       properties:
         iso2:
           type: string
@@ -2966,6 +2979,14 @@ components:
           type: string
           description: URL-safe slug
           example: "israel"
+        currency:
+          type: string
+          pattern: "^[A-Z]{3}$"
+          description: |
+            ISO 4217 currency of the country. Required - countries.currency
+            is NOT NULL since migration 0081 (AB-38); malformed or missing
+            codes are rejected with 400 `geo.invalid_currency`.
+          example: "ILS"
         name_en:
           type: string
           description: English localised name (seeded into i18n_text)
@@ -2988,6 +3009,14 @@ components:
           type: string
           description: Updated URL-safe slug
           example: "israel"
+        currency:
+          type: string
+          pattern: "^[A-Z]{3}$"
+          description: |
+            Updated ISO 4217 currency. Empty / omitted keeps the existing
+            value. Only affects future derivations - existing sessions keep
+            their recorded currency (AB-38).
+          example: "ILS"
         name_en:
           type: string
           description: Updated English localised name
@@ -8726,7 +8755,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/GeoCountryResponse"
         "400":
-          description: Invalid iso2, iso3, or slug field
+          description: Invalid iso2, iso3, slug, or currency field (`geo.invalid_currency`)
           content:
             application/json:
               schema:

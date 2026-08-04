@@ -7128,6 +7128,13 @@ export interface components {
              */
             slug: string;
             /**
+             * @description ISO 4217 currency of the country (AB-38). Base of the session
+             *     currency derivation chain: a venue in this country derives this
+             *     currency unless its city carries an override.
+             * @example ILS
+             */
+            currency: string;
+            /**
              * @description Localised display name (resolved from i18n_text)
              * @example Israel
              */
@@ -7197,6 +7204,11 @@ export interface components {
              */
             slug: string;
             /**
+             * @description ISO 4217 currency of the country (AB-38)
+             * @example ILS
+             */
+            currency: string;
+            /**
              * Format: date-time
              * @description ISO 8601 / RFC 3339 timestamp of row creation
              * @example 2024-01-01T00:00:00Z
@@ -7245,6 +7257,13 @@ export interface components {
              */
             slug: string;
             /**
+             * @description ISO 4217 currency of the country. Required - countries.currency
+             *     is NOT NULL since migration 0081 (AB-38); malformed or missing
+             *     codes are rejected with 400 `geo.invalid_currency`.
+             * @example ILS
+             */
+            currency: string;
+            /**
              * @description English localised name (seeded into i18n_text)
              * @example Israel
              */
@@ -7266,6 +7285,13 @@ export interface components {
              * @example israel
              */
             slug?: string;
+            /**
+             * @description Updated ISO 4217 currency. Empty / omitted keeps the existing
+             *     value. Only affects future derivations - existing sessions keep
+             *     their recorded currency (AB-38).
+             * @example ILS
+             */
+            currency?: string;
             /**
              * @description Updated English localised name
              * @example Israel
@@ -12504,7 +12530,7 @@ export interface operations {
                     "application/json": components["schemas"]["GeoCountryResponse"];
                 };
             };
-            /** @description Invalid iso2, iso3, or slug field */
+            /** @description Invalid iso2, iso3, slug, or currency field (`geo.invalid_currency`) */
             400: {
                 headers: {
                     [name: string]: unknown;

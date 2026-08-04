@@ -29,6 +29,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -45,13 +46,15 @@ import (
 // ─────────────────────────────────────────────────────────────────────────────
 
 // countryResponse is the JSON body of a single country in list/create/update
-// responses.
+// responses. Currency is the ISO 4217 code the country's sessions derive
+// their currency from (AB-38).
 type countryResponse struct {
-	ID   string `json:"id"`
-	Iso2 string `json:"iso2"`
-	Iso3 string `json:"iso3"`
-	Slug string `json:"slug"`
-	Name string `json:"name"`
+	ID       string `json:"id"`
+	Iso2     string `json:"iso2"`
+	Iso3     string `json:"iso3"`
+	Slug     string `json:"slug"`
+	Currency string `json:"currency"`
+	Name     string `json:"name"`
 }
 
 // cityResponse is the JSON body of a single city in list/create/update
@@ -127,11 +130,12 @@ func (h *Handler) HandleListCountries(w http.ResponseWriter, r *http.Request) {
 	result := make([]countryResponse, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, countryResponse{
-			ID:   row.ID.String(),
-			Iso2: row.Iso2,
-			Iso3: row.Iso3,
-			Slug: row.Slug,
-			Name: row.Name,
+			ID:       row.ID.String(),
+			Iso2:     row.Iso2,
+			Iso3:     row.Iso3,
+			Slug:     row.Slug,
+			Currency: strings.TrimSpace(row.Currency),
+			Name:     row.Name,
 		})
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"countries": result})
@@ -205,12 +209,15 @@ func (h *Handler) HandleListCities(w http.ResponseWriter, r *http.Request) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // createCountryRequest is the request body for POST /v1/admin/geo/countries.
+// Currency is required (ISO 4217): countries.currency is NOT NULL since
+// migration 0081 — it feeds the session currency derivation chain (AB-38).
 type createCountryRequest struct {
-	Iso2   string `json:"iso2"`
-	Iso3   string `json:"iso3"`
-	Slug   string `json:"slug"`
-	NameEn string `json:"name_en"`
-	NameRu string `json:"name_ru"`
+	Iso2     string `json:"iso2"`
+	Iso3     string `json:"iso3"`
+	Slug     string `json:"slug"`
+	Currency string `json:"currency"`
+	NameEn   string `json:"name_en"`
+	NameRu   string `json:"name_ru"`
 }
 
 // HandleCreateCountry serves POST /v1/admin/geo/countries.
@@ -246,6 +253,7 @@ func (h *Handler) HandleCreateCountry(w http.ResponseWriter, r *http.Request) {
 	req.Iso2 = strings.TrimSpace(strings.ToUpper(req.Iso2))
 	req.Iso3 = strings.TrimSpace(strings.ToUpper(req.Iso3))
 	req.Slug = strings.TrimSpace(strings.ToLower(req.Slug))
+	req.Currency = strings.TrimSpace(strings.ToUpper(req.Currency))
 
 	if len(req.Iso2) != 2 {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
@@ -268,6 +276,14 @@ func (h *Handler) HandleCreateCountry(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	if !currencyPattern.MatchString(req.Currency) {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			"geo.invalid_currency",
+			"currency is required and must be a three-letter ISO 4217 code", r,
+			map[string]any{"field": "currency"},
+		))
+		return
+	}
 
 	// Begin transaction: InsertCountry + upsert i18n_text in one round-trip.
 	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
@@ -281,7 +297,7 @@ func (h *Handler) HandleCreateCountry(w http.ResponseWriter, r *http.Request) {
 
 	qtx := h.queries.WithTx(tx)
 
-	country, err := qtx.InsertCountry(ctx, req.Iso2, req.Iso3, req.Slug)
+	country, err := qtx.InsertCountry(ctx, req.Iso2, req.Iso3, req.Slug, req.Currency)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
@@ -315,11 +331,12 @@ func (h *Handler) HandleCreateCountry(w http.ResponseWriter, r *http.Request) {
 
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
 		"country": countryResponse{
-			ID:   country.ID.String(),
-			Iso2: country.Iso2,
-			Iso3: country.Iso3,
-			Slug: country.Slug,
-			Name: FirstNonEmpty(req.NameEn, req.Iso2),
+			ID:       country.ID.String(),
+			Iso2:     country.Iso2,
+			Iso3:     country.Iso3,
+			Slug:     country.Slug,
+			Currency: strings.TrimSpace(country.Currency),
+			Name:     FirstNonEmpty(req.NameEn, req.Iso2),
 		},
 	})
 }
@@ -329,11 +346,15 @@ func (h *Handler) HandleCreateCountry(w http.ResponseWriter, r *http.Request) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // updateCountryRequest is the request body for PATCH /v1/admin/geo/countries/{iso2}.
+// Empty currency keeps the existing value; a non-empty one must be a valid
+// ISO 4217 code. Changing it only affects future derivations — existing
+// sessions keep their recorded currency (AB-38).
 type updateCountryRequest struct {
-	Iso3   string `json:"iso3"`
-	Slug   string `json:"slug"`
-	NameEn string `json:"name_en"`
-	NameRu string `json:"name_ru"`
+	Iso3     string `json:"iso3"`
+	Slug     string `json:"slug"`
+	Currency string `json:"currency"`
+	NameEn   string `json:"name_en"`
+	NameRu   string `json:"name_ru"`
 }
 
 // HandleUpdateCountry serves PATCH /v1/admin/geo/countries/{iso2}.
@@ -400,6 +421,14 @@ func (h *Handler) HandleUpdateCountry(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	newCurrency := strings.TrimSpace(strings.ToUpper(req.Currency))
+	if newCurrency != "" && !currencyPattern.MatchString(newCurrency) {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			"geo.invalid_currency", "currency must be a three-letter ISO 4217 code", r,
+			map[string]any{"field": "currency"},
+		))
+		return
+	}
 
 	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -412,7 +441,7 @@ func (h *Handler) HandleUpdateCountry(w http.ResponseWriter, r *http.Request) {
 
 	qtx := h.queries.WithTx(tx)
 
-	updated, err := qtx.UpdateCountry(ctx, iso2, newIso3, newSlug)
+	updated, err := qtx.UpdateCountry(ctx, iso2, newIso3, newSlug, newCurrency)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("geo.country_not_found", "country not found", r))
@@ -447,11 +476,12 @@ func (h *Handler) HandleUpdateCountry(w http.ResponseWriter, r *http.Request) {
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"country": countryResponse{
-			ID:   updated.ID.String(),
-			Iso2: updated.Iso2,
-			Iso3: updated.Iso3,
-			Slug: updated.Slug,
-			Name: FirstNonEmpty(req.NameEn, updated.Iso2),
+			ID:       updated.ID.String(),
+			Iso2:     updated.Iso2,
+			Iso3:     updated.Iso3,
+			Slug:     updated.Slug,
+			Currency: strings.TrimSpace(updated.Currency),
+			Name:     FirstNonEmpty(req.NameEn, updated.Iso2),
 		},
 	})
 }
@@ -717,6 +747,10 @@ func geoUpsertI18nName(ctx context.Context, tx pgx.Tx, namespace, key, nameEn, n
 	}
 	return nil
 }
+
+// currencyPattern is the ISO-4217 shape check mirrored from the DB CHECK
+// constraint countries_currency_iso4217 (migration 0081).
+var currencyPattern = regexp.MustCompile(`^[A-Z]{3}$`)
 
 // FirstNonEmpty returns the first non-empty string from the provided values.
 func FirstNonEmpty(vals ...string) string {

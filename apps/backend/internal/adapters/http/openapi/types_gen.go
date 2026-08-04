@@ -2728,6 +2728,11 @@ type GeoCountriesResponse struct {
 
 // GeoCountryItem defines model for GeoCountryItem.
 type GeoCountryItem struct {
+	// Currency ISO 4217 currency of the country (AB-38). Base of the session
+	// currency derivation chain: a venue in this country derives this
+	// currency unless its city carries an override.
+	Currency string `json:"currency"`
+
 	// Id UUIDv7 primary key
 	Id openapi_types.UUID `json:"id"`
 
@@ -2748,6 +2753,9 @@ type GeoCountryItem struct {
 type GeoCountryResponse struct {
 	// CreatedAt ISO 8601 / RFC 3339 timestamp of row creation
 	CreatedAt time.Time `json:"created_at"`
+
+	// Currency ISO 4217 currency of the country (AB-38)
+	Currency string `json:"currency"`
 
 	// Id UUIDv7 primary key of the country row
 	Id openapi_types.UUID `json:"id"`
@@ -2779,6 +2787,11 @@ type GeoCreateCityRequest struct {
 
 // GeoCreateCountryRequest defines model for GeoCreateCountryRequest.
 type GeoCreateCountryRequest struct {
+	// Currency ISO 4217 currency of the country. Required - countries.currency
+	// is NOT NULL since migration 0081 (AB-38); malformed or missing
+	// codes are rejected with 400 `geo.invalid_currency`.
+	Currency string `json:"currency"`
+
 	// Iso2 ISO 3166-1 alpha-2 code (uppercase)
 	Iso2 string `json:"iso2"`
 
@@ -2809,6 +2822,11 @@ type GeoUpdateCityRequest struct {
 
 // GeoUpdateCountryRequest defines model for GeoUpdateCountryRequest.
 type GeoUpdateCountryRequest struct {
+	// Currency Updated ISO 4217 currency. Empty / omitted keeps the existing
+	// value. Only affects future derivations - existing sessions keep
+	// their recorded currency (AB-38).
+	Currency *string `json:"currency,omitempty"`
+
 	// Iso3 Updated ISO 3166-1 alpha-3 code
 	Iso3 *string `json:"iso3,omitempty"`
 

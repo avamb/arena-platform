@@ -25,6 +25,8 @@ export interface GeoCountry {
   readonly iso2: string;
   readonly iso3: string;
   readonly slug: string;
+  /** ISO 4217 currency the country's sessions derive from (AB-38). */
+  readonly currency: string;
   readonly name: string;
 }
 
@@ -79,6 +81,7 @@ function GeoRegistry() {
   const columns: readonly ResponsiveTableColumn<GeoCountry>[] = [
     { id: "country", header: "Country", primary: true, renderCell: (country) => <button type="button" onClick={() => toggle(country.id)} aria-expanded={expanded.has(country.id)} style={linkButtonStyle}>{expanded.has(country.id) ? "Hide" : "Show"} cities · {country.name}</button> },
     { id: "iso", header: "ISO", renderCell: (country) => <code>{country.iso2} / {country.iso3}</code> },
+    { id: "currency", header: "Currency", renderCell: (country) => <code>{country.currency}</code> },
     { id: "slug", header: "Slug", renderCell: (country) => <code>{country.slug}</code> },
     { id: "cities", header: "Cities", align: "right", renderCell: (country) => cityCount(country.id) },
   ];
@@ -99,10 +102,10 @@ function GeoRegistry() {
 }
 
 function CountryForm({ onCreated }: { onCreated: () => void }) {
-  const [iso2, setIso2] = useState(""); const [iso3, setIso3] = useState(""); const [slug, setSlug] = useState(""); const [nameEn, setNameEn] = useState(""); const [nameRu, setNameRu] = useState("");
-  const mutation = useMutation<CountryEnvelope, ApiError>({ mutationFn: () => authedFetch({ method: "POST", path: "/v1/admin/geo/countries", body: { iso2: iso2.trim().toUpperCase(), iso3: iso3.trim().toUpperCase(), slug: slug.trim(), name_en: nameEn.trim(), name_ru: nameRu.trim() } }), onSuccess: () => { setIso2(""); setIso3(""); setSlug(""); setNameEn(""); setNameRu(""); onCreated(); } });
-  const submit = (event: FormEvent) => { event.preventDefault(); if (iso2.trim().length === 2 && iso3.trim().length === 3 && validateGeoSlug(slug) === null) mutation.mutate(); };
-  return <form onSubmit={submit} style={formStyle} aria-label="Create country"><h2 style={formHeadingStyle}>Add country</h2><label>English name<input required value={nameEn} onChange={(e) => setNameEn(e.target.value)} /></label><label>Russian name <span style={optionalStyle}>(optional)</span><input value={nameRu} onChange={(e) => setNameRu(e.target.value)} /></label><label>ISO alpha-2<input required minLength={2} maxLength={2} value={iso2} onChange={(e) => setIso2(e.target.value.toUpperCase())} /></label><label>ISO alpha-3<input required minLength={3} maxLength={3} value={iso3} onChange={(e) => setIso3(e.target.value.toUpperCase())} /></label><label>Slug<input required value={slug} onChange={(e) => setSlug(e.target.value.toLowerCase())} /></label>{mutation.error ? <p role="alert" style={errorStyle}>{mutation.error.message}</p> : null}<button type="submit" style={primaryStyle} disabled={mutation.isPending}> {mutation.isPending ? "Creating…" : "Create country"}</button></form>;
+  const [iso2, setIso2] = useState(""); const [iso3, setIso3] = useState(""); const [slug, setSlug] = useState(""); const [currency, setCurrency] = useState(""); const [nameEn, setNameEn] = useState(""); const [nameRu, setNameRu] = useState("");
+  const mutation = useMutation<CountryEnvelope, ApiError>({ mutationFn: () => authedFetch({ method: "POST", path: "/v1/admin/geo/countries", body: { iso2: iso2.trim().toUpperCase(), iso3: iso3.trim().toUpperCase(), slug: slug.trim(), currency: currency.trim().toUpperCase(), name_en: nameEn.trim(), name_ru: nameRu.trim() } }), onSuccess: () => { setIso2(""); setIso3(""); setSlug(""); setCurrency(""); setNameEn(""); setNameRu(""); onCreated(); } });
+  const submit = (event: FormEvent) => { event.preventDefault(); if (iso2.trim().length === 2 && iso3.trim().length === 3 && validateGeoSlug(slug) === null && /^[A-Z]{3}$/.test(currency.trim().toUpperCase())) mutation.mutate(); };
+  return <form onSubmit={submit} style={formStyle} aria-label="Create country"><h2 style={formHeadingStyle}>Add country</h2><label>English name<input required value={nameEn} onChange={(e) => setNameEn(e.target.value)} /></label><label>Russian name <span style={optionalStyle}>(optional)</span><input value={nameRu} onChange={(e) => setNameRu(e.target.value)} /></label><label>ISO alpha-2<input required minLength={2} maxLength={2} value={iso2} onChange={(e) => setIso2(e.target.value.toUpperCase())} /></label><label>ISO alpha-3<input required minLength={3} maxLength={3} value={iso3} onChange={(e) => setIso3(e.target.value.toUpperCase())} /></label><label>Slug<input required value={slug} onChange={(e) => setSlug(e.target.value.toLowerCase())} /></label><label>Currency (ISO 4217)<input required minLength={3} maxLength={3} placeholder="CZK" value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} /></label>{mutation.error ? <p role="alert" style={errorStyle}>{mutation.error.message}</p> : null}<button type="submit" style={primaryStyle} disabled={mutation.isPending}> {mutation.isPending ? "Creating…" : "Create country"}</button></form>;
 }
 
 function CityForm({ countries, onCreated }: { countries: readonly GeoCountry[]; onCreated: () => void }) {

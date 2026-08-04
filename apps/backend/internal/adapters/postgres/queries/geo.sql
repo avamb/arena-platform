@@ -8,6 +8,7 @@ SELECT
     c.iso2,
     c.iso3,
     c.slug,
+    c.currency,
     COALESCE(t_loc.value, t_en.value, c.iso2) AS name
 FROM countries c
 LEFT JOIN i18n_text t_loc ON t_loc.namespace = 'geo.countries'
@@ -41,29 +42,33 @@ ORDER BY ci.slug;
 
 -- name: GetCountryByISO2 :one
 -- GetCountryByISO2 fetches a single country row by its ISO 3166-1 alpha-2 code.
-SELECT id, iso2, iso3, slug, created_at
+SELECT id, iso2, iso3, slug, currency, created_at
 FROM countries
 WHERE iso2 = $1;
 
 -- name: GetCountryBySlug :one
 -- GetCountryBySlug fetches a single country row by its slug.
-SELECT id, iso2, iso3, slug, created_at
+SELECT id, iso2, iso3, slug, currency, created_at
 FROM countries
 WHERE slug = $1;
 
 -- name: InsertCountry :one
 -- InsertCountry creates a new country row and returns the full row.
-INSERT INTO countries (iso2, iso3, slug)
-VALUES ($1, $2, $3)
-RETURNING id, iso2, iso3, slug, created_at;
+-- currency is the ISO 4217 code (NOT NULL since migration 0081, AB-38) —
+-- the base of the session currency derivation chain.
+INSERT INTO countries (iso2, iso3, slug, currency)
+VALUES ($1, $2, $3, $4)
+RETURNING id, iso2, iso3, slug, currency, created_at;
 
 -- name: UpdateCountry :one
--- UpdateCountry updates the iso3 and slug of an existing country identified by iso2.
+-- UpdateCountry updates the iso3, slug and currency of an existing country
+-- identified by iso2. Empty currency keeps the existing value.
 UPDATE countries
 SET iso3 = $2,
-    slug = $3
+    slug = $3,
+    currency = COALESCE(NULLIF($4, ''), currency)
 WHERE iso2 = $1
-RETURNING id, iso2, iso3, slug, created_at;
+RETURNING id, iso2, iso3, slug, currency, created_at;
 
 -- name: GetCityByID :one
 -- GetCityByID fetches a city row by its UUID.
