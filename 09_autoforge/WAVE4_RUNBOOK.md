@@ -96,9 +96,12 @@ finished by 80cc281 — the agent documented this honestly in claude-progress.tx
    PDF/email (no poster field anywhere in hfeed / apps/widget / delivery),
    and `08_architecture/02_wordpress_integration_contract_ru.md` still lists
    poster URLs under the event. None of those surfaces render posters at all
-   yet, so nothing is *wrong*, just missing. Do it together with the AB-47
-   step-5 owner answer (one poster vs portrait+landscape set) — column shape
-   may change; OPEN OWNER QUESTION, still unanswered, do not guess.
+   yet, so nothing is *wrong*, just missing. Step-5 question ANSWERED by the
+   owner 2026-08-04: not two slots — a per-session gallery of up to 5 posters
+   plus optional video links; Bil24's rigid format is the defect, do not copy
+   it. Pass-2 columns stay as the cover. Specced as AB-47b (gallery table +
+   API + admin UI) and AB-47c (public surfaces + WP contract, carries the
+   step-4 gap) in admin_bootstrap_backlog.md.
 3. AB-44: items 2 (venue name+number in events list via venue_names[] and in
    sessions table via venue lookup), 3 (pricing-mode help) and 4 (placeholder
    kept) DONE. Item 1 partially: backdrop no-close done everywhere (explicit

@@ -1005,6 +1005,64 @@ record it as such so nobody "corrects" it back later.
 **Done when:** an organizer can upload one poster, tick "use for all sessions", and later
 override it on a single session; every surface resolves session-first with event fallback.
 
+**Step-5 answer (owner, 2026-08-04):** the two-slot question is superseded. Bil24's rigid
+poster format is itself the pain point; organizers need up to ~5 posters per session and
+optionally a video link. See AB-47b/AB-47c below — pass-2 columns stay as the *cover*.
+
+## AB-47b. Session media gallery: up to 5 posters + video links
+
+**Category:** Catalog / Media
+**Depends on:** AB-47 (shipped in pass 2). Owner decision 2026-08-04.
+**Problem:** One poster per session is not enough; Bil24's rigid format is the defect we
+are deliberately not copying. Organizers want a small per-session gallery and a way to
+attach a video (link, not hosted).
+
+**Design (agreed with owner):**
+- `sessions.poster_media_id` / `events.poster_media_id` (AB-47) remain the **cover**:
+  the single image used by lists, ticket PDF/email and previews, resolved
+  session ?? event as shipped. Nothing from pass 2 is discarded.
+- New table:
+  ```
+  session_media_items(
+    id uuid PK,
+    session_id uuid NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    kind text NOT NULL CHECK (kind IN ('poster','video')),
+    media_id uuid NULL REFERENCES media_objects(id),
+    video_url text NULL,
+    position smallint NOT NULL,
+    UNIQUE (session_id, position),
+    CHECK ((kind='poster' AND media_id IS NOT NULL AND video_url IS NULL)
+        OR (kind='video'  AND video_url IS NOT NULL AND media_id IS NULL)))
+  ```
+- Poster cap (5) is a handler constant, NOT a DB CHECK — row-count checks in SQL are
+  costly and inflexible; raising the cap must not need a migration.
+- Gallery posters reuse `owner_type='session_poster'` — no new CHECK migration, the
+  AGENTS.md allowlist/CHECK trap does not fire.
+- Video: URL only (https + host allowlist: YouTube/VK/RuTube/Vimeo), validated in the
+  handler; rendered as embed/preview card on public surfaces. No hosting/transcoding.
+- NO rigid format enforcement: store natural width/height in media metadata; surfaces
+  adapt (object-fit/srcset). Admin may *warn* on extreme aspect ratios, never block.
+- API: `GET/PUT /v1/sessions/{id}/media` — PUT replaces the whole ordered list
+  (atomic, no separate reorder endpoints). Admin UI: gallery grid with drag-order.
+- Gallery is per-session by design (artwork carries date/venue); the event-level
+  default applies to the cover only. Later convenience: "copy gallery from session X".
+
+**Done when:** an organizer can attach up to 5 posters and a video link to a session,
+reorder them, and the API returns the ordered gallery.
+
+## AB-47c. Poster/gallery on public surfaces (carries the AB-47 step-4 gap)
+
+**Category:** Public feed / Widget / Docs
+**Depends on:** AB-47b.
+Pass-2 review found AB-47 step 4 was not implemented: nothing outside the admin resolves
+posters. Do it together with the gallery so the surfaces are touched once:
+1. Public feed and widget: expose the cover (session ?? event) **and** the ordered
+   gallery (posters + video entries).
+2. Ticket PDF/email: cover only.
+3. Update `08_architecture/02_wordpress_integration_contract_ru.md` — poster URLs move
+   from the event to session-level cover + gallery.
+4. Wizard/admin already handle the cover; add gallery management per AB-47b UI.
+
 ## AB-48. Category pricing: defined categories only, three-level cascade, scheduled prices
 
 **Category:** Pricing / Catalog
