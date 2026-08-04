@@ -78,32 +78,46 @@ finished by 80cc281 — the agent documented this honestly in claude-progress.tx
 - Gates already green on the local tree: `go test ./...` exit 0 (54 pkgs ok);
   admin type-check + 1095/1095 tests + build + test:mobile (chain exit 0).
 
-**Review REMAINING (do these before push):**
-1. Spec-vs-diff AB-42: inspect the EventWizard in events.tsx (inside commit
-   8322863) against backlog steps 1–5 — three steps, capacity read-only +
-   currency-derived display, resumability ("reopening a draft lands on the
-   first incomplete step"), and the publish-gate error codes in
-   events.go (80cc281): refuse publish without session / without priced tier.
-2. Spec-vs-diff AB-47 step 4: poster resolution must reach the PUBLIC FEED,
-   the WIDGET and ticket PDF/email. The 5f4318f diffstat did not obviously
-   touch apps/widget — verify the full stat (`git show --stat 5f4318f`) and
-   close the gap or record it as follow-up. Also confirm
-   `TestAllowedOwnerTypes_MatchMigrationCheckConstraint` was extended and the
-   WordPress contract doc update (spec step 4) — likely NOT done.
-   AB-47 spec step 5 is an OPEN OWNER QUESTION (two image slots) — do not
-   guess, ask.
-3. Spec-vs-diff AB-44: commit is only +34 lines vs 4 spec items (modal
-   dismiss/Escape+confirm via ResponsiveDrawer, venue column name+number,
-   pricing-mode help, Activity tab) — check which items actually landed.
-4. golangci-lint (`GOLANGCI_LINT_CACHE=.golangci-cache go run
-   github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run` from
-   apps/backend) + gofmt.
-5. Codegen drift check (openapi30gen + oapi-codegen + gen-ts-client, then
-   `git status` must stay clean).
-6. Push, CI via `gh run view`, THEN redeploy the stand (owner decision:
-   stand updates only after pass 2; it is still on aa7acfb and the a7e79a5
-   geo fix is not deployed either — one deploy covers both, same procedure:
-   Raw-compose tag ×4 + admin Deploy from Git).
+**Review verdict (2026-08-04, spec-vs-diff complete):**
+1. AB-42 PASSES. EventWizard (events.tsx, in 8322863): 3 steps, resumable —
+   reopening a draft computes the first incomplete step (no sessions → 2,
+   untiered session → 3); capacity_total never sent (derived server-side),
+   currency rendered as derived read-only text. Publish gate (80cc281,
+   events.go HandleUpdateEventStatus): 422 `event.publish_requires_session` /
+   `event.publish_requires_priced_tier` + `untiered_session_ids` details.
+   Note: the gate checks tier *existence*, not price level — a free-mode
+   tier passes the gate. Acceptable reading of "priced tier"; revisit only
+   if the owner objects.
+2. AB-47 steps 1–3 PASS (CHECK+allowlist+guard test extended in
+   owner_type_migration_test.go; sessions.poster_media_id FK; event-default
+   repurpose + "use for all sessions" checkbox + ClearSessionPosterOverrides).
+   **Step 4 NOT DONE — recorded as FOLLOW-UP:** poster resolution
+   (session ?? event) does not reach the public feed, the widget, ticket
+   PDF/email (no poster field anywhere in hfeed / apps/widget / delivery),
+   and `08_architecture/02_wordpress_integration_contract_ru.md` still lists
+   poster URLs under the event. None of those surfaces render posters at all
+   yet, so nothing is *wrong*, just missing. Do it together with the AB-47
+   step-5 owner answer (one poster vs portrait+landscape set) — column shape
+   may change; OPEN OWNER QUESTION, still unanswered, do not guess.
+3. AB-44: items 2 (venue name+number in events list via venue_names[] and in
+   sessions table via venue lookup), 3 (pricing-mode help) and 4 (placeholder
+   kept) DONE. Item 1 partially: backdrop no-close done everywhere (explicit
+   AB-44 comments); drawer closes on Escape (no dirty form of its own —
+   documented); the wizard has NO Escape handler at all — closes only via ×.
+   Deviation is harmless (wizard state is server-persisted and resumable) but
+   Escape+confirm-on-dirty per spec was not implemented. Minor follow-up.
+4. golangci-lint: 1 gofmt issue in events.go (struct alignment after AB-47's
+   ClearSessionOverrides field) — fixed, re-run clean (`0 issues`),
+   `go build ./...` ok. Whitespace-only, no test re-run needed.
+5. Codegen drift: openapi30gen + oapi-codegen@v2.4.1 + gen-ts-client re-run —
+   zero diff, tree clean. (Paths: spec is `apps/backend/openapi/openapi.yaml`,
+   config `apps/backend/openapi/oapi-codegen.yaml`, compat file
+   `apps/backend/openapi/.openapi.compat30.gen.yaml` — run from repo root.)
+
+**REMAINING:** push, CI via `gh run view`, THEN redeploy the stand (owner
+decision: stand updates only after pass 2; it is still on aa7acfb and the
+a7e79a5 geo fix is not deployed either — one deploy covers both, same
+procedure: Raw-compose tag ×4 + admin Deploy from Git).
 
 **AutoForge queue state:** 424–428 passes=1; 429/430 blocked by human-gate
 feature #433 (interactive pass 3), 431/432 by #434 (pass 5). The gates are

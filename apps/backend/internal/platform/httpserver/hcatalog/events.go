@@ -407,13 +407,13 @@ func (h *Handler) HandleListEventsByOrg(w http.ResponseWriter, r *http.Request) 
 // clears the session-level poster overrides so the event poster becomes
 // effective for all sessions.
 type updateEventRequest struct {
-	Name                 string  `json:"name"`
-	Description          *string `json:"description"`
-	Visibility           string  `json:"visibility"`
-	ImageURL             *string `json:"image_url"`
-	PosterMediaID        *string `json:"poster_media_id"`
-	ClearSessionOverrides bool   `json:"clear_session_overrides"`
-	Translations         map[string]struct {
+	Name                  string  `json:"name"`
+	Description           *string `json:"description"`
+	Visibility            string  `json:"visibility"`
+	ImageURL              *string `json:"image_url"`
+	PosterMediaID         *string `json:"poster_media_id"`
+	ClearSessionOverrides bool    `json:"clear_session_overrides"`
+	Translations          map[string]struct {
 		Name        string `json:"name"`
 		Description string `json:"description"`
 	} `json:"translations"`
