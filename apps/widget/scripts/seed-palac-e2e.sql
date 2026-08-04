@@ -21,27 +21,24 @@
 -- =============================================================================
 
 -- ── 1. Event ─────────────────────────────────────────────────────────────────
+-- Wave 4 (AB-36/AB-37): the event carries no venue and no own dates — both
+-- live on the session below; events.first/last_session_at are maintained by
+-- the 0080 trigger when the session row lands.
 
 INSERT INTO events (
     id,
     org_id,
-    venue_id,
     name,
     description,
     status,
-    start_at,
-    end_at,
     visibility
 )
 VALUES (
     'fe000007-0000-7000-8000-000000000001',
     'fe000001-0000-7000-8000-000000000001',  -- OrgA
-    'fe000002-0000-7000-8000-00000000000a',  -- VenueA1
     'Palác Akropolis — E2E Test Event',
     'Auto-seeded E2E fixture for WID-R3 real-backend acceptance tests.',
     'published',
-    now() + interval '30 days',
-    now() + interval '30 days' + interval '3 hours',
     'public'
 )
 ON CONFLICT (id) DO NOTHING;
@@ -159,26 +156,36 @@ WHERE  id                 = 'fe000007-0000-7000-8000-000000000003'
   AND  current_version_id IS NULL;
 
 -- ── 5. Session ────────────────────────────────────────────────────────────────
+-- Wave 4 (AB-36/AB-38): the session owns the venue and the currency. The
+-- currency is a deliberate EUR override (VenueA1 sits in Tel Aviv, which
+-- would derive ILS) so it matches the EUR tiers below — the composite FK
+-- ticket_tiers_currency_matches_session enforces the equality.
 
 INSERT INTO sessions (
     id,
     event_id,
+    venue_id,
     start_at,
     end_at,
     capacity_total,
     status,
     admission_mode,
-    seating_plan_version_id
+    seating_plan_version_id,
+    currency,
+    currency_source
 )
 VALUES (
     'fe000007-0000-7000-8000-000000000002',
     'fe000007-0000-7000-8000-000000000001',
+    'fe000002-0000-7000-8000-00000000000a',  -- VenueA1
     now() + interval '30 days',
     now() + interval '30 days' + interval '3 hours',
     360,
     'scheduled',
     'hybrid',
-    'fe000007-0000-7000-8000-000000000004'
+    'fe000007-0000-7000-8000-000000000004',
+    'EUR',
+    'override'
 )
 ON CONFLICT (id) DO NOTHING;
 

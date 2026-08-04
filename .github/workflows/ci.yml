@@ -488,8 +488,11 @@ jobs:
 
       - name: Seed Palác Akropolis E2E fixture
         working-directory: .
+        # ON_ERROR_STOP: psql otherwise continues past failed statements and
+        # exits 0, turning a broken fixture into 20 opaque widget timeouts
+        # (this bit wave 4 pass 1 when the events/sessions schema changed).
         run: |
-          psql "$DATABASE_URL" -f apps/widget/scripts/seed-palac-e2e.sql
+          psql -v ON_ERROR_STOP=1 "$DATABASE_URL" -f apps/widget/scripts/seed-palac-e2e.sql
 
       - name: Start arena-api in background
         working-directory: .
