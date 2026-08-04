@@ -2034,7 +2034,11 @@ type CreateSeatingPlanRequestVisibility string
 // and checksums the result; §6 rule violations surface as a 422 with
 // per-element details in ErrorEnvelope.details.errors.
 type CreateSeatingPlanVersionRequest struct {
-	// CapacityStanding Optional standing capacity override (defaults to 0).
+	// CapacityStanding DEPRECATED (AB-40): capacity_standing is now DERIVED as the sum
+	// of the geometry's general-admission category capacities. The
+	// field is still accepted so older clients do not 400, but its
+	// value is ignored.
+	// Deprecated:
 	CapacityStanding *int `json:"capacity_standing,omitempty"`
 
 	// Geometry Pre-built canonical geometry object (see §5.3 of the seating backlog).
@@ -5006,6 +5010,13 @@ type SeatingCategoryPrice struct {
 // venue. Feature #302 seeded the storage; feature #304 (Wave SEAT-A3)
 // added the CRUD / fork surface documented here.
 type SeatingPlan struct {
+	// CategoryNameOverrides AB-40 A3: per-plan display-name overrides for price categories,
+	// keyed by 1-based category index as a string ("1".."15"). Applied
+	// over geometry.categories[].name so renaming a category (e.g.
+	// "Third" to "SEATING - SEZENI") never requires re-importing the
+	// SVG. Always present; {} when no overrides exist.
+	CategoryNameOverrides map[string]string `json:"category_name_overrides"`
+
 	// CreatedAt RFC 3339 UTC timestamp of row creation.
 	CreatedAt time.Time `json:"created_at"`
 
@@ -5082,7 +5093,8 @@ type SeatingPlanVersion struct {
 	// CapacitySeated Number of assigned seats in the geometry.
 	CapacitySeated int `json:"capacity_seated"`
 
-	// CapacityStanding Standing capacity (for tables / mixed / GA plans).
+	// CapacityStanding General-admission capacity. AB-40: derived as the sum of the
+	// geometry's GA category capacities (never client-supplied).
 	CapacityStanding int `json:"capacity_standing"`
 
 	// CreatedAt RFC 3339 UTC timestamp of row creation.
@@ -5882,6 +5894,12 @@ type UpdatePromoCodeRequestStatus string
 // optional — omitted fields keep their existing value. Archive is
 // expressed as status="archived".
 type UpdateSeatingPlanRequest struct {
+	// CategoryNameOverrides AB-40 A3: replaces the plan's category display-name override
+	// map. Keys must be category indexes "1".."15", values non-empty
+	// names. Pass {} to clear all overrides. Invalid keys/values are
+	// a 400 seating_plan.invalid_category_name_overrides.
+	CategoryNameOverrides *map[string]string `json:"category_name_overrides,omitempty"`
+
 	// Name New human-facing plan name.
 	Name *string `json:"name,omitempty"`
 

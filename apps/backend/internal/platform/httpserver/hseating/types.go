@@ -60,22 +60,32 @@ type SeatingPlanResponse struct {
 	SourceSeatingPlanID  *string `json:"source_seating_plan_id"`
 	CurrentVersionID     *string `json:"current_version_id"`
 	CurrentVersionNumber *int32  `json:"current_version_number"`
-	CreatedAt            string  `json:"created_at"`
-	UpdatedAt            string  `json:"updated_at"`
+	// CategoryNameOverrides maps category index ("1".."15") to a
+	// display-name override applied over geometry category names
+	// (AB-40 A3). Always an object, {} when no overrides exist.
+	CategoryNameOverrides map[string]string `json:"category_name_overrides"`
+	CreatedAt             string            `json:"created_at"`
+	UpdatedAt             string            `json:"updated_at"`
 }
 
 // SeatingPlanFromRow renders a seating_plans row into the response shape.
 func SeatingPlanFromRow(p gen.SeatingPlanRow) SeatingPlanResponse {
 	out := SeatingPlanResponse{
-		ID:         p.ID.String(),
-		VenueID:    p.VenueID.String(),
-		OwnerOrgID: p.OwnerOrgID.String(),
-		Name:       p.Name,
-		PlanType:   p.PlanType,
-		Visibility: p.Visibility,
-		Status:     p.Status,
-		CreatedAt:  p.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt:  p.UpdatedAt.UTC().Format(time.RFC3339),
+		ID:                    p.ID.String(),
+		VenueID:               p.VenueID.String(),
+		OwnerOrgID:            p.OwnerOrgID.String(),
+		Name:                  p.Name,
+		PlanType:              p.PlanType,
+		Visibility:            p.Visibility,
+		Status:                p.Status,
+		CategoryNameOverrides: map[string]string{},
+		CreatedAt:             p.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:             p.UpdatedAt.UTC().Format(time.RFC3339),
+	}
+	if len(p.CategoryNameOverrides) > 0 {
+		// A scan/unmarshal failure degrades to {} rather than 500ing the
+		// whole plan payload — the overrides are display sugar.
+		_ = json.Unmarshal(p.CategoryNameOverrides, &out.CategoryNameOverrides)
 	}
 	if p.SourceSeatingPlanID != nil {
 		s := p.SourceSeatingPlanID.String()
@@ -146,9 +156,10 @@ var planCreateFields = map[string]bool{
 
 // planPatchFields lists every property accepted by UpdateSeatingPlanRequest.
 var planPatchFields = map[string]bool{
-	"name":       true,
-	"visibility": true,
-	"status":     true,
+	"name":                    true,
+	"visibility":              true,
+	"status":                  true,
+	"category_name_overrides": true,
 }
 
 // planForkFields lists every property accepted by ForkSeatingPlanRequest.

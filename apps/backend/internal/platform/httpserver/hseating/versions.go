@@ -69,20 +69,7 @@ func (h *Handler) HandleCreateSeatingPlanVersion(w http.ResponseWriter, r *http.
 	if svgPresent && svg != nil {
 		g, warnings, errs := seating.ImportSVG([]byte(*svg))
 		if len(errs) > 0 {
-			details := make([]map[string]any, 0, len(errs))
-			for _, e := range errs {
-				details = append(details, map[string]any{
-					"code":    e.Code,
-					"element": e.Element,
-					"detail":  e.Detail,
-				})
-			}
-			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
-				"seating_plan.version_validation_failed",
-				"seating plan version failed geometry validation",
-				r,
-				map[string]any{"errors": details},
-			))
+			writeGeometryValidationFailure(w, r, errs)
 			return
 		}
 		geometry = g
@@ -126,27 +113,29 @@ func (h *Handler) HandleCreateSeatingPlanVersion(w http.ResponseWriter, r *http.
 		}
 		svgAssetID = &id
 	}
-	capacityStanding, capacityStandingPresent, ok := intField(fields, "capacity_standing")
-	if !ok {
+	// AB-40: capacity_standing is DERIVED from the geometry's GA
+	// categories (sum of their declared capacities). The legacy request
+	// field is still an accepted key so pre-AB-40 admin builds do not
+	// 400, but its value is ignored — the geometry is the single source.
+	if _, _, ok := intField(fields, "capacity_standing"); !ok {
 		invalidField(w, r, "capacity_standing", "an integer")
 		return
 	}
-	if !capacityStandingPresent {
-		capacityStanding = 0
-	}
 	// SeatCount() is derived from a validated Geometry payload whose seat
 	// count is bounded by the §5.3 canvas limits — well below math.MaxInt32
-	// — so the narrowing conversion is safe.
+	// — so the narrowing conversion is safe. Same argument for GACapacity.
 	seatCount := geometry.SeatCount()
-	if seatCount < 0 || seatCount > math.MaxInt32 {
+	gaCapacity := geometry.GACapacity()
+	if seatCount < 0 || seatCount > math.MaxInt32 || gaCapacity < 0 || gaCapacity > math.MaxInt32 {
 		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
 			"seating_plan.capacity_overflow",
-			"imported geometry exceeds the supported seat-count range",
+			"imported geometry exceeds the supported capacity range",
 			r,
 		))
 		return
 	}
-	capacitySeated := int32(seatCount) //nolint:gosec // bound-checked above
+	capacitySeated := int32(seatCount)    //nolint:gosec // bound-checked above
+	capacityStanding := int32(gaCapacity) //nolint:gosec // bound-checked above
 
 	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -188,6 +177,14 @@ func (h *Handler) HandleCreateSeatingPlanVersion(w http.ResponseWriter, r *http.
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 			"seating_plan.not_found", "seating plan not found", r,
 		))
+		return
+	}
+	// AB-40 B3: the plan type gates which geometry primitives are
+	// permitted — a general_admission or mixed plan without a GA area is
+	// a hard 422, an assigned_seats plan must not carry one, and both
+	// paths (SVG import and direct geometry) obey the same rules.
+	if verrs := seating.ValidateForPlanType(geometry, plan.PlanType); len(verrs) > 0 {
+		writeGeometryValidationFailure(w, r, verrs)
 		return
 	}
 	latest, err := qtx.GetLatestSeatingPlanVersionNumber(ctx, plan.ID)
@@ -367,4 +364,25 @@ func (h *Handler) HandleGetSeatingPlanVersion(w http.ResponseWriter, r *http.Req
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"seating_plan_version": SeatingPlanVersionFromRow(v),
 	})
+}
+
+// writeGeometryValidationFailure emits the 422
+// seating_plan.version_validation_failed envelope with the per-element
+// error list — shared by the SVG import path and the AB-40 plan-type
+// gate so the admin renders both identically.
+func writeGeometryValidationFailure(w http.ResponseWriter, r *http.Request, errs seating.ValidationErrors) {
+	details := make([]map[string]any, 0, len(errs))
+	for _, e := range errs {
+		details = append(details, map[string]any{
+			"code":    e.Code,
+			"element": e.Element,
+			"detail":  e.Detail,
+		})
+	}
+	httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+		"seating_plan.version_validation_failed",
+		"seating plan version failed geometry validation",
+		r,
+		map[string]any{"errors": details},
+	))
 }

@@ -26,6 +26,7 @@ INSERT INTO seating_plans (
 VALUES ($1, $2, $3, $4, $5, $6, $7)
 RETURNING id, venue_id, owner_org_id, name, plan_type, visibility, status,
           source_seating_plan_id, current_version_id,
+          category_name_overrides,
           created_at, updated_at, deleted_at,
           (SELECT v.version_number
            FROM   seating_plan_versions v
@@ -34,6 +35,7 @@ RETURNING id, venue_id, owner_org_id, name, plan_type, visibility, status,
 -- name: GetSeatingPlanByID :one
 SELECT id, venue_id, owner_org_id, name, plan_type, visibility, status,
        source_seating_plan_id, current_version_id,
+       category_name_overrides,
        created_at, updated_at, deleted_at,
        (SELECT v.version_number
         FROM   seating_plan_versions v
@@ -45,6 +47,7 @@ WHERE  id = $1
 -- name: GetSeatingPlanByIDForOwner :one
 SELECT id, venue_id, owner_org_id, name, plan_type, visibility, status,
        source_seating_plan_id, current_version_id,
+       category_name_overrides,
        created_at, updated_at, deleted_at,
        (SELECT v.version_number
         FROM   seating_plan_versions v
@@ -57,6 +60,7 @@ WHERE  id = $1
 -- name: ListSeatingPlansByOwner :many
 SELECT id, venue_id, owner_org_id, name, plan_type, visibility, status,
        source_seating_plan_id, current_version_id,
+       category_name_overrides,
        created_at, updated_at, deleted_at,
        (SELECT v.version_number
         FROM   seating_plan_versions v
@@ -69,6 +73,7 @@ ORDER  BY created_at DESC, id DESC;
 -- name: ListSeatingPlansByVenue :many
 SELECT id, venue_id, owner_org_id, name, plan_type, visibility, status,
        source_seating_plan_id, current_version_id,
+       category_name_overrides,
        created_at, updated_at, deleted_at,
        (SELECT v.version_number
         FROM   seating_plan_versions v
@@ -90,6 +95,23 @@ WHERE  id = $1
   AND  deleted_at IS NULL
 RETURNING id, venue_id, owner_org_id, name, plan_type, visibility, status,
           source_seating_plan_id, current_version_id,
+          category_name_overrides,
+          created_at, updated_at, deleted_at,
+          (SELECT v.version_number
+           FROM   seating_plan_versions v
+           WHERE  v.id = seating_plans.current_version_id) AS current_version_number;
+
+-- name: SetSeatingPlanCategoryNameOverrides :one
+-- AB-40 A3: display-name overrides keyed by category index ("1".."15").
+UPDATE seating_plans
+SET    category_name_overrides = $3,
+       updated_at              = now()
+WHERE  id = $1
+  AND  owner_org_id = $2
+  AND  deleted_at IS NULL
+RETURNING id, venue_id, owner_org_id, name, plan_type, visibility, status,
+          source_seating_plan_id, current_version_id,
+          category_name_overrides,
           created_at, updated_at, deleted_at,
           (SELECT v.version_number
            FROM   seating_plan_versions v
@@ -104,6 +126,7 @@ WHERE  id = $1
   AND  deleted_at IS NULL
 RETURNING id, venue_id, owner_org_id, name, plan_type, visibility, status,
           source_seating_plan_id, current_version_id,
+          category_name_overrides,
           created_at, updated_at, deleted_at,
           (SELECT v.version_number
            FROM   seating_plan_versions v
@@ -118,6 +141,7 @@ WHERE  id = $1
   AND  deleted_at IS NULL
 RETURNING id, venue_id, owner_org_id, name, plan_type, visibility, status,
           source_seating_plan_id, current_version_id,
+          category_name_overrides,
           created_at, updated_at, deleted_at,
           (SELECT v.version_number
            FROM   seating_plan_versions v
@@ -132,6 +156,7 @@ WHERE  id = $1
   AND  deleted_at IS NULL
 RETURNING id, venue_id, owner_org_id, name, plan_type, visibility, status,
           source_seating_plan_id, current_version_id,
+          category_name_overrides,
           created_at, updated_at, deleted_at,
           (SELECT v.version_number
            FROM   seating_plan_versions v

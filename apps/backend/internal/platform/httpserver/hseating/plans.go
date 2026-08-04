@@ -5,14 +5,18 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/domain/seating"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
@@ -276,6 +280,19 @@ func (h *Handler) HandleUpdateSeatingPlan(w http.ResponseWriter, r *http.Request
 		))
 		return
 	}
+	overridesRaw, overridesPresent := fields["category_name_overrides"]
+	var overridesJSON []byte
+	if overridesPresent {
+		normalized, vErr := normalizeCategoryNameOverrides(overridesRaw)
+		if vErr != "" {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+				"seating_plan.invalid_category_name_overrides", vErr, r,
+				map[string]any{"field": "category_name_overrides"},
+			))
+			return
+		}
+		overridesJSON = normalized
+	}
 
 	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -347,6 +364,16 @@ func (h *Handler) HandleUpdateSeatingPlan(w http.ResponseWriter, r *http.Request
 			"seating_plan.update_failed", "failed to update seating plan", r,
 		))
 		return
+	}
+	if overridesPresent {
+		row, err = qtx.SetSeatingPlanCategoryNameOverrides(ctx, id, existing.OwnerOrgID, overridesJSON)
+		if err != nil {
+			h.logger.Error("seating_plan: overrides update failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"seating_plan.update_failed", "failed to update seating plan", r,
+			))
+			return
+		}
 	}
 	if err := h.writeAuditTx(ctx, tx, r, "v1.seating_plan.update", row.ID.String(), map[string]any{
 		"owner_org_id": row.OwnerOrgID.String(),
@@ -614,4 +641,29 @@ func (h *Handler) writeAuditTx(ctx context.Context, tx pgx.Tx, r *http.Request, 
 		return err
 	}
 	return nil
+}
+
+// normalizeCategoryNameOverrides validates the AB-40 A3 override map: a
+// JSON object whose keys are category indexes "1".."15" and whose values
+// are non-empty display names. Returns the canonical JSON to store, or a
+// human-readable validation message.
+func normalizeCategoryNameOverrides(raw json.RawMessage) ([]byte, string) {
+	var m map[string]string
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, "category_name_overrides must be an object of string names keyed by category index"
+	}
+	for k, v := range m {
+		idx, err := strconv.Atoi(k)
+		if err != nil || idx < 1 || idx > seating.MaxCategories {
+			return nil, fmt.Sprintf("category_name_overrides key %q must be a category index 1..%d", k, seating.MaxCategories)
+		}
+		if strings.TrimSpace(v) == "" {
+			return nil, fmt.Sprintf("category_name_overrides[%q] must be a non-empty name", k)
+		}
+	}
+	out, err := json.Marshal(m)
+	if err != nil {
+		return nil, "category_name_overrides could not be re-encoded"
+	}
+	return out, ""
 }

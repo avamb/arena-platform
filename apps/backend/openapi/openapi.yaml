@@ -2033,6 +2033,7 @@ components:
           status,
           source_seating_plan_id,
           current_version_id,
+          category_name_overrides,
           created_at,
           updated_at,
         ]
@@ -2093,6 +2094,16 @@ components:
           description: |
             Pointer to the currently-published seating_plan_versions row.
             Null until the first version is created.
+        category_name_overrides:
+          type: object
+          additionalProperties:
+            type: string
+          description: |
+            AB-40 A3: per-plan display-name overrides for price categories,
+            keyed by 1-based category index as a string ("1".."15"). Applied
+            over geometry.categories[].name so renaming a category (e.g.
+            "Third" to "SEATING - SEZENI") never requires re-importing the
+            SVG. Always present; {} when no overrides exist.
         created_at:
           type: string
           format: date-time
@@ -2155,7 +2166,9 @@ components:
         capacity_standing:
           type: integer
           minimum: 0
-          description: Standing capacity (for tables / mixed / GA plans).
+          description: |
+            General-admission capacity. AB-40: derived as the sum of the
+            geometry's GA category capacities (never client-supplied).
         locked_at:
           type: [string, "null"]
           format: date-time
@@ -2232,6 +2245,15 @@ components:
           type: string
           enum: [draft, active, archived]
           description: New lifecycle state.
+        category_name_overrides:
+          type: object
+          additionalProperties:
+            type: string
+          description: |
+            AB-40 A3: replaces the plan's category display-name override
+            map. Keys must be category indexes "1".."15", values non-empty
+            names. Pass {} to clear all overrides. Invalid keys/values are
+            a 400 seating_plan.invalid_category_name_overrides.
 
     ForkSeatingPlanRequest:
       type: object
@@ -2275,7 +2297,12 @@ components:
         capacity_standing:
           type: integer
           minimum: 0
-          description: Optional standing capacity override (defaults to 0).
+          deprecated: true
+          description: |
+            DEPRECATED (AB-40): capacity_standing is now DERIVED as the sum
+            of the geometry's general-admission category capacities. The
+            field is still accepted so older clients do not 400, but its
+            value is ignored.
 
     # Venue schemas — feature #124 / extended for admin UI consumption (#235)
     VenueItem:
@@ -11592,7 +11619,9 @@ paths:
                   seating_plan:
                     $ref: "#/components/schemas/SeatingPlan"
         "400":
-          description: Request body was invalid (unknown field, wrong type)
+          description: |
+            Request body was invalid (unknown field, wrong type,
+            seating_plan.invalid_category_name_overrides).
           content:
             application/json:
               schema:
@@ -12012,6 +12041,7 @@ paths:
               seating.invalid_body,
               seating.invalid_admission_mode,
               seating.version_not_found,
+              seating.plan_type_mismatch,
               seating.invalid_category_key,
               seating.unknown_category,
               seating.invalid_category_tier_map,

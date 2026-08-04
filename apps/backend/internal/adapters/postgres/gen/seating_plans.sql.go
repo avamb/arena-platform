@@ -29,19 +29,23 @@ import (
 // the current version through GET /v1/seating-plans/{id}/versions/{n}
 // without probing.
 type SeatingPlanRow struct {
-	ID                   uuid.UUID  `json:"id"`
-	VenueID              uuid.UUID  `json:"venue_id"`
-	OwnerOrgID           uuid.UUID  `json:"owner_org_id"`
-	Name                 string     `json:"name"`
-	PlanType             string     `json:"plan_type"`
-	Visibility           string     `json:"visibility"`
-	Status               string     `json:"status"`
-	SourceSeatingPlanID  *uuid.UUID `json:"source_seating_plan_id"`
-	CurrentVersionID     *uuid.UUID `json:"current_version_id"`
-	CreatedAt            time.Time  `json:"created_at"`
-	UpdatedAt            time.Time  `json:"updated_at"`
-	DeletedAt            *time.Time `json:"deleted_at"`
-	CurrentVersionNumber *int32     `json:"current_version_number"`
+	ID                  uuid.UUID  `json:"id"`
+	VenueID             uuid.UUID  `json:"venue_id"`
+	OwnerOrgID          uuid.UUID  `json:"owner_org_id"`
+	Name                string     `json:"name"`
+	PlanType            string     `json:"plan_type"`
+	Visibility          string     `json:"visibility"`
+	Status              string     `json:"status"`
+	SourceSeatingPlanID *uuid.UUID `json:"source_seating_plan_id"`
+	CurrentVersionID    *uuid.UUID `json:"current_version_id"`
+	// CategoryNameOverrides maps category index ("1".."15") to a
+	// display-name override applied over geometry.categories[].name
+	// (AB-40 A3).
+	CategoryNameOverrides json.RawMessage `json:"category_name_overrides"`
+	CreatedAt             time.Time       `json:"created_at"`
+	UpdatedAt             time.Time       `json:"updated_at"`
+	DeletedAt             *time.Time      `json:"deleted_at"`
+	CurrentVersionNumber  *int32          `json:"current_version_number"`
 }
 
 // scanSeatingPlanRow scans a single seating_plans row.
@@ -59,6 +63,7 @@ func scanSeatingPlanRow(row interface {
 		&p.Status,
 		&p.SourceSeatingPlanID,
 		&p.CurrentVersionID,
+		&p.CategoryNameOverrides,
 		&p.CreatedAt,
 		&p.UpdatedAt,
 		&p.DeletedAt,
@@ -124,6 +129,7 @@ INSERT INTO seating_plans (
 VALUES ($1, $2, $3, $4, $5, $6, $7)
 RETURNING id, venue_id, owner_org_id, name, plan_type, visibility, status,
           source_seating_plan_id, current_version_id,
+          category_name_overrides,
           created_at, updated_at, deleted_at,
           (SELECT v.version_number
            FROM   seating_plan_versions v
@@ -154,6 +160,7 @@ func (q *Queries) InsertSeatingPlan(
 const getSeatingPlanByID = `-- name: GetSeatingPlanByID :one
 SELECT id, venue_id, owner_org_id, name, plan_type, visibility, status,
        source_seating_plan_id, current_version_id,
+       category_name_overrides,
        created_at, updated_at, deleted_at,
        (SELECT v.version_number
         FROM   seating_plan_versions v
@@ -177,6 +184,7 @@ func (q *Queries) GetSeatingPlanByID(ctx context.Context, id uuid.UUID) (Seating
 const getSeatingPlanByIDForOwner = `-- name: GetSeatingPlanByIDForOwner :one
 SELECT id, venue_id, owner_org_id, name, plan_type, visibility, status,
        source_seating_plan_id, current_version_id,
+       category_name_overrides,
        created_at, updated_at, deleted_at,
        (SELECT v.version_number
         FROM   seating_plan_versions v
@@ -201,6 +209,7 @@ func (q *Queries) GetSeatingPlanByIDForOwner(ctx context.Context, id, ownerOrgID
 const listSeatingPlansByOwner = `-- name: ListSeatingPlansByOwner :many
 SELECT id, venue_id, owner_org_id, name, plan_type, visibility, status,
        source_seating_plan_id, current_version_id,
+       category_name_overrides,
        created_at, updated_at, deleted_at,
        (SELECT v.version_number
         FROM   seating_plan_versions v
@@ -237,6 +246,7 @@ func (q *Queries) ListSeatingPlansByOwner(ctx context.Context, ownerOrgID uuid.U
 const listSeatingPlansByVenue = `-- name: ListSeatingPlansByVenue :many
 SELECT id, venue_id, owner_org_id, name, plan_type, visibility, status,
        source_seating_plan_id, current_version_id,
+       category_name_overrides,
        created_at, updated_at, deleted_at,
        (SELECT v.version_number
         FROM   seating_plan_versions v
@@ -283,6 +293,7 @@ WHERE  id = $1
   AND  deleted_at IS NULL
 RETURNING id, venue_id, owner_org_id, name, plan_type, visibility, status,
           source_seating_plan_id, current_version_id,
+          category_name_overrides,
           created_at, updated_at, deleted_at,
           (SELECT v.version_number
            FROM   seating_plan_versions v
@@ -317,6 +328,7 @@ WHERE  id = $1
   AND  deleted_at IS NULL
 RETURNING id, venue_id, owner_org_id, name, plan_type, visibility, status,
           source_seating_plan_id, current_version_id,
+          category_name_overrides,
           created_at, updated_at, deleted_at,
           (SELECT v.version_number
            FROM   seating_plan_versions v
@@ -336,6 +348,37 @@ func (q *Queries) SetSeatingPlanCurrentVersion(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SetSeatingPlanCategoryNameOverrides
+// ─────────────────────────────────────────────────────────────────────────────
+
+const setSeatingPlanCategoryNameOverrides = `-- name: SetSeatingPlanCategoryNameOverrides :one
+UPDATE seating_plans
+SET    category_name_overrides = $3,
+       updated_at              = now()
+WHERE  id = $1
+  AND  owner_org_id = $2
+  AND  deleted_at IS NULL
+RETURNING id, venue_id, owner_org_id, name, plan_type, visibility, status,
+          source_seating_plan_id, current_version_id,
+          category_name_overrides,
+          created_at, updated_at, deleted_at,
+          (SELECT v.version_number
+           FROM   seating_plan_versions v
+           WHERE  v.id = seating_plans.current_version_id) AS current_version_number`
+
+// SetSeatingPlanCategoryNameOverrides replaces the per-plan category
+// display-name override map (AB-40 A3). overrides is a JSON object
+// keyed by category index ("1".."15"); pass {} to clear.
+func (q *Queries) SetSeatingPlanCategoryNameOverrides(
+	ctx context.Context,
+	id, ownerOrgID uuid.UUID,
+	overrides json.RawMessage,
+) (SeatingPlanRow, error) {
+	row := q.db.QueryRow(ctx, setSeatingPlanCategoryNameOverrides, id, ownerOrgID, overrides)
+	return scanSeatingPlanRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ArchiveSeatingPlan
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -348,6 +391,7 @@ WHERE  id = $1
   AND  deleted_at IS NULL
 RETURNING id, venue_id, owner_org_id, name, plan_type, visibility, status,
           source_seating_plan_id, current_version_id,
+          category_name_overrides,
           created_at, updated_at, deleted_at,
           (SELECT v.version_number
            FROM   seating_plan_versions v
@@ -374,6 +418,7 @@ WHERE  id = $1
   AND  deleted_at IS NULL
 RETURNING id, venue_id, owner_org_id, name, plan_type, visibility, status,
           source_seating_plan_id, current_version_id,
+          category_name_overrides,
           created_at, updated_at, deleted_at,
           (SELECT v.version_number
            FROM   seating_plan_versions v

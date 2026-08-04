@@ -6447,6 +6447,16 @@ export interface components {
              */
             current_version_id: string | null;
             /**
+             * @description AB-40 A3: per-plan display-name overrides for price categories,
+             *     keyed by 1-based category index as a string ("1".."15"). Applied
+             *     over geometry.categories[].name so renaming a category (e.g.
+             *     "Third" to "SEATING - SEZENI") never requires re-importing the
+             *     SVG. Always present; {} when no overrides exist.
+             */
+            category_name_overrides: {
+                [key: string]: string;
+            };
+            /**
              * Format: date-time
              * @description RFC 3339 UTC timestamp of row creation.
              */
@@ -6490,7 +6500,10 @@ export interface components {
             svg_asset_media_id: string | null;
             /** @description Number of assigned seats in the geometry. */
             capacity_seated: number;
-            /** @description Standing capacity (for tables / mixed / GA plans). */
+            /**
+             * @description General-admission capacity. AB-40: derived as the sum of the
+             *     geometry's GA category capacities (never client-supplied).
+             */
             capacity_standing: number;
             /**
              * Format: date-time
@@ -6560,6 +6573,15 @@ export interface components {
              * @enum {string}
              */
             status?: "draft" | "active" | "archived";
+            /**
+             * @description AB-40 A3: replaces the plan's category display-name override
+             *     map. Keys must be category indexes "1".."15", values non-empty
+             *     names. Pass {} to clear all overrides. Invalid keys/values are
+             *     a 400 seating_plan.invalid_category_name_overrides.
+             */
+            category_name_overrides?: {
+                [key: string]: string;
+            };
         };
         /** @description Request body for POST /v1/seating-plans/{id}/fork. */
         ForkSeatingPlanRequest: {
@@ -6594,7 +6616,13 @@ export interface components {
              * @description Optional media store FK carrying the source SVG asset.
              */
             svg_asset_media_id?: string;
-            /** @description Optional standing capacity override (defaults to 0). */
+            /**
+             * @deprecated
+             * @description DEPRECATED (AB-40): capacity_standing is now DERIVED as the sum
+             *     of the geometry's general-admission category capacities. The
+             *     field is still accepted so older clients do not 400, but its
+             *     value is ignored.
+             */
             capacity_standing?: number;
         };
         /**
@@ -15664,7 +15692,10 @@ export interface operations {
                     };
                 };
             };
-            /** @description Request body was invalid (unknown field, wrong type) */
+            /**
+             * @description Request body was invalid (unknown field, wrong type,
+             *     seating_plan.invalid_category_name_overrides).
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -16102,6 +16133,7 @@ export interface operations {
              *       seating.invalid_body,
              *       seating.invalid_admission_mode,
              *       seating.version_not_found,
+             *       seating.plan_type_mismatch,
              *       seating.invalid_category_key,
              *       seating.unknown_category,
              *       seating.invalid_category_tier_map,

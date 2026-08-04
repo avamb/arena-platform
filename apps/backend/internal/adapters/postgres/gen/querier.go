@@ -424,6 +424,7 @@ type Querier interface {
 	ListSeatingPlansByVenue(ctx context.Context, venueID uuid.UUID) ([]SeatingPlanRow, error)
 	UpdateSeatingPlan(ctx context.Context, id, ownerOrgID uuid.UUID, name, planType, visibility, status string) (SeatingPlanRow, error)
 	SetSeatingPlanCurrentVersion(ctx context.Context, id, ownerOrgID uuid.UUID, currentVersionID *uuid.UUID) (SeatingPlanRow, error)
+	SetSeatingPlanCategoryNameOverrides(ctx context.Context, id, ownerOrgID uuid.UUID, overrides json.RawMessage) (SeatingPlanRow, error)
 	ArchiveSeatingPlan(ctx context.Context, id, ownerOrgID uuid.UUID) (SeatingPlanRow, error)
 	SoftDeleteSeatingPlan(ctx context.Context, id, ownerOrgID uuid.UUID) (SeatingPlanRow, error)
 	InsertSeatingPlanVersion(ctx context.Context, seatingPlanID uuid.UUID, versionNumber int32, geometry json.RawMessage, geometryChecksum string, svgAssetMediaID *uuid.UUID, capacitySeated, capacityStanding int32) (SeatingPlanVersionRow, error)

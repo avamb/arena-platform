@@ -79,6 +79,15 @@ var validBindAdmissionModes = map[string]bool{
 	"hybrid":         true,
 }
 
+// planTypesForAdmissionMode is the AB-40 B5 cross-check: which parent
+// plan types may be bound under each admission mode. assigned_seats
+// requires a pure seated plan; hybrid requires a combined (mixed) plan
+// that actually carries GA capacity.
+var planTypesForAdmissionMode = map[string]map[string]bool{
+	"assigned_seats": {"assigned_seats": true},
+	"hybrid":         {"mixed": true},
+}
+
 // BindError is the transport shape the bind core uses to report a failure:
 // the HTTP status plus the error-envelope code/message/details the caller
 // should emit. It exists so the same core serves both the standalone bind
@@ -309,6 +318,28 @@ func (h *Handler) bindSessionSeatingCore(
 		h.logger.Error("seating: bind version lookup failed", slog.String("error", err.Error()))
 		return nil, bindErr(http.StatusInternalServerError,
 			"seating.bind_failed", "failed to bind seating plan", nil)
+	}
+
+	// AB-40 B5: cross-check the parent plan's type against the requested
+	// admission mode. Before this gate an assigned_seats plan could be
+	// bound as hybrid, silently promising GA capacity the plan does not
+	// have. assigned_seats mode needs a pure seated plan; hybrid needs a
+	// combined (mixed) one.
+	parentPlan, err := qtx.GetSeatingPlanByID(ctx, version.SeatingPlanID)
+	if err != nil {
+		h.logger.Error("seating: bind parent plan lookup failed", slog.String("error", err.Error()))
+		return nil, bindErr(http.StatusInternalServerError,
+			"seating.bind_failed", "failed to bind seating plan", nil)
+	}
+	if allowed, ok := planTypesForAdmissionMode[req.AdmissionMode]; ok && !allowed[parentPlan.PlanType] {
+		return nil, bindErr(http.StatusBadRequest,
+			"seating.plan_type_mismatch",
+			fmt.Sprintf("a %s plan cannot be bound with admission_mode %q",
+				parentPlan.PlanType, req.AdmissionMode),
+			map[string]any{
+				"plan_type":      parentPlan.PlanType,
+				"admission_mode": req.AdmissionMode,
+			})
 	}
 
 	// Rebind guardrail: any historical reservation or ticket on the session
