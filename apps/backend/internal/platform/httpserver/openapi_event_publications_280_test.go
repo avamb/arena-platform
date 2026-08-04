@@ -238,6 +238,10 @@ func TestOpenAPI280_PublicationErrorCodesDocumented(t *testing.T) {
 		"publication.feed_token_id_required",
 		"publication.content_type_required",
 		"publication.internal",
+		// AB-43: FK violations map to specific 404s (not 500).
+		"publication.feed_token_not_found",
+		"publication.city_not_found",
+		"publication.event_not_found",
 	} {
 		if !strings.Contains(spec, code) {
 			t.Errorf("openapi.yaml does not document publication error code %q", code)

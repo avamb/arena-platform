@@ -18595,10 +18595,15 @@ export interface operations {
                 };
             };
             /**
-             * @description Transition not allowed by the state machine. The response uses
-             *     the standard `ErrorEnvelope` with
-             *     `error.code = "event.invalid_transition"` and
-             *     `error.details.current_status` / `error.details.target_status`.
+             * @description Transition not allowed by the state machine, or the AB-42
+             *     publish gate refused the transition. The response uses the
+             *     standard `ErrorEnvelope`. Possible codes:
+             *     `event.invalid_transition` (with
+             *     `error.details.current_status` / `error.details.target_status`),
+             *     `event.publish_requires_session` (event has no session), and
+             *     `event.publish_requires_priced_tier` (with
+             *     `error.details.untiered_session_ids` naming the sessions
+             *     missing a ticket tier).
              */
             422: {
                 headers: {
@@ -18608,7 +18613,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Internal server error (event.update_status_failed). */
+            /** @description Internal server error (event.update_status_failed or event.publish_gate_failed). */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -23825,6 +23830,26 @@ export interface operations {
             };
             /** @description Caller lacks the `publication.create` permission. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Referenced entity missing. AB-43: the underlying PostgreSQL
+             *     foreign-key violation (23503) is mapped to a specific
+             *     actionable code instead of a generic 500. Possible codes:
+             *     `publication.feed_token_not_found` (no `agent_feed_tokens` row
+             *     with the supplied `feed_token_id`; create the token on the
+             *     sales channel first),
+             *     `publication.city_not_found` (no `cities` row with the
+             *     supplied `city_id`),
+             *     `publication.event_not_found` (the event was deleted
+             *     between the URL resolution and the INSERT).
+             */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

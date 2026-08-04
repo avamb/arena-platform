@@ -22,6 +22,7 @@ package hcatalog
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"time"
@@ -29,11 +30,47 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 )
+
+// PostgreSQL foreign_key_violation SQLSTATE. See publications.go docstring
+// (AB-43): the row rejects with 23503 when either agent_feed_tokens.id or
+// cities.id is missing; both used to surface as a generic 500.
+const pgForeignKeyViolation = "23503"
+
+// ClassifyPublicationFKError inspects err for a 23503 PostgreSQL
+// foreign-key violation on the event_publications table and returns the
+// caller-facing HTTP status, error code and message tuple that should be
+// surfaced (AB-43). It returns ok=false when err is not a recognised FK
+// violation — callers should then fall back to their generic 5xx branch.
+func ClassifyPublicationFKError(err error) (status int, code, msg string, ok bool) {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != pgForeignKeyViolation {
+		return 0, "", "", false
+	}
+	switch pgErr.ConstraintName {
+	case "event_publications_feed_token_id_fkey":
+		return http.StatusNotFound,
+			"publication.feed_token_not_found",
+			"feed token not found: create the token on the sales channel first",
+			true
+	case "event_publications_city_id_fkey":
+		return http.StatusNotFound,
+			"publication.city_not_found",
+			"city not found in geo registry",
+			true
+	case "event_publications_event_id_fkey":
+		return http.StatusNotFound,
+			"publication.event_not_found",
+			"event not found",
+			true
+	}
+	return 0, "", "", false
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Response type
@@ -137,6 +174,13 @@ func (h *Handler) HandlePublishEvent(w http.ResponseWriter, r *http.Request) {
 
 	pub, err := h.publicationQueries.PublishEvent(ctx, eventID, feedTokenID, cityID)
 	if err != nil {
+		// AB-43: map the specific FK violation (23503) to an actionable 404
+		// instead of collapsing every DB error into publication.internal.
+		if status, code, defaultMsg, ok := ClassifyPublicationFKError(err); ok {
+			msg := i18n.Localize(ctx, code, defaultMsg, nil)
+			httputil.WriteJSON(w, status, httputil.ErrorEnvelope(code, msg, r))
+			return
+		}
 		h.logger.Error("handlePublishEvent: PublishEvent failed",
 			"event_id", eventID, "feed_token_id", feedTokenID, "err", err)
 		msg := i18n.Localize(ctx, "error.internal", "internal server error", nil)

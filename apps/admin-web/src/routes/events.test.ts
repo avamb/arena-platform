@@ -48,6 +48,7 @@ import {
   tierToForm,
   validateTierForm,
   buildPublicationRequestBody,
+  deriveDefaultCityID,
   emptyPublicationForm,
   isUUID,
   mapPublicationError,
@@ -1049,9 +1050,35 @@ describe("isUUID", () => {
   });
 });
 
+// AB-43: PublicationFormValues now carries a sales_channel_id as the
+// primary input; feed_token_id is only used in Advanced mode to pin a
+// specific token. A helper avoids repeating the boilerplate in tests.
+const CHANNEL_ID = "0192a5fb-000f-7000-8000-000000000010";
+function pubForm(
+  overrides: Partial<{
+    sales_channel_id: string;
+    feed_token_id: string;
+    city_id: string;
+    advanced_open: boolean;
+  }> = {},
+) {
+  return {
+    sales_channel_id: CHANNEL_ID,
+    feed_token_id: "",
+    city_id: "",
+    advanced_open: false,
+    ...overrides,
+  };
+}
+
 describe("emptyPublicationForm", () => {
-  it("returns blank values for both fields", () => {
-    expect(emptyPublicationForm()).toEqual({ feed_token_id: "", city_id: "" });
+  it("returns blank values with advanced closed (AB-43)", () => {
+    expect(emptyPublicationForm()).toEqual({
+      sales_channel_id: "",
+      feed_token_id: "",
+      city_id: "",
+      advanced_open: false,
+    });
   });
   it("returns a fresh object each call (state-safe)", () => {
     const a = emptyPublicationForm();
@@ -1061,78 +1088,132 @@ describe("emptyPublicationForm", () => {
 });
 
 describe("validatePublicationForm", () => {
-  it("requires feed_token_id", () => {
-    const errs = validatePublicationForm({ feed_token_id: "", city_id: "" });
-    expect(errs.feed_token_id).toBeDefined();
+  it("requires sales_channel_id (AB-43 primary input)", () => {
+    const errs = validatePublicationForm(pubForm({ sales_channel_id: "" }));
+    expect(errs.sales_channel_id).toBeDefined();
     expect(errs.city_id).toBeUndefined();
   });
-  it("requires feed_token_id to be a UUID", () => {
-    const errs = validatePublicationForm({
-      feed_token_id: "not-a-uuid",
-      city_id: "",
-    });
+  it("requires sales_channel_id to be a UUID", () => {
+    const errs = validatePublicationForm(
+      pubForm({ sales_channel_id: "not-a-uuid" }),
+    );
+    expect(errs.sales_channel_id).toMatch(/UUID/);
+  });
+  it("accepts a channel-only form (feed token auto-resolved, global city)", () => {
+    const errs = validatePublicationForm(pubForm());
+    expect(errs).toEqual({});
+  });
+  it("accepts a pinned feed_token_id when set (advanced mode)", () => {
+    const errs = validatePublicationForm(
+      pubForm({ feed_token_id: FEED_TOKEN_ID, city_id: CITY_ID }),
+    );
+    expect(errs).toEqual({});
+  });
+  it("rejects a non-UUID feed_token_id when set", () => {
+    const errs = validatePublicationForm(
+      pubForm({ feed_token_id: "not-a-uuid" }),
+    );
     expect(errs.feed_token_id).toMatch(/UUID/);
   });
-  it("accepts a valid feed_token_id with empty city_id (global scope)", () => {
-    const errs = validatePublicationForm({
-      feed_token_id: FEED_TOKEN_ID,
-      city_id: "",
-    });
-    expect(errs).toEqual({});
-  });
-  it("accepts a valid feed_token_id with a valid city_id", () => {
-    const errs = validatePublicationForm({
-      feed_token_id: FEED_TOKEN_ID,
-      city_id: CITY_ID,
-    });
-    expect(errs).toEqual({});
-  });
-  it("rejects a non-UUID city_id even when feed_token_id is valid", () => {
-    const errs = validatePublicationForm({
-      feed_token_id: FEED_TOKEN_ID,
-      city_id: "not-a-uuid",
-    });
+  it("rejects a non-UUID city_id even when channel is valid", () => {
+    const errs = validatePublicationForm(pubForm({ city_id: "not-a-uuid" }));
     expect(errs.city_id).toMatch(/UUID/);
-    expect(errs.feed_token_id).toBeUndefined();
+    expect(errs.sales_channel_id).toBeUndefined();
   });
   it("trims whitespace before validating", () => {
-    const errs = validatePublicationForm({
-      feed_token_id: `   ${FEED_TOKEN_ID}   `,
-      city_id: `   ${CITY_ID}   `,
-    });
+    const errs = validatePublicationForm(
+      pubForm({
+        sales_channel_id: `   ${CHANNEL_ID}   `,
+        feed_token_id: `   ${FEED_TOKEN_ID}   `,
+        city_id: `   ${CITY_ID}   `,
+      }),
+    );
     expect(errs).toEqual({});
   });
 });
 
 describe("buildPublicationRequestBody", () => {
   it("omits city_id when blank (global scope)", () => {
-    const body = buildPublicationRequestBody({
-      feed_token_id: FEED_TOKEN_ID,
-      city_id: "",
-    });
+    const body = buildPublicationRequestBody(pubForm(), FEED_TOKEN_ID);
     expect(body).toEqual({ feed_token_id: FEED_TOKEN_ID });
     expect("city_id" in body).toBe(false);
   });
   it("includes city_id when set (scoped publication)", () => {
-    const body = buildPublicationRequestBody({
-      feed_token_id: FEED_TOKEN_ID,
-      city_id: CITY_ID,
-    });
+    const body = buildPublicationRequestBody(
+      pubForm({ city_id: CITY_ID }),
+      FEED_TOKEN_ID,
+    );
     expect(body).toEqual({ feed_token_id: FEED_TOKEN_ID, city_id: CITY_ID });
   });
-  it("trims both fields", () => {
-    const body = buildPublicationRequestBody({
-      feed_token_id: `  ${FEED_TOKEN_ID}  `,
-      city_id: `  ${CITY_ID}  `,
-    });
+  it("trims the resolved feed token id", () => {
+    const body = buildPublicationRequestBody(
+      pubForm({ city_id: `  ${CITY_ID}  ` }),
+      `  ${FEED_TOKEN_ID}  `,
+    );
     expect(body).toEqual({ feed_token_id: FEED_TOKEN_ID, city_id: CITY_ID });
   });
   it("treats whitespace-only city_id as global", () => {
-    const body = buildPublicationRequestBody({
-      feed_token_id: FEED_TOKEN_ID,
-      city_id: "   ",
-    });
+    const body = buildPublicationRequestBody(
+      pubForm({ city_id: "   " }),
+      FEED_TOKEN_ID,
+    );
     expect("city_id" in body).toBe(false);
+  });
+});
+
+describe("deriveDefaultCityID (AB-43)", () => {
+  const V1 = "01929d0e-0e47-7000-8000-000000000701";
+  const V2 = "01929d0e-0e47-7000-8000-000000000702";
+  const C1 = "01929d0e-0e47-7000-8000-000000000801";
+  const C2 = "01929d0e-0e47-7000-8000-000000000802";
+  it("returns '' when there are no sessions", () => {
+    expect(
+      deriveDefaultCityID([], [{ id: V1, city_id: C1 }]),
+    ).toBe("");
+  });
+  it("returns '' when there are no venues", () => {
+    expect(
+      deriveDefaultCityID(
+        [{ venue_id: V1, start_at: "2026-01-01T00:00:00Z" }],
+        [],
+      ),
+    ).toBe("");
+  });
+  it("returns the venue city of the first-in-time session", () => {
+    expect(
+      deriveDefaultCityID(
+        [
+          { venue_id: V2, start_at: "2026-02-01T00:00:00Z" },
+          { venue_id: V1, start_at: "2026-01-01T00:00:00Z" },
+        ],
+        [
+          { id: V1, city_id: C1 },
+          { id: V2, city_id: C2 },
+        ],
+      ),
+    ).toBe(C1);
+  });
+  it("skips sessions whose venues have no city_id and tries the next", () => {
+    expect(
+      deriveDefaultCityID(
+        [
+          { venue_id: V1, start_at: "2026-01-01T00:00:00Z" },
+          { venue_id: V2, start_at: "2026-02-01T00:00:00Z" },
+        ],
+        [
+          { id: V1, city_id: null },
+          { id: V2, city_id: C2 },
+        ],
+      ),
+    ).toBe(C2);
+  });
+  it("returns '' when no matching venue is found", () => {
+    expect(
+      deriveDefaultCityID(
+        [{ venue_id: "00000000-0000-0000-0000-000000000999", start_at: "2026-01-01T00:00:00Z" }],
+        [{ id: V1, city_id: C1 }],
+      ),
+    ).toBe("");
   });
 });
 
@@ -1146,6 +1227,10 @@ describe("mapPublicationError", () => {
     ["publication.content_type_required", /json/i],
     ["publication.invalid_json", /json/i],
     ["publication.internal", /server/i],
+    // AB-43: FK-violation 404s are surfaced with actionable messages.
+    ["publication.feed_token_not_found", /feed token/i],
+    ["publication.city_not_found", /city/i],
+    ["publication.event_not_found", /event/i],
   ])("maps %s to an operator-readable message", (code, pattern) => {
     expect(
       mapPublicationError(

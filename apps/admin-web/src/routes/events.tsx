@@ -275,13 +275,67 @@ interface CityListEnvelope {
 }
 
 export interface PublicationFormValues {
+  /**
+   * AB-43: the primary input is the sales channel; the feed token is
+   * resolved (or auto-issued) behind the scenes so the operator never has
+   * to know the token UUID.
+   */
+  sales_channel_id: string;
+  /**
+   * When "advanced" is opened, the operator may pin a specific existing
+   * feed token for the selected channel; otherwise the newest active
+   * token is used (or a new one is issued when the channel has none).
+   */
   feed_token_id: string;
   city_id: string;
+  /** True when the operator opened the advanced disclosure to override defaults. */
+  advanced_open: boolean;
 }
 
 export interface PublicationRequestBody {
   feed_token_id: string;
   city_id?: string | null;
+}
+
+// AB-43: sales channel + feed token shapes.
+export interface SalesChannelSummary {
+  readonly id: string;
+  readonly display_number: number;
+  readonly name: string;
+}
+
+interface SalesChannelListEnvelope {
+  readonly channels: readonly SalesChannelSummary[];
+}
+
+export interface FeedTokenSummary {
+  readonly id: string;
+  readonly token: string;
+  readonly sales_channel_id: string;
+  readonly label: string;
+  readonly is_active: boolean;
+  readonly revoked_at: string | null;
+  readonly created_at: string;
+}
+
+interface FeedTokenListEnvelope {
+  readonly feed_tokens: readonly FeedTokenSummary[];
+}
+
+interface FeedTokenEnvelope {
+  readonly feed_token: FeedTokenSummary;
+}
+
+// AB-43: venues are consulted to derive the city scope from the event's
+// first session's venue, so the operator does not re-enter data the
+// platform already knows.
+export interface VenueForCityLookup {
+  readonly id: string;
+  readonly city_id: string | null;
+}
+
+interface VenueLookupListEnvelope {
+  readonly venues: readonly VenueForCityLookup[];
 }
 
 // ---------------------------------------------------------------------------
@@ -1026,6 +1080,9 @@ function EventsModule() {
   const [page, setPage] = useState<number>(1);
   const [selectedID, setSelectedID] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  // AB-42 wizard resume target — set when the operator clicks
+  // "Continue setup" on a draft event's drawer overview.
+  const [resumeEvent, setResumeEvent] = useState<EventItem | null>(null);
 
   const listQuery = useQuery<EventListEnvelope, ApiError>({
     queryKey: ["events", "list", visibilityFilter],
@@ -1202,17 +1259,38 @@ function EventsModule() {
           onUpdated={() => {
             void listQuery.refetch();
           }}
+          onResume={(ev) => {
+            setSelectedID(null);
+            setResumeEvent(ev);
+          }}
         />
       ) : null}
 
       {createOpen ? (
-        <CreateEventPanel
+        <EventWizard
           orgs={orgsQuery.data?.organizations ?? []}
-          onSuccess={() => {
+          onClose={() => {
             setCreateOpen(false);
             void listQuery.refetch();
           }}
-          onClose={() => setCreateOpen(false)}
+          onCompleted={() => {
+            setCreateOpen(false);
+            void listQuery.refetch();
+          }}
+        />
+      ) : null}
+      {resumeEvent !== null ? (
+        <EventWizard
+          orgs={orgsQuery.data?.organizations ?? []}
+          initialEvent={resumeEvent}
+          onClose={() => {
+            setResumeEvent(null);
+            void listQuery.refetch();
+          }}
+          onCompleted={() => {
+            setResumeEvent(null);
+            void listQuery.refetch();
+          }}
         />
       ) : null}
     </section>
@@ -1615,6 +1693,12 @@ interface DrawerProps {
   onClose: () => void;
   onDeleted: () => void;
   onUpdated: () => void;
+  /**
+   * AB-42: fired when the operator clicks "Continue setup" on a draft
+   * event, so the page can open the wizard resumed at the first
+   * incomplete step.
+   */
+  onResume: (event: EventItem) => void;
 }
 
 function EventDrawer({
@@ -1636,6 +1720,7 @@ function EventDrawer({
   onClose,
   onDeleted,
   onUpdated,
+  onResume,
 }: DrawerProps) {
   const [tab, setTab] = useState<DrawerTab>("overview");
   return (
@@ -1690,8 +1775,10 @@ function EventDrawer({
               canPublish={canPublish}
               canUpdateEvent={canUpdateEvent}
               canDeleteEvent={canDeleteEvent}
+              canCreateSession={canCreateSession}
               onDeleted={onDeleted}
               onUpdated={onUpdated}
+              onResume={onResume}
             />
           ) : null}
           {tab === "sessions" ? (
@@ -1732,8 +1819,10 @@ function OverviewTab({
   canPublish,
   canUpdateEvent,
   canDeleteEvent,
+  canCreateSession,
   onDeleted,
   onUpdated,
+  onResume,
 }: {
   event: EventItem;
   orgsByID: ReadonlyMap<string, OrganizationSummary>;
@@ -1741,6 +1830,8 @@ function OverviewTab({
   canPublish: boolean;
   canUpdateEvent: boolean;
   canDeleteEvent: boolean;
+  canCreateSession: boolean;
+  onResume: (event: EventItem) => void;
   onDeleted: () => void;
   onUpdated: () => void;
 }) {
@@ -1802,6 +1893,23 @@ function OverviewTab({
 
   return (
     <div style={tabBodyStyle}>
+      {/* AB-42 resumability: a draft event surfaces a "Continue setup"
+          action that reopens the wizard at the first incomplete step. */}
+      {event.status === "draft" && canCreateSession ? (
+        <div style={rowActionsStyle}>
+          <button
+            type="button"
+            style={primaryButtonStyle}
+            onClick={() => onResume(event)}
+            data-testid="events-resume-setup"
+          >
+            Continue setup
+          </button>
+          <span style={mutedHintStyle}>
+            Draft event — publish requires at least one session with a tier.
+          </span>
+        </div>
+      ) : null}
       {/* Edit / Delete action buttons */}
       {(canUpdateEvent || canDeleteEvent) ? (
         <div style={rowActionsStyle}>
@@ -1978,26 +2086,114 @@ function OverviewTab({
 }
 
 // ---------------------------------------------------------------------------
-// CreateEventPanel — modal overlay for creating a new event
+// EventWizard — AB-42 multi-step "no event → sellable published event" flow.
+//
+// Replaces the flat single-modal Create Event that posted only the event
+// and left it unsellable. Steps are:
+//   1. event identity (org, name, visibility, description) — creates a
+//      draft event immediately, so partial progress survives close.
+//   2. first session (venue, dates, admission mode, seating plan). Reuses
+//      SessionEditor; capacity is DERIVED and shown read-only there.
+//   3. ticket tiers for the session (add-only list) + publish gate. Reuses
+//      TierEditor. Publish fires POST .../status { status: "published" };
+//      the backend refuses events with no session or any session missing
+//      a tier and returns a specific code we surface inline.
+//
+// Resumability: when opened with an existing draft event the wizard skips
+// to the first incomplete step (no sessions → step 2; some session
+// without a tier → step 3; otherwise → the publish confirmation).
+// Outside-click does NOT dismiss (AB-44 rule for critical dialogs) — only
+// the explicit close/cancel/save-draft buttons do.
 // ---------------------------------------------------------------------------
 
-interface CreateEventPanelProps {
+type WizardStep = 1 | 2 | 3;
+
+interface EventWizardProps {
   orgs: readonly OrganizationSummary[];
-  onSuccess: (event: EventItem) => void;
+  /** If provided, the wizard resumes on this draft event (no step 1). */
+  initialEvent?: EventItem | null;
   onClose: () => void;
+  onCompleted: () => void;
 }
 
-function CreateEventPanel({ orgs, onSuccess, onClose }: CreateEventPanelProps) {
-  const [values, setValues] = useState<EventFormValues>(emptyEventForm());
-  const errors = useMemo(() => validateEventForm(values, true), [values]);
-  const [submitErr, setSubmitErr] = useState<string | null>(null);
+function EventWizard({
+  orgs,
+  initialEvent = null,
+  onClose,
+  onCompleted,
+}: EventWizardProps) {
+  const queryClient = useQueryClient();
+  const [event, setEvent] = useState<EventItem | null>(initialEvent);
+  const [session, setSession] = useState<SessionItem | null>(null);
+  const [tiers, setTiers] = useState<readonly TicketTierItem[]>([]);
+  const [step, setStep] = useState<WizardStep>(event === null ? 1 : 2);
+  const [banner, setBanner] = useState<{
+    kind: "ok" | "err";
+    msg: string;
+  } | null>(null);
 
-  const mutation = useMutation<EventEnvelope, ApiError, EventFormValues>({
+  // When resuming on an existing draft event, discover its first session
+  // (if any) so we can jump the operator to step 3 directly.
+  const resumeSessionsQuery = useQuery<SessionListEnvelope, ApiError>({
+    queryKey: ["events", "wizard-sessions", event?.id],
+    enabled: event !== null && session === null && step === 2,
+    queryFn: () =>
+      authedFetch<SessionListEnvelope>({
+        method: "GET",
+        path: `/v1/organizations/${event!.org_id}/events/${event!.id}/sessions`,
+      }),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+
+  useEffect(() => {
+    if (
+      event !== null &&
+      session === null &&
+      resumeSessionsQuery.data !== undefined
+    ) {
+      const first = resumeSessionsQuery.data.sessions[0];
+      if (first !== undefined) {
+        setSession(first);
+        setStep(3);
+      }
+    }
+  }, [event, session, resumeSessionsQuery.data]);
+
+  const resumeTiersQuery = useQuery<TicketTierListEnvelope, ApiError>({
+    queryKey: ["events", "wizard-tiers", session?.id],
+    enabled:
+      event !== null && session !== null && tiers.length === 0 && step === 3,
+    queryFn: () =>
+      authedFetch<TicketTierListEnvelope>({
+        method: "GET",
+        path: `/v1/organizations/${event!.org_id}/events/${event!.id}/sessions/${session!.id}/tiers`,
+      }),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+
+  useEffect(() => {
+    if (resumeTiersQuery.data !== undefined) {
+      const list =
+        resumeTiersQuery.data.ticket_tiers ??
+        resumeTiersQuery.data.tiers ??
+        [];
+      if (list.length > 0) setTiers(list);
+    }
+  }, [resumeTiersQuery.data]);
+
+  // Step-1 form state (event identity).
+  const [values, setValues] = useState<EventFormValues>(emptyEventForm);
+  const step1Errors = useMemo(() => validateEventForm(values, true), [values]);
+
+  const createEventMutation = useMutation<
+    EventEnvelope,
+    ApiError,
+    EventFormValues
+  >({
     mutationFn: (v) => {
-      // AB-36/AB-37: events carry no dates and no venue — sessions do.
-      const body: Record<string, unknown> = {
-        name: v.name.trim(),
-      };
+      const body: Record<string, unknown> = { name: v.name.trim() };
       if (v.description.trim() !== "") body.description = v.description.trim();
       if (v.visibility !== "") body.visibility = v.visibility;
       return authedFetch<EventEnvelope>({
@@ -2007,161 +2203,405 @@ function CreateEventPanel({ orgs, onSuccess, onClose }: CreateEventPanelProps) {
       });
     },
     onSuccess: (data) => {
-      onSuccess(data.event);
+      setEvent(data.event);
+      setBanner({
+        kind: "ok",
+        msg: `Draft event "${data.event.name}" created. Now add a session.`,
+      });
+      setStep(2);
+      void queryClient.invalidateQueries({ queryKey: ["events"] });
     },
     onError: (err) => {
-      setSubmitErr(`${err.message} (${err.code})`);
+      setBanner({ kind: "err", msg: `${err.message} (${err.code})` });
     },
   });
 
-  const hasErrors = Object.keys(errors).length > 0;
+  const publishMutation = useMutation<EventEnvelope, ApiError, void>({
+    mutationFn: () =>
+      authedFetch<EventEnvelope>({
+        method: "POST",
+        path: `/v1/organizations/${event!.org_id}/events/${event!.id}/status`,
+        body: { status: "published" },
+      }),
+    onSuccess: (data) => {
+      setBanner({ kind: "ok", msg: `Published "${data.event.name}".` });
+      void queryClient.invalidateQueries({ queryKey: ["events"] });
+      onCompleted();
+    },
+    onError: (err) => {
+      setBanner({ kind: "err", msg: mapPublishError(err) });
+    },
+  });
+
+  const stepStatus = (n: WizardStep): "done" | "current" | "todo" => {
+    if (n < step) return "done";
+    if (n === step) return "current";
+    return "todo";
+  };
 
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-labelledby="create-event-title"
+      aria-labelledby="event-wizard-title"
       style={createPanelBackdropStyle}
-      data-testid="events-create-panel"
-      onClick={onClose}
+      data-testid="events-wizard"
+      // AB-42/AB-44: do NOT close on outside click.
     >
-      <div style={createPanelStyle} onClick={(e) => e.stopPropagation()}>
+      <div
+        style={{ ...createPanelStyle, maxWidth: 780 }}
+        onClick={(e) => e.stopPropagation()}
+      >
         <header style={drawerHeaderStyle}>
-          <h2 id="create-event-title" style={drawerTitleStyle}>
-            Create Event
-          </h2>
+          <div>
+            <h2 id="event-wizard-title" style={drawerTitleStyle}>
+              {event === null ? "Create event" : `Set up "${event.name}"`}
+            </h2>
+            <div style={mutedHintStyle} data-testid="events-wizard-progress">
+              <span data-status={stepStatus(1)}>
+                {stepStatus(1) === "done" ? "✓" : "1"} Event
+              </span>
+              {" · "}
+              <span data-status={stepStatus(2)}>
+                {stepStatus(2) === "done" ? "✓" : "2"} Session
+              </span>
+              {" · "}
+              <span data-status={stepStatus(3)}>
+                {stepStatus(3) === "done" ? "✓" : "3"} Tiers &amp; publish
+              </span>
+            </div>
+          </div>
           <button
             type="button"
             onClick={onClose}
             style={dialogCloseStyle}
-            aria-label="Close"
-            data-testid="events-create-close"
+            aria-label="Close wizard"
+            data-testid="events-wizard-close"
           >
             ×
           </button>
         </header>
+
         <div style={createPanelBodyStyle}>
-          <form
-            style={editorFormStyle}
-            data-testid="events-create-form"
-            onSubmit={(e: FormEvent) => {
-              e.preventDefault();
-              if (hasErrors) return;
-              setSubmitErr(null);
-              mutation.mutate(values);
-            }}
-          >
-            <div style={editorGridStyle}>
-              <label style={editorFieldStyle}>
-                <span style={editorLabelStyle}>Organization *</span>
-                <select
-                  value={values.org_id}
-                  onChange={(e) =>
-                    setValues({ ...values, org_id: e.target.value })
-                  }
-                  style={editorInputStyle}
-                  required
-                  data-testid="events-create-org"
-                >
-                  <option value="">— select org —</option>
-                  {orgs.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.display_number !== undefined
-                        ? `#${o.display_number} ${o.name}`
-                        : o.name}
-                    </option>
-                  ))}
-                </select>
-                {errors.org_id !== undefined ? (
-                  <span style={fieldErrorStyle}>{errors.org_id}</span>
-                ) : null}
-              </label>
-
-              <label style={editorFieldStyle}>
-                <span style={editorLabelStyle}>Name *</span>
-                <input
-                  type="text"
-                  value={values.name}
-                  onChange={(e) => setValues({ ...values, name: e.target.value })}
-                  style={editorInputStyle}
-                  required
-                  data-testid="events-create-name"
-                />
-                {errors.name !== undefined ? (
-                  <span style={fieldErrorStyle}>{errors.name}</span>
-                ) : null}
-              </label>
-
-              <label style={editorFieldStyle}>
-                <span style={editorLabelStyle}>Visibility</span>
-                <select
-                  value={values.visibility}
-                  onChange={(e) =>
-                    setValues({
-                      ...values,
-                      visibility: isEventVisibility(e.target.value)
-                        ? e.target.value
-                        : "",
-                    })
-                  }
-                  style={editorInputStyle}
-                  data-testid="events-create-visibility"
-                >
-                  <option value="">— default (public) —</option>
-                  {EVENT_VISIBILITIES.map((v) => (
-                    <option key={v} value={v}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
+          {banner !== null ? (
+            <div
+              style={banner.kind === "ok" ? successBoxStyle : formErrorStyle}
+              role={banner.kind === "ok" ? "status" : "alert"}
+              data-testid={
+                banner.kind === "ok"
+                  ? "events-wizard-ok"
+                  : "events-wizard-error"
+              }
+            >
+              {banner.msg}
             </div>
+          ) : null}
 
-            <label style={editorFieldStyle}>
-              <span style={editorLabelStyle}>Description (optional)</span>
-              <textarea
-                value={values.description}
-                onChange={(e) =>
-                  setValues({ ...values, description: e.target.value })
-                }
-                style={{ ...editorInputStyle, minHeight: 72, resize: "vertical" }}
-                rows={3}
-                data-testid="events-create-description"
-              />
-            </label>
-
-            {submitErr !== null ? (
-              <div
-                style={formErrorStyle}
-                role="alert"
-                data-testid="events-create-error"
-              >
-                {submitErr}
+          {step === 1 ? (
+            <form
+              style={editorFormStyle}
+              data-testid="events-wizard-step1-form"
+              onSubmit={(e: FormEvent) => {
+                e.preventDefault();
+                if (Object.keys(step1Errors).length > 0) return;
+                setBanner(null);
+                createEventMutation.mutate(values);
+              }}
+            >
+              <div style={editorGridStyle}>
+                <label style={editorFieldStyle}>
+                  <span style={editorLabelStyle}>Organization *</span>
+                  <select
+                    value={values.org_id}
+                    onChange={(e) =>
+                      setValues({ ...values, org_id: e.target.value })
+                    }
+                    style={editorInputStyle}
+                    required
+                    data-testid="events-wizard-org"
+                  >
+                    <option value="">— select org —</option>
+                    {orgs.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.display_number !== undefined
+                          ? `#${o.display_number} ${o.name}`
+                          : o.name}
+                      </option>
+                    ))}
+                  </select>
+                  {step1Errors.org_id !== undefined ? (
+                    <span style={fieldErrorStyle}>{step1Errors.org_id}</span>
+                  ) : null}
+                </label>
+                <label style={editorFieldStyle}>
+                  <span style={editorLabelStyle}>Name *</span>
+                  <input
+                    type="text"
+                    value={values.name}
+                    onChange={(e) =>
+                      setValues({ ...values, name: e.target.value })
+                    }
+                    style={editorInputStyle}
+                    required
+                    data-testid="events-wizard-name"
+                  />
+                  {step1Errors.name !== undefined ? (
+                    <span style={fieldErrorStyle}>{step1Errors.name}</span>
+                  ) : null}
+                </label>
+                <label style={editorFieldStyle}>
+                  <span style={editorLabelStyle}>Visibility</span>
+                  <select
+                    value={values.visibility}
+                    onChange={(e) =>
+                      setValues({
+                        ...values,
+                        visibility: isEventVisibility(e.target.value)
+                          ? e.target.value
+                          : "",
+                      })
+                    }
+                    style={editorInputStyle}
+                    data-testid="events-wizard-visibility"
+                  >
+                    <option value="">— default (public) —</option>
+                    {EVENT_VISIBILITIES.map((v) => (
+                      <option key={v} value={v}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
-            ) : null}
+              <label style={editorFieldStyle}>
+                <span style={editorLabelStyle}>Description (optional)</span>
+                <textarea
+                  value={values.description}
+                  onChange={(e) =>
+                    setValues({ ...values, description: e.target.value })
+                  }
+                  style={{
+                    ...editorInputStyle,
+                    minHeight: 72,
+                    resize: "vertical",
+                  }}
+                  rows={3}
+                  data-testid="events-wizard-description"
+                />
+              </label>
+              <div style={mobileFormBarStyle}>
+                <button
+                  type="button"
+                  style={refreshButtonStyle}
+                  onClick={onClose}
+                  disabled={createEventMutation.isPending}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={primaryButtonStyle}
+                  disabled={
+                    createEventMutation.isPending ||
+                    Object.keys(step1Errors).length > 0
+                  }
+                  data-testid="events-wizard-step1-submit"
+                >
+                  {createEventMutation.isPending
+                    ? "Creating…"
+                    : "Create draft & continue"}
+                </button>
+              </div>
+            </form>
+          ) : null}
 
-            <div style={mobileFormBarStyle}>
-              <button
-                type="button"
-                style={refreshButtonStyle}
-                onClick={onClose}
-                disabled={mutation.isPending}
-                data-testid="events-create-cancel"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                style={primaryButtonStyle}
-                disabled={mutation.isPending || hasErrors}
-                data-testid="events-create-submit"
-              >
-                {mutation.isPending ? "Creating…" : "Create Event"}
-              </button>
+          {step === 2 && event !== null ? (
+            <div data-testid="events-wizard-step2">
+              <p style={mutedHintStyle}>
+                Add the first session. Every session pins a venue, dates and
+                admission mode; capacity is derived from the venue or seating
+                plan.
+              </p>
+              <SessionEditor
+                event={event}
+                mode={{ kind: "create" }}
+                siblings={[]}
+                onClose={onClose}
+                onSaved={(_label, created) => {
+                  if (created === undefined) return;
+                  setSession(created);
+                  setTiers([]);
+                  setStep(3);
+                  setBanner({
+                    kind: "ok",
+                    msg: "Session created. Now add at least one ticket tier.",
+                  });
+                  void queryClient.invalidateQueries({
+                    queryKey: ["events", "detail", event.id, "sessions"],
+                  });
+                }}
+                onError={(msg) => setBanner({ kind: "err", msg })}
+              />
             </div>
-          </form>
+          ) : null}
+
+          {step === 3 && event !== null && session !== null ? (
+            <WizardTiersStep
+              event={event}
+              session={session}
+              tiers={tiers}
+              onTierAdded={(t) => {
+                setTiers((prev) => [...prev, t]);
+                setBanner({ kind: "ok", msg: `Tier "${t.name}" added.` });
+              }}
+              onTierError={(msg) => setBanner({ kind: "err", msg })}
+              onPublish={() => {
+                setBanner(null);
+                publishMutation.mutate();
+              }}
+              publishBusy={publishMutation.isPending}
+              onSaveDraftAndClose={onClose}
+            />
+          ) : null}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Human-friendly translation for the publish endpoint's error catalogue.
+ * The two AB-42 codes explain the gate the operator just hit.
+ */
+export function mapPublishError(err: ApiError): string {
+  switch (err.code) {
+    case "event.publish_requires_session":
+      return "Cannot publish: this event has no session yet.";
+    case "event.publish_requires_priced_tier":
+      return "Cannot publish: every session must have at least one ticket tier.";
+    case "event.invalid_transition":
+      return err.message || "Status transition is not allowed.";
+    case "permissions.denied":
+      return "Missing event.publish permission.";
+    default:
+      if (err.status === 401) return "Session expired. Sign in again.";
+      if (err.status === 403) return "Forbidden — missing event.publish.";
+      return `${err.message} (${err.code})`;
+  }
+}
+
+interface WizardTiersStepProps {
+  event: EventItem;
+  session: SessionItem;
+  tiers: readonly TicketTierItem[];
+  onTierAdded: (t: TicketTierItem) => void;
+  onTierError: (msg: string) => void;
+  onPublish: () => void;
+  publishBusy: boolean;
+  onSaveDraftAndClose: () => void;
+}
+
+function WizardTiersStep({
+  event,
+  session,
+  tiers,
+  onTierAdded,
+  onTierError,
+  onPublish,
+  publishBusy,
+  onSaveDraftAndClose,
+}: WizardTiersStepProps) {
+  const [showForm, setShowForm] = useState(tiers.length === 0);
+  const canPublish = tiers.length > 0;
+
+  return (
+    <div data-testid="events-wizard-step3">
+      <p style={mutedHintStyle}>
+        Add at least one ticket tier for the session on{" "}
+        {formatDateTime(session.start_at)}. Currency is{" "}
+        <strong>{session.currency}</strong> (
+        {session.currency_source === "derived"
+          ? "derived from venue"
+          : "set manually on the session"}
+        ) — every tier of this session shares it.
+      </p>
+
+      {tiers.length > 0 ? (
+        <ul
+          style={{ margin: "8px 0", paddingLeft: 20 }}
+          data-testid="events-wizard-tier-list"
+        >
+          {tiers.map((t) => (
+            <li key={t.id}>
+              <strong>{t.name}</strong> — {t.pricing_mode}
+              {t.pricing_mode === "fixed"
+                ? ` · ${(t.price_amount / 100).toFixed(2)} ${t.currency}`
+                : ""}
+              {t.pricing_mode === "pwyw" &&
+              t.pwyw_min !== null &&
+              t.pwyw_min !== undefined
+                ? ` · pwyw ${(t.pwyw_min / 100).toFixed(2)}${
+                    t.pwyw_max !== null && t.pwyw_max !== undefined
+                      ? `–${(t.pwyw_max / 100).toFixed(2)}`
+                      : "+"
+                  } ${t.currency}`
+                : ""}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div style={statusBoxStyle} data-testid="events-wizard-tiers-empty">
+          No tiers yet — the event cannot be published until you add one.
+        </div>
+      )}
+
+      {showForm ? (
+        <TierEditor
+          event={event}
+          session={session}
+          mode={{ kind: "create", sessionID: session.id }}
+          onClose={() => setShowForm(false)}
+          onSaved={(_label, created) => {
+            if (created !== undefined) onTierAdded(created);
+            setShowForm(false);
+          }}
+          onError={onTierError}
+        />
+      ) : (
+        <button
+          type="button"
+          style={refreshButtonStyle}
+          onClick={() => setShowForm(true)}
+          data-testid="events-wizard-add-tier"
+        >
+          + Add another tier
+        </button>
+      )}
+
+      <div style={{ ...mobileFormBarStyle, marginTop: 16 }}>
+        <button
+          type="button"
+          style={refreshButtonStyle}
+          onClick={onSaveDraftAndClose}
+          disabled={publishBusy}
+          data-testid="events-wizard-save-draft"
+        >
+          Save draft &amp; close
+        </button>
+        <button
+          type="button"
+          style={primaryButtonStyle}
+          onClick={onPublish}
+          disabled={publishBusy || !canPublish}
+          data-testid="events-wizard-publish"
+          title={
+            canPublish
+              ? "Publish this event"
+              : "Add at least one tier before you can publish."
+          }
+        >
+          {publishBusy ? "Publishing…" : "Publish event"}
+        </button>
       </div>
     </div>
   );
@@ -2607,7 +3047,12 @@ interface SessionEditorProps {
   mode: Exclude<SessionEditorMode, { kind: "closed" }>;
   siblings: readonly SessionItem[];
   onClose: () => void;
-  onSaved: (successLabel: string) => void;
+  /**
+   * Called on successful create/edit. The optional `session` argument is the
+   * SessionItem returned by the server; the AB-42 wizard consumes it to
+   * advance to the tiers step. Existing callers may ignore this parameter.
+   */
+  onSaved: (successLabel: string, session?: SessionItem) => void;
   onError: (msg: string) => void;
 }
 
@@ -2736,6 +3181,7 @@ function SessionEditor({
         mode.kind === "create"
           ? `Created session ${formatDateTime(data.session.start_at)}.`
           : `Updated session ${shortenUUID(data.session.id)}.`,
+        data.session,
       );
     },
     onError: (err) => {
@@ -3500,7 +3946,13 @@ interface TierEditorProps {
   session: SessionItem;
   mode: Exclude<TierEditorMode, { kind: "closed" }>;
   onClose: () => void;
-  onSaved: (label: string) => void;
+  /**
+   * Called on successful create/edit. The optional `tier` argument is the
+   * TicketTierItem returned by the server; the AB-42 wizard consumes it
+   * to update the tier list without a full refetch. Existing callers may
+   * ignore this parameter.
+   */
+  onSaved: (label: string, tier?: TicketTierItem) => void;
   onError: (msg: string) => void;
 }
 
@@ -3539,6 +3991,7 @@ function TierEditor({
         mode.kind === "create"
           ? `Created tier "${data.tier.name}".`
           : `Updated tier "${data.tier.name}".`,
+        data.tier,
       );
     },
     onError: (err) => {
@@ -3850,10 +4303,16 @@ export function isUUID(value: string): boolean {
 }
 
 export function emptyPublicationForm(): PublicationFormValues {
-  return { feed_token_id: "", city_id: "" };
+  return {
+    sales_channel_id: "",
+    feed_token_id: "",
+    city_id: "",
+    advanced_open: false,
+  };
 }
 
 export interface PublicationFormErrors {
+  sales_channel_id?: string;
   feed_token_id?: string;
   city_id?: string;
 }
@@ -3862,30 +4321,61 @@ export function validatePublicationForm(
   v: PublicationFormValues,
 ): PublicationFormErrors {
   const errors: PublicationFormErrors = {};
+  const channel = v.sales_channel_id.trim();
+  if (channel === "") {
+    errors.sales_channel_id = "Sales channel is required.";
+  } else if (!isUUID(channel)) {
+    errors.sales_channel_id = "Sales channel must be a UUID.";
+  }
   const feed = v.feed_token_id.trim();
-  if (feed === "") {
-    errors.feed_token_id = "Feed token ID is required.";
-  } else if (!isUUID(feed)) {
-    errors.feed_token_id = "Feed token ID must be a UUID.";
+  if (feed !== "" && !isUUID(feed)) {
+    errors.feed_token_id = "Feed token must be a UUID.";
   }
   const city = v.city_id.trim();
   if (city !== "" && !isUUID(city)) {
-    errors.city_id = "City ID must be a UUID.";
+    errors.city_id = "City must be a UUID.";
   }
   return errors;
 }
 
 export function buildPublicationRequestBody(
   v: PublicationFormValues,
+  resolvedFeedTokenID: string,
 ): PublicationRequestBody {
   const body: PublicationRequestBody = {
-    feed_token_id: v.feed_token_id.trim(),
+    feed_token_id: resolvedFeedTokenID.trim(),
   };
   const city = v.city_id.trim();
   if (city !== "") {
     body.city_id = city;
   }
   return body;
+}
+
+/**
+ * AB-43 — derive the default city scope for a new publication from the
+ * event's first-in-time session's venue. Returns "" when the venue has no
+ * city recorded, when sessions/venues cannot be resolved, or when the
+ * event has no sessions. Exported for unit tests.
+ */
+export function deriveDefaultCityID(
+  sessions: readonly Pick<SessionItem, "venue_id" | "start_at">[],
+  venues: readonly VenueForCityLookup[],
+): string {
+  if (sessions.length === 0 || venues.length === 0) {
+    return "";
+  }
+  const ordered = [...sessions].sort((a, b) =>
+    a.start_at.localeCompare(b.start_at),
+  );
+  const venueByID = new Map(venues.map((v) => [v.id, v]));
+  for (const s of ordered) {
+    const v = venueByID.get(s.venue_id);
+    if (v && v.city_id !== null && v.city_id !== "") {
+      return v.city_id;
+    }
+  }
+  return "";
 }
 
 export function mapPublicationError(err: ApiError): string {
@@ -3904,8 +4394,18 @@ export function mapPublicationError(err: ApiError): string {
       return "Request must be sent as JSON.";
     case "publication.invalid_json":
       return "Request body is not valid JSON.";
+    // AB-43: FK violations now surface as specific 404s instead of 500.
+    case "publication.feed_token_not_found":
+      return "That feed token no longer exists — issue a fresh token on the sales channel and try again.";
+    case "publication.city_not_found":
+      return "That city is not in the geo registry — pick another city or leave the scope global.";
+    case "publication.event_not_found":
+      return "This event no longer exists — reload the page.";
     case "publication.internal":
       return "The server failed to apply the publication change. Try again.";
+    case "feed_token.insert_failed":
+    case "feed_token.generate_failed":
+      return "Could not issue a feed token for the selected channel — try again.";
     case "permissions.denied":
       return "Your account is missing the permission required for this action.";
     default:
@@ -3961,22 +4461,121 @@ function PublicationsTab({
     refetchOnWindowFocus: false,
   });
 
+  // AB-43: fetch the org's sales channels so the operator picks one from a
+  // dropdown instead of pasting a feed-token UUID.
+  const channelsQuery = useQuery<SalesChannelListEnvelope, ApiError>({
+    queryKey: ["organizations", event.org_id, "channels"],
+    queryFn: () =>
+      authedFetch<SalesChannelListEnvelope>({
+        method: "GET",
+        path: `/v1/organizations/${event.org_id}/channels`,
+      }),
+    enabled: canRead && canCreate,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+
+  // AB-43: sessions + venues let us derive the default city scope from
+  // the event's first-in-time session's venue city.
+  const sessionsQueryForCity = useQuery<SessionListEnvelope, ApiError>({
+    queryKey: ["events", "detail", event.id, "sessions", "publications-tab"],
+    queryFn: () =>
+      authedFetch<SessionListEnvelope>({
+        method: "GET",
+        path: `/v1/events/${event.id}/sessions`,
+      }),
+    enabled: canRead && canCreate,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const venuesForCityQuery = useQuery<VenueLookupListEnvelope, ApiError>({
+    queryKey: ["organizations", event.org_id, "venues", "publications-tab"],
+    queryFn: () =>
+      authedFetch<VenueLookupListEnvelope>({
+        method: "GET",
+        path: `/v1/organizations/${event.org_id}/venues`,
+      }),
+    enabled: canRead && canCreate,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const derivedCityID = deriveDefaultCityID(
+    sessionsQueryForCity.data?.sessions ?? [],
+    venuesForCityQuery.data?.venues ?? [],
+  );
+
+  // AB-43: when a channel is selected, list its feed tokens so the
+  // mutation can pick the newest active one — or issue a fresh one when
+  // the channel has none.
+  const feedTokensQuery = useQuery<FeedTokenListEnvelope, ApiError>({
+    queryKey: [
+      "organizations",
+      event.org_id,
+      "channels",
+      form.sales_channel_id,
+      "feed-tokens",
+    ],
+    queryFn: () =>
+      authedFetch<FeedTokenListEnvelope>({
+        method: "GET",
+        path: `/v1/organizations/${event.org_id}/channels/${form.sales_channel_id}/feed-tokens`,
+      }),
+    enabled: canRead && canCreate && isUUID(form.sales_channel_id),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+
   const invalidate = () =>
     queryClient.invalidateQueries({
       queryKey: ["events", "detail", event.id, "publications"],
+    });
+  const invalidateFeedTokens = () =>
+    queryClient.invalidateQueries({
+      queryKey: [
+        "organizations",
+        event.org_id,
+        "channels",
+        form.sales_channel_id,
+        "feed-tokens",
+      ],
     });
 
   const publishMutation = useMutation<
     EventPublication,
     ApiError,
-    PublicationRequestBody
+    { channelID: string; pinnedTokenID: string; cityID: string }
   >({
-    mutationFn: (body) =>
-      authedFetch<EventPublication>({
+    // AB-43: publish flow resolves (or issues) the feed token for the
+    // selected sales channel before calling the publications endpoint.
+    mutationFn: async ({ channelID, pinnedTokenID, cityID }) => {
+      let tokenID = pinnedTokenID.trim();
+      if (tokenID === "") {
+        // Prefer the newest active token; issue one when none exists.
+        const list = feedTokensQuery.data?.feed_tokens ?? [];
+        const active = list
+          .filter((t) => t.is_active && t.revoked_at === null)
+          .sort((a, b) => b.created_at.localeCompare(a.created_at));
+        if (active.length > 0) {
+          tokenID = active[0].id;
+        } else {
+          const issued = await authedFetch<FeedTokenEnvelope>({
+            method: "POST",
+            path: `/v1/organizations/${event.org_id}/channels/${channelID}/feed-tokens`,
+            body: { label: "Publication (auto-issued)" },
+          });
+          tokenID = issued.feed_token.id;
+          await invalidateFeedTokens();
+        }
+      }
+      const body: PublicationRequestBody = { feed_token_id: tokenID };
+      const c = cityID.trim();
+      if (c !== "") body.city_id = c;
+      return authedFetch<EventPublication>({
         method: "POST",
         path: `/v1/events/${event.id}/publications`,
         body,
-      }),
+      });
+    },
     onSuccess: () => {
       setForm(emptyPublicationForm());
       setFormErrors({});
@@ -4029,17 +4628,34 @@ function PublicationsTab({
   }
   const pubs = query.data?.publications ?? [];
   const cities = citiesQuery.data?.cities ?? [];
+  const channels = channelsQuery.data?.channels ?? [];
+  const feedTokens = feedTokensQuery.data?.feed_tokens ?? [];
+
+  // AB-43: when the operator picks a channel, prefill the city with the
+  // venue-derived default (only if they haven't set one manually already).
+  const cityValueForRender = form.city_id !== "" ? form.city_id : derivedCityID;
 
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const errs = validatePublicationForm(form);
+    // Copy the derived default into the form on submit so the request
+    // reflects what the operator saw (venue city vs. explicit global).
+    const effectiveForm: PublicationFormValues = {
+      ...form,
+      city_id:
+        form.city_id !== "" || form.advanced_open ? form.city_id : derivedCityID,
+    };
+    const errs = validatePublicationForm(effectiveForm);
     setFormErrors(errs);
     if (Object.keys(errs).length > 0) {
       return;
     }
     setActionErr(null);
     setOkMsg(null);
-    publishMutation.mutate(buildPublicationRequestBody(form));
+    publishMutation.mutate({
+      channelID: effectiveForm.sales_channel_id,
+      pinnedTokenID: effectiveForm.feed_token_id,
+      cityID: effectiveForm.city_id,
+    });
   };
 
   return (
@@ -4062,55 +4678,172 @@ function PublicationsTab({
           data-testid="events-publications-form"
         >
           <div style={editorGridStyle}>
+            {/* AB-43: primary input is a sales-channel picker. The feed
+                token is resolved (or auto-issued) behind the scenes so
+                the operator never has to know a token UUID. */}
             <label style={editorFieldStyle}>
-              <span style={editorLabelStyle}>Feed token ID</span>
-              <input
-                type="text"
-                value={form.feed_token_id}
-                onChange={(e) => {
-                  setForm({ ...form, feed_token_id: e.target.value });
-                  if (formErrors.feed_token_id !== undefined) {
-                    setFormErrors({ ...formErrors, feed_token_id: undefined });
-                  }
-                }}
-                style={editorInputStyle}
-                placeholder="00000000-0000-0000-0000-000000000000"
-                data-testid="events-publications-feed-token-id"
-                spellCheck={false}
-                autoComplete="off"
-              />
-              {formErrors.feed_token_id !== undefined ? (
-                <span style={fieldErrorStyle}>{formErrors.feed_token_id}</span>
-              ) : null}
-            </label>
-            <label style={editorFieldStyle}>
-              <span style={editorLabelStyle}>City scope (optional)</span>
+              <span style={editorLabelStyle}>Sales channel</span>
               <select
-                value={form.city_id}
+                value={form.sales_channel_id}
                 onChange={(e) => {
-                  setForm({ ...form, city_id: e.target.value });
-                  if (formErrors.city_id !== undefined) {
-                    setFormErrors({ ...formErrors, city_id: undefined });
+                  setForm({
+                    ...form,
+                    sales_channel_id: e.target.value,
+                    // Clear any pinned token when the channel changes.
+                    feed_token_id: "",
+                  });
+                  if (formErrors.sales_channel_id !== undefined) {
+                    setFormErrors({
+                      ...formErrors,
+                      sales_channel_id: undefined,
+                    });
                   }
                 }}
                 style={editorInputStyle}
-                data-testid="events-publications-city-id"
-                disabled={citiesQuery.isPending}
+                data-testid="events-publications-sales-channel-id"
+                disabled={channelsQuery.isPending}
               >
-                <option value="">Global (no geo filter)</option>
-                {[...cities]
+                <option value="">
+                  {channelsQuery.isPending
+                    ? "Loading channels…"
+                    : "Select a channel"}
+                </option>
+                {[...channels]
                   .sort((a, b) => a.name.localeCompare(b.name))
                   .map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name} ({c.country_iso2})
+                      {c.name} (#{c.display_number})
                     </option>
                   ))}
               </select>
-              {formErrors.city_id !== undefined ? (
-                <span style={fieldErrorStyle}>{formErrors.city_id}</span>
+              {channelsQuery.isError ? (
+                <span style={fieldErrorStyle}>
+                  Could not load channels for this organization.
+                </span>
+              ) : null}
+              {formErrors.sales_channel_id !== undefined ? (
+                <span style={fieldErrorStyle}>
+                  {formErrors.sales_channel_id}
+                </span>
+              ) : null}
+              {!channelsQuery.isPending &&
+              !channelsQuery.isError &&
+              channels.length === 0 ? (
+                <span style={mutedHintStyle}>
+                  This organization has no sales channels yet — create one
+                  on the Channels page first.
+                </span>
               ) : null}
             </label>
+            {/* AB-43: city scope is derived from the event's first
+                session's venue city; the operator only touches it under
+                Advanced. */}
+            <div style={editorFieldStyle}>
+              <span style={editorLabelStyle}>City scope</span>
+              <div
+                style={mutedHintStyle}
+                data-testid="events-publications-city-derived"
+              >
+                {derivedCityID !== ""
+                  ? `Defaulting to the venue city of the event's first session (${shortenUUID(
+                      derivedCityID,
+                    )}). Open Advanced to override or make it global.`
+                  : "No venue city on the event's sessions — defaulting to global (visible in every geography)."}
+              </div>
+            </div>
           </div>
+
+          {/* AB-43: Advanced disclosure. Pins a specific feed token
+              (rather than newest active) and/or overrides the derived
+              city scope. Hidden by default so the common case is a
+              one-click publish. */}
+          <details
+            open={form.advanced_open}
+            onToggle={(e) =>
+              setForm({
+                ...form,
+                advanced_open: (e.target as HTMLDetailsElement).open,
+              })
+            }
+            data-testid="events-publications-advanced"
+          >
+            <summary style={{ cursor: "pointer" }}>Advanced</summary>
+            <div style={editorGridStyle}>
+              <label style={editorFieldStyle}>
+                <span style={editorLabelStyle}>
+                  Feed token (leave empty to use newest active)
+                </span>
+                <select
+                  value={form.feed_token_id}
+                  onChange={(e) => {
+                    setForm({ ...form, feed_token_id: e.target.value });
+                    if (formErrors.feed_token_id !== undefined) {
+                      setFormErrors({
+                        ...formErrors,
+                        feed_token_id: undefined,
+                      });
+                    }
+                  }}
+                  style={editorInputStyle}
+                  data-testid="events-publications-feed-token-id"
+                  disabled={
+                    !isUUID(form.sales_channel_id) ||
+                    feedTokensQuery.isPending
+                  }
+                >
+                  <option value="">
+                    {isUUID(form.sales_channel_id)
+                      ? feedTokensQuery.isPending
+                        ? "Loading tokens…"
+                        : "Newest active (auto-issue if none)"
+                      : "Pick a channel first"}
+                  </option>
+                  {feedTokens
+                    .filter((t) => t.is_active && t.revoked_at === null)
+                    .map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.label !== ""
+                          ? `${t.label} — ${shortenUUID(t.id)}`
+                          : shortenUUID(t.id)}
+                      </option>
+                    ))}
+                </select>
+                {formErrors.feed_token_id !== undefined ? (
+                  <span style={fieldErrorStyle}>
+                    {formErrors.feed_token_id}
+                  </span>
+                ) : null}
+              </label>
+              <label style={editorFieldStyle}>
+                <span style={editorLabelStyle}>City scope override</span>
+                <select
+                  value={cityValueForRender}
+                  onChange={(e) => {
+                    setForm({ ...form, city_id: e.target.value });
+                    if (formErrors.city_id !== undefined) {
+                      setFormErrors({ ...formErrors, city_id: undefined });
+                    }
+                  }}
+                  style={editorInputStyle}
+                  data-testid="events-publications-city-id"
+                  disabled={citiesQuery.isPending}
+                >
+                  <option value="">Global (no geo filter)</option>
+                  {[...cities]
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.country_iso2})
+                      </option>
+                    ))}
+                </select>
+                {formErrors.city_id !== undefined ? (
+                  <span style={fieldErrorStyle}>{formErrors.city_id}</span>
+                ) : null}
+              </label>
+            </div>
+          </details>
+
           <div style={rowActionsStyle}>
             <button
               type="submit"
