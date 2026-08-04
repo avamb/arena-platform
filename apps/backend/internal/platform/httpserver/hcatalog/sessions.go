@@ -144,6 +144,7 @@ type SessionResponse struct {
 	Status                 string  `json:"status"`
 	AdmissionMode          string  `json:"admission_mode"`
 	SeatingPlanVersionID   *string `json:"seating_plan_version_id"`
+	PosterMediaID          *string `json:"poster_media_id"`
 	Currency               string  `json:"currency"`
 	CurrencySource         string  `json:"currency_source"`
 	CreatedAt              string  `json:"created_at"`
@@ -173,6 +174,10 @@ func SessionFromRow(s gen.SessionRow, hasOverlap bool) SessionResponse {
 	if s.SeatingPlanVersionID != nil {
 		v := s.SeatingPlanVersionID.String()
 		resp.SeatingPlanVersionID = &v
+	}
+	if s.PosterMediaID != nil {
+		v := s.PosterMediaID.String()
+		resp.PosterMediaID = &v
 	}
 	return resp
 }
@@ -283,16 +288,18 @@ func normalizeCurrency(w http.ResponseWriter, r *http.Request, raw string) (stri
 // createSessionRequest is the request body for POST .../sessions.
 // capacity_total is deliberately absent: capacity is derived (plan ->
 // capacity_override -> venue default). currency is an optional explicit
-// override of the geography-derived value.
+// override of the geography-derived value. poster_media_id is an optional
+// session-level poster artwork override (AB-47).
 type createSessionRequest struct {
-	VenueID              string `json:"venue_id"`
-	StartAt              string `json:"start_at"`
-	EndAt                string `json:"end_at"`
-	CapacityOverride     *int32 `json:"capacity_override"`
-	Status               string `json:"status"`
-	AdmissionMode        string `json:"admission_mode"`
-	SeatingPlanVersionID string `json:"seating_plan_version_id"`
-	Currency             string `json:"currency"`
+	VenueID              string  `json:"venue_id"`
+	StartAt              string  `json:"start_at"`
+	EndAt                string  `json:"end_at"`
+	CapacityOverride     *int32  `json:"capacity_override"`
+	Status               string  `json:"status"`
+	AdmissionMode        string  `json:"admission_mode"`
+	SeatingPlanVersionID string  `json:"seating_plan_version_id"`
+	PosterMediaID        *string `json:"poster_media_id"`
+	Currency             string  `json:"currency"`
 }
 
 // HandleCreateSession serves POST /v1/organizations/{org_id}/events/{event_id}/sessions.
@@ -516,7 +523,21 @@ func (h *Handler) HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sess, err := h.sessionQueries.InsertSession(ctx, eventID, venueID, startAt, endAt, capacityTotal, req.CapacityOverride, req.Status, currency, currencySource)
+	// poster_media_id (AB-47): optional session-level poster artwork.
+	var posterMediaID *uuid.UUID
+	if req.PosterMediaID != nil && strings.TrimSpace(*req.PosterMediaID) != "" {
+		parsed, parseErr := uuid.Parse(strings.TrimSpace(*req.PosterMediaID))
+		if parseErr != nil {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+				"session.invalid_poster_media_id", "poster_media_id must be a valid UUID", r,
+				map[string]any{"field": "poster_media_id"},
+			))
+			return
+		}
+		posterMediaID = &parsed
+	}
+
+	sess, err := h.sessionQueries.InsertSession(ctx, eventID, venueID, startAt, endAt, capacityTotal, req.CapacityOverride, req.Status, posterMediaID, currency, currencySource)
 	if err != nil {
 		h.logger.Error("session: insert failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
@@ -708,13 +729,15 @@ func (h *Handler) HandleGetSession(w http.ResponseWriter, r *http.Request) {
 // capacity_total is not an input — it is re-derived when venue_id or
 // capacity_override change (GA sessions only; plan-bound capacity is owned
 // by the bind path). Setting currency records an explicit override and
-// cascades to the session's tiers.
+// cascades to the session's tiers. poster_media_id is an optional session-level
+// poster artwork override (AB-47).
 type updateSessionRequest struct {
 	VenueID          *string `json:"venue_id"`
 	StartAt          *string `json:"start_at"`
 	EndAt            *string `json:"end_at"`
 	CapacityOverride *int32  `json:"capacity_override"`
 	Status           string  `json:"status"`
+	PosterMediaID    *string `json:"poster_media_id"`
 	Currency         *string `json:"currency"`
 }
 
@@ -938,7 +961,21 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	updated, err := h.sessionQueries.UpdateSession(ctx, sessionID, eventID, venueID, startAt, endAt, newCapacityTotal, req.CapacityOverride, req.Status, newCurrency, currencySource)
+	// poster_media_id (AB-47): optional session-level poster artwork.
+	var newPosterMediaID *uuid.UUID
+	if req.PosterMediaID != nil && strings.TrimSpace(*req.PosterMediaID) != "" {
+		parsed, parseErr := uuid.Parse(strings.TrimSpace(*req.PosterMediaID))
+		if parseErr != nil {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+				"session.invalid_poster_media_id", "poster_media_id must be a valid UUID", r,
+				map[string]any{"field": "poster_media_id"},
+			))
+			return
+		}
+		newPosterMediaID = &parsed
+	}
+
+	updated, err := h.sessionQueries.UpdateSession(ctx, sessionID, eventID, venueID, startAt, endAt, newCapacityTotal, req.CapacityOverride, req.Status, newPosterMediaID, newCurrency, currencySource)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("session.not_found", "session not found", r))

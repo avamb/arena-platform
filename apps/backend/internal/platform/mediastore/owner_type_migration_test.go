@@ -92,3 +92,18 @@ func TestAllowedOwnerTypes_SeatingPlanSVGIsMigrated(t *testing.T) {
 		)
 	}
 }
+
+func TestAllowedOwnerTypes_SessionPosterIsMigrated(t *testing.T) {
+	// AB-47 specifically: each session may carry its own poster artwork
+	// uploaded under this owner type, overriding the event-level poster.
+	if _, ok := AllowedOwnerTypes["session_poster"]; !ok {
+		t.Fatal("AllowedOwnerTypes is missing session_poster")
+	}
+	filename, upSQL := latestOwnerTypeCheckSQL(t)
+	if !strings.Contains(upSQL, "'session_poster'") {
+		t.Errorf(
+			"migration %s does not widen %s to accept 'session_poster'",
+			filename, ownerTypeConstraintName,
+		)
+	}
+}

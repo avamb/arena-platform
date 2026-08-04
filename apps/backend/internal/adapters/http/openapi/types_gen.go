@@ -2087,6 +2087,10 @@ type CreateSessionRequest struct {
 	// EndAt Session end time (RFC 3339, UTC). Must be strictly after `start_at`.
 	EndAt time.Time `json:"end_at"`
 
+	// PosterMediaId Optional session-level poster artwork (AB-47). When set, this
+	// overrides the event-level `poster_media_id` for this session.
+	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
+
 	// SeatingPlanVersionId Seating plan version to bind. Required when admission_mode is
 	// `assigned_seats`/`hybrid` (400
 	// `session.missing_seating_plan_version`); forbidden for
@@ -2526,6 +2530,12 @@ type EventItem struct {
 	// OrgId Owning organization. Immutable after creation. Only this org may
 	// mutate the event.
 	OrgId openapi_types.UUID `json:"org_id"`
+
+	// PosterMediaId Optional event-level poster media object ID (AB-47). Used as the
+	// default poster for all sessions that have no session-level
+	// `poster_media_id` override. Resolution order:
+	// sessions.poster_media_id ?? events.poster_media_id ?? none.
+	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
 
 	// Status Lifecycle status.
 	Status EventItemStatus `json:"status"`
@@ -5272,6 +5282,12 @@ type SessionItem struct {
 	// Id UUIDv7 primary key of the session row.
 	Id openapi_types.UUID `json:"id"`
 
+	// PosterMediaId Optional session-level poster artwork (AB-47). When set, this
+	// overrides the event-level `poster_media_id` for this specific
+	// session. Resolution order: sessions.poster_media_id ??
+	// events.poster_media_id ?? none.
+	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
+
 	// SeatingPlanVersionId The bound seating plan version. Null for pure
 	// general-admission sessions; always set for assigned_seats /
 	// hybrid.
@@ -5638,6 +5654,11 @@ type UpdateBankAccountRequest struct {
 // through this endpoint — use POST
 // /v1/organizations/{org_id}/events/{id}/status instead.
 type UpdateEventRequest struct {
+	// ClearSessionOverrides When true, clears `poster_media_id` on all active sessions of
+	// this event, so the event-level poster becomes effective for
+	// every session (AB-47). No-op when false or omitted.
+	ClearSessionOverrides *bool `json:"clear_session_overrides,omitempty"`
+
 	// Description New long-form description.
 	Description *string `json:"description"`
 
@@ -5646,6 +5667,11 @@ type UpdateEventRequest struct {
 
 	// Name New canonical event name. Empty leaves the value unchanged.
 	Name *string `json:"name,omitempty"`
+
+	// PosterMediaId New event-level poster media object ID (AB-47). When set,
+	// becomes the default poster for sessions without a session-level
+	// override. Nil leaves unchanged.
+	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
 
 	// Translations Optional map of locale code → translated event name and description.
 	// Keys are BCP-47 locale tags (e.g. "ru", "en", "he"). When provided
@@ -5902,6 +5928,10 @@ type UpdateSessionRequest struct {
 	// present in the same body, end_at must remain strictly after
 	// start_at.
 	EndAt *time.Time `json:"end_at"`
+
+	// PosterMediaId New session-level poster artwork (AB-47). When set, overrides
+	// the event-level poster for this session. Nil leaves unchanged.
+	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
 
 	// StartAt New session start time (RFC 3339, UTC). Empty leaves unchanged.
 	StartAt *time.Time `json:"start_at"`

@@ -96,6 +96,8 @@ export const OWNER_TYPE_MIME_TYPES: Record<MediaOwnerType, readonly string[]> = 
   event_poster: ACCEPTED_MIME_TYPES,
   artist_photo: ACCEPTED_MIME_TYPES,
   seating_plan_svg: [SVG_MIME_TYPE],
+  // AB-47: session-level poster artwork (same constraints as event_poster)
+  session_poster: ACCEPTED_MIME_TYPES,
 };
 
 /** Byte ceiling per owner_type. */
@@ -104,6 +106,8 @@ export const OWNER_TYPE_MAX_BYTES: Record<MediaOwnerType, number> = {
   event_poster: MAX_UPLOAD_BYTES,
   artist_photo: MAX_UPLOAD_BYTES,
   seating_plan_svg: MAX_SVG_UPLOAD_BYTES,
+  // AB-47: session-level poster (same ceiling as event_poster)
+  session_poster: MAX_UPLOAD_BYTES,
 };
 
 /**
@@ -134,6 +138,8 @@ export const OWNER_TYPE_CONSTRAINTS: Record<MediaOwnerType, OwnerTypeConstraint>
   artist_photo: { minWidth: null, minHeight: null, label: "Artist photo" },
   // AB-25: seating plan SVG — no dimension constraints (vector, not raster)
   seating_plan_svg: { minWidth: null, minHeight: null, label: "Seating plan SVG" },
+  // AB-47: session-level poster — same constraints as event_poster
+  session_poster: { minWidth: 600, minHeight: 400, label: "Session poster" },
 };
 
 // ---------------------------------------------------------------------------

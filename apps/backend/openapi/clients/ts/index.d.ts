@@ -7508,6 +7508,14 @@ export interface components {
              */
             image_url?: string | null;
             /**
+             * Format: uuid
+             * @description Optional event-level poster media object ID (AB-47). Used as the
+             *     default poster for all sessions that have no session-level
+             *     `poster_media_id` override. Resolution order:
+             *     sessions.poster_media_id ?? events.poster_media_id ?? none.
+             */
+            poster_media_id?: string | null;
+            /**
              * Format: date-time
              * @description ISO 8601 / RFC 3339 timestamp of row creation.
              * @example 2026-06-01T00:00:00Z
@@ -7576,6 +7584,20 @@ export interface components {
              * @description New poster / cover image URL. Null clears the field.
              */
             image_url?: string | null;
+            /**
+             * Format: uuid
+             * @description New event-level poster media object ID (AB-47). When set,
+             *     becomes the default poster for sessions without a session-level
+             *     override. Nil leaves unchanged.
+             */
+            poster_media_id?: string | null;
+            /**
+             * @description When true, clears `poster_media_id` on all active sessions of
+             *     this event, so the event-level poster becomes effective for
+             *     every session (AB-47). No-op when false or omitted.
+             * @default false
+             */
+            clear_session_overrides: boolean;
             /** @description Optional per-locale name/description overrides stored as i18n_text rows. */
             translations?: components["schemas"]["EventTranslations"];
         };
@@ -7734,6 +7756,14 @@ export interface components {
              */
             updated_at: string;
             /**
+             * Format: uuid
+             * @description Optional session-level poster artwork (AB-47). When set, this
+             *     overrides the event-level `poster_media_id` for this specific
+             *     session. Resolution order: sessions.poster_media_id ??
+             *     events.poster_media_id ?? none.
+             */
+            poster_media_id?: string | null;
+            /**
              * @description True when this session overlaps with at least one other active
              *     session for the same event. Computed at the application layer
              *     from CountOverlappingSessions for single-session responses, or
@@ -7815,6 +7845,12 @@ export interface components {
              */
             seating_plan_version_id?: string | null;
             /**
+             * Format: uuid
+             * @description Optional session-level poster artwork (AB-47). When set, this
+             *     overrides the event-level `poster_media_id` for this session.
+             */
+            poster_media_id?: string | null;
+            /**
              * @description Explicit ISO 4217 currency override (AB-38). When omitted the
              *     currency is derived from the venue geography. Malformed codes
              *     are rejected with 422 `session.invalid_currency`, never
@@ -7874,6 +7910,12 @@ export interface components {
              *     are rejected with 422 `session.invalid_currency`.
              */
             currency?: string | null;
+            /**
+             * Format: uuid
+             * @description New session-level poster artwork (AB-47). When set, overrides
+             *     the event-level poster for this session. Nil leaves unchanged.
+             */
+            poster_media_id?: string | null;
             /**
              * @description Target lifecycle status. Allowed transitions:
              *

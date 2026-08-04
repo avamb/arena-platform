@@ -68,6 +68,7 @@ type EventResponse struct {
 	VenueNames     []string `json:"venue_names"`
 	Visibility     string   `json:"visibility"`
 	ImageURL       *string  `json:"image_url"`
+	PosterMediaID  *string  `json:"poster_media_id"`
 	CreatedAt      string   `json:"created_at"`
 	UpdatedAt      string   `json:"updated_at"`
 }
@@ -101,6 +102,10 @@ func EventFromRow(e gen.EventRow) EventResponse {
 	if e.LastSessionAt != nil {
 		s := e.LastSessionAt.UTC().Format(time.RFC3339)
 		resp.LastSessionAt = &s
+	}
+	if e.PosterMediaID != nil {
+		v := e.PosterMediaID.String()
+		resp.PosterMediaID = &v
 	}
 	return resp
 }
@@ -397,13 +402,18 @@ func (h *Handler) HandleListEventsByOrg(w http.ResponseWriter, r *http.Request) 
 // ─────────────────────────────────────────────────────────────────────────────
 
 // updateEventRequest carries the event-own fields only; dates and venue
-// live on the event's sessions (AB-36/AB-37).
+// live on the event's sessions (AB-36/AB-37). poster_media_id sets the
+// event-level poster artwork (AB-47); clear_session_overrides=true also
+// clears the session-level poster overrides so the event poster becomes
+// effective for all sessions.
 type updateEventRequest struct {
-	Name         string  `json:"name"`
-	Description  *string `json:"description"`
-	Visibility   string  `json:"visibility"`
-	ImageURL     *string `json:"image_url"`
-	Translations map[string]struct {
+	Name                 string  `json:"name"`
+	Description          *string `json:"description"`
+	Visibility           string  `json:"visibility"`
+	ImageURL             *string `json:"image_url"`
+	PosterMediaID        *string `json:"poster_media_id"`
+	ClearSessionOverrides bool   `json:"clear_session_overrides"`
+	Translations         map[string]struct {
 		Name        string `json:"name"`
 		Description string `json:"description"`
 	} `json:"translations"`
@@ -470,7 +480,21 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 		imageURL = &trimmed
 	}
 
-	updated, err := h.eventQueries.UpdateEvent(ctx, eventID, orgID, req.Name, description, req.Visibility, imageURL)
+	// poster_media_id (AB-47): optional event-level poster artwork.
+	var posterMediaID *uuid.UUID
+	if req.PosterMediaID != nil && strings.TrimSpace(*req.PosterMediaID) != "" {
+		parsed, parseErr := uuid.Parse(strings.TrimSpace(*req.PosterMediaID))
+		if parseErr != nil {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+				"event.invalid_poster_media_id", "poster_media_id must be a valid UUID", r,
+				map[string]any{"field": "poster_media_id"},
+			))
+			return
+		}
+		posterMediaID = &parsed
+	}
+
+	updated, err := h.eventQueries.UpdateEvent(ctx, eventID, orgID, req.Name, description, req.Visibility, imageURL, posterMediaID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("event.not_found", "event not found", r))
@@ -481,6 +505,17 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 			"event.update_failed", "failed to update event", r,
 		))
 		return
+	}
+
+	// clear_session_overrides (AB-47): when requested, null out the session-level
+	// poster overrides so the event-level poster becomes effective for all sessions.
+	if req.ClearSessionOverrides && h.eventQueries != nil {
+		if err := h.eventQueries.ClearSessionPosterOverrides(ctx, eventID); err != nil {
+			h.logger.Warn("event: clear session poster overrides failed (non-fatal)",
+				slog.String("event_id", eventID.String()),
+				slog.String("error", err.Error()),
+			)
+		}
 	}
 
 	eventIDStr := updated.ID.String()

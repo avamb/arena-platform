@@ -68,7 +68,7 @@ import {
   type ReactNode,
 } from "react";
 import { Route as RootRoute } from "./__root";
-import { ApiError, authedFetch } from "@/lib/api/client";
+import { ApiError, authedFetch, uploadMedia } from "@/lib/api/client";
 import { RequirePermission } from "@/components/RequirePermission";
 import { useAuth } from "@/lib/auth/useAuth";
 import { NAV_BY_PATH } from "@/lib/auth/navConfig";
@@ -223,6 +223,8 @@ export interface SessionItem {
   readonly created_at: string;
   readonly updated_at: string;
   readonly has_overlapping_sessions?: boolean;
+  /** Optional session-level poster artwork (AB-47). Overrides event-level poster. */
+  readonly poster_media_id?: string | null;
 }
 
 interface SessionListEnvelope {
@@ -1723,6 +1725,18 @@ function EventDrawer({
   onResume,
 }: DrawerProps) {
   const [tab, setTab] = useState<DrawerTab>("overview");
+  // AB-44: the event drawer must NOT close on an outside click — the
+  // operator is deep in a detail view and a stray backdrop click loses
+  // context. Escape and the explicit × button remain the only dismissal
+  // affordances. (Detail view has no dirty form of its own — the inline
+  // Edit / Session / Tier editors track their own dirty state.)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
   return (
     <div
       role="dialog"
@@ -1730,7 +1744,7 @@ function EventDrawer({
       aria-labelledby="events-drawer-title"
       style={drawerBackdropStyle}
       data-testid="events-drawer"
-      onClick={onClose}
+      // Intentionally NO onClick={onClose}: see AB-44 comment above.
     >
       <aside style={drawerStyle} onClick={(e) => e.stopPropagation()}>
         <header style={drawerHeaderStyle}>
@@ -3037,6 +3051,19 @@ function SessionsTab({
                         </td>
                       </tr>
                     ) : null}
+                    {canUpdate ? (
+                      <tr>
+                        <td colSpan={7} style={{ ...tdStyle, background: "#f9fafb" }}>
+                          <SessionPosterUpload
+                            event={event}
+                            session={s}
+                            onUploaded={() => {
+                              void queryClient.invalidateQueries({ queryKey });
+                            }}
+                          />
+                        </td>
+                      </tr>
+                    ) : null}
                   </Fragment>
                 );
               })}
@@ -3574,6 +3601,170 @@ export function mapSessionError(err: ApiError): string {
       }
       return `${err.message} (${err.code})`;
   }
+}
+
+// ---------------------------------------------------------------------------
+// SessionPosterUpload component (AB-47)
+// ---------------------------------------------------------------------------
+
+interface SessionPosterUploadProps {
+  event: EventItem;
+  session: SessionItem;
+  onUploaded: () => void;
+}
+
+/**
+ * Inline session-level poster upload for AB-47.
+ *
+ * Flow:
+ *  1. Operator clicks "Upload poster" → file picker opens.
+ *  2. Selected file is POSTed as multipart to POST /v1/media with
+ *     owner_type=session_poster and owner_id=<session_id>.
+ *  3. On success the returned media.id is PATCHed to the session via
+ *     PATCH .../sessions/{id} with { poster_media_id: "<id>" }.
+ *
+ * A checkbox "Apply to all sessions" replaces step 3 with:
+ *  3b. PATCH the event with { poster_media_id: "<id>", clear_session_overrides: true }.
+ *
+ * Current poster is shown as a small thumbnail when poster_media_id is set.
+ */
+function SessionPosterUpload({ event, session, onUploaded }: SessionPosterUploadProps) {
+  const [applyToAll, setApplyToAll] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState<string | null>(null);
+  const [uploadOk, setUploadOk] = useState<string | null>(null);
+
+  async function handleFileChange(e: { target: { files: FileList | null; value: string } }) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    setUploadErr(null);
+    setUploadOk(null);
+
+    try {
+      // Step 1: upload the media object via the existing uploadMedia helper.
+      const uploaded = await uploadMedia({
+        file,
+        ownerType: "session_poster",
+        ownerId: session.id,
+      });
+
+      const mediaID = uploaded.id;
+
+      if (applyToAll) {
+        // Step 3b: patch the event with the media id and clear all session overrides.
+        await authedFetch({
+          method: "PATCH",
+          path: `/v1/organizations/${event.org_id}/events/${event.id}`,
+          body: { poster_media_id: mediaID, clear_session_overrides: true },
+        });
+        setUploadOk("Poster applied to all sessions of this event.");
+      } else {
+        // Step 3: patch just this session.
+        await authedFetch({
+          method: "PATCH",
+          path: `/v1/organizations/${event.org_id}/events/${event.id}/sessions/${session.id}`,
+          body: { poster_media_id: mediaID },
+        });
+        setUploadOk("Session poster updated.");
+      }
+      onUploaded();
+    } catch (err) {
+      const msg = err instanceof ApiError
+        ? `Upload failed: ${err.message} (${err.code})`
+        : "Upload failed — please try again.";
+      setUploadErr(msg);
+    } finally {
+      setUploading(false);
+      // Reset the file input so the same file can be re-selected.
+      e.target.value = "";
+    }
+  }
+
+  const posterStyle: CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+    padding: "8px 0",
+  };
+
+  const posterRowStyle: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    flexWrap: "wrap",
+  };
+
+  const imgStyle: CSSProperties = {
+    width: "48px",
+    height: "48px",
+    objectFit: "cover",
+    borderRadius: "4px",
+    border: "1px solid #d1d5db",
+  };
+
+  const placeholderStyle: CSSProperties = {
+    width: "48px",
+    height: "48px",
+    borderRadius: "4px",
+    border: "1px dashed #d1d5db",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#9ca3af",
+    fontSize: "10px",
+    textAlign: "center",
+  };
+
+  return (
+    <div style={posterStyle}>
+      <div style={posterRowStyle}>
+        {session.poster_media_id ? (
+          <img
+            src={`/v1/media-files/${session.poster_media_id}`}
+            alt="Session poster"
+            style={imgStyle}
+          />
+        ) : (
+          <div style={placeholderStyle}>No poster</div>
+        )}
+        <label style={{ cursor: uploading ? "not-allowed" : "pointer" }}>
+          <input
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            disabled={uploading}
+            onChange={handleFileChange}
+          />
+          <span
+            style={{
+              ...refreshButtonStyle,
+              opacity: uploading ? 0.6 : 1,
+              display: "inline-block",
+            }}
+          >
+            {uploading ? "Uploading…" : "Upload poster"}
+          </span>
+        </label>
+      </div>
+      <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#374151" }}>
+        <input
+          type="checkbox"
+          checked={applyToAll}
+          onChange={(e) => setApplyToAll(e.target.checked)}
+          disabled={uploading}
+        />
+        Use for all sessions of this event
+      </label>
+      {uploadErr ? (
+        <div style={{ ...formErrorStyle, marginTop: "4px" }}>{uploadErr}</div>
+      ) : null}
+      {uploadOk ? (
+        <div style={{ ...successBoxStyle, marginTop: "4px" }}>{uploadOk}</div>
+      ) : null}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------

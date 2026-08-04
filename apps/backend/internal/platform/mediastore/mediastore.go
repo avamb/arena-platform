@@ -55,6 +55,7 @@ var AllowedOwnerTypes = map[string]struct{}{
 	"event_poster":     {},
 	"artist_photo":     {},
 	"seating_plan_svg": {}, // AB-25: binary SVG asset attached to a seating_plan_versions row
+	"session_poster":   {}, // AB-47: session-level poster artwork (overrides event poster)
 }
 
 // Repo is the persistence + storage facade used by HTTP handlers and the

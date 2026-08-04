@@ -128,7 +128,8 @@ type Querier interface {
 	ListEvents(ctx context.Context, locale, visibilityFilter string) ([]EventRow, error)
 	ListEventsByOrg(ctx context.Context, orgID uuid.UUID, locale string) ([]EventRow, error)
 	ListEventVenueNames(ctx context.Context, eventIDs []uuid.UUID) (map[uuid.UUID][]string, error)
-	UpdateEvent(ctx context.Context, id, orgID uuid.UUID, name string, description *string, visibility string, imageURL *string) (EventRow, error)
+	UpdateEvent(ctx context.Context, id, orgID uuid.UUID, name string, description *string, visibility string, imageURL *string, posterMediaID *uuid.UUID) (EventRow, error)
+	ClearSessionPosterOverrides(ctx context.Context, eventID uuid.UUID) error
 	UpdateEventStatus(ctx context.Context, id, orgID uuid.UUID, status string) (EventRow, error)
 	SoftDeleteEvent(ctx context.Context, id, orgID uuid.UUID) (EventRow, error)
 	UpsertEventI18nName(ctx context.Context, eventIDStr, locale, value string) error
@@ -142,10 +143,10 @@ type Querier interface {
 	GetPublication(ctx context.Context, eventID, feedTokenID uuid.UUID) (EventPublicationRow, error)
 
 	// Sessions — time slots for an event with independent inventory (feature #126)
-	InsertSession(ctx context.Context, eventID, venueID uuid.UUID, startAt, endAt time.Time, capacityTotal int32, capacityOverride *int32, status, currency, currencySource string) (SessionRow, error)
+	InsertSession(ctx context.Context, eventID, venueID uuid.UUID, startAt, endAt time.Time, capacityTotal int32, capacityOverride *int32, status string, posterMediaID *uuid.UUID, currency, currencySource string) (SessionRow, error)
 	GetSessionByID(ctx context.Context, id, eventID uuid.UUID) (SessionRow, error)
 	ListSessionsByEvent(ctx context.Context, eventID uuid.UUID) ([]SessionRow, error)
-	UpdateSession(ctx context.Context, id, eventID uuid.UUID, venueID *uuid.UUID, startAt, endAt *time.Time, capacityTotal, capacityOverride *int32, status string, currency *string, currencySource string) (SessionRow, error)
+	UpdateSession(ctx context.Context, id, eventID uuid.UUID, venueID *uuid.UUID, startAt, endAt *time.Time, capacityTotal, capacityOverride *int32, status string, posterMediaID *uuid.UUID, currency *string, currencySource string) (SessionRow, error)
 	SoftDeleteSession(ctx context.Context, id, eventID uuid.UUID) (SessionRow, error)
 	GetSessionCurrency(ctx context.Context, id uuid.UUID) (string, error)
 	CountOverlappingSessions(ctx context.Context, eventID, excludeID uuid.UUID, startAt, endAt time.Time) (int32, error)

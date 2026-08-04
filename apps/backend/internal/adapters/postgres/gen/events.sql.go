@@ -36,6 +36,7 @@ type EventRow struct {
 	LastSessionAt  *time.Time `json:"last_session_at"`
 	Visibility     string     `json:"visibility"`
 	ImageURL       *string    `json:"image_url"`
+	PosterMediaID  *uuid.UUID `json:"poster_media_id"`
 	CreatedAt      time.Time  `json:"created_at"`
 	UpdatedAt      time.Time  `json:"updated_at"`
 	DeletedAt      *time.Time `json:"deleted_at"`
@@ -57,6 +58,7 @@ func scanEventRow(row interface {
 		&e.LastSessionAt,
 		&e.Visibility,
 		&e.ImageURL,
+		&e.PosterMediaID,
 		&e.CreatedAt,
 		&e.UpdatedAt,
 		&e.DeletedAt,
@@ -71,7 +73,7 @@ func scanEventRow(row interface {
 const insertEvent = `-- name: InsertEvent :one
 INSERT INTO events (org_id, name, description, status, visibility, image_url)
 VALUES ($1, $2, $3, COALESCE(NULLIF($4, ''), 'draft'), COALESCE(NULLIF($5, ''), 'public'), $6)
-RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, created_at, updated_at, deleted_at`
+RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, poster_media_id, created_at, updated_at, deleted_at`
 
 // InsertEvent creates a new active event row owned by the given org.
 // status defaults to 'draft' when empty; visibility defaults to 'public' when empty.
@@ -100,6 +102,7 @@ SELECT
     e.last_session_at,
     e.visibility,
     e.image_url,
+    e.poster_media_id,
     e.created_at,
     e.updated_at,
     e.deleted_at
@@ -132,7 +135,7 @@ func (q *Queries) GetEventByID(ctx context.Context, id uuid.UUID, locale string)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getEventRaw = `-- name: GetEventRaw :one
-SELECT id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, poster_media_id, created_at, updated_at, deleted_at
 FROM   events
 WHERE  id = $1
   AND  deleted_at IS NULL`
@@ -160,6 +163,7 @@ SELECT
     e.last_session_at,
     e.visibility,
     e.image_url,
+    e.poster_media_id,
     e.created_at,
     e.updated_at,
     e.deleted_at
@@ -218,6 +222,7 @@ SELECT
     e.last_session_at,
     e.visibility,
     e.image_url,
+    e.poster_media_id,
     e.created_at,
     e.updated_at,
     e.deleted_at
@@ -301,26 +306,44 @@ func (q *Queries) ListEventVenueNames(ctx context.Context, eventIDs []uuid.UUID)
 
 const updateEvent = `-- name: UpdateEvent :one
 UPDATE events
-SET    name        = COALESCE(NULLIF($3, ''), name),
-       description = CASE WHEN $4::text IS NOT NULL THEN $4::text ELSE description END,
-       visibility  = COALESCE(NULLIF($5, ''), visibility),
-       image_url   = CASE WHEN $6::text IS NOT NULL THEN $6::text ELSE image_url END,
-       updated_at  = now()
+SET    name           = COALESCE(NULLIF($3, ''), name),
+       description    = CASE WHEN $4::text IS NOT NULL THEN $4::text ELSE description END,
+       visibility     = COALESCE(NULLIF($5, ''), visibility),
+       image_url      = CASE WHEN $6::text IS NOT NULL THEN $6::text ELSE image_url END,
+       poster_media_id = CASE WHEN $7::uuid IS NOT NULL THEN $7::uuid ELSE poster_media_id END,
+       updated_at     = now()
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, created_at, updated_at, deleted_at`
+RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, poster_media_id, created_at, updated_at, deleted_at`
 
 // UpdateEvent applies a partial update to an active event (non-status fields).
 // Scoped by org_id to enforce owner-gated mutation policy.
 // Empty string name and nil optional fields keep the existing values.
+// posterMediaID is the optional event-level poster artwork (AB-47); when non-nil
+// it becomes the default for all sessions that have no session-level override.
 // Returns pgx.ErrNoRows when the event does not exist, does not belong to the org,
 // or has been soft-deleted.
-func (q *Queries) UpdateEvent(ctx context.Context, id, orgID uuid.UUID, name string, description *string, visibility string, imageURL *string) (EventRow, error) {
+func (q *Queries) UpdateEvent(ctx context.Context, id, orgID uuid.UUID, name string, description *string, visibility string, imageURL *string, posterMediaID *uuid.UUID) (EventRow, error) {
 	row := q.db.QueryRow(ctx, updateEvent,
-		id, orgID, name, description, visibility, imageURL,
+		id, orgID, name, description, visibility, imageURL, posterMediaID,
 	)
 	return scanEventRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ClearSessionPosterOverrides
+// ─────────────────────────────────────────────────────────────────────────────
+
+const clearSessionPosterOverrides = `-- name: ClearSessionPosterOverrides :exec
+UPDATE sessions SET poster_media_id = NULL WHERE event_id = $1 AND deleted_at IS NULL`
+
+// ClearSessionPosterOverrides sets poster_media_id = NULL on all active sessions
+// for the given event. Used by HandleUpdateEvent when clear_session_overrides=true
+// so the event-level poster becomes the effective poster for all sessions (AB-47).
+func (q *Queries) ClearSessionPosterOverrides(ctx context.Context, eventID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, clearSessionPosterOverrides, eventID)
+	return err
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -334,7 +357,7 @@ SET    status     = $3,
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, created_at, updated_at, deleted_at`
+RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, poster_media_id, created_at, updated_at, deleted_at`
 
 // UpdateEventStatus transitions an event to a new status.
 // Scoped by org_id to enforce owner-gated mutation policy.
@@ -357,7 +380,7 @@ SET    deleted_at = now(),
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, created_at, updated_at, deleted_at`
+RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, poster_media_id, created_at, updated_at, deleted_at`
 
 // SoftDeleteEvent marks an event as deleted by setting deleted_at.
 // Scoped by org_id to enforce owner-gated mutation policy.

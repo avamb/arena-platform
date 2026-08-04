@@ -384,7 +384,8 @@ export type MediaOwnerType =
   | "org_logo"
   | "event_poster"
   | "artist_photo"
-  | "seating_plan_svg"; // AB-25: binary SVG asset for a seating_plan_versions row
+  | "seating_plan_svg" // AB-25: binary SVG asset for a seating_plan_versions row
+  | "session_poster"; // AB-47: session-level poster artwork
 
 export interface UploadProgress {
   readonly loaded: number;

@@ -35,6 +35,7 @@ type SessionRow struct {
 	Status               string     `json:"status"`
 	AdmissionMode        string     `json:"admission_mode"`
 	SeatingPlanVersionID *uuid.UUID `json:"seating_plan_version_id"`
+	PosterMediaID        *uuid.UUID `json:"poster_media_id"`
 	Currency             string     `json:"currency"`
 	CurrencySource       string     `json:"currency_source"`
 	CreatedAt            time.Time  `json:"created_at"`
@@ -58,6 +59,7 @@ func scanSessionRow(row interface {
 		&s.Status,
 		&s.AdmissionMode,
 		&s.SeatingPlanVersionID,
+		&s.PosterMediaID,
 		&s.Currency,
 		&s.CurrencySource,
 		&s.CreatedAt,
@@ -69,26 +71,27 @@ func scanSessionRow(row interface {
 
 // sessionColumns is the canonical RETURNING / SELECT column list shared by
 // every query that yields a full SessionRow.
-const sessionColumns = `id, event_id, venue_id, start_at, end_at, capacity_total, capacity_override, status, admission_mode, seating_plan_version_id, currency, currency_source, created_at, updated_at, deleted_at`
+const sessionColumns = `id, event_id, venue_id, start_at, end_at, capacity_total, capacity_override, status, admission_mode, seating_plan_version_id, poster_media_id, currency, currency_source, created_at, updated_at, deleted_at`
 
 // ─────────────────────────────────────────────────────────────────────────────
 // InsertSession
 // ─────────────────────────────────────────────────────────────────────────────
 
 const insertSession = `-- name: InsertSession :one
-INSERT INTO sessions (event_id, venue_id, start_at, end_at, capacity_total, capacity_override, status, currency, currency_source)
-VALUES ($1, $2, $3, $4, $5, $6, COALESCE(NULLIF($7, ''), 'scheduled'), $8, $9)
+INSERT INTO sessions (event_id, venue_id, start_at, end_at, capacity_total, capacity_override, status, poster_media_id, currency, currency_source)
+VALUES ($1, $2, $3, $4, $5, $6, COALESCE(NULLIF($7, ''), 'scheduled'), $8, $9, $10)
 RETURNING ` + sessionColumns
 
 // InsertSession creates a new session for the given event at the given venue.
 // status defaults to 'scheduled' when empty. capacityTotal is the resolved
 // derived capacity; capacityOverride is the operator knob it may have come
 // from (nil when not supplied). currency / currencySource are resolved by the
-// handler before the insert (AB-38).
+// handler before the insert (AB-38). posterMediaID is the optional session-level
+// poster artwork (AB-47).
 // Returns the created row including the uuidv7 PK assigned by the database.
-func (q *Queries) InsertSession(ctx context.Context, eventID, venueID uuid.UUID, startAt, endAt time.Time, capacityTotal int32, capacityOverride *int32, status, currency, currencySource string) (SessionRow, error) {
+func (q *Queries) InsertSession(ctx context.Context, eventID, venueID uuid.UUID, startAt, endAt time.Time, capacityTotal int32, capacityOverride *int32, status string, posterMediaID *uuid.UUID, currency, currencySource string) (SessionRow, error) {
 	row := q.db.QueryRow(ctx, insertSession,
-		eventID, venueID, startAt, endAt, capacityTotal, capacityOverride, status, currency, currencySource,
+		eventID, venueID, startAt, endAt, capacityTotal, capacityOverride, status, posterMediaID, currency, currencySource,
 	)
 	return scanSessionRow(row)
 }
@@ -154,8 +157,9 @@ SET    venue_id          = CASE WHEN $3::uuid        IS NOT NULL THEN $3::uuid  
        capacity_total    = CASE WHEN $6::integer     IS NOT NULL THEN $6::integer     ELSE capacity_total END,
        capacity_override = CASE WHEN $7::integer     IS NOT NULL THEN $7::integer     ELSE capacity_override END,
        status            = COALESCE(NULLIF($8, ''), status),
-       currency          = CASE WHEN $9::text        IS NOT NULL THEN $9::text        ELSE currency END,
-       currency_source   = COALESCE(NULLIF($10, ''), currency_source),
+       poster_media_id   = CASE WHEN $9::uuid        IS NOT NULL THEN $9::uuid        ELSE poster_media_id END,
+       currency          = CASE WHEN $10::text       IS NOT NULL THEN $10::text       ELSE currency END,
+       currency_source   = COALESCE(NULLIF($11, ''), currency_source),
        updated_at        = now()
 WHERE  id       = $1
   AND  event_id = $2
@@ -167,12 +171,13 @@ RETURNING ` + sessionColumns
 // re-derived capacity when the handler recomputed it. Setting currency
 // cascades to the session's ticket_tiers via the composite FK
 // ticket_tiers_currency_matches_session (ON UPDATE CASCADE), so tiers can
-// never diverge from the session currency.
+// never diverge from the session currency. posterMediaID is the optional
+// session-level poster artwork (AB-47).
 // Returns pgx.ErrNoRows when the session does not exist, belongs to a different
 // event, or has been soft-deleted.
-func (q *Queries) UpdateSession(ctx context.Context, id, eventID uuid.UUID, venueID *uuid.UUID, startAt, endAt *time.Time, capacityTotal, capacityOverride *int32, status string, currency *string, currencySource string) (SessionRow, error) {
+func (q *Queries) UpdateSession(ctx context.Context, id, eventID uuid.UUID, venueID *uuid.UUID, startAt, endAt *time.Time, capacityTotal, capacityOverride *int32, status string, posterMediaID *uuid.UUID, currency *string, currencySource string) (SessionRow, error) {
 	row := q.db.QueryRow(ctx, updateSession,
-		id, eventID, venueID, startAt, endAt, capacityTotal, capacityOverride, status, currency, currencySource,
+		id, eventID, venueID, startAt, endAt, capacityTotal, capacityOverride, status, posterMediaID, currency, currencySource,
 	)
 	return scanSessionRow(row)
 }

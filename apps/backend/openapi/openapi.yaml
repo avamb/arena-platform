@@ -3241,6 +3241,14 @@ components:
           format: uri
           description: Optional poster / cover image URL.
           example: "https://cdn.example/events/summer-2026.jpg"
+        poster_media_id:
+          type: [string, "null"]
+          format: uuid
+          description: |
+            Optional event-level poster media object ID (AB-47). Used as the
+            default poster for all sessions that have no session-level
+            `poster_media_id` override. Resolution order:
+            sessions.poster_media_id ?? events.poster_media_id ?? none.
         created_at:
           type: string
           format: date-time
@@ -3310,6 +3318,20 @@ components:
           type: [string, "null"]
           format: uri
           description: New poster / cover image URL. Null clears the field.
+        poster_media_id:
+          type: [string, "null"]
+          format: uuid
+          description: |
+            New event-level poster media object ID (AB-47). When set,
+            becomes the default poster for sessions without a session-level
+            override. Nil leaves unchanged.
+        clear_session_overrides:
+          type: boolean
+          description: |
+            When true, clears `poster_media_id` on all active sessions of
+            this event, so the event-level poster becomes effective for
+            every session (AB-47). No-op when false or omitted.
+          default: false
         translations:
           description: Optional per-locale name/description overrides stored as i18n_text rows.
           $ref: "#/components/schemas/EventTranslations"
@@ -3506,6 +3528,14 @@ components:
           format: date-time
           description: ISO 8601 / RFC 3339 timestamp of last update.
           example: "2026-06-02T12:34:56Z"
+        poster_media_id:
+          type: [string, "null"]
+          format: uuid
+          description: |
+            Optional session-level poster artwork (AB-47). When set, this
+            overrides the event-level `poster_media_id` for this specific
+            session. Resolution order: sessions.poster_media_id ??
+            events.poster_media_id ?? none.
         has_overlapping_sessions:
           type: boolean
           description: |
@@ -3588,6 +3618,12 @@ components:
             `assigned_seats`/`hybrid` (400
             `session.missing_seating_plan_version`); forbidden for
             general_admission (400 `session.seating_plan_not_applicable`).
+        poster_media_id:
+          type: [string, "null"]
+          format: uuid
+          description: |
+            Optional session-level poster artwork (AB-47). When set, this
+            overrides the event-level `poster_media_id` for this session.
         currency:
           type: [string, "null"]
           pattern: "^[A-Z]{3}$"
@@ -3651,6 +3687,12 @@ components:
             ticket tier of the session in the same statement — a session
             can never carry mixed-currency tiers (AB-38). Malformed codes
             are rejected with 422 `session.invalid_currency`.
+        poster_media_id:
+          type: [string, "null"]
+          format: uuid
+          description: |
+            New session-level poster artwork (AB-47). When set, overrides
+            the event-level poster for this session. Nil leaves unchanged.
         status:
           type: string
           enum: [draft, scheduled, cancelled, completed]
