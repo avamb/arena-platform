@@ -2822,6 +2822,23 @@ function SessionsTab({
     refetchOnWindowFocus: false,
   });
 
+  // AB-44: load venues so the session table can show venue name instead of raw UUID.
+  const venuesQuery = useQuery<VenueListEnvelope, ApiError>({
+    queryKey: ["events", "venues", event.org_id],
+    queryFn: () =>
+      authedFetch<VenueListEnvelope>({
+        method: "GET",
+        path: `/v1/organizations/${event.org_id}/venues`,
+      }),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const venueByID = useMemo(() => {
+    const m = new Map<string, VenueSummary>();
+    for (const v of venuesQuery.data?.venues ?? []) m.set(v.id, v);
+    return m;
+  }, [venuesQuery.data]);
+
   const [editor, setEditor] = useState<SessionEditorMode>({ kind: "closed" });
   const [confirmDeleteID, setConfirmDeleteID] = useState<string | null>(null);
   const [actionErr, setActionErr] = useState<string | null>(null);
@@ -2952,7 +2969,13 @@ function SessionsTab({
                       <td style={tdStyle}>{formatDateTime(s.start_at)}</td>
                       <td style={tdStyle}>{formatDateTime(s.end_at)}</td>
                       <td style={tdStyle} title={s.venue_id}>
-                        {shortenUUID(s.venue_id)}
+                        {(() => {
+                          const v = venueByID.get(s.venue_id);
+                          if (v === undefined) return shortenUUID(s.venue_id);
+                          return v.display_number !== undefined
+                            ? `${v.name} #${v.display_number}`
+                            : v.name;
+                        })()}
                       </td>
                       <td style={tdStyle}>{s.capacity_total.toLocaleString()}</td>
                       <td style={tdStyle}>{s.currency}</td>
@@ -4258,6 +4281,16 @@ function TierEditor({
           {errors.pricing_mode !== undefined ? (
             <span style={fieldErrorStyle}>{errors.pricing_mode}</span>
           ) : null}
+          {/* AB-44: per-mode help text */}
+          <span style={mutedHintStyle}>
+            {values.pricing_mode === "fixed"
+              ? "Attendee pays an exact price you set."
+              : values.pricing_mode === "free"
+                ? "Admission is free — no payment required."
+                : values.pricing_mode === "pwyw"
+                  ? "Pay what you want — attendee chooses an amount within optional min/max bounds."
+                  : null}
+          </span>
         </label>
         {values.pricing_mode === "fixed" ? (
           <label style={editorFieldStyle}>
