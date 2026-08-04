@@ -75,3 +75,16 @@ entries short and factual.
   body before calling `Delete()` — Windows refuses to delete open files. Linux
   CI is unaffected. General pattern: close all file handles before any
   `os.Remove`/`st.Delete` calls in tests.
+- **golangci-lint locally**: no binary on this host; run
+  `GOLANGCI_LINT_CACHE=.golangci-cache go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run`
+  from `apps/backend`. Pin to `@latest` — CI uses the action's `latest`; an
+  older pin (v2.1.6) reports G115 false positives on files CI accepts.
+- **Local migration smoke test**: Docker Desktop's `arena_postgres` maps
+  host port **55432** (not 5432) with user/pass/db `arena`. Run
+  `DATABASE_URL=postgres://arena:arena@localhost:55432/arena?sslmode=disable JWT_SIGNING_SECRET=<anything> go run ./cmd/arena-migrate`
+  to prove new migrations apply to a database carrying real prior-wave data
+  before pushing (config loading demands JWT_SIGNING_SECRET even for
+  migrate). Raw-SQL fixtures also live outside handlers: `cmd/arena-seed`,
+  `cmd/arena-bil24-import` (incl. live_venues.go) and
+  `delivery_integration_test.go` — schema changes must update them or the
+  CI Integration job (migrated + seeded) breaks while Unit stays green.
