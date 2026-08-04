@@ -31,7 +31,7 @@ Quality bar is **production, not MVP** (owner, explicit).
 
 | Pass | Where | Features | Status |
 |---|---|---|---|
-| 1 | interactive (Fable 5) | AB-36, AB-37, AB-38 + `blocked→unavailable` rename | **DONE 2026-08-04** — commits a8fae78 + 87ddc20 + aa7acfb; migrations verified live (78→81: venue/currency backfill, 0080 trigger, tier-currency cascade + mismatch rejection); **CI run 30891031484 fully green** (`gh run view`), image published by the Docker job. Stand redeploy still pending (stand on 01eeafb) |
+| 1 | interactive (Fable 5) | AB-36, AB-37, AB-38 + `blocked→unavailable` rename | **DONE 2026-08-04** — commits a8fae78 + 87ddc20 + aa7acfb; migrations verified live (78→81: venue/currency backfill, 0080 trigger, tier-currency cascade + mismatch rejection); **CI run 30891031484 fully green** (`gh run view`), image published by the Docker job. **Stand redeployed 2026-08-04 on aa7acfb**: migrate 78→81 clean, api/worker healthy, backfill verified in the stand DB, admin rebuilt from Git (bundle carries first_session_at/venue_names/capacity_override). Known stand quirk: the Palac Akropolis venue has no city/country row, so its session derived the defensive USD — override to CZK via session PATCH when it matters |
 | 2 | AutoForge | AB-42, AB-47, AB-43, AB-44, AB-46 | queued in script, **not imported yet** |
 | 3 | interactive (Fable 5) | AB-40 A/B/C, AB-51 | not started |
 | 4 | AutoForge | AB-39, AB-40D | in script, not imported |
