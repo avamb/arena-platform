@@ -2136,7 +2136,13 @@ function EventWizard({
   // (if any) so we can jump the operator to step 3 directly.
   const resumeSessionsQuery = useQuery<SessionListEnvelope, ApiError>({
     queryKey: ["events", "wizard-sessions", event?.id],
-    enabled: event !== null && session === null && step === 2,
+    // Only run on the resume path — a freshly-created event trivially has
+    // no sessions yet, so skip the GET.
+    enabled:
+      initialEvent !== null &&
+      event !== null &&
+      session === null &&
+      step === 2,
     queryFn: () =>
       authedFetch<SessionListEnvelope>({
         method: "GET",

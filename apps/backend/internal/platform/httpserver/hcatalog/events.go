@@ -615,6 +615,55 @@ func (h *Handler) HandleUpdateEventStatus(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// AB-42 publish gate: an event may only be published once it is sellable.
+	// It must have at least one session, and every session must carry at
+	// least one ticket tier. Half-finished events stay resumable in draft.
+	if req.Status == "published" && h.sessionQueries != nil && h.tierQueries != nil {
+		sessions, sErr := h.sessionQueries.ListSessionsByEvent(ctx, eventID)
+		if sErr != nil {
+			h.logger.Error("event: publish gate list sessions failed", slog.String("error", sErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"event.publish_gate_failed", "failed to inspect sessions for publish gate", r,
+			))
+			return
+		}
+		if len(sessions) == 0 {
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+				"event.publish_requires_session",
+				"cannot publish an event that has no session",
+				r,
+				map[string]any{"missing": "session"},
+			))
+			return
+		}
+		var untieredSessionIDs []string
+		for _, sess := range sessions {
+			tiers, tErr := h.tierQueries.ListTicketTiersBySession(ctx, sess.ID)
+			if tErr != nil {
+				h.logger.Error("event: publish gate list tiers failed", slog.String("error", tErr.Error()))
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+					"event.publish_gate_failed", "failed to inspect tiers for publish gate", r,
+				))
+				return
+			}
+			if len(tiers) == 0 {
+				untieredSessionIDs = append(untieredSessionIDs, sess.ID.String())
+			}
+		}
+		if len(untieredSessionIDs) > 0 {
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+				"event.publish_requires_priced_tier",
+				"cannot publish: every session must have at least one priced tier",
+				r,
+				map[string]any{
+					"missing":              "priced_tier",
+					"untiered_session_ids": untieredSessionIDs,
+				},
+			))
+			return
+		}
+	}
+
 	updated, err := h.eventQueries.UpdateEventStatus(ctx, eventID, orgID, req.Status)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
