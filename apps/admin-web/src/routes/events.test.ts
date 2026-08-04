@@ -12,9 +12,13 @@ import {
   EVENT_STATUSES,
   EVENT_VISIBILITIES,
   PAGE_SIZE,
+  SESSION_ADMISSION_MODES,
   SESSION_STATUSES,
   allowedTransitions,
+  buildSessionRequestBody,
+  emptyEventForm,
   emptySessionForm,
+  eventToForm,
   filterEventsByDateRange,
   filterEventsByOrg,
   filterEventsByStatus,
@@ -23,6 +27,7 @@ import {
   formatDateTime,
   isEventStatus,
   isEventVisibility,
+  isSessionAdmissionMode,
   isSessionStatus,
   mapSessionError,
   paginate,
@@ -31,10 +36,9 @@ import {
   sessionToForm,
   toLocalDatetimeValue,
   toRFC3339,
+  validateEventForm,
   validateSessionForm,
   TIER_PRICING_MODES,
-  PROVIDER_CURRENCIES,
-  allowedCurrenciesForProviders,
   buildTierRequestBody,
   centsToDecimal,
   decimalToCents,
@@ -58,13 +62,14 @@ import { ApiError } from "@/lib/api/client";
 function ev(overrides: Partial<EventItem>): EventItem {
   return {
     id: "01929d0e-0e47-7000-8000-000000000301",
+    display_number: 301,
     org_id: "01929d0e-0e47-7000-8000-000000000001",
-    venue_id: null,
     name: "Test Event",
     description: null,
     status: "draft",
-    start_at: "2026-08-15T18:00:00Z",
-    end_at: "2026-08-15T23:00:00Z",
+    first_session_at: "2026-08-15T18:00:00Z",
+    last_session_at: "2026-08-15T23:00:00Z",
+    venue_names: ["Palac Akropolis"],
     visibility: "public",
     image_url: null,
     created_at: "2026-06-01T00:00:00Z",
@@ -160,9 +165,9 @@ describe("filterEventsByStatus", () => {
 
 describe("filterEventsByDateRange", () => {
   const events = [
-    ev({ id: "early", start_at: "2026-07-01T10:00:00Z" }),
-    ev({ id: "mid", start_at: "2026-08-15T18:00:00Z" }),
-    ev({ id: "late", start_at: "2026-09-30T20:00:00Z" }),
+    ev({ id: "early", first_session_at: "2026-07-01T10:00:00Z" }),
+    ev({ id: "mid", first_session_at: "2026-08-15T18:00:00Z" }),
+    ev({ id: "late", first_session_at: "2026-09-30T20:00:00Z" }),
   ];
 
   it("returns the input untouched when both bounds are empty", () => {
@@ -188,6 +193,72 @@ describe("filterEventsByDateRange", () => {
   it("filters out everything when range excludes all events", () => {
     expect(filterEventsByDateRange(events, "2027-01-01", "")).toEqual([]);
     expect(filterEventsByDateRange(events, "", "2026-01-01")).toEqual([]);
+  });
+
+  it("keeps sessionless events (null first_session_at) when unbounded", () => {
+    const withNull = [...events, ev({ id: "none", first_session_at: null })];
+    expect(filterEventsByDateRange(withNull, "", "")).toBe(withNull);
+  });
+
+  it("excludes sessionless events as soon as either bound is set", () => {
+    const withNull = [
+      ev({ id: "none", first_session_at: null, last_session_at: null, venue_names: [] }),
+      ev({ id: "mid", first_session_at: "2026-08-15T18:00:00Z" }),
+    ];
+    expect(
+      filterEventsByDateRange(withNull, "2026-01-01", "").map((e) => e.id),
+    ).toEqual(["mid"]);
+    expect(
+      filterEventsByDateRange(withNull, "", "2026-12-31").map((e) => e.id),
+    ).toEqual(["mid"]);
+  });
+});
+
+describe("emptyEventForm / eventToForm / validateEventForm", () => {
+  it("emptyEventForm has no venue / date fields (AB-36/AB-37)", () => {
+    expect(emptyEventForm()).toEqual({
+      name: "",
+      description: "",
+      org_id: "",
+      visibility: "",
+    });
+  });
+
+  it("eventToForm hydrates only name / description / org / visibility", () => {
+    const f = eventToForm(
+      ev({ name: "Gala", description: "desc", visibility: "unlisted" }),
+    );
+    expect(f).toEqual({
+      name: "Gala",
+      description: "desc",
+      org_id: "01929d0e-0e47-7000-8000-000000000001",
+      visibility: "unlisted",
+    });
+  });
+
+  it("eventToForm renders a null description as an empty string", () => {
+    expect(eventToForm(ev({ description: null })).description).toBe("");
+  });
+
+  it("validateEventForm requires only name (and org on create)", () => {
+    expect(
+      validateEventForm(
+        { name: "X", description: "", org_id: "", visibility: "" },
+        false,
+      ),
+    ).toEqual({});
+    expect(
+      validateEventForm(
+        { name: "", description: "", org_id: "o", visibility: "" },
+        false,
+      ).name,
+    ).toBeDefined();
+    expect(
+      validateEventForm(
+        { name: "X", description: "", org_id: "", visibility: "" },
+        true,
+      ).org_id,
+    ).toBeDefined();
   });
 });
 
@@ -292,52 +363,105 @@ describe("parseLocalDatetime / toLocalDatetimeValue / toRFC3339", () => {
   });
 });
 
+describe("SESSION_ADMISSION_MODES / isSessionAdmissionMode", () => {
+  it("enumerates the three admission modes, GA first (the default)", () => {
+    expect(SESSION_ADMISSION_MODES).toEqual([
+      "general_admission",
+      "assigned_seats",
+      "hybrid",
+    ]);
+  });
+  it("isSessionAdmissionMode accepts canonical values only", () => {
+    expect(isSessionAdmissionMode("general_admission")).toBe(true);
+    expect(isSessionAdmissionMode("assigned_seats")).toBe(true);
+    expect(isSessionAdmissionMode("hybrid")).toBe(true);
+    expect(isSessionAdmissionMode("GA")).toBe(false);
+    expect(isSessionAdmissionMode("")).toBe(false);
+  });
+});
+
 describe("emptySessionForm / sessionToForm", () => {
-  it("emptySessionForm starts with blank times and capacity, draft status", () => {
+  it("emptySessionForm starts blank with GA admission and draft status", () => {
     const f = emptySessionForm();
+    expect(f.venue_id).toBe("");
     expect(f.start_at).toBe("");
     expect(f.end_at).toBe("");
-    expect(f.capacity_total).toBe("");
+    expect(f.capacity_override).toBe("");
     expect(f.status).toBe("draft");
+    expect(f.admission_mode).toBe("general_admission");
+    expect(f.seating_plan_version_id).toBe("");
+    expect(f.currency).toBe("");
   });
   it("sessionToForm hydrates fields from an existing session row", () => {
     const f = sessionToForm({
+      venue_id: "01929d0e-0e47-7000-8000-000000000201",
       start_at: "2026-08-15T18:00:00Z",
       end_at: "2026-08-15T23:00:00Z",
-      capacity_total: 250,
+      capacity_override: 250,
       status: "scheduled",
+      admission_mode: "assigned_seats",
+      seating_plan_version_id: "01929d0e-0e47-7000-8000-000000000901",
     });
     expect(f).toEqual({
+      venue_id: "01929d0e-0e47-7000-8000-000000000201",
       start_at: "2026-08-15T18:00",
       end_at: "2026-08-15T23:00",
-      capacity_total: "250",
+      capacity_override: "250",
       status: "scheduled",
+      admission_mode: "assigned_seats",
+      seating_plan_version_id: "01929d0e-0e47-7000-8000-000000000901",
+      currency: "",
     });
   });
-  it("sessionToForm falls back to draft when the status is unknown", () => {
+  it("sessionToForm leaves a null capacity_override blank (derived)", () => {
     const f = sessionToForm({
+      venue_id: "v1",
       start_at: "2026-08-15T18:00:00Z",
       end_at: "2026-08-15T23:00:00Z",
-      capacity_total: 1,
+      capacity_override: null,
+      status: "scheduled",
+      admission_mode: "general_admission",
+      seating_plan_version_id: null,
+    });
+    expect(f.capacity_override).toBe("");
+    expect(f.seating_plan_version_id).toBe("");
+  });
+  it("sessionToForm falls back to draft / GA on unknown enum values", () => {
+    const f = sessionToForm({
+      venue_id: "v1",
+      start_at: "2026-08-15T18:00:00Z",
+      end_at: "2026-08-15T23:00:00Z",
+      capacity_override: null,
       status: "garbage",
+      admission_mode: "garbage",
+      seating_plan_version_id: null,
     });
     expect(f.status).toBe("draft");
+    expect(f.admission_mode).toBe("general_admission");
   });
 });
 
 describe("validateSessionForm", () => {
   function form(o: Partial<SessionFormValues>): SessionFormValues {
     return {
+      venue_id: "01929d0e-0e47-7000-8000-000000000201",
       start_at: "2026-08-15T18:00",
       end_at: "2026-08-15T23:00",
-      capacity_total: "100",
+      capacity_override: "",
       status: "draft",
+      admission_mode: "general_admission",
+      seating_plan_version_id: "",
+      currency: "",
       ...o,
     };
   }
 
-  it("accepts a fully valid form", () => {
+  it("accepts a fully valid form (no capacity override — derived)", () => {
     expect(validateSessionForm(form({}))).toEqual({});
+  });
+  it("requires a venue (AB-36)", () => {
+    expect(validateSessionForm(form({ venue_id: "" })).venue_id).toBeDefined();
+    expect(validateSessionForm(form({ venue_id: "  " })).venue_id).toBeDefined();
   });
   it("requires both start and end", () => {
     expect(validateSessionForm(form({ start_at: "" })).start_at).toBeDefined();
@@ -351,22 +475,126 @@ describe("validateSessionForm", () => {
       validateSessionForm(form({ end_at: "2026-08-15T17:00" })).end_at,
     ).toBeDefined();
   });
-  it("requires capacity_total to be a positive integer", () => {
-    expect(validateSessionForm(form({ capacity_total: "" })).capacity_total).toBeDefined();
-    expect(validateSessionForm(form({ capacity_total: "0" })).capacity_total).toBeDefined();
-    expect(validateSessionForm(form({ capacity_total: "-5" })).capacity_total).toBeDefined();
-    expect(validateSessionForm(form({ capacity_total: "1.5" })).capacity_total).toBeDefined();
-    expect(validateSessionForm(form({ capacity_total: "abc" })).capacity_total).toBeDefined();
-  });
-  it("rejects capacity_total that would overflow int32", () => {
+  it("capacity_override is optional but must be a positive integer when set", () => {
+    expect(validateSessionForm(form({ capacity_override: "" }))).toEqual({});
+    expect(validateSessionForm(form({ capacity_override: "100" }))).toEqual({});
     expect(
-      validateSessionForm(form({ capacity_total: "9999999999" })).capacity_total,
+      validateSessionForm(form({ capacity_override: "0" })).capacity_override,
+    ).toBeDefined();
+    expect(
+      validateSessionForm(form({ capacity_override: "-5" })).capacity_override,
+    ).toBeDefined();
+    expect(
+      validateSessionForm(form({ capacity_override: "1.5" })).capacity_override,
+    ).toBeDefined();
+    expect(
+      validateSessionForm(form({ capacity_override: "abc" })).capacity_override,
+    ).toBeDefined();
+  });
+  it("rejects a capacity_override that would overflow int32", () => {
+    expect(
+      validateSessionForm(form({ capacity_override: "9999999999" }))
+        .capacity_override,
     ).toBeDefined();
   });
   it("rejects an invalid status value", () => {
     expect(
       validateSessionForm(form({ status: "archived" as never })).status,
     ).toBeDefined();
+  });
+  it("requires a seating plan version for seated admission modes", () => {
+    expect(
+      validateSessionForm(form({ admission_mode: "assigned_seats" }))
+        .seating_plan_version_id,
+    ).toBeDefined();
+    expect(
+      validateSessionForm(form({ admission_mode: "hybrid" }))
+        .seating_plan_version_id,
+    ).toBeDefined();
+    expect(
+      validateSessionForm(
+        form({
+          admission_mode: "assigned_seats",
+          seating_plan_version_id: "01929d0e-0e47-7000-8000-000000000901",
+        }),
+      ),
+    ).toEqual({});
+  });
+  it("currency is optional but must be 3 uppercase letters when set", () => {
+    expect(validateSessionForm(form({ currency: "" }))).toEqual({});
+    expect(validateSessionForm(form({ currency: "CZK" }))).toEqual({});
+    expect(validateSessionForm(form({ currency: "czk" })).currency).toBeDefined();
+    expect(validateSessionForm(form({ currency: "EURO" })).currency).toBeDefined();
+    expect(validateSessionForm(form({ currency: "E1" })).currency).toBeDefined();
+  });
+});
+
+describe("buildSessionRequestBody", () => {
+  function form(o: Partial<SessionFormValues>): SessionFormValues {
+    return {
+      venue_id: "01929d0e-0e47-7000-8000-000000000201",
+      start_at: "2026-08-15T18:00",
+      end_at: "2026-08-15T23:00",
+      capacity_override: "",
+      status: "draft",
+      admission_mode: "general_admission",
+      seating_plan_version_id: "",
+      currency: "",
+      ...o,
+    };
+  }
+
+  it("never sends capacity_total; omits blank optionals", () => {
+    const body = buildSessionRequestBody(form({}), "create");
+    expect(body).toEqual({
+      venue_id: "01929d0e-0e47-7000-8000-000000000201",
+      start_at: "2026-08-15T18:00:00Z",
+      end_at: "2026-08-15T23:00:00Z",
+      status: "draft",
+      admission_mode: "general_admission",
+    });
+    expect("capacity_total" in body).toBe(false);
+    expect("capacity_override" in body).toBe(false);
+    expect("currency" in body).toBe(false);
+    expect("seating_plan_version_id" in body).toBe(false);
+  });
+  it("sends capacity_override only when supplied", () => {
+    expect(
+      buildSessionRequestBody(form({ capacity_override: "250" }), "create")
+        .capacity_override,
+    ).toBe(250);
+  });
+  it("uppercases and sends the currency only when typed", () => {
+    expect(
+      buildSessionRequestBody(form({ currency: "eur" }), "edit").currency,
+    ).toBe("EUR");
+    expect(
+      "currency" in buildSessionRequestBody(form({}), "edit"),
+    ).toBe(false);
+  });
+  it("sends admission_mode + seating_plan_version_id on seated create", () => {
+    const body = buildSessionRequestBody(
+      form({
+        admission_mode: "assigned_seats",
+        seating_plan_version_id: "01929d0e-0e47-7000-8000-000000000901",
+      }),
+      "create",
+    );
+    expect(body.admission_mode).toBe("assigned_seats");
+    expect(body.seating_plan_version_id).toBe(
+      "01929d0e-0e47-7000-8000-000000000901",
+    );
+  });
+  it("never sends admission_mode / seating_plan_version_id on edit", () => {
+    const body = buildSessionRequestBody(
+      form({
+        admission_mode: "assigned_seats",
+        seating_plan_version_id: "01929d0e-0e47-7000-8000-000000000901",
+      }),
+      "edit",
+    );
+    expect("admission_mode" in body).toBe(false);
+    expect("seating_plan_version_id" in body).toBe(false);
   });
 });
 
@@ -451,6 +679,28 @@ describe("mapSessionError", () => {
       ),
     ).toMatch(/no longer exists/i);
   });
+  it("maps the AB-36/AB-38 wave-4 error codes", () => {
+    const cases: ReadonlyArray<[string, RegExp]> = [
+      ["session.missing_venue_id", /venue is required/i],
+      ["session.invalid_venue_id", /valid uuid/i],
+      ["session.venue_not_found", /no longer exists/i],
+      ["session.venue_org_mismatch", /different organization/i],
+      ["session.invalid_admission_mode", /admission mode/i],
+      ["session.missing_seating_plan_version", /seating plan version/i],
+      ["session.invalid_seating_plan_version", /seating plan version/i],
+      ["session.seating_plan_not_applicable", /general-admission/i],
+      ["session.invalid_currency", /iso 4217/i],
+      ["session.currency_unresolvable", /explicit currency/i],
+      ["session.invalid_capacity_override", /greater than zero/i],
+      ["session.capacity_unresolvable", /capacity/i],
+      ["session.capacity_override_not_applicable", /seating plan/i],
+    ];
+    for (const [code, pattern] of cases) {
+      expect(mapSessionError(new ApiError(422, { code, message: "x" }))).toMatch(
+        pattern,
+      );
+    }
+  });
   it("falls back to a status-aware message for 401/403", () => {
     expect(
       mapSessionError(new ApiError(401, { code: "auth.expired", message: "x" })),
@@ -517,42 +767,6 @@ describe("TIER_PRICING_MODES / isTierPricingMode", () => {
   });
 });
 
-describe("PROVIDER_CURRENCIES / allowedCurrenciesForProviders", () => {
-  it("declares stripe and allpay capability sets", () => {
-    expect(PROVIDER_CURRENCIES.stripe).toContain("USD");
-    expect(PROVIDER_CURRENCIES.stripe).toContain("ILS");
-    expect(PROVIDER_CURRENCIES.allpay).toContain("ILS");
-    expect(PROVIDER_CURRENCIES.allpay).not.toContain("RUB");
-  });
-  it("returns the default set when no providers are supplied", () => {
-    expect(allowedCurrenciesForProviders([])).toEqual(["USD", "EUR", "ILS"]);
-  });
-  it("returns the stripe set for a stripe-only org", () => {
-    const got = allowedCurrenciesForProviders(["stripe"]);
-    expect(got).toContain("USD");
-    expect(got).toContain("RUB");
-  });
-  it("returns the union of stripe + allpay for a multi-provider org", () => {
-    const got = allowedCurrenciesForProviders(["stripe", "allpay"]);
-    // Union must include every currency from both sets.
-    for (const c of [...PROVIDER_CURRENCIES.stripe!, ...PROVIDER_CURRENCIES.allpay!]) {
-      expect(got).toContain(c);
-    }
-  });
-  it("ignores unknown providers", () => {
-    expect(allowedCurrenciesForProviders(["mystery"])).toEqual([
-      "USD",
-      "EUR",
-      "ILS",
-    ]);
-  });
-  it("returns results sorted (stable presentation in the dropdown)", () => {
-    const got = allowedCurrenciesForProviders(["stripe", "allpay"]);
-    const sorted = [...got].sort();
-    expect(got).toEqual(sorted);
-  });
-});
-
 describe("centsToDecimal / decimalToCents", () => {
   it("centsToDecimal renders cents as two-decimal major-unit strings", () => {
     expect(centsToDecimal(0)).toBe("0.00");
@@ -584,20 +798,20 @@ describe("centsToDecimal / decimalToCents", () => {
 });
 
 describe("emptyTierForm / tierToForm", () => {
-  it("emptyTierForm defaults to fixed pricing with the first allowed currency", () => {
-    const f = emptyTierForm("EUR");
+  it("emptyTierForm defaults to fixed pricing and carries no currency (AB-38)", () => {
+    const f = emptyTierForm();
     expect(f.pricing_mode).toBe("fixed");
-    expect(f.currency).toBe("EUR");
+    expect("currency" in f).toBe(false);
     expect(f.sort_order).toBe("0");
     expect(f.price_amount).toBe("");
   });
-  it("tierToForm hydrates a fixed-price tier", () => {
+  it("tierToForm hydrates a fixed-price tier without a currency field", () => {
     const f = tierToForm(
       tier({ pricing_mode: "fixed", price_amount: 1599, currency: "GBP" }),
     );
     expect(f.pricing_mode).toBe("fixed");
     expect(f.price_amount).toBe("15.99");
-    expect(f.currency).toBe("GBP");
+    expect("currency" in f).toBe(false);
     expect(f.capacity).toBe("100");
   });
   it("tierToForm hydrates a pwyw tier with both bounds", () => {
@@ -628,43 +842,34 @@ describe("emptyTierForm / tierToForm", () => {
 });
 
 describe("validateTierForm", () => {
-  const ALLOWED = ["USD", "EUR", "ILS"] as const;
   function form(overrides: Partial<TierFormValues> = {}): TierFormValues {
     return {
-      ...emptyTierForm("USD"),
+      ...emptyTierForm(),
       name: "General Admission",
       price_amount: "10.00",
       ...overrides,
     };
   }
   it("accepts a minimal fixed-price tier", () => {
-    expect(validateTierForm(form(), ALLOWED)).toEqual({});
+    expect(validateTierForm(form())).toEqual({});
   });
   it("requires name", () => {
-    expect(validateTierForm(form({ name: "" }), ALLOWED).name).toBeDefined();
+    expect(validateTierForm(form({ name: "" })).name).toBeDefined();
   });
   it("rejects fixed price <= 0", () => {
     expect(
-      validateTierForm(form({ name: "GA", price_amount: "0" }), ALLOWED)
-        .price_amount,
+      validateTierForm(form({ name: "GA", price_amount: "0" })).price_amount,
     ).toBeDefined();
   });
   it("rejects malformed prices", () => {
     expect(
-      validateTierForm(form({ name: "GA", price_amount: "abc" }), ALLOWED)
-        .price_amount,
-    ).toBeDefined();
-  });
-  it("rejects currencies outside the allowed set", () => {
-    expect(
-      validateTierForm(form({ name: "GA", currency: "RUB" }), ALLOWED).currency,
+      validateTierForm(form({ name: "GA", price_amount: "abc" })).price_amount,
     ).toBeDefined();
   });
   it("accepts a pwyw tier with empty bounds", () => {
     expect(
       validateTierForm(
         form({ name: "Pay what you want", pricing_mode: "pwyw", price_amount: "" }),
-        ALLOWED,
       ),
     ).toEqual({});
   });
@@ -677,7 +882,6 @@ describe("validateTierForm", () => {
         pwyw_min: "10.00",
         pwyw_max: "5.00",
       }),
-      ALLOWED,
     );
     expect(e.pwyw_max).toBeDefined();
   });
@@ -685,13 +889,12 @@ describe("validateTierForm", () => {
     expect(
       validateTierForm(
         form({ name: "Free", pricing_mode: "free", price_amount: "" }),
-        ALLOWED,
       ),
     ).toEqual({});
   });
   it("rejects capacity <= 0", () => {
     expect(
-      validateTierForm(form({ name: "GA", capacity: "0" }), ALLOWED).capacity,
+      validateTierForm(form({ name: "GA", capacity: "0" })).capacity,
     ).toBeDefined();
   });
   it("rejects sale_window_end <= sale_window_start", () => {
@@ -701,14 +904,12 @@ describe("validateTierForm", () => {
         sale_window_start: "2026-08-01T10:00",
         sale_window_end: "2026-08-01T10:00",
       }),
-      ALLOWED,
     );
     expect(e.sale_window_end).toBeDefined();
   });
   it("rejects non-integer sort_order", () => {
     expect(
-      validateTierForm(form({ name: "GA", sort_order: "1.5" }), ALLOWED)
-        .sort_order,
+      validateTierForm(form({ name: "GA", sort_order: "1.5" })).sort_order,
     ).toBeDefined();
   });
 });
@@ -716,7 +917,7 @@ describe("validateTierForm", () => {
 describe("buildTierRequestBody", () => {
   it("emits zero price + null pwyw bounds for free tiers", () => {
     const body = buildTierRequestBody({
-      ...emptyTierForm("USD"),
+      ...emptyTierForm(),
       name: "Free",
       pricing_mode: "free",
       price_amount: "",
@@ -724,11 +925,10 @@ describe("buildTierRequestBody", () => {
     expect(body.price_amount).toBe(0);
     expect(body.pwyw_min).toBeNull();
     expect(body.pwyw_max).toBeNull();
-    expect(body.currency).toBe("USD");
   });
   it("converts fixed-price decimals to integer cents", () => {
     const body = buildTierRequestBody({
-      ...emptyTierForm("EUR"),
+      ...emptyTierForm(),
       name: "VIP",
       pricing_mode: "fixed",
       price_amount: "199.99",
@@ -739,7 +939,7 @@ describe("buildTierRequestBody", () => {
   });
   it("emits pwyw bounds as cents when supplied, null when blank", () => {
     const body = buildTierRequestBody({
-      ...emptyTierForm("USD"),
+      ...emptyTierForm(),
       name: "PWYW",
       pricing_mode: "pwyw",
       price_amount: "",
@@ -751,12 +951,12 @@ describe("buildTierRequestBody", () => {
   });
   it("normalises blank capacity to null and number when supplied", () => {
     expect(
-      buildTierRequestBody({ ...emptyTierForm("USD"), name: "GA", price_amount: "10.00" })
+      buildTierRequestBody({ ...emptyTierForm(), name: "GA", price_amount: "10.00" })
         .capacity,
     ).toBeNull();
     expect(
       buildTierRequestBody({
-        ...emptyTierForm("USD"),
+        ...emptyTierForm(),
         name: "GA",
         price_amount: "10.00",
         capacity: "250",
@@ -765,7 +965,7 @@ describe("buildTierRequestBody", () => {
   });
   it("normalises sale-window timestamps to RFC3339 UTC and blank to null", () => {
     const body = buildTierRequestBody({
-      ...emptyTierForm("USD"),
+      ...emptyTierForm(),
       name: "GA",
       price_amount: "10.00",
       sale_window_start: "2026-08-01T10:00",
@@ -774,14 +974,13 @@ describe("buildTierRequestBody", () => {
     expect(body.sale_window_start).toBe("2026-08-01T10:00:00Z");
     expect(body.sale_window_end).toBeNull();
   });
-  it("uppercases the currency code", () => {
+  it("never sends a currency — the server stamps the session currency (AB-38)", () => {
     const body = buildTierRequestBody({
-      ...emptyTierForm("usd"),
+      ...emptyTierForm(),
       name: "GA",
       price_amount: "10.00",
-      currency: "eur",
     });
-    expect(body.currency).toBe("EUR");
+    expect("currency" in body).toBe(false);
   });
 });
 

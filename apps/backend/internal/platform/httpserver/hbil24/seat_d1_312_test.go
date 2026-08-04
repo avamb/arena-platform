@@ -315,7 +315,7 @@ func TestBil24_312_GetSeatList_AssignedSeats_ProjectsRealSeats(t *testing.T) {
 		{ID: seatIDs[0], SessionID: sessionID, SeatKey: "A-1-1", SectorName: "A", RowName: "1", SeatNumber: "1", TierID: &tierID, Status: "available"},
 		{ID: seatIDs[1], SessionID: sessionID, SeatKey: "A-1-2", SectorName: "A", RowName: "1", SeatNumber: "2", TierID: &tierID, Status: "held"},
 		{ID: seatIDs[2], SessionID: sessionID, SeatKey: "A-1-3", SectorName: "A", RowName: "1", SeatNumber: "3", TierID: &tierID, Status: "sold"},
-		{ID: seatIDs[3], SessionID: sessionID, SeatKey: "A-1-4", SectorName: "A", RowName: "1", SeatNumber: "4", TierID: nil, Status: "blocked"},
+		{ID: seatIDs[3], SessionID: sessionID, SeatKey: "A-1-4", SectorName: "A", RowName: "1", SeatNumber: "4", TierID: nil, Status: "unavailable"},
 	}
 	adm := &fakeAdmission{sessions: map[uuid.UUID]gen.SessionAdmissionRow{
 		sessionID: {ID: sessionID, AdmissionMode: "assigned_seats", CapacityTotal: 4},
@@ -398,7 +398,7 @@ func TestBil24_312_GetSeatList_BSSStatusCodes(t *testing.T) {
 		{"available", 1},
 		{"held", 3},
 		{"sold", 4},
-		{"blocked", 0},
+		{"unavailable", 0},
 		{"", 0},
 		{"unknown", 0},
 	}

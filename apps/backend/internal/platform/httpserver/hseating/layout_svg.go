@@ -21,7 +21,7 @@
 //
 // Status wire codes (§6):
 //
-//	0 INACCESSIBLE   ← internal status="blocked"
+//	0 INACCESSIBLE   ← internal status="unavailable"
 //	1 AVAILABLE      ← internal status="available"
 //	2 PRE_RESERVED   (reserved for future flows; never emitted in SEAT-D3)
 //	3 RESERVED       ← internal status="held"
@@ -231,8 +231,8 @@ func RenderBSSLayoutSVG(
 
 	// Roll up per-category live counters. sold = seats currently in
 	// status="sold"; used = seats not in status="available" (i.e. any of
-	// blocked / held / sold — the operator-visible "unavailable"
-	// aggregate). Blocked-seat counters are exposed to consumers that
+	// unavailable / held / sold — the operator-facing "used"
+	// aggregate). Unavailable-seat counters are exposed to consumers that
 	// prefer to render "closed" ticks separately from "reserved" / "sold".
 	type catCounts struct{ sold, used int }
 	counts := make(map[int]catCounts, len(g.Categories))
@@ -246,7 +246,7 @@ func RenderBSSLayoutSVG(
 		case "sold":
 			c.sold++
 			c.used++
-		case "held", "blocked":
+		case "held", "unavailable":
 			c.used++
 		}
 		counts[cat.CategoryIndex] = c
@@ -373,7 +373,7 @@ func statusToBSS(status string) int {
 		return bssStateReserved
 	case "sold":
 		return bssStateOccupied
-	case "blocked":
+	case "unavailable":
 		return bssStateInaccessible
 	default:
 		return bssStateInaccessible

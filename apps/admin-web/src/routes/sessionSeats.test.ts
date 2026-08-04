@@ -77,7 +77,7 @@ const statuses: Record<string, SeatStatus> = {
   "Stalls|1|1": "available",
   "Stalls|1|2": "sold",
   "Stalls|2|1": "held",
-  "Balcony|1|1": "blocked",
+  "Balcony|1|1": "unavailable",
 };
 
 // ---------------------------------------------------------------------------
@@ -93,7 +93,7 @@ describe("renderSeatMapSVG", () => {
     expect(svg).toContain(`fill="${SEAT_STATUS_COLOURS.available}"`);
     expect(svg).toContain(`fill="${SEAT_STATUS_COLOURS.sold}"`);
     expect(svg).toContain(`fill="${SEAT_STATUS_COLOURS.held}"`);
-    expect(svg).toContain(`fill="${SEAT_STATUS_COLOURS.blocked}"`);
+    expect(svg).toContain(`fill="${SEAT_STATUS_COLOURS.unavailable}"`);
     expect(svg).toContain('data-seat-key="Stalls|1|1"');
     expect(svg).toContain('data-status="available"');
   });
@@ -164,12 +164,12 @@ describe("computeSectorCounters", () => {
       {
         name: "Stalls",
         total: 3,
-        by_status: { available: 1, held: 1, sold: 1, blocked: 0 },
+        by_status: { available: 1, held: 1, sold: 1, unavailable: 0 },
       },
       {
         name: "Balcony",
         total: 1,
-        by_status: { available: 0, held: 0, sold: 0, blocked: 1 },
+        by_status: { available: 0, held: 0, sold: 0, unavailable: 1 },
       },
     ]);
   });
@@ -180,7 +180,7 @@ describe("computeSectorCounters", () => {
       available: 3,
       held: 0,
       sold: 0,
-      blocked: 0,
+      unavailable: 0,
     });
   });
 });
@@ -194,14 +194,14 @@ describe("computeCategoryCounters", () => {
       name: "VIP",
       color: "#ff0000",
       total: 2,
-      by_status: { available: 1, held: 0, sold: 1, blocked: 0 },
+      by_status: { available: 1, held: 0, sold: 1, unavailable: 0 },
     });
     expect(counters[1]).toMatchObject({
       index: 2,
       name: "Std",
       color: "#0000ff",
       total: 2,
-      by_status: { available: 0, held: 1, sold: 0, blocked: 1 },
+      by_status: { available: 0, held: 1, sold: 0, unavailable: 1 },
     });
   });
 
@@ -278,8 +278,8 @@ describe("buildSectorRowIndex", () => {
 describe("summariseOutcomes", () => {
   it("splits changed / noop / skipped and groups reasons", () => {
     const outcomes: PatchSeatsOutcome[] = [
-      { seat_key: "a", outcome: "blocked", status: "blocked" },
-      { seat_key: "b", outcome: "noop", status: "blocked" },
+      { seat_key: "a", outcome: "unavailable", status: "unavailable" },
+      { seat_key: "b", outcome: "noop", status: "unavailable" },
       { seat_key: "c", outcome: "skipped", reason: "sold", status: "sold" },
       { seat_key: "d", outcome: "skipped", reason: "sold", status: "sold" },
       { seat_key: "e", outcome: "skipped", reason: "held", status: "held" },
@@ -300,6 +300,16 @@ describe("summariseOutcomes", () => {
       "sold",
     ]);
     expect(s.skippedByReason.sold?.length).toBe(2);
+  });
+
+  it("counts both directions (unavailable + available) as changed", () => {
+    const s = summariseOutcomes([
+      { seat_key: "a", outcome: "unavailable", status: "unavailable" },
+      { seat_key: "b", outcome: "available", status: "available" },
+    ]);
+    expect(s.changed.length).toBe(2);
+    expect(s.noop.length).toBe(0);
+    expect(s.skipped.length).toBe(0);
   });
 
   it("falls back to 'unknown' when reason is missing", () => {

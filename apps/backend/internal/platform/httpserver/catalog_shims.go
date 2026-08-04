@@ -17,7 +17,9 @@ import (
 
 // catalogHandler constructs a hcatalog.Handler from the server's dependencies.
 // The session-cancelled webhook publisher is injected as a callback because
-// its implementation lives in the hscanner sub-package (see scanner_shims.go).
+// its implementation lives in the hscanner sub-package (see scanner_shims.go);
+// the seating binder callback (seated session create, AB-36) is injected the
+// same way because its implementation lives in hseating.
 func (s *Server) catalogHandler() *hcatalog.Handler {
 	return hcatalog.New(
 		s.eventQueries,
@@ -31,7 +33,28 @@ func (s *Server) catalogHandler() *hcatalog.Handler {
 		s.audit,
 		s.logger,
 		s.publishSessionCancelledEvent,
-	).WithMembershipQueries(s.membershipQueries)
+	).WithMembershipQueries(s.membershipQueries).
+		WithSeatingBinder(s.bindSeatingForSessionCreate)
+}
+
+// bindSeatingForSessionCreate adapts hseating's inline bind (AB-36 step 3)
+// to the hcatalog.SeatingBinder callback shape.
+func (s *Server) bindSeatingForSessionCreate(
+	ctx context.Context,
+	r *http.Request,
+	eventID, sessionID, planVersionID uuid.UUID,
+	admissionMode string,
+) *hcatalog.SeatingBindError {
+	bErr := s.seatingHandler().BindSeatingForSessionCreate(ctx, r, eventID, sessionID, planVersionID, admissionMode)
+	if bErr == nil {
+		return nil
+	}
+	return &hcatalog.SeatingBindError{
+		Status:  bErr.Status,
+		Code:    bErr.Code,
+		Message: bErr.Message,
+		Details: bErr.Details,
+	}
 }
 
 // ──── type aliases ───────────────────────────────────────────────────────────

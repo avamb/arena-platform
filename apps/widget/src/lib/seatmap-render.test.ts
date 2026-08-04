@@ -173,8 +173,8 @@ describe('seatFillColor', () => {
     expect(seatFillColor(1, 'sold', catMap)).toBe(STATUS_COLORS['sold']);
   });
 
-  it('returns blocked color for blocked status', () => {
-    expect(seatFillColor(1, 'blocked', catMap)).toBe(STATUS_COLORS['blocked']);
+  it('returns unavailable color for unavailable status', () => {
+    expect(seatFillColor(1, 'unavailable', catMap)).toBe(STATUS_COLORS['unavailable']);
   });
 
   it('returns FALLBACK_COLOR when category index is unknown', () => {
@@ -294,9 +294,9 @@ describe('buildSeatMapSVG', () => {
     expect(svg).toContain(`fill="${STATUS_COLORS['sold']}"`);
   });
 
-  it('uses status color for blocked seats', () => {
-    const svg = buildSeatMapSVG(makeGeometry(), categoryPrices, { 'B|A|1': 'blocked' });
-    expect(svg).toContain(`fill="${STATUS_COLORS['blocked']}"`);
+  it('uses status color for unavailable seats', () => {
+    const svg = buildSeatMapSVG(makeGeometry(), categoryPrices, { 'B|A|1': 'unavailable' });
+    expect(svg).toContain(`fill="${STATUS_COLORS['unavailable']}"`);
   });
 
   it('includes sanitized decor_svg inside an aria-hidden decor group', () => {

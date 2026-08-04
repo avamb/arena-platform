@@ -518,20 +518,22 @@ func TestSession126_CreateZeroCapacityReturns400(t *testing.T) {
 	eventID := uuid.New().String()
 
 	w := httptest.NewRecorder()
-	body := `{"start_at":"2025-01-01T10:00:00Z","end_at":"2025-01-01T12:00:00Z","capacity_total":0}`
+	// Wave 4 (AB-36): capacity_total is no longer an input — the operator
+	// knob is capacity_override, validated before any DB round trip.
+	body := `{"venue_id":"` + uuid.New().String() + `","start_at":"2025-01-01T10:00:00Z","end_at":"2025-01-01T12:00:00Z","capacity_override":0}`
 	req := httptest.NewRequest(http.MethodPost, sessionPath(orgID, eventID), strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+tok)
 	req.Header.Set("Content-Type", "application/json")
 	s.router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
-		t.Errorf("zero capacity_total: got %d, want 400", w.Code)
+		t.Errorf("zero capacity_override: got %d, want 400", w.Code)
 	}
 	var resp map[string]any
 	_ = json.NewDecoder(w.Body).Decode(&resp)
 	if errObj, ok := resp["error"].(map[string]any); ok {
-		if code, _ := errObj["code"].(string); code != "session.invalid_capacity" {
-			t.Errorf("capacity error code: got %q, want session.invalid_capacity", code)
+		if code, _ := errObj["code"].(string); code != "session.invalid_capacity_override" {
+			t.Errorf("capacity error code: got %q, want session.invalid_capacity_override", code)
 		}
 	}
 }
@@ -543,14 +545,14 @@ func TestSession126_CreateNegativeCapacityReturns400(t *testing.T) {
 	eventID := uuid.New().String()
 
 	w := httptest.NewRecorder()
-	body := `{"start_at":"2025-01-01T10:00:00Z","end_at":"2025-01-01T12:00:00Z","capacity_total":-10}`
+	body := `{"venue_id":"` + uuid.New().String() + `","start_at":"2025-01-01T10:00:00Z","end_at":"2025-01-01T12:00:00Z","capacity_override":-10}`
 	req := httptest.NewRequest(http.MethodPost, sessionPath(orgID, eventID), strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+tok)
 	req.Header.Set("Content-Type", "application/json")
 	s.router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
-		t.Errorf("negative capacity_total: got %d, want 400", w.Code)
+		t.Errorf("negative capacity_override: got %d, want 400", w.Code)
 	}
 }
 

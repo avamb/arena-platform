@@ -95,8 +95,8 @@ describe('toggleSeatSelection', () => {
     expect(sel.size).toBe(0);
   });
 
-  it('does not select a blocked seat', () => {
-    const sel = toggleSeatSelection(new Set(), 'A-1-4', 'blocked');
+  it('does not select an unavailable seat', () => {
+    const sel = toggleSeatSelection(new Set(), 'A-1-4', 'unavailable');
     expect(sel.size).toBe(0);
   });
 
@@ -174,7 +174,7 @@ describe('bestAvailableSeats', () => {
     expect(result).toEqual(['C', 'D']);
   });
 
-  it('skips held / sold / blocked seats when finding a run', () => {
+  it('skips held / sold / unavailable seats when finding a run', () => {
     const g = makeGeometry([
       {
         rowKey: 'R1',

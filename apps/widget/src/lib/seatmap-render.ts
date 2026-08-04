@@ -63,7 +63,7 @@ export const STATUS_COLORS: Readonly<Record<string, string>> = {
   available: '', // resolved per-seat from category color
   held: '#f59e0b',
   sold: '#6b7280',
-  blocked: '#d1d5db',
+  unavailable: '#d1d5db',
 } as const;
 
 /** Fallback color when a seat's category index is not resolved. */

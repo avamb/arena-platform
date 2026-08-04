@@ -17,8 +17,9 @@
 //     true, categories missing from the
 //     map are provisioned as fresh
 //     ticket_tiers rows using the
-//     Category.Name / PriceHint /
-//     CurrencyHint import hints.
+//     Category.Name / PriceHint import
+//     hints (currency always follows the
+//     session, AB-38).
 //   - First bind materializes one session_seats row per geometry seat under
 //     a single transaction, applies the category → tier mapping, locks the
 //     seating_plan_versions.locked_at stamp on the very first bind
@@ -34,6 +35,12 @@
 //   - GA sessions (admission_mode = general_admission) are not touched by
 //     this endpoint. This handler only accepts assigned_seats or hybrid.
 //     The inventory_ledger path for GA sessions remains unchanged.
+//
+// Wave 4 (AB-36 step 3): the same core flow also runs inline from the
+// session CREATE path via BindSeatingForSessionCreate, so a seated session
+// can be provisioned in a single call. The core is therefore factored into
+// bindSessionSeatingCore, which reports failures as *BindError values
+// instead of writing HTTP envelopes directly.
 package hseating
 
 import (
@@ -70,6 +77,32 @@ const bindBodyLimit = 64 * 1024
 var validBindAdmissionModes = map[string]bool{
 	"assigned_seats": true,
 	"hybrid":         true,
+}
+
+// BindError is the transport shape the bind core uses to report a failure:
+// the HTTP status plus the error-envelope code/message/details the caller
+// should emit. It exists so the same core serves both the standalone bind
+// endpoint and the inline session-create bind (AB-36) with identical error
+// surfaces.
+type BindError struct {
+	Status  int
+	Code    string
+	Message string
+	Details map[string]any
+}
+
+// write emits the error as a standard envelope.
+func (e *BindError) write(w http.ResponseWriter, r *http.Request) {
+	if e.Details == nil {
+		httputil.WriteJSON(w, e.Status, httputil.ErrorEnvelope(e.Code, e.Message, r))
+		return
+	}
+	httputil.WriteJSON(w, e.Status, httputil.ErrorEnvelopeWithDetails(e.Code, e.Message, r, e.Details))
+}
+
+// bindErr is a convenience constructor.
+func bindErr(status int, code, message string, details map[string]any) *BindError {
+	return &BindError{Status: status, Code: code, Message: message, Details: details}
 }
 
 // bindRequest is the strict-decoded shape of the request body. Every field
@@ -121,6 +154,17 @@ func sessionBindingFromRow(r gen.SessionSeatingBindingRow) SessionSeatingBinding
 	return out
 }
 
+// bindCoreResult carries the successful outcome of the bind core back to the
+// HTTP layer (or to the session-create path, which only needs Session).
+type bindCoreResult struct {
+	Session         gen.SessionSeatingBindingRow
+	Version         gen.SeatingPlanVersionRow
+	Materialized    int
+	CategoryTierMap map[string]string
+	CreatedTierIDs  []string
+	Rebound         bool
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // HandleBindSessionSeating
 // ─────────────────────────────────────────────────────────────────────────────
@@ -158,12 +202,75 @@ func (h *Handler) HandleBindSessionSeating(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	result, bErr := h.bindSessionSeatingCore(ctx, r, eventID, sessionID, planVersionID, req)
+	if bErr != nil {
+		bErr.write(w, r)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, bindResponse{
+		Session:         sessionBindingFromRow(result.Session),
+		Version:         SeatingPlanVersionFromRow(result.Version),
+		Materialized:    result.Materialized,
+		CategoryTierMap: result.CategoryTierMap,
+		CreatedTierIDs:  result.CreatedTierIDs,
+		Rebound:         result.Rebound,
+	})
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BindSeatingForSessionCreate — inline bind for the session-create path
+// ─────────────────────────────────────────────────────────────────────────────
+
+// BindSeatingForSessionCreate runs the SEAT-B2 bind for a session that was
+// created moments ago by the hcatalog create handler (AB-36 step 3). Tiers
+// are auto-created from the SVG category legend (one tier per referenced
+// price category — Bil24's category == tier model); the session's currency
+// governs the created tiers via autoCreateTier. Returns nil on success or
+// the same *BindError the standalone endpoint would have emitted.
+func (h *Handler) BindSeatingForSessionCreate(
+	ctx context.Context,
+	r *http.Request,
+	eventID, sessionID, planVersionID uuid.UUID,
+	admissionMode string,
+) *BindError {
+	if h.queries == nil || h.pool == nil {
+		return bindErr(http.StatusServiceUnavailable,
+			"dependency.database_unavailable", "database is not available", nil)
+	}
+	if !validBindAdmissionModes[admissionMode] {
+		return bindErr(http.StatusBadRequest,
+			"seating.invalid_admission_mode",
+			"admission_mode must be one of assigned_seats|hybrid",
+			map[string]any{"field": "admission_mode"})
+	}
+	req := bindRequest{
+		AdmissionMode:   admissionMode,
+		CategoryTierMap: map[string]*string{},
+		AutoCreateTiers: true,
+	}
+	_, bErr := h.bindSessionSeatingCore(ctx, r, eventID, sessionID, planVersionID, req)
+	return bErr
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Core bind flow (shared by the endpoint and the session-create path)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// bindSessionSeatingCore runs the full bind transaction: session row lock,
+// rebind guardrail, geometry canonicalization, category → tier resolution,
+// seat materialization, version lock, capacity recompute, audit, commit.
+// The *http.Request is used only for audit metadata (client IP).
+func (h *Handler) bindSessionSeatingCore(
+	ctx context.Context,
+	r *http.Request,
+	eventID, sessionID, planVersionID uuid.UUID,
+	req bindRequest,
+) (*bindCoreResult, *BindError) {
 	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "failed to begin transaction", r,
-		))
-		return
+		return nil, bindErr(http.StatusServiceUnavailable,
+			"dependency.database_unavailable", "failed to begin transaction", nil)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	qtx := h.queries.WithTx(tx)
@@ -180,16 +287,12 @@ func (h *Handler) HandleBindSessionSeating(w http.ResponseWriter, r *http.Reques
 	binding, err := qtx.GetSessionSeatingBindingForUpdate(ctx, sessionID, eventID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
-				"session.not_found", "session not found", r,
-			))
-			return
+			return nil, bindErr(http.StatusNotFound,
+				"session.not_found", "session not found", nil)
 		}
 		h.logger.Error("seating: bind session lookup failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"seating.bind_failed", "failed to bind seating plan", r,
-		))
-		return
+		return nil, bindErr(http.StatusInternalServerError,
+			"seating.bind_failed", "failed to bind seating plan", nil)
 	}
 
 	// Load the seating plan version + its parent plan so the geometry can
@@ -198,18 +301,14 @@ func (h *Handler) HandleBindSessionSeating(w http.ResponseWriter, r *http.Reques
 	version, err := qtx.GetSeatingPlanVersionByID(ctx, planVersionID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			return nil, bindErr(http.StatusBadRequest,
 				"seating.version_not_found",
-				"seating_plan_version_id does not exist", r,
-				map[string]any{"field": "seating_plan_version_id"},
-			))
-			return
+				"seating_plan_version_id does not exist",
+				map[string]any{"field": "seating_plan_version_id"})
 		}
 		h.logger.Error("seating: bind version lookup failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"seating.bind_failed", "failed to bind seating plan", r,
-		))
-		return
+		return nil, bindErr(http.StatusInternalServerError,
+			"seating.bind_failed", "failed to bind seating plan", nil)
 	}
 
 	// Rebind guardrail: any historical reservation or ticket on the session
@@ -222,30 +321,23 @@ func (h *Handler) HandleBindSessionSeating(w http.ResponseWriter, r *http.Reques
 		resCount, err := qtx.CountReservationsBySession(ctx, sessionID)
 		if err != nil {
 			h.logger.Error("seating: bind reservation count failed", slog.String("error", err.Error()))
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"seating.bind_failed", "failed to bind seating plan", r,
-			))
-			return
+			return nil, bindErr(http.StatusInternalServerError,
+				"seating.bind_failed", "failed to bind seating plan", nil)
 		}
 		tktCount, err := qtx.CountTicketsBySession(ctx, sessionID)
 		if err != nil {
 			h.logger.Error("seating: bind ticket count failed", slog.String("error", err.Error()))
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"seating.bind_failed", "failed to bind seating plan", r,
-			))
-			return
+			return nil, bindErr(http.StatusInternalServerError,
+				"seating.bind_failed", "failed to bind seating plan", nil)
 		}
 		if resCount > 0 || tktCount > 0 {
-			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+			return nil, bindErr(http.StatusConflict,
 				"seating.rebind_forbidden",
 				"session already has reservations or tickets; create a new session to change the seating plan",
-				r,
 				map[string]any{
 					"reservations": resCount,
 					"tickets":      tktCount,
-				},
-			))
-			return
+				})
 		}
 	}
 
@@ -255,10 +347,8 @@ func (h *Handler) HandleBindSessionSeating(w http.ResponseWriter, r *http.Reques
 	var geometry seating.Geometry
 	if err := json.Unmarshal(version.Geometry, &geometry); err != nil {
 		h.logger.Error("seating: bind geometry decode failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"seating.bind_failed", "seating plan version geometry is not valid", r,
-		))
-		return
+		return nil, bindErr(http.StatusInternalServerError,
+			"seating.bind_failed", "seating plan version geometry is not valid", nil)
 	}
 	geometry = seating.Canonicalize(geometry)
 
@@ -267,11 +357,11 @@ func (h *Handler) HandleBindSessionSeating(w http.ResponseWriter, r *http.Reques
 	// bound to the target session; the created ids are returned to the
 	// caller so the follow-up admin UI can hydrate them without an extra
 	// GET.
-	resolvedMap, createdTierIDs, ok := resolveCategoryTierMap(
-		ctx, w, r, qtx, sessionID, geometry, req,
+	resolvedMap, createdTierIDs, bErr := resolveCategoryTierMap(
+		ctx, qtx, sessionID, geometry, req,
 	)
-	if !ok {
-		return
+	if bErr != nil {
+		return nil, bErr
 	}
 
 	// Rebind: wipe any previously materialized seats for this session so the
@@ -281,17 +371,13 @@ func (h *Handler) HandleBindSessionSeating(w http.ResponseWriter, r *http.Reques
 	if rebound {
 		if _, err := qtx.DeleteReservationSeatsBySession(ctx, sessionID); err != nil {
 			h.logger.Error("seating: bind reservation_seats wipe failed", slog.String("error", err.Error()))
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"seating.bind_failed", "failed to prepare session for rebind", r,
-			))
-			return
+			return nil, bindErr(http.StatusInternalServerError,
+				"seating.bind_failed", "failed to prepare session for rebind", nil)
 		}
 		if _, err := qtx.DeleteSessionSeatsBySession(ctx, sessionID); err != nil {
 			h.logger.Error("seating: bind session_seats wipe failed", slog.String("error", err.Error()))
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"seating.bind_failed", "failed to prepare session for rebind", r,
-			))
-			return
+			return nil, bindErr(http.StatusInternalServerError,
+				"seating.bind_failed", "failed to prepare session for rebind", nil)
 		}
 	}
 
@@ -314,13 +400,11 @@ func (h *Handler) HandleBindSessionSeating(w http.ResponseWriter, r *http.Reques
 					// resolveCategoryTierMap guarantees every category
 					// referenced by a seat has an entry; a missing key
 					// here would be a canonicaliser bug, not user error.
-					httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+					return nil, bindErr(http.StatusInternalServerError,
 						"seating.bind_failed",
 						fmt.Sprintf("seat %q references unknown category_index %d",
 							seat.Key, seat.CategoryIndex),
-						r,
-					))
-					return
+						nil)
 				}
 				tierStr := tierID.String()
 				seatKeys = append(seatKeys, seat.Key)
@@ -340,10 +424,8 @@ func (h *Handler) HandleBindSessionSeating(w http.ResponseWriter, r *http.Reques
 			h.logger.Error("seating: bind seat materialize failed",
 				slog.String("error", err.Error()),
 			)
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"seating.bind_failed", "failed to materialize session seats", r,
-			))
-			return
+			return nil, bindErr(http.StatusInternalServerError,
+				"seating.bind_failed", "failed to materialize session seats", nil)
 		}
 		materialized = int(inserted)
 	}
@@ -355,10 +437,8 @@ func (h *Handler) HandleBindSessionSeating(w http.ResponseWriter, r *http.Reques
 	lockedVersion, err := qtx.LockSeatingPlanVersion(ctx, planVersionID)
 	if err != nil {
 		h.logger.Error("seating: bind lock version failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"seating.bind_failed", "failed to lock seating plan version", r,
-		))
-		return
+		return nil, bindErr(http.StatusInternalServerError,
+			"seating.bind_failed", "failed to lock seating plan version", nil)
 	}
 
 	// Recompute capacity_total from the seated (and, for hybrid, standing)
@@ -375,16 +455,12 @@ func (h *Handler) HandleBindSessionSeating(w http.ResponseWriter, r *http.Reques
 		if errors.Is(err, pgx.ErrNoRows) {
 			// The session was soft-deleted between the initial lookup and
 			// here — treat as 404 to match the sessions CRUD precedent.
-			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
-				"session.not_found", "session not found", r,
-			))
-			return
+			return nil, bindErr(http.StatusNotFound,
+				"session.not_found", "session not found", nil)
 		}
 		h.logger.Error("seating: bind session update failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"seating.bind_failed", "failed to bind seating plan", r,
-		))
-		return
+		return nil, bindErr(http.StatusInternalServerError,
+			"seating.bind_failed", "failed to bind seating plan", nil)
 	}
 
 	// Stringify the resolved category → tier map once; the same map feeds
@@ -406,30 +482,26 @@ func (h *Handler) HandleBindSessionSeating(w http.ResponseWriter, r *http.Reques
 		"rebound":                 rebound,
 		"capacity_total":          newCapacity,
 	}); err != nil {
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"seating.audit_failed", "failed to write audit event", r,
-		))
-		return
+		return nil, bindErr(http.StatusInternalServerError,
+			"seating.audit_failed", "failed to write audit event", nil)
 	}
 	if err := tx.Commit(ctx); err != nil {
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"seating.commit_failed", "failed to commit transaction", r,
-		))
-		return
+		return nil, bindErr(http.StatusInternalServerError,
+			"seating.commit_failed", "failed to commit transaction", nil)
 	}
 
 	createdStr := make([]string, 0, len(createdTierIDs))
 	for _, id := range createdTierIDs {
 		createdStr = append(createdStr, id.String())
 	}
-	httputil.WriteJSON(w, http.StatusOK, bindResponse{
-		Session:         sessionBindingFromRow(updated),
-		Version:         SeatingPlanVersionFromRow(lockedVersion),
+	return &bindCoreResult{
+		Session:         updated,
+		Version:         lockedVersion,
 		Materialized:    materialized,
 		CategoryTierMap: catStr,
 		CreatedTierIDs:  createdStr,
 		Rebound:         rebound,
-	})
+	}, nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -503,7 +575,7 @@ func parseBindRequest(w http.ResponseWriter, r *http.Request, req bindRequest) (
 //     (GetTicketTierByID rejects cross-session leaks).
 //  3. For any category NOT in the incoming map:
 //     - if auto_create_tiers = true, provision a ticket_tiers row from
-//     the Category name / price_hint / currency_hint.
+//     the Category name / price_hint (currency follows the session).
 //     - otherwise: 400 seating.category_tier_map_incomplete with the
 //     list of missing categories.
 //
@@ -511,13 +583,11 @@ func parseBindRequest(w http.ResponseWriter, r *http.Request, req bindRequest) (
 // or when the caller-supplied map already covered every category.
 func resolveCategoryTierMap(
 	ctx context.Context,
-	w http.ResponseWriter,
-	r *http.Request,
 	qtx *gen.Queries,
 	sessionID uuid.UUID,
 	geometry seating.Geometry,
 	req bindRequest,
-) (map[int]uuid.UUID, []uuid.UUID, bool) {
+) (map[int]uuid.UUID, []uuid.UUID, *BindError) {
 	// Build the index → *Category lookup for validation.
 	byIndex := make(map[int]seating.Category, len(geometry.Categories))
 	for _, c := range geometry.Categories {
@@ -544,53 +614,39 @@ func resolveCategoryTierMap(
 	for k, v := range req.CategoryTierMap {
 		idx, err := strconv.Atoi(k)
 		if err != nil || idx <= 0 {
-			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			return nil, nil, bindErr(http.StatusBadRequest,
 				"seating.invalid_category_key",
-				"category_tier_map key "+k+" is not a positive integer", r,
-				map[string]any{"field": "category_tier_map"},
-			))
-			return nil, nil, false
+				"category_tier_map key "+k+" is not a positive integer",
+				map[string]any{"field": "category_tier_map"})
 		}
 		if _, ok := byIndex[idx]; !ok {
-			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			return nil, nil, bindErr(http.StatusBadRequest,
 				"seating.unknown_category",
 				"category_tier_map references category_index "+k+" that is not in the geometry",
-				r,
-				map[string]any{"field": "category_tier_map", "category_index": idx},
-			))
-			return nil, nil, false
+				map[string]any{"field": "category_tier_map", "category_index": idx})
 		}
 		if v == nil || *v == "" {
-			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			return nil, nil, bindErr(http.StatusBadRequest,
 				"seating.invalid_category_tier_map",
-				"category_tier_map["+k+"] must be a tier UUID", r,
-				map[string]any{"field": "category_tier_map", "category_index": idx},
-			))
-			return nil, nil, false
+				"category_tier_map["+k+"] must be a tier UUID",
+				map[string]any{"field": "category_tier_map", "category_index": idx})
 		}
 		tierID, err := uuid.Parse(*v)
 		if err != nil {
-			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			return nil, nil, bindErr(http.StatusBadRequest,
 				"seating.invalid_category_tier_map",
-				"category_tier_map["+k+"] must be a UUID", r,
-				map[string]any{"field": "category_tier_map", "category_index": idx},
-			))
-			return nil, nil, false
+				"category_tier_map["+k+"] must be a UUID",
+				map[string]any{"field": "category_tier_map", "category_index": idx})
 		}
 		if _, err := qtx.GetTicketTierByID(ctx, tierID, sessionID); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+				return nil, nil, bindErr(http.StatusBadRequest,
 					"seating.tier_not_found",
 					"category_tier_map["+k+"] references a tier that does not belong to this session",
-					r,
-					map[string]any{"field": "category_tier_map", "category_index": idx},
-				))
-				return nil, nil, false
+					map[string]any{"field": "category_tier_map", "category_index": idx})
 			}
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"seating.bind_failed", "failed to validate category_tier_map", r,
-			))
-			return nil, nil, false
+			return nil, nil, bindErr(http.StatusInternalServerError,
+				"seating.bind_failed", "failed to validate category_tier_map", nil)
 		}
 		resolved[idx] = tierID
 	}
@@ -608,35 +664,34 @@ func resolveCategoryTierMap(
 		cat := byIndex[idx]
 		tierID, err := autoCreateTier(ctx, qtx, sessionID, cat, len(resolved))
 		if err != nil {
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			return nil, nil, bindErr(http.StatusInternalServerError,
 				"seating.bind_failed",
-				"failed to auto-create ticket tier for category "+strconv.Itoa(idx)+": "+err.Error(), r,
-			))
-			return nil, nil, false
+				"failed to auto-create ticket tier for category "+strconv.Itoa(idx)+": "+err.Error(),
+				nil)
 		}
 		resolved[idx] = tierID
 		created = append(created, tierID)
 	}
 	if len(missing) > 0 {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+		return nil, nil, bindErr(http.StatusBadRequest,
 			"seating.category_tier_map_incomplete",
 			"category_tier_map does not cover every referenced category; "+
 				"set auto_create_tiers=true or add the missing entries",
-			r,
 			map[string]any{
 				"field":                 "category_tier_map",
 				"missing_categories":    missing,
 				"referenced_categories": sortedInts(referenced),
-			},
-		))
-		return nil, nil, false
+			})
 	}
-	return resolved, created, true
+	return resolved, created, nil
 }
 
 // autoCreateTier provisions a ticket_tier row for the given category. The
 // import hints are applied on a best-effort basis: PriceHint is parsed as an
-// integer number of minor units (cents), CurrencyHint falls back to USD.
+// integer number of minor units (cents). The currency ALWAYS follows the
+// owning session (AB-38 — one currency per session; the composite FK
+// ticket_tiers_currency_matches_session would reject anything else), so the
+// geometry CurrencyHint is deliberately ignored.
 // Callers ordering multiple auto-creates should pass a monotonically
 // increasing sortOffset so the display order is stable.
 func autoCreateTier(
@@ -650,10 +705,11 @@ func autoCreateTier(
 	if name == "" {
 		name = "Category " + strconv.Itoa(cat.Index)
 	}
-	currency := cat.CurrencyHint
-	if currency == "" {
-		currency = "USD"
+	sess, err := qtx.GetSessionCurrency(ctx, sessionID)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("resolve session currency: %w", err)
 	}
+	currency := sess
 	priceAmount := int64(0)
 	pricingMode := "free"
 	if cat.PriceHint != "" {

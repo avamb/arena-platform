@@ -67,7 +67,7 @@ type seatSellQuerier interface {
 //   - Atomic: a single IncrementSessionSeatStatusVersion stamp is applied to
 //     every transitioned seat so the delta feed emits one coherent batch.
 //   - Fails hard on double-sell: if a seat is in any state other than 'held'
-//     or 'sold' (e.g. 'available' or 'blocked'), the function returns
+//     or 'sold' (e.g. 'available' or 'unavailable'), the function returns
 //     errSeatDoubleSell so the caller aborts the tx.
 //   - GA reservations (no reservation_seats rows) are a cheap no-op.
 //

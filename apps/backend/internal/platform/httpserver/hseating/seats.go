@@ -6,16 +6,19 @@
 // The request accepts three mutually-cooperative selectors — `seat_keys`,
 // `sectors`, and `rows` — that are expanded server-side to the concrete
 // set of session_seats rows to transition. Only the two admin transitions
-// available↔blocked are attempted; seats in held/sold status are skipped
-// per-seat with a reason and are never silently mutated. Re-blocking an
-// already-blocked seat is a documented no-op (idempotent).
+// available↔unavailable are attempted; seats in held/sold status are
+// skipped per-seat with a reason and are never silently mutated. Blocking
+// an already-unavailable seat is a documented no-op (idempotent).
 //
 // Contract source: 09_autoforge/seating_backlog.md §7 SEAT-B4.
+// Status naming: the admin-withheld state is `unavailable` (renamed from
+// `blocked` in migration 0081, AB-49); the wire actions stay `block` /
+// `unblock` — they are operation verbs, not the status value.
 //
 //   - Requires the `event_session.assign_seating_plan` permission (same
 //     operational role used for SEAT-B2 binding).
 //   - Every request emits one audit event with the seat-key list + actor.
-//   - Blocked seats surface as `blocked` in the seat-status endpoint
+//   - Withheld seats surface as `unavailable` in the seat-status endpoint
 //     (SEAT-B3), map to BSS `0 INACCESSIBLE` in the Bil24 gateway (future
 //     Wave SEAT-D), are excluded from availability counters, and cannot
 //     be reserved (409 `reservation.seats_conflict` in Wave SEAT-C1).
@@ -51,10 +54,13 @@ const (
 	seatsActionUnblock = "unblock"
 )
 
-// per-seat outcome codes emitted in the response.
+// per-seat outcome codes emitted in the response. The changed outcomes name
+// the resulting seat status ('unavailable' after block, 'available' after
+// unblock) — renamed from 'blocked'/'unblocked' together with the status
+// value (migration 0081).
 const (
-	seatOutcomeBlocked   = "blocked"
-	seatOutcomeUnblocked = "unblocked"
+	seatOutcomeBlocked   = "unavailable"
+	seatOutcomeUnblocked = "available"
 	seatOutcomeNoop      = "noop"
 	seatOutcomeSkipped   = "skipped"
 )
@@ -260,7 +266,7 @@ func (h *Handler) HandlePatchSessionSeats(w http.ResponseWriter, r *http.Request
 	// Every operator request emits one audit event even when no seat actually
 	// changed — the attempt itself is the auditable action, and downstream
 	// forensic queries need to see "operator X asked to block row 12 at
-	// 15:04:05" whether or not any seat was already blocked. The metadata
+	// 15:04:05" whether or not any seat was already unavailable. The metadata
 	// carries the effective + skipped seat lists so a reviewer can
 	// reconstruct the outcome without re-issuing the seat-status snapshot.
 	// The action name (`v1.session.seats.block` / `.unblock`) mirrors the
@@ -441,7 +447,7 @@ func applySeatAction(
 }
 
 // applySeatBlock performs the `block` transition. Only 'available' rows
-// transition; 'blocked' is a noop; 'held' and 'sold' are skipped so
+// transition; 'unavailable' is a noop; 'held' and 'sold' are skipped so
 // active reservations / issued tickets are never invalidated mid-flight.
 func applySeatBlock(
 	ctx context.Context,
@@ -472,7 +478,7 @@ func applySeatBlock(
 			Outcome: seatOutcomeBlocked,
 			Status:  updated.Status,
 		}, nil
-	case "blocked":
+	case "unavailable":
 		return seatOutcome{
 			SeatKey: row.SeatKey,
 			Outcome: seatOutcomeNoop,
@@ -502,10 +508,10 @@ func applySeatBlock(
 	}
 }
 
-// applySeatUnblock performs the `unblock` transition. Only 'blocked' rows
-// transition; 'available' is a noop; 'held' and 'sold' are skipped (the
-// seat is already committed to a reservation / ticket so there is nothing
-// for the operator to reopen).
+// applySeatUnblock performs the `unblock` transition. Only 'unavailable'
+// rows transition; 'available' is a noop; 'held' and 'sold' are skipped
+// (the seat is already committed to a reservation / ticket so there is
+// nothing for the operator to reopen).
 func applySeatUnblock(
 	ctx context.Context,
 	qtx *gen.Queries,
@@ -513,7 +519,7 @@ func applySeatUnblock(
 	statusVersion int64,
 ) (seatOutcome, error) {
 	switch row.Status {
-	case "blocked":
+	case "unavailable":
 		updated, err := qtx.UnblockSessionSeat(ctx, row.ID, statusVersion)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {

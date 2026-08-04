@@ -49,13 +49,6 @@
  *   list-side publications summary is added to the EventItem shape we
  *   wire it in here.
  *
- * "Next session" column:
- *   The EventItem shape does not currently expose an aggregated
- *   next-session timestamp. We approximate by rendering the event's
- *   own `start_at` (events represent the umbrella; their start_at is
- *   the earliest scheduled time). When an `events.next_session_at`
- *   field is added server-side, replace the column source here.
- *
  * Activity tab:
  *   There is no per-event audit endpoint yet. The tab renders an
  *   honest empty-state instead of a fake feed.
@@ -114,12 +107,18 @@ export interface EventItem {
   readonly id: string;
   readonly display_number: number;
   readonly org_id: string;
-  readonly venue_id: string | null;
   readonly name: string;
   readonly description: string | null;
   readonly status: EventStatus;
-  readonly start_at: string;
-  readonly end_at: string;
+  /**
+   * Earliest start_at over the event's active sessions (AB-37). Null when
+   * the event has no sessions — such events render NO date anywhere.
+   */
+  readonly first_session_at: string | null;
+  /** Latest end_at over the event's active sessions. Null when no sessions. */
+  readonly last_session_at: string | null;
+  /** Distinct venue names of the event's active sessions (may be empty). */
+  readonly venue_names: readonly string[];
   readonly visibility: EventVisibility;
   readonly image_url: string | null;
   readonly created_at: string;
@@ -159,48 +158,42 @@ interface VenueListEnvelope {
 // Event form helpers (create / edit)
 // ---------------------------------------------------------------------------
 
-interface EventFormValues {
+export interface EventFormValues {
   name: string;
   description: string;
   org_id: string;
-  venue_id: string; // "" = no venue
-  start_at: string; // datetime-local string (YYYY-MM-DDTHH:MM)
-  end_at: string;
   visibility: EventVisibility | "";
 }
 
-function emptyEventForm(): EventFormValues {
+export function emptyEventForm(): EventFormValues {
   return {
     name: "",
     description: "",
     org_id: "",
-    venue_id: "",
-    start_at: "",
-    end_at: "",
     visibility: "",
   };
 }
 
-function eventToForm(e: EventItem): EventFormValues {
+export function eventToForm(e: EventItem): EventFormValues {
   return {
     name: e.name,
     description: e.description ?? "",
     org_id: e.org_id,
-    venue_id: e.venue_id ?? "",
-    start_at: toLocalDatetimeValue(e.start_at),
-    end_at: toLocalDatetimeValue(e.end_at),
     visibility: e.visibility,
   };
 }
 
-interface EventFormErrors {
+export interface EventFormErrors {
   name?: string;
   org_id?: string;
-  start_at?: string;
-  end_at?: string;
 }
 
-function validateEventForm(
+/**
+ * Since Wave 4 (AB-36/AB-37) events carry no dates and no venue — both
+ * belong to sessions — so the only client-side guards left are the name
+ * and (on create) the owning organization.
+ */
+export function validateEventForm(
   v: EventFormValues,
   requireOrg: boolean,
 ): EventFormErrors {
@@ -208,23 +201,25 @@ function validateEventForm(
   if (v.name.trim() === "") errors.name = "Name is required.";
   if (requireOrg && v.org_id.trim() === "")
     errors.org_id = "Organization is required.";
-  const start = parseLocalDatetime(v.start_at);
-  if (start === null) errors.start_at = "Start is required.";
-  const end = parseLocalDatetime(v.end_at);
-  if (end === null) errors.end_at = "End is required.";
-  if (start !== null && end !== null && end.getTime() <= start.getTime()) {
-    errors.end_at = "End must be after start.";
-  }
   return errors;
 }
 
 export interface SessionItem {
   readonly id: string;
   readonly event_id: string;
+  /** Venue this session takes place at (AB-36). Always set. */
+  readonly venue_id: string;
   readonly start_at: string;
   readonly end_at: string;
+  /** DERIVED: bound plan → capacity_override → venue capacity_default. */
   readonly capacity_total: number;
+  readonly capacity_override: number | null;
   readonly status: "draft" | "scheduled" | "cancelled" | "completed" | string;
+  readonly admission_mode: "general_admission" | "assigned_seats" | "hybrid";
+  readonly seating_plan_version_id: string | null;
+  /** ISO 4217 currency all of this session's tiers are denominated in (AB-38). */
+  readonly currency: string;
+  readonly currency_source: "derived" | "override";
   readonly created_at: string;
   readonly updated_at: string;
   readonly has_overlapping_sessions?: boolean;
@@ -321,13 +316,17 @@ export function allowedTransitions(status: EventStatus): readonly EventStatus[] 
 }
 
 /**
- * Filter events whose `start_at` falls inside an inclusive date range.
- * Both bounds are optional ("" = unbounded). Inputs are
+ * Filter events whose `first_session_at` falls inside an inclusive date
+ * range. Both bounds are optional ("" = unbounded). Inputs are
  * `<input type="date">` strings (yyyy-MM-dd, local TZ-naive); we compare
  * by ISO date prefix so an off-by-one timezone shift in the client does
- * not silently drop events near midnight UTC.
+ * not silently drop events near midnight UTC. Events with no sessions
+ * (first_session_at === null) are excluded as soon as either bound is
+ * set — they have no date to compare against.
  */
-export function filterEventsByDateRange<T extends { start_at: string }>(
+export function filterEventsByDateRange<
+  T extends { first_session_at: string | null },
+>(
   events: readonly T[],
   startAfter: string,
   endBefore: string,
@@ -338,7 +337,10 @@ export function filterEventsByDateRange<T extends { start_at: string }>(
     return events;
   }
   return events.filter((e) => {
-    const day = e.start_at.slice(0, 10);
+    if (e.first_session_at === null) {
+      return false;
+    }
+    const day = e.first_session_at.slice(0, 10);
     if (after !== "" && day < after) {
       return false;
     }
@@ -420,18 +422,47 @@ export const SESSION_STATUSES = [
 ] as const;
 export type SessionStatus = (typeof SESSION_STATUSES)[number];
 
+export const SESSION_ADMISSION_MODES = [
+  "general_admission",
+  "assigned_seats",
+  "hybrid",
+] as const;
+export type SessionAdmissionMode = (typeof SESSION_ADMISSION_MODES)[number];
+
+export function isSessionAdmissionMode(
+  value: string,
+): value is SessionAdmissionMode {
+  return (SESSION_ADMISSION_MODES as readonly string[]).includes(value);
+}
+
 export interface SessionFormValues {
+  /** Required — every session takes place at a venue (AB-36). */
+  readonly venue_id: string;
   readonly start_at: string;
   readonly end_at: string;
-  readonly capacity_total: string;
+  /**
+   * Optional operator capacity ("" = derive from the venue / bound plan).
+   * Replaces the former required capacity_total input — capacity is now
+   * resolved server-side (AB-36).
+   */
+  readonly capacity_override: string;
   readonly status: SessionStatus;
+  /** Create-mode only; ignored by the PATCH body builder. */
+  readonly admission_mode: SessionAdmissionMode;
+  /** Required when admission_mode is assigned_seats / hybrid (create). */
+  readonly seating_plan_version_id: string;
+  /** Optional explicit ISO 4217 override ("" = derive / keep, AB-38). */
+  readonly currency: string;
 }
 
 export interface SessionFormErrors {
+  readonly venue_id?: string;
   readonly start_at?: string;
   readonly end_at?: string;
-  readonly capacity_total?: string;
+  readonly capacity_override?: string;
   readonly status?: string;
+  readonly seating_plan_version_id?: string;
+  readonly currency?: string;
 }
 
 /**
@@ -488,25 +519,43 @@ export function toRFC3339(value: string): string {
 /** Empty form values suitable for the "Add session" form. */
 export function emptySessionForm(): SessionFormValues {
   return {
+    venue_id: "",
     start_at: "",
     end_at: "",
-    capacity_total: "",
+    capacity_override: "",
     status: "draft",
+    admission_mode: "general_admission",
+    seating_plan_version_id: "",
+    currency: "",
   };
 }
 
-/** Populate a form from an existing session for editing. */
+/**
+ * Populate a form from an existing session for editing. The currency
+ * field starts blank — it is an OVERRIDE input; the session's current
+ * currency (+ provenance) is rendered read-only next to it.
+ */
 export function sessionToForm(s: {
+  venue_id: string;
   start_at: string;
   end_at: string;
-  capacity_total: number;
+  capacity_override: number | null;
   status: string;
+  admission_mode: string;
+  seating_plan_version_id: string | null;
 }): SessionFormValues {
   return {
+    venue_id: s.venue_id,
     start_at: toLocalDatetimeValue(s.start_at),
     end_at: toLocalDatetimeValue(s.end_at),
-    capacity_total: String(s.capacity_total),
+    capacity_override:
+      s.capacity_override !== null ? String(s.capacity_override) : "",
     status: isSessionStatus(s.status) ? s.status : "draft",
+    admission_mode: isSessionAdmissionMode(s.admission_mode)
+      ? s.admission_mode
+      : "general_admission",
+    seating_plan_version_id: s.seating_plan_version_id ?? "",
+    currency: "",
   };
 }
 
@@ -516,15 +565,21 @@ export function isSessionStatus(value: string): value is SessionStatus {
 
 /**
  * Client-side validation mirroring the server-side guards from
- * sessions.go: start_at and end_at are required RFC3339 timestamps,
- * end_at must be strictly after start_at, capacity_total must be a
- * positive integer, and status must belong to the catalog state
- * machine. Returns an errors map keyed by field; empty map means valid.
+ * sessions.go (post-AB-36/AB-38): venue_id is required, start_at and
+ * end_at are required RFC3339 timestamps, end_at must be strictly after
+ * start_at, capacity_override is OPTIONAL but must be a positive integer
+ * when supplied, a seated admission mode requires a seating plan version
+ * (create), and an explicit currency must be 3 uppercase letters.
+ * Returns an errors map keyed by field; empty map means valid.
  */
 export function validateSessionForm(
   values: SessionFormValues,
 ): SessionFormErrors {
   const errors: { -readonly [K in keyof SessionFormErrors]?: string } = {};
+
+  if (values.venue_id.trim() === "") {
+    errors.venue_id = "Venue is required.";
+  }
 
   const start = parseLocalDatetime(values.start_at);
   if (start === null) {
@@ -538,19 +593,20 @@ export function validateSessionForm(
     errors.end_at = "End must be after start.";
   }
 
-  const capStr = values.capacity_total.trim();
-  if (capStr === "") {
-    errors.capacity_total = "Capacity is required.";
-  } else if (!/^\d+$/.test(capStr)) {
-    errors.capacity_total = "Capacity must be a whole number.";
-  } else {
-    const cap = Number(capStr);
-    if (cap <= 0) {
-      errors.capacity_total = "Capacity must be greater than zero.";
-    } else if (cap > 2_000_000_000) {
-      // The backend stores capacity_total as int32; refuse anything that
-      // would overflow before we hit the wire.
-      errors.capacity_total = "Capacity is too large.";
+  const capStr = values.capacity_override.trim();
+  if (capStr !== "") {
+    if (!/^\d+$/.test(capStr)) {
+      errors.capacity_override = "Capacity override must be a whole number.";
+    } else {
+      const cap = Number(capStr);
+      if (cap <= 0) {
+        errors.capacity_override =
+          "Capacity override must be greater than zero.";
+      } else if (cap > 2_000_000_000) {
+        // The backend stores capacities as int32; refuse anything that
+        // would overflow before we hit the wire.
+        errors.capacity_override = "Capacity override is too large.";
+      }
     }
   }
 
@@ -558,7 +614,53 @@ export function validateSessionForm(
     errors.status = "Status is invalid.";
   }
 
+  if (
+    values.admission_mode !== "general_admission" &&
+    values.seating_plan_version_id.trim() === ""
+  ) {
+    errors.seating_plan_version_id =
+      "A seating plan version is required for seated sessions.";
+  }
+
+  const cur = values.currency.trim();
+  if (cur !== "" && !/^[A-Z]{3}$/.test(cur)) {
+    errors.currency =
+      "Currency must be a 3-letter uppercase ISO 4217 code (e.g. EUR).";
+  }
+
   return errors;
+}
+
+/**
+ * Build the JSON request body for POST / PATCH sessions. capacity_total
+ * is never sent (AB-36 — capacity is derived server-side); optional
+ * fields are omitted when blank so PATCH leaves them unchanged.
+ * admission_mode / seating_plan_version_id are create-only (the PATCH
+ * surface routes seating changes through the bind endpoint).
+ */
+export function buildSessionRequestBody(
+  v: SessionFormValues,
+  mode: "create" | "edit",
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    venue_id: v.venue_id,
+    start_at: toRFC3339(v.start_at),
+    end_at: toRFC3339(v.end_at),
+    status: v.status,
+  };
+  if (v.capacity_override.trim() !== "") {
+    body.capacity_override = Number(v.capacity_override.trim());
+  }
+  if (v.currency.trim() !== "") {
+    body.currency = v.currency.trim().toUpperCase();
+  }
+  if (mode === "create") {
+    body.admission_mode = v.admission_mode;
+    if (v.admission_mode !== "general_admission") {
+      body.seating_plan_version_id = v.seating_plan_version_id;
+    }
+  }
+  return body;
 }
 
 // ---------------------------------------------------------------------------
@@ -572,64 +674,11 @@ export function isTierPricingMode(value: string): value is TierPricingMode {
   return (TIER_PRICING_MODES as readonly string[]).includes(value);
 }
 
-/**
- * Currency capabilities by payment provider. The intent is to surface
- * only currencies the organization can actually accept end-to-end:
- * Stripe Charges accepts ~135 currencies, and the AllPay (Israeli)
- * processor primarily clears ILS with secondary USD/EUR support. We
- * keep this map intentionally pragmatic (top-20 Stripe currencies plus
- * the AllPay set) so the dropdown is short enough to scan; legacy
- * processors are not represented here because they're not wired into
- * the platform.
- *
- * The values are ISO 4217 codes in uppercase, the same format
- * ticket_tiers.go stores in the `currency` column.
- */
-export const PROVIDER_CURRENCIES: Record<string, readonly string[]> = {
-  stripe: [
-    "USD", "EUR", "GBP", "ILS", "CAD", "AUD", "JPY", "CHF",
-    "SEK", "NOK", "DKK", "PLN", "CZK", "HUF", "BGN", "RON",
-    "SGD", "HKD", "NZD", "BRL", "MXN", "ZAR", "INR", "RUB",
-  ],
-  allpay: ["ILS", "USD", "EUR"],
-};
-
-/**
- * Compute the currency set the organization can sell in by taking the
- * UNION of every connected provider's supported currencies. Empty
- * `providers` returns `defaultCurrencies` so the editor remains usable
- * before the first channel is connected (the form still ships the
- * value to the API, which enforces its own validation).
- */
-export function allowedCurrenciesForProviders(
-  providers: readonly string[],
-  defaultCurrencies: readonly string[] = ["USD", "EUR", "ILS"],
-): readonly string[] {
-  if (providers.length === 0) {
-    return defaultCurrencies;
-  }
-  const set = new Set<string>();
-  for (const p of providers) {
-    const caps = PROVIDER_CURRENCIES[p];
-    if (caps === undefined) {
-      continue;
-    }
-    for (const c of caps) {
-      set.add(c);
-    }
-  }
-  if (set.size === 0) {
-    return defaultCurrencies;
-  }
-  return Array.from(set).sort();
-}
-
 export interface TierFormValues {
   readonly name: string;
   readonly pricing_mode: TierPricingMode;
   /** Decimal string (major units, e.g. "12.50"). Converted to cents on submit. */
   readonly price_amount: string;
-  readonly currency: string;
   /** Decimal string; only meaningful when pricing_mode === "pwyw". */
   readonly pwyw_min: string;
   readonly pwyw_max: string;
@@ -646,7 +695,6 @@ export interface TierFormErrors {
   readonly name?: string;
   readonly pricing_mode?: string;
   readonly price_amount?: string;
-  readonly currency?: string;
   readonly pwyw_min?: string;
   readonly pwyw_max?: string;
   readonly capacity?: string;
@@ -655,12 +703,11 @@ export interface TierFormErrors {
   readonly sort_order?: string;
 }
 
-export function emptyTierForm(defaultCurrency: string = "USD"): TierFormValues {
+export function emptyTierForm(): TierFormValues {
   return {
     name: "",
     pricing_mode: "fixed",
     price_amount: "",
-    currency: defaultCurrency,
     pwyw_min: "",
     pwyw_max: "",
     capacity: "",
@@ -675,7 +722,6 @@ export function tierToForm(t: TicketTierItem): TierFormValues {
     name: t.name,
     pricing_mode: isTierPricingMode(t.pricing_mode) ? t.pricing_mode : "fixed",
     price_amount: centsToDecimal(t.price_amount),
-    currency: t.currency,
     pwyw_min:
       t.pwyw_min !== null && t.pwyw_min !== undefined
         ? centsToDecimal(t.pwyw_min)
@@ -738,15 +784,11 @@ export function decimalToCents(raw: string): number | null {
  * Validate a TierFormValues against the contract documented in
  * ticket_tiers.go and internal/domain/catalog.ValidatePricingMode.
  *
- * The `allowedCurrencies` argument is the org-scoped currency menu the
- * editor renders; we reject values outside that menu so an operator
- * cannot bypass the dropdown by hand-editing the DOM and ship a
- * currency the org cannot actually settle.
+ * Currency is NOT part of the tier form any more (AB-38): every tier of
+ * a session is denominated in the session currency, which the server
+ * stamps on create/patch — the editor renders it read-only.
  */
-export function validateTierForm(
-  values: TierFormValues,
-  allowedCurrencies: readonly string[],
-): TierFormErrors {
+export function validateTierForm(values: TierFormValues): TierFormErrors {
   const errors: { -readonly [K in keyof TierFormErrors]?: string } = {};
 
   if (values.name.trim() === "") {
@@ -757,17 +799,6 @@ export function validateTierForm(
 
   if (!isTierPricingMode(values.pricing_mode)) {
     errors.pricing_mode = "Pricing mode must be fixed, free, or pwyw.";
-  }
-
-  const currency = values.currency.trim().toUpperCase();
-  if (currency === "") {
-    errors.currency = "Currency is required.";
-  } else if (
-    allowedCurrencies.length > 0 &&
-    !allowedCurrencies.includes(currency)
-  ) {
-    errors.currency =
-      "Currency is not supported by this organization's payment providers.";
   }
 
   // Mode-specific price/pwyw rules.
@@ -1034,7 +1065,13 @@ function EventsModule() {
     const byOrg = filterEventsByOrg(allEvents, orgFilter);
     const byStatus = filterEventsByStatus(byOrg, statusFilter);
     const byDate = filterEventsByDateRange(byStatus, startAfter, endBefore);
-    return [...byDate].sort((a, b) => a.start_at.localeCompare(b.start_at));
+    // Sort by first session, events with no sessions last.
+    return [...byDate].sort((a, b) => {
+      if (a.first_session_at === null && b.first_session_at === null) return 0;
+      if (a.first_session_at === null) return 1;
+      if (b.first_session_at === null) return -1;
+      return a.first_session_at.localeCompare(b.first_session_at);
+    });
   }, [allEvents, orgFilter, statusFilter, startAfter, endBefore]);
 
   const paged = useMemo(
@@ -1369,16 +1406,24 @@ function EventsBody({
     {
       id: "venue",
       header: "Venue",
-      renderCell: (ev) => (
-        <span title={ev.venue_id ?? ""}>
-          {ev.venue_id !== null ? shortenUUID(ev.venue_id) : "—"}
-        </span>
-      ),
+      renderCell: (ev) =>
+        ev.venue_names.length > 0 ? (
+          <span title={ev.venue_names.join(", ")}>
+            {ev.venue_names.join(", ")}
+          </span>
+        ) : (
+          <span style={mutedHintStyle}>—</span>
+        ),
     },
     {
-      id: "next_session",
-      header: "Next session",
-      renderCell: (ev) => formatDateTime(ev.start_at),
+      id: "first_session",
+      header: "First session",
+      renderCell: (ev) =>
+        ev.first_session_at !== null ? (
+          formatDateTime(ev.first_session_at)
+        ) : (
+          <span style={mutedHintStyle}>No sessions</span>
+        ),
     },
     {
       id: "status",
@@ -1858,15 +1903,27 @@ function OverviewTab({
           return <span title={event.org_id}>{orgLabel}</span>;
         })()}
       </DetailRow>
-      <DetailRow label="Venue">
-        {event.venue_id !== null ? (
-          <code style={monoStyle}>{event.venue_id}</code>
+      <DetailRow label="Venues">
+        {event.venue_names.length > 0 ? (
+          event.venue_names.join(", ")
         ) : (
-          <span style={mutedHintStyle}>no fixed venue</span>
+          <span style={mutedHintStyle}>No sessions</span>
         )}
       </DetailRow>
-      <DetailRow label="Starts">{formatDateTime(event.start_at)}</DetailRow>
-      <DetailRow label="Ends">{formatDateTime(event.end_at)}</DetailRow>
+      <DetailRow label="First session">
+        {event.first_session_at !== null ? (
+          formatDateTime(event.first_session_at)
+        ) : (
+          <span style={mutedHintStyle}>No sessions</span>
+        )}
+      </DetailRow>
+      <DetailRow label="Last session">
+        {event.last_session_at !== null ? (
+          formatDateTime(event.last_session_at)
+        ) : (
+          <span style={mutedHintStyle}>No sessions</span>
+        )}
+      </DetailRow>
       <DetailRow label="Created">{formatDateOnly(event.created_at)}</DetailRow>
       <DetailRow label="Updated">{formatDateOnly(event.updated_at)}</DetailRow>
       {event.description !== null && event.description !== "" ? (
@@ -1935,27 +1992,13 @@ function CreateEventPanel({ orgs, onSuccess, onClose }: CreateEventPanelProps) {
   const errors = useMemo(() => validateEventForm(values, true), [values]);
   const [submitErr, setSubmitErr] = useState<string | null>(null);
 
-  const venuesQuery = useQuery<VenueListEnvelope, ApiError>({
-    queryKey: ["events", "venues", values.org_id],
-    queryFn: () =>
-      authedFetch<VenueListEnvelope>({
-        method: "GET",
-        path: `/v1/organizations/${values.org_id}/venues`,
-      }),
-    enabled: values.org_id !== "",
-    retry: false,
-    refetchOnWindowFocus: false,
-  });
-
   const mutation = useMutation<EventEnvelope, ApiError, EventFormValues>({
     mutationFn: (v) => {
+      // AB-36/AB-37: events carry no dates and no venue — sessions do.
       const body: Record<string, unknown> = {
         name: v.name.trim(),
-        start_at: toRFC3339(v.start_at),
-        end_at: toRFC3339(v.end_at),
       };
       if (v.description.trim() !== "") body.description = v.description.trim();
-      if (v.venue_id !== "") body.venue_id = v.venue_id;
       if (v.visibility !== "") body.visibility = v.visibility;
       return authedFetch<EventEnvelope>({
         method: "POST",
@@ -2014,7 +2057,7 @@ function CreateEventPanel({ orgs, onSuccess, onClose }: CreateEventPanelProps) {
                 <select
                   value={values.org_id}
                   onChange={(e) =>
-                    setValues({ ...values, org_id: e.target.value, venue_id: "" })
+                    setValues({ ...values, org_id: e.target.value })
                   }
                   style={editorInputStyle}
                   required
@@ -2073,63 +2116,6 @@ function CreateEventPanel({ orgs, onSuccess, onClose }: CreateEventPanelProps) {
                 </select>
               </label>
 
-              <label style={editorFieldStyle}>
-                <span style={editorLabelStyle}>Start (UTC) *</span>
-                <input
-                  type="datetime-local"
-                  value={values.start_at}
-                  onChange={(e) =>
-                    setValues({ ...values, start_at: e.target.value })
-                  }
-                  style={editorInputStyle}
-                  required
-                  data-testid="events-create-start"
-                />
-                {errors.start_at !== undefined ? (
-                  <span style={fieldErrorStyle}>{errors.start_at}</span>
-                ) : null}
-              </label>
-
-              <label style={editorFieldStyle}>
-                <span style={editorLabelStyle}>End (UTC) *</span>
-                <input
-                  type="datetime-local"
-                  value={values.end_at}
-                  onChange={(e) =>
-                    setValues({ ...values, end_at: e.target.value })
-                  }
-                  style={editorInputStyle}
-                  required
-                  data-testid="events-create-end"
-                />
-                {errors.end_at !== undefined ? (
-                  <span style={fieldErrorStyle}>{errors.end_at}</span>
-                ) : null}
-              </label>
-
-              {values.org_id !== "" ? (
-                <label style={editorFieldStyle}>
-                  <span style={editorLabelStyle}>Venue (optional)</span>
-                  <select
-                    value={values.venue_id}
-                    onChange={(e) =>
-                      setValues({ ...values, venue_id: e.target.value })
-                    }
-                    style={editorInputStyle}
-                    data-testid="events-create-venue"
-                    disabled={venuesQuery.isPending}
-                  >
-                    <option value="">— no fixed venue —</option>
-                    {(venuesQuery.data?.venues ?? []).map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {v.display_number !== undefined
-                          ? `#${v.display_number} ${v.name}`
-                          : v.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
             </div>
 
             <label style={editorFieldStyle}>
@@ -2199,27 +2185,13 @@ function EditEventPanel({ event, orgs, onSuccess, onClose }: EditEventPanelProps
   const errors = useMemo(() => validateEventForm(values, false), [values]);
   const [submitErr, setSubmitErr] = useState<string | null>(null);
 
-  const venuesQuery = useQuery<VenueListEnvelope, ApiError>({
-    queryKey: ["events", "venues", event.org_id],
-    queryFn: () =>
-      authedFetch<VenueListEnvelope>({
-        method: "GET",
-        path: `/v1/organizations/${event.org_id}/venues`,
-      }),
-    retry: false,
-    refetchOnWindowFocus: false,
-  });
-
   const mutation = useMutation<EventEnvelope, ApiError, EventFormValues>({
     mutationFn: (v) => {
+      // AB-36/AB-37: no venue / date fields on events any more.
       const body: Record<string, unknown> = {};
       if (v.name.trim() !== "") body.name = v.name.trim();
       // description: null clears it, string sets it
       body.description = v.description.trim() !== "" ? v.description.trim() : null;
-      // venue_id: null clears it
-      body.venue_id = v.venue_id !== "" ? v.venue_id : null;
-      if (v.start_at !== "") body.start_at = toRFC3339(v.start_at);
-      if (v.end_at !== "") body.end_at = toRFC3339(v.end_at);
       if (v.visibility !== "") body.visibility = v.visibility;
       return authedFetch<EventEnvelope>({
         method: "PATCH",
@@ -2309,57 +2281,6 @@ function EditEventPanel({ event, orgs, onSuccess, onClose }: EditEventPanelProps
           </select>
         </label>
 
-        <label style={editorFieldStyle}>
-          <span style={editorLabelStyle}>Start (UTC) *</span>
-          <input
-            type="datetime-local"
-            value={values.start_at}
-            onChange={(e) => setValues({ ...values, start_at: e.target.value })}
-            style={editorInputStyle}
-            required
-            data-testid="events-edit-start"
-          />
-          {errors.start_at !== undefined ? (
-            <span style={fieldErrorStyle}>{errors.start_at}</span>
-          ) : null}
-        </label>
-
-        <label style={editorFieldStyle}>
-          <span style={editorLabelStyle}>End (UTC) *</span>
-          <input
-            type="datetime-local"
-            value={values.end_at}
-            onChange={(e) => setValues({ ...values, end_at: e.target.value })}
-            style={editorInputStyle}
-            required
-            data-testid="events-edit-end"
-          />
-          {errors.end_at !== undefined ? (
-            <span style={fieldErrorStyle}>{errors.end_at}</span>
-          ) : null}
-        </label>
-
-        <label style={editorFieldStyle}>
-          <span style={editorLabelStyle}>Venue (optional)</span>
-          <select
-            value={values.venue_id}
-            onChange={(e) =>
-              setValues({ ...values, venue_id: e.target.value })
-            }
-            style={editorInputStyle}
-            data-testid="events-edit-venue"
-            disabled={venuesQuery.isPending}
-          >
-            <option value="">— no fixed venue —</option>
-            {(venuesQuery.data?.venues ?? []).map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.display_number !== undefined
-                  ? `#${v.display_number} ${v.name}`
-                  : v.name}
-              </option>
-            ))}
-          </select>
-        </label>
       </div>
 
       <label style={editorFieldStyle}>
@@ -2555,7 +2476,9 @@ function SessionsTab({
               <tr>
                 <th scope="col" style={thStyle}>Starts</th>
                 <th scope="col" style={thStyle}>Ends</th>
+                <th scope="col" style={thStyle}>Venue</th>
                 <th scope="col" style={thStyle}>Capacity</th>
+                <th scope="col" style={thStyle}>Currency</th>
                 <th scope="col" style={thStyle}>Status</th>
                 <th scope="col" style={thStyle}>Actions</th>
               </tr>
@@ -2568,7 +2491,11 @@ function SessionsTab({
                     <tr data-testid={`events-session-${s.id}`}>
                       <td style={tdStyle}>{formatDateTime(s.start_at)}</td>
                       <td style={tdStyle}>{formatDateTime(s.end_at)}</td>
+                      <td style={tdStyle} title={s.venue_id}>
+                        {shortenUUID(s.venue_id)}
+                      </td>
                       <td style={tdStyle}>{s.capacity_total.toLocaleString()}</td>
+                      <td style={tdStyle}>{s.currency}</td>
                       <td style={tdStyle}>{s.status}</td>
                       <td style={tdStyle}>
                         <div style={rowActionsStyle}>
@@ -2610,7 +2537,7 @@ function SessionsTab({
                     </tr>
                     {confirmDeleteID === s.id ? (
                       <tr>
-                        <td colSpan={5} style={tdStyle}>
+                        <td colSpan={7} style={tdStyle}>
                           <div
                             style={confirmDeleteStyle}
                             data-testid={`events-session-confirm-${s.id}`}
@@ -2644,7 +2571,7 @@ function SessionsTab({
                     ) : null}
                     {isEditing ? (
                       <tr>
-                        <td colSpan={5} style={tdStyle}>
+                        <td colSpan={7} style={tdStyle}>
                           <SessionEditor
                             event={event}
                             mode={editor}
@@ -2684,6 +2611,22 @@ interface SessionEditorProps {
   onError: (msg: string) => void;
 }
 
+interface SessionEditorSeatingPlanListEnvelope {
+  readonly seating_plans: readonly {
+    readonly id: string;
+    readonly name: string;
+  }[];
+}
+
+interface SessionEditorPlanVersionEnvelope {
+  readonly seating_plan_version: {
+    readonly id: string;
+    readonly version_number: number;
+    readonly capacity_seated: number;
+    readonly capacity_standing: number;
+  };
+}
+
 function SessionEditor({
   event,
   mode,
@@ -2710,14 +2653,71 @@ function SessionEditor({
     [siblings, values.start_at, values.end_at, errors, editingID],
   );
 
+  // Venue selector source (AB-36 — every session requires a venue).
+  const venuesQuery = useQuery<VenueListEnvelope, ApiError>({
+    queryKey: ["events", "venues", event.org_id],
+    queryFn: () =>
+      authedFetch<VenueListEnvelope>({
+        method: "GET",
+        path: `/v1/organizations/${event.org_id}/venues`,
+      }),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+
+  // Seating-plan-version picker (create mode, seated admission only).
+  // Mirrors sessionSeatingBind.tsx: pick a plan from the venue's plan
+  // list, probe a version number, and submit the resolved version UUID.
+  const seated =
+    mode.kind === "create" && values.admission_mode !== "general_admission";
+  const [planId, setPlanId] = useState<string>("");
+  const [versionN, setVersionN] = useState<string>("1");
+
+  const plansQuery = useQuery<SessionEditorSeatingPlanListEnvelope, ApiError>({
+    queryKey: ["events", "session-plans", values.venue_id] as const,
+    enabled: seated && values.venue_id !== "",
+    queryFn: () =>
+      authedFetch<SessionEditorSeatingPlanListEnvelope>({
+        method: "GET",
+        path: `/v1/venues/${values.venue_id}/seating-plans`,
+      }),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+
+  const versionQuery = useQuery<SessionEditorPlanVersionEnvelope, ApiError>({
+    queryKey: ["events", "session-plan-version", planId, versionN] as const,
+    enabled:
+      seated && planId !== "" && /^\d+$/.test(versionN) && Number(versionN) > 0,
+    queryFn: () =>
+      authedFetch<SessionEditorPlanVersionEnvelope>({
+        method: "GET",
+        path: `/v1/seating-plans/${planId}/versions/${versionN}`,
+      }),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+
+  const resolvedVersion = versionQuery.data?.seating_plan_version;
+  const resolvedVersionID = seated ? (resolvedVersion?.id ?? "") : "";
+
+  // Sync the resolved plan version UUID into the form values so
+  // validateSessionForm / buildSessionRequestBody see it (create only).
+  useEffect(() => {
+    if (mode.kind !== "create") return;
+    setValues((prev) =>
+      prev.seating_plan_version_id === resolvedVersionID
+        ? prev
+        : { ...prev, seating_plan_version_id: resolvedVersionID },
+    );
+  }, [mode.kind, resolvedVersionID]);
+
   const mutation = useMutation<SessionEnvelope, ApiError, SessionFormValues>({
     mutationFn: (v) => {
-      const body = {
-        start_at: toRFC3339(v.start_at),
-        end_at: toRFC3339(v.end_at),
-        capacity_total: Number(v.capacity_total),
-        status: v.status,
-      };
+      const body = buildSessionRequestBody(
+        v,
+        mode.kind === "create" ? "create" : "edit",
+      );
       if (mode.kind === "create") {
         return authedFetch<SessionEnvelope>({
           method: "POST",
@@ -2768,6 +2768,33 @@ function SessionEditor({
       </div>
       <div style={editorGridStyle}>
         <label style={editorFieldStyle}>
+          <span style={editorLabelStyle}>Venue *</span>
+          <select
+            value={values.venue_id}
+            onChange={(e) => {
+              setValues({ ...values, venue_id: e.target.value });
+              setPlanId("");
+              setVersionN("1");
+            }}
+            style={editorInputStyle}
+            required
+            disabled={venuesQuery.isPending}
+            data-testid="events-session-input-venue"
+          >
+            <option value="">— select venue —</option>
+            {(venuesQuery.data?.venues ?? []).map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.display_number !== undefined
+                  ? `#${v.display_number} ${v.name}`
+                  : v.name}
+              </option>
+            ))}
+          </select>
+          {errors.venue_id !== undefined ? (
+            <span style={fieldErrorStyle}>{errors.venue_id}</span>
+          ) : null}
+        </label>
+        <label style={editorFieldStyle}>
           <span style={editorLabelStyle}>Start (UTC)</span>
           <input
             type="datetime-local"
@@ -2795,24 +2822,55 @@ function SessionEditor({
             <span style={fieldErrorStyle}>{errors.end_at}</span>
           ) : null}
         </label>
-        <label style={editorFieldStyle}>
-          <span style={editorLabelStyle}>Capacity</span>
-          <input
-            type="number"
-            min={1}
-            step={1}
-            value={values.capacity_total}
-            onChange={(e) =>
-              setValues({ ...values, capacity_total: e.target.value })
-            }
-            style={editorInputStyle}
-            required
-            data-testid="events-session-input-capacity"
-          />
-          {errors.capacity_total !== undefined ? (
-            <span style={fieldErrorStyle}>{errors.capacity_total}</span>
-          ) : null}
-        </label>
+        {mode.kind === "create" ? (
+          <label style={editorFieldStyle}>
+            <span style={editorLabelStyle}>Admission mode</span>
+            <select
+              value={values.admission_mode}
+              onChange={(e) =>
+                setValues({
+                  ...values,
+                  admission_mode: isSessionAdmissionMode(e.target.value)
+                    ? e.target.value
+                    : "general_admission",
+                  seating_plan_version_id: "",
+                })
+              }
+              style={editorInputStyle}
+              data-testid="events-session-input-admission-mode"
+            >
+              <option value="general_admission">General admission</option>
+              <option value="assigned_seats">Assigned seats</option>
+              <option value="hybrid">Hybrid</option>
+            </select>
+          </label>
+        ) : null}
+        {(mode.kind === "create" &&
+          values.admission_mode === "general_admission") ||
+        (mode.kind === "edit" &&
+          mode.session.seating_plan_version_id === null) ? (
+          <label style={editorFieldStyle}>
+            <span style={editorLabelStyle}>Capacity override (optional)</span>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={values.capacity_override}
+              onChange={(e) =>
+                setValues({ ...values, capacity_override: e.target.value })
+              }
+              placeholder="venue default"
+              style={editorInputStyle}
+              data-testid="events-session-input-capacity-override"
+            />
+            <span style={mutedHintStyle}>
+              Defaults to the venue capacity when empty.
+            </span>
+            {errors.capacity_override !== undefined ? (
+              <span style={fieldErrorStyle}>{errors.capacity_override}</span>
+            ) : null}
+          </label>
+        ) : null}
         <label style={editorFieldStyle}>
           <span style={editorLabelStyle}>Status</span>
           <select
@@ -2838,6 +2896,97 @@ function SessionEditor({
             <span style={fieldErrorStyle}>{errors.status}</span>
           ) : null}
         </label>
+        <label style={editorFieldStyle}>
+          <span style={editorLabelStyle}>Override currency (optional)</span>
+          {mode.kind === "edit" ? (
+            <span
+              style={mutedHintStyle}
+              data-testid="events-session-currency-current"
+            >
+              {mode.session.currency} —{" "}
+              {mode.session.currency_source === "derived"
+                ? "derived from venue"
+                : "set manually"}
+            </span>
+          ) : null}
+          <input
+            type="text"
+            value={values.currency}
+            onChange={(e) =>
+              setValues({
+                ...values,
+                currency: e.target.value.toUpperCase(),
+              })
+            }
+            placeholder={
+              mode.kind === "create" ? "derived from venue" : "keep current"
+            }
+            maxLength={3}
+            pattern="[A-Z]{3}"
+            style={editorInputStyle}
+            data-testid="events-session-input-currency"
+          />
+          {errors.currency !== undefined ? (
+            <span style={fieldErrorStyle}>{errors.currency}</span>
+          ) : null}
+        </label>
+        {seated ? (
+          <>
+            <label style={editorFieldStyle}>
+              <span style={editorLabelStyle}>Seating plan *</span>
+              <select
+                value={planId}
+                onChange={(e) => {
+                  setPlanId(e.target.value);
+                  setVersionN("1");
+                }}
+                style={editorInputStyle}
+                disabled={values.venue_id === "" || plansQuery.isPending}
+                data-testid="events-session-input-seating-plan"
+              >
+                <option value="">— Select a plan —</option>
+                {(plansQuery.data?.seating_plans ?? []).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+              {values.venue_id === "" ? (
+                <span style={mutedHintStyle}>
+                  Select a venue to list its seating plans.
+                </span>
+              ) : null}
+            </label>
+            <label style={editorFieldStyle}>
+              <span style={editorLabelStyle}>Plan version *</span>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={versionN}
+                onChange={(e) => setVersionN(e.target.value)}
+                style={editorInputStyle}
+                disabled={planId === ""}
+                data-testid="events-session-input-seating-version"
+              />
+              {resolvedVersion !== undefined ? (
+                <span
+                  style={mutedHintStyle}
+                  data-testid="events-session-seating-version-resolved"
+                >
+                  v{resolvedVersion.version_number} ·{" "}
+                  {resolvedVersion.capacity_seated.toLocaleString()} seated /{" "}
+                  {resolvedVersion.capacity_standing.toLocaleString()} standing
+                </span>
+              ) : null}
+              {errors.seating_plan_version_id !== undefined ? (
+                <span style={fieldErrorStyle}>
+                  {errors.seating_plan_version_id}
+                </span>
+              ) : null}
+            </label>
+          </>
+        ) : null}
       </div>
 
       {overlaps.length > 0 ? (
@@ -2893,7 +3042,7 @@ function SessionEditor({
           orgId={event.org_id}
           eventId={event.id}
           sessionId={mode.session.id}
-          venueId={event.venue_id}
+          venueId={mode.session.venue_id}
           onSaved={(msg) => onSaved(msg)}
           onError={(msg) => onError(msg)}
         />
@@ -2927,6 +3076,41 @@ export function mapSessionError(err: ApiError): string {
     case "session.invalid_start_at":
     case "session.invalid_end_at":
       return "Start and end must be valid timestamps.";
+    case "session.missing_venue_id":
+      return "Venue is required — pick the venue the session takes place at.";
+    case "session.invalid_venue_id":
+      return "Venue ID is not a valid UUID.";
+    case "session.venue_not_found":
+      return "The selected venue no longer exists.";
+    case "session.venue_org_mismatch":
+      return "The selected venue belongs to a different organization.";
+    case "session.invalid_admission_mode":
+      return "Admission mode must be general_admission, assigned_seats, or hybrid.";
+    case "session.missing_seating_plan_version":
+      return "A seating plan version is required for seated sessions.";
+    case "session.invalid_seating_plan_version":
+      return "The selected seating plan version is not valid for this venue.";
+    case "session.seating_plan_not_applicable":
+      return "A general-admission session cannot carry a seating plan version.";
+    case "session.invalid_currency":
+      return "Currency must be a 3-letter uppercase ISO 4217 code (e.g. EUR).";
+    case "session.currency_unresolvable":
+      return (
+        "The venue has no geography to derive a currency from — " +
+        "set an explicit currency for this session."
+      );
+    case "session.invalid_capacity_override":
+      return "Capacity override must be greater than zero.";
+    case "session.capacity_unresolvable":
+      return (
+        "Capacity could not be resolved — set a capacity override or give " +
+        "the venue a default capacity."
+      );
+    case "session.capacity_override_not_applicable":
+      return (
+        "This session is bound to a seating plan, which owns the capacity — " +
+        "capacity override does not apply."
+      );
     case "permissions.denied":
       return "Your account is missing the permission required for this action.";
     default:
@@ -2943,16 +3127,6 @@ export function mapSessionError(err: ApiError): string {
 // ---------------------------------------------------------------------------
 // Tiers tab (feature #283 / E-5)
 // ---------------------------------------------------------------------------
-
-interface ChannelSummary {
-  readonly id: string;
-  readonly org_id: string;
-  readonly provider: string;
-}
-
-interface ChannelListEnvelope {
-  readonly channels: readonly ChannelSummary[];
-}
 
 type TierEditorMode =
   | { kind: "closed" }
@@ -2981,29 +3155,6 @@ function TiersTab({
     refetchOnWindowFocus: false,
   });
 
-  // Channels query feeds the currency-capability dropdown. We fetch
-  // once per drawer open at the org scope. If the operator lacks
-  // channel.read the query 403s; we degrade to the default currency
-  // list rather than block the editor.
-  const channelsQuery = useQuery<ChannelListEnvelope, ApiError>({
-    queryKey: ["events", "detail", event.id, "org-channels"],
-    queryFn: () =>
-      authedFetch<ChannelListEnvelope>({
-        method: "GET",
-        path: `/v1/organizations/${event.org_id}/channels`,
-      }),
-    retry: false,
-    refetchOnWindowFocus: false,
-  });
-
-  const allowedCurrencies = useMemo(() => {
-    const providers = new Set<string>();
-    for (const c of channelsQuery.data?.channels ?? []) {
-      providers.add(c.provider);
-    }
-    return allowedCurrenciesForProviders(Array.from(providers));
-  }, [channelsQuery.data]);
-
   if (sessionsQuery.isPending) {
     return <div style={statusBoxStyle}>Loading sessions…</div>;
   }
@@ -3027,11 +3178,6 @@ function TiersTab({
   }
   return (
     <div style={tabBodyStyle} data-testid="events-tiers-tab">
-      {channelsQuery.isError && channelsQuery.error?.status !== 403 ? (
-        <div style={statusBoxStyle}>
-          Could not load payment channels — currency menu defaults to USD/EUR/ILS.
-        </div>
-      ) : null}
       {sessions.map((s) => (
         <SessionTiersBlock
           key={s.id}
@@ -3040,7 +3186,6 @@ function TiersTab({
           canCreate={canCreate}
           canUpdate={canUpdate}
           canDelete={canDelete}
-          allowedCurrencies={allowedCurrencies}
         />
       ))}
     </div>
@@ -3053,14 +3198,12 @@ function SessionTiersBlock({
   canCreate,
   canUpdate,
   canDelete,
-  allowedCurrencies,
 }: {
   event: EventItem;
   session: SessionItem;
   canCreate: boolean;
   canUpdate: boolean;
   canDelete: boolean;
-  allowedCurrencies: readonly string[];
 }) {
   const queryClient = useQueryClient();
   const queryKey = [
@@ -3122,7 +3265,8 @@ function SessionTiersBlock({
             Session {formatDateTime(session.start_at)}
           </div>
           <div style={mutedHintStyle}>
-            {session.status} · capacity {session.capacity_total.toLocaleString()}
+            {session.status} · capacity {session.capacity_total.toLocaleString()}{" "}
+            · {session.currency}
           </div>
         </div>
         {canCreate ? (
@@ -3170,7 +3314,6 @@ function SessionTiersBlock({
           event={event}
           session={session}
           mode={editor}
-          allowedCurrencies={allowedCurrencies}
           onClose={() => setEditor({ kind: "closed" })}
           onSaved={(label) => {
             setActionErr(null);
@@ -3322,7 +3465,6 @@ function SessionTiersBlock({
                             event={event}
                             session={session}
                             mode={editor}
-                            allowedCurrencies={allowedCurrencies}
                             onClose={() => setEditor({ kind: "closed" })}
                             onSaved={(label) => {
                               setActionErr(null);
@@ -3357,7 +3499,6 @@ interface TierEditorProps {
   event: EventItem;
   session: SessionItem;
   mode: Exclude<TierEditorMode, { kind: "closed" }>;
-  allowedCurrencies: readonly string[];
   onClose: () => void;
   onSaved: (label: string) => void;
   onError: (msg: string) => void;
@@ -3367,20 +3508,14 @@ function TierEditor({
   event,
   session,
   mode,
-  allowedCurrencies,
   onClose,
   onSaved,
   onError,
 }: TierEditorProps) {
   const initial =
-    mode.kind === "edit"
-      ? tierToForm(mode.tier)
-      : emptyTierForm(allowedCurrencies[0] ?? "USD");
+    mode.kind === "edit" ? tierToForm(mode.tier) : emptyTierForm();
   const [values, setValues] = useState<TierFormValues>(initial);
-  const errors = useMemo(
-    () => validateTierForm(values, allowedCurrencies),
-    [values, allowedCurrencies],
-  );
+  const errors = useMemo(() => validateTierForm(values), [values]);
 
   const mutation = useMutation<TierEnvelope, ApiError, TierFormValues>({
     mutationFn: (v) => {
@@ -3496,23 +3631,25 @@ function TierEditor({
         ) : null}
         <label style={editorFieldStyle}>
           <span style={editorLabelStyle}>Currency</span>
-          <select
-            value={values.currency}
-            onChange={(e) =>
-              setValues({ ...values, currency: e.target.value })
-            }
-            style={editorInputStyle}
-            data-testid="events-tier-input-currency"
-          >
-            {allowedCurrencies.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-          {errors.currency !== undefined ? (
-            <span style={fieldErrorStyle}>{errors.currency}</span>
-          ) : null}
+          <input
+            type="text"
+            value={session.currency}
+            readOnly
+            style={{
+              ...editorInputStyle,
+              background: "#f1f5f9",
+              color: "#64748b",
+            }}
+            title="Every tier of a session is denominated in the session currency (AB-38)."
+            data-testid="events-tier-currency-readonly"
+          />
+          <span style={mutedHintStyle}>
+            Set by the session (
+            {session.currency_source === "derived"
+              ? "derived from venue"
+              : "set manually"}
+            ).
+          </span>
         </label>
         {values.pricing_mode === "pwyw" ? (
           <>
@@ -3653,10 +3790,11 @@ function TierEditor({
  * editor. Sale-window timestamps are normalised to RFC3339 UTC.
  */
 export function buildTierRequestBody(v: TierFormValues): Record<string, unknown> {
+  // NOTE: currency is intentionally absent (AB-38) — the server stamps
+  // the session currency on every tier and ignores a client-sent value.
   const body: Record<string, unknown> = {
     name: v.name.trim(),
     pricing_mode: v.pricing_mode,
-    currency: v.currency.trim().toUpperCase(),
     sort_order: Number(v.sort_order),
   };
 

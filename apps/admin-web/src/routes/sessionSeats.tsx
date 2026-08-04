@@ -27,7 +27,7 @@
  *   3. Held / sold seats surfaced by the endpoint as skipped are reported
  *      inline with the reason (never silently mutated).
  *   4. Read-only counters per sector and per category (available / held /
- *      sold / blocked). No per-seat repainting (category changes ship
+ *      sold / unavailable). No per-seat repainting (category changes ship
  *      only via a new plan version — separate SEAT-E1 flow).
  *   5. Wave-M responsive rules: two-column layout on desktop (map on the
  *      left, controls on the right) collapses to a single stack on
@@ -69,7 +69,7 @@ export const Route = createRoute({
 // Wire types (mirror openapi/clients/ts/index.d.ts)
 // ---------------------------------------------------------------------------
 
-export type SeatStatus = "available" | "held" | "sold" | "blocked";
+export type SeatStatus = "available" | "held" | "sold" | "unavailable";
 
 export interface SeatingSchemaEnvelope {
   readonly session_id: string;
@@ -101,7 +101,7 @@ export interface SeatStatusEnvelope {
 
 export interface PatchSeatsOutcome {
   readonly seat_key: string;
-  readonly outcome: "blocked" | "unblocked" | "noop" | "skipped";
+  readonly outcome: "unavailable" | "available" | "noop" | "skipped";
   readonly reason?: string;
   readonly status: string;
 }
@@ -141,14 +141,14 @@ export const SEAT_STATUS_COLOURS: Record<SeatStatus, string> = {
   available: "#22c55e", // green
   held: "#f59e0b", // amber
   sold: "#0369a1", // blue
-  blocked: "#64748b", // slate
+  unavailable: "#64748b", // slate
 };
 
 export const SEAT_STATUS_LABELS: Record<SeatStatus, string> = {
   available: "Available",
   held: "Held",
   sold: "Sold",
-  blocked: "Blocked",
+  unavailable: "Unavailable",
 };
 
 // ---------------------------------------------------------------------------
@@ -221,7 +221,7 @@ export function computeSectorCounters(
       available: 0,
       held: 0,
       sold: 0,
-      blocked: 0,
+      unavailable: 0,
     };
     let total = 0;
     for (const row of sec.rows) {
@@ -232,7 +232,7 @@ export function computeSectorCounters(
           s === "available" ||
           s === "held" ||
           s === "sold" ||
-          s === "blocked"
+          s === "unavailable"
         ) {
           by[s]++;
         } else {
@@ -270,7 +270,7 @@ export function computeCategoryCounters(
       name: c.name,
       color: c.color,
       total: 0,
-      by_status: { available: 0, held: 0, sold: 0, blocked: 0 },
+      by_status: { available: 0, held: 0, sold: 0, unavailable: 0 },
     });
   }
   const uncategorised: CategoryCounter = {
@@ -278,7 +278,7 @@ export function computeCategoryCounters(
     name: "Uncategorised",
     color: UNKNOWN_STATUS_COLOUR,
     total: 0,
-    by_status: { available: 0, held: 0, sold: 0, blocked: 0 },
+    by_status: { available: 0, held: 0, sold: 0, unavailable: 0 },
   };
   let uncategorisedUsed = false;
 
@@ -291,7 +291,7 @@ export function computeCategoryCounters(
           s === "available" ||
           s === "held" ||
           s === "sold" ||
-          s === "blocked"
+          s === "unavailable"
             ? s
             : "available";
         if (bucket === undefined) {
@@ -406,7 +406,7 @@ function seatTitle(key: string, status: SeatStatus | undefined): string {
 }
 
 function isSeatStatus(v: string | undefined): v is SeatStatus {
-  return v === "available" || v === "held" || v === "sold" || v === "blocked";
+  return v === "available" || v === "held" || v === "sold" || v === "unavailable";
 }
 
 function safeCoord(n: number): number {
@@ -431,8 +431,8 @@ function escapeText(v: string): string {
 
 /**
  * Split the response outcomes into two operator-facing buckets: seats
- * that changed (blocked / unblocked / noop are all "successful" — noop
- * being idempotent) and seats that were skipped with a reason.
+ * that changed (outcome "unavailable" after a block / "available" after
+ * an unblock; noop is idempotent) and seats skipped with a reason.
  */
 export interface OutcomeSummary {
   readonly changed: readonly PatchSeatsOutcome[];
@@ -449,7 +449,7 @@ export function summariseOutcomes(
   const skipped: PatchSeatsOutcome[] = [];
   const skippedByReason: Record<string, PatchSeatsOutcome[]> = {};
   for (const o of outcomes) {
-    if (o.outcome === "blocked" || o.outcome === "unblocked") {
+    if (o.outcome === "unavailable" || o.outcome === "available") {
       changed.push(o);
     } else if (o.outcome === "noop") {
       noop.push(o);
@@ -862,7 +862,7 @@ function SelectionPanel({
           onClick={onBlock}
           data-testid="session-seats-block"
         >
-          {pending ? "Applying…" : "Block selected"}
+          {pending ? "Applying…" : "Make unavailable"}
         </button>
         <button
           type="button"
@@ -871,7 +871,7 @@ function SelectionPanel({
           onClick={onUnblock}
           data-testid="session-seats-unblock"
         >
-          {pending ? "Applying…" : "Unblock selected"}
+          {pending ? "Applying…" : "Make available"}
         </button>
         <button
           type="button"
@@ -936,7 +936,7 @@ function SectorCounters({
             <th style={countersThStyle}>Avail</th>
             <th style={countersThStyle}>Held</th>
             <th style={countersThStyle}>Sold</th>
-            <th style={countersThStyle}>Blocked</th>
+            <th style={countersThStyle}>Unavailable</th>
             <th style={countersThStyle}>Total</th>
           </tr>
         </thead>
@@ -947,7 +947,7 @@ function SectorCounters({
               <td style={countersTdStyle}>{c.by_status.available}</td>
               <td style={countersTdStyle}>{c.by_status.held}</td>
               <td style={countersTdStyle}>{c.by_status.sold}</td>
-              <td style={countersTdStyle}>{c.by_status.blocked}</td>
+              <td style={countersTdStyle}>{c.by_status.unavailable}</td>
               <td style={countersTdStyle}>{c.total}</td>
             </tr>
           ))}
@@ -973,7 +973,7 @@ function CategoryCounters({
             <th style={countersThStyle}>Avail</th>
             <th style={countersThStyle}>Held</th>
             <th style={countersThStyle}>Sold</th>
-            <th style={countersThStyle}>Blocked</th>
+            <th style={countersThStyle}>Unavailable</th>
             <th style={countersThStyle}>Total</th>
           </tr>
         </thead>
@@ -993,7 +993,7 @@ function CategoryCounters({
               <td style={countersTdStyle}>{c.by_status.available}</td>
               <td style={countersTdStyle}>{c.by_status.held}</td>
               <td style={countersTdStyle}>{c.by_status.sold}</td>
-              <td style={countersTdStyle}>{c.by_status.blocked}</td>
+              <td style={countersTdStyle}>{c.by_status.unavailable}</td>
               <td style={countersTdStyle}>{c.total}</td>
             </tr>
           ))}

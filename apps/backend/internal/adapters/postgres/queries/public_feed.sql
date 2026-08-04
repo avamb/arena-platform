@@ -7,11 +7,13 @@
 
 -- name: ListPublishedEventsByFeedToken :many
 -- ListPublishedEventsByFeedToken returns published events for a feed token.
--- Optional filters: city_id (via publication scope), date_from, date_to.
+-- Optional filters: city_id (via publication scope), date_from, date_to
+-- (bounds on the trigger-maintained first/last_session_at cache, AB-37;
+-- sessionless events are excluded whenever a date bound is supplied).
 -- Pagination via LIMIT/OFFSET. Only active tokens and published, non-deleted events.
 SELECT
-    e.id, e.org_id, e.venue_id, e.name, e.description, e.status,
-    e.start_at, e.end_at, e.visibility, e.image_url,
+    e.id, e.display_number, e.org_id, e.name, e.description, e.status,
+    e.first_session_at, e.last_session_at, e.visibility, e.image_url,
     e.created_at, e.updated_at, e.deleted_at
 FROM events e
 JOIN event_publications ep ON ep.event_id = e.id
@@ -21,9 +23,9 @@ WHERE ft.token    = $1
   AND e.status     = 'published'
   AND e.deleted_at IS NULL
   AND ($2::uuid IS NULL OR ep.city_id = $2::uuid)
-  AND ($3::timestamptz IS NULL OR e.start_at >= $3::timestamptz)
-  AND ($4::timestamptz IS NULL OR e.end_at   <= $4::timestamptz)
-ORDER BY e.start_at ASC, e.id ASC
+  AND ($3::timestamptz IS NULL OR e.first_session_at >= $3::timestamptz)
+  AND ($4::timestamptz IS NULL OR e.last_session_at  <= $4::timestamptz)
+ORDER BY e.first_session_at ASC NULLS LAST, e.id ASC
 LIMIT  $5
 OFFSET $6;
 
@@ -40,8 +42,8 @@ WHERE ft.token    = $1
   AND e.status     = 'published'
   AND e.deleted_at IS NULL
   AND ($2::uuid IS NULL OR ep.city_id = $2::uuid)
-  AND ($3::timestamptz IS NULL OR e.start_at >= $3::timestamptz)
-  AND ($4::timestamptz IS NULL OR e.end_at   <= $4::timestamptz);
+  AND ($3::timestamptz IS NULL OR e.first_session_at >= $3::timestamptz)
+  AND ($4::timestamptz IS NULL OR e.last_session_at  <= $4::timestamptz);
 
 -- name: GetPublishedEventByFeedToken :one
 -- GetPublishedEventByFeedToken fetches a single published event that is
@@ -50,8 +52,8 @@ WHERE ft.token    = $1
 --   * the event does not exist or is not published
 --   * the event has not been published to this token
 SELECT
-    e.id, e.org_id, e.venue_id, e.name, e.description, e.status,
-    e.start_at, e.end_at, e.visibility, e.image_url,
+    e.id, e.display_number, e.org_id, e.name, e.description, e.status,
+    e.first_session_at, e.last_session_at, e.visibility, e.image_url,
     e.created_at, e.updated_at, e.deleted_at
 FROM events e
 JOIN event_publications ep ON ep.event_id = e.id

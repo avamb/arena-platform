@@ -98,8 +98,8 @@ export interface SchemaCacheEntry {
 
 // ─── Seat status endpoint ─────────────────────────────────────────────────────
 
-/** Valid seat status values from the backend. */
-export type SeatStatusValue = 'available' | 'held' | 'sold' | 'blocked';
+/** Valid seat status values from the backend (AB rename: blocked → unavailable). */
+export type SeatStatusValue = 'available' | 'held' | 'sold' | 'unavailable';
 
 /** Response from GET /v1/event-sessions/{id}/seat-status[?since_version=N]. */
 export interface SeatStatusResponse {
@@ -150,13 +150,21 @@ export interface FeedSession {
 
 export interface FeedEvent {
   id: string;
+  /** Short operator-facing event number (Wave 4). */
+  display_number: number;
   org_id: string;
-  venue_id?: string | null;
   name: string;
   description?: string | null;
   status: string;
-  start_at: string;
-  end_at: string;
+  /**
+   * Earliest session start (Wave 4, AB-37). Null when the event has no
+   * sessions — such events carry no date at all.
+   */
+  first_session_at: string | null;
+  /** Latest session end. Null when the event has no sessions. */
+  last_session_at: string | null;
+  /** Distinct venue names of the event's active sessions (AB-36). */
+  venue_names: string[];
   visibility: string;
   image_url?: string | null;
   created_at: string;

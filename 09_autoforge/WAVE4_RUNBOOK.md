@@ -31,17 +31,31 @@ Quality bar is **production, not MVP** (owner, explicit).
 
 | Pass | Where | Features | Status |
 |---|---|---|---|
-| 1 | interactive (Fable 5) | AB-36, AB-37, AB-38 + `blocked→unavailable` rename | **NOT STARTED — do this first** |
+| 1 | interactive (Fable 5) | AB-36, AB-37, AB-38 + `blocked→unavailable` rename | **DONE 2026-08-04** — migrations 0079–0081 + backend + OpenAPI/codegen + admin-web/widget; migrations verified live (78→81 on local data: venue/currency backfill, 0080 trigger, tier-currency cascade + mismatch rejection). Stand redeploy still pending |
 | 2 | AutoForge | AB-42, AB-47, AB-43, AB-44, AB-46 | queued in script, **not imported yet** |
 | 3 | interactive (Fable 5) | AB-40 A/B/C, AB-51 | not started |
 | 4 | AutoForge | AB-39, AB-40D | in script, not imported |
-| 5 | interactive (Fable 5) | AB-49, AB-48, AB-41 | not started |
+| 5 | interactive (Fable 5) | AB-49, AB-48, AB-41 | not started — NOTE: the `blocked→unavailable` rename part of AB-49 already landed with pass 1 (folded into 0081) |
 | 6 | AutoForge | AB-50, AB-45 | in script, not imported |
 
 Keep this table current — it is the one place a new session learns where things stand.
 
 Baseline at the time of writing: repo at `fe0e445`, stand deployed on `01eeafb`,
 **migration head 0078**, **queue head (423, 533)**.
+After pass 1: **migration head 0081**. Pass-1 implementation notes a fresh
+session may need:
+- Seat-status wire surface: statuses are `available|held|sold|unavailable`;
+  PATCH seats **action** values stay `block`/`unblock` (verbs), outcome enum
+  is now `unavailable|available|noop|skipped`.
+- Session create runs the SEAT-B2 bind inline for assigned_seats/hybrid
+  (hseating.BindSeatingForSessionCreate via a callback injected in
+  catalog_shims.go); tiers are auto-created per SVG category in the session
+  currency.
+- Tier `currency` is no longer an operator input anywhere; the composite FK
+  `ticket_tiers_currency_matches_session` (ON UPDATE CASCADE) enforces
+  one-currency-per-session at the DB level.
+- Events API: `first_session_at`/`last_session_at` (trigger cache) +
+  `venue_names[]`; public feed events follow the same shape.
 
 ---
 

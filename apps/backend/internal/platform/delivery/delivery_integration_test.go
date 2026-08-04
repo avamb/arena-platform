@@ -228,13 +228,18 @@ func seedMinimalDeliveryData(ctx context.Context, t *testing.T, pool *pgxpool.Po
 	// 1. Organization (no FK)
 	exec(`INSERT INTO organizations (id, name, slug, country) VALUES ($1, 'Test Org', $2, 'RU')`, orgID, slug)
 
-	// 2. Event (venue_id is nullable)
-	exec(`INSERT INTO events (id, org_id, name, start_at, end_at)
-	      VALUES ($1, $2, 'Test Event', now() + interval '1 day', now() + interval '2 days')`, evtID, orgID)
+	// 2. Event (dates live on sessions since migration 0080)
+	exec(`INSERT INTO events (id, org_id, name)
+	      VALUES ($1, $2, 'Test Event')`, evtID, orgID)
 
-	// 3. Session
-	exec(`INSERT INTO sessions (id, event_id, start_at, end_at, capacity_total)
-	      VALUES ($1, $2, now() + interval '1 day', now() + interval '1 day 2 hours', 100)`, sessID, evtID)
+	// 2b. Venue (sessions.venue_id is NOT NULL since migration 0079)
+	venueID := uuid.New()
+	exec(`INSERT INTO venues (id, org_id, name)
+	      VALUES ($1, $2, 'Test Venue')`, venueID, orgID)
+
+	// 3. Session (owns venue + currency since migrations 0079/0081)
+	exec(`INSERT INTO sessions (id, event_id, venue_id, start_at, end_at, capacity_total, currency, currency_source)
+	      VALUES ($1, $2, $3, now() + interval '1 day', now() + interval '1 day 2 hours', 100, 'USD', 'override')`, sessID, evtID, venueID)
 
 	// 4. Sales channel
 	exec(`INSERT INTO sales_channels (id, org_id, name, payment_mode, provider)

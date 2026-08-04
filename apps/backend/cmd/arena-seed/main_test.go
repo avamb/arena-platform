@@ -137,7 +137,8 @@ func TestBuildSeed_CheckoutTripleResolvable(t *testing.T) {
 }
 
 // TestBuildSeed_EventsAndSessionsReferenceKnownRows guards the FKs from
-// events.org_id/venue_id and inventory_ledger.session_id.
+// events.org_id, sessions.venue_id (AB-36: the session owns the venue) and
+// inventory_ledger.session_id.
 func TestBuildSeed_EventsAndSessionsReferenceKnownRows(t *testing.T) {
 	t.Parallel()
 	s := BuildSeed()
@@ -157,11 +158,13 @@ func TestBuildSeed_EventsAndSessionsReferenceKnownRows(t *testing.T) {
 		if !orgIDs[e.OrgID] {
 			t.Errorf("event %q references unknown org_id %s", e.Name, e.OrgID)
 		}
-		if e.VenueID != "" && !venueIDs[e.VenueID] {
-			t.Errorf("event %q references unknown venue_id %s", e.Name, e.VenueID)
-		}
 		if !strings.HasPrefix(e.Name, "TEST ") {
 			t.Errorf("event %q name must start with TEST so dashboards can spot fixture data", e.Name)
+		}
+	}
+	for _, sess := range s.Sessions {
+		if sess.VenueID == "" || !venueIDs[sess.VenueID] {
+			t.Errorf("session %s references unknown venue_id %q — sessions.venue_id is NOT NULL (AB-36)", sess.ID, sess.VenueID)
 		}
 	}
 	for _, il := range s.Inventories {

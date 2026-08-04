@@ -191,6 +191,13 @@ const (
 	CreateSeatingPlanRequestVisibilitySharedRead       CreateSeatingPlanRequestVisibility = "shared_read"
 )
 
+// Defines values for CreateSessionRequestAdmissionMode.
+const (
+	CreateSessionRequestAdmissionModeAssignedSeats    CreateSessionRequestAdmissionMode = "assigned_seats"
+	CreateSessionRequestAdmissionModeGeneralAdmission CreateSessionRequestAdmissionMode = "general_admission"
+	CreateSessionRequestAdmissionModeHybrid           CreateSessionRequestAdmissionMode = "hybrid"
+)
+
 // Defines values for CreateSessionRequestStatus.
 const (
 	CreateSessionRequestStatusCancelled CreateSessionRequestStatus = "cancelled"
@@ -347,10 +354,10 @@ const (
 
 // Defines values for PatchSessionSeatsSeatOutcomeOutcome.
 const (
-	Blocked   PatchSessionSeatsSeatOutcomeOutcome = "blocked"
-	Noop      PatchSessionSeatsSeatOutcomeOutcome = "noop"
-	Skipped   PatchSessionSeatsSeatOutcomeOutcome = "skipped"
-	Unblocked PatchSessionSeatsSeatOutcomeOutcome = "unblocked"
+	Available   PatchSessionSeatsSeatOutcomeOutcome = "available"
+	Noop        PatchSessionSeatsSeatOutcomeOutcome = "noop"
+	Skipped     PatchSessionSeatsSeatOutcomeOutcome = "skipped"
+	Unavailable PatchSessionSeatsSeatOutcomeOutcome = "unavailable"
 )
 
 // Defines values for PaymentIntentItemState.
@@ -520,8 +527,21 @@ const (
 
 // Defines values for SeatingSchemaResponseAdmissionMode.
 const (
-	AssignedSeats SeatingSchemaResponseAdmissionMode = "assigned_seats"
-	Hybrid        SeatingSchemaResponseAdmissionMode = "hybrid"
+	SeatingSchemaResponseAdmissionModeAssignedSeats SeatingSchemaResponseAdmissionMode = "assigned_seats"
+	SeatingSchemaResponseAdmissionModeHybrid        SeatingSchemaResponseAdmissionMode = "hybrid"
+)
+
+// Defines values for SessionItemAdmissionMode.
+const (
+	AssignedSeats    SessionItemAdmissionMode = "assigned_seats"
+	GeneralAdmission SessionItemAdmissionMode = "general_admission"
+	Hybrid           SessionItemAdmissionMode = "hybrid"
+)
+
+// Defines values for SessionItemCurrencySource.
+const (
+	Derived  SessionItemCurrencySource = "derived"
+	Override SessionItemCurrencySource = "override"
 )
 
 // Defines values for SessionItemStatus.
@@ -1682,22 +1702,18 @@ type CreateBarcodeAuthorityRequestType string
 
 // CreateEventRequest Create-time payload for POST /v1/organizations/{org_id}/events.
 // The owning organization is taken from the path; the body MUST NOT
-// repeat it.
+// repeat it. Dates and venue are NOT collected here (AB-36/AB-37):
+// they belong to the event's sessions and are supplied when sessions
+// are created.
 type CreateEventRequest struct {
 	// Description Optional long-form description.
 	Description *string `json:"description,omitempty"`
-
-	// EndAt Event end time. Must be strictly after start_at.
-	EndAt time.Time `json:"end_at"`
 
 	// ImageUrl Optional poster / cover image URL.
 	ImageUrl *string `json:"image_url,omitempty"`
 
 	// Name Canonical event name (used when no i18n match for the negotiated locale).
 	Name string `json:"name"`
-
-	// StartAt Event start time (RFC 3339, UTC).
-	StartAt time.Time `json:"start_at"`
 
 	// Status Initial lifecycle status. Defaults to `draft` on the server when
 	// omitted.
@@ -1709,10 +1725,7 @@ type CreateEventRequest struct {
 	// i18n_text table for the event.name and event.description scopes.
 	Translations *EventTranslations `json:"translations,omitempty"`
 
-	// VenueId Optional venue UUID. When set, must belong to the same organization.
-	VenueId *openapi_types.UUID `json:"venue_id,omitempty"`
-
-	// Visibility Initial visibility. Defaults to `private` on the server when omitted.
+	// Visibility Initial visibility. Defaults to `public` on the server when omitted.
 	Visibility *CreateEventRequestVisibility `json:"visibility,omitempty"`
 }
 
@@ -1720,7 +1733,7 @@ type CreateEventRequest struct {
 // omitted.
 type CreateEventRequestStatus string
 
-// CreateEventRequestVisibility Initial visibility. Defaults to `private` on the server when omitted.
+// CreateEventRequestVisibility Initial visibility. Defaults to `public` on the server when omitted.
 type CreateEventRequestVisibility string
 
 // CreateOperatorNetworkRequest defines model for CreateOperatorNetworkRequest.
@@ -2038,23 +2051,73 @@ type CreateSeatingPlanVersionRequest struct {
 // /v1/organizations/{org_id}/events/{event_id}/sessions. The owning
 // org_id and event_id are taken from the path; the body MUST NOT
 // repeat them.
+//
+// Capacity is DERIVED (AB-36), never supplied directly: a bound
+// seating plan version wins; otherwise `capacity_override`;
+// otherwise the venue's capacity_default. A general-admission
+// session resolving to none of these is rejected with 422
+// `session.capacity_unresolvable`.
+//
+// Currency is derived from the venue geography
+// (city.currency_override → country.currency) unless `currency` is
+// supplied explicitly (recorded as an override, AB-38). A venue
+// whose geography resolves to nothing requires an explicit
+// `currency` (422 `session.currency_unresolvable` otherwise).
 type CreateSessionRequest struct {
-	// CapacityTotal Total seats available; must be > 0.
-	CapacityTotal int32 `json:"capacity_total"`
+	// AdmissionMode Seating mode; defaults to `general_admission`. Choosing
+	// `assigned_seats` or `hybrid` runs the SEAT-B2 seating bind
+	// inline (AB-36 step 3): seats are materialized from the plan
+	// version geometry, one ticket tier is auto-created per SVG
+	// price category, the version is locked and capacity_total is
+	// recomputed from the plan — the session is fully sellable in
+	// one call.
+	AdmissionMode *CreateSessionRequestAdmissionMode `json:"admission_mode,omitempty"`
+
+	// CapacityOverride Operator capacity for general-admission sessions, overriding
+	// the venue's capacity_default. Must be > 0 when present (400
+	// `session.invalid_capacity_override`).
+	CapacityOverride *int32 `json:"capacity_override"`
+
+	// Currency Explicit ISO 4217 currency override (AB-38). When omitted the
+	// currency is derived from the venue geography. Malformed codes
+	// are rejected with 422 `session.invalid_currency`, never
+	// persisted.
+	Currency *string `json:"currency"`
 
 	// EndAt Session end time (RFC 3339, UTC). Must be strictly after `start_at`.
 	EndAt time.Time `json:"end_at"`
 
+	// SeatingPlanVersionId Seating plan version to bind. Required when admission_mode is
+	// `assigned_seats`/`hybrid` (400
+	// `session.missing_seating_plan_version`); forbidden for
+	// general_admission (400 `session.seating_plan_not_applicable`).
+	SeatingPlanVersionId *openapi_types.UUID `json:"seating_plan_version_id"`
+
 	// StartAt Session start time (RFC 3339, UTC).
 	StartAt time.Time `json:"start_at"`
 
-	// Status Initial lifecycle status. Defaults to `draft` on the server
-	// when omitted.
+	// Status Initial lifecycle status. Defaults to `scheduled` on the
+	// server when omitted.
 	Status *CreateSessionRequestStatus `json:"status,omitempty"`
+
+	// VenueId Venue the session takes place at (AB-36). Required; must
+	// reference an existing venue of the event's organization —
+	// 400 `session.venue_not_found` / 422
+	// `session.venue_org_mismatch` otherwise.
+	VenueId openapi_types.UUID `json:"venue_id"`
 }
 
-// CreateSessionRequestStatus Initial lifecycle status. Defaults to `draft` on the server
-// when omitted.
+// CreateSessionRequestAdmissionMode Seating mode; defaults to `general_admission`. Choosing
+// `assigned_seats` or `hybrid` runs the SEAT-B2 seating bind
+// inline (AB-36 step 3): seats are materialized from the plan
+// version geometry, one ticket tier is auto-created per SVG
+// price category, the version is locked and capacity_total is
+// recomputed from the plan — the session is fully sellable in
+// one call.
+type CreateSessionRequestAdmissionMode string
+
+// CreateSessionRequestStatus Initial lifecycle status. Defaults to `scheduled` on the
+// server when omitted.
 type CreateSessionRequestStatus string
 
 // CreateTicketTierRequest Create-time payload for POST
@@ -2065,14 +2128,14 @@ type CreateTicketTierRequest struct {
 	// Capacity Optional per-tier capacity. When set, must be > 0.
 	Capacity *int32 `json:"capacity"`
 
-	// Currency ISO 4217 currency code. Defaults to `USD` when omitted.
-	Currency *string `json:"currency,omitempty"`
-
 	// Name Tier name. Required, trimmed of whitespace.
 	Name string `json:"name"`
 
 	// PriceAmount Tier price in cents. Required for `fixed`; forced to 0 for
 	// `free`; ignored for `pwyw` (use `pwyw_min` / `pwyw_max`).
+	// The currency is NOT accepted here — every tier is denominated
+	// in its session's currency (AB-38); a `currency` key sent by an
+	// older client is silently ignored.
 	PriceAmount *int64 `json:"price_amount,omitempty"`
 
 	// PricingMode Pricing model. Required.
@@ -2390,7 +2453,12 @@ type EventDeleteResponse struct {
 	// Deleted Always true on success; confirms the soft delete.
 	Deleted bool `json:"deleted"`
 
-	// Event A single dated event organized by one organization at an optional venue.
+	// Event A single event organized by one organization. Since Wave 4
+	// (AB-36/AB-37) the event carries no venue and no own dates — both
+	// belong to its sessions. `first_session_at` / `last_session_at`
+	// mirror the trigger-maintained cache over the event's active,
+	// non-cancelled sessions and are null for an event with no sessions;
+	// `venue_names` lists the distinct venues of those sessions.
 	// Lifecycle: draft → published → cancelled|archived (see the status
 	// transition rules on POST /v1/organizations/{org_id}/events/{id}/status).
 	// The `name` and `description` fields are locale-resolved per the
@@ -2400,7 +2468,12 @@ type EventDeleteResponse struct {
 
 // EventEnvelope Single-event response envelope.
 type EventEnvelope struct {
-	// Event A single dated event organized by one organization at an optional venue.
+	// Event A single event organized by one organization. Since Wave 4
+	// (AB-36/AB-37) the event carries no venue and no own dates — both
+	// belong to its sessions. `first_session_at` / `last_session_at`
+	// mirror the trigger-maintained cache over the event's active,
+	// non-cancelled sessions and are null for an event with no sessions;
+	// `venue_names` lists the distinct venues of those sessions.
 	// Lifecycle: draft → published → cancelled|archived (see the status
 	// transition rules on POST /v1/organizations/{org_id}/events/{id}/status).
 	// The `name` and `description` fields are locale-resolved per the
@@ -2408,7 +2481,12 @@ type EventEnvelope struct {
 	Event EventItem `json:"event"`
 }
 
-// EventItem A single dated event organized by one organization at an optional venue.
+// EventItem A single event organized by one organization. Since Wave 4
+// (AB-36/AB-37) the event carries no venue and no own dates — both
+// belong to its sessions. `first_session_at` / `last_session_at`
+// mirror the trigger-maintained cache over the event's active,
+// non-cancelled sessions and are null for an event with no sessions;
+// `venue_names` lists the distinct venues of those sessions.
 // Lifecycle: draft → published → cancelled|archived (see the status
 // transition rules on POST /v1/organizations/{org_id}/events/{id}/status).
 // The `name` and `description` fields are locale-resolved per the
@@ -2423,15 +2501,22 @@ type EventItem struct {
 	// DisplayNumber Short operator-facing event number; UUID remains the API key.
 	DisplayNumber int64 `json:"display_number"`
 
-	// EndAt Event end time in RFC 3339 / ISO 8601 UTC. Must be strictly
-	// after `start_at`.
-	EndAt time.Time `json:"end_at"`
+	// FirstSessionAt Earliest `start_at` over the event's active, non-cancelled
+	// sessions (RFC 3339, UTC). Maintained by a database trigger
+	// (migration 0080) — never written directly. Null when the event
+	// has no sessions; an event with no sessions renders no date
+	// anywhere.
+	FirstSessionAt *time.Time `json:"first_session_at"`
 
 	// Id UUIDv7 primary key of the event row.
 	Id openapi_types.UUID `json:"id"`
 
 	// ImageUrl Optional poster / cover image URL.
 	ImageUrl *string `json:"image_url"`
+
+	// LastSessionAt Latest `end_at` over the event's active, non-cancelled sessions
+	// (RFC 3339, UTC). Null when the event has no sessions.
+	LastSessionAt *time.Time `json:"last_session_at"`
 
 	// Name Human-readable event name. Locale-resolved: if an i18n_text
 	// row exists for the negotiated locale, that value is returned;
@@ -2442,20 +2527,17 @@ type EventItem struct {
 	// mutate the event.
 	OrgId openapi_types.UUID `json:"org_id"`
 
-	// StartAt Event start time in RFC 3339 / ISO 8601 UTC. Always strictly
-	// before `end_at` (enforced by both the handler and a CHECK
-	// constraint on the events table).
-	StartAt time.Time `json:"start_at"`
-
 	// Status Lifecycle status.
 	Status EventItemStatus `json:"status"`
 
 	// UpdatedAt ISO 8601 / RFC 3339 timestamp of last update.
 	UpdatedAt time.Time `json:"updated_at"`
 
-	// VenueId Optional FK to a venue (see /v1/venues/{id}). NULL when the
-	// event has no fixed venue (e.g. online stream, TBD location).
-	VenueId *openapi_types.UUID `json:"venue_id"`
+	// VenueNames Distinct names of the venues of the event's active sessions,
+	// sorted alphabetically. Empty for an event with no sessions;
+	// more than one entry for a tour (AB-36 — the venue belongs to
+	// the session, so one event may span several venues).
+	VenueNames []string `json:"venue_names"`
 
 	// Visibility Discovery visibility for the cross-tenant GET /v1/events surface.
 	// `public` events appear in the default list; `unlisted` and
@@ -3467,7 +3549,10 @@ type PasswordResetRequestResponse struct {
 // (409 `seating.no_selectors` otherwise). Selectors are unioned
 // server-side into a deduplicated set of session_seats rows.
 type PatchSessionSeatsRequest struct {
-	// Action Admin transition to attempt. `block` moves available→blocked; `unblock` moves blocked→available.
+	// Action Admin transition to attempt. `block` moves
+	// available→unavailable; `unblock` moves unavailable→available.
+	// (The action verbs are stable; the status value was renamed
+	// from `blocked` to `unavailable` in migration 0081.)
 	Action PatchSessionSeatsRequestAction `json:"action"`
 
 	// Rows Whole-row selectors, scoped by `(sector, row)`. Empty rows
@@ -3485,7 +3570,10 @@ type PatchSessionSeatsRequest struct {
 	Sectors *[]string `json:"sectors,omitempty"`
 }
 
-// PatchSessionSeatsRequestAction Admin transition to attempt. `block` moves available→blocked; `unblock` moves blocked→available.
+// PatchSessionSeatsRequestAction Admin transition to attempt. `block` moves
+// available→unavailable; `unblock` moves unavailable→available.
+// (The action verbs are stable; the status value was renamed
+// from `blocked` to `unavailable` in migration 0081.)
 type PatchSessionSeatsRequestAction string
 
 // PatchSessionSeatsResponse Response envelope for the operator seat block/unblock endpoint.
@@ -3524,11 +3612,13 @@ type PatchSessionSeatsRowSelector struct {
 	Sector string `json:"sector"`
 }
 
-// PatchSessionSeatsSeatOutcome Per-seat outcome envelope. `outcome` is one of `blocked`,
-// `unblocked`, `noop`, `skipped`; `reason` is populated only
+// PatchSessionSeatsSeatOutcome Per-seat outcome envelope. `outcome` is one of `unavailable`,
+// `available`, `noop`, `skipped` — the changed outcomes name the
+// resulting seat status (`unavailable` after a block, `available`
+// after an unblock); `reason` is populated only
 // when `outcome == skipped` (values include `held`, `sold`,
 // `seat_not_found`, `concurrent_transition`, `unknown_status`).
-// `status` echoes the post-attempt seat status: `blocked` /
+// `status` echoes the post-attempt seat status: `unavailable` /
 // `available` for successful changes, the pre-existing status
 // for noop / skipped rows, and empty string for unknown seats.
 type PatchSessionSeatsSeatOutcome struct {
@@ -3550,7 +3640,7 @@ type PatchSessionSeatsSeatOutcomeOutcome string
 
 // PatchSessionSeatsSummary Roll-up counts across every entry in `outcomes`.
 type PatchSessionSeatsSummary struct {
-	// Changed Seats that transitioned successfully (blocked / unblocked).
+	// Changed Seats that transitioned successfully (made unavailable / made available).
 	Changed int `json:"changed"`
 
 	// Noop Seats that were already in the target status (idempotent no-op).
@@ -5048,7 +5138,7 @@ type SeatingSeatStatusResponse struct {
 	// Delta `true` when the response is a since_version delta, `false` when it is a full snapshot.
 	Delta bool `json:"delta"`
 
-	// Seats Map of `seat_key` → seat status. Empty when the caller is already at head. Statuses are `available|held|sold|blocked`.
+	// Seats Map of `seat_key` → seat status. Empty when the caller is already at head. Statuses are `available|held|sold|unavailable`.
 	Seats map[string]string `json:"seats"`
 
 	// SessionId UUIDv7 of the event session.
@@ -5084,38 +5174,67 @@ type SessionDeleteResponse struct {
 	// Deleted Always true on success; confirms the soft delete.
 	Deleted bool `json:"deleted"`
 
-	// Session A single dated session (time slot) under an event. Overlap with
-	// sibling sessions is permitted but flagged via the
-	// `has_overlapping_sessions` boolean — the application layer detects
-	// overlaps via a count query (CountOverlappingSessions) rather than a
-	// DB-level UNIQUE constraint.
+	// Session A single dated session (time slot) of an event at a venue. Since
+	// Wave 4 (AB-36/AB-38) the session — not the event — owns the venue,
+	// the seating bind and the currency, matching the Bil24 ActionEvent
+	// model. Overlap with sibling sessions is permitted but flagged via
+	// the `has_overlapping_sessions` boolean — the application layer
+	// detects overlaps via a count query (CountOverlappingSessions)
+	// rather than a DB-level UNIQUE constraint.
 	Session SessionItem `json:"session"`
 }
 
 // SessionEnvelope Single-session response envelope.
 type SessionEnvelope struct {
-	// Session A single dated session (time slot) under an event. Overlap with
-	// sibling sessions is permitted but flagged via the
-	// `has_overlapping_sessions` boolean — the application layer detects
-	// overlaps via a count query (CountOverlappingSessions) rather than a
-	// DB-level UNIQUE constraint.
+	// Session A single dated session (time slot) of an event at a venue. Since
+	// Wave 4 (AB-36/AB-38) the session — not the event — owns the venue,
+	// the seating bind and the currency, matching the Bil24 ActionEvent
+	// model. Overlap with sibling sessions is permitted but flagged via
+	// the `has_overlapping_sessions` boolean — the application layer
+	// detects overlaps via a count query (CountOverlappingSessions)
+	// rather than a DB-level UNIQUE constraint.
 	Session SessionItem `json:"session"`
 }
 
-// SessionItem A single dated session (time slot) under an event. Overlap with
-// sibling sessions is permitted but flagged via the
-// `has_overlapping_sessions` boolean — the application layer detects
-// overlaps via a count query (CountOverlappingSessions) rather than a
-// DB-level UNIQUE constraint.
+// SessionItem A single dated session (time slot) of an event at a venue. Since
+// Wave 4 (AB-36/AB-38) the session — not the event — owns the venue,
+// the seating bind and the currency, matching the Bil24 ActionEvent
+// model. Overlap with sibling sessions is permitted but flagged via
+// the `has_overlapping_sessions` boolean — the application layer
+// detects overlaps via a count query (CountOverlappingSessions)
+// rather than a DB-level UNIQUE constraint.
 type SessionItem struct {
-	// CapacityTotal Total seats available for this slot. Must be strictly greater
-	// than zero. When this value changes via PATCH, the handler
-	// fires the capacity propagation hook (onCapacityChange) to
-	// keep the inventory ledger in sync.
+	// AdmissionMode Seating mode. `general_admission` sells against capacity only;
+	// `assigned_seats` / `hybrid` sessions are bound to a seating
+	// plan version whose seats are materialized per session.
+	AdmissionMode SessionItemAdmissionMode `json:"admission_mode"`
+
+	// CapacityOverride Operator-supplied capacity for general-admission sessions,
+	// taking precedence over the venue's capacity_default. Null when
+	// not set. Ignored (and not settable) once a seating plan is
+	// bound — the plan owns the capacity.
+	CapacityOverride *int32 `json:"capacity_override"`
+
+	// CapacityTotal Total places available for this slot — a DERIVED value
+	// (AB-36): a bound seating plan version wins; otherwise
+	// `capacity_override`; otherwise the venue's capacity_default.
+	// When it changes the handler fires the capacity propagation
+	// hook (onCapacityChange) to keep the inventory ledger in sync.
 	CapacityTotal int32 `json:"capacity_total"`
 
 	// CreatedAt ISO 8601 / RFC 3339 timestamp of row creation.
 	CreatedAt time.Time `json:"created_at"`
+
+	// Currency ISO 4217 currency every price of this session is denominated
+	// in (AB-38). One currency per session is a hard invariant —
+	// all ticket tiers carry this value.
+	Currency string `json:"currency"`
+
+	// CurrencySource How the currency was set: `derived` — resolved from the
+	// venue's city/country geography; `override` — set deliberately
+	// by the operator. A later venue change re-derives only
+	// `derived` sessions.
+	CurrencySource SessionItemCurrencySource `json:"currency_source"`
 
 	// EndAt Session end time (RFC 3339, UTC). Must be strictly after
 	// `start_at` — enforced by both the handler and a CHECK
@@ -5135,6 +5254,11 @@ type SessionItem struct {
 	// Id UUIDv7 primary key of the session row.
 	Id openapi_types.UUID `json:"id"`
 
+	// SeatingPlanVersionId The bound seating plan version. Null for pure
+	// general-admission sessions; always set for assigned_seats /
+	// hybrid.
+	SeatingPlanVersionId *openapi_types.UUID `json:"seating_plan_version_id"`
+
 	// StartAt Session start time (RFC 3339, UTC). Strictly before `end_at`.
 	StartAt time.Time `json:"start_at"`
 
@@ -5144,7 +5268,23 @@ type SessionItem struct {
 
 	// UpdatedAt ISO 8601 / RFC 3339 timestamp of last update.
 	UpdatedAt time.Time `json:"updated_at"`
+
+	// VenueId Venue this session takes place at (AB-36). Always present —
+	// every session has a venue; the venue must belong to the
+	// event's organization (superadmin bypass excepted).
+	VenueId openapi_types.UUID `json:"venue_id"`
 }
+
+// SessionItemAdmissionMode Seating mode. `general_admission` sells against capacity only;
+// `assigned_seats` / `hybrid` sessions are bound to a seating
+// plan version whose seats are materialized per session.
+type SessionItemAdmissionMode string
+
+// SessionItemCurrencySource How the currency was set: `derived` — resolved from the
+// venue's city/country geography; `override` — set deliberately
+// by the operator. A later venue change re-derives only
+// `derived` sessions.
+type SessionItemCurrencySource string
 
 // SessionItemStatus Lifecycle status. Transitions: draft → scheduled, scheduled
 // → cancelled|completed.
@@ -5347,7 +5487,10 @@ type TicketTierItem struct {
 	// CreatedAt ISO 8601 / RFC 3339 timestamp of row creation.
 	CreatedAt time.Time `json:"created_at"`
 
-	// Currency ISO 4217 currency code. Defaults to `USD` when omitted on create.
+	// Currency ISO 4217 currency code — always equal to the owning session's
+	// currency (AB-38: one currency per session, enforced by a
+	// composite FK). Not an operator input; changing the session's
+	// currency cascades here.
 	Currency string `json:"currency"`
 
 	// Id UUIDv7 primary key of the ticket-tier row.
@@ -5480,27 +5623,17 @@ type UpdateEventRequest struct {
 	// Description New long-form description.
 	Description *string `json:"description"`
 
-	// EndAt When both start_at and end_at are present in the same body,
-	// end_at must remain strictly after start_at.
-	EndAt *time.Time `json:"end_at"`
-
 	// ImageUrl New poster / cover image URL. Null clears the field.
 	ImageUrl *string `json:"image_url"`
 
 	// Name New canonical event name. Empty leaves the value unchanged.
 	Name *string `json:"name,omitempty"`
 
-	// StartAt New event start time (RFC 3339, UTC).
-	StartAt *time.Time `json:"start_at"`
-
 	// Translations Optional map of locale code → translated event name and description.
 	// Keys are BCP-47 locale tags (e.g. "ru", "en", "he"). When provided
 	// on create or update, each non-empty entry is upserted into the
 	// i18n_text table for the event.name and event.description scopes.
 	Translations *EventTranslations `json:"translations,omitempty"`
-
-	// VenueId Reassign the event to a different (same-org) venue.
-	VenueId *openapi_types.UUID `json:"venue_id"`
 
 	// Visibility New discovery visibility for the event.
 	Visibility *UpdateEventRequestVisibility `json:"visibility,omitempty"`
@@ -5727,10 +5860,25 @@ type UpdateSeatingPlanRequestVisibility string
 // unchanged. When status changes, the transition is validated
 // against the session state machine and 422
 // `session.invalid_transition` is returned for disallowed moves.
+//
+// capacity_total is not an input — it is re-derived when venue_id
+// or capacity_override change (general-admission sessions only; a
+// bound seating plan owns the capacity, and capacity_override on a
+// plan-bound session is rejected with 422
+// `session.capacity_override_not_applicable`).
 type UpdateSessionRequest struct {
-	// CapacityTotal New seat total; must be > 0. Triggers the capacity propagation
-	// hook (inventory ledger sync) when changed.
-	CapacityTotal *int32 `json:"capacity_total"`
+	// CapacityOverride New operator capacity for a general-admission session; must
+	// be > 0. capacity_total is re-derived and the capacity
+	// propagation hook (inventory ledger sync) fires when it
+	// changes.
+	CapacityOverride *int32 `json:"capacity_override"`
+
+	// Currency Deliberate ISO 4217 currency change (recorded as
+	// currency_source=override). The change CASCADES to every
+	// ticket tier of the session in the same statement — a session
+	// can never carry mixed-currency tiers (AB-38). Malformed codes
+	// are rejected with 422 `session.invalid_currency`.
+	Currency *string `json:"currency"`
 
 	// EndAt New session end time. When both start_at and end_at are
 	// present in the same body, end_at must remain strictly after
@@ -5749,6 +5897,12 @@ type UpdateSessionRequest struct {
 	// is rejected with HTTP 422 and
 	// `error.code = "session.invalid_transition"`.
 	Status *UpdateSessionRequestStatus `json:"status,omitempty"`
+
+	// VenueId Move the session to a different venue of the same org
+	// (AB-36). When the session's currency was derived, it is
+	// re-derived from the new venue's geography; an explicit
+	// (override) currency is left untouched.
+	VenueId *openapi_types.UUID `json:"venue_id"`
 }
 
 // UpdateSessionRequestStatus Target lifecycle status. Allowed transitions:
@@ -5772,13 +5926,12 @@ type UpdateTicketTierRequest struct {
 	// Capacity New per-tier capacity. When provided, must be > 0.
 	Capacity *int32 `json:"capacity"`
 
-	// Currency New ISO 4217 currency code.
-	Currency *string `json:"currency"`
-
 	// Name New tier name. When provided, must be non-empty after trim.
 	Name *string `json:"name"`
 
-	// PriceAmount New tier price in cents.
+	// PriceAmount New tier price in cents. The currency is not patchable — a
+	// tier always carries its session's currency; change it on the
+	// session and it cascades to every tier (AB-38).
 	PriceAmount *int64 `json:"price_amount"`
 
 	// PricingMode New pricing mode. Validated against price / pwyw bounds.
@@ -6593,10 +6746,10 @@ type ListPublicFeedEventsParams struct {
 	// CityId Optional filter by publication city scope.
 	CityId *openapi_types.UUID `form:"city_id,omitempty" json:"city_id,omitempty"`
 
-	// DateFrom Optional lower bound on `event.start_at` (inclusive).
+	// DateFrom Optional lower bound on the event's `first_session_at` cache (inclusive). Events without sessions are excluded when set.
 	DateFrom *time.Time `form:"date_from,omitempty" json:"date_from,omitempty"`
 
-	// DateTo Optional upper bound on `event.end_at` (inclusive).
+	// DateTo Optional upper bound on the event's `last_session_at` cache (inclusive). Events without sessions are excluded when set.
 	DateTo *time.Time `form:"date_to,omitempty" json:"date_to,omitempty"`
 
 	// Limit Page size.

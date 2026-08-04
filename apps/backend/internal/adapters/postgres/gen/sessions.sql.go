@@ -17,18 +17,29 @@ import (
 
 // SessionRow is the result type returned by all sessions queries.
 // deleted_at is nil for active sessions and non-nil for soft-deleted ones.
-// capacity_total is always positive (> 0) per the table CHECK constraint.
+// capacity_total is always positive (> 0) per the table CHECK constraint and
+// is a DERIVED value (bound plan version -> capacity_override ->
+// venues.capacity_default, AB-36). venue_id is NOT NULL — every session has
+// a venue (AB-36). currency is the ISO 4217 code every price of the session
+// is denominated in; currency_source records whether it was 'derived' from
+// the venue geography or set as an 'override' (AB-38).
 // status follows the lifecycle: draft → scheduled → completed|cancelled.
 type SessionRow struct {
-	ID            uuid.UUID  `json:"id"`
-	EventID       uuid.UUID  `json:"event_id"`
-	StartAt       time.Time  `json:"start_at"`
-	EndAt         time.Time  `json:"end_at"`
-	CapacityTotal int32      `json:"capacity_total"`
-	Status        string     `json:"status"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	DeletedAt     *time.Time `json:"deleted_at"`
+	ID                   uuid.UUID  `json:"id"`
+	EventID              uuid.UUID  `json:"event_id"`
+	VenueID              uuid.UUID  `json:"venue_id"`
+	StartAt              time.Time  `json:"start_at"`
+	EndAt                time.Time  `json:"end_at"`
+	CapacityTotal        int32      `json:"capacity_total"`
+	CapacityOverride     *int32     `json:"capacity_override"`
+	Status               string     `json:"status"`
+	AdmissionMode        string     `json:"admission_mode"`
+	SeatingPlanVersionID *uuid.UUID `json:"seating_plan_version_id"`
+	Currency             string     `json:"currency"`
+	CurrencySource       string     `json:"currency_source"`
+	CreatedAt            time.Time  `json:"created_at"`
+	UpdatedAt            time.Time  `json:"updated_at"`
+	DeletedAt            *time.Time `json:"deleted_at"`
 }
 
 // scanSessionRow scans a single sessions row into a SessionRow.
@@ -39,10 +50,16 @@ func scanSessionRow(row interface {
 	err := row.Scan(
 		&s.ID,
 		&s.EventID,
+		&s.VenueID,
 		&s.StartAt,
 		&s.EndAt,
 		&s.CapacityTotal,
+		&s.CapacityOverride,
 		&s.Status,
+		&s.AdmissionMode,
+		&s.SeatingPlanVersionID,
+		&s.Currency,
+		&s.CurrencySource,
 		&s.CreatedAt,
 		&s.UpdatedAt,
 		&s.DeletedAt,
@@ -50,21 +67,28 @@ func scanSessionRow(row interface {
 	return s, err
 }
 
+// sessionColumns is the canonical RETURNING / SELECT column list shared by
+// every query that yields a full SessionRow.
+const sessionColumns = `id, event_id, venue_id, start_at, end_at, capacity_total, capacity_override, status, admission_mode, seating_plan_version_id, currency, currency_source, created_at, updated_at, deleted_at`
+
 // ─────────────────────────────────────────────────────────────────────────────
 // InsertSession
 // ─────────────────────────────────────────────────────────────────────────────
 
 const insertSession = `-- name: InsertSession :one
-INSERT INTO sessions (event_id, start_at, end_at, capacity_total, status)
-VALUES ($1, $2, $3, $4, COALESCE(NULLIF($5, ''), 'scheduled'))
-RETURNING id, event_id, start_at, end_at, capacity_total, status, created_at, updated_at, deleted_at`
+INSERT INTO sessions (event_id, venue_id, start_at, end_at, capacity_total, capacity_override, status, currency, currency_source)
+VALUES ($1, $2, $3, $4, $5, $6, COALESCE(NULLIF($7, ''), 'scheduled'), $8, $9)
+RETURNING ` + sessionColumns
 
-// InsertSession creates a new session for the given event.
-// status defaults to 'scheduled' when empty.
+// InsertSession creates a new session for the given event at the given venue.
+// status defaults to 'scheduled' when empty. capacityTotal is the resolved
+// derived capacity; capacityOverride is the operator knob it may have come
+// from (nil when not supplied). currency / currencySource are resolved by the
+// handler before the insert (AB-38).
 // Returns the created row including the uuidv7 PK assigned by the database.
-func (q *Queries) InsertSession(ctx context.Context, eventID uuid.UUID, startAt, endAt time.Time, capacityTotal int32, status string) (SessionRow, error) {
+func (q *Queries) InsertSession(ctx context.Context, eventID, venueID uuid.UUID, startAt, endAt time.Time, capacityTotal int32, capacityOverride *int32, status, currency, currencySource string) (SessionRow, error) {
 	row := q.db.QueryRow(ctx, insertSession,
-		eventID, startAt, endAt, capacityTotal, status,
+		eventID, venueID, startAt, endAt, capacityTotal, capacityOverride, status, currency, currencySource,
 	)
 	return scanSessionRow(row)
 }
@@ -74,7 +98,7 @@ func (q *Queries) InsertSession(ctx context.Context, eventID uuid.UUID, startAt,
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getSessionByID = `-- name: GetSessionByID :one
-SELECT id, event_id, start_at, end_at, capacity_total, status, created_at, updated_at, deleted_at
+SELECT ` + sessionColumns + `
 FROM   sessions
 WHERE  id       = $1
   AND  event_id = $2
@@ -92,7 +116,7 @@ func (q *Queries) GetSessionByID(ctx context.Context, id, eventID uuid.UUID) (Se
 // ─────────────────────────────────────────────────────────────────────────────
 
 const listSessionsByEvent = `-- name: ListSessionsByEvent :many
-SELECT id, event_id, start_at, end_at, capacity_total, status, created_at, updated_at, deleted_at
+SELECT ` + sessionColumns + `
 FROM   sessions
 WHERE  event_id = $1
   AND  deleted_at IS NULL
@@ -124,23 +148,31 @@ func (q *Queries) ListSessionsByEvent(ctx context.Context, eventID uuid.UUID) ([
 
 const updateSession = `-- name: UpdateSession :one
 UPDATE sessions
-SET    start_at       = CASE WHEN $3::timestamptz IS NOT NULL THEN $3::timestamptz ELSE start_at END,
-       end_at         = CASE WHEN $4::timestamptz IS NOT NULL THEN $4::timestamptz ELSE end_at END,
-       capacity_total = CASE WHEN $5::integer     IS NOT NULL THEN $5::integer     ELSE capacity_total END,
-       status         = COALESCE(NULLIF($6, ''), status),
-       updated_at     = now()
+SET    venue_id          = CASE WHEN $3::uuid        IS NOT NULL THEN $3::uuid        ELSE venue_id END,
+       start_at          = CASE WHEN $4::timestamptz IS NOT NULL THEN $4::timestamptz ELSE start_at END,
+       end_at            = CASE WHEN $5::timestamptz IS NOT NULL THEN $5::timestamptz ELSE end_at END,
+       capacity_total    = CASE WHEN $6::integer     IS NOT NULL THEN $6::integer     ELSE capacity_total END,
+       capacity_override = CASE WHEN $7::integer     IS NOT NULL THEN $7::integer     ELSE capacity_override END,
+       status            = COALESCE(NULLIF($8, ''), status),
+       currency          = CASE WHEN $9::text        IS NOT NULL THEN $9::text        ELSE currency END,
+       currency_source   = COALESCE(NULLIF($10, ''), currency_source),
+       updated_at        = now()
 WHERE  id       = $1
   AND  event_id = $2
   AND  deleted_at IS NULL
-RETURNING id, event_id, start_at, end_at, capacity_total, status, created_at, updated_at, deleted_at`
+RETURNING ` + sessionColumns
 
 // UpdateSession applies a partial update to an active session scoped by event_id.
-// Nil optional fields keep the existing values.
+// Nil optional fields keep the existing values. capacityTotal carries the
+// re-derived capacity when the handler recomputed it. Setting currency
+// cascades to the session's ticket_tiers via the composite FK
+// ticket_tiers_currency_matches_session (ON UPDATE CASCADE), so tiers can
+// never diverge from the session currency.
 // Returns pgx.ErrNoRows when the session does not exist, belongs to a different
 // event, or has been soft-deleted.
-func (q *Queries) UpdateSession(ctx context.Context, id, eventID uuid.UUID, startAt, endAt *time.Time, capacityTotal *int32, status string) (SessionRow, error) {
+func (q *Queries) UpdateSession(ctx context.Context, id, eventID uuid.UUID, venueID *uuid.UUID, startAt, endAt *time.Time, capacityTotal, capacityOverride *int32, status string, currency *string, currencySource string) (SessionRow, error) {
 	row := q.db.QueryRow(ctx, updateSession,
-		id, eventID, startAt, endAt, capacityTotal, status,
+		id, eventID, venueID, startAt, endAt, capacityTotal, capacityOverride, status, currency, currencySource,
 	)
 	return scanSessionRow(row)
 }
@@ -156,7 +188,7 @@ SET    deleted_at = now(),
 WHERE  id       = $1
   AND  event_id = $2
   AND  deleted_at IS NULL
-RETURNING id, event_id, start_at, end_at, capacity_total, status, created_at, updated_at, deleted_at`
+RETURNING ` + sessionColumns
 
 // SoftDeleteSession marks a session as deleted by setting deleted_at.
 // Scoped by event_id to enforce owner-gated mutation policy.
@@ -341,4 +373,26 @@ func (q *Queries) GetSessionOrgContext(ctx context.Context, sessionID uuid.UUID)
 	var r SessionOrgContextRow
 	err := row.Scan(&r.SessionID, &r.OrgID)
 	return r, err
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GetSessionCurrency
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getSessionCurrency = `-- name: GetSessionCurrency :one
+SELECT trim(currency)::text AS currency
+FROM   sessions
+WHERE  id = $1
+  AND  deleted_at IS NULL`
+
+// GetSessionCurrency returns the ISO 4217 currency of an active session.
+// Used by the seating bind's tier auto-creation and by the ticket-tier
+// create/update path so every tier is denominated in the session currency
+// (AB-38 — one currency per session). Returns pgx.ErrNoRows when the
+// session does not exist or is soft-deleted.
+func (q *Queries) GetSessionCurrency(ctx context.Context, id uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, getSessionCurrency, id)
+	var currency string
+	err := row.Scan(&currency)
+	return currency, err
 }

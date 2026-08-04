@@ -198,3 +198,41 @@ func (q *Queries) SoftDeleteVenue(ctx context.Context, id, orgID uuid.UUID) (Ven
 	row := q.db.QueryRow(ctx, softDeleteVenue, id, orgID)
 	return scanVenueRow(row)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GetVenueSessionContext
+// ─────────────────────────────────────────────────────────────────────────────
+
+// VenueSessionContextRow is the narrow projection returned by
+// GetVenueSessionContext (Wave 4, AB-36/AB-38): everything the session
+// create/update path needs to validate the venue and derive capacity and
+// currency in a single round trip.
+type VenueSessionContextRow struct {
+	OrgID           uuid.UUID `json:"org_id"`
+	CapacityDefault *int32    `json:"capacity_default"`
+	// DerivedCurrency is the ISO 4217 code resolved from the venue
+	// geography (city.currency_override -> city country -> venues.country),
+	// or nil when the venue has no resolvable geography.
+	DerivedCurrency *string `json:"derived_currency"`
+}
+
+const getVenueSessionContext = `-- name: GetVenueSessionContext :one
+SELECT v.org_id,
+       v.capacity_default,
+       COALESCE(ci.currency_override, cc.currency, vc.currency)::text AS derived_currency
+FROM   venues v
+LEFT JOIN cities    ci ON ci.id   = v.city_id
+LEFT JOIN countries cc ON cc.id   = ci.country_id
+LEFT JOIN countries vc ON vc.iso2 = v.country
+WHERE  v.id = $1
+  AND  v.deleted_at IS NULL`
+
+// GetVenueSessionContext returns the owning org, the default capacity and
+// the geography-derived currency for a venue. Returns pgx.ErrNoRows when
+// the venue does not exist or is soft-deleted.
+func (q *Queries) GetVenueSessionContext(ctx context.Context, id uuid.UUID) (VenueSessionContextRow, error) {
+	row := q.db.QueryRow(ctx, getVenueSessionContext, id)
+	var r VenueSessionContextRow
+	err := row.Scan(&r.OrgID, &r.CapacityDefault, &r.DerivedCurrency)
+	return r, err
+}

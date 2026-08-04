@@ -173,7 +173,9 @@ func TestOpenAPI264_ErrorEnvelopeUsed(t *testing.T) {
 		if idx < 0 {
 			continue
 		}
-		end := idx + 4000
+		// 8000 chars covers the longest operation (createSession grew a
+		// derivation-rules description + three examples in Wave 4).
+		end := idx + 8000
 		if end > len(spec) {
 			end = len(spec)
 		}
@@ -209,8 +211,9 @@ func TestOpenAPI264_StatusEnumPinned(t *testing.T) {
 // walks the sessions-group request examples, asserting that:
 //
 //   - The createSession example body has the documented required fields
-//     (`start_at`, `end_at`, `capacity_total`), uses RFC 3339 timestamps,
-//     and a positive capacity_total.
+//     (`venue_id`, `start_at`, `end_at` — Wave 4, AB-36), uses RFC 3339
+//     timestamps, never carries the removed `capacity_total` input, and
+//     any `capacity_override` is a positive integer.
 //   - The updateSession examples (when they carry status) use values from
 //     the documented enum, and any timestamps remain RFC 3339-shaped.
 //
@@ -254,10 +257,15 @@ func TestOpenAPI264_SpecExamplesValidate(t *testing.T) {
 			t.Errorf("create example %q: not a mapping", name)
 			continue
 		}
-		for _, req := range []string{"start_at", "end_at", "capacity_total"} {
+		for _, req := range []string{"venue_id", "start_at", "end_at"} {
 			if _, ok := body[req]; !ok {
 				t.Errorf("create example %q: missing required field %q", name, req)
 			}
+		}
+		// Wave 4 (AB-36): capacity is derived — capacity_total is no longer
+		// an input and an example carrying it would document the old model.
+		if _, ok := body["capacity_total"]; ok {
+			t.Errorf("create example %q: capacity_total is not a create input since AB-36 (use capacity_override)", name)
 		}
 		if st, ok := body["status"].(string); ok && !validStatuses[st] {
 			t.Errorf("create example %q: status %q not in enum", name, st)
@@ -268,19 +276,19 @@ func TestOpenAPI264_SpecExamplesValidate(t *testing.T) {
 		if endStr, ok := body["end_at"].(string); ok && !looksLikeRFC3339(endStr) {
 			t.Errorf("create example %q: end_at %q is not RFC 3339", name, endStr)
 		}
-		// capacity_total must coerce to a positive integer.
-		switch v := body["capacity_total"].(type) {
+		// capacity_override, when present, must coerce to a positive integer.
+		switch v := body["capacity_override"].(type) {
 		case int:
 			if v <= 0 {
-				t.Errorf("create example %q: capacity_total %d must be > 0", name, v)
+				t.Errorf("create example %q: capacity_override %d must be > 0", name, v)
 			}
 		case int64:
 			if v <= 0 {
-				t.Errorf("create example %q: capacity_total %d must be > 0", name, v)
+				t.Errorf("create example %q: capacity_override %d must be > 0", name, v)
 			}
 		case float64:
 			if v <= 0 {
-				t.Errorf("create example %q: capacity_total %v must be > 0", name, v)
+				t.Errorf("create example %q: capacity_override %v must be > 0", name, v)
 			}
 		}
 	}

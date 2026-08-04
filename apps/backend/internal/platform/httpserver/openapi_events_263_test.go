@@ -278,8 +278,8 @@ func TestOpenAPI263_StatusTransitionEnumPinned(t *testing.T) {
 // walks the events-group request/response examples, asserting that:
 //
 //   - Every example body in CreateEventRequest passes the documented
-//     required field set (`name`, `start_at`, `end_at`) and uses RFC 3339
-//     timestamps where applicable.
+//     required field set (`name` only since Wave 4 — dates and venue moved
+//     to sessions, AB-36/AB-37) and carries NO date/venue fields.
 //   - The UpdateEventStatusRequest examples carry a valid enum value.
 //
 // This is the "minimal contract test" called out by step 3 — it runs in
@@ -327,9 +327,16 @@ func TestOpenAPI263_SpecExamplesValidate(t *testing.T) {
 			t.Errorf("create example %q: not a mapping", name)
 			continue
 		}
-		for _, req := range []string{"name", "start_at", "end_at"} {
+		for _, req := range []string{"name"} {
 			if _, ok := body[req]; !ok {
 				t.Errorf("create example %q: missing required field %q", name, req)
+			}
+		}
+		// Wave 4 (AB-36/AB-37): dates and venue belong to sessions — an
+		// event create example carrying them would document the old model.
+		for _, forbidden := range []string{"start_at", "end_at", "venue_id"} {
+			if _, ok := body[forbidden]; ok {
+				t.Errorf("create example %q: field %q no longer exists on events (AB-36/AB-37)", name, forbidden)
 			}
 		}
 		if vis, ok := body["visibility"].(string); ok && !validVisibility[vis] {
@@ -337,16 +344,6 @@ func TestOpenAPI263_SpecExamplesValidate(t *testing.T) {
 		}
 		if st, ok := body["status"].(string); ok && !validStatuses[st] {
 			t.Errorf("create example %q: status %q not in enum", name, st)
-		}
-		if startStr, ok := body["start_at"].(string); ok {
-			if !looksLikeRFC3339(startStr) {
-				t.Errorf("create example %q: start_at %q is not RFC 3339", name, startStr)
-			}
-		}
-		if endStr, ok := body["end_at"].(string); ok {
-			if !looksLikeRFC3339(endStr) {
-				t.Errorf("create example %q: end_at %q is not RFC 3339", name, endStr)
-			}
 		}
 	}
 

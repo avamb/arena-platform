@@ -25,6 +25,7 @@
 package hfeed
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -45,40 +46,77 @@ import (
 
 // publicFeedEventResponse is the JSON shape for a single event in the list and
 // detail endpoints.
+//
+// Wave 4 (AB-36/AB-37): the event no longer carries a venue or own dates.
+// first_session_at / last_session_at mirror the trigger-maintained session
+// window cache and are null for an event with no sessions; venue data lives
+// on the sessions (widgets render per-session dates already).
 type publicFeedEventResponse struct {
-	ID          string  `json:"id"`
-	OrgID       string  `json:"org_id"`
-	VenueID     *string `json:"venue_id"`
-	Name        string  `json:"name"`
-	Description *string `json:"description"`
-	Status      string  `json:"status"`
-	StartAt     string  `json:"start_at"`
-	EndAt       string  `json:"end_at"`
-	Visibility  string  `json:"visibility"`
-	ImageURL    *string `json:"image_url"`
-	CreatedAt   string  `json:"created_at"`
-	UpdatedAt   string  `json:"updated_at"`
+	ID             string   `json:"id"`
+	DisplayNumber  int64    `json:"display_number"`
+	OrgID          string   `json:"org_id"`
+	Name           string   `json:"name"`
+	Description    *string  `json:"description"`
+	Status         string   `json:"status"`
+	FirstSessionAt *string  `json:"first_session_at"`
+	LastSessionAt  *string  `json:"last_session_at"`
+	VenueNames     []string `json:"venue_names"`
+	Visibility     string   `json:"visibility"`
+	ImageURL       *string  `json:"image_url"`
+	CreatedAt      string   `json:"created_at"`
+	UpdatedAt      string   `json:"updated_at"`
 }
 
 func publicFeedEventFromRow(e gen.EventRow) publicFeedEventResponse {
 	resp := publicFeedEventResponse{
-		ID:          e.ID.String(),
-		OrgID:       e.OrgID.String(),
-		Name:        e.Name,
-		Description: e.Description,
-		Status:      e.Status,
-		StartAt:     e.StartAt.UTC().Format(time.RFC3339),
-		EndAt:       e.EndAt.UTC().Format(time.RFC3339),
-		Visibility:  e.Visibility,
-		ImageURL:    e.ImageURL,
-		CreatedAt:   e.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt:   e.UpdatedAt.UTC().Format(time.RFC3339),
+		ID:            e.ID.String(),
+		DisplayNumber: e.DisplayNumber,
+		OrgID:         e.OrgID.String(),
+		Name:          e.Name,
+		Description:   e.Description,
+		Status:        e.Status,
+		VenueNames:    []string{},
+		Visibility:    e.Visibility,
+		ImageURL:      e.ImageURL,
+		CreatedAt:     e.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:     e.UpdatedAt.UTC().Format(time.RFC3339),
 	}
-	if e.VenueID != nil {
-		s := e.VenueID.String()
-		resp.VenueID = &s
+	if e.FirstSessionAt != nil {
+		s := e.FirstSessionAt.UTC().Format(time.RFC3339)
+		resp.FirstSessionAt = &s
+	}
+	if e.LastSessionAt != nil {
+		s := e.LastSessionAt.UTC().Format(time.RFC3339)
+		resp.LastSessionAt = &s
 	}
 	return resp
+}
+
+// hydrateFeedVenueNames fills VenueNames from one ListEventVenueNames round
+// trip (AB-36 step 5). Non-fatal: the venue list is presentational and the
+// feed must not 500 because of it.
+func (h *Handler) hydrateFeedVenueNames(ctx context.Context, responses []publicFeedEventResponse) {
+	if h.publicFeedQueries == nil || len(responses) == 0 {
+		return
+	}
+	ids := make([]uuid.UUID, 0, len(responses))
+	for _, resp := range responses {
+		if id, err := uuid.Parse(resp.ID); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	names, err := h.publicFeedQueries.ListEventVenueNames(ctx, ids)
+	if err != nil {
+		h.logger.Warn("public_feed: venue-name hydration failed", slog.String("error", err.Error()))
+		return
+	}
+	for i := range responses {
+		if id, err := uuid.Parse(responses[i].ID); err == nil {
+			if vn, ok := names[id]; ok {
+				responses[i].VenueNames = vn
+			}
+		}
+	}
 }
 
 // publicFeedTierResponse is the JSON shape for a ticket tier in the detail response.
@@ -370,6 +408,7 @@ func (h *Handler) HandlePublicFeedEvents(w http.ResponseWriter, r *http.Request)
 	for _, row := range rows {
 		events = append(events, publicFeedEventFromRow(row))
 	}
+	h.hydrateFeedVenueNames(ctx, events)
 
 	totalPages := int(total) / perPage
 	if int(total)%perPage != 0 {
@@ -457,6 +496,11 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 	}
 
 	eventResp := publicFeedEventFromRow(event)
+	{
+		hydrated := []publicFeedEventResponse{eventResp}
+		h.hydrateFeedVenueNames(ctx, hydrated)
+		eventResp = hydrated[0]
+	}
 
 	// Fetch sessions for this event.
 	type eventDetailResponse struct {

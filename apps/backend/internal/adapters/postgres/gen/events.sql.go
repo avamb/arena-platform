@@ -17,26 +17,28 @@ import (
 
 // EventRow is the result type returned by all events queries.
 // deleted_at is nil for active events and non-nil for soft-deleted ones.
-// venue_id is nil when the event has no fixed venue.
 // description is nil when not provided.
 // image_url is nil when no image was supplied.
+// first_session_at / last_session_at are the trigger-maintained cache over
+// the event's active, non-cancelled sessions (migration 0080, AB-37); both
+// are nil for an event with no sessions. The event carries no venue and no
+// own dates — those belong to its sessions (AB-36/AB-37).
 // The name and description fields reflect locale-resolved values when the
 // query joins i18n_text; for write-result rows they hold the stored values.
 type EventRow struct {
-	ID            uuid.UUID  `json:"id"`
-	DisplayNumber int64      `json:"display_number"`
-	OrgID         uuid.UUID  `json:"org_id"`
-	VenueID       *uuid.UUID `json:"venue_id"`
-	Name          string     `json:"name"`
-	Description   *string    `json:"description"`
-	Status        string     `json:"status"`
-	StartAt       time.Time  `json:"start_at"`
-	EndAt         time.Time  `json:"end_at"`
-	Visibility    string     `json:"visibility"`
-	ImageURL      *string    `json:"image_url"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	DeletedAt     *time.Time `json:"deleted_at"`
+	ID             uuid.UUID  `json:"id"`
+	DisplayNumber  int64      `json:"display_number"`
+	OrgID          uuid.UUID  `json:"org_id"`
+	Name           string     `json:"name"`
+	Description    *string    `json:"description"`
+	Status         string     `json:"status"`
+	FirstSessionAt *time.Time `json:"first_session_at"`
+	LastSessionAt  *time.Time `json:"last_session_at"`
+	Visibility     string     `json:"visibility"`
+	ImageURL       *string    `json:"image_url"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	DeletedAt      *time.Time `json:"deleted_at"`
 }
 
 // scanEventRow scans a single events row into an EventRow.
@@ -48,12 +50,11 @@ func scanEventRow(row interface {
 		&e.ID,
 		&e.DisplayNumber,
 		&e.OrgID,
-		&e.VenueID,
 		&e.Name,
 		&e.Description,
 		&e.Status,
-		&e.StartAt,
-		&e.EndAt,
+		&e.FirstSessionAt,
+		&e.LastSessionAt,
 		&e.Visibility,
 		&e.ImageURL,
 		&e.CreatedAt,
@@ -68,16 +69,17 @@ func scanEventRow(row interface {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const insertEvent = `-- name: InsertEvent :one
-INSERT INTO events (org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url)
-VALUES ($1, $2, $3, $4, COALESCE(NULLIF($5, ''), 'draft'), $6, $7, COALESCE(NULLIF($8, ''), 'public'), $9)
-RETURNING id, display_number, org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url, created_at, updated_at, deleted_at`
+INSERT INTO events (org_id, name, description, status, visibility, image_url)
+VALUES ($1, $2, $3, COALESCE(NULLIF($4, ''), 'draft'), COALESCE(NULLIF($5, ''), 'public'), $6)
+RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, created_at, updated_at, deleted_at`
 
 // InsertEvent creates a new active event row owned by the given org.
 // status defaults to 'draft' when empty; visibility defaults to 'public' when empty.
+// first_session_at / last_session_at start NULL — a new event has no sessions.
 // Returns the created row including the uuidv7 PK assigned by the database.
-func (q *Queries) InsertEvent(ctx context.Context, orgID uuid.UUID, venueID *uuid.UUID, name string, description *string, status string, startAt, endAt time.Time, visibility string, imageURL *string) (EventRow, error) {
+func (q *Queries) InsertEvent(ctx context.Context, orgID uuid.UUID, name string, description *string, status, visibility string, imageURL *string) (EventRow, error) {
 	row := q.db.QueryRow(ctx, insertEvent,
-		orgID, venueID, name, description, status, startAt, endAt, visibility, imageURL,
+		orgID, name, description, status, visibility, imageURL,
 	)
 	return scanEventRow(row)
 }
@@ -91,12 +93,11 @@ SELECT
     e.id,
     e.display_number,
     e.org_id,
-    e.venue_id,
     COALESCE(n_loc.value, n_en.value, e.name)               AS name,
     COALESCE(d_loc.value, d_en.value, e.description)         AS description,
     e.status,
-    e.start_at,
-    e.end_at,
+    e.first_session_at,
+    e.last_session_at,
     e.visibility,
     e.image_url,
     e.created_at,
@@ -131,7 +132,7 @@ func (q *Queries) GetEventByID(ctx context.Context, id uuid.UUID, locale string)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getEventRaw = `-- name: GetEventRaw :one
-SELECT id, display_number, org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, created_at, updated_at, deleted_at
 FROM   events
 WHERE  id = $1
   AND  deleted_at IS NULL`
@@ -152,12 +153,11 @@ SELECT
     e.id,
     e.display_number,
     e.org_id,
-    e.venue_id,
     COALESCE(n_loc.value, n_en.value, e.name)               AS name,
     COALESCE(d_loc.value, d_en.value, e.description)         AS description,
     e.status,
-    e.start_at,
-    e.end_at,
+    e.first_session_at,
+    e.last_session_at,
     e.visibility,
     e.image_url,
     e.created_at,
@@ -178,11 +178,12 @@ LEFT JOIN i18n_text d_en ON d_en.namespace = 'event.description'
     AND d_en.locale = 'en'
 WHERE e.deleted_at IS NULL
   AND ($2::text = '' OR e.visibility = $2::text)
-ORDER BY e.start_at ASC, e.id ASC`
+ORDER BY e.first_session_at ASC NULLS LAST, e.id ASC`
 
 // ListEvents returns all active (non-deleted) events across all organizations.
 // locale is used to resolve localized names from i18n_text.
 // visibilityFilter filters by visibility value; pass "" to return all.
+// Ordered by the cached first-session timestamp; sessionless events sort last.
 func (q *Queries) ListEvents(ctx context.Context, locale, visibilityFilter string) ([]EventRow, error) {
 	rows, err := q.db.Query(ctx, listEvents, locale, visibilityFilter)
 	if err != nil {
@@ -210,12 +211,11 @@ SELECT
     e.id,
     e.display_number,
     e.org_id,
-    e.venue_id,
     COALESCE(n_loc.value, n_en.value, e.name)               AS name,
     COALESCE(d_loc.value, d_en.value, e.description)         AS description,
     e.status,
-    e.start_at,
-    e.end_at,
+    e.first_session_at,
+    e.last_session_at,
     e.visibility,
     e.image_url,
     e.created_at,
@@ -236,10 +236,11 @@ LEFT JOIN i18n_text d_en ON d_en.namespace = 'event.description'
     AND d_en.locale = 'en'
 WHERE e.org_id = $1
   AND e.deleted_at IS NULL
-ORDER BY e.start_at ASC, e.id ASC`
+ORDER BY e.first_session_at ASC NULLS LAST, e.id ASC`
 
 // ListEventsByOrg returns all active (non-deleted) events for the given organization.
 // locale is used to resolve localized names from i18n_text.
+// Ordered by the cached first-session timestamp; sessionless events sort last.
 func (q *Queries) ListEventsByOrg(ctx context.Context, orgID uuid.UUID, locale string) ([]EventRow, error) {
 	rows, err := q.db.Query(ctx, listEventsByOrg, orgID, locale)
 	if err != nil {
@@ -259,32 +260,65 @@ func (q *Queries) ListEventsByOrg(ctx context.Context, orgID uuid.UUID, locale s
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ListEventVenueNames
+// ─────────────────────────────────────────────────────────────────────────────
+
+const listEventVenueNames = `-- name: ListEventVenueNames :many
+SELECT s.event_id,
+       array_agg(DISTINCT v.name ORDER BY v.name) AS venue_names
+FROM   sessions s
+JOIN   venues v ON v.id = s.venue_id
+WHERE  s.event_id = ANY($1::uuid[])
+  AND  s.deleted_at IS NULL
+GROUP BY s.event_id`
+
+// ListEventVenueNames aggregates the distinct venue names of each event's
+// active sessions (AB-36 step 5: an event renders its venue(s) from its
+// sessions — one name, or several for a tour). Events without sessions are
+// simply absent from the returned map.
+func (q *Queries) ListEventVenueNames(ctx context.Context, eventIDs []uuid.UUID) (map[uuid.UUID][]string, error) {
+	rows, err := q.db.Query(ctx, listEventVenueNames, eventIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[uuid.UUID][]string, len(eventIDs))
+	for rows.Next() {
+		var eventID uuid.UUID
+		var names []string
+		if err := rows.Scan(&eventID, &names); err != nil {
+			return nil, err
+		}
+		result[eventID] = names
+	}
+	return result, rows.Err()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // UpdateEvent
 // ─────────────────────────────────────────────────────────────────────────────
 
 const updateEvent = `-- name: UpdateEvent :one
 UPDATE events
-SET    venue_id    = CASE WHEN $3::uuid IS NOT NULL THEN $3::uuid ELSE venue_id END,
-       name        = COALESCE(NULLIF($4, ''), name),
-       description = CASE WHEN $5::text IS NOT NULL THEN $5::text ELSE description END,
-       start_at    = CASE WHEN $6::timestamptz IS NOT NULL THEN $6::timestamptz ELSE start_at END,
-       end_at      = CASE WHEN $7::timestamptz IS NOT NULL THEN $7::timestamptz ELSE end_at END,
-       visibility  = COALESCE(NULLIF($8, ''), visibility),
-       image_url   = CASE WHEN $9::text IS NOT NULL THEN $9::text ELSE image_url END,
+SET    name        = COALESCE(NULLIF($3, ''), name),
+       description = CASE WHEN $4::text IS NOT NULL THEN $4::text ELSE description END,
+       visibility  = COALESCE(NULLIF($5, ''), visibility),
+       image_url   = CASE WHEN $6::text IS NOT NULL THEN $6::text ELSE image_url END,
        updated_at  = now()
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, display_number, org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url, created_at, updated_at, deleted_at`
+RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, created_at, updated_at, deleted_at`
 
 // UpdateEvent applies a partial update to an active event (non-status fields).
 // Scoped by org_id to enforce owner-gated mutation policy.
 // Empty string name and nil optional fields keep the existing values.
 // Returns pgx.ErrNoRows when the event does not exist, does not belong to the org,
 // or has been soft-deleted.
-func (q *Queries) UpdateEvent(ctx context.Context, id, orgID uuid.UUID, venueID *uuid.UUID, name string, description *string, startAt, endAt *time.Time, visibility string, imageURL *string) (EventRow, error) {
+func (q *Queries) UpdateEvent(ctx context.Context, id, orgID uuid.UUID, name string, description *string, visibility string, imageURL *string) (EventRow, error) {
 	row := q.db.QueryRow(ctx, updateEvent,
-		id, orgID, venueID, name, description, startAt, endAt, visibility, imageURL,
+		id, orgID, name, description, visibility, imageURL,
 	)
 	return scanEventRow(row)
 }
@@ -300,7 +334,7 @@ SET    status     = $3,
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, display_number, org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url, created_at, updated_at, deleted_at`
+RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, created_at, updated_at, deleted_at`
 
 // UpdateEventStatus transitions an event to a new status.
 // Scoped by org_id to enforce owner-gated mutation policy.
@@ -323,7 +357,7 @@ SET    deleted_at = now(),
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, display_number, org_id, venue_id, name, description, status, start_at, end_at, visibility, image_url, created_at, updated_at, deleted_at`
+RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, created_at, updated_at, deleted_at`
 
 // SoftDeleteEvent marks an event as deleted by setting deleted_at.
 // Scoped by org_id to enforce owner-gated mutation policy.

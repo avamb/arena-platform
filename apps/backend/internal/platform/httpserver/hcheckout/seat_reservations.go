@@ -151,7 +151,7 @@ func (h *Handler) createSeatedReservation(w http.ResponseWriter, r *http.Request
 	// Verify every requested seat_key was returned by the SELECT and every
 	// returned row is currently 'available'. Both failure modes surface as
 	// the same 409 with a `conflicts` array — the client can distinguish
-	// unknown keys (status: "unknown") from held/sold/blocked keys.
+	// unknown keys (status: "unknown") from held/sold/unavailable keys.
 	conflicts := seatConflicts(seats, locked)
 	if len(conflicts) > 0 {
 		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(

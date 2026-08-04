@@ -47,3 +47,22 @@ WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
 RETURNING id, display_number, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at;
+
+-- name: GetVenueSessionContext :one
+-- GetVenueSessionContext returns the venue attributes the session
+-- create/update path needs in one round trip (Wave 4, AB-36/AB-38):
+-- the owning org (venue must belong to the event's org), the default
+-- capacity (last stop of the capacity resolution chain), and the currency
+-- derived from the venue geography:
+--   city.currency_override -> city's country currency -> country matching
+--   venues.country (ISO2). NULL when the venue has neither a city nor a
+--   recognized country — the operator must then supply the currency.
+SELECT v.org_id,
+       v.capacity_default,
+       COALESCE(ci.currency_override, cc.currency, vc.currency)::text AS derived_currency
+FROM   venues v
+LEFT JOIN cities    ci ON ci.id   = v.city_id
+LEFT JOIN countries cc ON cc.id   = ci.country_id
+LEFT JOIN countries vc ON vc.iso2 = v.country
+WHERE  v.id = $1
+  AND  v.deleted_at IS NULL;

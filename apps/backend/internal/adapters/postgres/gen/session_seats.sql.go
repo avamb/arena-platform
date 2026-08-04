@@ -22,7 +22,7 @@ import (
 // applied (§7 SEAT-B2). ReservationID is non-nil while the seat is held or
 // sold — it points to the reservation that currently owns the row. Status
 // transitions follow: available → held → sold, with orthogonal
-// available ↔ blocked admin transitions. StatusVersion is the stamp taken
+// available ↔ unavailable admin transitions. StatusVersion is the stamp taken
 // from sessions.seat_status_version at the moment of the last transition;
 // callers polling delta seat status filter on StatusVersion > cursor.
 type SessionSeatRow struct {
@@ -393,7 +393,7 @@ func (q *Queries) SellSessionSeat(ctx context.Context, id, reservationID uuid.UU
 
 const blockSessionSeat = `-- name: BlockSessionSeat :one
 UPDATE session_seats
-SET    status         = 'blocked',
+SET    status         = 'unavailable',
        status_version = $2,
        updated_at     = now()
 WHERE  id     = $1
@@ -401,9 +401,9 @@ WHERE  id     = $1
 RETURNING id, session_id, seat_key, sector_name, row_name, seat_number,
           tier_id, status, reservation_id, status_version, updated_at`
 
-// BlockSessionSeat performs the conditional 'available' -> 'blocked' admin
+// BlockSessionSeat performs the conditional 'available' -> 'unavailable' admin
 // transition. Returns pgx.ErrNoRows when the seat is not available (e.g.
-// already held / sold / blocked).
+// already held / sold / unavailable).
 func (q *Queries) BlockSessionSeat(ctx context.Context, id uuid.UUID, statusVersion int64) (SessionSeatRow, error) {
 	row := q.db.QueryRow(ctx, blockSessionSeat, id, statusVersion)
 	return scanSessionSeatRow(row)
@@ -419,12 +419,12 @@ SET    status         = 'available',
        status_version = $2,
        updated_at     = now()
 WHERE  id     = $1
-  AND  status = 'blocked'
+  AND  status = 'unavailable'
 RETURNING id, session_id, seat_key, sector_name, row_name, seat_number,
           tier_id, status, reservation_id, status_version, updated_at`
 
-// UnblockSessionSeat performs the conditional 'blocked' -> 'available'
-// admin transition. Returns pgx.ErrNoRows when the seat is not blocked.
+// UnblockSessionSeat performs the conditional 'unavailable' -> 'available'
+// admin transition. Returns pgx.ErrNoRows when the seat is not unavailable.
 func (q *Queries) UnblockSessionSeat(ctx context.Context, id uuid.UUID, statusVersion int64) (SessionSeatRow, error) {
 	row := q.db.QueryRow(ctx, unblockSessionSeat, id, statusVersion)
 	return scanSessionSeatRow(row)

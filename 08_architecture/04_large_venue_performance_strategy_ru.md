@@ -39,7 +39,7 @@ Dynamic Seat Status
   - available
   - reserved
   - sold
-  - blocked
+  - unavailable
   - held by channel/order/session
   - short-lived and frequently changing
 ```
@@ -142,8 +142,8 @@ available -> reserved
 reserved -> available
 reserved -> sold
 sold -> refunded/released policy dependent
-available -> blocked
-blocked -> available
+available -> unavailable
+unavailable -> available
 ```
 
 Нельзя при каждом изменении пересобирать весь status list из БД.

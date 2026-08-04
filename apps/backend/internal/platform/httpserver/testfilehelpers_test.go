@@ -225,6 +225,19 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "adapters", "postgres", "gen", "events.sql.go"),
 		}
+	// Wave 4 reconstruction alignment (AB-36/AB-37/AB-38)
+	case "0079_session_owns_venue.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0079_session_owns_venue.sql"),
+		}
+	case "0080_event_dates_from_sessions.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0080_event_dates_from_sessions.sql"),
+		}
+	case "0081_currency_from_geography.sql":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "migrations", "sql", "0081_currency_from_geography.sql"),
+		}
 	// Password reset tokens (feature #116)
 	case "0015_password_reset_tokens.sql":
 		candidates = []string{

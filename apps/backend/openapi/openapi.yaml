@@ -3120,13 +3120,19 @@ components:
         - org_id
         - name
         - status
-        - start_at
-        - end_at
+        - first_session_at
+        - last_session_at
+        - venue_names
         - visibility
         - created_at
         - updated_at
       description: |
-        A single dated event organized by one organization at an optional venue.
+        A single event organized by one organization. Since Wave 4
+        (AB-36/AB-37) the event carries no venue and no own dates — both
+        belong to its sessions. `first_session_at` / `last_session_at`
+        mirror the trigger-maintained cache over the event's active,
+        non-cancelled sessions and are null for an event with no sessions;
+        `venue_names` lists the distinct venues of those sessions.
         Lifecycle: draft → published → cancelled|archived (see the status
         transition rules on POST /v1/organizations/{org_id}/events/{id}/status).
         The `name` and `description` fields are locale-resolved per the
@@ -3148,13 +3154,6 @@ components:
             Owning organization. Immutable after creation. Only this org may
             mutate the event.
           example: "01929d0e-0e47-7000-8000-000000000001"
-        venue_id:
-          type: [string, "null"]
-          format: uuid
-          description: |
-            Optional FK to a venue (see /v1/venues/{id}). NULL when the
-            event has no fixed venue (e.g. online stream, TBD location).
-          example: "01929d0e-0e47-7000-8000-000000000201"
         name:
           type: string
           description: |
@@ -3172,21 +3171,33 @@ components:
           enum: [draft, published, cancelled, archived]
           description: Lifecycle status.
           example: "published"
-        start_at:
-          type: string
+        first_session_at:
+          type: [string, "null"]
           format: date-time
           description: |
-            Event start time in RFC 3339 / ISO 8601 UTC. Always strictly
-            before `end_at` (enforced by both the handler and a CHECK
-            constraint on the events table).
+            Earliest `start_at` over the event's active, non-cancelled
+            sessions (RFC 3339, UTC). Maintained by a database trigger
+            (migration 0080) — never written directly. Null when the event
+            has no sessions; an event with no sessions renders no date
+            anywhere.
           example: "2026-08-15T18:00:00Z"
-        end_at:
-          type: string
+        last_session_at:
+          type: [string, "null"]
           format: date-time
           description: |
-            Event end time in RFC 3339 / ISO 8601 UTC. Must be strictly
-            after `start_at`.
+            Latest `end_at` over the event's active, non-cancelled sessions
+            (RFC 3339, UTC). Null when the event has no sessions.
           example: "2026-08-15T23:00:00Z"
+        venue_names:
+          type: array
+          items:
+            type: string
+          description: |
+            Distinct names of the venues of the event's active sessions,
+            sorted alphabetically. Empty for an event with no sessions;
+            more than one entry for a tour (AB-36 — the venue belongs to
+            the session, so one event may span several venues).
+          example: ["Palac Akropolis"]
         visibility:
           type: string
           enum: [public, private, unlisted]
@@ -3214,11 +3225,13 @@ components:
 
     CreateEventRequest:
       type: object
-      required: [name, start_at, end_at]
+      required: [name]
       description: |
         Create-time payload for POST /v1/organizations/{org_id}/events.
         The owning organization is taken from the path; the body MUST NOT
-        repeat it.
+        repeat it. Dates and venue are NOT collected here (AB-36/AB-37):
+        they belong to the event's sessions and are supplied when sessions
+        are created.
       properties:
         name:
           type: string
@@ -3227,30 +3240,16 @@ components:
         description:
           type: string
           description: Optional long-form description.
-        venue_id:
-          type: string
-          format: uuid
-          description: Optional venue UUID. When set, must belong to the same organization.
         status:
           type: string
           enum: [draft, published, cancelled, archived]
           description: |
             Initial lifecycle status. Defaults to `draft` on the server when
             omitted.
-        start_at:
-          type: string
-          format: date-time
-          description: Event start time (RFC 3339, UTC).
-          example: "2026-08-15T18:00:00Z"
-        end_at:
-          type: string
-          format: date-time
-          description: Event end time. Must be strictly after start_at.
-          example: "2026-08-15T23:00:00Z"
         visibility:
           type: string
           enum: [public, private, unlisted]
-          description: Initial visibility. Defaults to `private` on the server when omitted.
+          description: Initial visibility. Defaults to `public` on the server when omitted.
         image_url:
           type: string
           format: uri
@@ -3274,20 +3273,6 @@ components:
         description:
           type: [string, "null"]
           description: New long-form description.
-        venue_id:
-          type: [string, "null"]
-          format: uuid
-          description: Reassign the event to a different (same-org) venue.
-        start_at:
-          type: [string, "null"]
-          format: date-time
-          description: New event start time (RFC 3339, UTC).
-        end_at:
-          type: [string, "null"]
-          format: date-time
-          description: |
-            When both start_at and end_at are present in the same body,
-            end_at must remain strictly after start_at.
         visibility:
           type: string
           enum: [public, private, unlisted]
@@ -3367,19 +3352,27 @@ components:
       required:
         - id
         - event_id
+        - venue_id
         - start_at
         - end_at
         - capacity_total
+        - capacity_override
         - status
+        - admission_mode
+        - seating_plan_version_id
+        - currency
+        - currency_source
         - created_at
         - updated_at
         - has_overlapping_sessions
       description: |
-        A single dated session (time slot) under an event. Overlap with
-        sibling sessions is permitted but flagged via the
-        `has_overlapping_sessions` boolean — the application layer detects
-        overlaps via a count query (CountOverlappingSessions) rather than a
-        DB-level UNIQUE constraint.
+        A single dated session (time slot) of an event at a venue. Since
+        Wave 4 (AB-36/AB-38) the session — not the event — owns the venue,
+        the seating bind and the currency, matching the Bil24 ActionEvent
+        model. Overlap with sibling sessions is permitted but flagged via
+        the `has_overlapping_sessions` boolean — the application layer
+        detects overlaps via a count query (CountOverlappingSessions)
+        rather than a DB-level UNIQUE constraint.
       properties:
         id:
           type: string
@@ -3393,6 +3386,14 @@ components:
             FK to the owning event. Immutable after creation; the
             owner-org check is enforced via the parent event row.
           example: "01929d0e-0e47-7000-8000-000000000301"
+        venue_id:
+          type: string
+          format: uuid
+          description: |
+            Venue this session takes place at (AB-36). Always present —
+            every session has a venue; the venue must belong to the
+            event's organization (superadmin bypass excepted).
+          example: "01929d0e-0e47-7000-8000-000000000201"
         start_at:
           type: string
           format: date-time
@@ -3411,10 +3412,21 @@ components:
           format: int32
           minimum: 1
           description: |
-            Total seats available for this slot. Must be strictly greater
-            than zero. When this value changes via PATCH, the handler
-            fires the capacity propagation hook (onCapacityChange) to
-            keep the inventory ledger in sync.
+            Total places available for this slot — a DERIVED value
+            (AB-36): a bound seating plan version wins; otherwise
+            `capacity_override`; otherwise the venue's capacity_default.
+            When it changes the handler fires the capacity propagation
+            hook (onCapacityChange) to keep the inventory ledger in sync.
+          example: 500
+        capacity_override:
+          type: [integer, "null"]
+          format: int32
+          minimum: 1
+          description: |
+            Operator-supplied capacity for general-admission sessions,
+            taking precedence over the venue's capacity_default. Null when
+            not set. Ignored (and not settable) once a seating plan is
+            bound — the plan owns the capacity.
           example: 500
         status:
           type: string
@@ -3423,6 +3435,38 @@ components:
             Lifecycle status. Transitions: draft → scheduled, scheduled
             → cancelled|completed.
           example: "scheduled"
+        admission_mode:
+          type: string
+          enum: [general_admission, assigned_seats, hybrid]
+          description: |
+            Seating mode. `general_admission` sells against capacity only;
+            `assigned_seats` / `hybrid` sessions are bound to a seating
+            plan version whose seats are materialized per session.
+          example: "general_admission"
+        seating_plan_version_id:
+          type: [string, "null"]
+          format: uuid
+          description: |
+            The bound seating plan version. Null for pure
+            general-admission sessions; always set for assigned_seats /
+            hybrid.
+        currency:
+          type: string
+          pattern: "^[A-Z]{3}$"
+          description: |
+            ISO 4217 currency every price of this session is denominated
+            in (AB-38). One currency per session is a hard invariant —
+            all ticket tiers carry this value.
+          example: "CZK"
+        currency_source:
+          type: string
+          enum: [derived, override]
+          description: |
+            How the currency was set: `derived` — resolved from the
+            venue's city/country geography; `override` — set deliberately
+            by the operator. A later venue change re-derives only
+            `derived` sessions.
+          example: "derived"
         created_at:
           type: string
           format: date-time
@@ -3444,13 +3488,33 @@ components:
 
     CreateSessionRequest:
       type: object
-      required: [start_at, end_at, capacity_total]
+      required: [venue_id, start_at, end_at]
       description: |
         Create-time payload for POST
         /v1/organizations/{org_id}/events/{event_id}/sessions. The owning
         org_id and event_id are taken from the path; the body MUST NOT
         repeat them.
+
+        Capacity is DERIVED (AB-36), never supplied directly: a bound
+        seating plan version wins; otherwise `capacity_override`;
+        otherwise the venue's capacity_default. A general-admission
+        session resolving to none of these is rejected with 422
+        `session.capacity_unresolvable`.
+
+        Currency is derived from the venue geography
+        (city.currency_override → country.currency) unless `currency` is
+        supplied explicitly (recorded as an override, AB-38). A venue
+        whose geography resolves to nothing requires an explicit
+        `currency` (422 `session.currency_unresolvable` otherwise).
       properties:
+        venue_id:
+          type: string
+          format: uuid
+          description: |
+            Venue the session takes place at (AB-36). Required; must
+            reference an existing venue of the event's organization —
+            400 `session.venue_not_found` / 422
+            `session.venue_org_mismatch` otherwise.
         start_at:
           type: string
           format: date-time
@@ -3461,18 +3525,49 @@ components:
           format: date-time
           description: Session end time (RFC 3339, UTC). Must be strictly after `start_at`.
           example: "2026-08-15T21:00:00Z"
-        capacity_total:
-          type: integer
+        capacity_override:
+          type: [integer, "null"]
           format: int32
           minimum: 1
-          description: Total seats available; must be > 0.
+          description: |
+            Operator capacity for general-admission sessions, overriding
+            the venue's capacity_default. Must be > 0 when present (400
+            `session.invalid_capacity_override`).
           example: 500
         status:
           type: string
           enum: [draft, scheduled, cancelled, completed]
           description: |
-            Initial lifecycle status. Defaults to `draft` on the server
-            when omitted.
+            Initial lifecycle status. Defaults to `scheduled` on the
+            server when omitted.
+        admission_mode:
+          type: string
+          enum: [general_admission, assigned_seats, hybrid]
+          description: |
+            Seating mode; defaults to `general_admission`. Choosing
+            `assigned_seats` or `hybrid` runs the SEAT-B2 seating bind
+            inline (AB-36 step 3): seats are materialized from the plan
+            version geometry, one ticket tier is auto-created per SVG
+            price category, the version is locked and capacity_total is
+            recomputed from the plan — the session is fully sellable in
+            one call.
+        seating_plan_version_id:
+          type: [string, "null"]
+          format: uuid
+          description: |
+            Seating plan version to bind. Required when admission_mode is
+            `assigned_seats`/`hybrid` (400
+            `session.missing_seating_plan_version`); forbidden for
+            general_admission (400 `session.seating_plan_not_applicable`).
+        currency:
+          type: [string, "null"]
+          pattern: "^[A-Z]{3}$"
+          description: |
+            Explicit ISO 4217 currency override (AB-38). When omitted the
+            currency is derived from the venue geography. Malformed codes
+            are rejected with 422 `session.invalid_currency`, never
+            persisted.
+          example: "EUR"
 
     UpdateSessionRequest:
       type: object
@@ -3483,7 +3578,21 @@ components:
         unchanged. When status changes, the transition is validated
         against the session state machine and 422
         `session.invalid_transition` is returned for disallowed moves.
+
+        capacity_total is not an input — it is re-derived when venue_id
+        or capacity_override change (general-admission sessions only; a
+        bound seating plan owns the capacity, and capacity_override on a
+        plan-bound session is rejected with 422
+        `session.capacity_override_not_applicable`).
       properties:
+        venue_id:
+          type: [string, "null"]
+          format: uuid
+          description: |
+            Move the session to a different venue of the same org
+            (AB-36). When the session's currency was derived, it is
+            re-derived from the new venue's geography; an explicit
+            (override) currency is left untouched.
         start_at:
           type: [string, "null"]
           format: date-time
@@ -3495,13 +3604,24 @@ components:
             New session end time. When both start_at and end_at are
             present in the same body, end_at must remain strictly after
             start_at.
-        capacity_total:
+        capacity_override:
           type: [integer, "null"]
           format: int32
           minimum: 1
           description: |
-            New seat total; must be > 0. Triggers the capacity propagation
-            hook (inventory ledger sync) when changed.
+            New operator capacity for a general-admission session; must
+            be > 0. capacity_total is re-derived and the capacity
+            propagation hook (inventory ledger sync) fires when it
+            changes.
+        currency:
+          type: [string, "null"]
+          pattern: "^[A-Z]{3}$"
+          description: |
+            Deliberate ISO 4217 currency change (recorded as
+            currency_source=override). The change CASCADES to every
+            ticket tier of the session in the same statement — a session
+            can never carry mixed-currency tiers (AB-38). Malformed codes
+            are rejected with 422 `session.invalid_currency`.
         status:
           type: string
           enum: [draft, scheduled, cancelled, completed]
@@ -3612,8 +3732,13 @@ components:
           example: 2500
         currency:
           type: string
-          description: ISO 4217 currency code. Defaults to `USD` when omitted on create.
-          example: "USD"
+          pattern: "^[A-Z]{3}$"
+          description: |
+            ISO 4217 currency code — always equal to the owning session's
+            currency (AB-38: one currency per session, enforced by a
+            composite FK). Not an operator input; changing the session's
+            currency cascades here.
+          example: "CZK"
         pwyw_min:
           type: [integer, "null"]
           format: int64
@@ -3688,11 +3813,10 @@ components:
           description: |
             Tier price in cents. Required for `fixed`; forced to 0 for
             `free`; ignored for `pwyw` (use `pwyw_min` / `pwyw_max`).
+            The currency is NOT accepted here — every tier is denominated
+            in its session's currency (AB-38); a `currency` key sent by an
+            older client is silently ignored.
           example: 2500
-        currency:
-          type: string
-          description: ISO 4217 currency code. Defaults to `USD` when omitted.
-          example: "USD"
         pwyw_min:
           type: [integer, "null"]
           format: int64
@@ -3744,10 +3868,10 @@ components:
           type: [integer, "null"]
           format: int64
           minimum: 0
-          description: New tier price in cents.
-        currency:
-          type: [string, "null"]
-          description: New ISO 4217 currency code.
+          description: |
+            New tier price in cents. The currency is not patchable — a
+            tier always carries its session's currency; change it on the
+            session and it cascades to every tier (AB-38).
         pwyw_min:
           type: [integer, "null"]
           format: int64
@@ -7228,7 +7352,11 @@ components:
         action:
           type: string
           enum: [block, unblock]
-          description: Admin transition to attempt. `block` moves available→blocked; `unblock` moves blocked→available.
+          description: |
+            Admin transition to attempt. `block` moves
+            available→unavailable; `unblock` moves unavailable→available.
+            (The action verbs are stable; the status value was renamed
+            from `blocked` to `unavailable` in migration 0081.)
         seat_keys:
           type: array
           description: |
@@ -7259,11 +7387,13 @@ components:
       type: object
       required: [seat_key, outcome, status]
       description: |
-        Per-seat outcome envelope. `outcome` is one of `blocked`,
-        `unblocked`, `noop`, `skipped`; `reason` is populated only
+        Per-seat outcome envelope. `outcome` is one of `unavailable`,
+        `available`, `noop`, `skipped` — the changed outcomes name the
+        resulting seat status (`unavailable` after a block, `available`
+        after an unblock); `reason` is populated only
         when `outcome == skipped` (values include `held`, `sold`,
         `seat_not_found`, `concurrent_transition`, `unknown_status`).
-        `status` echoes the post-attempt seat status: `blocked` /
+        `status` echoes the post-attempt seat status: `unavailable` /
         `available` for successful changes, the pre-existing status
         for noop / skipped rows, and empty string for unknown seats.
       properties:
@@ -7272,7 +7402,7 @@ components:
           description: Canonical seat_key.
         outcome:
           type: string
-          enum: [blocked, unblocked, noop, skipped]
+          enum: [unavailable, available, noop, skipped]
           description: Effect of the attempted transition on this seat.
         reason:
           type: string
@@ -7291,7 +7421,7 @@ components:
           description: Total number of per-seat outcomes returned (targets + unknown).
         changed:
           type: integer
-          description: Seats that transitioned successfully (blocked / unblocked).
+          description: Seats that transitioned successfully (made unavailable / made available).
         noop:
           type: integer
           description: Seats that were already in the target status (idempotent no-op).
@@ -7462,10 +7592,10 @@ components:
           description: Live session-scoped monotonic cursor. Callers should persist this and pass it back as `since_version` on the next call.
         seats:
           type: object
-          description: Map of `seat_key` → seat status. Empty when the caller is already at head. Statuses are `available|held|sold|blocked`.
+          description: Map of `seat_key` → seat status. Empty when the caller is already at head. Statuses are `available|held|sold|unavailable`.
           additionalProperties:
             type: string
-            description: Current status of the seat (`available`, `held`, `sold`, `blocked`).
+            description: Current status of the seat (`available`, `held`, `sold`, `unavailable`).
         delta:
           type: boolean
           description: "`true` when the response is a since_version delta, `false` when it is a full snapshot."
@@ -11869,18 +11999,18 @@ paths:
       summary: Block or unblock seats for a session (operator control)
       description: |
         Operator endpoint for closing individual seats, whole rows, or
-        whole sectors for sale (tech seats, camera platforms, blocked
+        whole sectors for sale (tech seats, camera platforms, obstructed
         sightlines, house holds) and reopening them per session. The
         request combines any of three selectors — `seat_keys`,
         `sectors`, and `rows` — which are expanded server-side to a
         deduplicated set of `session_seats` rows. Only the two admin
-        transitions `available → blocked` and `blocked → available`
+        transitions `available → unavailable` and `unavailable → available`
         are attempted; seats in `held` / `sold` status are reported
         per-seat as skipped with a reason and are never silently
         mutated. Re-blocking / re-opening a seat that is already in the
         target state is a documented no-op (idempotent).
 
-        Blocked seats surface as `blocked` in the SEAT-B3 seat-status
+        Withheld seats surface as `unavailable` in the SEAT-B3 seat-status
         endpoint, map to BSS `0 INACCESSIBLE` in the Bil24 gateway, are
         excluded from availability counters, and cannot be reserved
         (409 `reservation.seats_conflict` in the seated checkout path).
@@ -12096,7 +12226,7 @@ paths:
         stream.
 
         Status wire codes (§6):
-          * `0 INACCESSIBLE`   ← internal `blocked`
+          * `0 INACCESSIBLE`   ← internal `unavailable`
           * `1 AVAILABLE`      ← internal `available`
           * `2 PRE_RESERVED`   (reserved for future flows, never emitted)
           * `3 RESERVED`       ← internal `held`
@@ -13991,11 +14121,9 @@ paths:
               $ref: "#/components/schemas/CreateEventRequest"
             examples:
               minimal:
-                summary: Minimal create payload
+                summary: Minimal create payload (dates and venue belong to sessions, AB-36/AB-37)
                 value:
                   name: "Summer Festival 2026"
-                  start_at: "2026-08-15T18:00:00Z"
-                  end_at: "2026-08-15T23:00:00Z"
               withTranslations:
                 summary: Create with localized name and description
                 value:
@@ -14003,8 +14131,6 @@ paths:
                   description: "Open-air festival on the Tel Aviv beachfront."
                   status: "draft"
                   visibility: "public"
-                  start_at: "2026-08-15T18:00:00Z"
-                  end_at: "2026-08-15T23:00:00Z"
                   translations:
                     ru:
                       name: "Летний фестиваль 2026"
@@ -14021,10 +14147,7 @@ paths:
             Body missing/invalid. Possible error codes:
             `event.invalid_body`, `event.empty_body`, `event.invalid_json`,
             `event.invalid_name`, `event.invalid_status`,
-            `event.invalid_visibility`, `event.missing_start_at`,
-            `event.invalid_start_at`, `event.missing_end_at`,
-            `event.invalid_end_at`, `event.invalid_date_range`,
-            `event.invalid_venue_id`.
+            `event.invalid_visibility`.
           content:
             application/json:
               schema:
@@ -14099,9 +14222,7 @@ paths:
           description: |
             Body invalid. Possible error codes:
             `event.invalid_body`, `event.empty_body`, `event.invalid_json`,
-            `event.invalid_visibility`, `event.invalid_venue_id`,
-            `event.invalid_start_at`, `event.invalid_end_at`,
-            `event.invalid_date_range`.
+            `event.invalid_visibility`.
           content:
             application/json:
               schema:
@@ -14319,9 +14440,15 @@ paths:
       operationId: createSession
       summary: Create a new session (time slot) for an event
       description: |
-        Creates a new session under an event. The owning organization is
-        taken from the path; the body MUST NOT repeat it. `end_at` must
-        be strictly after `start_at`. `capacity_total` must be > 0.
+        Creates a new session under an event at a venue (AB-36: the
+        session owns the venue). The owning organization is taken from
+        the path; the body MUST NOT repeat it. `end_at` must be strictly
+        after `start_at`. Capacity is derived (plan version →
+        capacity_override → venue capacity_default) and the currency is
+        derived from the venue geography unless overridden (AB-38).
+        Choosing admission_mode assigned_seats/hybrid runs the seating
+        bind inline: seats materialize, tiers are auto-created per SVG
+        price category, capacity comes from the plan.
         Overlapping sessions are permitted but flagged in the response
         via `session.has_overlapping_sessions`. The handler also
         initialises the inventory ledger for the new session (non-fatal
@@ -14352,18 +14479,28 @@ paths:
               $ref: "#/components/schemas/CreateSessionRequest"
             examples:
               minimal:
-                summary: Minimal session
+                summary: Minimal GA session (capacity from the venue's capacity_default, currency derived from geography)
                 value:
+                  venue_id: "01929d0e-0e47-7000-8000-000000000201"
                   start_at: "2026-08-15T18:00:00Z"
                   end_at: "2026-08-15T21:00:00Z"
-                  capacity_total: 500
-              scheduled:
-                summary: Scheduled session with explicit status
+              gaWithOverride:
+                summary: GA session with explicit capacity and currency override
                 value:
+                  venue_id: "01929d0e-0e47-7000-8000-000000000201"
                   start_at: "2026-09-01T19:00:00Z"
                   end_at: "2026-09-01T22:30:00Z"
-                  capacity_total: 1200
+                  capacity_override: 1200
+                  currency: "EUR"
                   status: "scheduled"
+              seated:
+                summary: Assigned-seats session bound to a seating plan version at create (AB-36 step 3)
+                value:
+                  venue_id: "01929d0e-0e47-7000-8000-000000000201"
+                  start_at: "2026-11-02T20:30:00Z"
+                  end_at: "2026-11-02T23:00:00Z"
+                  admission_mode: "assigned_seats"
+                  seating_plan_version_id: "01929d0e-0e47-7000-8000-000000000601"
       responses:
         "201":
           description: Session created.
@@ -14378,7 +14515,15 @@ paths:
             `session.invalid_json`, `session.invalid_status`,
             `session.missing_start_at`, `session.invalid_start_at`,
             `session.missing_end_at`, `session.invalid_end_at`,
-            `session.invalid_date_range`, `session.invalid_capacity`.
+            `session.invalid_date_range`,
+            `session.invalid_capacity_override`,
+            `session.missing_venue_id`, `session.invalid_venue_id`,
+            `session.venue_not_found`, `session.invalid_admission_mode`,
+            `session.missing_seating_plan_version`,
+            `session.invalid_seating_plan_version`,
+            `session.seating_plan_not_applicable`, plus the seating bind
+            errors (`seating.version_not_found`, ...) when a seated
+            create fails its inline bind.
           content:
             application/json:
               schema:
@@ -14391,6 +14536,16 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Caller lacks the `session.create` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: |
+            Semantically invalid. Possible error codes:
+            `session.venue_org_mismatch`, `session.invalid_currency`,
+            `session.currency_unresolvable`,
+            `session.capacity_unresolvable`.
           content:
             application/json:
               schema:
@@ -14579,9 +14734,17 @@ paths:
               $ref: "#/components/schemas/UpdateSessionRequest"
             examples:
               capacityBump:
-                summary: Bump capacity (fires inventory propagation hook)
+                summary: Raise the GA capacity override (capacity_total re-derives; fires inventory propagation hook)
                 value:
-                  capacity_total: 750
+                  capacity_override: 750
+              currencyOverride:
+                summary: Deliberate currency change (cascades to every tier of the session)
+                value:
+                  currency: "EUR"
+              moveVenue:
+                summary: Move the session to another venue (re-derives a derived currency)
+                value:
+                  venue_id: "01929d0e-0e47-7000-8000-000000000202"
               schedule:
                 summary: Transition draft to scheduled
                 value:
@@ -14604,7 +14767,9 @@ paths:
             `session.invalid_body`, `session.empty_body`,
             `session.invalid_json`, `session.invalid_status`,
             `session.invalid_start_at`, `session.invalid_end_at`,
-            `session.invalid_date_range`, `session.invalid_capacity`.
+            `session.invalid_date_range`,
+            `session.invalid_capacity_override`,
+            `session.invalid_venue_id`, `session.venue_not_found`.
           content:
             application/json:
               schema:
@@ -14629,11 +14794,13 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "422":
           description: |
-            Status transition not allowed by the state machine. The
-            response uses the standard `ErrorEnvelope` with
-            `error.code = "session.invalid_transition"` and
+            Semantically invalid. Possible error codes:
+            `session.invalid_transition` (status transition not allowed;
             `error.details.current_status` /
-            `error.details.target_status`.
+            `error.details.target_status`),
+            `session.venue_org_mismatch`, `session.invalid_currency`,
+            `session.capacity_override_not_applicable` (capacity_override
+            sent for a plan-bound session).
           content:
             application/json:
               schema:
@@ -20603,14 +20770,14 @@ paths:
           schema:
             type: string
             format: date-time
-          description: Optional lower bound on `event.start_at` (inclusive).
+          description: Optional lower bound on the event's `first_session_at` cache (inclusive). Events without sessions are excluded when set.
         - name: date_to
           in: query
           required: false
           schema:
             type: string
             format: date-time
-          description: Optional upper bound on `event.end_at` (inclusive).
+          description: Optional upper bound on the event's `last_session_at` cache (inclusive). Events without sessions are excluded when set.
         - name: limit
           in: query
           required: false

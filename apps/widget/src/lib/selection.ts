@@ -27,7 +27,7 @@ export type SelectedKeys = ReadonlySet<string>;
  *
  * Rules:
  *  - Only `available` seats (or already-selected seats being deselected) may
- *    be toggled.  Held / sold / blocked seats are silently ignored.
+ *    be toggled.  Held / sold / unavailable seats are silently ignored.
  *  - Deselecting a seat that is already in the set removes it.
  *  - Selecting a seat that is already in the set is a no-op (idempotent add).
  *
@@ -139,7 +139,7 @@ export function bestAvailableSeats(
  *
  * An "isolated" seat is an available (and not selected) seat where both its
  * immediate neighbours in the same row are "occupied" — i.e. held, sold,
- * blocked, or selected by the current user.  Row edges count as occupied.
+ * unavailable, or selected by the current user.  Row edges count as occupied.
  *
  * Returns the seat keys of the isolated available seats so the UI can show a
  * warning badge.

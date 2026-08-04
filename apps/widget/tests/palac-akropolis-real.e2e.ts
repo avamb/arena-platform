@@ -751,7 +751,7 @@ test.describe('7 — API contract shapes (real backend)', () => {
       { sessionId: SESSION_ID },
     );
 
-    const validStatuses = new Set(['available', 'held', 'sold', 'blocked']);
+    const validStatuses = new Set(['available', 'held', 'sold', 'unavailable']);
     const seats = statusResp['seats'] as Record<string, string>;
 
     for (const [key, val] of Object.entries(seats)) {

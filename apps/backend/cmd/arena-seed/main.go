@@ -204,25 +204,25 @@ type SeedChannel struct {
 	ReservationTTLOverride int     // 0 means NULL
 }
 
-// SeedEvent mirrors a row in the events table. StartAt/EndAt are computed
-// at apply time relative to "now" (the seed is inserted once — ON CONFLICT
-// (id) DO NOTHING keeps re-runs idempotent even though the timestamps of a
-// second run would differ).
+// SeedEvent mirrors a row in the events table. Since Wave 4 (AB-36/AB-37)
+// the event carries no venue and no own dates — those live on its sessions;
+// events.first/last_session_at are maintained by the 0080 trigger when the
+// seeded sessions land.
 type SeedEvent struct {
-	ID          string
-	OrgID       string
-	VenueID     string // "" means NULL
-	Name        string
-	Status      string // draft|published|cancelled|archived
-	StartInDays int    // start_at = now + StartInDays days
-	DurationHrs int    // end_at = start_at + DurationHrs hours
+	ID     string
+	OrgID  string
+	Name   string
+	Status string // draft|published|cancelled|archived
 }
 
 // SeedSession mirrors a row in the sessions table. The session belongs to
-// a seeded event and carries the GA capacity used by checkout tests.
+// a seeded event, takes place at a seeded venue (AB-36), and carries the GA
+// capacity used by checkout tests. The currency is derived from the venue's
+// geography at insert time (AB-38), mirroring the API's derivation chain.
 type SeedSession struct {
 	ID            string
 	EventID       string
+	VenueID       string
 	Status        string // draft|scheduled|cancelled|completed
 	StartInDays   int
 	DurationHrs   int
@@ -397,10 +397,10 @@ func BuildSeed() SeedData {
 		// resolves a (org, channel, session) triple joined through events —
 		// Org A also owns the seeded sales channels, so the triple resolves.
 		Events: []SeedEvent{
-			{ID: EventA1, OrgID: OrgA, VenueID: VenueA1, Name: "TEST Seed Concert", Status: "published", StartInDays: 30, DurationHrs: 3},
+			{ID: EventA1, OrgID: OrgA, Name: "TEST Seed Concert", Status: "published"},
 		},
 		Sessions: []SeedSession{
-			{ID: SessionA1, EventID: EventA1, Status: "scheduled", StartInDays: 30, DurationHrs: 3, CapacityTotal: 100},
+			{ID: SessionA1, EventID: EventA1, VenueID: VenueA1, Status: "scheduled", StartInDays: 30, DurationHrs: 3, CapacityTotal: 100},
 		},
 		Inventories: []SeedInventory{
 			{ID: InventoryA1, SessionID: SessionA1, CapacityTotal: 100},
@@ -615,17 +615,11 @@ func applyAll(ctx context.Context, tx pgx.Tx, seed SeedData) (ApplyStats, error)
 	}
 
 	for _, e := range seed.Events {
-		var venueID any
-		if e.VenueID != "" {
-			venueID = e.VenueID
-		}
-		startAt := time.Now().UTC().AddDate(0, 0, e.StartInDays)
-		endAt := startAt.Add(time.Duration(e.DurationHrs) * time.Hour)
 		tag, err := tx.Exec(ctx, `
-			INSERT INTO events (id, org_id, venue_id, name, status, start_at, end_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)
+			INSERT INTO events (id, org_id, name, status)
+			VALUES ($1, $2, $3, $4)
 			ON CONFLICT (id) DO NOTHING
-		`, e.ID, e.OrgID, venueID, e.Name, e.Status, startAt, endAt)
+		`, e.ID, e.OrgID, e.Name, e.Status)
 		if err != nil {
 			return stats, fmt.Errorf("insert event %q: %w", e.Name, err)
 		}
@@ -638,11 +632,23 @@ func applyAll(ctx context.Context, tx pgx.Tx, seed SeedData) (ApplyStats, error)
 	for _, s := range seed.Sessions {
 		startAt := time.Now().UTC().AddDate(0, 0, s.StartInDays)
 		endAt := startAt.Add(time.Duration(s.DurationHrs) * time.Hour)
+		// currency mirrors the API derivation chain (AB-38):
+		// city.currency_override -> city country currency -> venue country
+		// ISO2 -> USD (defensive; every seeded venue has a city).
 		tag, err := tx.Exec(ctx, `
-			INSERT INTO sessions (id, event_id, start_at, end_at, capacity_total, status)
-			VALUES ($1, $2, $3, $4, $5, $6)
+			INSERT INTO sessions (id, event_id, venue_id, start_at, end_at,
+			                      capacity_total, status, currency, currency_source)
+			VALUES ($1, $2, $3, $4, $5, $6, $7,
+			        COALESCE((
+			            SELECT COALESCE(ci.currency_override, cc.currency, vc.currency)
+			            FROM   venues v
+			            LEFT JOIN cities    ci ON ci.id   = v.city_id
+			            LEFT JOIN countries cc ON cc.id   = ci.country_id
+			            LEFT JOIN countries vc ON vc.iso2 = v.country
+			            WHERE  v.id = $3
+			        ), 'USD'), 'derived')
 			ON CONFLICT (id) DO NOTHING
-		`, s.ID, s.EventID, startAt, endAt, s.CapacityTotal, s.Status)
+		`, s.ID, s.EventID, s.VenueID, startAt, endAt, s.CapacityTotal, s.Status)
 		if err != nil {
 			return stats, fmt.Errorf("insert session %q: %w", s.ID, err)
 		}

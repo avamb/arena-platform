@@ -309,11 +309,13 @@
     const now = new Date().toISOString();
     const syntheticEvent: FeedEvent = {
       id: sessId,
+      display_number: 0,
       org_id: '',
       name: '',
       status: 'published',
-      start_at: now,
-      end_at: now,
+      first_session_at: now,
+      last_session_at: now,
+      venue_names: [],
       visibility: 'public',
       created_at: now,
       updated_at: now,

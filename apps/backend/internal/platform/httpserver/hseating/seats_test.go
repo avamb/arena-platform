@@ -224,7 +224,7 @@ func TestSeatB4_ApplySeatBlock_StateMachine(t *testing.T) {
 		wantOutcome string
 		wantReason  string
 	}{
-		{"blocked is noop", "blocked", seatOutcomeNoop, ""},
+		{"unavailable is noop", "unavailable", seatOutcomeNoop, ""},
 		{"held is skipped with reason held", "held", seatOutcomeSkipped, seatReasonHeld},
 		{"sold is skipped with reason sold", "sold", seatOutcomeSkipped, seatReasonSold},
 		{"unknown status is skipped", "weird", seatOutcomeSkipped, "unknown_status"},
@@ -261,7 +261,7 @@ func TestSeatB4_ApplySeatBlock_StateMachine(t *testing.T) {
 }
 
 // TestSeatB4_ApplySeatUnblock_StateMachine mirrors the block variant for
-// the unblock action. The `blocked` branch is deliberately covered by
+// the unblock action. The `unavailable` branch is deliberately covered by
 // the DB-integration path (needs a live UPDATE); this test walks the
 // three pre-check branches that never touch the database.
 func TestSeatB4_ApplySeatUnblock_StateMachine(t *testing.T) {
@@ -313,7 +313,7 @@ func TestSeatB4_ApplySeatAction_Dispatch(t *testing.T) {
 	row := gen.SessionSeatRow{
 		ID:      uuid.New(),
 		SeatKey: "A|1|1",
-		Status:  "blocked", // noop path — no DB call for either action
+		Status:  "unavailable", // noop path — no DB call for either action
 	}
 
 	block, err := applySeatAction(context.Background(), nil, seatsActionBlock, row, 1)
@@ -410,9 +410,10 @@ func TestSeatB4_ReadRequest_HappyPath(t *testing.T) {
 // Reservation-conflict contract (§7 SEAT-B4)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// TestSeatB4_BlockedSeatCannotBeHeld pins the seat-status precondition
-// the future reservation path (Wave SEAT-C1) relies on: HoldSessionSeat
-// only fires on `status='available'` rows, so a blocked seat naturally
+// TestSeatB4_UnavailableSeatIsReservationConflict pins the seat-status
+// precondition the future reservation path (Wave SEAT-C1) relies on:
+// HoldSessionSeat only fires on `status='available'` rows, so an
+// unavailable seat naturally
 // returns pgx.ErrNoRows from the conditional UPDATE. Wave SEAT-C1
 // translates that into a 409 `reservation.seats_conflict` at the
 // hcheckout boundary; this test proves the underlying invariant.
@@ -421,7 +422,7 @@ func TestSeatB4_ReadRequest_HappyPath(t *testing.T) {
 // self-contained: it asserts the WHERE clause requires status='available'
 // and there is no code path in applySeatBlock that mutates a held/sold
 // seat.
-func TestSeatB4_BlockedSeatIsReservationConflict(t *testing.T) {
+func TestSeatB4_UnavailableSeatIsReservationConflict(t *testing.T) {
 	t.Parallel()
 
 	// Contract 1: applySeatBlock refuses held / sold rows (already

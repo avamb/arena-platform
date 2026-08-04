@@ -14,7 +14,9 @@
 package httpserver
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -22,6 +24,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
@@ -29,6 +33,47 @@ import (
 )
 
 const tierTestActorID = "00000000-0000-0000-0000-000000000127"
+
+// ─────────────────────────────────────────────────────────────────────────────
+// sessionCurrencyDBTX — fake DBTX for the Wave 4 (AB-38) tier create path
+// ─────────────────────────────────────────────────────────────────────────────
+
+// currencyOnlyRow satisfies pgx.Row: it scans a fixed currency into a single
+// *string destination (the shape of gen.GetSessionCurrency) and errors for
+// any other scan shape (e.g. InsertTicketTier's full-row scan), so requests
+// that pass validation fail at the DB layer with a clean 500 instead of a
+// panic.
+type currencyOnlyRow struct{ currency string }
+
+func (r currencyOnlyRow) Scan(dest ...any) error {
+	if len(dest) == 1 {
+		if p, ok := dest[0].(*string); ok {
+			*p = r.currency
+			return nil
+		}
+	}
+	return errors.New("currencyOnlyRow: unsupported scan shape (DB-less unit test)")
+}
+
+// sessionCurrencyDBTX implements gen.DBTX. Since AB-38 the tier create path
+// resolves the session currency (GetSessionCurrency, a QueryRow) after the
+// syntactic validation and before the INSERT, so a DB-less unit test needs
+// the currency lookup to succeed for the insert-adjacent branches to be
+// reachable. Every QueryRow answers with a fixed "USD" single-column row;
+// Query and Exec fail with plain errors.
+type sessionCurrencyDBTX struct{}
+
+func (f *sessionCurrencyDBTX) Exec(_ context.Context, _ string, _ ...any) (pgconn.CommandTag, error) {
+	return pgconn.CommandTag{}, errors.New("sessionCurrencyDBTX: exec not supported")
+}
+
+func (f *sessionCurrencyDBTX) Query(_ context.Context, _ string, _ ...any) (pgx.Rows, error) {
+	return nil, errors.New("sessionCurrencyDBTX: query not supported")
+}
+
+func (f *sessionCurrencyDBTX) QueryRow(_ context.Context, _ string, _ ...any) pgx.Row {
+	return currencyOnlyRow{currency: "USD"}
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test server factory for tier route tests

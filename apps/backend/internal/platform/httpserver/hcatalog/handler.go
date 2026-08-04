@@ -45,6 +45,7 @@ type Handler struct {
 	audit                   audit.Writer
 	logger                  *slog.Logger
 	publishSessionCancelled SessionCancelledPublisher
+	bindSeating             SeatingBinder // seated session create (AB-36); wired via WithSeatingBinder
 }
 
 // New constructs a Handler from the caller's dependencies.

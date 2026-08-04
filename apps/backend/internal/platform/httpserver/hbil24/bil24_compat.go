@@ -321,9 +321,15 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 	actionList := make([]map[string]any, 0, len(events))
 	for _, e := range events {
 		action := map[string]any{
-			"actionId":       TranslatePlatformID(e.ID),
-			"actionName":     e.Name,
-			"firstEventDate": e.StartAt.UTC().Format(time.RFC3339),
+			"actionId":   TranslatePlatformID(e.ID),
+			"actionName": e.Name,
+		}
+		// firstEventDate is the earliest session of the action (AB-37):
+		// events carry no own dates; the trigger-maintained cache
+		// first_session_at is the Bil24-correct source. Omitted entirely
+		// for an event with no sessions.
+		if e.FirstSessionAt != nil {
+			action["firstEventDate"] = e.FirstSessionAt.UTC().Format(time.RFC3339)
 		}
 		if e.ImageURL != nil && *e.ImageURL != "" {
 			action["bigPosterUrl"] = *e.ImageURL
@@ -378,11 +384,11 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 //     "number":          "...",
 //     "price":           <cents>,        // 0 if no tier bound yet
 //     "currency":        "USD",
-//     "status":          <BSS int>       // 0 blocked, 1 available, 3 held, 4 sold
+//     "status":          <BSS int>       // 0 unavailable, 1 available, 3 held, 4 sold
 //     }
 //
 // BSS status codes are the Bil24 seat-status wire values (§6 of the
-// Bil24 gateway spec): 0 = blocked (admin), 1 = available, 3 = held
+// Bil24 gateway spec): 0 = unavailable (admin), 1 = available, 3 = held
 // (reservation active), 4 = sold. The mapping never surfaces the internal
 // row status string.
 //
@@ -551,10 +557,10 @@ func (h *Handler) getSeatListAssigned(w http.ResponseWriter, ctx context.Context
 // bssStatusCode maps an internal session_seats.status string to the Bil24
 // BSS wire code documented in §6 of the gateway spec:
 //
-//	blocked   → 0  (admin-blocked)
-//	available → 1
-//	held      → 3  (a reservation currently owns the seat)
-//	sold      → 4
+//	unavailable → 0  (admin-withheld)
+//	available   → 1
+//	held        → 3  (a reservation currently owns the seat)
+//	sold        → 4
 //
 // Any unknown status maps to 0 so legacy clients never see a hole in
 // the enum surface.
@@ -566,7 +572,7 @@ func bssStatusCode(status string) int {
 		return 3
 	case "sold":
 		return 4
-	case "blocked":
+	case "unavailable":
 		return 0
 	default:
 		return 0

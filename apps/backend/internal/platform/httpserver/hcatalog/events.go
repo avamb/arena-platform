@@ -2,6 +2,7 @@
 package hcatalog
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -49,20 +50,26 @@ type eventResponse = EventResponse
 // EventResponse is the exported form of eventResponse, for use by the httpserver
 // shim layer (events_test.go references eventFromRow from package httpserver via
 // a forwarder in catalog_shims.go).
+//
+// Wave 4 (AB-36/AB-37): the event carries no venue and no own dates.
+// first_session_at / last_session_at are the trigger-maintained cache over
+// the event's sessions (nil / absent for an event with no sessions), and
+// venue_names lists the distinct venues of those sessions (empty for an
+// event with no sessions; more than one entry for a tour).
 type EventResponse struct {
-	ID            string  `json:"id"`
-	DisplayNumber int64   `json:"display_number"`
-	OrgID         string  `json:"org_id"`
-	VenueID       *string `json:"venue_id"`
-	Name          string  `json:"name"`
-	Description   *string `json:"description"`
-	Status        string  `json:"status"`
-	StartAt       string  `json:"start_at"`
-	EndAt         string  `json:"end_at"`
-	Visibility    string  `json:"visibility"`
-	ImageURL      *string `json:"image_url"`
-	CreatedAt     string  `json:"created_at"`
-	UpdatedAt     string  `json:"updated_at"`
+	ID             string   `json:"id"`
+	DisplayNumber  int64    `json:"display_number"`
+	OrgID          string   `json:"org_id"`
+	Name           string   `json:"name"`
+	Description    *string  `json:"description"`
+	Status         string   `json:"status"`
+	FirstSessionAt *string  `json:"first_session_at"`
+	LastSessionAt  *string  `json:"last_session_at"`
+	VenueNames     []string `json:"venue_names"`
+	Visibility     string   `json:"visibility"`
+	ImageURL       *string  `json:"image_url"`
+	CreatedAt      string   `json:"created_at"`
+	UpdatedAt      string   `json:"updated_at"`
 }
 
 func eventFromRow(e gen.EventRow) eventResponse {
@@ -71,7 +78,8 @@ func eventFromRow(e gen.EventRow) eventResponse {
 
 // EventFromRow is the exported form of eventFromRow, for use by the httpserver
 // shim layer (events_test.go calls eventFromRow from package httpserver via a
-// forwarder in catalog_shims.go).
+// forwarder in catalog_shims.go). VenueNames starts empty; list/get handlers
+// hydrate it via ListEventVenueNames.
 func EventFromRow(e gen.EventRow) EventResponse {
 	resp := eventResponse{
 		ID:            e.ID.String(),
@@ -80,31 +88,61 @@ func EventFromRow(e gen.EventRow) EventResponse {
 		Name:          e.Name,
 		Description:   e.Description,
 		Status:        e.Status,
-		StartAt:       e.StartAt.UTC().Format(time.RFC3339),
-		EndAt:         e.EndAt.UTC().Format(time.RFC3339),
+		VenueNames:    []string{},
 		Visibility:    e.Visibility,
 		ImageURL:      e.ImageURL,
 		CreatedAt:     e.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:     e.UpdatedAt.UTC().Format(time.RFC3339),
 	}
-	if e.VenueID != nil {
-		s := e.VenueID.String()
-		resp.VenueID = &s
+	if e.FirstSessionAt != nil {
+		s := e.FirstSessionAt.UTC().Format(time.RFC3339)
+		resp.FirstSessionAt = &s
+	}
+	if e.LastSessionAt != nil {
+		s := e.LastSessionAt.UTC().Format(time.RFC3339)
+		resp.LastSessionAt = &s
 	}
 	return resp
+}
+
+// hydrateVenueNames fills VenueNames on the given responses from one
+// ListEventVenueNames round trip. Failures are non-fatal — the venue
+// column is presentational; the list must not 500 because of it.
+func (h *Handler) hydrateVenueNames(ctx context.Context, responses []eventResponse) {
+	if h.eventQueries == nil || len(responses) == 0 {
+		return
+	}
+	ids := make([]uuid.UUID, 0, len(responses))
+	for _, r := range responses {
+		if id, err := uuid.Parse(r.ID); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	names, err := h.eventQueries.ListEventVenueNames(ctx, ids)
+	if err != nil {
+		h.logger.Warn("event: venue-name hydration failed", slog.String("error", err.Error()))
+		return
+	}
+	for i := range responses {
+		if id, err := uuid.Parse(responses[i].ID); err == nil {
+			if vn, ok := names[id]; ok {
+				responses[i].VenueNames = vn
+			}
+		}
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /v1/organizations/{org_id}/events
 // ─────────────────────────────────────────────────────────────────────────────
 
+// createEventRequest carries the event-own fields only. Dates and venue
+// belong to sessions (AB-36/AB-37): event create no longer collects them —
+// they are set when sessions are created (step 2 of the event wizard).
 type createEventRequest struct {
 	Name         string `json:"name"`
 	Description  string `json:"description"`
-	VenueID      string `json:"venue_id"`
 	Status       string `json:"status"`
-	StartAt      string `json:"start_at"`
-	EndAt        string `json:"end_at"`
 	Visibility   string `json:"visibility"`
 	ImageURL     string `json:"image_url"`
 	Translations map[string]struct {
@@ -178,59 +216,6 @@ func (h *Handler) HandleCreateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.StartAt == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-			"event.missing_start_at", "start_at is required", r,
-			map[string]any{"field": "start_at"},
-		))
-		return
-	}
-	startAt, parseErr := time.Parse(time.RFC3339, req.StartAt)
-	if parseErr != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-			"event.invalid_start_at", "start_at must be a valid RFC3339 timestamp", r,
-			map[string]any{"field": "start_at"},
-		))
-		return
-	}
-
-	if req.EndAt == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-			"event.missing_end_at", "end_at is required", r,
-			map[string]any{"field": "end_at"},
-		))
-		return
-	}
-	endAt, parseErr := time.Parse(time.RFC3339, req.EndAt)
-	if parseErr != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-			"event.invalid_end_at", "end_at must be a valid RFC3339 timestamp", r,
-			map[string]any{"field": "end_at"},
-		))
-		return
-	}
-
-	if !endAt.After(startAt) {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-			"event.invalid_date_range", "end_at must be after start_at", r,
-			map[string]any{"field": "end_at"},
-		))
-		return
-	}
-
-	var venueID *uuid.UUID
-	if req.VenueID != "" {
-		parsed, parseErr := uuid.Parse(strings.TrimSpace(req.VenueID))
-		if parseErr != nil {
-			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-				"event.invalid_venue_id", "venue_id must be a valid UUID", r,
-				map[string]any{"field": "venue_id"},
-			))
-			return
-		}
-		venueID = &parsed
-	}
-
 	var description *string
 	if req.Description != "" {
 		desc := req.Description
@@ -243,7 +228,7 @@ func (h *Handler) HandleCreateEvent(w http.ResponseWriter, r *http.Request) {
 		imageURL = &iu
 	}
 
-	e, err := h.eventQueries.InsertEvent(ctx, orgID, venueID, req.Name, description, req.Status, startAt, endAt, req.Visibility, imageURL)
+	e, err := h.eventQueries.InsertEvent(ctx, orgID, req.Name, description, req.Status, req.Visibility, imageURL)
 	if err != nil {
 		h.logger.Error("event: insert failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
@@ -324,6 +309,7 @@ func (h *Handler) HandleListEvents(w http.ResponseWriter, r *http.Request) {
 	for _, e := range rows {
 		result = append(result, eventFromRow(e))
 	}
+	h.hydrateVenueNames(ctx, result)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"events": result})
 }
 
@@ -359,8 +345,10 @@ func (h *Handler) HandleGetEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	single := []eventResponse{eventFromRow(e)}
+	h.hydrateVenueNames(ctx, single)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"event": eventFromRow(e),
+		"event": single[0],
 	})
 }
 
@@ -400,6 +388,7 @@ func (h *Handler) HandleListEventsByOrg(w http.ResponseWriter, r *http.Request) 
 	for _, e := range rows {
 		result = append(result, eventFromRow(e))
 	}
+	h.hydrateVenueNames(ctx, result)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"events": result})
 }
 
@@ -407,12 +396,11 @@ func (h *Handler) HandleListEventsByOrg(w http.ResponseWriter, r *http.Request) 
 // PATCH /v1/organizations/{org_id}/events/{id}
 // ─────────────────────────────────────────────────────────────────────────────
 
+// updateEventRequest carries the event-own fields only; dates and venue
+// live on the event's sessions (AB-36/AB-37).
 type updateEventRequest struct {
 	Name         string  `json:"name"`
 	Description  *string `json:"description"`
-	VenueID      *string `json:"venue_id"`
-	StartAt      *string `json:"start_at"`
-	EndAt        *string `json:"end_at"`
 	Visibility   string  `json:"visibility"`
 	ImageURL     *string `json:"image_url"`
 	Translations map[string]struct {
@@ -470,62 +458,6 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var venueID *uuid.UUID
-	if req.VenueID != nil {
-		trimmed := strings.TrimSpace(*req.VenueID)
-		if trimmed != "" {
-			parsed, parseErr := uuid.Parse(trimmed)
-			if parseErr != nil {
-				httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-					"event.invalid_venue_id", "venue_id must be a valid UUID", r,
-					map[string]any{"field": "venue_id"},
-				))
-				return
-			}
-			venueID = &parsed
-		}
-	}
-
-	var startAt *time.Time
-	if req.StartAt != nil {
-		trimmed := strings.TrimSpace(*req.StartAt)
-		if trimmed != "" {
-			t, parseErr := time.Parse(time.RFC3339, trimmed)
-			if parseErr != nil {
-				httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-					"event.invalid_start_at", "start_at must be a valid RFC3339 timestamp", r,
-					map[string]any{"field": "start_at"},
-				))
-				return
-			}
-			startAt = &t
-		}
-	}
-
-	var endAt *time.Time
-	if req.EndAt != nil {
-		trimmed := strings.TrimSpace(*req.EndAt)
-		if trimmed != "" {
-			t, parseErr := time.Parse(time.RFC3339, trimmed)
-			if parseErr != nil {
-				httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-					"event.invalid_end_at", "end_at must be a valid RFC3339 timestamp", r,
-					map[string]any{"field": "end_at"},
-				))
-				return
-			}
-			endAt = &t
-		}
-	}
-
-	if startAt != nil && endAt != nil && !endAt.After(*startAt) {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-			"event.invalid_date_range", "end_at must be after start_at", r,
-			map[string]any{"field": "end_at"},
-		))
-		return
-	}
-
 	var description *string
 	if req.Description != nil {
 		trimmed := strings.TrimSpace(*req.Description)
@@ -538,7 +470,7 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 		imageURL = &trimmed
 	}
 
-	updated, err := h.eventQueries.UpdateEvent(ctx, eventID, orgID, venueID, req.Name, description, startAt, endAt, req.Visibility, imageURL)
+	updated, err := h.eventQueries.UpdateEvent(ctx, eventID, orgID, req.Name, description, req.Visibility, imageURL)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("event.not_found", "event not found", r))

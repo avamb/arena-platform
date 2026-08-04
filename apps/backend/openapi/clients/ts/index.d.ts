@@ -1318,18 +1318,18 @@ export interface paths {
         /**
          * Block or unblock seats for a session (operator control)
          * @description Operator endpoint for closing individual seats, whole rows, or
-         *     whole sectors for sale (tech seats, camera platforms, blocked
+         *     whole sectors for sale (tech seats, camera platforms, obstructed
          *     sightlines, house holds) and reopening them per session. The
          *     request combines any of three selectors — `seat_keys`,
          *     `sectors`, and `rows` — which are expanded server-side to a
          *     deduplicated set of `session_seats` rows. Only the two admin
-         *     transitions `available → blocked` and `blocked → available`
+         *     transitions `available → unavailable` and `unavailable → available`
          *     are attempted; seats in `held` / `sold` status are reported
          *     per-seat as skipped with a reason and are never silently
          *     mutated. Re-blocking / re-opening a seat that is already in the
          *     target state is a documented no-op (idempotent).
          *
-         *     Blocked seats surface as `blocked` in the SEAT-B3 seat-status
+         *     Withheld seats surface as `unavailable` in the SEAT-B3 seat-status
          *     endpoint, map to BSS `0 INACCESSIBLE` in the Bil24 gateway, are
          *     excluded from availability counters, and cannot be reserved
          *     (409 `reservation.seats_conflict` in the seated checkout path).
@@ -1414,7 +1414,7 @@ export interface paths {
          *     stream.
          *
          *     Status wire codes (§6):
-         *       * `0 INACCESSIBLE`   ← internal `blocked`
+         *       * `0 INACCESSIBLE`   ← internal `unavailable`
          *       * `1 AVAILABLE`      ← internal `available`
          *       * `2 PRE_RESERVED`   (reserved for future flows, never emitted)
          *       * `3 RESERVED`       ← internal `held`
@@ -2001,9 +2001,15 @@ export interface paths {
         put?: never;
         /**
          * Create a new session (time slot) for an event
-         * @description Creates a new session under an event. The owning organization is
-         *     taken from the path; the body MUST NOT repeat it. `end_at` must
-         *     be strictly after `start_at`. `capacity_total` must be > 0.
+         * @description Creates a new session under an event at a venue (AB-36: the
+         *     session owns the venue). The owning organization is taken from
+         *     the path; the body MUST NOT repeat it. `end_at` must be strictly
+         *     after `start_at`. Capacity is derived (plan version →
+         *     capacity_override → venue capacity_default) and the currency is
+         *     derived from the venue geography unless overridden (AB-38).
+         *     Choosing admission_mode assigned_seats/hybrid runs the seating
+         *     bind inline: seats materialize, tiers are auto-created per SVG
+         *     price category, capacity comes from the plan.
          *     Overlapping sessions are permitted but flagged in the response
          *     via `session.has_overlapping_sessions`. The handler also
          *     initialises the inventory ledger for the new session (non-fatal
@@ -7385,7 +7391,12 @@ export interface components {
             };
         };
         /**
-         * @description A single dated event organized by one organization at an optional venue.
+         * @description A single event organized by one organization. Since Wave 4
+         *     (AB-36/AB-37) the event carries no venue and no own dates — both
+         *     belong to its sessions. `first_session_at` / `last_session_at`
+         *     mirror the trigger-maintained cache over the event's active,
+         *     non-cancelled sessions and are null for an event with no sessions;
+         *     `venue_names` lists the distinct venues of those sessions.
          *     Lifecycle: draft → published → cancelled|archived (see the status
          *     transition rules on POST /v1/organizations/{org_id}/events/{id}/status).
          *     The `name` and `description` fields are locale-resolved per the
@@ -7411,13 +7422,6 @@ export interface components {
              */
             org_id: string;
             /**
-             * Format: uuid
-             * @description Optional FK to a venue (see /v1/venues/{id}). NULL when the
-             *     event has no fixed venue (e.g. online stream, TBD location).
-             * @example 01929d0e-0e47-7000-8000-000000000201
-             */
-            venue_id?: string | null;
-            /**
              * @description Human-readable event name. Locale-resolved: if an i18n_text
              *     row exists for the negotiated locale, that value is returned;
              *     otherwise the canonical name stored on the events row.
@@ -7437,19 +7441,31 @@ export interface components {
             status: "draft" | "published" | "cancelled" | "archived";
             /**
              * Format: date-time
-             * @description Event start time in RFC 3339 / ISO 8601 UTC. Always strictly
-             *     before `end_at` (enforced by both the handler and a CHECK
-             *     constraint on the events table).
+             * @description Earliest `start_at` over the event's active, non-cancelled
+             *     sessions (RFC 3339, UTC). Maintained by a database trigger
+             *     (migration 0080) — never written directly. Null when the event
+             *     has no sessions; an event with no sessions renders no date
+             *     anywhere.
              * @example 2026-08-15T18:00:00Z
              */
-            start_at: string;
+            first_session_at: string | null;
             /**
              * Format: date-time
-             * @description Event end time in RFC 3339 / ISO 8601 UTC. Must be strictly
-             *     after `start_at`.
+             * @description Latest `end_at` over the event's active, non-cancelled sessions
+             *     (RFC 3339, UTC). Null when the event has no sessions.
              * @example 2026-08-15T23:00:00Z
              */
-            end_at: string;
+            last_session_at: string | null;
+            /**
+             * @description Distinct names of the venues of the event's active sessions,
+             *     sorted alphabetically. Empty for an event with no sessions;
+             *     more than one entry for a tour (AB-36 — the venue belongs to
+             *     the session, so one event may span several venues).
+             * @example [
+             *       "Palac Akropolis"
+             *     ]
+             */
+            venue_names: string[];
             /**
              * @description Discovery visibility for the cross-tenant GET /v1/events surface.
              *     `public` events appear in the default list; `unlisted` and
@@ -7481,7 +7497,9 @@ export interface components {
         /**
          * @description Create-time payload for POST /v1/organizations/{org_id}/events.
          *     The owning organization is taken from the path; the body MUST NOT
-         *     repeat it.
+         *     repeat it. Dates and venue are NOT collected here (AB-36/AB-37):
+         *     they belong to the event's sessions and are supplied when sessions
+         *     are created.
          */
         CreateEventRequest: {
             /**
@@ -7492,30 +7510,13 @@ export interface components {
             /** @description Optional long-form description. */
             description?: string;
             /**
-             * Format: uuid
-             * @description Optional venue UUID. When set, must belong to the same organization.
-             */
-            venue_id?: string;
-            /**
              * @description Initial lifecycle status. Defaults to `draft` on the server when
              *     omitted.
              * @enum {string}
              */
             status?: "draft" | "published" | "cancelled" | "archived";
             /**
-             * Format: date-time
-             * @description Event start time (RFC 3339, UTC).
-             * @example 2026-08-15T18:00:00Z
-             */
-            start_at: string;
-            /**
-             * Format: date-time
-             * @description Event end time. Must be strictly after start_at.
-             * @example 2026-08-15T23:00:00Z
-             */
-            end_at: string;
-            /**
-             * @description Initial visibility. Defaults to `private` on the server when omitted.
+             * @description Initial visibility. Defaults to `public` on the server when omitted.
              * @enum {string}
              */
             visibility?: "public" | "private" | "unlisted";
@@ -7539,22 +7540,6 @@ export interface components {
             name?: string;
             /** @description New long-form description. */
             description?: string | null;
-            /**
-             * Format: uuid
-             * @description Reassign the event to a different (same-org) venue.
-             */
-            venue_id?: string | null;
-            /**
-             * Format: date-time
-             * @description New event start time (RFC 3339, UTC).
-             */
-            start_at?: string | null;
-            /**
-             * Format: date-time
-             * @description When both start_at and end_at are present in the same body,
-             *     end_at must remain strictly after start_at.
-             */
-            end_at?: string | null;
             /**
              * @description New discovery visibility for the event.
              * @enum {string}
@@ -7609,11 +7594,13 @@ export interface components {
             deleted: boolean;
         };
         /**
-         * @description A single dated session (time slot) under an event. Overlap with
-         *     sibling sessions is permitted but flagged via the
-         *     `has_overlapping_sessions` boolean — the application layer detects
-         *     overlaps via a count query (CountOverlappingSessions) rather than a
-         *     DB-level UNIQUE constraint.
+         * @description A single dated session (time slot) of an event at a venue. Since
+         *     Wave 4 (AB-36/AB-38) the session — not the event — owns the venue,
+         *     the seating bind and the currency, matching the Bil24 ActionEvent
+         *     model. Overlap with sibling sessions is permitted but flagged via
+         *     the `has_overlapping_sessions` boolean — the application layer
+         *     detects overlaps via a count query (CountOverlappingSessions)
+         *     rather than a DB-level UNIQUE constraint.
          */
         SessionItem: {
             /**
@@ -7630,6 +7617,14 @@ export interface components {
              */
             event_id: string;
             /**
+             * Format: uuid
+             * @description Venue this session takes place at (AB-36). Always present —
+             *     every session has a venue; the venue must belong to the
+             *     event's organization (superadmin bypass excepted).
+             * @example 01929d0e-0e47-7000-8000-000000000201
+             */
+            venue_id: string;
+            /**
              * Format: date-time
              * @description Session start time (RFC 3339, UTC). Strictly before `end_at`.
              * @example 2026-08-15T18:00:00Z
@@ -7645,13 +7640,23 @@ export interface components {
             end_at: string;
             /**
              * Format: int32
-             * @description Total seats available for this slot. Must be strictly greater
-             *     than zero. When this value changes via PATCH, the handler
-             *     fires the capacity propagation hook (onCapacityChange) to
-             *     keep the inventory ledger in sync.
+             * @description Total places available for this slot — a DERIVED value
+             *     (AB-36): a bound seating plan version wins; otherwise
+             *     `capacity_override`; otherwise the venue's capacity_default.
+             *     When it changes the handler fires the capacity propagation
+             *     hook (onCapacityChange) to keep the inventory ledger in sync.
              * @example 500
              */
             capacity_total: number;
+            /**
+             * Format: int32
+             * @description Operator-supplied capacity for general-admission sessions,
+             *     taking precedence over the venue's capacity_default. Null when
+             *     not set. Ignored (and not settable) once a seating plan is
+             *     bound — the plan owns the capacity.
+             * @example 500
+             */
+            capacity_override: number | null;
             /**
              * @description Lifecycle status. Transitions: draft → scheduled, scheduled
              *     → cancelled|completed.
@@ -7659,6 +7664,37 @@ export interface components {
              * @enum {string}
              */
             status: "draft" | "scheduled" | "cancelled" | "completed";
+            /**
+             * @description Seating mode. `general_admission` sells against capacity only;
+             *     `assigned_seats` / `hybrid` sessions are bound to a seating
+             *     plan version whose seats are materialized per session.
+             * @example general_admission
+             * @enum {string}
+             */
+            admission_mode: "general_admission" | "assigned_seats" | "hybrid";
+            /**
+             * Format: uuid
+             * @description The bound seating plan version. Null for pure
+             *     general-admission sessions; always set for assigned_seats /
+             *     hybrid.
+             */
+            seating_plan_version_id: string | null;
+            /**
+             * @description ISO 4217 currency every price of this session is denominated
+             *     in (AB-38). One currency per session is a hard invariant —
+             *     all ticket tiers carry this value.
+             * @example CZK
+             */
+            currency: string;
+            /**
+             * @description How the currency was set: `derived` — resolved from the
+             *     venue's city/country geography; `override` — set deliberately
+             *     by the operator. A later venue change re-derives only
+             *     `derived` sessions.
+             * @example derived
+             * @enum {string}
+             */
+            currency_source: "derived" | "override";
             /**
              * Format: date-time
              * @description ISO 8601 / RFC 3339 timestamp of row creation.
@@ -7685,8 +7721,28 @@ export interface components {
          *     /v1/organizations/{org_id}/events/{event_id}/sessions. The owning
          *     org_id and event_id are taken from the path; the body MUST NOT
          *     repeat them.
+         *
+         *     Capacity is DERIVED (AB-36), never supplied directly: a bound
+         *     seating plan version wins; otherwise `capacity_override`;
+         *     otherwise the venue's capacity_default. A general-admission
+         *     session resolving to none of these is rejected with 422
+         *     `session.capacity_unresolvable`.
+         *
+         *     Currency is derived from the venue geography
+         *     (city.currency_override → country.currency) unless `currency` is
+         *     supplied explicitly (recorded as an override, AB-38). A venue
+         *     whose geography resolves to nothing requires an explicit
+         *     `currency` (422 `session.currency_unresolvable` otherwise).
          */
         CreateSessionRequest: {
+            /**
+             * Format: uuid
+             * @description Venue the session takes place at (AB-36). Required; must
+             *     reference an existing venue of the event's organization —
+             *     400 `session.venue_not_found` / 422
+             *     `session.venue_org_mismatch` otherwise.
+             */
+            venue_id: string;
             /**
              * Format: date-time
              * @description Session start time (RFC 3339, UTC).
@@ -7701,16 +7757,45 @@ export interface components {
             end_at: string;
             /**
              * Format: int32
-             * @description Total seats available; must be > 0.
+             * @description Operator capacity for general-admission sessions, overriding
+             *     the venue's capacity_default. Must be > 0 when present (400
+             *     `session.invalid_capacity_override`).
              * @example 500
              */
-            capacity_total: number;
+            capacity_override?: number | null;
             /**
-             * @description Initial lifecycle status. Defaults to `draft` on the server
-             *     when omitted.
+             * @description Initial lifecycle status. Defaults to `scheduled` on the
+             *     server when omitted.
              * @enum {string}
              */
             status?: "draft" | "scheduled" | "cancelled" | "completed";
+            /**
+             * @description Seating mode; defaults to `general_admission`. Choosing
+             *     `assigned_seats` or `hybrid` runs the SEAT-B2 seating bind
+             *     inline (AB-36 step 3): seats are materialized from the plan
+             *     version geometry, one ticket tier is auto-created per SVG
+             *     price category, the version is locked and capacity_total is
+             *     recomputed from the plan — the session is fully sellable in
+             *     one call.
+             * @enum {string}
+             */
+            admission_mode?: "general_admission" | "assigned_seats" | "hybrid";
+            /**
+             * Format: uuid
+             * @description Seating plan version to bind. Required when admission_mode is
+             *     `assigned_seats`/`hybrid` (400
+             *     `session.missing_seating_plan_version`); forbidden for
+             *     general_admission (400 `session.seating_plan_not_applicable`).
+             */
+            seating_plan_version_id?: string | null;
+            /**
+             * @description Explicit ISO 4217 currency override (AB-38). When omitted the
+             *     currency is derived from the venue geography. Malformed codes
+             *     are rejected with 422 `session.invalid_currency`, never
+             *     persisted.
+             * @example EUR
+             */
+            currency?: string | null;
         };
         /**
          * @description Partial update for PATCH
@@ -7719,8 +7804,22 @@ export interface components {
          *     unchanged. When status changes, the transition is validated
          *     against the session state machine and 422
          *     `session.invalid_transition` is returned for disallowed moves.
+         *
+         *     capacity_total is not an input — it is re-derived when venue_id
+         *     or capacity_override change (general-admission sessions only; a
+         *     bound seating plan owns the capacity, and capacity_override on a
+         *     plan-bound session is rejected with 422
+         *     `session.capacity_override_not_applicable`).
          */
         UpdateSessionRequest: {
+            /**
+             * Format: uuid
+             * @description Move the session to a different venue of the same org
+             *     (AB-36). When the session's currency was derived, it is
+             *     re-derived from the new venue's geography; an explicit
+             *     (override) currency is left untouched.
+             */
+            venue_id?: string | null;
             /**
              * Format: date-time
              * @description New session start time (RFC 3339, UTC). Empty leaves unchanged.
@@ -7735,10 +7834,20 @@ export interface components {
             end_at?: string | null;
             /**
              * Format: int32
-             * @description New seat total; must be > 0. Triggers the capacity propagation
-             *     hook (inventory ledger sync) when changed.
+             * @description New operator capacity for a general-admission session; must
+             *     be > 0. capacity_total is re-derived and the capacity
+             *     propagation hook (inventory ledger sync) fires when it
+             *     changes.
              */
-            capacity_total?: number | null;
+            capacity_override?: number | null;
+            /**
+             * @description Deliberate ISO 4217 currency change (recorded as
+             *     currency_source=override). The change CASCADES to every
+             *     ticket tier of the session in the same statement — a session
+             *     can never carry mixed-currency tiers (AB-38). Malformed codes
+             *     are rejected with 422 `session.invalid_currency`.
+             */
+            currency?: string | null;
             /**
              * @description Target lifecycle status. Allowed transitions:
              *
@@ -7827,8 +7936,11 @@ export interface components {
              */
             price_amount: number;
             /**
-             * @description ISO 4217 currency code. Defaults to `USD` when omitted on create.
-             * @example USD
+             * @description ISO 4217 currency code — always equal to the owning session's
+             *     currency (AB-38: one currency per session, enforced by a
+             *     composite FK). Not an operator input; changing the session's
+             *     currency cascades here.
+             * @example CZK
              */
             currency: string;
             /**
@@ -7906,14 +8018,12 @@ export interface components {
              * Format: int64
              * @description Tier price in cents. Required for `fixed`; forced to 0 for
              *     `free`; ignored for `pwyw` (use `pwyw_min` / `pwyw_max`).
+             *     The currency is NOT accepted here — every tier is denominated
+             *     in its session's currency (AB-38); a `currency` key sent by an
+             *     older client is silently ignored.
              * @example 2500
              */
             price_amount?: number;
-            /**
-             * @description ISO 4217 currency code. Defaults to `USD` when omitted.
-             * @example USD
-             */
-            currency?: string;
             /**
              * Format: int64
              * @description Lower bound for `pricing_mode = pwyw` (cents).
@@ -7966,11 +8076,11 @@ export interface components {
             pricing_mode?: "free" | "fixed" | "pwyw" | null;
             /**
              * Format: int64
-             * @description New tier price in cents.
+             * @description New tier price in cents. The currency is not patchable — a
+             *     tier always carries its session's currency; change it on the
+             *     session and it cascades to every tier (AB-38).
              */
             price_amount?: number | null;
-            /** @description New ISO 4217 currency code. */
-            currency?: string | null;
             /**
              * Format: int64
              * @description New lower bound for `pricing_mode = pwyw` (cents).
@@ -10918,7 +11028,10 @@ export interface components {
          */
         PatchSessionSeatsRequest: {
             /**
-             * @description Admin transition to attempt. `block` moves available→blocked; `unblock` moves blocked→available.
+             * @description Admin transition to attempt. `block` moves
+             *     available→unavailable; `unblock` moves unavailable→available.
+             *     (The action verbs are stable; the status value was renamed
+             *     from `blocked` to `unavailable` in migration 0081.)
              * @enum {string}
              */
             action: "block" | "unblock";
@@ -10941,11 +11054,13 @@ export interface components {
             rows?: components["schemas"]["PatchSessionSeatsRowSelector"][];
         };
         /**
-         * @description Per-seat outcome envelope. `outcome` is one of `blocked`,
-         *     `unblocked`, `noop`, `skipped`; `reason` is populated only
+         * @description Per-seat outcome envelope. `outcome` is one of `unavailable`,
+         *     `available`, `noop`, `skipped` — the changed outcomes name the
+         *     resulting seat status (`unavailable` after a block, `available`
+         *     after an unblock); `reason` is populated only
          *     when `outcome == skipped` (values include `held`, `sold`,
          *     `seat_not_found`, `concurrent_transition`, `unknown_status`).
-         *     `status` echoes the post-attempt seat status: `blocked` /
+         *     `status` echoes the post-attempt seat status: `unavailable` /
          *     `available` for successful changes, the pre-existing status
          *     for noop / skipped rows, and empty string for unknown seats.
          */
@@ -10956,7 +11071,7 @@ export interface components {
              * @description Effect of the attempted transition on this seat.
              * @enum {string}
              */
-            outcome: "blocked" | "unblocked" | "noop" | "skipped";
+            outcome: "unavailable" | "available" | "noop" | "skipped";
             /** @description Populated for skipped outcomes; documents why the transition was refused. */
             reason?: string;
             /** @description Post-attempt `session_seats.status` (or empty when the seat was not found). */
@@ -10966,7 +11081,7 @@ export interface components {
         PatchSessionSeatsSummary: {
             /** @description Total number of per-seat outcomes returned (targets + unknown). */
             requested: number;
-            /** @description Seats that transitioned successfully (blocked / unblocked). */
+            /** @description Seats that transitioned successfully (made unavailable / made available). */
             changed: number;
             /** @description Seats that were already in the target status (idempotent no-op). */
             noop: number;
@@ -11106,7 +11221,7 @@ export interface components {
              * @description Live session-scoped monotonic cursor. Callers should persist this and pass it back as `since_version` on the next call.
              */
             status_version: number;
-            /** @description Map of `seat_key` → seat status. Empty when the caller is already at head. Statuses are `available|held|sold|blocked`. */
+            /** @description Map of `seat_key` → seat status. Empty when the caller is already at head. Statuses are `available|held|sold|unavailable`. */
             seats: {
                 [key: string]: string;
             };
@@ -18169,10 +18284,7 @@ export interface operations {
              * @description Body missing/invalid. Possible error codes:
              *     `event.invalid_body`, `event.empty_body`, `event.invalid_json`,
              *     `event.invalid_name`, `event.invalid_status`,
-             *     `event.invalid_visibility`, `event.missing_start_at`,
-             *     `event.invalid_start_at`, `event.missing_end_at`,
-             *     `event.invalid_end_at`, `event.invalid_date_range`,
-             *     `event.invalid_venue_id`.
+             *     `event.invalid_visibility`.
              */
             400: {
                 headers: {
@@ -18329,9 +18441,7 @@ export interface operations {
             /**
              * @description Body invalid. Possible error codes:
              *     `event.invalid_body`, `event.empty_body`, `event.invalid_json`,
-             *     `event.invalid_visibility`, `event.invalid_venue_id`,
-             *     `event.invalid_start_at`, `event.invalid_end_at`,
-             *     `event.invalid_date_range`.
+             *     `event.invalid_visibility`.
              */
             400: {
                 headers: {
@@ -18586,7 +18696,15 @@ export interface operations {
              *     `session.invalid_json`, `session.invalid_status`,
              *     `session.missing_start_at`, `session.invalid_start_at`,
              *     `session.missing_end_at`, `session.invalid_end_at`,
-             *     `session.invalid_date_range`, `session.invalid_capacity`.
+             *     `session.invalid_date_range`,
+             *     `session.invalid_capacity_override`,
+             *     `session.missing_venue_id`, `session.invalid_venue_id`,
+             *     `session.venue_not_found`, `session.invalid_admission_mode`,
+             *     `session.missing_seating_plan_version`,
+             *     `session.invalid_seating_plan_version`,
+             *     `session.seating_plan_not_applicable`, plus the seating bind
+             *     errors (`seating.version_not_found`, ...) when a seated
+             *     create fails its inline bind.
              */
             400: {
                 headers: {
@@ -18607,6 +18725,20 @@ export interface operations {
             };
             /** @description Caller lacks the `session.create` permission. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Semantically invalid. Possible error codes:
+             *     `session.venue_org_mismatch`, `session.invalid_currency`,
+             *     `session.currency_unresolvable`,
+             *     `session.capacity_unresolvable`.
+             */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -18816,7 +18948,9 @@ export interface operations {
              *     `session.invalid_body`, `session.empty_body`,
              *     `session.invalid_json`, `session.invalid_status`,
              *     `session.invalid_start_at`, `session.invalid_end_at`,
-             *     `session.invalid_date_range`, `session.invalid_capacity`.
+             *     `session.invalid_date_range`,
+             *     `session.invalid_capacity_override`,
+             *     `session.invalid_venue_id`, `session.venue_not_found`.
              */
             400: {
                 headers: {
@@ -18854,11 +18988,13 @@ export interface operations {
                 };
             };
             /**
-             * @description Status transition not allowed by the state machine. The
-             *     response uses the standard `ErrorEnvelope` with
-             *     `error.code = "session.invalid_transition"` and
+             * @description Semantically invalid. Possible error codes:
+             *     `session.invalid_transition` (status transition not allowed;
              *     `error.details.current_status` /
-             *     `error.details.target_status`.
+             *     `error.details.target_status`),
+             *     `session.venue_org_mismatch`, `session.invalid_currency`,
+             *     `session.capacity_override_not_applicable` (capacity_override
+             *     sent for a plan-bound session).
              */
             422: {
                 headers: {
@@ -24339,9 +24475,9 @@ export interface operations {
             query?: {
                 /** @description Optional filter by publication city scope. */
                 city_id?: string;
-                /** @description Optional lower bound on `event.start_at` (inclusive). */
+                /** @description Optional lower bound on the event's `first_session_at` cache (inclusive). Events without sessions are excluded when set. */
                 date_from?: string;
-                /** @description Optional upper bound on `event.end_at` (inclusive). */
+                /** @description Optional upper bound on the event's `last_session_at` cache (inclusive). Events without sessions are excluded when set. */
                 date_to?: string;
                 /** @description Page size. */
                 limit?: number;

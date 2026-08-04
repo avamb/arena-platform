@@ -1,16 +1,26 @@
-// sessions.go implements the session CRUD API endpoints (feature #126).
+// sessions.go implements the session CRUD API endpoints (feature #126,
+// reshaped in Wave 4 by AB-36/AB-38).
 //
-// A Session is a specific time slot for an Event. Each session has independent
-// inventory: capacity_total tracks the total seats available for that slot.
-// Multiple sessions per event are allowed; overlapping sessions are permitted
-// but flagged in the response (has_overlapping_sessions).
+// A Session is a specific time slot of an Event at a specific Venue. The
+// session — not the event — owns the venue, the seating bind, and the
+// currency (Bil24 model: only the ActionEvent carries date/venue/currency).
+//
+// Capacity is DERIVED, in this order (AB-36):
+//
+//	bound seating plan version (assigned_seats / hybrid)
+//	  -> capacity_override (operator input)
+//	  -> venues.capacity_default
+//
+// A general-admission session that resolves to none of these is rejected
+// with 422 session.capacity_unresolvable.
+//
+// Currency resolution (AB-38): venue -> city.currency_override ??
+// country.currency, recorded as currency_source='derived'; an explicit
+// request value wins and is recorded as 'override'. A session whose venue
+// geography resolves to nothing MUST carry an explicit currency.
 //
 // Status lifecycle: draft → scheduled → completed|cancelled.
 // Date invariant: end_at must be strictly after start_at (table CHECK + handler).
-//
-// Capacity propagation hook: whenever capacity_total changes, the handler
-// calls the capacity hook to notify the inventory module. In this milestone the
-// hook is a no-op log statement; the real inventory integration is out of scope.
 //
 // Endpoints:
 //
@@ -19,6 +29,13 @@
 //	GET    /v1/organizations/{org_id}/events/{event_id}/sessions/{id}   — get    (session.read)
 //	PATCH  /v1/organizations/{org_id}/events/{event_id}/sessions/{id}   — update (session.update)
 //	DELETE /v1/organizations/{org_id}/events/{event_id}/sessions/{id}   — delete (session.delete)
+//
+// Seating at create (AB-36 step 3): the create request may carry
+// admission_mode=assigned_seats|hybrid plus seating_plan_version_id; the
+// handler then runs the SEAT-B2 bind (auto-creating tiers from the SVG
+// category legend) through the injected SeatingBinder callback, so a seated
+// session is fully materialized in one call instead of requiring a separate
+// edit-mode bind.
 package hcatalog
 
 import (
@@ -28,6 +45,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -59,6 +77,18 @@ var validSessionStatuses = map[string]bool{
 	string(catalogdomain.SessionStatusCompleted): true,
 }
 
+// validCreateAdmissionModes lists the admission modes accepted at session
+// create. general_admission is the default when the field is omitted.
+var validCreateAdmissionModes = map[string]bool{
+	"general_admission": true,
+	"assigned_seats":    true,
+	"hybrid":            true,
+}
+
+// currencyPattern is the ISO-4217 shape check mirrored from the DB CHECK
+// constraints added in migration 0081.
+var currencyPattern = regexp.MustCompile(`^[A-Z]{3}$`)
+
 // IsValidSessionTransition returns true when the transition from → to is
 // allowed by the Session state machine. Forwards to internal/domain/catalog
 // so the rule lives in exactly one place.
@@ -67,36 +97,84 @@ func IsValidSessionTransition(from, to string) bool {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Seating bind callback (AB-36 step 3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// SeatingBindError is the transport shape a SeatingBinder uses to report a
+// bind failure back into the session-create path. It mirrors the error
+// envelope the standalone bind endpoint would have written, so the create
+// endpoint surfaces identical codes whether the bind runs standalone or
+// inline.
+type SeatingBindError struct {
+	Status  int
+	Code    string
+	Message string
+	Details map[string]any
+}
+
+// SeatingBinder runs the SEAT-B2 seating bind for a freshly created session:
+// materializes session_seats from the plan version geometry, auto-creates
+// one tier per SVG price category, locks the version, and recomputes
+// capacity_total. The canonical implementation lives in the hseating
+// sub-package; catalog_shims.go injects a forwarder so hcatalog never
+// imports hseating (same pattern as SessionCancelledPublisher).
+type SeatingBinder func(ctx context.Context, r *http.Request, eventID, sessionID, planVersionID uuid.UUID, admissionMode string) *SeatingBindError
+
+// WithSeatingBinder attaches the seating bind callback used by the session
+// create path. Production wiring calls this in the shim layer; tests that
+// omit it will get 503 on seated session creation.
+func (h *Handler) WithSeatingBinder(b SeatingBinder) *Handler {
+	h.bindSeating = b
+	return h
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Response types
 // ─────────────────────────────────────────────────────────────────────────────
 
 // SessionResponse is the JSON representation of a single session.
 type SessionResponse struct {
-	ID                     string `json:"id"`
-	EventID                string `json:"event_id"`
-	StartAt                string `json:"start_at"`
-	EndAt                  string `json:"end_at"`
-	CapacityTotal          int32  `json:"capacity_total"`
-	Status                 string `json:"status"`
-	CreatedAt              string `json:"created_at"`
-	UpdatedAt              string `json:"updated_at"`
-	HasOverlappingSessions bool   `json:"has_overlapping_sessions"`
+	ID                     string  `json:"id"`
+	EventID                string  `json:"event_id"`
+	VenueID                string  `json:"venue_id"`
+	StartAt                string  `json:"start_at"`
+	EndAt                  string  `json:"end_at"`
+	CapacityTotal          int32   `json:"capacity_total"`
+	CapacityOverride       *int32  `json:"capacity_override"`
+	Status                 string  `json:"status"`
+	AdmissionMode          string  `json:"admission_mode"`
+	SeatingPlanVersionID   *string `json:"seating_plan_version_id"`
+	Currency               string  `json:"currency"`
+	CurrencySource         string  `json:"currency_source"`
+	CreatedAt              string  `json:"created_at"`
+	UpdatedAt              string  `json:"updated_at"`
+	HasOverlappingSessions bool    `json:"has_overlapping_sessions"`
 }
 
 // SessionFromRow converts a SessionRow to a SessionResponse.
 // hasOverlap is the result of the overlap detection check.
 func SessionFromRow(s gen.SessionRow, hasOverlap bool) SessionResponse {
-	return SessionResponse{
+	resp := SessionResponse{
 		ID:                     s.ID.String(),
 		EventID:                s.EventID.String(),
+		VenueID:                s.VenueID.String(),
 		StartAt:                s.StartAt.UTC().Format(time.RFC3339),
 		EndAt:                  s.EndAt.UTC().Format(time.RFC3339),
 		CapacityTotal:          s.CapacityTotal,
+		CapacityOverride:       s.CapacityOverride,
 		Status:                 s.Status,
+		AdmissionMode:          s.AdmissionMode,
+		Currency:               strings.TrimSpace(s.Currency),
+		CurrencySource:         s.CurrencySource,
 		CreatedAt:              s.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:              s.UpdatedAt.UTC().Format(time.RFC3339),
 		HasOverlappingSessions: hasOverlap,
 	}
+	if s.SeatingPlanVersionID != nil {
+		v := s.SeatingPlanVersionID.String()
+		resp.SeatingPlanVersionID = &v
+	}
+	return resp
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -146,15 +224,75 @@ func (h *Handler) OnCapacityChange(ctx context.Context, sessionID uuid.UUID, old
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Venue context resolution (shared by create + update)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// resolveVenueContext loads the venue's org / capacity / derived-currency
+// context and enforces that the venue belongs to the event's org (superadmin
+// bypass per AB-12/AB-28). Writes the error envelope and returns ok=false on
+// any failure.
+func (h *Handler) resolveVenueContext(
+	w http.ResponseWriter, r *http.Request, orgID, venueID uuid.UUID,
+) (gen.VenueSessionContextRow, bool) {
+	venueCtx, err := h.sessionQueries.GetVenueSessionContext(r.Context(), venueID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+				"session.venue_not_found", "venue_id does not reference an existing venue", r,
+				map[string]any{"field": "venue_id"},
+			))
+			return gen.VenueSessionContextRow{}, false
+		}
+		h.logger.Error("session: venue context lookup failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"session.venue_lookup_failed", "failed to resolve venue", r,
+		))
+		return gen.VenueSessionContextRow{}, false
+	}
+	if venueCtx.OrgID != orgID && !auth.HasSuperadminOrgAccess(r.Context()) {
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+			"session.venue_org_mismatch",
+			"venue does not belong to the event's organization", r,
+			map[string]any{"field": "venue_id"},
+		))
+		return gen.VenueSessionContextRow{}, false
+	}
+	return venueCtx, true
+}
+
+// normalizeCurrency trims + uppercases a caller-supplied currency and
+// validates the ISO-4217 shape. Returns ("", false) after writing a 422
+// envelope when the value is malformed.
+func normalizeCurrency(w http.ResponseWriter, r *http.Request, raw string) (string, bool) {
+	cur := strings.ToUpper(strings.TrimSpace(raw))
+	if !currencyPattern.MatchString(cur) {
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+			"session.invalid_currency",
+			"currency must be a three-letter ISO 4217 code", r,
+			map[string]any{"field": "currency"},
+		))
+		return "", false
+	}
+	return cur, true
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /v1/organizations/{org_id}/events/{event_id}/sessions
 // ─────────────────────────────────────────────────────────────────────────────
 
 // createSessionRequest is the request body for POST .../sessions.
+// capacity_total is deliberately absent: capacity is derived (plan ->
+// capacity_override -> venue default). currency is an optional explicit
+// override of the geography-derived value.
 type createSessionRequest struct {
-	StartAt       string `json:"start_at"`
-	EndAt         string `json:"end_at"`
-	CapacityTotal int32  `json:"capacity_total"`
-	Status        string `json:"status"`
+	VenueID              string `json:"venue_id"`
+	StartAt              string `json:"start_at"`
+	EndAt                string `json:"end_at"`
+	CapacityOverride     *int32 `json:"capacity_override"`
+	Status               string `json:"status"`
+	AdmissionMode        string `json:"admission_mode"`
+	SeatingPlanVersionID string `json:"seating_plan_version_id"`
+	Currency             string `json:"currency"`
 }
 
 // HandleCreateSession serves POST /v1/organizations/{org_id}/events/{event_id}/sessions.
@@ -198,6 +336,8 @@ func (h *Handler) HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req.Status = strings.TrimSpace(req.Status)
+	req.AdmissionMode = strings.TrimSpace(req.AdmissionMode)
+	req.SeatingPlanVersionID = strings.TrimSpace(req.SeatingPlanVersionID)
 
 	// Validate status if provided.
 	if req.Status != "" && !validSessionStatuses[req.Status] {
@@ -251,16 +391,132 @@ func (h *Handler) HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// capacity_total must be positive.
-	if req.CapacityTotal <= 0 {
+	// Venue: required, must exist, must belong to the event's org (AB-36).
+	if strings.TrimSpace(req.VenueID) == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-			"session.invalid_capacity", "capacity_total must be greater than 0", r,
-			map[string]any{"field": "capacity_total"},
+			"session.missing_venue_id", "venue_id is required", r,
+			map[string]any{"field": "venue_id"},
+		))
+		return
+	}
+	venueID, parseErr := uuid.Parse(strings.TrimSpace(req.VenueID))
+	if parseErr != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			"session.invalid_venue_id", "venue_id must be a valid UUID", r,
+			map[string]any{"field": "venue_id"},
 		))
 		return
 	}
 
-	sess, err := h.sessionQueries.InsertSession(ctx, eventID, startAt, endAt, req.CapacityTotal, req.Status)
+	// Admission mode + seating plan version (AB-36 step 3).
+	mode := req.AdmissionMode
+	if mode == "" {
+		mode = "general_admission"
+	}
+	if !validCreateAdmissionModes[mode] {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			"session.invalid_admission_mode",
+			"admission_mode must be one of general_admission|assigned_seats|hybrid", r,
+			map[string]any{"field": "admission_mode"},
+		))
+		return
+	}
+	seated := mode != "general_admission"
+	var planVersionID uuid.UUID
+	if seated {
+		if req.SeatingPlanVersionID == "" {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+				"session.missing_seating_plan_version",
+				"seating_plan_version_id is required for assigned_seats/hybrid sessions", r,
+				map[string]any{"field": "seating_plan_version_id"},
+			))
+			return
+		}
+		planVersionID, parseErr = uuid.Parse(req.SeatingPlanVersionID)
+		if parseErr != nil {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+				"session.invalid_seating_plan_version",
+				"seating_plan_version_id must be a valid UUID", r,
+				map[string]any{"field": "seating_plan_version_id"},
+			))
+			return
+		}
+	} else if req.SeatingPlanVersionID != "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			"session.seating_plan_not_applicable",
+			"seating_plan_version_id requires admission_mode assigned_seats or hybrid", r,
+			map[string]any{"field": "seating_plan_version_id"},
+		))
+		return
+	}
+
+	// Explicit currency override, if any (AB-38): validated before any DB
+	// round trip so malformed codes fail fast.
+	currency := ""
+	currencySource := "derived"
+	if strings.TrimSpace(req.Currency) != "" {
+		currency, ok = normalizeCurrency(w, r, req.Currency)
+		if !ok {
+			return
+		}
+		currencySource = "override"
+	}
+
+	// capacity_override sanity — also a pure syntax check.
+	if req.CapacityOverride != nil && *req.CapacityOverride <= 0 {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			"session.invalid_capacity_override", "capacity_override must be greater than 0", r,
+			map[string]any{"field": "capacity_override"},
+		))
+		return
+	}
+
+	// Syntax is clean — now hit the DB: venue existence / org ownership /
+	// capacity default / geography-derived currency in one round trip.
+	venueCtx, ok := h.resolveVenueContext(w, r, orgID, venueID)
+	if !ok {
+		return
+	}
+
+	// Currency derivation (AB-38): a venue with no resolvable geography
+	// demands an explicit value.
+	if currency == "" {
+		if venueCtx.DerivedCurrency != nil && strings.TrimSpace(*venueCtx.DerivedCurrency) != "" {
+			currency = strings.TrimSpace(*venueCtx.DerivedCurrency)
+		} else {
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+				"session.currency_unresolvable",
+				"the venue's geography does not resolve to a currency; supply currency explicitly", r,
+				map[string]any{"field": "currency"},
+			))
+			return
+		}
+	}
+
+	// Capacity resolution (AB-36 step 4).
+	var capacityTotal int32
+	switch {
+	case seated:
+		// Placeholder satisfying the capacity_total > 0 CHECK; the bind
+		// below recomputes the real value from the plan version.
+		capacityTotal = 1
+		if req.CapacityOverride != nil {
+			capacityTotal = *req.CapacityOverride
+		}
+	case req.CapacityOverride != nil:
+		capacityTotal = *req.CapacityOverride
+	case venueCtx.CapacityDefault != nil && *venueCtx.CapacityDefault > 0:
+		capacityTotal = *venueCtx.CapacityDefault
+	default:
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+			"session.capacity_unresolvable",
+			"capacity could not be derived: supply capacity_override or set the venue's capacity_default", r,
+			map[string]any{"field": "capacity_override"},
+		))
+		return
+	}
+
+	sess, err := h.sessionQueries.InsertSession(ctx, eventID, venueID, startAt, endAt, capacityTotal, req.CapacityOverride, req.Status, currency, currencySource)
 	if err != nil {
 		h.logger.Error("session: insert failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
@@ -269,7 +525,47 @@ func (h *Handler) HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Initialize the inventory ledger for the new session (feature #130, non-fatal).
+	// Seated create: run the SEAT-B2 bind inline (auto-creating tiers from
+	// the SVG category legend). On bind failure the freshly created session
+	// is soft-deleted so a failed create leaves no half-bound session
+	// behind, and the bind's own error envelope is surfaced verbatim.
+	if seated {
+		if h.bindSeating == nil {
+			_, _ = h.sessionQueries.SoftDeleteSession(ctx, sess.ID, eventID)
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+				"session.seating_bind_unavailable", "seating bind is not available", r,
+			))
+			return
+		}
+		if bindErr := h.bindSeating(ctx, r, eventID, sess.ID, planVersionID, mode); bindErr != nil {
+			if _, delErr := h.sessionQueries.SoftDeleteSession(ctx, sess.ID, eventID); delErr != nil {
+				h.logger.Error("session: cleanup after failed bind failed",
+					slog.String("session_id", sess.ID.String()),
+					slog.String("error", delErr.Error()),
+				)
+			}
+			details := bindErr.Details
+			if details == nil {
+				httputil.WriteJSON(w, bindErr.Status, httputil.ErrorEnvelope(bindErr.Code, bindErr.Message, r))
+			} else {
+				httputil.WriteJSON(w, bindErr.Status, httputil.ErrorEnvelopeWithDetails(bindErr.Code, bindErr.Message, r, details))
+			}
+			return
+		}
+		// Re-read the session: the bind rewired admission_mode,
+		// seating_plan_version_id and capacity_total.
+		sess, err = h.sessionQueries.GetSessionByID(ctx, sess.ID, eventID)
+		if err != nil {
+			h.logger.Error("session: reload after bind failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"session.insert_failed", "failed to load session after seating bind", r,
+			))
+			return
+		}
+	}
+
+	// Initialize the inventory ledger for the new session (feature #130,
+	// non-fatal) with the final derived capacity.
 	if h.inventoryQueries != nil {
 		capTotal := sess.CapacityTotal
 		if _, err := h.inventoryQueries.InsertInventoryLedger(ctx, sess.ID, nil, &capTotal); err != nil {
@@ -409,11 +705,17 @@ func (h *Handler) HandleGetSession(w http.ResponseWriter, r *http.Request) {
 
 // updateSessionRequest is the request body for PATCH .../sessions/{id}.
 // All fields are optional; nil/empty values leave the existing value unchanged.
+// capacity_total is not an input — it is re-derived when venue_id or
+// capacity_override change (GA sessions only; plan-bound capacity is owned
+// by the bind path). Setting currency records an explicit override and
+// cascades to the session's tiers.
 type updateSessionRequest struct {
-	StartAt       *string `json:"start_at"`
-	EndAt         *string `json:"end_at"`
-	CapacityTotal *int32  `json:"capacity_total"`
-	Status        string  `json:"status"`
+	VenueID          *string `json:"venue_id"`
+	StartAt          *string `json:"start_at"`
+	EndAt            *string `json:"end_at"`
+	CapacityOverride *int32  `json:"capacity_override"`
+	Status           string  `json:"status"`
+	Currency         *string `json:"currency"`
 }
 
 // HandleUpdateSession serves PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{id}.
@@ -515,11 +817,11 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate capacity if provided.
-	if req.CapacityTotal != nil && *req.CapacityTotal <= 0 {
+	// Validate capacity_override if provided.
+	if req.CapacityOverride != nil && *req.CapacityOverride <= 0 {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-			"session.invalid_capacity", "capacity_total must be greater than 0", r,
-			map[string]any{"field": "capacity_total"},
+			"session.invalid_capacity_override", "capacity_override must be greater than 0", r,
+			map[string]any{"field": "capacity_override"},
 		))
 		return
 	}
@@ -538,6 +840,88 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	seated := current.AdmissionMode != "general_admission"
+
+	// capacity_override is a GA knob only: plan-bound sessions derive their
+	// capacity from the bound version and must not be silently overridden.
+	if req.CapacityOverride != nil && seated {
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+			"session.capacity_override_not_applicable",
+			"capacity_override does not apply to plan-bound sessions; the bound seating plan owns the capacity", r,
+			map[string]any{"field": "capacity_override"},
+		))
+		return
+	}
+
+	// Optional venue change (AB-36): validate ownership and re-derive the
+	// currency when the current value was itself derived.
+	var venueID *uuid.UUID
+	var venueCtx gen.VenueSessionContextRow
+	venueChanged := false
+	if req.VenueID != nil {
+		trimmed := strings.TrimSpace(*req.VenueID)
+		if trimmed != "" {
+			parsed, parseErr := uuid.Parse(trimmed)
+			if parseErr != nil {
+				httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+					"session.invalid_venue_id", "venue_id must be a valid UUID", r,
+					map[string]any{"field": "venue_id"},
+				))
+				return
+			}
+			if parsed != current.VenueID {
+				venueCtx, ok = h.resolveVenueContext(w, r, orgID, parsed)
+				if !ok {
+					return
+				}
+				venueID = &parsed
+				venueChanged = true
+			}
+		}
+	}
+
+	// Currency (AB-38): explicit value = deliberate override; a venue change
+	// re-derives only sessions whose currency was derived in the first place.
+	var newCurrency *string
+	currencySource := ""
+	if req.Currency != nil && strings.TrimSpace(*req.Currency) != "" {
+		cur, ok := normalizeCurrency(w, r, *req.Currency)
+		if !ok {
+			return
+		}
+		if cur != strings.TrimSpace(current.Currency) {
+			newCurrency = &cur
+		}
+		currencySource = "override"
+	} else if venueChanged && current.CurrencySource == "derived" &&
+		venueCtx.DerivedCurrency != nil && strings.TrimSpace(*venueCtx.DerivedCurrency) != "" {
+		derived := strings.TrimSpace(*venueCtx.DerivedCurrency)
+		if derived != strings.TrimSpace(current.Currency) {
+			newCurrency = &derived
+		}
+		currencySource = "derived"
+	}
+
+	// Re-derive capacity_total for GA sessions when the operator knob or the
+	// venue changed (AB-36 resolution chain: override -> venue default).
+	var newCapacityTotal *int32
+	if !seated && (req.CapacityOverride != nil || venueChanged) {
+		effectiveOverride := current.CapacityOverride
+		if req.CapacityOverride != nil {
+			effectiveOverride = req.CapacityOverride
+		}
+		switch {
+		case effectiveOverride != nil:
+			newCapacityTotal = effectiveOverride
+		case venueChanged && venueCtx.CapacityDefault != nil && *venueCtx.CapacityDefault > 0:
+			newCapacityTotal = venueCtx.CapacityDefault
+		case venueChanged:
+			// Venue changed, no override anywhere, new venue has no default:
+			// keep the current capacity rather than failing the whole PATCH.
+			newCapacityTotal = nil
+		}
+	}
+
 	// Validate status transition when status is being changed.
 	if req.Status != "" && req.Status != current.Status {
 		if !IsValidSessionTransition(current.Status, req.Status) {
@@ -554,7 +938,7 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	updated, err := h.sessionQueries.UpdateSession(ctx, sessionID, eventID, startAt, endAt, req.CapacityTotal, req.Status)
+	updated, err := h.sessionQueries.UpdateSession(ctx, sessionID, eventID, venueID, startAt, endAt, newCapacityTotal, req.CapacityOverride, req.Status, newCurrency, currencySource)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("session.not_found", "session not found", r))
@@ -568,7 +952,7 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Capacity propagation hook: fire when capacity_total changed.
-	if req.CapacityTotal != nil && *req.CapacityTotal != current.CapacityTotal {
+	if updated.CapacityTotal != current.CapacityTotal {
 		h.OnCapacityChange(ctx, updated.ID, current.CapacityTotal, updated.CapacityTotal)
 	}
 

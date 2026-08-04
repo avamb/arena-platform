@@ -1152,7 +1152,7 @@ test.describe('7 — Backend suites green; lint 0; CI job health', () => {
     expect(typeof status['delta']).toBe('boolean');
 
     // All seat statuses must be valid values.
-    const validStatuses = new Set(['available', 'held', 'sold', 'blocked']);
+    const validStatuses = new Set(['available', 'held', 'sold', 'unavailable']);
     const seats = status['seats'] as Record<string, string>;
     for (const [key, val] of Object.entries(seats)) {
       expect(

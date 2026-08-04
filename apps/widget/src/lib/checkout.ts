@@ -25,7 +25,7 @@
  *  - `status`:   why the seat is unavailable:
  *      "held"        — another session currently holds this seat
  *      "sold"        — seat has been converted to a ticket
- *      "blocked"     — seat is administratively blocked
+ *      "unavailable" — seat is administratively made unavailable (blocked)
  *      "unknown"     — seat_key does not exist in the seating plan
  *      "unavailable" — catch-all used by the defensive hold/link guard
  */

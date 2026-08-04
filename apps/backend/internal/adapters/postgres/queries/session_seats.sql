@@ -169,10 +169,10 @@ RETURNING id, session_id, seat_key, sector_name, row_name, seat_number,
           tier_id, status, reservation_id, status_version, updated_at;
 
 -- name: BlockSessionSeat :one
--- Conditional 'available' -> 'blocked' transition. Admin block
+-- Conditional 'available' -> 'unavailable' transition. Admin withhold
 -- (§7 SEAT-B3). Returns pgx.ErrNoRows if the seat is not available.
 UPDATE session_seats
-SET    status         = 'blocked',
+SET    status         = 'unavailable',
        status_version = $2,
        updated_at     = now()
 WHERE  id     = $1
@@ -181,13 +181,13 @@ RETURNING id, session_id, seat_key, sector_name, row_name, seat_number,
           tier_id, status, reservation_id, status_version, updated_at;
 
 -- name: UnblockSessionSeat :one
--- Conditional 'blocked' -> 'available' transition. Admin unblock.
+-- Conditional 'unavailable' -> 'available' transition. Admin release.
 UPDATE session_seats
 SET    status         = 'available',
        status_version = $2,
        updated_at     = now()
 WHERE  id     = $1
-  AND  status = 'blocked'
+  AND  status = 'unavailable'
 RETURNING id, session_id, seat_key, sector_name, row_name, seat_number,
           tier_id, status, reservation_id, status_version, updated_at;
 

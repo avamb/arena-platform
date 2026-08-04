@@ -377,19 +377,22 @@ func importBatch(ctx context.Context, pool *pgxpool.Pool, events []catalogimport
 	for i := range events {
 		e := &events[i]
 
+		// Wave 4 (AB-37): events carry no own dates — the snapshot's
+		// starts_at/ends_at describe the session-level schedule, which this
+		// importer does not materialize (sessions require a venue binding,
+		// AB-36). Operators create the sessions — and with them the dates —
+		// after the import; until then the event renders with no date.
 		tag, err := tx.Exec(ctx, `
 			INSERT INTO events (
 				org_id,
 				name,
 				description,
 				status,
-				start_at,
-				end_at,
 				visibility,
 				image_url,
 				external_bil24_id
 			)
-			VALUES ($1, $2, $3, 'draft', $4, $5, 'public', $6, $7)
+			VALUES ($1, $2, $3, 'draft', 'public', $4, $5)
 			ON CONFLICT (external_bil24_id)
 			WHERE external_bil24_id IS NOT NULL
 			DO NOTHING
@@ -397,8 +400,6 @@ func importBatch(ctx context.Context, pool *pgxpool.Pool, events []catalogimport
 			orgID,
 			e.Title,
 			e.ResolvedDescription(),
-			e.StartsAt.UTC(),
-			e.ResolvedEndsAt().UTC(),
 			nilIfEmpty(e.PosterURL),
 			e.ExternalBil24ID,
 		)

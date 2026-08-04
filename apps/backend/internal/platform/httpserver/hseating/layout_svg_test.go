@@ -33,10 +33,10 @@ func TestSeatD3_StatusToBSS(t *testing.T) {
 		status string
 		want   int
 	}{
-		{"available", bssStateAvailable},  // 1
-		{"held", bssStateReserved},        // 3
-		{"sold", bssStateOccupied},        // 4
-		{"blocked", bssStateInaccessible}, // 0
+		{"available", bssStateAvailable},      // 1
+		{"held", bssStateReserved},            // 3
+		{"sold", bssStateOccupied},            // 4
+		{"unavailable", bssStateInaccessible}, // 0
 		{"", bssStateInaccessible},
 		{"unknown_status", bssStateInaccessible},
 	}
@@ -149,7 +149,7 @@ func TestSeatD3_RenderEmitsBSSAttributes(t *testing.T) {
 	// Decor fragment spliced verbatim.
 	mustContain(t, body, `<g id="Decor"><rect x="0" y="0" width="1000" height="800" fill="#fafafa"/></g>`)
 
-	// PriceCategory metadata: VIP has 1 sold (seat 2) + 0 held + 0 blocked
+	// PriceCategory metadata: VIP has 1 sold (seat 2) + 0 held + 0 unavailable
 	// → sold=1, used=1. Standard has 0 sold + 1 held → sold=0, used=1.
 	mustContain(t, body,
 		`<circle sbt:index="1" sbt:name="VIP" sbt:color="#ff0000" sbt:price="5000" sbt:currency="USD" sbt:sold="1" sbt:used="1" fill="#ff0000"/>`)
@@ -193,7 +193,7 @@ func TestSeatD3_RenderIsDeterministic(t *testing.T) {
 }
 
 // TestSeatD3_RenderNoDecor — omitting the decor fragment is tolerated
-// and produces no <g id="Decor"> wrapper. Blocked seats surface as
+// and produces no <g id="Decor"> wrapper. Unavailable seats surface as
 // BSS INACCESSIBLE (0). Seats missing from session_seats (fresh plan
 // before bind) render as available with an empty sbt:id — matching the
 // contract that a plan preview MAY be requested before session

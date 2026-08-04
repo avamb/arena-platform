@@ -1,12 +1,17 @@
-// events_test.go — unit tests for feature #125 (Event model + CRUD).
+// events_test.go — unit tests for feature #125 (Event model + CRUD),
+// reshaped in Wave 4 (AB-36/AB-37): the event no longer carries venue_id or
+// start_at/end_at — the venue and the dates live on sessions, and the event
+// exposes the trigger-maintained first_session_at/last_session_at cache plus
+// the venue_names projection.
 //
 // Test coverage:
 //
-//	Step 1: Migration file 0014_events.sql — schema, status enum, date CHECK, RBAC seeds
+//	Step 1: Migration files — 0014_events.sql plus the Wave 4 reshape
+//	        migrations 0079/0080/0081
 //	Step 2: CRUD endpoints — route mounting, auth-gating, request validation
 //	Step 3: Status transition guards — allowed and forbidden transitions
 //	Step 4: i18n name/description — query file + gen file structure
-//	Step 5: Integration: date invariant validation (end_at <= start_at → 400)
+//	Step 5: Legacy date/venue create fields are ignored (unknown JSON keys)
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver
@@ -125,10 +130,15 @@ func TestEvent125_MigrationHasOrgIDColumn(t *testing.T) {
 	}
 }
 
-func TestEvent125_MigrationHasVenueIDColumn(t *testing.T) {
-	content := findFileByName(t, "0014_events.sql")
-	if !strings.Contains(content, "venue_id") {
-		t.Error("migration missing venue_id column")
+// Wave 4 (AB-36): the venue binding moved from events to sessions.
+// Migration 0079 drops events.venue_id.
+func TestEvent125_Wave4_VenueMovedToSessions(t *testing.T) {
+	content := findFileByName(t, "0079_session_owns_venue.sql")
+	if content == "" {
+		t.Fatal("0079_session_owns_venue.sql is empty or not found")
+	}
+	if !strings.Contains(content, "DROP COLUMN venue_id") {
+		t.Error("0079 migration should drop events.venue_id")
 	}
 }
 
@@ -150,13 +160,36 @@ func TestEvent125_MigrationHasVisibilityEnum(t *testing.T) {
 	}
 }
 
-func TestEvent125_MigrationHasDateOrderCheck(t *testing.T) {
-	content := findFileByName(t, "0014_events.sql")
-	if !strings.Contains(content, "events_date_order") {
-		t.Error("migration missing events_date_order CHECK constraint")
+// Wave 4 (AB-37): events.start_at/end_at (and the events_date_order CHECK)
+// are gone; migration 0080 replaces them with the trigger-maintained
+// first_session_at/last_session_at cache.
+func TestEvent125_Wave4_DatesMovedToSessions(t *testing.T) {
+	content := findFileByName(t, "0080_event_dates_from_sessions.sql")
+	if content == "" {
+		t.Fatal("0080_event_dates_from_sessions.sql is empty or not found")
 	}
-	if !strings.Contains(content, "end_at > start_at") {
-		t.Error("migration missing end_at > start_at date order check")
+	for _, want := range []string{
+		"ADD COLUMN first_session_at",
+		"last_session_at",
+		"DROP CONSTRAINT IF EXISTS events_date_order",
+		"DROP COLUMN start_at",
+		"DROP COLUMN end_at",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("0080 migration missing %q", want)
+		}
+	}
+}
+
+// Wave 4 (AB-38): currency is derived from the venue geography and stored on
+// sessions; migration 0081 introduces it.
+func TestEvent125_Wave4_CurrencyMigrationExists(t *testing.T) {
+	content := findFileByName(t, "0081_currency_from_geography.sql")
+	if content == "" {
+		t.Fatal("0081_currency_from_geography.sql is empty or not found")
+	}
+	if !strings.Contains(content, "currency_source") {
+		t.Error("0081 migration missing currency_source column")
 	}
 }
 
@@ -336,139 +369,64 @@ func TestEvent125_CreateEvent_MissingNameReturns400(t *testing.T) {
 	}
 }
 
-func TestEvent125_CreateEvent_MissingStartAtReturns400(t *testing.T) {
-	s := buildEventServer(t)
-	tok := mintEventToken(t, s)
-	orgID := "00000000-0000-0000-0000-000000000001"
-
-	body := `{"name":"Test Event","end_at":"2026-07-01T12:00:00Z"}`
-	req := httptest.NewRequest(http.MethodPost, "/v1/organizations/"+orgID+"/events",
-		strings.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+tok)
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	s.router.ServeHTTP(w, req)
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("missing start_at: got %d, want 400", w.Code)
-	}
-}
-
-func TestEvent125_CreateEvent_MissingEndAtReturns400(t *testing.T) {
-	s := buildEventServer(t)
-	tok := mintEventToken(t, s)
-	orgID := "00000000-0000-0000-0000-000000000001"
-
-	body := `{"name":"Test Event","start_at":"2026-07-01T10:00:00Z"}`
-	req := httptest.NewRequest(http.MethodPost, "/v1/organizations/"+orgID+"/events",
-		strings.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+tok)
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	s.router.ServeHTTP(w, req)
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("missing end_at: got %d, want 400", w.Code)
-	}
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
-// Step 3: Date invariant — end_at must be strictly after start_at
+// Step 3: Wave 4 — legacy date/venue fields are ignored on create
+//
+// start_at / end_at / venue_id are no longer part of the create contract
+// (dates and venue live on sessions, AB-36/AB-37). Unknown JSON keys are
+// silently ignored, so a create carrying only a name passes validation —
+// even when the legacy fields are malformed. Validation success is observed
+// as "not 400": the request then proceeds to the DB layer, which fails in
+// these DB-less unit tests.
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestEvent125_DateInvariant_EndAtBeforeStartAtReturns400(t *testing.T) {
+func TestEvent125_CreateEvent_NameOnlyPassesValidation(t *testing.T) {
 	s := buildEventServer(t)
 	tok := mintEventToken(t, s)
 	orgID := "00000000-0000-0000-0000-000000000001"
 
-	// end_at is BEFORE start_at — must be rejected.
-	body := `{"name":"Bad Dates","start_at":"2026-07-01T12:00:00Z","end_at":"2026-07-01T10:00:00Z"}`
+	body := `{"name":"Just A Name"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/organizations/"+orgID+"/events",
 		strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+tok)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	s.router.ServeHTTP(w, req)
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("end_at before start_at: got %d, want 400", w.Code)
-	}
-	if code := eventErrorCode(t, w); code != "event.invalid_date_range" {
-		t.Errorf("end_at before start_at: got code %q, want event.invalid_date_range", code)
-	}
-}
-
-func TestEvent125_DateInvariant_EndAtEqualStartAtReturns400(t *testing.T) {
-	s := buildEventServer(t)
-	tok := mintEventToken(t, s)
-	orgID := "00000000-0000-0000-0000-000000000001"
-
-	// end_at EQUALS start_at — must be rejected (strict >).
-	body := `{"name":"Same Time","start_at":"2026-07-01T10:00:00Z","end_at":"2026-07-01T10:00:00Z"}`
-	req := httptest.NewRequest(http.MethodPost, "/v1/organizations/"+orgID+"/events",
-		strings.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+tok)
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	s.router.ServeHTTP(w, req)
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("end_at == start_at: got %d, want 400", w.Code)
-	}
-}
-
-func TestEvent125_DateInvariant_ValidDatesPassValidation(t *testing.T) {
-	s := buildEventServer(t)
-	tok := mintEventToken(t, s)
-	orgID := "00000000-0000-0000-0000-000000000001"
-
-	// Valid dates (end_at > start_at). Will hit DB → 503 (dbDownPool), not 400.
-	body := `{"name":"Good Dates","start_at":"2026-07-01T10:00:00Z","end_at":"2026-07-01T12:00:00Z"}`
-	req := httptest.NewRequest(http.MethodPost, "/v1/organizations/"+orgID+"/events",
-		strings.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+tok)
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	s.router.ServeHTTP(w, req)
-	// Validation passed (date check OK); DB error expected from dbDownPool.
 	if w.Code == http.StatusBadRequest {
-		t.Errorf("valid dates rejected: got 400 with code %q", eventErrorCode(t, w))
+		t.Errorf("name-only create rejected: got 400 with code %q", eventErrorCode(t, w))
 	}
 }
 
-func TestEvent125_DateInvariant_InvalidStartAtFormatReturns400(t *testing.T) {
-	s := buildEventServer(t)
-	tok := mintEventToken(t, s)
-	orgID := "00000000-0000-0000-0000-000000000001"
-
-	body := `{"name":"Bad Format","start_at":"not-a-date","end_at":"2026-07-01T12:00:00Z"}`
-	req := httptest.NewRequest(http.MethodPost, "/v1/organizations/"+orgID+"/events",
-		strings.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+tok)
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	s.router.ServeHTTP(w, req)
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("invalid start_at format: got %d, want 400", w.Code)
+func TestEvent125_CreateEvent_LegacyDateFieldsIgnored(t *testing.T) {
+	cases := []struct {
+		label string
+		body  string
+	}{
+		{"missing start_at", `{"name":"Test Event","end_at":"2026-07-01T12:00:00Z"}`},
+		{"missing end_at", `{"name":"Test Event","start_at":"2026-07-01T10:00:00Z"}`},
+		{"end before start", `{"name":"Bad Dates","start_at":"2026-07-01T12:00:00Z","end_at":"2026-07-01T10:00:00Z"}`},
+		{"end equals start", `{"name":"Same Time","start_at":"2026-07-01T10:00:00Z","end_at":"2026-07-01T10:00:00Z"}`},
+		{"malformed start_at", `{"name":"Bad Format","start_at":"not-a-date","end_at":"2026-07-01T12:00:00Z"}`},
+		{"malformed end_at", `{"name":"Bad Format","start_at":"2026-07-01T10:00:00Z","end_at":"bad-date"}`},
+		{"valid legacy dates", `{"name":"Good Dates","start_at":"2026-07-01T10:00:00Z","end_at":"2026-07-01T12:00:00Z"}`},
 	}
-	if code := eventErrorCode(t, w); code != "event.invalid_start_at" {
-		t.Errorf("invalid start_at: got code %q, want event.invalid_start_at", code)
-	}
-}
+	for _, tc := range cases {
+		t.Run(tc.label, func(t *testing.T) {
+			s := buildEventServer(t)
+			tok := mintEventToken(t, s)
+			orgID := "00000000-0000-0000-0000-000000000001"
 
-func TestEvent125_DateInvariant_InvalidEndAtFormatReturns400(t *testing.T) {
-	s := buildEventServer(t)
-	tok := mintEventToken(t, s)
-	orgID := "00000000-0000-0000-0000-000000000001"
-
-	body := `{"name":"Bad Format","start_at":"2026-07-01T10:00:00Z","end_at":"bad-date"}`
-	req := httptest.NewRequest(http.MethodPost, "/v1/organizations/"+orgID+"/events",
-		strings.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+tok)
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	s.router.ServeHTTP(w, req)
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("invalid end_at format: got %d, want 400", w.Code)
-	}
-	if code := eventErrorCode(t, w); code != "event.invalid_end_at" {
-		t.Errorf("invalid end_at: got code %q, want event.invalid_end_at", code)
+			req := httptest.NewRequest(http.MethodPost, "/v1/organizations/"+orgID+"/events",
+				strings.NewReader(tc.body))
+			req.Header.Set("Authorization", "Bearer "+tok)
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			s.router.ServeHTTP(w, req)
+			if w.Code == http.StatusBadRequest {
+				t.Errorf("%s: legacy date fields must be ignored, got 400 with code %q",
+					tc.label, eventErrorCode(t, w))
+			}
+		})
 	}
 }
 
@@ -572,7 +530,7 @@ func TestEvent125_CreateEvent_InvalidVisibilityReturns400(t *testing.T) {
 	tok := mintEventToken(t, s)
 	orgID := "00000000-0000-0000-0000-000000000001"
 
-	body := `{"name":"Bad Vis","start_at":"2026-07-01T10:00:00Z","end_at":"2026-07-01T12:00:00Z","visibility":"secret"}`
+	body := `{"name":"Bad Vis","visibility":"secret"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/organizations/"+orgID+"/events",
 		strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+tok)
@@ -592,7 +550,7 @@ func TestEvent125_CreateEvent_InvalidStatusValueReturns400(t *testing.T) {
 	tok := mintEventToken(t, s)
 	orgID := "00000000-0000-0000-0000-000000000001"
 
-	body := `{"name":"Bad Status","start_at":"2026-07-01T10:00:00Z","end_at":"2026-07-01T12:00:00Z","status":"pending"}`
+	body := `{"name":"Bad Status","status":"pending"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/organizations/"+orgID+"/events",
 		strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+tok)
@@ -604,23 +562,23 @@ func TestEvent125_CreateEvent_InvalidStatusValueReturns400(t *testing.T) {
 	}
 }
 
-func TestEvent125_CreateEvent_InvalidVenueIDReturns400(t *testing.T) {
+// Wave 4: venue_id is no longer an event create field — the session owns the
+// venue (AB-36). An unknown venue_id key is silently ignored, even when it is
+// not a valid UUID.
+func TestEvent125_CreateEvent_LegacyVenueIDIgnored(t *testing.T) {
 	s := buildEventServer(t)
 	tok := mintEventToken(t, s)
 	orgID := "00000000-0000-0000-0000-000000000001"
 
-	body := `{"name":"Bad Venue","start_at":"2026-07-01T10:00:00Z","end_at":"2026-07-01T12:00:00Z","venue_id":"not-a-uuid"}`
+	body := `{"name":"Legacy Venue","venue_id":"not-a-uuid"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/organizations/"+orgID+"/events",
 		strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+tok)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	s.router.ServeHTTP(w, req)
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("invalid venue_id: got %d, want 400", w.Code)
-	}
-	if code := eventErrorCode(t, w); code != "event.invalid_venue_id" {
-		t.Errorf("invalid venue_id: got code %q, want event.invalid_venue_id", code)
+	if w.Code == http.StatusBadRequest {
+		t.Errorf("legacy venue_id must be ignored: got 400 with code %q", eventErrorCode(t, w))
 	}
 }
 
@@ -684,6 +642,13 @@ func TestEvent125_QueryFileHasSoftDeleteEvent(t *testing.T) {
 	}
 }
 
+func TestEvent125_QueryFileHasListEventVenueNames(t *testing.T) {
+	content := findFileByName(t, "events.sql")
+	if !strings.Contains(content, "ListEventVenueNames") {
+		t.Error("events.sql missing ListEventVenueNames query (Wave 4 venue_names projection)")
+	}
+}
+
 func TestEvent125_QueryFileHasI18nQueries(t *testing.T) {
 	content := findFileByName(t, "events.sql")
 	if !strings.Contains(content, "UpsertEventI18nName") {
@@ -728,8 +693,8 @@ func TestEvent125_GenFileHasEventRowStruct(t *testing.T) {
 func TestEvent125_GenFileEventRowHasRequiredFields(t *testing.T) {
 	content := findFileByName(t, "events.sql.go")
 	for _, field := range []string{
-		"ID", "OrgID", "VenueID", "Name", "Description",
-		"Status", "StartAt", "EndAt", "Visibility", "ImageURL",
+		"ID", "DisplayNumber", "OrgID", "Name", "Description",
+		"Status", "FirstSessionAt", "LastSessionAt", "Visibility", "ImageURL",
 		"CreatedAt", "UpdatedAt", "DeletedAt",
 	} {
 		if !strings.Contains(content, field) {
@@ -740,9 +705,9 @@ func TestEvent125_GenFileEventRowHasRequiredFields(t *testing.T) {
 
 func TestEvent125_GenFileEventRowNullableFields(t *testing.T) {
 	content := findFileByName(t, "events.sql.go")
-	// VenueID is nullable (*uuid.UUID)
-	if !strings.Contains(content, "*uuid.UUID") {
-		t.Error("events.sql.go EventRow VenueID should be *uuid.UUID (nullable)")
+	// FirstSessionAt/LastSessionAt/DeletedAt are nullable (*time.Time)
+	if !strings.Contains(content, "*time.Time") {
+		t.Error("events.sql.go EventRow FirstSessionAt/LastSessionAt should be *time.Time (nullable)")
 	}
 	// Description is nullable (*string)
 	if !strings.Contains(content, "*string") {
@@ -756,6 +721,7 @@ func TestEvent125_GenFileHasAllMethods(t *testing.T) {
 		"InsertEvent", "GetEventByID", "GetEventRaw", "ListEvents", "ListEventsByOrg",
 		"UpdateEvent", "UpdateEventStatus", "SoftDeleteEvent",
 		"UpsertEventI18nName", "UpsertEventI18nDescription",
+		"ListEventVenueNames",
 	} {
 		if !strings.Contains(content, "func (q *Queries) "+method) {
 			t.Errorf("events.sql.go missing method %q", method)
@@ -779,23 +745,24 @@ func TestEvent125_QuerierInterfaceSatisfied(_ *testing.T) {
 
 func TestEvent125_EventFromRowProducesCorrectShape(t *testing.T) {
 	now := time.Now().UTC()
-	start := now.Add(24 * time.Hour)
-	end := now.Add(26 * time.Hour)
+	first := now.Add(24 * time.Hour)
+	last := now.Add(26 * time.Hour)
 	desc := "A wonderful event"
 	imgURL := "https://example.com/image.jpg"
 
 	row := gen.EventRow{
-		ID:          mustParseUUID(t, "00000000-0000-0000-0000-000000000010"),
-		OrgID:       mustParseUUID(t, "00000000-0000-0000-0000-000000000020"),
-		Name:        "My Event",
-		Description: &desc,
-		Status:      "draft",
-		StartAt:     start,
-		EndAt:       end,
-		Visibility:  "public",
-		ImageURL:    &imgURL,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:             mustParseUUID(t, "00000000-0000-0000-0000-000000000010"),
+		DisplayNumber:  42,
+		OrgID:          mustParseUUID(t, "00000000-0000-0000-0000-000000000020"),
+		Name:           "My Event",
+		Description:    &desc,
+		Status:         "draft",
+		FirstSessionAt: &first,
+		LastSessionAt:  &last,
+		Visibility:     "public",
+		ImageURL:       &imgURL,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 
 	resp := eventFromRow(row)
@@ -803,11 +770,11 @@ func TestEvent125_EventFromRowProducesCorrectShape(t *testing.T) {
 	if resp.ID != "00000000-0000-0000-0000-000000000010" {
 		t.Errorf("ID: got %q", resp.ID)
 	}
+	if resp.DisplayNumber != 42 {
+		t.Errorf("DisplayNumber: got %d, want 42", resp.DisplayNumber)
+	}
 	if resp.OrgID != "00000000-0000-0000-0000-000000000020" {
 		t.Errorf("OrgID: got %q", resp.OrgID)
-	}
-	if resp.VenueID != nil {
-		t.Error("VenueID should be nil when EventRow.VenueID is nil")
 	}
 	if resp.Name != "My Event" {
 		t.Errorf("Name: got %q", resp.Name)
@@ -824,37 +791,60 @@ func TestEvent125_EventFromRowProducesCorrectShape(t *testing.T) {
 	if resp.ImageURL == nil || *resp.ImageURL != "https://example.com/image.jpg" {
 		t.Errorf("ImageURL: got %v", resp.ImageURL)
 	}
-	if resp.StartAt != start.Format(time.RFC3339) {
-		t.Errorf("StartAt: got %q, want %q", resp.StartAt, start.Format(time.RFC3339))
+	if resp.FirstSessionAt == nil || *resp.FirstSessionAt != first.Format(time.RFC3339) {
+		t.Errorf("FirstSessionAt: got %v, want %q", resp.FirstSessionAt, first.Format(time.RFC3339))
 	}
-	if resp.EndAt != end.Format(time.RFC3339) {
-		t.Errorf("EndAt: got %q, want %q", resp.EndAt, end.Format(time.RFC3339))
+	if resp.LastSessionAt == nil || *resp.LastSessionAt != last.Format(time.RFC3339) {
+		t.Errorf("LastSessionAt: got %v, want %q", resp.LastSessionAt, last.Format(time.RFC3339))
+	}
+	if resp.VenueNames == nil || len(resp.VenueNames) != 0 {
+		t.Errorf("VenueNames: got %v, want empty non-nil slice", resp.VenueNames)
 	}
 }
 
-func TestEvent125_EventFromRowWithVenueID(t *testing.T) {
+// An event with no sessions carries nil first/last session timestamps and an
+// empty (but non-nil, so it serializes as []) venue_names list.
+func TestEvent125_EventFromRowNoSessions(t *testing.T) {
 	now := time.Now().UTC()
-	venueID := mustParseUUID(t, "00000000-0000-0000-0000-000000000030")
 
 	row := gen.EventRow{
 		ID:         mustParseUUID(t, "00000000-0000-0000-0000-000000000010"),
 		OrgID:      mustParseUUID(t, "00000000-0000-0000-0000-000000000020"),
-		VenueID:    &venueID,
-		Name:       "Venue Event",
+		Name:       "Sessionless Event",
 		Status:     "published",
-		StartAt:    now.Add(time.Hour),
-		EndAt:      now.Add(2 * time.Hour),
 		Visibility: "public",
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}
 
 	resp := eventFromRow(row)
-	if resp.VenueID == nil {
-		t.Fatal("VenueID should not be nil")
+	if resp.FirstSessionAt != nil {
+		t.Errorf("FirstSessionAt: got %v, want nil", *resp.FirstSessionAt)
 	}
-	if *resp.VenueID != "00000000-0000-0000-0000-000000000030" {
-		t.Errorf("VenueID: got %q", *resp.VenueID)
+	if resp.LastSessionAt != nil {
+		t.Errorf("LastSessionAt: got %v, want nil", *resp.LastSessionAt)
+	}
+	if resp.VenueNames == nil {
+		t.Error("VenueNames must be non-nil so it serializes as []")
+	}
+
+	raw, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	for _, gone := range []string{"venue_id", "start_at", "end_at"} {
+		if _, present := m[gone]; present {
+			t.Errorf("event JSON must not carry legacy field %q", gone)
+		}
+	}
+	for _, want := range []string{"first_session_at", "last_session_at", "venue_names", "display_number"} {
+		if _, present := m[want]; !present {
+			t.Errorf("event JSON missing field %q", want)
+		}
 	}
 }
 

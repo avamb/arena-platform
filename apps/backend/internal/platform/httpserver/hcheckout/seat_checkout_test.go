@@ -387,14 +387,14 @@ func TestSeatC2_SellReservationSeats_DoubleSellAttempt_Available(t *testing.T) {
 	}
 }
 
-func TestSeatC2_SellReservationSeats_DoubleSellAttempt_Blocked(t *testing.T) {
+func TestSeatC2_SellReservationSeats_DoubleSellAttempt_Unavailable(t *testing.T) {
 	t.Parallel()
-	// A blocked seat inside a reservation is another double-sell indicator.
+	// An unavailable seat inside a reservation is another double-sell indicator.
 	sess := uuid.New()
 	res := uuid.New()
 
 	f := newFakeSeatState()
-	f.addSeat(sess, res, "A-1-1", "blocked")
+	f.addSeat(sess, res, "A-1-1", "unavailable")
 
 	_, _, err := sellReservationSeatsTx(t.Context(), f, sess, res)
 	if !errors.Is(err, errSeatDoubleSell) {

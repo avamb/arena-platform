@@ -71,7 +71,7 @@ func tierFromRow(t gen.TicketTierRow) tierResponse {
 		Name:        t.Name,
 		PricingMode: t.PricingMode,
 		PriceAmount: t.PriceAmount,
-		Currency:    t.Currency,
+		Currency:    strings.TrimSpace(t.Currency),
 		PwywMin:     t.PwywMin,
 		PwywMax:     t.PwywMax,
 		Capacity:    t.Capacity,
@@ -94,11 +94,15 @@ func tierFromRow(t gen.TicketTierRow) tierResponse {
 // POST .../sessions/{session_id}/tiers
 // ─────────────────────────────────────────────────────────────────────────────
 
+// createTierRequest carries the operator inputs for a new tier. Currency is
+// deliberately NOT an input (AB-38): every tier is denominated in its
+// session's currency — the handler resolves it server-side, and the
+// composite FK ticket_tiers_currency_matches_session would reject anything
+// else. A "currency" key sent by an older client is silently ignored.
 type createTierRequest struct {
 	Name            string  `json:"name"`
 	PricingMode     string  `json:"pricing_mode"`
 	PriceAmount     int64   `json:"price_amount"`
-	Currency        string  `json:"currency"`
 	PwywMin         *int64  `json:"pwyw_min"`
 	PwywMax         *int64  `json:"pwyw_max"`
 	Capacity        *int32  `json:"capacity"`
@@ -151,7 +155,6 @@ func (h *Handler) HandleCreateTier(w http.ResponseWriter, r *http.Request) {
 
 	req.Name = strings.TrimSpace(req.Name)
 	req.PricingMode = strings.TrimSpace(req.PricingMode)
-	req.Currency = strings.TrimSpace(req.Currency)
 
 	if req.Name == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
@@ -174,10 +177,6 @@ func (h *Handler) HandleCreateTier(w http.ResponseWriter, r *http.Request) {
 			map[string]any{"field": "pricing_mode"},
 		))
 		return
-	}
-
-	if req.Currency == "" {
-		req.Currency = "USD"
 	}
 
 	if errCode, errMsg := ValidatePricingMode(req.PricingMode, req.PriceAmount, req.PwywMin, req.PwywMax); errCode != "" {
@@ -233,10 +232,28 @@ func (h *Handler) HandleCreateTier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Currency follows the session (AB-38). Resolved after every syntactic
+	// validation so cheap 400s never cost a DB round trip; resolving it
+	// also verifies the session exists before the INSERT.
+	sessionCurrency, err := h.tierQueries.GetSessionCurrency(ctx, sessionID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+				"session.not_found", "session not found", r,
+			))
+			return
+		}
+		h.logger.Error("tier: session currency lookup failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"tier.insert_failed", "failed to resolve session currency", r,
+		))
+		return
+	}
+
 	tier, err := h.tierQueries.InsertTicketTier(ctx,
 		sessionID,
 		req.Name, req.PricingMode,
-		req.PriceAmount, req.Currency,
+		req.PriceAmount, sessionCurrency,
 		req.PwywMin, req.PwywMax,
 		req.Capacity,
 		saleStart, saleEnd,
@@ -359,11 +376,13 @@ func (h *Handler) HandleGetTier(w http.ResponseWriter, r *http.Request) {
 // PATCH .../sessions/{session_id}/tiers/{id}
 // ─────────────────────────────────────────────────────────────────────────────
 
+// updateTierRequest carries the patchable tier fields. Currency is not
+// patchable (AB-38): a tier always carries its session's currency; changing
+// the currency happens on the session and cascades to every tier.
 type updateTierRequest struct {
 	Name            *string `json:"name"`
 	PricingMode     *string `json:"pricing_mode"`
 	PriceAmount     *int64  `json:"price_amount"`
-	Currency        *string `json:"currency"`
 	PwywMin         *int64  `json:"pwyw_min"`
 	PwywMax         *int64  `json:"pwyw_max"`
 	Capacity        *int32  `json:"capacity"`
@@ -524,15 +543,13 @@ func (h *Handler) HandleUpdateTier(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	currency := ""
-	if req.Currency != nil {
-		currency = strings.TrimSpace(*req.Currency)
-	}
-
+	// Currency is never patched here — empty string means "keep existing"
+	// in UpdateTicketTier, and the existing value already equals the
+	// session's currency (composite FK invariant, AB-38).
 	updated, err := h.tierQueries.UpdateTicketTier(ctx,
 		tierID, sessionID,
 		name, pricingMode,
-		req.PriceAmount, currency,
+		req.PriceAmount, "",
 		req.PwywMin, req.PwywMax,
 		req.Capacity,
 		saleStart, saleEnd,

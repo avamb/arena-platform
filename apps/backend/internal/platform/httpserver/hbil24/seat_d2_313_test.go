@@ -213,7 +213,7 @@ func TestBil24_313_GetSchema_JoinsGetSeatListBySeatID(t *testing.T) {
 		{ID: seatIDs[0], SessionID: sessionID, SeatKey: "A|1|1", SectorName: "A", RowName: "1", SeatNumber: "1", Status: "available"},
 		{ID: seatIDs[1], SessionID: sessionID, SeatKey: "A|1|2", SectorName: "A", RowName: "1", SeatNumber: "2", Status: "held"},
 		{ID: seatIDs[2], SessionID: sessionID, SeatKey: "A|1|3", SectorName: "A", RowName: "1", SeatNumber: "3", Status: "sold"},
-		{ID: seatIDs[3], SessionID: sessionID, SeatKey: "A|1|4", SectorName: "A", RowName: "1", SeatNumber: "4", Status: "blocked"},
+		{ID: seatIDs[3], SessionID: sessionID, SeatKey: "A|1|4", SectorName: "A", RowName: "1", SeatNumber: "4", Status: "unavailable"},
 	}
 	_, geomRaw, checksum := canonicalGeometry()
 

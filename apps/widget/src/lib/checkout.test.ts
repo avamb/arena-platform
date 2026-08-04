@@ -492,15 +492,15 @@ describe('parseConflictsFromApiError', () => {
     expect(c!.status).toBe('unavailable');
   });
 
-  test('parses blocked seat (admin block)', () => {
+  test('parses admin-blocked seat (reported as unavailable since the rename)', () => {
     const err = makeApiError({
       status: 409,
       code: 'reservation.seats_conflict',
       details: {
-        conflicts: [{ seat_key: 'B|3|1', status: 'blocked' }],
+        conflicts: [{ seat_key: 'B|3|1', status: 'unavailable' }],
       },
     });
-    expect(parseConflictsFromApiError(err)[0]!.status).toBe('blocked');
+    expect(parseConflictsFromApiError(err)[0]!.status).toBe('unavailable');
   });
 
   test('parses recovery 409 (same code + shape as checkout/start)', () => {
