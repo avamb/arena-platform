@@ -26,6 +26,18 @@ const (
 	ErrPriceCategoryMissing    = "price_category_missing"
 	ErrPriceCategoryEmpty      = "price_category_empty"
 	ErrPriceCategoryUnlabelled = "price_category_unlabelled"
+
+	// AB-40: general-admission areas and plan-type validation.
+	ErrTooManyCategories   = "too_many_categories"
+	ErrGAAreaMissing       = "ga_area_missing"
+	ErrGAAreaNotAllowed    = "ga_area_not_allowed"
+	ErrGACapacityInvalid   = "ga_capacity_invalid"
+	ErrGAColorUnmatched    = "ga_color_unmatched"
+	ErrGAShapeUnsupported  = "ga_shape_unsupported"
+	ErrGADuplicateCategory = "ga_duplicate_category"
+	ErrSeatInGACategory    = "seat_in_ga_category"
+	ErrSeatsMissing        = "seats_missing"
+	ErrSeatsNotAllowed     = "seats_not_allowed"
 )
 
 // WarningCode is emitted for §6 rules that are advisory rather than

@@ -70,7 +70,7 @@ func TestCanonicalize_ForcesSchemaVersion(t *testing.T) {
 	if g.SchemaVersion != SchemaVersion {
 		t.Fatalf("SchemaVersion = %d, want %d", g.SchemaVersion, SchemaVersion)
 	}
-	if g.Categories == nil || g.StandingZones == nil || g.Tables == nil {
+	if g.Categories == nil || g.Tables == nil {
 		t.Fatalf("Canonicalize must produce non-nil slices, got %+v", g)
 	}
 }

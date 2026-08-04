@@ -42,6 +42,19 @@ var hexColorRE = regexp.MustCompile(`(?i)#([0-9a-f]{3}|[0-9a-f]{6})`)
 // per the Bil24 Editor convention.
 var sectorPrefixRE = regexp.MustCompile(`(?i)^\s*(?:сектор|sector)\s+`)
 
+// gaLabelRE matches the AB-40 general-admission authoring convention: an
+// element labeled "#GA <name>" whose <title> carries the capacity and
+// whose fill colour matches one of the PriceCategory swatches. Case-
+// insensitive so "#ga Floor" also binds.
+var gaLabelRE = regexp.MustCompile(`(?i)^\s*#ga\s+`)
+
+// isGALabel reports whether an inkscape:label follows the "#GA <name>"
+// convention. Row-group collection and decor rendering both exclude such
+// elements.
+func isGALabel(label string) bool {
+	return gaLabelRE.MatchString(label)
+}
+
 // ImportSVG parses raw SVG bytes into a canonical Geometry. The
 // returned Geometry is already Canonicalize'd, so its Checksum is
 // stable. warnings carries §6 advisories that do not fail import;
@@ -80,27 +93,183 @@ func ImportSVG(raw []byte) (Geometry, []ValidationError, ValidationErrors) {
 	categories, catByColor, catErrs := parseCategories(priceCatGroup)
 	errs = append(errs, catErrs...)
 
+	// GA areas (AB-40 B2): elements labeled "#GA <name>". Collected
+	// before row groups so the shared "#" prefix never classifies a GA
+	// area as a sector.
+	gaNodes := collectGAAreas(root, priceCatGroup, legendGroup)
+	gaErrs := applyGAAreas(gaNodes, categories, catByColor)
+	errs = append(errs, gaErrs...)
+
 	// Row groups: any element with inkscape:label="#..." that is NOT a
-	// descendant of PriceCategory / Legend. Categories/legend swatches
-	// share the "#Name" convention but must not be treated as sectors.
+	// descendant of PriceCategory / Legend and NOT a "#GA" area.
+	// Categories/legend swatches share the "#Name" convention but must
+	// not be treated as sectors.
 	rowNodes := collectRowGroups(root, priceCatGroup, legendGroup)
 
 	sections, seatErrs := parseSections(rowNodes, catByColor)
 	errs = append(errs, seatErrs...)
 
-	decor := renderDecorSVG(root, priceCatGroup, legendGroup, rowNodes)
+	decor := renderDecorSVG(root, priceCatGroup, legendGroup, append(append([]*xmlNode(nil), rowNodes...), gaNodes...))
 
 	g := Geometry{
 		SchemaVersion: SchemaVersion,
 		Canvas:        canvas,
 		Categories:    categories,
 		Sections:      sections,
-		StandingZones: []StandingZone{},
 		Tables:        []Table{},
 		DecorSVG:      decor,
 	}
 	g = Canonicalize(g)
 	return g, warnings, errs
+}
+
+// collectGAAreas returns every element labeled "#GA <name>" outside the
+// PriceCategory / Legend subtrees, in document order.
+func collectGAAreas(root, price, legend *xmlNode) []*xmlNode {
+	if root == nil {
+		return nil
+	}
+	var out []*xmlNode
+	var walk func(*xmlNode)
+	walk = func(n *xmlNode) {
+		if n == nil || n == price || n == legend {
+			return
+		}
+		if n != root && isGALabel(inkscapeLabel(n)) {
+			out = append(out, n)
+			return // GA areas are leaves; do not descend.
+		}
+		for _, ch := range n.Children {
+			if ch.element == nil {
+				continue
+			}
+			walk(ch.element)
+		}
+	}
+	walk(root)
+	return out
+}
+
+// applyGAAreas binds each "#GA <name>" element to the PriceCategory
+// swatch matching its fill colour, marking that category as
+// general-admission with the capacity from the element's <title> and the
+// polygon derived from its shape (AB-40 B2). categories is mutated in
+// place. Supported shapes: <rect> and <polygon>/<polyline>.
+func applyGAAreas(nodes []*xmlNode, categories []Category, catByColor map[string]int) ValidationErrors {
+	var errs ValidationErrors
+	for _, n := range nodes {
+		label := inkscapeLabel(n)
+		name := strings.TrimSpace(gaLabelRE.ReplaceAllString(label, ""))
+
+		color := extractFillColor(n)
+		catIdx, ok := catByColor[color]
+		if color == "" || !ok {
+			errs = append(errs, ValidationError{
+				Code:    ErrGAColorUnmatched,
+				Element: label,
+				Detail: fmt.Sprintf(
+					"GA area fill %q matches no PriceCategory swatch", color),
+			})
+			continue
+		}
+		cat := &categories[catIdx-1]
+		if cat.IsGA() {
+			errs = append(errs, ValidationError{
+				Code:    ErrGADuplicateCategory,
+				Element: label,
+				Detail: fmt.Sprintf(
+					"category %q is already bound to another GA area", cat.Name),
+			})
+			continue
+		}
+
+		capText := strings.TrimSpace(elementText(findDirectChild(n, "title")))
+		capacity, capErr := strconv.Atoi(capText)
+		if capErr != nil || capacity <= 0 {
+			errs = append(errs, ValidationError{
+				Code:    ErrGACapacityInvalid,
+				Element: label,
+				Detail: fmt.Sprintf(
+					"GA area <title> must carry a positive integer capacity, got %q", capText),
+			})
+			continue
+		}
+
+		polygon, shapeErr := gaPolygon(n)
+		if shapeErr != nil {
+			errs = append(errs, *shapeErr)
+			continue
+		}
+
+		cat.Kind = KindGeneralAdmission
+		cat.Capacity = capacity
+		cat.Polygon = polygon
+		if name != "" {
+			// The GA area's display name wins over the swatch label, so a
+			// combined plan reads "General admission | 500" like Bil24's
+			// table, not "Fifteenth | 500".
+			cat.Name = name
+		}
+	}
+	return errs
+}
+
+// gaPolygon extracts the hit-test polygon from a GA area element. <rect>
+// yields its four corners; <polygon>/<polyline> yield their points list.
+func gaPolygon(n *xmlNode) ([]Point, *ValidationError) {
+	switch n.Name.Local {
+	case "rect":
+		x := parseDimAttr(attr(n, "x"))
+		y := parseDimAttr(attr(n, "y"))
+		w := parseDimAttr(attr(n, "width"))
+		h := parseDimAttr(attr(n, "height"))
+		if w <= 0 || h <= 0 {
+			return nil, &ValidationError{
+				Code:    ErrGAShapeUnsupported,
+				Element: inkscapeLabel(n),
+				Detail:  "GA <rect> must have positive width and height",
+			}
+		}
+		return []Point{{X: x, Y: y}, {X: x + w, Y: y}, {X: x + w, Y: y + h}, {X: x, Y: y + h}}, nil
+	case "polygon", "polyline":
+		pts, ok := parsePoints(attr(n, "points"))
+		if !ok || len(pts) < 3 {
+			return nil, &ValidationError{
+				Code:    ErrGAShapeUnsupported,
+				Element: inkscapeLabel(n),
+				Detail:  "GA polygon needs at least three valid points",
+			}
+		}
+		return pts, nil
+	default:
+		return nil, &ValidationError{
+			Code:    ErrGAShapeUnsupported,
+			Element: inkscapeLabel(n),
+			Detail: fmt.Sprintf(
+				"GA areas must be <rect> or <polygon>; got <%s>", n.Name.Local),
+		}
+	}
+}
+
+// parsePoints parses an SVG points attribute ("x1,y1 x2,y2 …" with
+// commas and/or whitespace as separators) into a Point slice.
+func parsePoints(s string) ([]Point, bool) {
+	fields := strings.FieldsFunc(s, func(r rune) bool {
+		return r == ' ' || r == '\t' || r == '\n' || r == '\r' || r == ','
+	})
+	if len(fields) == 0 || len(fields)%2 != 0 {
+		return nil, false
+	}
+	pts := make([]Point, 0, len(fields)/2)
+	for i := 0; i < len(fields); i += 2 {
+		x, errX := strconv.ParseFloat(fields[i], 64)
+		y, errY := strconv.ParseFloat(fields[i+1], 64)
+		if errX != nil || errY != nil {
+			return nil, false
+		}
+		pts = append(pts, Point{X: x, Y: y})
+	}
+	return pts, true
 }
 
 // parseCanvas extracts the Canvas from the root <svg> element. It
@@ -285,6 +454,11 @@ func collectRowGroups(root, price, legend *xmlNode) []*xmlNode {
 			return
 		}
 		label := inkscapeLabel(n)
+		if isGALabel(label) {
+			// "#GA <name>" areas are handled by collectGAAreas, never as
+			// row groups; do not descend either.
+			return
+		}
 		if !inSpecial && n != root && strings.HasPrefix(label, "#") {
 			out = append(out, n)
 			// Do not descend — row groups are leaves for our purposes.

@@ -1,13 +1,13 @@
-// seat_d2_313_test.go — contract tests for feature #313 Wave SEAT-D2:
+﻿// seat_d2_313_test.go â€” contract tests for feature #313 Wave SEAT-D2:
 //
-//	GET_SCHEMA returns seat coordinates (seatId → x, y) derived from
+//	GET_SCHEMA returns seat coordinates (seatId â†’ x, y) derived from
 //	seating_plan_versions.geometry, joinable to GET_SEAT_LIST by
 //	seatId (session_seats.id AS STRING, ADR-005).
 //
 // The tests use in-memory fakes for the schema + admission + seat
 // queriers so they exercise the real branching logic without a live
-// PostgreSQL pool. The core assertion of the wave — the seatId join
-// between GET_SCHEMA and GET_SEAT_LIST — is pinned by
+// PostgreSQL pool. The core assertion of the wave â€” the seatId join
+// between GET_SCHEMA and GET_SEAT_LIST â€” is pinned by
 // TestBil24_313_GetSchema_JoinsGetSeatListBySeatID.
 package hbil24
 
@@ -25,9 +25,9 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/seating"
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Fakes
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // fakeSchema is an in-memory SchemaQuerier: it holds a single
 // PublicSessionSchemaRow keyed by session_id plus the session_seats
@@ -53,9 +53,9 @@ func (f *fakeSchema) ListSessionSeats(_ context.Context, id uuid.UUID) ([]gen.Se
 	return f.seats[id], nil
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Test helpers
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // newHandlerWithSchema wires a Handler with the SEAT-D2 schema
 // dependency alongside the SEAT-D1 admission + seat queriers so
@@ -100,7 +100,6 @@ func canonicalGeometry() (seating.Geometry, []byte, string) {
 				},
 			}},
 		}},
-		StandingZones: []seating.StandingZone{},
 		Tables:        []seating.Table{},
 	}
 	raw, err := seating.CanonicalJSON(geom)
@@ -114,9 +113,9 @@ func canonicalGeometry() (seating.Geometry, []byte, string) {
 	return geom, raw, checksum
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GET_SCHEMA — SEAT-D2 happy path
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// GET_SCHEMA â€” SEAT-D2 happy path
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 func TestBil24_313_GetSchema_ProjectsCoordinatesBySeatID(t *testing.T) {
 	sessionID := uuid.New()
@@ -203,7 +202,7 @@ func TestBil24_313_GetSchema_ProjectsCoordinatesBySeatID(t *testing.T) {
 // contract assertion: GET_SCHEMA and GET_SEAT_LIST responses can be
 // zipped by seatId so that a caller has (seatId, x, y) from GET_SCHEMA
 // and (seatId, sector, row, number, status) from GET_SEAT_LIST for the
-// same seat. The seatId serialisation format MUST match exactly — this
+// same seat. The seatId serialisation format MUST match exactly â€” this
 // is the wire contract mirroring the legacy Bil24 API split.
 func TestBil24_313_GetSchema_JoinsGetSeatListBySeatID(t *testing.T) {
 	sessionID := uuid.New()
@@ -255,7 +254,7 @@ func TestBil24_313_GetSchema_JoinsGetSeatListBySeatID(t *testing.T) {
 			len(seatListEntries), len(schemaEntries))
 	}
 
-	// Build seatId → coord from GET_SCHEMA and seatId → status from
+	// Build seatId â†’ coord from GET_SCHEMA and seatId â†’ status from
 	// GET_SEAT_LIST; every seatId MUST appear in both maps.
 	coords := make(map[string][2]float64, len(schemaEntries))
 	for _, e := range schemaEntries {
@@ -289,9 +288,9 @@ func TestBil24_313_GetSchema_JoinsGetSeatListBySeatID(t *testing.T) {
 	}
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GET_SCHEMA — negative paths
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// GET_SCHEMA â€” negative paths
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 func TestBil24_313_GetSchema_NoSchemaQ_ServiceUnavailable(t *testing.T) {
 	h := newHandlerWithSchema(nil, nil, nil)
@@ -388,7 +387,7 @@ func TestBil24_313_GetSchema_SeatKeyFallback(t *testing.T) {
 	sessionID := uuid.New()
 	seatID := uuid.New()
 
-	// Geometry with an empty seat.Key — coordinate lookup must
+	// Geometry with an empty seat.Key â€” coordinate lookup must
 	// reconstruct the key from (section, row, number).
 	geom := seating.Geometry{
 		SchemaVersion: seating.SchemaVersion,
@@ -403,7 +402,6 @@ func TestBil24_313_GetSchema_SeatKeyFallback(t *testing.T) {
 				},
 			}},
 		}},
-		StandingZones: []seating.StandingZone{},
 		Tables:        []seating.Table{},
 	}
 	raw, err := json.Marshal(geom)

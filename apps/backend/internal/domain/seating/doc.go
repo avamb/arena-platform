@@ -5,7 +5,8 @@
 //
 //   - Canonical geometry JSON model (§5.3 of
 //     09_autoforge/seating_backlog.md) — Canvas / Categories / Sections /
-//     Rows / Seats / StandingZones / Tables / DecorSVG. This is the
+//     Rows / Seats / Tables / DecorSVG (GA capacity lives on Category
+//     entries with kind=general_admission since AB-40). This is the
 //     source-of-truth representation stored in the
 //     seating_plan_versions.geometry column.
 //   - Deterministic canonicalisation + sha256 checksum (Canonicalize,

@@ -21,6 +21,20 @@ const SchemaVersion = 1
 // ValidationError with code ErrCanvasTooLarge.
 const MaxCanvasDimension = 2000
 
+// MaxCategories is the Bil24 ceiling on price categories per plan
+// (First..Fifteenth — the 15 swatches the SVG convention carries).
+// AB-40 A3 enforces it at import and on the hand-entered GA path.
+const MaxCategories = 15
+
+// Category kinds (AB-40 A1). The zero value ("", canonicalised away)
+// means seated: seats bind to the category by fill colour, exactly as
+// before AB-40. KindGeneralAdmission marks a category that carries a
+// bulk Capacity and no coordinate-bearing seats.
+const (
+	KindSeated           = "seated"
+	KindGeneralAdmission = "general_admission"
+)
+
 // Canvas is the pixel-space canvas the seats live on. width/height are
 // taken from the SVG viewBox (or width/height attributes as a fallback).
 type Canvas struct {
@@ -28,18 +42,46 @@ type Canvas struct {
 	Height float64 `json:"height"`
 }
 
+// Point is a polygon vertex in canvas space (AB-40 A1: a GA category may
+// carry an optional hit-test polygon in combined plans).
+type Point struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
 // Category is a price-category descriptor derived from the PriceCategory
-// SVG group (§6 rule 5). Index is 1-based and matches the swatch order
-// inside the group; Color is the lowercase 6-digit hex fill (#rrggbb)
-// which is what seat-to-category binding matches on (§6 rule 7).
+// SVG group (§6 rule 5) or hand-entered on the GA-only path (AB-40 C1).
+// Index is 1-based and matches the swatch order inside the group; Color
+// is the lowercase 6-digit hex fill (#rrggbb) which is what
+// seat-to-category binding matches on (§6 rule 7).
 // PriceHint/CurrencyHint are import hints only; real ticket_tiers binding
 // happens per session (SEAT-B2).
+//
+// AB-40 A1: Kind distinguishes seated categories (empty / KindSeated —
+// seats bind by colour) from general-admission categories, which carry
+// their own Capacity and an optional Polygon for hit-testing. Both kinds
+// live in this one list so the admin renders a single
+// `Category | Seats | Starting price` table exactly like Bil24's.
 type Category struct {
 	Index        int    `json:"index"`
 	Name         string `json:"name"`
 	Color        string `json:"color"`
 	PriceHint    string `json:"price_hint,omitempty"`
 	CurrencyHint string `json:"currency_hint,omitempty"`
+	// Kind is "" (canonical form of seated) or KindGeneralAdmission.
+	Kind string `json:"kind,omitempty"`
+	// Capacity is the declared bulk capacity of a GA category. Always 0
+	// for seated categories (their seat count is derived from Sections).
+	Capacity int `json:"capacity,omitempty"`
+	// Polygon is the optional GA hit-test area in canvas space. Present
+	// when a combined plan's SVG carries a #GA element; absent on the
+	// GA-only hand-entered path. Vertex order is preserved as authored.
+	Polygon []Point `json:"polygon,omitempty"`
+}
+
+// IsGA reports whether the category is a general-admission category.
+func (c Category) IsGA() bool {
+	return c.Kind == KindGeneralAdmission
 }
 
 // Seat is a single reservable seat. Key is the stable identifier
@@ -72,13 +114,12 @@ type Section struct {
 	Rows []Row  `json:"rows"`
 }
 
-// StandingZone reserves the shape for plan_type="mixed"/"tables" in
-// future waves. It is emitted as an empty slice in this wave.
-type StandingZone struct {
-	Key      string `json:"key"`
-	Name     string `json:"name"`
-	Capacity int    `json:"capacity"`
-}
+// NOTE (AB-40 A4): the former StandingZone parallel array is retired.
+// GA capacity is carried by Category entries with
+// Kind == KindGeneralAdmission — one representation, not two. Stored
+// geometries that still contain a "standing_zones" field unmarshal
+// cleanly (the unknown field is dropped); the only populated instance
+// was the widget e2e seed, updated with this change.
 
 // Table reserves the shape for plan_type="tables" in future waves. It is
 // emitted as an empty slice in this wave.
@@ -102,12 +143,11 @@ type Table struct {
 // therefore geometry_checksum) non-deterministic. Stored checksums
 // depend on this behaviour — do not change it.
 type Geometry struct {
-	SchemaVersion int            `json:"schema_version"`
-	Canvas        Canvas         `json:"canvas"`
-	Categories    []Category     `json:"categories"`
-	Sections      []Section      `json:"sections"`
-	StandingZones []StandingZone `json:"standing_zones"`
-	Tables        []Table        `json:"tables"`
+	SchemaVersion int        `json:"schema_version"`
+	Canvas        Canvas     `json:"canvas"`
+	Categories    []Category `json:"categories"`
+	Sections      []Section  `json:"sections"`
+	Tables        []Table    `json:"tables"`
 	// DecorSVG holds the deterministically re-serialised decor fragment;
 	// unknown-namespace attributes/elements are intentionally dropped for
 	// output determinism (stored checksums) — see svg_import.go qname.
@@ -136,21 +176,25 @@ func Canonicalize(g Geometry) Geometry {
 		Canvas:        g.Canvas,
 		Categories:    append([]Category(nil), g.Categories...),
 		Sections:      make([]Section, len(g.Sections)),
-		StandingZones: append([]StandingZone(nil), g.StandingZones...),
 		Tables:        append([]Table(nil), g.Tables...),
 		DecorSVG:      g.DecorSVG,
 	}
 	if out.Categories == nil {
 		out.Categories = []Category{}
 	}
-	if out.StandingZones == nil {
-		out.StandingZones = []StandingZone{}
-	}
 	if out.Tables == nil {
 		out.Tables = []Table{}
 	}
 	for i := range out.Categories {
 		out.Categories[i].Color = normalizeColor(out.Categories[i].Color)
+		// Canonical form of the seated kind is the empty string, so
+		// pre-AB-40 stored geometries and new ones canonicalise alike.
+		if out.Categories[i].Kind == KindSeated {
+			out.Categories[i].Kind = ""
+		}
+		if len(out.Categories[i].Polygon) == 0 {
+			out.Categories[i].Polygon = nil
+		}
 	}
 	sort.SliceStable(out.Categories, func(i, j int) bool {
 		return out.Categories[i].Index < out.Categories[j].Index
@@ -171,9 +215,6 @@ func Canonicalize(g Geometry) Geometry {
 	}
 	sort.SliceStable(out.Sections, func(a, b int) bool {
 		return out.Sections[a].Key < out.Sections[b].Key
-	})
-	sort.SliceStable(out.StandingZones, func(a, b int) bool {
-		return out.StandingZones[a].Key < out.StandingZones[b].Key
 	})
 	sort.SliceStable(out.Tables, func(a, b int) bool {
 		return out.Tables[a].Key < out.Tables[b].Key
@@ -219,4 +260,129 @@ func (g Geometry) SeatCount() int {
 		}
 	}
 	return n
+}
+
+// GACategories returns the general-admission categories of g, in Index
+// order (assuming g is canonical).
+func (g Geometry) GACategories() []Category {
+	var out []Category
+	for _, c := range g.Categories {
+		if c.IsGA() {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// GACapacity returns the summed declared capacity of every GA category
+// (AB-40 A2/B6). This is the derived value stored in
+// seating_plan_versions.capacity_standing.
+func (g Geometry) GACapacity() int {
+	n := 0
+	for _, c := range g.Categories {
+		if c.IsGA() {
+			n += c.Capacity
+		}
+	}
+	return n
+}
+
+// ValidateForPlanType enforces which geometry primitives a plan type
+// permits (AB-40 B3 + the 0057 column contract). It applies to both the
+// SVG import path and the direct-geometry path, so a hand-entered
+// GA-only plan obeys the same rules as an imported combined one:
+//
+//   - every plan: at most MaxCategories categories; GA capacities must
+//     be positive; seats must not bind to a GA category.
+//   - assigned_seats: at least one seat, no GA categories.
+//   - general_admission: at least one GA category, no seats.
+//   - mixed: at least one seat AND at least one GA category.
+//   - tables: reserved, not validated here.
+//
+// The returned slice is empty when g is valid for planType.
+func ValidateForPlanType(g Geometry, planType string) ValidationErrors {
+	var errs ValidationErrors
+
+	if len(g.Categories) > MaxCategories {
+		errs = append(errs, ValidationError{
+			Code:    ErrTooManyCategories,
+			Element: "categories",
+			Detail: fmt.Sprintf("%d categories exceed the Bil24 ceiling of %d",
+				len(g.Categories), MaxCategories),
+		})
+	}
+
+	gaIdx := map[int]bool{}
+	gaCount := 0
+	for _, c := range g.Categories {
+		if !c.IsGA() {
+			continue
+		}
+		gaCount++
+		gaIdx[c.Index] = true
+		if c.Capacity <= 0 {
+			errs = append(errs, ValidationError{
+				Code:    ErrGACapacityInvalid,
+				Element: c.Name,
+				Detail:  fmt.Sprintf("GA category %q capacity must be positive, got %d", c.Name, c.Capacity),
+			})
+		}
+	}
+	for _, sec := range g.Sections {
+		for _, r := range sec.Rows {
+			for _, s := range r.Seats {
+				if gaIdx[s.CategoryIndex] {
+					errs = append(errs, ValidationError{
+						Code:    ErrSeatInGACategory,
+						Element: s.Key,
+						Detail:  "seat binds to a general-admission category",
+					})
+				}
+			}
+		}
+	}
+
+	seats := g.SeatCount()
+	switch planType {
+	case "assigned_seats":
+		if seats == 0 {
+			errs = append(errs, ValidationError{
+				Code:   ErrSeatsMissing,
+				Detail: "an assigned_seats plan must contain at least one seat",
+			})
+		}
+		if gaCount > 0 {
+			errs = append(errs, ValidationError{
+				Code:   ErrGAAreaNotAllowed,
+				Detail: "an assigned_seats plan must not carry general-admission categories",
+			})
+		}
+	case "general_admission":
+		if gaCount == 0 {
+			errs = append(errs, ValidationError{
+				Code:   ErrGAAreaMissing,
+				Detail: "a general_admission plan must declare at least one GA category",
+			})
+		}
+		if seats > 0 {
+			errs = append(errs, ValidationError{
+				Code:   ErrSeatsNotAllowed,
+				Detail: "a general_admission plan must not contain coordinate-bearing seats",
+			})
+		}
+	case "mixed":
+		if seats == 0 {
+			errs = append(errs, ValidationError{
+				Code:   ErrSeatsMissing,
+				Detail: "a mixed plan must contain at least one seat",
+			})
+		}
+		if gaCount == 0 {
+			errs = append(errs, ValidationError{
+				Code:   ErrGAAreaMissing,
+				Detail: "a mixed plan must declare at least one GA area (label an element \"#GA <name>\" with a capacity <title>)",
+			})
+		}
+	}
+	return errs
 }

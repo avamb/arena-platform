@@ -290,11 +290,35 @@ offending element):
    no category is a validation error listing the color and element.
 8. Duplicate `(sector,row,number)` triples are an error; every section
    must contain ≥1 row, every row ≥1 seat.
-9. Everything that is not a seat/PriceCategory/Legend element is
+9. Everything that is not a seat/PriceCategory/Legend/GA element is
    collected verbatim into `decor_svg`.
+10. **General-admission areas (AB-40).** A GA area is an element labeled
+    `inkscape:label="#GA <name>"` (case-insensitive prefix) whose direct
+    `<title>` child carries the **capacity** as a positive integer, and
+    whose **fill colour matches one of the 15 `PriceCategory`
+    swatches** — that swatch becomes a `kind=general_admission` category
+    carrying the capacity; the area's `<name>` overrides the swatch
+    label for display (so a combined plan reads
+    `General admission | 500`, not `Fifteenth | 500`). Supported
+    shapes: `<rect>` and `<polygon>`/`<polyline>` (the outline becomes
+    the category's hit-test polygon). One GA area per swatch; several GA
+    areas per plan are allowed via distinct swatches. Errors:
+    `ga_color_unmatched`, `ga_capacity_invalid`, `ga_shape_unsupported`,
+    `ga_duplicate_category`. Plan-type gate (`ValidateForPlanType`):
+    a `general_admission` or `mixed` plan **hard-fails (422)** without
+    at least one GA area (`ga_area_missing`); an `assigned_seats` plan
+    must not carry one (`ga_area_not_allowed`); seats must never bind
+    to a GA swatch (`seat_in_ga_category`); at most 15 categories
+    (`too_many_categories`). A GA-only plan needs **no SVG at all** —
+    its categories are hand-entered (AB-40 C1) and pass the same gate.
+    Reference fixture: `testdata/Palac_Akropolis_GA.svg` — the combined
+    second plan of the same venue (90 balcony seats + 500 ground
+    floor), NOT a damaged copy of the seated plan.
 
 Import output: canonical geometry JSON (§5.3) + capacity counts + the
 original SVG stored via the media adapter (`svg_asset_media_id`).
+`capacity_standing` is **derived** as the sum of GA category capacities
+(AB-40 retired the request-body input and the `standing_zones` array).
 
 Export (SEAT-D3): a **BSS-compatible SVG** generated from geometry +
 live status, using the Bil24 wire attributes: seats carry
