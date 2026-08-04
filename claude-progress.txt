@@ -23174,3 +23174,42 @@ None. All artifacts were already in sync.
 - `golangci-lint` unavailable locally; lint gate runs in CI Lint job.
 - The staged changes visible in the initial git status (navConfig.ts, geo.tsx, venues.tsx)
   were already included in commit 2e0157c (AB-35) — not orphaned work.
+
+## 2026-08-04 — Batch #426/#428/#429
+
+- **#426 (AB-43) PASSING**: publications sales-channel picker, derived-city
+  scope, and 23503→404 FK mapping. Backend `ClassifyPublicationFKError`
+  maps `event_publications_{feed_token,city,event}_id_fkey` to
+  `publication.{feed_token,city,event}_not_found`; new hcatalog unit
+  tests + extended openapi drift test. Admin UI publications tab now
+  fronts the token behind a Sales channel dropdown that auto-issues a
+  token when the channel has none; city defaults from the first
+  session's venue city (`deriveDefaultCityID`); an Advanced disclosure
+  keeps token pinning / city override reachable. TS tests updated
+  (136/136 pass); TypeScript type-check clean; Go build + focused
+  publications tests green. openapi.yaml + regenerated Go/TS clients
+  committed. Commit 8322863.
+  - Note: commit incidentally carried previously-uncommitted AB-42
+    (EventWizard) changes on disk in events.tsx — not my work, but
+    already staged when this session started; kept `CreateEventPanel`
+    exported to satisfy `noUnusedLocals` after `<CreateEventPanel>` was
+    replaced by `<EventWizard>` in JSX by that earlier work.
+
+- **#428 (AB-46) PASSING**: added first tests for the pure-domain
+  packages `catalog`, `inventory`, `tickets`, `billing`, `reporting`
+  (115 test cases). Exhaustively tables every documented transition
+  matrix (identity rejection included), covers `DetectOverlaps`,
+  `ValidatePricingMode` (including the PWYW range vs individual-bound
+  order documented invariant), `ComputeDiscount` (percent floor,
+  fixed_amount cap, property-style order-bound guarantee), invoice
+  transitions + `PeriodForTime`, report-line categories + wire-format
+  stability. `go test ./apps/backend/internal/domain/...` all green.
+
+- **#429 (AB-39) NOT ATTEMPTED**: released via
+  `feature_clear_in_progress`. It is CRITICAL, complexity 3, and (a)
+  depends on unresolved feature #433 and (b) requires an interactive
+  wave-4 pass: new PATCH `/v1/event-sessions/{id}/seats/category`
+  endpoint, dual-surface admin UI (table + map) with a single shared
+  selection model, and end-to-end browser verification on the Palac
+  Akropolis plan + widget cache invalidation. Fresh session should
+  claim it once #433 lands (stats after this batch: 425/434 passing).
