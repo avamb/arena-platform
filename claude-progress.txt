@@ -23302,3 +23302,37 @@ Stats after this batch: 429/436 passing (98.4%).
 
 Feature #430 marked passing. Overall feature status: 430/436 passing (98.6%).
 
+## 2026-08-05 (session B) — Batch #435 / #436 / #429 released
+
+- **#435 (AB-47b) RELEASED**: claimed via feature_claim_and_get, cleared
+  via feature_clear_in_progress. Backend plumbing already in place
+  (migration 0085 applied, migrations_head_test.go pinned to 0085,
+  sqlc queries + gen/session_media.sql.go generated, mediastore
+  owner_type test guard already updated). What remains and blocks
+  passing: NEW GET/PUT /v1/sessions/{id}/media handler (poster cap 5,
+  YouTube/VK/RuTube/Vimeo URL allowlist, atomic replace-all inside a
+  transaction, session_poster owner_type cross-check), route wiring in
+  mount_catalog.go + shim in catalog_shims.go, openapi.yaml additions
+  with block-style error refs, make gen-openapi + make gen-ts-client,
+  admin gallery-grid UI in events.tsx (drag-order/upload/video-URL/
+  aspect warning), handler unit tests, integration-tagged DB round-trip
+  AND a browser round-trip on the live admin. Docker is NOT running on
+  this host (arena_postgres unreachable on :55432), so the mandatory
+  integration test cannot execute; the description explicitly forbids
+  marking passing from unit tests alone. Released for a session that
+  has docker + admin browser access.
+
+- **#436 (AB-47c) NOT ATTEMPTED**: depends on #435. Same session should
+  claim it right after #435 lands so cover+gallery reach the public
+  feed, widget, and WP contract doc in one pass.
+
+- **#429 (AB-39) NOT ATTEMPTED**: CRITICAL / complexity 3, dual-
+  surface admin (table + map) over one shared selection model + new
+  PATCH /v1/event-sessions/{id}/seats/category endpoint (sold/held
+  409 conflict, seat_status_version bump, widget cache invalidation)
+  + Palac Akropolis browser e2e. Same docker + browser blocker as
+  #435 applies. Reserved for a session with the full end-to-end
+  environment.
+
+Stats unchanged after this batch: 430/436 passing (98.6%).
+
