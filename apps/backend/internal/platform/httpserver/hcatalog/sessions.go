@@ -429,16 +429,21 @@ func (h *Handler) HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	seated := mode != "general_admission"
+	hasPlan := req.SeatingPlanVersionID != ""
 	var planVersionID uuid.UUID
-	if seated {
-		if req.SeatingPlanVersionID == "" {
-			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-				"session.missing_seating_plan_version",
-				"seating_plan_version_id is required for assigned_seats/hybrid sessions", r,
-				map[string]any{"field": "seating_plan_version_id"},
-			))
-			return
-		}
+	if seated && !hasPlan {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			"session.missing_seating_plan_version",
+			"seating_plan_version_id is required for assigned_seats/hybrid sessions", r,
+			map[string]any{"field": "seating_plan_version_id"},
+		))
+		return
+	}
+	// AB-51: a general_admission session MAY bind a GA-only plan (its
+	// named-capacity categories become tiers + ga_unit inventory). A
+	// plan-less GA session keeps deriving capacity from override/venue
+	// and gets a fungible unit pool instead.
+	if hasPlan {
 		planVersionID, parseErr = uuid.Parse(req.SeatingPlanVersionID)
 		if parseErr != nil {
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
@@ -448,13 +453,6 @@ func (h *Handler) HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 			))
 			return
 		}
-	} else if req.SeatingPlanVersionID != "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-			"session.seating_plan_not_applicable",
-			"seating_plan_version_id requires admission_mode assigned_seats or hybrid", r,
-			map[string]any{"field": "seating_plan_version_id"},
-		))
-		return
 	}
 
 	// Explicit currency override, if any (AB-38): validated before any DB
@@ -503,7 +501,7 @@ func (h *Handler) HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 	// Capacity resolution (AB-36 step 4).
 	var capacityTotal int32
 	switch {
-	case seated:
+	case seated || hasPlan:
 		// Placeholder satisfying the capacity_total > 0 CHECK; the bind
 		// below recomputes the real value from the plan version.
 		capacityTotal = 1
@@ -546,11 +544,12 @@ func (h *Handler) HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Seated create: run the SEAT-B2 bind inline (auto-creating tiers from
-	// the SVG category legend). On bind failure the freshly created session
-	// is soft-deleted so a failed create leaves no half-bound session
-	// behind, and the bind's own error envelope is surfaced verbatim.
-	if seated {
+	// Plan-bound create (seated OR GA-with-plan, AB-51): run the SEAT-B2
+	// bind inline (auto-creating tiers from the plan categories). On bind
+	// failure the freshly created session is soft-deleted so a failed
+	// create leaves no half-bound session behind, and the bind's own
+	// error envelope is surfaced verbatim.
+	if hasPlan {
 		if h.bindSeating == nil {
 			_, _ = h.sessionQueries.SoftDeleteSession(ctx, sess.ID, eventID)
 			httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
@@ -594,6 +593,27 @@ func (h *Handler) HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 				slog.String("session_id", sess.ID.String()),
 				slog.String("error", err.Error()),
 			)
+		}
+	}
+
+	// AB-51: a plan-less GA session materializes its capacity as a
+	// fungible pool of ga_unit rows ("ga|pool|<n>", tier NULL until
+	// held). Units ARE the inventory — a failure here must not leave a
+	// session that promises capacity it cannot allocate, so the create
+	// is rolled back via soft-delete.
+	if !seated && !hasPlan {
+		if _, err := h.sessionQueries.InsertGAUnits(
+			ctx, sess.ID, "ga|pool", 0, nil, sess.CapacityTotal,
+		); err != nil {
+			h.logger.Error("session: GA pool materialization failed",
+				slog.String("session_id", sess.ID.String()),
+				slog.String("error", err.Error()),
+			)
+			_, _ = h.sessionQueries.SoftDeleteSession(ctx, sess.ID, eventID)
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"session.ga_pool_failed", "failed to materialize general-admission inventory", r,
+			))
+			return
 		}
 	}
 
@@ -991,6 +1011,46 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 	// Capacity propagation hook: fire when capacity_total changed.
 	if updated.CapacityTotal != current.CapacityTotal {
 		h.OnCapacityChange(ctx, updated.ID, current.CapacityTotal, updated.CapacityTotal)
+
+		// AB-51: a plan-less GA session's unit pool tracks its capacity.
+		// Growth appends fresh pool units; shrink removes AVAILABLE ones
+		// only — if fewer rows were deleted than requested, held/sold
+		// units exceed the new total, which the ledger's own
+		// UpdateCapacityTotal guard also refuses; surface as a warning.
+		if updated.AdmissionMode == "general_admission" && updated.SeatingPlanVersionID == nil {
+			diff := int64(updated.CapacityTotal) - int64(current.CapacityTotal)
+			switch {
+			case diff > 0:
+				count, cErr := h.sessionQueries.CountGAUnits(ctx, updated.ID)
+				if cErr == nil {
+					_, cErr = h.sessionQueries.InsertGAUnits(
+						ctx, updated.ID, "ga|pool",
+						int32(count),     //nolint:gosec // pool sizes are session capacities, far below MaxInt32
+						nil, int32(diff), //nolint:gosec // diff bounded by int32 capacities
+					)
+				}
+				if cErr != nil {
+					h.logger.Error("session: GA pool grow failed",
+						slog.String("session_id", updated.ID.String()),
+						slog.String("error", cErr.Error()))
+				}
+			case diff < 0:
+				deleted, dErr := h.sessionQueries.DeleteAvailableGAPoolUnits(
+					ctx, updated.ID,
+					int32(-diff), //nolint:gosec // diff bounded by int32 capacities
+				)
+				if dErr != nil {
+					h.logger.Error("session: GA pool shrink failed",
+						slog.String("session_id", updated.ID.String()),
+						slog.String("error", dErr.Error()))
+				} else if deleted != -diff {
+					h.logger.Warn("session: GA pool shrink partial — held/sold units exceed new capacity",
+						slog.String("session_id", updated.ID.String()),
+						slog.Int64("requested", -diff),
+						slog.Int64("deleted", deleted))
+				}
+			}
+		}
 	}
 
 	// Webhook event catalog (feature S-1): emit v1.session.cancelled exactly

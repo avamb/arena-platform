@@ -55,7 +55,12 @@ export interface Geometry {
   canvas: Canvas;
   categories: GeometryCategory[];
   sections: Section[];
-  standing_zones: StandingZone[];
+  /**
+   * Retired by AB-40/AB-51: GA capacity now lives on categories with
+   * kind='general_admission'. Kept optional for geometries stored before
+   * the retirement; new geometries omit the key entirely.
+   */
+  standing_zones?: StandingZone[];
   tables: unknown[];
   decor_svg: string;
 }

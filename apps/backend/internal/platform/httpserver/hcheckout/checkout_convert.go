@@ -94,7 +94,14 @@ func (h *Handler) convertReservationInTx(ctx context.Context, q *gen.Queries, re
 			slog.Int("already_sold", alreadySold),
 		)
 	}
-	if _, err := q.ConfirmCapacity(ctx, reservation.SessionID, reservation.TierID, reservation.Quantity); err != nil {
+	// AB-51: reservations with linked seat/GA-unit rows reserved
+	// session-level capacity (nil tier); confirm mirrors that. Row-less
+	// legacy reservations mirror their original per-tier reserve.
+	confirmTier := reservation.TierID
+	if sold > 0 || alreadySold > 0 {
+		confirmTier = nil
+	}
+	if _, err := q.ConfirmCapacity(ctx, reservation.SessionID, confirmTier, reservation.Quantity); err != nil {
 		return fmt.Errorf("convertReservationInTx: confirm capacity for reservation %s: %w", reservationID, err)
 	}
 	if _, err := q.UpdateReservationState(ctx, reservationID, "converted"); err != nil {

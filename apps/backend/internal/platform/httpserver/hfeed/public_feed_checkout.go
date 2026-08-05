@@ -546,9 +546,15 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			return
 		}
 
-		// Reserve inventory capacity for seats (nil tier = session-level).
+		// Reserve session-level inventory capacity for the WHOLE cart —
+		// seats plus GA units (AB-51: GA lines no longer take per-tier
+		// ledger reserves; concrete ga_unit rows are the per-tier truth).
 		seatQty := int32(len(normalizedSeats)) //nolint:gosec // bounded above by slice len
-		if _, err := invQ.ReserveCapacity(ctx, sessionID, nil, seatQty); err != nil {
+		totalQty := seatQty
+		for _, g := range req.GaItems {
+			totalQty += g.Quantity
+		}
+		if _, err := invQ.ReserveCapacity(ctx, sessionID, nil, totalQty); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 					"reservation.over_capacity", "insufficient capacity for this reservation", r,
@@ -560,12 +566,6 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 				"reservation.capacity_failed", "failed to reserve capacity", r,
 			))
 			return
-		}
-
-		// Insert reservation row.
-		totalQty := seatQty
-		for _, g := range req.GaItems {
-			totalQty += g.Quantity
 		}
 		res, err := resQ.InsertReservation(
 			ctx, checkCtx.OrgID, checkCtx.SalesChannelID, sessionID,
@@ -621,22 +621,27 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			}
 		}
 
-		// Reserve GA capacity + persist the per-tier GA lines (migration 0063)
-		// for each ga_item (if any in mixed mode). The lines are written in the
-		// SAME transaction as the seat holds so the order-status and recovery
-		// endpoints can reconstruct the full cart later (WID-0b / WID-0c).
+		// Allocate concrete GA units (AB-51) + persist the per-tier GA
+		// lines (migration 0063) for each ga_item (if any in mixed mode).
+		// Both happen in the SAME transaction as the seat holds so the
+		// order-status and recovery endpoints can reconstruct the full
+		// cart later (WID-0b / WID-0c). Mixed carts run on hybrid
+		// sessions, which are plan-bound by construction.
 		for i, item := range req.GaItems {
 			tierID := parsedGATierIDs[i]
-			tierIDPtr := &tierID
-			if _, err := invQ.ReserveCapacity(ctx, sessionID, tierIDPtr, item.Quantity); err != nil {
-				if errors.Is(err, pgx.ErrNoRows) {
+			if _, err := hcheckout.AllocateGAUnitsTx(
+				ctx, resQ, sessionID, res.ID, newVersion, true,
+				[]hcheckout.GAUnitLine{{TierID: &tierID, Quantity: item.Quantity}},
+			); err != nil {
+				var capErr *hcheckout.CapacityError
+				if errors.As(err, &capErr) {
 					httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
 						"reservation.over_capacity", "insufficient capacity for this reservation", r,
 						map[string]any{"tier_id": tierID.String(), "requested": item.Quantity},
 					))
 					return
 				}
-				h.logger.Error("public_feed_checkout: reserve GA capacity failed",
+				h.logger.Error("public_feed_checkout: GA unit allocation failed",
 					slog.String("tier_id", tierID.String()), slog.String("error", err.Error()))
 				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 					"reservation.capacity_failed", "failed to reserve GA capacity", r,
@@ -735,27 +740,23 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Reserve capacity for each GA item.
-	for i, item := range req.GaItems {
-		tierID := parsedGATierIDs[i]
-		tierIDPtr := &tierID
-		if _, err := invQ.ReserveCapacity(ctx, sessionID, tierIDPtr, item.Quantity); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
-					"reservation.over_capacity", "insufficient capacity for this reservation", r,
-					map[string]any{"tier_id": tierID.String(), "requested": item.Quantity},
-				))
-				return
-			}
-			h.logger.Error("public_feed_checkout: reserve capacity failed",
-				slog.String("session_id", sessionID.String()),
-				slog.String("error", err.Error()),
-			)
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"reservation.capacity_failed", "failed to reserve capacity", r,
+	// Reserve session-level capacity for the whole cart (AB-51: per-tier
+	// truth lives in the ga_unit rows allocated below).
+	if _, err := invQ.ReserveCapacity(ctx, sessionID, nil, totalQty); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
+				"reservation.over_capacity", "insufficient capacity for this reservation", r,
 			))
 			return
 		}
+		h.logger.Error("public_feed_checkout: reserve capacity failed",
+			slog.String("session_id", sessionID.String()),
+			slog.String("error", err.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"reservation.capacity_failed", "failed to reserve capacity", r,
+		))
+		return
 	}
 
 	// Insert reservation (nil tier for multi-tier; single-tier uses first tier).
@@ -784,12 +785,50 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Persist the per-tier GA lines (migration 0063) in the same transaction
-	// so the order-status and recovery endpoints can reconstruct the cart.
+	// Allocate concrete GA units (AB-51) and persist the per-tier GA
+	// lines (migration 0063) in the same transaction so the order-status
+	// and recovery endpoints can reconstruct the cart.
+	admission, err := resQ.GetSessionAdmissionModeByID(ctx, sessionID)
+	if err != nil {
+		h.logger.Error("public_feed_checkout: admission lookup failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"reservation.insert_failed", "failed to create reservation", r,
+		))
+		return
+	}
+	gaVersion, err := resQ.IncrementSessionSeatStatusVersion(ctx, sessionID)
+	if err != nil {
+		h.logger.Error("public_feed_checkout: bump seat_status_version failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"reservation.insert_failed", "failed to create reservation", r,
+		))
+		return
+	}
 	for i, item := range req.GaItems {
-		if err := resQ.InsertReservationGAItem(ctx, reservation.ID, parsedGATierIDs[i], item.Quantity, pricedGA[i].unitPrice); err != nil {
+		tierID := parsedGATierIDs[i]
+		if _, err := hcheckout.AllocateGAUnitsTx(
+			ctx, resQ, sessionID, reservation.ID, gaVersion,
+			admission.SeatingPlanVersionID != nil,
+			[]hcheckout.GAUnitLine{{TierID: &tierID, Quantity: item.Quantity}},
+		); err != nil {
+			var capErr *hcheckout.CapacityError
+			if errors.As(err, &capErr) {
+				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+					"reservation.over_capacity", "insufficient capacity for this reservation", r,
+					map[string]any{"tier_id": tierID.String(), "requested": item.Quantity},
+				))
+				return
+			}
+			h.logger.Error("public_feed_checkout: GA unit allocation failed",
+				slog.String("tier_id", tierID.String()), slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"reservation.capacity_failed", "failed to reserve capacity", r,
+			))
+			return
+		}
+		if err := resQ.InsertReservationGAItem(ctx, reservation.ID, tierID, item.Quantity, pricedGA[i].unitPrice); err != nil {
 			h.logger.Error("public_feed_checkout: insert GA line failed",
-				slog.String("tier_id", parsedGATierIDs[i].String()),
+				slog.String("tier_id", tierID.String()),
 				slog.String("error", err.Error()),
 			)
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(

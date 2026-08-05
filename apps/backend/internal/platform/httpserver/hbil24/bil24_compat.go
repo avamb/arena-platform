@@ -432,19 +432,34 @@ func (h *Handler) handleBil24GetSeatList(w http.ResponseWriter, r *http.Request,
 		}
 	}
 
-	// GA (or fallback) branch requires tier queries; assigned branch
-	// requires seat queries. Route accordingly.
-	if admissionMode == "general_admission" || h.seatQ == nil {
-		if h.tierQueries == nil {
+	// Route: sessions with materialized seat/GA-unit rows emit per-unit
+	// entries (AB-51 restored compat parity — every ticketable place has
+	// a seatId); the tier facade remains the fallback for unwired seat
+	// queries and legacy GA sessions without unit rows.
+	if h.seatQ != nil {
+		seats, serr := h.seatQ.ListSessionSeats(ctx, sessionID)
+		if serr != nil && admissionMode != "general_admission" {
+			h.logger.Error("bil24_compat: GET_SEAT_LIST: list session seats failed",
+				slog.String("session_id", sessionID.String()),
+				slog.String("error", serr.Error()),
+			)
 			writeBil24JSON(w, http.StatusOK, bil24Error(
-				req.Command, ResultCodeInternalError, "tier service unavailable",
+				req.Command, ResultCodeInternalError, "failed to retrieve seat list",
 			))
 			return
 		}
-		h.getSeatListGA(w, ctx, req, sessionID)
+		if serr == nil && (admissionMode != "general_admission" || len(seats) > 0) {
+			h.getSeatListUnits(w, ctx, req, sessionID, admissionMode, seats)
+			return
+		}
+	}
+	if h.tierQueries == nil {
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInternalError, "tier service unavailable",
+		))
 		return
 	}
-	h.getSeatListAssigned(w, ctx, req, sessionID)
+	h.getSeatListGA(w, ctx, req, sessionID)
 }
 
 // getSeatListGA is the pre-#312 tier-facade GET_SEAT_LIST response for
@@ -484,24 +499,13 @@ func (h *Handler) getSeatListGA(w http.ResponseWriter, ctx context.Context, req 
 	}))
 }
 
-// getSeatListAssigned is the SEAT-D1 GET_SEAT_LIST branch for sessions
-// whose admission_mode is assigned_seats or hybrid. It emits one entry
-// per session_seat row, joining tier metadata (price/currency) from the
-// session's ticket_tiers snapshot.
-func (h *Handler) getSeatListAssigned(w http.ResponseWriter, ctx context.Context, req bil24Request, sessionID uuid.UUID) {
-	// Load real seats.
-	seats, err := h.seatQ.ListSessionSeats(ctx, sessionID)
-	if err != nil {
-		h.logger.Error("bil24_compat: GET_SEAT_LIST: list session seats failed",
-			slog.String("session_id", sessionID.String()),
-			slog.String("error", err.Error()),
-		)
-		writeBil24JSON(w, http.StatusOK, bil24Error(
-			req.Command, ResultCodeInternalError, "failed to retrieve seat list",
-		))
-		return
-	}
-
+// getSeatListUnits is the per-unit GET_SEAT_LIST branch (SEAT-D1,
+// extended by AB-51 to GA sessions). It emits one entry per
+// session_seats row — assigned seats carry sector/row/number, GA units
+// carry empty coordinates exactly like the Bil24 seat-management table —
+// joining tier metadata (price/currency) from the session's
+// ticket_tiers snapshot.
+func (h *Handler) getSeatListUnits(w http.ResponseWriter, ctx context.Context, req bil24Request, sessionID uuid.UUID, admissionMode string, seats []gen.SessionSeatRow) {
 	// Load tier snapshot for price / currency projection. When the tier
 	// dependency is unwired (nil) or fails, we degrade gracefully with
 	// price=0 / currency omitted rather than failing the whole
@@ -550,7 +554,7 @@ func (h *Handler) getSeatListAssigned(w http.ResponseWriter, ctx context.Context
 
 	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
 		"seatList":      seatList,
-		"admissionMode": "assigned_seats",
+		"admissionMode": admissionMode,
 	}))
 }
 

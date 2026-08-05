@@ -483,10 +483,14 @@ type SessionAdmissionRow struct {
 	AdmissionMode     string    `json:"admission_mode"`
 	SeatStatusVersion int64     `json:"seat_status_version"`
 	CapacityTotal     int32     `json:"capacity_total"`
+	// SeatingPlanVersionID is non-nil for plan-bound sessions (AB-51:
+	// GA unit allocation filters by tier only when plan-bound).
+	SeatingPlanVersionID *uuid.UUID `json:"seating_plan_version_id"`
 }
 
 const getSessionAdmissionModeByID = `-- name: GetSessionAdmissionModeByID :one
-SELECT id, admission_mode, seat_status_version, capacity_total
+SELECT id, admission_mode, seat_status_version, capacity_total,
+       seating_plan_version_id
 FROM   sessions
 WHERE  id         = $1
   AND  deleted_at IS NULL`
@@ -498,7 +502,7 @@ WHERE  id         = $1
 func (q *Queries) GetSessionAdmissionModeByID(ctx context.Context, sessionID uuid.UUID) (SessionAdmissionRow, error) {
 	row := q.db.QueryRow(ctx, getSessionAdmissionModeByID, sessionID)
 	var r SessionAdmissionRow
-	err := row.Scan(&r.ID, &r.AdmissionMode, &r.SeatStatusVersion, &r.CapacityTotal)
+	err := row.Scan(&r.ID, &r.AdmissionMode, &r.SeatStatusVersion, &r.CapacityTotal, &r.SeatingPlanVersionID)
 	return r, err
 }
 
@@ -523,4 +527,170 @@ func (q *Queries) IncrementSessionSeatStatusVersion(ctx context.Context, session
 	var v int64
 	err := row.Scan(&v)
 	return v, err
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AB-51: General Admission units (kind = 'ga_unit')
+// ─────────────────────────────────────────────────────────────────────────────
+
+const insertGAUnits = `-- name: InsertGAUnits :execrows
+INSERT INTO session_seats
+    (session_id, seat_key, sector_name, row_name, seat_number,
+     tier_id, status, kind)
+SELECT $1,
+       $2 || '|' || lpad((gs + $3)::text, 6, '0'),
+       '', '', '',
+       $4::uuid,
+       'available',
+       'ga_unit'
+FROM generate_series(1, $5::int) gs`
+
+// InsertGAUnits materializes quantity GA units for a session under the
+// given seat-key prefix ("ga|c3" for a plan category, "ga|pool" for a
+// plan-less pool) starting at startIndex+1. tierID is the category tier
+// for plan-bound units, nil for pool units. Returns the inserted count.
+func (q *Queries) InsertGAUnits(
+	ctx context.Context,
+	sessionID uuid.UUID,
+	keyPrefix string,
+	startIndex int32,
+	tierID *uuid.UUID,
+	quantity int32,
+) (int64, error) {
+	tag, err := q.db.Exec(ctx, insertGAUnits,
+		sessionID, keyPrefix, startIndex, tierID, quantity)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+const allocateGAUnitsForHold = `-- name: AllocateGAUnitsForHold :many
+UPDATE session_seats ss
+SET    status         = 'held',
+       reservation_id = $2,
+       tier_id        = $3,
+       status_version = $4,
+       updated_at     = now()
+FROM (
+    SELECT id
+    FROM   session_seats
+    WHERE  session_id = $1
+      AND  kind = 'ga_unit'
+      AND  status = 'available'
+      AND  tier_id IS NOT DISTINCT FROM $5::uuid
+    ORDER  BY seat_key
+    LIMIT  $6
+    FOR UPDATE SKIP LOCKED
+) picked
+WHERE ss.id = picked.id
+RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
+          ss.seat_number, ss.tier_id, ss.status, ss.reservation_id,
+          ss.status_version, ss.updated_at`
+
+// AllocateGAUnitsForHold atomically claims `limit` available GA units
+// for a reservation (available -> held, reservation + tier stamped,
+// status_version set). unitTierFilter selects the pool: the category
+// tier uuid for plan-bound sessions, nil for plan-less pools (IS NOT
+// DISTINCT FROM semantics). SKIP LOCKED keeps an on-sale burst from
+// serializing; if fewer than limit rows return, the caller MUST roll
+// back the transaction — the pool is over capacity.
+func (q *Queries) AllocateGAUnitsForHold(
+	ctx context.Context,
+	sessionID, reservationID uuid.UUID,
+	stampTierID *uuid.UUID,
+	statusVersion int64,
+	unitTierFilter *uuid.UUID,
+	limit int32,
+) ([]SessionSeatRow, error) {
+	rows, err := q.db.Query(ctx, allocateGAUnitsForHold,
+		sessionID, reservationID, stampTierID, statusVersion, unitTierFilter, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SessionSeatRow
+	for rows.Next() {
+		s, err := scanSessionSeatRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+const resetAvailableGAPoolTierStamps = `-- name: ResetAvailableGAPoolTierStamps :execrows
+UPDATE session_seats
+SET    tier_id    = NULL,
+       updated_at = now()
+WHERE  session_id = $1
+  AND  kind = 'ga_unit'
+  AND  status = 'available'
+  AND  tier_id IS NOT NULL`
+
+// ResetAvailableGAPoolTierStamps returns released plan-less pool units
+// to the NULL-tier pool so the pool does not fragment across tiers.
+// Idempotent; call after release/expiry on plan-less GA sessions only.
+func (q *Queries) ResetAvailableGAPoolTierStamps(
+	ctx context.Context, sessionID uuid.UUID,
+) (int64, error) {
+	tag, err := q.db.Exec(ctx, resetAvailableGAPoolTierStamps, sessionID)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+const countGAUnits = `-- name: CountGAUnits :one
+SELECT COUNT(*) FROM session_seats
+WHERE  session_id = $1 AND kind = 'ga_unit'`
+
+// CountGAUnits returns the total GA unit count for a session.
+func (q *Queries) CountGAUnits(ctx context.Context, sessionID uuid.UUID) (int64, error) {
+	var n int64
+	err := q.db.QueryRow(ctx, countGAUnits, sessionID).Scan(&n)
+	return n, err
+}
+
+const deleteAvailableGAPoolUnits = `-- name: DeleteAvailableGAPoolUnits :execrows
+DELETE FROM session_seats
+WHERE id IN (
+    SELECT id FROM session_seats
+    WHERE  session_id = $1
+      AND  kind = 'ga_unit'
+      AND  status = 'available'
+    ORDER  BY seat_key DESC
+    LIMIT  $2
+)`
+
+// DeleteAvailableGAPoolUnits shrinks a plan-less pool by removing the
+// highest-numbered available units. Returns the deleted count; callers
+// must verify it matches the requested shrink (held/sold units are
+// never deleted).
+func (q *Queries) DeleteAvailableGAPoolUnits(
+	ctx context.Context, sessionID uuid.UUID, limit int32,
+) (int64, error) {
+	tag, err := q.db.Exec(ctx, deleteAvailableGAPoolUnits, sessionID, limit)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+const countGAUnitsHeldSoldByTier = `-- name: CountGAUnitsHeldSoldByTier :one
+SELECT COUNT(*)::bigint AS count
+FROM   session_seats
+WHERE  session_id = $1
+  AND  kind = 'ga_unit'
+  AND  tier_id = $2
+  AND  status IN ('held', 'sold')`
+
+// CountGAUnitsHeldSoldByTier reports how many GA units a tier currently
+// occupies (held or sold) — the tier-capacity guard for plan-less pools
+// (AB-51).
+func (q *Queries) CountGAUnitsHeldSoldByTier(ctx context.Context, sessionID, tierID uuid.UUID) (int64, error) {
+	var n int64
+	err := q.db.QueryRow(ctx, countGAUnitsHeldSoldByTier, sessionID, tierID).Scan(&n)
+	return n, err
 }

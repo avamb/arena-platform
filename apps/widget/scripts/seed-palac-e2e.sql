@@ -98,7 +98,10 @@ SELECT
             ),
             jsonb_build_object(
                 'index', 1, 'name', 'Galérie',
-                'color', '#10B981', 'price_hint', '12.00', 'currency_hint', 'EUR'
+                'color', '#10B981', 'price_hint', '12.00', 'currency_hint', 'EUR',
+                -- AB-40/AB-51: GA is a category kind carrying its own
+                -- capacity; the former standing_zones array is retired.
+                'kind', 'general_admission', 'capacity', 100
             )
         ),
         'sections',       jsonb_build_array(
@@ -130,13 +133,6 @@ SELECT
                     )
                     FROM generate_series(1, 10) r
                 )
-            )
-        ),
-        'standing_zones', jsonb_build_array(
-            jsonb_build_object(
-                'key',      'galerie',
-                'name',     'Galérie',
-                'capacity', 100
             )
         ),
         'tables',    '[]'::jsonb,
@@ -320,4 +316,34 @@ SELECT
     'available'
 FROM generate_series(1, 10) r,
      generate_series(1, 26) s
+ON CONFLICT (session_id, seat_key) DO NOTHING;
+
+-- ── 11. GA units (AB-51: 100 Galérie places, one row per place) ──────────────
+--
+-- Every General Admission place is a session_seats row (kind='ga_unit')
+-- with empty coordinate columns and the tier fixed to Galérie, matching
+-- what the AB-51 bind materializes for plan-bound GA categories.
+
+INSERT INTO session_seats (
+    id,
+    session_id,
+    seat_key,
+    sector_name,
+    row_name,
+    seat_number,
+    tier_id,
+    status,
+    kind
+)
+SELECT
+    gen_random_uuid(),
+    'fe000007-0000-7000-8000-000000000002'::uuid,
+    'ga|galerie|' || lpad(n::text, 6, '0'),
+    '',
+    '',
+    '',
+    'fe000007-0000-7000-8000-000000000006'::uuid,  -- Galérie tier
+    'available',
+    'ga_unit'
+FROM generate_series(1, 100) n
 ON CONFLICT (session_id, seat_key) DO NOTHING;

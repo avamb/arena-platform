@@ -32,9 +32,13 @@
 //     with 409 seating.rebind_forbidden — the fully-consistent way to
 //     replan a booked session is to create a new session (spec §7
 //     SEAT-B2).
-//   - GA sessions (admission_mode = general_admission) are not touched by
-//     this endpoint. This handler only accepts assigned_seats or hybrid.
-//     The inventory_ledger path for GA sessions remains unchanged.
+//   - Since AB-51, general_admission sessions may bind a GA-only plan:
+//     the bind materializes one session_seats row per GA place
+//     (kind='ga_unit', tier fixed to the category tier) — GA places are
+//     inventory from setup, not a by-product of purchase. Plan-less GA
+//     sessions get their pool units at session create instead and never
+//     hit this endpoint. The session-level inventory_ledger row remains
+//     the transactional capacity rollup for both.
 //
 // Wave 4 (AB-36 step 3): the same core flow also runs inline from the
 // session CREATE path via BindSeatingForSessionCreate, so a seated session
@@ -72,20 +76,26 @@ import (
 const bindBodyLimit = 64 * 1024
 
 // validBindAdmissionModes lists the admission modes the bind endpoint
-// accepts. general_admission is deliberately absent — GA sessions do not
-// need a plan binding.
+// accepts. Since AB-51, general_admission sessions may bind a GA-only
+// plan — the bind materializes one session_seats row per GA place
+// (kind='ga_unit') exactly like seats. Plan-less GA sessions keep
+// working without a binding (their pool units are materialized at
+// session create).
 var validBindAdmissionModes = map[string]bool{
-	"assigned_seats": true,
-	"hybrid":         true,
+	"assigned_seats":    true,
+	"hybrid":            true,
+	"general_admission": true,
 }
 
 // planTypesForAdmissionMode is the AB-40 B5 cross-check: which parent
 // plan types may be bound under each admission mode. assigned_seats
 // requires a pure seated plan; hybrid requires a combined (mixed) plan
-// that actually carries GA capacity.
+// that actually carries GA capacity; general_admission requires a
+// GA-only plan.
 var planTypesForAdmissionMode = map[string]map[string]bool{
-	"assigned_seats": {"assigned_seats": true},
-	"hybrid":         {"mixed": true},
+	"assigned_seats":    {"assigned_seats": true},
+	"hybrid":            {"mixed": true},
+	"general_admission": {"general_admission": true},
 }
 
 // BindError is the transport shape the bind core uses to report a failure:
@@ -250,7 +260,7 @@ func (h *Handler) BindSeatingForSessionCreate(
 	if !validBindAdmissionModes[admissionMode] {
 		return bindErr(http.StatusBadRequest,
 			"seating.invalid_admission_mode",
-			"admission_mode must be one of assigned_seats|hybrid",
+			"admission_mode must be one of assigned_seats|hybrid|general_admission",
 			map[string]any{"field": "admission_mode"})
 	}
 	req := bindRequest{
@@ -461,6 +471,43 @@ func (h *Handler) bindSessionSeatingCore(
 		materialized = int(inserted)
 	}
 
+	// AB-51: materialize one ga_unit row per General Admission place —
+	// "ga|c<categoryIndex>|<n>" keys, tier fixed to the category tier.
+	// GA places exist as inventory from setup, not as a by-product of
+	// purchase; they share the seat status machine and transition table.
+	gaMaterialized := 0
+	if req.AdmissionMode != "assigned_seats" {
+		for _, cat := range geometry.GACategories() {
+			tierID, hasTier := resolvedMap[cat.Index]
+			if !hasTier {
+				return nil, bindErr(http.StatusInternalServerError,
+					"seating.bind_failed",
+					fmt.Sprintf("GA category %d has no resolved tier", cat.Index),
+					nil)
+			}
+			if cat.Capacity <= 0 || cat.Capacity > math.MaxInt32 {
+				return nil, bindErr(http.StatusInternalServerError,
+					"seating.bind_failed",
+					fmt.Sprintf("GA category %d capacity %d out of range", cat.Index, cat.Capacity),
+					nil)
+			}
+			inserted, err := qtx.InsertGAUnits(
+				ctx, sessionID,
+				fmt.Sprintf("ga|c%d", cat.Index),
+				0, &tierID,
+				int32(cat.Capacity), //nolint:gosec // bound-checked above
+			)
+			if err != nil {
+				h.logger.Error("seating: bind GA unit materialize failed",
+					slog.String("error", err.Error()),
+				)
+				return nil, bindErr(http.StatusInternalServerError,
+					"seating.bind_failed", "failed to materialize GA units", nil)
+			}
+			gaMaterialized += int(inserted)
+		}
+	}
+
 	// Lock the version's locked_at on first bind (idempotent for later
 	// binds against the same version). This is the immutability latch
 	// described in §5.1 of the seating backlog: once any session references
@@ -472,12 +519,17 @@ func (h *Handler) bindSessionSeatingCore(
 			"seating.bind_failed", "failed to lock seating plan version", nil)
 	}
 
-	// Recompute capacity_total from the seated (and, for hybrid, standing)
-	// capacity of the bound version. Documented capacity-propagation hook
-	// per 0016_sessions.sql:58.
-	newCapacity := lockedVersion.CapacitySeated
-	if req.AdmissionMode == "hybrid" {
-		newCapacity += lockedVersion.CapacityStanding
+	// Recompute capacity_total from the bound version per admission mode
+	// (AB-40 B6: bound seat count + sum of GA category capacities).
+	// Documented capacity-propagation hook per 0016_sessions.sql:58.
+	var newCapacity int32
+	switch req.AdmissionMode {
+	case "hybrid":
+		newCapacity = lockedVersion.CapacitySeated + lockedVersion.CapacityStanding
+	case "general_admission":
+		newCapacity = lockedVersion.CapacityStanding
+	default:
+		newCapacity = lockedVersion.CapacitySeated
 	}
 	updated, err := qtx.BindSessionSeatingPlan(
 		ctx, sessionID, eventID, req.AdmissionMode, &planVersionID, newCapacity,
@@ -509,6 +561,7 @@ func (h *Handler) bindSessionSeatingCore(
 		"seating_plan_version_id": planVersionID.String(),
 		"admission_mode":          req.AdmissionMode,
 		"materialized_seats":      materialized,
+		"materialized_ga_units":   gaMaterialized,
 		"category_tier_map":       catStr,
 		"rebound":                 rebound,
 		"capacity_total":          newCapacity,
@@ -577,7 +630,7 @@ func parseBindRequest(w http.ResponseWriter, r *http.Request, req bindRequest) (
 	if !validBindAdmissionModes[req.AdmissionMode] {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"seating.invalid_admission_mode",
-			"admission_mode must be one of assigned_seats|hybrid", r,
+			"admission_mode must be one of assigned_seats|hybrid|general_admission", r,
 			map[string]any{"field": "admission_mode"},
 		))
 		return uuid.Nil, false
@@ -625,16 +678,22 @@ func resolveCategoryTierMap(
 		byIndex[c.Index] = c
 	}
 
-	// Categories actually referenced by at least one seat — this is what
-	// we must have a tier for. Categories that appear in Geometry.Categories
-	// but are not referenced by any seat are ignored (dangling legend
-	// entries are possible per §6 rule 5).
+	// Categories actually referenced by at least one seat, plus every
+	// GA category (AB-51: each GA category materializes units carrying
+	// its tier) — this is what we must have a tier for. Seated
+	// categories not referenced by any seat are ignored (dangling
+	// legend entries are possible per §6 rule 5).
 	referenced := make(map[int]bool)
 	for _, section := range geometry.Sections {
 		for _, row := range section.Rows {
 			for _, seat := range row.Seats {
 				referenced[seat.CategoryIndex] = true
 			}
+		}
+	}
+	for _, c := range geometry.Categories {
+		if c.IsGA() {
+			referenced[c.Index] = true
 		}
 	}
 
@@ -749,6 +808,13 @@ func autoCreateTier(
 			pricingMode = "fixed"
 		}
 	}
+	// AB-51: a GA category's tier is capped at the category capacity so
+	// tier-level selling can never exceed the declared zone size.
+	var tierCapacity *int32
+	if cat.IsGA() && cat.Capacity > 0 && cat.Capacity <= math.MaxInt32 {
+		c := int32(cat.Capacity) //nolint:gosec // bound-checked above
+		tierCapacity = &c
+	}
 	// Clamp the sort-order to the int32 range. Category.Index is a small
 	// positive int seeded from geometry (typically < 100), so overflow is
 	// only reachable via a maliciously hand-crafted geometry blob.
@@ -761,7 +827,7 @@ func autoCreateTier(
 	row, err := qtx.InsertTicketTier(
 		ctx, sessionID,
 		name, pricingMode, priceAmount, currency,
-		nil, nil, nil, nil, nil,
+		nil, nil, tierCapacity, nil, nil,
 		int32(sortOrder), //nolint:gosec // clamped to [0, MaxInt32] above
 	)
 	if err != nil {

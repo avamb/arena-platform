@@ -392,6 +392,19 @@ func releaseReservationSeatsTx(ctx context.Context, q *gen.Queries, sessionID, r
 	if err := q.DeleteReservationSeats(ctx, reservationID); err != nil {
 		return released, err
 	}
+
+	// AB-51: plan-less GA pools stamp the tier onto units at hold time;
+	// released units must return to the NULL-tier pool or the pool
+	// fragments across tiers. Idempotent, only touches available
+	// ga_unit rows, and skipped entirely for plan-bound sessions.
+	if released > 0 {
+		mode, mErr := q.GetSessionAdmissionModeByID(ctx, sessionID)
+		if mErr == nil && mode.AdmissionMode != "assigned_seats" && mode.SeatingPlanVersionID == nil {
+			if _, rErr := q.ResetAvailableGAPoolTierStamps(ctx, sessionID); rErr != nil {
+				return released, rErr
+			}
+		}
+	}
 	return released, nil
 }
 

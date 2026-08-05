@@ -218,7 +218,8 @@ WHERE  session_id = $1
 -- request should route down the GA (quantity) branch or the seated (seats[])
 -- branch. Returns pgx.ErrNoRows if the session does not exist or has been
 -- soft-deleted.
-SELECT id, admission_mode, seat_status_version, capacity_total
+SELECT id, admission_mode, seat_status_version, capacity_total,
+       seating_plan_version_id
 FROM   sessions
 WHERE  id         = $1
   AND  deleted_at IS NULL;
@@ -233,3 +234,93 @@ SET    seat_status_version = seat_status_version + 1,
        updated_at          = now()
 WHERE  id = $1
 RETURNING seat_status_version;
+
+-- ─────────────────────────────────────────────────────────────────────
+-- AB-51: General Admission units (kind = 'ga_unit')
+-- ─────────────────────────────────────────────────────────────────────
+
+-- name: InsertGAUnits :execrows
+-- Materializes `quantity` GA units for a session under the given key
+-- prefix ("ga|c3" / "ga|pool") starting at start_index+1. tier_id is
+-- the category tier for plan-bound units, NULL for pool units.
+INSERT INTO session_seats
+    (session_id, seat_key, sector_name, row_name, seat_number,
+     tier_id, status, kind)
+SELECT $1,
+       $2 || '|' || lpad((gs + $3)::text, 6, '0'),
+       '', '', '',
+       $4::uuid,
+       'available',
+       'ga_unit'
+FROM generate_series(1, $5::int) gs;
+
+-- name: AllocateGAUnitsForHold :many
+-- Atomically claims `limit` available GA units for a reservation:
+-- status available -> held, reservation stamped, tier stamped (no-op
+-- for plan-bound units whose tier already matches; stamps pool units so
+-- ticket issuance knows the line tier). tier filter: IS NOT DISTINCT
+-- FROM so NULL selects pool units. SKIP LOCKED keeps an on-sale burst
+-- from serializing on row locks; a short allocation means over-capacity
+-- and the caller must roll back.
+UPDATE session_seats ss
+SET    status         = 'held',
+       reservation_id = $2,
+       tier_id        = $3,
+       status_version = $4,
+       updated_at     = now()
+FROM (
+    SELECT id
+    FROM   session_seats
+    WHERE  session_id = $1
+      AND  kind = 'ga_unit'
+      AND  status = 'available'
+      AND  tier_id IS NOT DISTINCT FROM $5::uuid
+    ORDER  BY seat_key
+    LIMIT  $6
+    FOR UPDATE SKIP LOCKED
+) picked
+WHERE ss.id = picked.id
+RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
+          ss.seat_number, ss.tier_id, ss.status, ss.reservation_id,
+          ss.status_version, ss.updated_at;
+
+-- name: ResetAvailableGAPoolTierStamps :execrows
+-- Plan-less GA sessions treat units as a fungible pool: a released unit
+-- must return to the NULL-tier pool or the pool fragments across tiers.
+-- Safe to run after any release/expiry on a plan-less session.
+UPDATE session_seats
+SET    tier_id    = NULL,
+       updated_at = now()
+WHERE  session_id = $1
+  AND  kind = 'ga_unit'
+  AND  status = 'available'
+  AND  tier_id IS NOT NULL;
+
+-- name: CountGAUnits :one
+SELECT COUNT(*) FROM session_seats
+WHERE  session_id = $1 AND kind = 'ga_unit';
+
+-- name: DeleteAvailableGAPoolUnits :execrows
+-- Shrinks a plan-less GA session's pool by removing the highest-
+-- numbered AVAILABLE units. Held/sold units are never touched — the
+-- ledger's UpdateCapacityTotal guard already refuses a total below
+-- held+sold.
+DELETE FROM session_seats
+WHERE id IN (
+    SELECT id FROM session_seats
+    WHERE  session_id = $1
+      AND  kind = 'ga_unit'
+      AND  status = 'available'
+    ORDER  BY seat_key DESC
+    LIMIT  $2
+);
+
+-- name: CountGAUnitsHeldSoldByTier :one
+-- AB-51: tier-capacity guard for plan-less GA pools — how many units a
+-- tier currently occupies (held or sold).
+SELECT COUNT(*)::bigint AS count
+FROM   session_seats
+WHERE  session_id = $1
+  AND  kind = 'ga_unit'
+  AND  tier_id = $2
+  AND  status IN ('held', 'sold');

@@ -305,29 +305,22 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 		}
 	}
 
-	// ── 7b. GA portion: re-reserve per-tier capacity ──────────────────────────
+	// ── 7b. GA portion: re-reserve session-level capacity (AB-51 — the
+	// per-tier truth is the ga_unit allocation done in 7e-bis below).
 	var gaQty int32
 	for i := range origGA {
-		g := origGA[i]
-		tierID := g.TierID
-		gaQty += g.Quantity
-		if _, err := invQ.ReserveCapacity(ctx, origRes.SessionID, &tierID, g.Quantity); err != nil {
+		gaQty += origGA[i].Quantity
+	}
+	if gaQty > 0 {
+		if _, err := invQ.ReserveCapacity(ctx, origRes.SessionID, nil, gaQty); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				// Per-tier availability detail so the widget can name the zone.
-				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
-					"reservation.over_capacity",
-					"insufficient capacity to recover GA reservation",
-					r,
-					map[string]any{
-						"tier_id":   tierID.String(),
-						"tier_name": g.TierName,
-						"requested": g.Quantity,
-					},
+				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
+					"reservation.over_capacity", "insufficient capacity to recover GA reservation", r,
 				))
 				return
 			}
 			h.logger.Error("public_checkout_recover: reserve GA capacity failed",
-				slog.String("tier_id", tierID.String()),
+				slog.String("session_id", origRes.SessionID.String()),
 				slog.String("error", err.Error()),
 			)
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
@@ -433,6 +426,61 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 				"reservation.seats_link_failed", "failed to link seat to reservation", r,
 			))
 			return
+		}
+	}
+
+	// ── 7e-bis. Allocate concrete GA units for the replacement hold ───────────
+	// (AB-51). Legacy pre-0063 reservations have no GA lines and keep the
+	// counter-only accounting from 7c.
+	if len(origGA) > 0 {
+		admission, aErr := resQ.GetSessionAdmissionModeByID(ctx, origRes.SessionID)
+		if aErr != nil {
+			h.logger.Error("public_checkout_recover: admission lookup failed", slog.String("error", aErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"reservation.insert_failed", "failed to recover reservation", r,
+			))
+			return
+		}
+		gaVersion := newVersion
+		if gaVersion == 0 {
+			gaVersion, aErr = resQ.IncrementSessionSeatStatusVersion(ctx, origRes.SessionID)
+			if aErr != nil {
+				h.logger.Error("public_checkout_recover: bump seat_status_version failed", slog.String("error", aErr.Error()))
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+					"reservation.status_version_failed", "failed to bump seat_status_version", r,
+				))
+				return
+			}
+		}
+		for i := range origGA {
+			g := origGA[i]
+			tierID := g.TierID
+			if _, uErr := hcheckout.AllocateGAUnitsTx(
+				ctx, resQ, origRes.SessionID, newRes.ID, gaVersion,
+				admission.SeatingPlanVersionID != nil,
+				[]hcheckout.GAUnitLine{{TierID: &tierID, Quantity: g.Quantity}},
+			); uErr != nil {
+				var capErr *hcheckout.CapacityError
+				if errors.As(uErr, &capErr) {
+					httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+						"reservation.over_capacity",
+						"insufficient capacity to recover GA reservation",
+						r,
+						map[string]any{
+							"tier_id":   tierID.String(),
+							"tier_name": g.TierName,
+							"requested": g.Quantity,
+						},
+					))
+					return
+				}
+				h.logger.Error("public_checkout_recover: GA unit allocation failed",
+					slog.String("tier_id", tierID.String()), slog.String("error", uErr.Error()))
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+					"reservation.capacity_failed", "failed to reserve capacity", r,
+				))
+				return
+			}
 		}
 	}
 

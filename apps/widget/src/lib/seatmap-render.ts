@@ -164,7 +164,8 @@ export function buildSeatMapSVG(
   categoryPrices: CategoryPrice[],
   seatStatuses: Record<string, SeatStatusValue>,
 ): string {
-  const { canvas, sections, standing_zones, decor_svg } = geometry;
+  const { canvas, sections, decor_svg } = geometry;
+  const standing_zones = geometry.standing_zones ?? [];
   const w = canvas.width > 0 ? canvas.width : 800;
   const h = canvas.height > 0 ? canvas.height : 600;
 

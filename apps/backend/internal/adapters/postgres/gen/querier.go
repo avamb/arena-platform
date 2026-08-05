@@ -425,6 +425,11 @@ type Querier interface {
 	UpdateSeatingPlan(ctx context.Context, id, ownerOrgID uuid.UUID, name, planType, visibility, status string) (SeatingPlanRow, error)
 	SetSeatingPlanCurrentVersion(ctx context.Context, id, ownerOrgID uuid.UUID, currentVersionID *uuid.UUID) (SeatingPlanRow, error)
 	SetSeatingPlanCategoryNameOverrides(ctx context.Context, id, ownerOrgID uuid.UUID, overrides json.RawMessage) (SeatingPlanRow, error)
+	InsertGAUnits(ctx context.Context, sessionID uuid.UUID, keyPrefix string, startIndex int32, tierID *uuid.UUID, quantity int32) (int64, error)
+	AllocateGAUnitsForHold(ctx context.Context, sessionID, reservationID uuid.UUID, stampTierID *uuid.UUID, statusVersion int64, unitTierFilter *uuid.UUID, limit int32) ([]SessionSeatRow, error)
+	ResetAvailableGAPoolTierStamps(ctx context.Context, sessionID uuid.UUID) (int64, error)
+	CountGAUnits(ctx context.Context, sessionID uuid.UUID) (int64, error)
+	DeleteAvailableGAPoolUnits(ctx context.Context, sessionID uuid.UUID, limit int32) (int64, error)
 	ArchiveSeatingPlan(ctx context.Context, id, ownerOrgID uuid.UUID) (SeatingPlanRow, error)
 	SoftDeleteSeatingPlan(ctx context.Context, id, ownerOrgID uuid.UUID) (SeatingPlanRow, error)
 	InsertSeatingPlanVersion(ctx context.Context, seatingPlanID uuid.UUID, versionNumber int32, geometry json.RawMessage, geometryChecksum string, svgAssetMediaID *uuid.UUID, capacitySeated, capacityStanding int32) (SeatingPlanVersionRow, error)
@@ -453,6 +458,7 @@ type Querier interface {
 	CountSessionSeatsByStatus(ctx context.Context, sessionID uuid.UUID, status string) (int64, error)
 	IncrementSessionSeatStatusVersion(ctx context.Context, sessionID uuid.UUID) (int64, error)
 	GetSessionAdmissionModeByID(ctx context.Context, sessionID uuid.UUID) (SessionAdmissionRow, error)
+	CountGAUnitsHeldSoldByTier(ctx context.Context, sessionID, tierID uuid.UUID) (int64, error)
 
 	// Reservation seats — reservation ↔ session_seats join (feature #305, Wave SEAT-B1)
 	InsertReservationSeat(ctx context.Context, reservationID, sessionSeatID uuid.UUID) error

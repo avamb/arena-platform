@@ -1,4 +1,4 @@
-﻿// seat_d2_313_test.go â€” contract tests for feature #313 Wave SEAT-D2:
+// seat_d2_313_test.go â€” contract tests for feature #313 Wave SEAT-D2:
 //
 //	GET_SCHEMA returns seat coordinates (seatId â†’ x, y) derived from
 //	seating_plan_versions.geometry, joinable to GET_SEAT_LIST by
@@ -100,7 +100,7 @@ func canonicalGeometry() (seating.Geometry, []byte, string) {
 				},
 			}},
 		}},
-		Tables:        []seating.Table{},
+		Tables: []seating.Table{},
 	}
 	raw, err := seating.CanonicalJSON(geom)
 	if err != nil {
@@ -402,7 +402,7 @@ func TestBil24_313_GetSchema_SeatKeyFallback(t *testing.T) {
 				},
 			}},
 		}},
-		Tables:        []seating.Table{},
+		Tables: []seating.Table{},
 	}
 	raw, err := json.Marshal(geom)
 	if err != nil {

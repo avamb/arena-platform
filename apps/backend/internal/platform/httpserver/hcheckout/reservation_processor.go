@@ -171,18 +171,19 @@ func (p *ReservationProcessor) expireReservation(ctx context.Context, r gen.Rese
 	// so this is a cheap no-op for them. A seat-release failure is non-fatal
 	// so the TTL worker still attempts the guarded state transition below
 	// (feature #309 §5.2 contract).
-	if released, err := releaseReservationSeatsTx(ctx, q, r.SessionID, r.ID); err != nil {
+	releasedSeats, relErr := releaseReservationSeatsTx(ctx, q, r.SessionID, r.ID)
+	if relErr != nil {
 		p.logger.Warn("reservation_processor: release seats failed (non-fatal)",
 			slog.String("reservation_id", r.ID.String()),
 			slog.String("session_id", r.SessionID.String()),
-			slog.Int("released", released),
-			slog.String("error", err.Error()),
+			slog.Int("released", releasedSeats),
+			slog.String("error", relErr.Error()),
 		)
-	} else if released > 0 {
+	} else if releasedSeats > 0 {
 		p.logger.Info("reservation_processor: seats released",
 			slog.String("reservation_id", r.ID.String()),
 			slog.String("session_id", r.SessionID.String()),
-			slog.Int("released", released),
+			slog.Int("released", releasedSeats),
 		)
 	}
 
@@ -206,8 +207,19 @@ func (p *ReservationProcessor) expireReservation(ctx context.Context, r gen.Rese
 
 	// Release held capacity — only reached when the guarded transition won.
 	// Non-fatal if it fails (inventory may already be inconsistent, but the
-	// reservation is already marked expired above).
-	if _, err := q.ReleaseCapacity(ctx, r.SessionID, r.TierID, r.Quantity); err != nil {
+	// reservation is already marked expired above). AB-51: reservations
+	// with linked seat/GA-unit rows were reserved session-level (nil
+	// tier); row-less legacy reservations mirror their original reserve.
+	if releasedSeats > 0 {
+		relQty := int32(releasedSeats) //nolint:gosec // bounded by seat count
+		if _, err := q.ReleaseCapacity(ctx, r.SessionID, nil, relQty); err != nil {
+			p.logger.Warn("reservation_processor: release capacity failed (non-fatal)",
+				slog.String("reservation_id", r.ID.String()),
+				slog.String("session_id", r.SessionID.String()),
+				slog.String("error", err.Error()),
+			)
+		}
+	} else if _, err := q.ReleaseCapacity(ctx, r.SessionID, r.TierID, r.Quantity); err != nil {
 		p.logger.Warn("reservation_processor: release capacity failed (non-fatal)",
 			slog.String("reservation_id", r.ID.String()),
 			slog.String("session_id", r.SessionID.String()),

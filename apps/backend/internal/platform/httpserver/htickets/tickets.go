@@ -244,7 +244,11 @@ func (h *Handler) IssueTicketsForCheckout(ctx context.Context, cs gen.CheckoutSe
 			newTickets = append(newTickets, t)
 		}
 	} else {
-		// General-admission fallback: one ticket per unit of reservation.Quantity.
+		// LEGACY general-admission fallback: one ticket per unit of
+		// reservation.Quantity, without seat identity. Since AB-51 every
+		// GA hold links concrete ga_unit rows via reservation_seats, so
+		// new reservations take the branch above and their tickets carry
+		// a real seat_key; only pre-AB-51 reservations land here.
 		for i := int32(0); i < reservation.Quantity; i++ {
 			if _, alreadyIssued := issuedOrdinals[i]; alreadyIssued {
 				continue // skip — already present from a prior attempt

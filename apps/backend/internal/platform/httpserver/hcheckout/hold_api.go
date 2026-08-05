@@ -308,16 +308,13 @@ func CreateGAHold(ctx context.Context, pool TxStarter, q *gen.Queries, in GAHold
 		return gen.ReservationRow{}, ErrHoldQuantityNotSupported
 	}
 
-	// Per-tier capacity reserves.
-	for i := range in.Items {
-		item := in.Items[i]
-		tierID := item.TierID
-		if _, err := txq.ReserveCapacity(ctx, in.SessionID, &tierID, item.Quantity); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return gen.ReservationRow{}, &CapacityError{TierID: &tierID, Requested: item.Quantity}
-			}
-			return gen.ReservationRow{}, fmt.Errorf("hcheckout: reserve GA capacity: %w", err)
+	// AB-51: session-level capacity reserve (the same accounting the
+	// seated path uses); concrete ga_unit rows are the per-tier truth.
+	if _, err := txq.ReserveCapacity(ctx, in.SessionID, nil, totalQty); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return gen.ReservationRow{}, &CapacityError{Requested: totalQty}
 		}
+		return gen.ReservationRow{}, fmt.Errorf("hcheckout: reserve GA capacity: %w", err)
 	}
 
 	// Single-tier holds keep reservation.tier_id populated for backward
@@ -332,7 +329,26 @@ func CreateGAHold(ctx context.Context, pool TxStarter, q *gen.Queries, in GAHold
 		return gen.ReservationRow{}, fmt.Errorf("hcheckout: insert GA reservation: %w", err)
 	}
 
-	// Persist the per-tier GA lines (migration 0063) in the same tx.
+	// Allocate concrete GA units for every line (AB-51): available ->
+	// held, reservation + tier stamped, linked via reservation_seats.
+	newVersion, err := txq.IncrementSessionSeatStatusVersion(ctx, in.SessionID)
+	if err != nil {
+		return gen.ReservationRow{}, fmt.Errorf("hcheckout: bump seat_status_version: %w", err)
+	}
+	lines := make([]GAUnitLine, 0, len(in.Items))
+	for i := range in.Items {
+		tid := in.Items[i].TierID
+		lines = append(lines, GAUnitLine{TierID: &tid, Quantity: in.Items[i].Quantity})
+	}
+	if _, err := AllocateGAUnitsTx(
+		ctx, txq, in.SessionID, res.ID, newVersion,
+		mode.SeatingPlanVersionID != nil, lines,
+	); err != nil {
+		return gen.ReservationRow{}, err
+	}
+
+	// Persist the per-tier GA lines (migration 0063) in the same tx —
+	// they remain the pricing snapshot the checkout confirm reads.
 	for _, it := range in.Items {
 		if err := txq.InsertReservationGAItem(ctx, res.ID, it.TierID, it.Quantity, it.UnitPrice); err != nil {
 			return gen.ReservationRow{}, fmt.Errorf("hcheckout: insert GA line: %w", err)
@@ -411,24 +427,28 @@ func ReleaseHold(ctx context.Context, pool TxStarter, q *gen.Queries, reservatio
 	}
 
 	// Return reserved capacity, mirroring how it was taken:
-	//   - session-level (nil tier) for the released seats,
-	//   - per-tier for each GA line,
+	//   - session-level (nil tier) for released seats AND GA units —
+	//     since AB-51 both kinds live in reservation_seats and reserve
+	//     session-level capacity;
+	//   - per-tier for GA lines of LEGACY pre-AB-51 holds (no linked
+	//     units — released == 0);
 	//   - legacy fallback (reservation.tier_id + quantity) when the hold
 	//     predates GA lines and holds no seats.
-	if released > 0 {
+	switch {
+	case released > 0:
 		relQty := int32(released) //nolint:gosec // bounded by seat count
 		if _, err := txq.ReleaseCapacity(ctx, current.SessionID, nil, relQty); err != nil {
 			return gen.ReservationRow{}, fmt.Errorf("hcheckout: release seat capacity: %w", err)
 		}
-	}
-	for i := range gaItems {
-		it := gaItems[i]
-		tierID := it.TierID
-		if _, err := txq.ReleaseCapacity(ctx, current.SessionID, &tierID, it.Quantity); err != nil {
-			return gen.ReservationRow{}, fmt.Errorf("hcheckout: release GA capacity: %w", err)
+	case len(gaItems) > 0:
+		for i := range gaItems {
+			it := gaItems[i]
+			tierID := it.TierID
+			if _, err := txq.ReleaseCapacity(ctx, current.SessionID, &tierID, it.Quantity); err != nil {
+				return gen.ReservationRow{}, fmt.Errorf("hcheckout: release GA capacity: %w", err)
+			}
 		}
-	}
-	if released == 0 && len(gaItems) == 0 {
+	default:
 		if _, err := txq.ReleaseCapacity(ctx, current.SessionID, current.TierID, current.Quantity); err != nil {
 			return gen.ReservationRow{}, fmt.Errorf("hcheckout: release capacity: %w", err)
 		}

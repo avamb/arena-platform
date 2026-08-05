@@ -447,8 +447,11 @@ func (h *Handler) HandleCreateReservation(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Reserve capacity — returns pgx.ErrNoRows when over-capacity.
-	if _, err := invQ.ReserveCapacity(ctx, sessionID, tierID, req.Quantity); err != nil {
+	// Reserve SESSION-LEVEL capacity — returns pgx.ErrNoRows when
+	// over-capacity. AB-51: the per-tier truth is the ga_unit allocation
+	// below; the ledger keeps the session rollup exactly like the seated
+	// path.
+	if _, err := invQ.ReserveCapacity(ctx, sessionID, nil, req.Quantity); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 				"reservation.over_capacity", "insufficient capacity for this reservation", r,
@@ -466,6 +469,44 @@ func (h *Handler) HandleCreateReservation(w http.ResponseWriter, r *http.Request
 	res, err := resQ.InsertReservation(ctx, orgID, channelID, sessionID, tierID, userID, req.Quantity, expiresAt)
 	if err != nil {
 		h.logger.Error("reservation: insert failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"reservation.insert_failed", "failed to create reservation", r,
+		))
+		return
+	}
+
+	// AB-51: allocate concrete GA units for the hold (available -> held,
+	// linked via reservation_seats). Plan-bound sessions allocate from
+	// the tier's category pool; plan-less from the fungible NULL pool.
+	admission, err := resQ.GetSessionAdmissionModeByID(ctx, sessionID)
+	if err != nil {
+		h.logger.Error("reservation: admission lookup failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"reservation.insert_failed", "failed to create reservation", r,
+		))
+		return
+	}
+	newVersion, err := resQ.IncrementSessionSeatStatusVersion(ctx, sessionID)
+	if err != nil {
+		h.logger.Error("reservation: bump seat_status_version failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"reservation.insert_failed", "failed to create reservation", r,
+		))
+		return
+	}
+	if _, err := AllocateGAUnitsTx(
+		ctx, resQ, sessionID, res.ID, newVersion,
+		admission.SeatingPlanVersionID != nil,
+		[]GAUnitLine{{TierID: tierID, Quantity: req.Quantity}},
+	); err != nil {
+		var capErr *CapacityError
+		if errors.As(err, &capErr) {
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
+				"reservation.over_capacity", "insufficient capacity for this reservation", r,
+			))
+			return
+		}
+		h.logger.Error("reservation: GA unit allocation failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"reservation.insert_failed", "failed to create reservation", r,
 		))
@@ -698,7 +739,8 @@ func (h *Handler) HandleCancelReservation(w http.ResponseWriter, r *http.Request
 	// the delta seat-status endpoints observe the release immediately
 	// (feature #309 §5.2 contract). Seat release is non-fatal: the
 	// guarded state transition above already won the row.
-	if _, err := releaseReservationSeatsTx(ctx, resQ, current.SessionID, current.ID); err != nil {
+	releasedSeats, err := releaseReservationSeatsTx(ctx, resQ, current.SessionID, current.ID)
+	if err != nil {
 		h.logger.Warn("reservation: release seats on cancel failed (non-fatal)",
 			slog.String("reservation_id", id.String()),
 			slog.String("error", err.Error()),
@@ -707,15 +749,26 @@ func (h *Handler) HandleCancelReservation(w http.ResponseWriter, r *http.Request
 		// clean up any leftover seat holds.
 	}
 
-	// Release held capacity back to available. Only reached after winning the
-	// guarded transition, so capacity is released exactly once.
-	if _, err := invQ.ReleaseCapacity(ctx, current.SessionID, current.TierID, current.Quantity); err != nil {
+	// Release held capacity back to available. Only reached after winning
+	// the guarded transition, so capacity is released exactly once.
+	// AB-51: reservations with linked seat/GA-unit rows were reserved
+	// session-level (nil tier); legacy row-less reservations mirror
+	// their original per-tier reserve.
+	if releasedSeats > 0 {
+		relQty := int32(releasedSeats) //nolint:gosec // bounded by seat count
+		if _, err := invQ.ReleaseCapacity(ctx, current.SessionID, nil, relQty); err != nil {
+			h.logger.Error("reservation: release capacity failed",
+				slog.String("reservation_id", id.String()),
+				slog.String("error", err.Error()),
+			)
+		}
+	} else if _, err := invQ.ReleaseCapacity(ctx, current.SessionID, current.TierID, current.Quantity); err != nil {
 		h.logger.Error("reservation: release capacity failed",
 			slog.String("reservation_id", id.String()),
 			slog.String("error", err.Error()),
 		)
-		// Non-fatal for the cancel operation itself — the reservation is already
-		// marked cancelled. Log and continue.
+		// Non-fatal for the cancel operation itself — the reservation is
+		// already marked cancelled. Log and continue.
 	}
 
 	if err := tx.Commit(ctx); err != nil {
