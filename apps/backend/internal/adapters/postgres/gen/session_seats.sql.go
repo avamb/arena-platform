@@ -452,6 +452,35 @@ func (q *Queries) SetSessionSeatTier(ctx context.Context, id, sessionID uuid.UUI
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// BulkSetSessionSeatTier  (AB-39, feature #429)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const bulkSetSessionSeatTier = `-- name: BulkSetSessionSeatTier :execrows
+UPDATE session_seats
+SET    tier_id    = $3::uuid,
+       updated_at = now()
+WHERE  session_id = $1
+  AND  seat_key   = ANY($2::text[])`
+
+// BulkSetSessionSeatTier reassigns every seat named in seatKeys to tierID
+// under session sessionID in one UPDATE. Returns the number of rows
+// matched (which equals the rows updated — the WHERE clause has no
+// short-circuit on already-set tier values). Not gated by seat status;
+// callers MUST pre-check for sold/held (§AB-39) before invoking.
+func (q *Queries) BulkSetSessionSeatTier(
+	ctx context.Context,
+	sessionID uuid.UUID,
+	seatKeys []string,
+	tierID uuid.UUID,
+) (int64, error) {
+	tag, err := q.db.Exec(ctx, bulkSetSessionSeatTier, sessionID, seatKeys, tierID)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CountSessionSeatsByStatus
 // ─────────────────────────────────────────────────────────────────────────────
 

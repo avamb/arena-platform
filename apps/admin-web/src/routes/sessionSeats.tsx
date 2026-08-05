@@ -133,6 +133,58 @@ export interface PatchSeatsRequest {
   readonly rows?: readonly PatchSeatsRowSelector[];
 }
 
+// AB-39 (feature #429): per-seat price category reassignment.
+export interface PatchSeatsCategoryRequest {
+  readonly tier_id: string;
+  readonly seat_keys: readonly string[];
+}
+
+export interface PatchSeatsCategorySummary {
+  readonly requested: number;
+  readonly updated: number;
+  readonly unknown: number;
+}
+
+export interface PatchSeatsCategoryResponse {
+  readonly session_id: string;
+  readonly tier_id: string;
+  readonly seat_status_version: number;
+  readonly updated_seat_keys: readonly string[];
+  readonly unknown_seat_keys: readonly string[];
+  readonly summary: PatchSeatsCategorySummary;
+}
+
+export interface AdminSeatRow {
+  readonly id: string;
+  readonly seat_key: string;
+  readonly sector_name: string;
+  readonly row_name: string;
+  readonly seat_number: string;
+  readonly status: SeatStatus;
+  readonly tier_id: string | null;
+  readonly kind: string;
+}
+
+export interface AdminSeatsResponse {
+  readonly session_id: string;
+  readonly seat_status_version: number;
+  readonly seats: readonly AdminSeatRow[];
+}
+
+export interface AdminTicketTier {
+  readonly id: string;
+  readonly session_id: string;
+  readonly name: string;
+  readonly pricing_mode: string;
+  readonly price_amount: number;
+  readonly currency: string;
+}
+
+export interface AdminTicketTierEnvelope {
+  readonly ticket_tiers?: readonly AdminTicketTier[];
+  readonly tiers?: readonly AdminTicketTier[];
+}
+
 // ---------------------------------------------------------------------------
 // Colour palette shared by legend, seats, and counters
 // ---------------------------------------------------------------------------
@@ -545,6 +597,86 @@ export function SessionSeatsScreen({
     retry: false,
   });
 
+  // AB-39: admin seat inventory with per-seat tier binding + active tiers.
+  const adminSeatsQuery = useQuery<AdminSeatsResponse, ApiError>({
+    queryKey: ["session-seats-admin", sessionId],
+    queryFn: () =>
+      authedFetch<AdminSeatsResponse>({
+        method: "GET",
+        path: `/v1/event-sessions/${sessionId}/seats/admin`,
+      }),
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+
+  const tiersQuery = useQuery<AdminTicketTierEnvelope, ApiError>({
+    queryKey: ["session-seats-tiers", orgId, eventId, sessionId],
+    queryFn: () =>
+      authedFetch<AdminTicketTierEnvelope>({
+        method: "GET",
+        path: `/v1/organizations/${orgId}/events/${eventId}/sessions/${sessionId}/tiers`,
+      }),
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+
+  const tiers = useMemo<readonly AdminTicketTier[]>(
+    () =>
+      tiersQuery.data?.ticket_tiers ??
+      tiersQuery.data?.tiers ??
+      [],
+    [tiersQuery.data],
+  );
+  const tierById = useMemo<Record<string, AdminTicketTier>>(() => {
+    const out: Record<string, AdminTicketTier> = {};
+    for (const t of tiers) out[t.id] = t;
+    return out;
+  }, [tiers]);
+
+  const patchCategory = useMutation<
+    PatchSeatsCategoryResponse,
+    ApiError,
+    PatchSeatsCategoryRequest
+  >({
+    mutationFn: (req) =>
+      authedFetch<PatchSeatsCategoryResponse>({
+        method: "PATCH",
+        path: `/v1/event-sessions/${sessionId}/seats/category`,
+        body: req,
+      }),
+    onSuccess: (res) => {
+      const tierName = tierById[res.tier_id]?.name ?? res.tier_id.slice(0, 8);
+      setOutcomeSummary(null);
+      setBanner({
+        tone: "ok",
+        message: `Reassigned ${res.summary.updated} seat(s) to tier "${tierName}"${
+          res.summary.unknown > 0 ? ` (${res.summary.unknown} unknown seat_key skipped)` : ""
+        }. seat_status_version=${res.seat_status_version}.`,
+      });
+      setSelected(new Set<string>());
+      qc.invalidateQueries({ queryKey: ["session-seats-admin", sessionId] });
+      qc.invalidateQueries({ queryKey: ["session-seats-status", sessionId] });
+    },
+    onError: (err) => {
+      setOutcomeSummary(null);
+      const conflictKeys =
+        err.details && typeof err.details === "object"
+          ? (err.details as { conflicting_seat_keys?: readonly string[] })
+              .conflicting_seat_keys
+          : undefined;
+      const suffix =
+        conflictKeys && conflictKeys.length > 0
+          ? ` — conflicting seats: ${conflictKeys.slice(0, 6).join(", ")}${
+              conflictKeys.length > 6 ? " …" : ""
+            }`
+          : "";
+      setBanner({
+        tone: "err",
+        message: `${err.code}: ${err.message}${suffix}`,
+      });
+    },
+  });
+
   const patch = useMutation<PatchSeatsResponse, ApiError, PatchSeatsRequest>({
     mutationFn: (req) =>
       authedFetch<PatchSeatsResponse>({
@@ -561,6 +693,7 @@ export function SessionSeatsScreen({
       });
       setSelected(new Set<string>());
       qc.invalidateQueries({ queryKey: ["session-seats-status", sessionId] });
+      qc.invalidateQueries({ queryKey: ["session-seats-admin", sessionId] });
     },
     onError: (err) => {
       setOutcomeSummary(null);
@@ -644,6 +777,31 @@ export function SessionSeatsScreen({
     patch.mutate({ action: "unblock", seat_keys: Array.from(selected) });
   }, [selected, patch]);
 
+  // AB-39: reassign the current selection to a chosen tier.
+  const applyCategory = useCallback(
+    (tierID: string) => {
+      if (selected.size === 0 || tierID === "") return;
+      patchCategory.mutate({
+        tier_id: tierID,
+        seat_keys: Array.from(selected),
+      });
+    },
+    [selected, patchCategory],
+  );
+
+  // Toggle-select a whole row of the seat table.
+  const onTableRowClick = useCallback(
+    (key: string, extend: boolean) => {
+      setSelected((prev) => {
+        const next = extend ? new Set(prev) : new Set<string>();
+        if (extend && prev.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
+      });
+    },
+    [],
+  );
+
   const isDesktop =
     forceLayout === "desktop" ? true : forceLayout === "mobile" ? false : true;
 
@@ -685,6 +843,14 @@ export function SessionSeatsScreen({
               // Safe: renderSeatMapSVG escapes every interpolated value.
               dangerouslySetInnerHTML={{ __html: svgHtml }}
             />
+            <SeatTable
+              rows={adminSeatsQuery.data?.seats ?? []}
+              tiers={tierById}
+              selected={selected}
+              onRowClick={onTableRowClick}
+              loading={adminSeatsQuery.isPending}
+              error={adminSeatsQuery.error}
+            />
           </section>
 
           <aside style={sideColumnStyle}>
@@ -697,6 +863,13 @@ export function SessionSeatsScreen({
               onBlock={applyBlock}
               onUnblock={applyUnblock}
               pending={patch.isPending}
+            />
+
+            <CategoryPicker
+              selected={selected}
+              tiers={tiers}
+              onApply={applyCategory}
+              pending={patchCategory.isPending}
             />
 
             {banner !== null ? (
@@ -916,6 +1089,194 @@ function OutcomeSummaryPanel({ summary }: { summary: OutcomeSummary }) {
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+// AB-39: category picker — one dropdown of active tiers + Apply button.
+// Applies the current selection to the chosen tier via the bulk PATCH
+// endpoint. Disabled when the selection is empty, no tier chosen, or a
+// request is inflight.
+function CategoryPicker({
+  selected,
+  tiers,
+  onApply,
+  pending,
+}: {
+  selected: ReadonlySet<string>;
+  tiers: readonly AdminTicketTier[];
+  onApply: (tierID: string) => void;
+  pending: boolean;
+}) {
+  const [tierID, setTierID] = useState<string>("");
+  return (
+    <div style={sectionStyle} data-testid="session-seats-category-picker">
+      <div style={sectionTitleStyle}>
+        AB-39 · Change category ({selected.size} selected)
+      </div>
+      <div style={selectorRowStyle}>
+        <label style={miniLabelStyle}>
+          Target tier
+          <select
+            value={tierID}
+            onChange={(e) => setTierID(e.target.value)}
+            style={inputStyle}
+            disabled={tiers.length === 0}
+            data-testid="session-seats-tier-picker"
+          >
+            <option value="">—</option>
+            {tiers.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+                {t.pricing_mode === "fixed"
+                  ? ` — ${(t.price_amount / 100).toFixed(2)} ${t.currency}`
+                  : t.pricing_mode !== ""
+                    ? ` — ${t.pricing_mode}`
+                    : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          style={primaryButtonStyle}
+          disabled={pending || selected.size === 0 || tierID === ""}
+          onClick={() => onApply(tierID)}
+          data-testid="session-seats-category-apply"
+        >
+          {pending ? "Applying…" : "Apply category"}
+        </button>
+      </div>
+      {tiers.length === 0 ? (
+        <p style={hintStyle}>
+          No active tiers on this session — create tiers first in the
+          session tier editor.
+        </p>
+      ) : (
+        <p style={hintStyle}>
+          Reassignment is rejected for seats currently held or sold; the
+          error banner will list the conflicting keys.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// AB-39: seat inventory table. Rows share the selection state with the
+// SVG map, so clicking a table row highlights the seat on the map (and
+// vice versa). Held/sold rows are colour-tinted so bulk actions become
+// visually predictable. Shift+click extends the selection; a bare click
+// on a row resets the selection to that seat.
+function SeatTable({
+  rows,
+  tiers,
+  selected,
+  onRowClick,
+  loading,
+  error,
+}: {
+  rows: readonly AdminSeatRow[];
+  tiers: Readonly<Record<string, AdminTicketTier>>;
+  selected: ReadonlySet<string>;
+  onRowClick: (key: string, extend: boolean) => void;
+  loading: boolean;
+  error: ApiError | null;
+}) {
+  if (loading) {
+    return (
+      <div style={statusBoxStyle} role="status">
+        Loading seat inventory…
+      </div>
+    );
+  }
+  if (error !== null) {
+    return (
+      <div style={errorBoxStyle} role="alert" data-testid="session-seats-table-error">
+        <strong>Failed to load seat inventory.</strong>
+        <div style={errorCodeStyle}>{error.code ?? "unknown.error"}</div>
+        {error.message ? <div>{error.message}</div> : null}
+      </div>
+    );
+  }
+  if (rows.length === 0) {
+    return (
+      <div style={statusBoxStyle} role="status">
+        No seated inventory materialized for this session.
+      </div>
+    );
+  }
+  return (
+    <div style={sectionStyle} data-testid="session-seats-table-panel">
+      <div style={sectionTitleStyle}>
+        Seat inventory ({rows.length} rows · selected {selected.size})
+      </div>
+      <div style={{ maxHeight: 360, overflow: "auto" }}>
+        <table
+          style={countersTableStyle}
+          data-testid="session-seats-table"
+        >
+          <thead>
+            <tr>
+              <th style={countersThStyle}>Sector</th>
+              <th style={countersThStyle}>Row</th>
+              <th style={countersThStyle}>Seat</th>
+              <th style={countersThStyle}>Category (tier)</th>
+              <th style={countersThStyle}>Price</th>
+              <th style={countersThStyle}>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const tier = r.tier_id !== null ? tiers[r.tier_id] : undefined;
+              const isSelected = selected.has(r.seat_key);
+              const statusColour = SEAT_STATUS_COLOURS[r.status] ?? UNKNOWN_STATUS_COLOUR;
+              const rowStyle: CSSProperties = {
+                cursor: "pointer",
+                background: isSelected
+                  ? "#fef3c7"
+                  : r.status === "sold" || r.status === "held"
+                    ? "#f8fafc"
+                    : "#ffffff",
+                outline: isSelected ? "2px solid #e11d48" : "none",
+              };
+              const price =
+                tier && tier.pricing_mode === "fixed"
+                  ? `${(tier.price_amount / 100).toFixed(2)} ${tier.currency}`
+                  : tier
+                    ? tier.pricing_mode
+                    : "—";
+              return (
+                <tr
+                  key={r.id}
+                  style={rowStyle}
+                  data-testid={`session-seats-table-row-${r.seat_key}`}
+                  data-seat-key={r.seat_key}
+                  data-tier-id={r.tier_id ?? ""}
+                  onClick={(e) => onRowClick(r.seat_key, e.shiftKey || e.metaKey || e.ctrlKey)}
+                >
+                  <td style={countersTdStyle}>{r.sector_name}</td>
+                  <td style={countersTdStyle}>{r.row_name}</td>
+                  <td style={countersTdStyle}>{r.seat_number}</td>
+                  <td style={countersTdStyle}>
+                    {tier ? tier.name : <em>unbound</em>}
+                  </td>
+                  <td style={countersTdStyle}>{price}</td>
+                  <td style={countersTdStyle}>
+                    <span
+                      style={{
+                        ...legendSwatchStyle,
+                        background: statusColour,
+                        marginRight: 4,
+                      }}
+                    />
+                    {SEAT_STATUS_LABELS[r.status]}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

@@ -50,6 +50,14 @@ const (
 	Organization AdminCreatedUserScope = "organization"
 )
 
+// Defines values for AdminSeatRowStatus.
+const (
+	AdminSeatRowStatusAvailable   AdminSeatRowStatus = "available"
+	AdminSeatRowStatusHeld        AdminSeatRowStatus = "held"
+	AdminSeatRowStatusSold        AdminSeatRowStatus = "sold"
+	AdminSeatRowStatusUnavailable AdminSeatRowStatus = "unavailable"
+)
+
 // Defines values for BarcodeAuthorityItemType.
 const (
 	BarcodeAuthorityItemTypeExternalPlatform BarcodeAuthorityItemType = "external_platform"
@@ -354,10 +362,10 @@ const (
 
 // Defines values for PatchSessionSeatsSeatOutcomeOutcome.
 const (
-	Available   PatchSessionSeatsSeatOutcomeOutcome = "available"
-	Noop        PatchSessionSeatsSeatOutcomeOutcome = "noop"
-	Skipped     PatchSessionSeatsSeatOutcomeOutcome = "skipped"
-	Unavailable PatchSessionSeatsSeatOutcomeOutcome = "unavailable"
+	PatchSessionSeatsSeatOutcomeOutcomeAvailable   PatchSessionSeatsSeatOutcomeOutcome = "available"
+	PatchSessionSeatsSeatOutcomeOutcomeNoop        PatchSessionSeatsSeatOutcomeOutcome = "noop"
+	PatchSessionSeatsSeatOutcomeOutcomeSkipped     PatchSessionSeatsSeatOutcomeOutcome = "skipped"
+	PatchSessionSeatsSeatOutcomeOutcomeUnavailable PatchSessionSeatsSeatOutcomeOutcome = "unavailable"
 )
 
 // Defines values for PaymentIntentItemState.
@@ -816,6 +824,39 @@ type AdminCreatedUserOnboarding struct {
 
 	// PasswordResetIssued Whether a one-time password setup token was issued.
 	PasswordResetIssued bool `json:"password_reset_issued"`
+}
+
+// AdminSeatRow AB-39 admin-only seat row: the fields the operator table
+// (`ID | Sector | Row | Seat | Category | Price | Status`) needs
+// to render the mandatory seat inventory. The public seat-status
+// endpoint intentionally omits `tier_id`; this admin-only surface
+// exposes it so a reassignment can be visually confirmed.
+type AdminSeatRow struct {
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Reserved for GA-unit rows; empty string for seated rows.
+	Kind       string             `json:"kind"`
+	RowName    string             `json:"row_name"`
+	SeatKey    string             `json:"seat_key"`
+	SeatNumber string             `json:"seat_number"`
+	SectorName string             `json:"sector_name"`
+	Status     AdminSeatRowStatus `json:"status"`
+
+	// TierId Current tier binding, or null when unbound (should not happen
+	// after AB-39 lands — the invariant is "every seat carries a
+	// non-null tier_id after bind").
+	TierId *openapi_types.UUID `json:"tier_id"`
+}
+
+// AdminSeatRowStatus defines model for AdminSeatRow.Status.
+type AdminSeatRowStatus string
+
+// AdminSeatsResponse 200 body for `GET /v1/event-sessions/{id}/seats/admin` (AB-39).
+// Returned in canonical seat_key ASC order.
+type AdminSeatsResponse struct {
+	SeatStatusVersion int64              `json:"seat_status_version"`
+	Seats             []AdminSeatRow     `json:"seats"`
+	SessionId         openapi_types.UUID `json:"session_id"`
 }
 
 // AdminTicketDeliveryResendResponse Envelope returned by
@@ -3588,6 +3629,63 @@ type PasswordResetRequestResponse struct {
 	Message string `json:"message"`
 }
 
+// PatchSessionSeatsCategoryRequest Bulk assign one `tier_id` to the listed `seat_keys` in a session.
+// AB-39 / feature #429. `n=1` is the single-seat case. Reassignment
+// of seats currently in `held` or `sold` status is rejected with
+// a 409 `seating.category_reassign_conflict` that lists the
+// conflicting keys — the caller MUST NOT retry those keys without
+// first releasing or cancelling the underlying reservation.
+type PatchSessionSeatsCategoryRequest struct {
+	// SeatKeys Session-local `seat_key` values (produced by the SVG
+	// importer, e.g. `s|balcony|left|3|7`). Unknown keys are
+	// reported per-key in `unknown_seat_keys` — they do NOT
+	// fail the request.
+	SeatKeys []string `json:"seat_keys"`
+
+	// TierId Target `ticket_tiers.id`. MUST belong to the same session
+	// and MUST NOT be soft-deleted. Reassignment to a NULL tier
+	// is not supported — every seat carries a non-null tier after
+	// bind (AB-39 invariant).
+	TierId openapi_types.UUID `json:"tier_id"`
+}
+
+// PatchSessionSeatsCategoryResponse 200 response for `PATCH /v1/event-sessions/{id}/seats/category`.
+// `seat_status_version` is the freshly incremented value stamped by
+// the transaction — widget and feed caches should refetch when they
+// see a value larger than their cursor. `updated_seat_keys` is the
+// deterministic (sorted) list of keys actually reassigned;
+// `unknown_seat_keys` lists caller-supplied keys that did not
+// resolve to any session_seats row (typos or stale plan versions).
+type PatchSessionSeatsCategoryResponse struct {
+	// SeatStatusVersion Fresh `sessions.seat_status_version` value after the bulk
+	// reassignment commits. Downstream observers should treat
+	// values above their cursor as a signal to refetch.
+	SeatStatusVersion int64              `json:"seat_status_version"`
+	SessionId         openapi_types.UUID `json:"session_id"`
+
+	// Summary Aggregate counters for the category reassignment call.
+	Summary PatchSessionSeatsCategorySummary `json:"summary"`
+	TierId  openapi_types.UUID               `json:"tier_id"`
+
+	// UnknownSeatKeys Caller-supplied keys not matching any session seat. Sorted.
+	UnknownSeatKeys []string `json:"unknown_seat_keys"`
+
+	// UpdatedSeatKeys Seat keys whose `tier_id` now equals the request `tier_id`. Sorted.
+	UpdatedSeatKeys []string `json:"updated_seat_keys"`
+}
+
+// PatchSessionSeatsCategorySummary Aggregate counters for the category reassignment call.
+type PatchSessionSeatsCategorySummary struct {
+	// Requested Length of the caller's `seat_keys` array (before dedup).
+	Requested int `json:"requested"`
+
+	// Unknown Number of caller-supplied keys that did not match any session_seats row.
+	Unknown int `json:"unknown"`
+
+	// Updated Number of session_seats rows reassigned to the target tier.
+	Updated int `json:"updated"`
+}
+
 // PatchSessionSeatsRequest Request body for the operator seat block/unblock endpoint. At
 // least one of `seat_keys`, `sectors`, `rows` MUST be non-empty
 // (409 `seating.no_selectors` otherwise). Selectors are unioned
@@ -5372,6 +5470,7 @@ type SessionMediaGalleryResponse struct {
 // Exactly one of `media_id` (kind='poster') or `video_url`
 // (kind='video') is non-null per row.
 type SessionMediaItem struct {
+	// CreatedAt Insertion timestamp of this gallery row (server clock, UTC).
 	CreatedAt time.Time `json:"created_at"`
 
 	// Id Server-generated identifier of this gallery row.
@@ -5384,16 +5483,18 @@ type SessionMediaItem struct {
 
 	// MediaId Media object id for poster items. The referenced object must
 	// have `owner_type='session_poster'`. Null for video items.
-	MediaId *openapi_types.UUID `json:"media_id"`
+	MediaId *openapi_types.UUID `json:"media_id,omitempty"`
 
 	// Position Zero-based position in the gallery. Server-assigned in the
 	// order items appear in the PUT request body.
-	Position  int       `json:"position"`
+	Position int `json:"position"`
+
+	// UpdatedAt Last-modification timestamp of this row (server clock, UTC).
 	UpdatedAt time.Time `json:"updated_at"`
 
 	// VideoUrl HTTPS URL for video items on the allowlisted hosts. Null for
 	// poster items.
-	VideoUrl *string `json:"video_url"`
+	VideoUrl *string `json:"video_url,omitempty"`
 }
 
 // SessionMediaItemKind Discriminator. `poster` items carry `media_id`; `video` items
@@ -5406,17 +5507,19 @@ type SessionMediaItemKind string
 // position order. Server assigns positions 0..N-1. Max 5 poster
 // items and 20 total items.
 type SessionMediaReplaceRequest struct {
+	// Items Ordered gallery entries. Server assigns positions 0..N-1
+	// in request order. Empty array clears the gallery.
 	Items []struct {
 		Kind SessionMediaReplaceRequestItemsKind `json:"kind"`
 
 		// MediaId Required for kind='poster'. Must reference a
 		// media_objects row of owner_type='session_poster'.
-		MediaId *openapi_types.UUID `json:"media_id"`
+		MediaId *openapi_types.UUID `json:"media_id,omitempty"`
 
 		// VideoUrl Required for kind='video'. HTTPS URL on an
 		// allowlisted host (youtube.com, youtu.be, vk.com,
 		// rutube.ru, vimeo.com).
-		VideoUrl *string `json:"video_url"`
+		VideoUrl *string `json:"video_url,omitempty"`
 	} `json:"items"`
 }
 
@@ -7084,6 +7187,9 @@ type PostV1DevTokenJSONRequestBody = DevTokenRequest
 
 // PostV1EchoJSONRequestBody defines body for PostV1Echo for application/json ContentType.
 type PostV1EchoJSONRequestBody = EchoRequest
+
+// PatchSessionSeatsCategoryJSONRequestBody defines body for PatchSessionSeatsCategory for application/json ContentType.
+type PatchSessionSeatsCategoryJSONRequestBody = PatchSessionSeatsCategoryRequest
 
 // PublishEventJSONRequestBody defines body for PublishEvent for application/json ContentType.
 type PublishEventJSONRequestBody = PublishEventRequest

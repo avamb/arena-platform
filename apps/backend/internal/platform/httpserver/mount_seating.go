@@ -85,4 +85,22 @@ func (s *Server) mountSeatingRoutes(r chi.Router) {
 			s.handlePatchSessionSeats,
 		)
 	})
+
+	// AB-39 (feature #429): per-seat price category reassignment + admin
+	// seat inventory read surface. Flat paths — the shim resolves the
+	// session's org before enforcing membership. Same permission family:
+	// an operator authorised to bind a plan is authorised to move seats
+	// between the tiers minted from it, and to see the underlying tier
+	// binding per seat (which the public seat-status endpoint hides).
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "event_session.assign_seating_plan", "seating")
+		pr.Patch(
+			"/event-sessions/{id}/seats/category",
+			s.handlePatchSessionSeatsCategory,
+		)
+		pr.Get(
+			"/event-sessions/{id}/seats/admin",
+			s.handleListSessionSeatsAdmin,
+		)
+	})
 }

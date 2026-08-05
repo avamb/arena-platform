@@ -3867,6 +3867,150 @@ components:
                   allowlisted host (youtube.com, youtu.be, vk.com,
                   rutube.ru, vimeo.com).
 
+    AdminSeatRow:
+      type: object
+      required: [id, seat_key, sector_name, row_name, seat_number, status, tier_id, kind]
+      description: |
+        AB-39 admin-only seat row: the fields the operator table
+        (`ID | Sector | Row | Seat | Category | Price | Status`) needs
+        to render the mandatory seat inventory. The public seat-status
+        endpoint intentionally omits `tier_id`; this admin-only surface
+        exposes it so a reassignment can be visually confirmed.
+      properties:
+        id:
+          type: string
+          format: uuid
+        seat_key:
+          type: string
+        sector_name:
+          type: string
+        row_name:
+          type: string
+        seat_number:
+          type: string
+        status:
+          type: string
+          enum: [available, held, sold, unavailable]
+        tier_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            Current tier binding, or null when unbound (should not happen
+            after AB-39 lands — the invariant is "every seat carries a
+            non-null tier_id after bind").
+        kind:
+          type: string
+          description: Reserved for GA-unit rows; empty string for seated rows.
+
+    AdminSeatsResponse:
+      type: object
+      required: [session_id, seat_status_version, seats]
+      description: |
+        200 body for `GET /v1/event-sessions/{id}/seats/admin` (AB-39).
+        Returned in canonical seat_key ASC order.
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        seat_status_version:
+          type: integer
+          format: int64
+        seats:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminSeatRow"
+
+    PatchSessionSeatsCategoryRequest:
+      type: object
+      required: [tier_id, seat_keys]
+      description: |
+        Bulk assign one `tier_id` to the listed `seat_keys` in a session.
+        AB-39 / feature #429. `n=1` is the single-seat case. Reassignment
+        of seats currently in `held` or `sold` status is rejected with
+        a 409 `seating.category_reassign_conflict` that lists the
+        conflicting keys — the caller MUST NOT retry those keys without
+        first releasing or cancelling the underlying reservation.
+      properties:
+        tier_id:
+          type: string
+          format: uuid
+          description: |
+            Target `ticket_tiers.id`. MUST belong to the same session
+            and MUST NOT be soft-deleted. Reassignment to a NULL tier
+            is not supported — every seat carries a non-null tier after
+            bind (AB-39 invariant).
+        seat_keys:
+          type: array
+          minItems: 1
+          maxItems: 10000
+          description: |
+            Session-local `seat_key` values (produced by the SVG
+            importer, e.g. `s|balcony|left|3|7`). Unknown keys are
+            reported per-key in `unknown_seat_keys` — they do NOT
+            fail the request.
+          items:
+            type: string
+
+    PatchSessionSeatsCategoryResponse:
+      type: object
+      required:
+        - session_id
+        - tier_id
+        - seat_status_version
+        - updated_seat_keys
+        - unknown_seat_keys
+        - summary
+      description: |
+        200 response for `PATCH /v1/event-sessions/{id}/seats/category`.
+        `seat_status_version` is the freshly incremented value stamped by
+        the transaction — widget and feed caches should refetch when they
+        see a value larger than their cursor. `updated_seat_keys` is the
+        deterministic (sorted) list of keys actually reassigned;
+        `unknown_seat_keys` lists caller-supplied keys that did not
+        resolve to any session_seats row (typos or stale plan versions).
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        tier_id:
+          type: string
+          format: uuid
+        seat_status_version:
+          type: integer
+          format: int64
+          description: |
+            Fresh `sessions.seat_status_version` value after the bulk
+            reassignment commits. Downstream observers should treat
+            values above their cursor as a signal to refetch.
+        updated_seat_keys:
+          type: array
+          description: Seat keys whose `tier_id` now equals the request `tier_id`. Sorted.
+          items:
+            type: string
+        unknown_seat_keys:
+          type: array
+          description: Caller-supplied keys not matching any session seat. Sorted.
+          items:
+            type: string
+        summary:
+          $ref: "#/components/schemas/PatchSessionSeatsCategorySummary"
+
+    PatchSessionSeatsCategorySummary:
+      type: object
+      required: [requested, updated, unknown]
+      description: Aggregate counters for the category reassignment call.
+      properties:
+        requested:
+          type: integer
+          description: Length of the caller's `seat_keys` array (before dedup).
+        updated:
+          type: integer
+          description: Number of session_seats rows reassigned to the target tier.
+        unknown:
+          type: integer
+          description: Number of caller-supplied keys that did not match any session_seats row.
+
     TicketTierItem:
       type: object
       required:
@@ -15275,6 +15419,195 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database pool or session queries unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/event-sessions/{id}/seats/admin:
+    get:
+      operationId: listSessionSeatsAdmin
+      summary: Admin-only per-seat inventory (AB-39)
+      description: |
+        Returns per-seat rows with `tier_id` for the admin seat table.
+        Requires JWT + `event_session.assign_seating_plan`. Tenant is
+        resolved from the session's owning organization.
+      tags: [v1, seating]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Seat inventory in canonical seat_key ASC order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSeatsResponse"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks permission or org membership.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/event-sessions/{id}/seats/category:
+    patch:
+      operationId: patchSessionSeatsCategory
+      summary: Reassign a set of seats to a different price category (tier)
+      description: |
+        AB-39 (feature #429). Bil24's core pricing gesture — select seats
+        on the hall map or in the seat table, then move them all to a
+        different `ticket_tiers` row. `n=1` is the single-seat case;
+        there is no non-bulk variant.
+
+        Contract:
+          * Reassignment of seats currently in `held` or `sold` status is
+            rejected with 409 `seating.category_reassign_conflict` — the
+            error `details.conflicting_seat_keys` lists the offending
+            keys. Seats in `available` or `unavailable` status may be
+            reassigned freely.
+          * `sessions.seat_status_version` is bumped exactly once per
+            call so widget / feed caches invalidate.
+          * The tier MUST belong to the session and MUST NOT be
+            soft-deleted, else 422 `seating.tier_not_found_in_session`.
+          * Unknown seat_keys are reported in `unknown_seat_keys` — they
+            do NOT fail the request.
+
+        Requires JWT + `event_session.assign_seating_plan`. Tenant is
+        resolved from the session's owning organization.
+      tags: [v1, seating]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the event session.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchSessionSeatsCategoryRequest"
+            examples:
+              singleSeat:
+                summary: Move one seat to another tier (n=1)
+                value:
+                  tier_id: "01929d0e-0e47-7000-8000-000000000701"
+                  seat_keys: ["s|balcony|left|3|7"]
+              bulkBalcony:
+                summary: Reassign a balcony row
+                value:
+                  tier_id: "01929d0e-0e47-7000-8000-000000000702"
+                  seat_keys:
+                    - "s|balcony|left|3|1"
+                    - "s|balcony|left|3|2"
+                    - "s|balcony|left|3|3"
+      responses:
+        "200":
+          description: |
+            Reassignment succeeded. Returns the fresh
+            `seat_status_version`, the sorted list of updated keys, and
+            any caller-supplied unknown keys.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PatchSessionSeatsCategoryResponse"
+        "400":
+          description: |
+            Malformed request. Possible error codes:
+            `seating.invalid_body`, `seating.invalid_tier_id`,
+            `seating.no_seat_keys`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: |
+            Caller lacks `event_session.assign_seating_plan` or is not a
+            member of the session's owning organization
+            (`org.access_denied`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found (`session.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            One or more seats are currently `held` or `sold`
+            (`seating.category_reassign_conflict`). The
+            `details.conflicting_seat_keys` field lists the blocking
+            keys — the caller MUST release or cancel the underlying
+            reservation before retrying.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: |
+            Semantic validation failure. Possible error codes:
+            `seating.tier_not_found_in_session`,
+            `seating.no_seated_inventory` (session is general_admission),
+            `seating.too_many_seat_keys`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error. Possible codes:
+            `seating.category_patch_failed`, `seating.audit_failed`,
+            `seating.commit_failed`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or seating queries unavailable.
           content:
             application/json:
               schema:

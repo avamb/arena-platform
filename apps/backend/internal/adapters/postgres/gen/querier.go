@@ -462,6 +462,7 @@ type Querier interface {
 	BlockSessionSeat(ctx context.Context, id uuid.UUID, statusVersion int64) (SessionSeatRow, error)
 	UnblockSessionSeat(ctx context.Context, id uuid.UUID, statusVersion int64) (SessionSeatRow, error)
 	SetSessionSeatTier(ctx context.Context, id, sessionID uuid.UUID, tierID *uuid.UUID) (SessionSeatRow, error)
+	BulkSetSessionSeatTier(ctx context.Context, sessionID uuid.UUID, seatKeys []string, tierID uuid.UUID) (int64, error)
 	CountSessionSeatsByStatus(ctx context.Context, sessionID uuid.UUID, status string) (int64, error)
 	IncrementSessionSeatStatusVersion(ctx context.Context, sessionID uuid.UUID) (int64, error)
 	GetSessionAdmissionModeByID(ctx context.Context, sessionID uuid.UUID) (SessionAdmissionRow, error)

@@ -2091,6 +2091,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/event-sessions/{id}/seats/admin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin-only per-seat inventory (AB-39)
+         * @description Returns per-seat rows with `tier_id` for the admin seat table.
+         *     Requires JWT + `event_session.assign_seating_plan`. Tenant is
+         *     resolved from the session's owning organization.
+         */
+        get: operations["listSessionSeatsAdmin"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/event-sessions/{id}/seats/category": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Reassign a set of seats to a different price category (tier)
+         * @description AB-39 (feature #429). Bil24's core pricing gesture — select seats
+         *     on the hall map or in the seat table, then move them all to a
+         *     different `ticket_tiers` row. `n=1` is the single-seat case;
+         *     there is no non-bulk variant.
+         *
+         *     Contract:
+         *       * Reassignment of seats currently in `held` or `sold` status is
+         *         rejected with 409 `seating.category_reassign_conflict` — the
+         *         error `details.conflicting_seat_keys` lists the offending
+         *         keys. Seats in `available` or `unavailable` status may be
+         *         reassigned freely.
+         *       * `sessions.seat_status_version` is bumped exactly once per
+         *         call so widget / feed caches invalidate.
+         *       * The tier MUST belong to the session and MUST NOT be
+         *         soft-deleted, else 422 `seating.tier_not_found_in_session`.
+         *       * Unknown seat_keys are reported in `unknown_seat_keys` — they
+         *         do NOT fail the request.
+         *
+         *     Requires JWT + `event_session.assign_seating_plan`. Tenant is
+         *     resolved from the session's owning organization.
+         */
+        patch: operations["patchSessionSeatsCategory"];
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers": {
         parameters: {
             query?: never;
@@ -8125,6 +8186,104 @@ export interface components {
                  */
                 video_url?: string;
             }[];
+        };
+        /**
+         * @description AB-39 admin-only seat row: the fields the operator table
+         *     (`ID | Sector | Row | Seat | Category | Price | Status`) needs
+         *     to render the mandatory seat inventory. The public seat-status
+         *     endpoint intentionally omits `tier_id`; this admin-only surface
+         *     exposes it so a reassignment can be visually confirmed.
+         */
+        AdminSeatRow: {
+            /** Format: uuid */
+            id: string;
+            seat_key: string;
+            sector_name: string;
+            row_name: string;
+            seat_number: string;
+            /** @enum {string} */
+            status: "available" | "held" | "sold" | "unavailable";
+            /**
+             * Format: uuid
+             * @description Current tier binding, or null when unbound (should not happen
+             *     after AB-39 lands — the invariant is "every seat carries a
+             *     non-null tier_id after bind").
+             */
+            tier_id: string | null;
+            /** @description Reserved for GA-unit rows; empty string for seated rows. */
+            kind: string;
+        };
+        /**
+         * @description 200 body for `GET /v1/event-sessions/{id}/seats/admin` (AB-39).
+         *     Returned in canonical seat_key ASC order.
+         */
+        AdminSeatsResponse: {
+            /** Format: uuid */
+            session_id: string;
+            /** Format: int64 */
+            seat_status_version: number;
+            seats: components["schemas"]["AdminSeatRow"][];
+        };
+        /**
+         * @description Bulk assign one `tier_id` to the listed `seat_keys` in a session.
+         *     AB-39 / feature #429. `n=1` is the single-seat case. Reassignment
+         *     of seats currently in `held` or `sold` status is rejected with
+         *     a 409 `seating.category_reassign_conflict` that lists the
+         *     conflicting keys — the caller MUST NOT retry those keys without
+         *     first releasing or cancelling the underlying reservation.
+         */
+        PatchSessionSeatsCategoryRequest: {
+            /**
+             * Format: uuid
+             * @description Target `ticket_tiers.id`. MUST belong to the same session
+             *     and MUST NOT be soft-deleted. Reassignment to a NULL tier
+             *     is not supported — every seat carries a non-null tier after
+             *     bind (AB-39 invariant).
+             */
+            tier_id: string;
+            /**
+             * @description Session-local `seat_key` values (produced by the SVG
+             *     importer, e.g. `s|balcony|left|3|7`). Unknown keys are
+             *     reported per-key in `unknown_seat_keys` — they do NOT
+             *     fail the request.
+             */
+            seat_keys: string[];
+        };
+        /**
+         * @description 200 response for `PATCH /v1/event-sessions/{id}/seats/category`.
+         *     `seat_status_version` is the freshly incremented value stamped by
+         *     the transaction — widget and feed caches should refetch when they
+         *     see a value larger than their cursor. `updated_seat_keys` is the
+         *     deterministic (sorted) list of keys actually reassigned;
+         *     `unknown_seat_keys` lists caller-supplied keys that did not
+         *     resolve to any session_seats row (typos or stale plan versions).
+         */
+        PatchSessionSeatsCategoryResponse: {
+            /** Format: uuid */
+            session_id: string;
+            /** Format: uuid */
+            tier_id: string;
+            /**
+             * Format: int64
+             * @description Fresh `sessions.seat_status_version` value after the bulk
+             *     reassignment commits. Downstream observers should treat
+             *     values above their cursor as a signal to refetch.
+             */
+            seat_status_version: number;
+            /** @description Seat keys whose `tier_id` now equals the request `tier_id`. Sorted. */
+            updated_seat_keys: string[];
+            /** @description Caller-supplied keys not matching any session seat. Sorted. */
+            unknown_seat_keys: string[];
+            summary: components["schemas"]["PatchSessionSeatsCategorySummary"];
+        };
+        /** @description Aggregate counters for the category reassignment call. */
+        PatchSessionSeatsCategorySummary: {
+            /** @description Length of the caller's `seat_keys` array (before dedup). */
+            requested: number;
+            /** @description Number of session_seats rows reassigned to the target tier. */
+            updated: number;
+            /** @description Number of caller-supplied keys that did not match any session_seats row. */
+            unknown: number;
         };
         /**
          * @description A single pricing tier (ticket type) within a Session. Three pricing
@@ -19460,6 +19619,199 @@ export interface operations {
                 };
             };
             /** @description Database pool or session queries unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listSessionSeatsAdmin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Seat inventory in canonical seat_key ASC order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSeatsResponse"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks permission or org membership. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    patchSessionSeatsCategory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 primary key of the event session. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchSessionSeatsCategoryRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description Reassignment succeeded. Returns the fresh
+             *     `seat_status_version`, the sorted list of updated keys, and
+             *     any caller-supplied unknown keys.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PatchSessionSeatsCategoryResponse"];
+                };
+            };
+            /**
+             * @description Malformed request. Possible error codes:
+             *     `seating.invalid_body`, `seating.invalid_tier_id`,
+             *     `seating.no_seat_keys`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Caller lacks `event_session.assign_seating_plan` or is not a
+             *     member of the session's owning organization
+             *     (`org.access_denied`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description One or more seats are currently `held` or `sold`
+             *     (`seating.category_reassign_conflict`). The
+             *     `details.conflicting_seat_keys` field lists the blocking
+             *     keys — the caller MUST release or cancel the underlying
+             *     reservation before retrying.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Semantic validation failure. Possible error codes:
+             *     `seating.tier_not_found_in_session`,
+             *     `seating.no_seated_inventory` (session is general_admission),
+             *     `seating.too_many_seat_keys`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error. Possible codes:
+             *     `seating.category_patch_failed`, `seating.audit_failed`,
+             *     `seating.commit_failed`.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or seating queries unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;

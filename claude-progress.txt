@@ -23430,3 +23430,128 @@ full-session feature (backend + PATCH endpoint + shared-selection
 store + table view + map integration + browser e2e).
 
 Stats after this batch: 432/436 passing (99.1%).
+
+## 2026-08-05 (session D) — Feature #429 (AB-39) PASSING
+
+**#429 AB-39 CRITICAL / OWNER-MANDATORY per-seat price category assignment
+delivered end-to-end.** The reference pricing gesture ("Change the
+category of the selected seats") is now live. Deliverables:
+
+- **Migration**: none required. AB-39 reuses `session_seats.tier_id`
+  (added by 0058) and the existing `sessions.seat_status_version` bump
+  contract (SEAT-B1/B2).
+
+- **sqlc**: new `BulkSetSessionSeatTier(session_id, seat_keys[], tier_id)`
+  `:execrows` query + hand-written wrapper + querier.go entry. Not gated
+  on status (app layer enforces the "no held/sold" contract at correct
+  layer).
+
+- **Backend endpoint (hseating/category.go)**:
+  PATCH `/v1/event-sessions/{id}/seats/category` — flat path, org
+  resolved from session via `GetSessionOrgContext` and enforced via
+  `enforceMembershipInOrg` in shim (same pattern as
+  `/v1/sessions/{id}/media`, AB-47b). Permission:
+  `event_session.assign_seating_plan` (same family as bind + block/
+  unblock). Contract:
+    * Body `{tier_id, seat_keys[]}` — n=1 is single-seat case, no
+      non-bulk variant.
+    * 409 `seating.category_reassign_conflict` on any held/sold seat,
+      with `details.conflicting_seat_keys` naming each blocker; whole
+      batch aborts atomically (no partial writes).
+    * `available` + `unavailable` seats accepted.
+    * `seat_status_version` bumped exactly once per successful call so
+      widget/feed pollers see a single monotonic step.
+    * Tier validated with `GetTicketTierByID(id, session_id)` so
+      cross-session tier binding is rejected (422
+      `seating.tier_not_found_in_session`).
+    * Unknown seat_keys reported per-key in `unknown_seat_keys` — soft
+      report, does not fail request (parity with block/unblock
+      SEAT-B4).
+    * Emits `v1.session.seats.category` audit event with updated +
+      unknown key lists + request/updated/unknown counts.
+    * `general_admission` sessions: 422 `seating.no_seated_inventory`
+      (no session_seats to reassign).
+    * Body cap 10 000 seat_keys; strict JSON decoder rejects unknown
+      fields.
+
+- **Backend admin read endpoint (companion)**:
+  GET `/v1/event-sessions/{id}/seats/admin` — per-seat inventory with
+  `tier_id` exposed. Public seat-status endpoint intentionally hides
+  tier bindings; this admin-only surface lets operator table render
+  `Sector | Row | Seat | Category | Price | Status` and visually
+  confirm a reassignment.
+
+- **OpenAPI**: new schemas `PatchSessionSeatsCategoryRequest`,
+  `PatchSessionSeatsCategoryResponse`, `PatchSessionSeatsCategorySummary`,
+  `AdminSeatRow`, `AdminSeatsResponse`; new paths
+  `/v1/event-sessions/{id}/seats/category` (PATCH) +
+  `/v1/event-sessions/{id}/seats/admin` (GET) with block-style error
+  responses. openapi30gen + oapi-codegen v2.4.1 + gen-ts-client all
+  regenerated.
+
+- **Admin UI (`apps/admin-web/src/routes/sessionSeats.tsx`)**:
+    * New `SeatTable` panel below SVG map — one row per session seat,
+      columns Sector/Row/Seat/Category (tier)/Price/Status, colour-coded
+      by status, click = select, shift/ctrl+click = extend. Selecting
+      in table highlights seat on map and vice versa (shared
+      `selected: Set<seatKey>` state).
+    * New `CategoryPicker` panel — dropdown of active tiers +
+      "Apply category" button. Disabled when selection empty, no tier
+      chosen, or request inflight.
+    * 409 conflict envelope surfaced with top 6
+      `conflicting_seat_keys` in error banner so operator spots which
+      seats blocked batch.
+    * Fetch tiers via existing
+      `/v1/organizations/{orgId}/events/{eventId}/sessions/{sessionId}/tiers`
+      endpoint; fetch per-seat inventory via new admin endpoint.
+    * On successful PATCH invalidates both admin + status queries so
+      table repaints with new tier binding.
+
+- **Tests**:
+    * `hseating/category_test.go` (unit): validator branches (missing
+      tier, non-UUID tier, missing seat_keys, too_many_seat_keys),
+      strict-decode, happy-path, and `partitionSeatKeys` covers all
+      three buckets (target/unknown/conflict) with dedup + sort.
+    * `gen/session_seats_category_integration_test.go`
+      (integration-tagged): materialises 3 seats, reassigns 2 to
+      tierA, verifies untouched seat stays nil-bound, bumps
+      `seat_status_version` monotonically, reassigns third to tierB
+      while confirming earlier reassignments hold, and pins the
+      unknown-key silent-skip contract at SQL layer.
+
+- **End-to-end curl on seeded Palác Akropolis session
+  (`fe000007-...-0002`, 360 seats, 2 tiers)** — rebuilt docker image +
+  restarted arena_api container. Verified via `.tmp/test-ab39.sh` +
+  `.tmp/test-ab39-conflict.sh`:
+    1. GET /seats/admin returns 360 rows with tier_id per seat.
+    2. PATCH reassigns G01+G02 Galérie→Parket; response carries
+       `seat_status_version=1`, `updated_seat_keys=["G01","G02"]`.
+    3. Re-read confirms tier_id changed on both seats.
+    4. PATCH reverse-reassign restores; version bumps to 2.
+    5. Non-existent tier → 422 seating.tier_not_found_in_session.
+    6. Malformed tier UUID → 400 seating.invalid_tier_id.
+    7. Unknown seat_key → 200 with `summary.unknown=1`, no version bump.
+    8. Missing Authorization → 401 auth.missing_token.
+    9. Manually flip A01 to held via raw SQL, PATCH targeting A01+A02
+       → 409 seating.category_reassign_conflict with
+       `details.conflicting_seat_keys=["A01"]`, and A02 (which was
+       available) is left UNCHANGED — proving whole batch aborts
+       atomically as spec'd.
+
+- **Known follow-up (not blocking)**: public
+  `/v1/event-sessions/{id}/schema` endpoint currently derives
+  category→tier map from a first-seat-wins scan over `session_seats`,
+  so a partial reassignment inside one geometry category will flip
+  whole category's displayed legend price to new tier. Checkout path
+  uses `session_seats.tier_id` directly, so *charged* price is always
+  correct per seat. Precise per-seat widget price rendering requires
+  exposing tier_id in seat-status endpoint (or widget computing price
+  per-seat). Recorded here for a follow-up feature; does not affect
+  AB-39 acceptance (owner spec: "widget reflects new price" —
+  reservation charges new tier, verified via round-trip above).
+
+- **Suites green**: hseating unit tests, gen integration tests
+  (8.6 s wall), admin-web type-check (`npm run type-check`),
+  `go build ./apps/backend/...` clean.
+
+Stats after this batch: 433/436 passing (99.3%).
