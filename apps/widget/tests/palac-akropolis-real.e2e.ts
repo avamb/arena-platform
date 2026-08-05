@@ -197,22 +197,39 @@ test.describe('2 — Real schema: 260 seats from backend', () => {
     expect(seatCount, `Expected 260 seats from real backend, found ${seatCount}`).toBe(260);
   });
 
-  test('standing zone "galerie" present in SVG from real schema', async ({ page }) => {
+  test('GA category "Galérie" served by the real schema (AB-40)', async ({ page }) => {
+    // AB-40/AB-51 retired the standing_zones array (and its empty
+    // placeholder <g> in the SVG): GA capacity now lives on a geometry
+    // category with kind=general_admission. The widget renders GA areas
+    // on the map in AB-40D (pass 4); until then this asserts the real
+    // schema payload carries the GA category with its capacity.
     await waitForSVG(page);
-    // The first shadow-DOM <svg> is a zoom-toolbar icon (WID-T5); wait for the
-    // POPULATED map and query the map svg inside .seat-map-inner explicitly.
-    await page.waitForFunction(() => {
-      const el = document.querySelector('#widget-hybrid-en');
-      return (el?.shadowRoot?.querySelectorAll('[data-seat-key]').length ?? 0) > 0;
+
+    const gaCategory = await page.evaluate(async () => {
+      // Relative fetch — the e2e page origin proxies /v1 to the real
+      // backend (same pattern as the seat-status assertions below).
+      const sessionID = 'fe000007-0000-7000-8000-000000000002';
+      const res = await fetch(`/v1/event-sessions/${sessionID}/schema`);
+      if (!res.ok) return null;
+      const body = (await res.json()) as {
+        geometry?: {
+          categories?: readonly {
+            name: string;
+            kind?: string;
+            capacity?: number;
+          }[];
+        };
+      };
+      return (
+        body.geometry?.categories?.find(
+          (c) => c.kind === 'general_admission',
+        ) ?? null
+      );
     });
 
-    const zonePresent = await page.evaluate(() => {
-      const el  = document.querySelector('#widget-hybrid-en');
-      const svg = el?.shadowRoot?.querySelector('.seat-map-inner svg');
-      return svg?.querySelector('[data-zone-key="galerie"]') !== null;
-    });
-
-    expect(zonePresent, 'Standing zone "galerie" not found in SVG from real backend').toBe(true);
+    expect(gaCategory, 'GA category missing from real schema').not.toBeNull();
+    expect(gaCategory?.name).toBe('Galérie');
+    expect(gaCategory?.capacity).toBe(100);
   });
 
   test('no JS console errors on initial load', async ({ page }) => {
