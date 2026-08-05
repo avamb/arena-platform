@@ -101,3 +101,62 @@ export function identifyGaTiers(sessionTiers: Tier[], categoryPrices: CategoryPr
   const seatedTierIds = new Set(categoryPrices.map((cp) => cp.tier_id).filter(Boolean));
   return sessionTiers.filter((t) => !seatedTierIds.has(t.id));
 }
+
+/**
+ * A GA area that renders as a clickable polygon on the seat map (AB-40D).
+ *
+ * The widget spec (08_architecture/16_ticket_widget_ux_and_technology_ru.md
+ * §11) mandates "одна поверхность, ноль переключателей" — GA areas with a
+ * hit-test polygon are rendered directly on the hall map alongside the
+ * seats, and clicking one opens the same inline quantity picker used by the
+ * always-visible GA tier cards for GA-only plans.
+ */
+export interface GaArea {
+  categoryIndex: number;
+  name: string;
+  color: string;
+  /** Declared bulk capacity from geometry (upper bound of the quantity picker). */
+  capacity: number;
+  /** Canvas-space polygon vertices. Always non-empty for entries returned here. */
+  polygon: import('../types.js').GeometryPoint[];
+  /** Resolved tier — the id, name, price, currency needed to build a cart line. */
+  tierId: string;
+  tierName: string;
+  priceAmount: number;
+  currency: string;
+}
+
+/**
+ * Extract GA categories that render as clickable polygons on the seat map.
+ *
+ * Skips GA categories without a polygon: those are the hand-entered
+ * GA-only path (AB-40 C1) and render as an always-visible tier card
+ * beneath the map instead. Also skips GA categories that have no resolved
+ * tier binding (no price to charge for the reservation).
+ */
+export function identifyGaAreas(
+  geometry: Geometry,
+  categoryPrices: CategoryPrice[],
+): GaArea[] {
+  const cpByIndex = new Map<number, CategoryPrice>();
+  for (const cp of categoryPrices) cpByIndex.set(cp.index, cp);
+  const areas: GaArea[] = [];
+  for (const cat of geometry.categories) {
+    if (cat.kind !== 'general_admission') continue;
+    if (!cat.polygon || cat.polygon.length < 3) continue;
+    const cp = cpByIndex.get(cat.index);
+    if (!cp || !cp.tier_id) continue;
+    areas.push({
+      categoryIndex: cat.index,
+      name: cat.name,
+      color: cp.color || cat.color || '#4f46e5',
+      capacity: cat.capacity ?? 0,
+      polygon: cat.polygon,
+      tierId: cp.tier_id,
+      tierName: cp.tier_name ?? cat.name,
+      priceAmount: cp.price_amount ?? 0,
+      currency: cp.currency ?? '',
+    });
+  }
+  return areas;
+}

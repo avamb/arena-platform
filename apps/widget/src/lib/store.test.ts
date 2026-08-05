@@ -17,6 +17,7 @@ import {
   buildCategoryByIndex,
   buildTierById,
   identifyGaTiers,
+  identifyGaAreas,
 } from './store.js';
 import type { Geometry, CategoryPrice, Tier, FeedSession } from '../types.js';
 
@@ -398,5 +399,86 @@ describe('identifyGaTiers', () => {
     const cats = [{ ...makeCategoryPrice(0), tier_id: undefined }];
     // t1 is not in cats (tier_id undefined), so it's GA.
     expect(identifyGaTiers(tiers, cats)).toHaveLength(1);
+  });
+});
+
+// ─── identifyGaAreas (AB-40D) ────────────────────────────────────────────────
+
+describe('identifyGaAreas', () => {
+  function makeGeom(cats: Geometry['categories']): Geometry {
+    return {
+      schema_version: 1,
+      canvas: { width: 800, height: 600 },
+      categories: cats,
+      sections: [],
+      tables: [],
+      decor_svg: '',
+    };
+  }
+
+  const polygon = [
+    { x: 0, y: 0 },
+    { x: 100, y: 0 },
+    { x: 100, y: 100 },
+    { x: 0, y: 100 },
+  ];
+
+  it('returns GA categories with a polygon and a resolved tier binding', () => {
+    const geom = makeGeom([
+      { index: 0, name: 'Parket', color: '#4f46e5' },
+      { index: 1, name: 'Galerie', color: '#10b981', kind: 'general_admission', capacity: 100, polygon },
+    ]);
+    const cps: CategoryPrice[] = [
+      { index: 0, name: 'Parket', color: '#4f46e5', tier_id: 'tier-parket' },
+      { index: 1, name: 'Galerie', color: '#10b981', tier_id: 'tier-galerie', tier_name: 'Galerie', price_amount: 1200, currency: 'EUR' },
+    ];
+    const areas = identifyGaAreas(geom, cps);
+    expect(areas).toHaveLength(1);
+    expect(areas[0]!.categoryIndex).toBe(1);
+    expect(areas[0]!.tierId).toBe('tier-galerie');
+    expect(areas[0]!.capacity).toBe(100);
+    expect(areas[0]!.priceAmount).toBe(1200);
+    expect(areas[0]!.currency).toBe('EUR');
+    expect(areas[0]!.polygon).toHaveLength(4);
+  });
+
+  it('skips GA categories without a polygon (hand-entered GA-only path)', () => {
+    const geom = makeGeom([
+      { index: 1, name: 'GA', color: '#10b981', kind: 'general_admission', capacity: 500 },
+    ]);
+    const cps: CategoryPrice[] = [
+      { index: 1, name: 'GA', color: '#10b981', tier_id: 'tier-ga' },
+    ];
+    expect(identifyGaAreas(geom, cps)).toHaveLength(0);
+  });
+
+  it('skips seated categories entirely', () => {
+    const geom = makeGeom([
+      { index: 0, name: 'Seated', color: '#4f46e5' },
+    ]);
+    const cps: CategoryPrice[] = [
+      { index: 0, name: 'Seated', color: '#4f46e5', tier_id: 'tier-s' },
+    ];
+    expect(identifyGaAreas(geom, cps)).toHaveLength(0);
+  });
+
+  it('skips GA polygons without a tier binding (no price to charge)', () => {
+    const geom = makeGeom([
+      { index: 1, name: 'GA', color: '#10b981', kind: 'general_admission', capacity: 100, polygon },
+    ]);
+    const cps: CategoryPrice[] = [
+      { index: 1, name: 'GA', color: '#10b981' },
+    ];
+    expect(identifyGaAreas(geom, cps)).toHaveLength(0);
+  });
+
+  it('skips degenerate polygons with fewer than 3 vertices', () => {
+    const geom = makeGeom([
+      { index: 1, name: 'Line', color: '#10b981', kind: 'general_admission', capacity: 10, polygon: [{ x: 0, y: 0 }, { x: 10, y: 10 }] },
+    ]);
+    const cps: CategoryPrice[] = [
+      { index: 1, name: 'Line', color: '#10b981', tier_id: 't1' },
+    ];
+    expect(identifyGaAreas(geom, cps)).toHaveLength(0);
   });
 });

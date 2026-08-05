@@ -126,7 +126,7 @@ function generateParketRows(): object[] {
   }));
 }
 
-/** Canonical Palác Akropolis schema fixture (260 seats + 1 standing zone + 1 GA tier). */
+/** Canonical Palác Akropolis schema fixture (260 seats + 1 GA polygon + 1 GA tier). */
 function buildPalacSchema(statusVersion = 1): object {
   return {
     session_id: SESSION_ID,
@@ -142,14 +142,32 @@ function buildPalacSchema(statusVersion = 1): object {
       canvas: { width: 1000, height: 400 },
       categories: [
         { index: 0, name: 'Parket', color: '#4F46E5', price_hint: '22.00', currency_hint: 'EUR' },
-        { index: 1, name: 'Galérie', color: '#10B981', price_hint: '12.00', currency_hint: 'EUR' },
+        // AB-40D: Galérie is a general_admission category carrying a hit-test
+        // polygon rendered on the same hall map as the seats. Buyer taps the
+        // polygon to open the inline quantity picker — no mode toggle.
+        {
+          index: 1,
+          name: 'Galérie',
+          color: '#10B981',
+          price_hint: '12.00',
+          currency_hint: 'EUR',
+          kind: 'general_admission',
+          capacity: 100,
+          polygon: [
+            { x: 60, y: 340 },
+            { x: 940, y: 340 },
+            { x: 940, y: 390 },
+            { x: 60, y: 390 },
+          ],
+        },
       ],
       sections: [
         { key: 'parket', name: 'Parket', rows: generateParketRows() },
       ],
-      standing_zones: [
-        { key: 'galerie', name: 'Galérie', capacity: 100 },
-      ],
+      // Legacy standing_zones retired by AB-40/AB-51 — GA capacity now lives
+      // on the category above. Keeping the empty array so pre-AB-40 clients
+      // still parse the fixture without failure.
+      standing_zones: [],
       tables: [],
       decor_svg: '',
     },
@@ -484,7 +502,7 @@ test.describe('2 — Hybrid cart: seated + GA in one cart', () => {
     expect(seatCount, `Expected 260 seats but found ${seatCount}`).toBe(260);
   });
 
-  test('standing zone group is present in the SVG', async ({ page }) => {
+  test('GA polygon is rendered on the same hall map as the seats (AB-40D)', async ({ page }) => {
     await page.goto('/demo/palac-akropolis.html');
 
     await page.waitForFunction(() => {
@@ -492,13 +510,101 @@ test.describe('2 — Hybrid cart: seated + GA in one cart', () => {
       return el?.shadowRoot?.querySelector('svg') !== null;
     }, { timeout: 10_000 });
 
-    const zonePresent = await page.evaluate(() => {
+    // AB-40D: the "one surface, zero toggles" invariant — the buyer sees
+    // seats and GA areas together on a single map. Assert both the GA area
+    // group and its polygon+tier bindings live inside the same SVG that
+    // renders the seat circles.
+    const gaState = await page.evaluate(() => {
       const el = document.querySelector('#widget-hybrid-en');
-      const svg = el?.shadowRoot?.querySelector('svg');
-      return svg?.querySelector('[data-zone-key="galerie"]') !== null;
+      // Use the seat map SVG explicitly — the toolbar buttons carry their
+      // own decorative <svg> icons which come first in DOM order.
+      const svg = el?.shadowRoot?.querySelector('svg[aria-label^="Seat map"]');
+      const areaGroup = svg?.querySelector('[data-ga-category-index="1"]');
+      const polygon = areaGroup?.querySelector('polygon');
+      const seatCount = svg?.querySelectorAll('[data-seat-key]').length ?? 0;
+      return {
+        areaPresent: areaGroup !== null && areaGroup !== undefined,
+        tierId: areaGroup?.getAttribute('data-tier-id') ?? null,
+        capacity: areaGroup?.getAttribute('data-capacity') ?? null,
+        polygonPoints: polygon?.getAttribute('points') ?? null,
+        seatCount,
+      };
     });
 
-    expect(zonePresent, 'Standing zone "galerie" not found in SVG').toBe(true);
+    expect(gaState.areaPresent, 'GA polygon area group missing from SVG').toBe(true);
+    expect(gaState.tierId).toBe('tier-galerie');
+    expect(gaState.capacity).toBe('100');
+    expect(gaState.polygonPoints).toContain(' ');
+    // Seats and GA areas coexist on the same surface — no mode switch.
+    expect(gaState.seatCount).toBe(260);
+  });
+
+  test('tapping the GA polygon opens an inline quantity picker and feeds the same cart (AB-40D)', async ({ page }) => {
+    await page.goto('/demo/palac-akropolis.html');
+
+    // Wait for the seat-map SVG (and the GA polygon within it) to render.
+    await page.waitForFunction(() => {
+      const el = document.querySelector('#widget-hybrid-en');
+      const svg = el?.shadowRoot?.querySelector('svg[aria-label^="Seat map"]');
+      return svg?.querySelector('[data-ga-category-index="1"]') !== null;
+    }, { timeout: 10_000 });
+
+    // Simulate a real buyer click on the polygon inside the shadow root.
+    // We dispatch pointerdown + pointerup + click so the seat-map's
+    // tap-vs-drag discriminator (compares pointerDown coords against click
+    // coords) treats it as a tap, not a drag.
+    const clicked = await page.evaluate(() => {
+      const el = document.querySelector('#widget-hybrid-en');
+      const svg = el?.shadowRoot?.querySelector('svg[aria-label^="Seat map"]');
+      const areaGroup = svg?.querySelector('[data-ga-category-index="1"]') as SVGElement | null;
+      const polygon = areaGroup?.querySelector('polygon');
+      if (!polygon) return false;
+      const rect = (polygon as SVGGraphicsElement).getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const opts = { bubbles: true, cancelable: true, composed: true, clientX: cx, clientY: cy, pointerId: 1, pointerType: 'mouse' } as PointerEventInit;
+      polygon.dispatchEvent(new PointerEvent('pointerdown', opts));
+      polygon.dispatchEvent(new PointerEvent('pointerup', opts));
+      polygon.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, clientX: cx, clientY: cy }));
+      return true;
+    });
+    expect(clicked).toBe(true);
+
+    // Wait for Svelte to render the popover (single microtask tick is enough
+    // in Svelte 5 but Playwright's waitForFunction is the safe polling path).
+    await page.waitForFunction(() => {
+      const el = document.querySelector('#widget-hybrid-en');
+      return el?.shadowRoot?.querySelector('[data-ga-popover-tier-id="tier-galerie"]') !== null;
+    }, { timeout: 2_000 });
+
+    // Increment quantity via the stepper and verify the cart-count aria label
+    // in the mini-cart reflects the change — same cart, no mode switch.
+    // Click "+" twice to raise quantity to 2, then read the stepper label.
+    // Each click needs the Svelte re-render tick, so poll for the visible
+    // label to catch up.
+    await page.evaluate(() => {
+      const el = document.querySelector('#widget-hybrid-en');
+      const popover = el?.shadowRoot?.querySelector('[data-ga-popover-tier-id="tier-galerie"]');
+      const incBtn = popover?.querySelector('button[aria-label^="Increase"]') as HTMLButtonElement | null;
+      incBtn?.click();
+    });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('#widget-hybrid-en');
+      const popover = el?.shadowRoot?.querySelector('[data-ga-popover-tier-id="tier-galerie"]');
+      return popover?.querySelector('.step-qty')?.textContent?.trim() === '1';
+    }, { timeout: 2_000 });
+
+    await page.evaluate(() => {
+      const el = document.querySelector('#widget-hybrid-en');
+      const popover = el?.shadowRoot?.querySelector('[data-ga-popover-tier-id="tier-galerie"]');
+      const incBtn = popover?.querySelector('button[aria-label^="Increase"]') as HTMLButtonElement | null;
+      incBtn?.click();
+    });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('#widget-hybrid-en');
+      const popover = el?.shadowRoot?.querySelector('[data-ga-popover-tier-id="tier-galerie"]');
+      return popover?.querySelector('.step-qty')?.textContent?.trim() === '2';
+    }, { timeout: 2_000 });
   });
 
   test('session load does not produce console errors', async ({ page }) => {

@@ -14,12 +14,38 @@ export interface Canvas {
   height: number;
 }
 
+/** A single 2D vertex of a GA hit-test polygon (canvas space). */
+export interface GeometryPoint {
+  x: number;
+  y: number;
+}
+
 export interface GeometryCategory {
   index: number;
   name: string;
   color: string;
   price_hint?: string;
   currency_hint?: string;
+  /**
+   * AB-40: category kind. Empty / "seated" (canonically empty) means the
+   * category is bound by fill colour to coordinate-bearing seats. The value
+   * "general_admission" marks a bulk-capacity GA category that carries no
+   * per-seat coordinates.
+   */
+  kind?: string;
+  /**
+   * AB-40: declared bulk capacity for a GA category. Always 0 / omitted for
+   * seated categories. Used both for the "N places" hint in the widget UI
+   * and as the per-area upper bound on quantity pickers.
+   */
+  capacity?: number;
+  /**
+   * AB-40 A1 / D1: optional hit-test polygon in canvas space for GA
+   * categories imported from an SVG `#GA <name>` element. Absent on the
+   * GA-only hand-entered path — those GA categories render as an
+   * always-visible tier card under the map instead of a clickable polygon.
+   */
+  polygon?: GeometryPoint[];
 }
 
 export interface Seat {

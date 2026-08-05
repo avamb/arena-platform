@@ -200,9 +200,8 @@ test.describe('2 — Real schema: 260 seats from backend', () => {
   test('GA category "Galérie" served by the real schema (AB-40)', async ({ page }) => {
     // AB-40/AB-51 retired the standing_zones array (and its empty
     // placeholder <g> in the SVG): GA capacity now lives on a geometry
-    // category with kind=general_admission. The widget renders GA areas
-    // on the map in AB-40D (pass 4); until then this asserts the real
-    // schema payload carries the GA category with its capacity.
+    // category with kind=general_admission. AB-40D wires the widget to
+    // render GA areas on the map when the category carries a polygon.
     await waitForSVG(page);
 
     const gaCategory = await page.evaluate(async () => {
@@ -214,9 +213,11 @@ test.describe('2 — Real schema: 260 seats from backend', () => {
       const body = (await res.json()) as {
         geometry?: {
           categories?: readonly {
+            index: number;
             name: string;
             kind?: string;
             capacity?: number;
+            polygon?: readonly { x: number; y: number }[];
           }[];
         };
       };
@@ -230,6 +231,24 @@ test.describe('2 — Real schema: 260 seats from backend', () => {
     expect(gaCategory, 'GA category missing from real schema').not.toBeNull();
     expect(gaCategory?.name).toBe('Galérie');
     expect(gaCategory?.capacity).toBe(100);
+
+    // AB-40D "one surface, zero toggles": when the real schema carries a
+    // polygon (the SVG import path), the widget must render the GA area
+    // on the same hall map as the seats — same SVG surface, no toggle.
+    // The GA-only hand-entered path has no polygon: we soft-skip the
+    // rendering assertion in that case so this test stays useful across
+    // both import paths without demanding a specific seeding topology.
+    if (gaCategory?.polygon && gaCategory.polygon.length >= 3) {
+      const gaAreaPresent = await page.evaluate((idx: number) => {
+        const el = document.querySelector('#widget-hybrid-en');
+        const svg = el?.shadowRoot?.querySelector('svg[aria-label^="Seat map"]');
+        return svg?.querySelector(`[data-ga-category-index="${idx}"]`) !== null;
+      }, gaCategory.index);
+      expect(
+        gaAreaPresent,
+        'GA area polygon must render on the same hall map as the seats (AB-40D)',
+      ).toBe(true);
+    }
   });
 
   test('no JS console errors on initial load', async ({ page }) => {

@@ -23247,3 +23247,58 @@ None. All artifacts were already in sync.
 
 Stats after this batch: 429/436 passing (98.4%).
 
+## 2026-08-05 — Feature #430 (AB-40D) complete
+
+- Hybrid halls now render on ONE surface — no mode toggle. GA categories
+  that carry a `polygon` in geometry render as clickable filled polygons
+  on the same SVG that hosts the seat circles. Tapping a polygon opens
+  an inline `GaAreaPopover` (name, price, remaining-in-area capacity,
+  ± stepper) whose writes flow into the SAME `gaQuantities` map used by
+  the always-visible GA tier cards, so both surfaces feed one cart with
+  one hold timer and one checkout. GA categories WITHOUT a polygon (the
+  hand-entered GA-only path) keep the card-only surface — the widget
+  spec explicitly calls for both surfaces to coexist.
+- Widget-side only (backend already supports the shape: `admission_mode`
+  hybrid accepts seats + quantity in one reservation, `reservation_ga_items`
+  exists). No OpenAPI / codegen change: `polygon` / `kind` / `capacity`
+  live inside the raw geometry blob that the widget already consumes.
+- Files touched:
+  * `apps/widget/src/types.ts` — added `GeometryPoint`; `kind`, `capacity`,
+    `polygon` on `GeometryCategory`.
+  * `apps/widget/src/lib/store.ts` — new `identifyGaAreas(geometry, cps)`
+    returning polygon-bearing GA categories with resolved tier binding.
+  * `apps/widget/src/lib/seatmap-render.ts` — new `<g id="ga-areas">`
+    block emitting `<polygon data-ga-category-index=… data-tier-id=…
+    data-capacity=…>` plus a centroid label ("Name · N places · price").
+  * `apps/widget/src/components/SeatMapView.svelte` — `onGaAreaTap` prop;
+    click dispatch detects `[data-ga-category-index]` before seats and
+    invokes the callback.
+  * `apps/widget/src/components/GaAreaPopover.svelte` (new) — inline
+    dialog reusing the same `clampGaQuantity` / `GA_MAX_QUANTITY` bounds
+    as `GaTierCard`, positioned by ArenaTickets over the map wrapper.
+  * `apps/widget/src/ArenaTickets.svelte` — wires the popover, filters
+    polygon-bound tiers out of the card list so no offer double-renders.
+- Tests:
+  * `store.test.ts` — 5 new cases covering polygon selection, hand-entered
+    GA-only skip, seated skip, no-tier skip, degenerate polygon skip.
+  * `seatmap-render.test.ts` — 5 new cases covering emitted markup,
+    labels, keyboard-focusable attributes, GA-omission when no polygons.
+  * `tests/palac-akropolis.e2e.ts` (mock) — replaced the retired
+    `data-zone-key` assertion with "GA polygon is rendered on the same
+    hall map as the seats (AB-40D)" and added "tapping the GA polygon
+    opens an inline quantity picker and feeds the same cart (AB-40D)"
+    that dispatches a real pointerdown+pointerup+click and drives the
+    stepper up to 2.
+  * `tests/palac-akropolis-real.e2e.ts` (real) — extended AB-40 check to
+    also assert polygon-area rendering when the real schema carries a
+    polygon (soft-skip when the seeded plan uses the hand-entered path).
+- Verification: `npm run test` 497/497 (was 487, +10 new); `npm run
+  type-check` clean; `npm run build` 216.94 KB / 59.52 KB gzip (well
+  under the 150 KB budget). The two new AB-40D mock e2e tests
+  execute cleanly against the built bundle. Four preexisting mock e2e
+  failures (role="application" expectation mismatched with existing
+  role="toolbar", plus three fetch/route assertions inside
+  `page.evaluate`) are untouched by this feature and predate it.
+
+Feature #430 marked passing. Overall feature status: 430/436 passing (98.6%).
+

@@ -36,9 +36,11 @@
     buildCategoryByIndex,
     buildTierById,
     identifyGaTiers,
+    identifyGaAreas,
     buildGaItems,
     totalSelectionCount,
     type WidgetStage,
+    type GaArea,
   } from './lib/store.js';
   import type { CheckoutStatusResponse } from './lib/checkout.js';
   import SessionList from './components/SessionList.svelte';
@@ -46,6 +48,7 @@
   import MiniCart from './components/MiniCart.svelte';
   import CartSheet from './components/CartSheet.svelte';
   import GaTierCard from './components/GaTierCard.svelte';
+  import GaAreaPopover from './components/GaAreaPopover.svelte';
   import OrderStatus from './components/OrderStatus.svelte';
 
   interface Props {
@@ -122,6 +125,12 @@
   let categoryByCategoryIndex = $state<ReadonlyMap<number, CategoryPrice>>(new Map());
   let tierById = $state<ReadonlyMap<string, Tier>>(new Map());
   let gaTiers = $state<import('./types.js').Tier[]>([]);
+  // AB-40D: GA categories that carry a hit-test polygon and render as
+  // clickable areas on the same hall map as the seats. Populated from the
+  // schema on load; the picker overlay opens over the map when a buyer
+  // taps one of these areas.
+  let gaAreas = $state<GaArea[]>([]);
+  let openGaAreaTierId = $state<string | null>(null);
 
   // ── Checkout state ─────────────────────────────────────────────────────────
 
@@ -345,7 +354,35 @@
     categoryByCategoryIndex = buildCategoryByIndex(categoryPrices);
     tierById = selectedSession ? buildTierById(selectedSession.tiers) : new Map();
     gaTiers = selectedSession ? identifyGaTiers(selectedSession.tiers, categoryPrices) : [];
+    // AB-40D: identify GA polygons that render on the hall map. GA tiers
+    // WITHOUT polygons stay as always-visible cards below the map — the
+    // widget spec requires both surfaces (geography for polygons, cards for
+    // geography-less GA) and forbids any mode toggle between them.
+    gaAreas = identifyGaAreas(geometry, categoryPrices);
+    // Filter out GA tiers already bound to a polygon area — otherwise a
+    // buyer would see the same GA offer twice (card + polygon).
+    if (gaAreas.length > 0) {
+      const polygonTierIds = new Set(gaAreas.map((a) => a.tierId));
+      gaTiers = gaTiers.filter((t) => !polygonTierIds.has(t.id));
+    }
   }
+
+  // ── GA area tap handler (AB-40D) ───────────────────────────────────────────
+
+  function onGaAreaTap(_categoryIndex: number, tierId: string): void {
+    // The overlay is a single-open picker: tapping a different area swaps
+    // the target; tapping the same area again with the picker already open
+    // does nothing (Done / × closes it).
+    openGaAreaTierId = tierId;
+  }
+
+  function closeGaAreaPopover(): void {
+    openGaAreaTierId = null;
+  }
+
+  const openGaArea = $derived(
+    openGaAreaTierId ? gaAreas.find((a) => a.tierId === openGaAreaTierId) ?? null : null,
+  );
 
   // ── Seat tap handler ───────────────────────────────────────────────────────
 
@@ -648,21 +685,34 @@
               conflictKeys = new Set();
               checkoutError = null;
               cartSheetOpen = false;
+              openGaAreaTierId = null;
+              gaAreas = [];
             }
             selectedSession = s;
           }}
         />
         <!-- Seat map (only for sessions with schema_url) -->
         {#if selectedSession && selectedSession.schema_url}
-          <SeatMapView
-            session={selectedSession}
-            locale={normLocale}
-            selectedKeys={selectedSeatKeys}
-            {conflictKeys}
-            {onSeatTap}
-            {onSchemaLoaded}
-            apiBase={resolvedApiBase}
-          />
+          <div class="arena-tickets-map-wrap">
+            <SeatMapView
+              session={selectedSession}
+              locale={normLocale}
+              selectedKeys={selectedSeatKeys}
+              {conflictKeys}
+              {onSeatTap}
+              {onGaAreaTap}
+              {onSchemaLoaded}
+              apiBase={resolvedApiBase}
+            />
+            {#if openGaArea}
+              <GaAreaPopover
+                area={openGaArea}
+                quantity={gaQuantities.get(openGaArea.tierId) ?? 0}
+                onQuantityChange={onGaQuantityChange}
+                onClose={closeGaAreaPopover}
+              />
+            {/if}
+          </div>
         {:else if selectedSession}
           <div class="arena-tickets-ga" aria-label="General admission session">
             <!-- GA tier list -->
@@ -777,6 +827,22 @@
   .arena-tickets-ga {
     flex: 1;
     padding: 1rem;
+  }
+
+  /* AB-40D: positioning context for the GA area popover overlay. The
+     popover is absolutely positioned inside this wrapper and pinned to
+     the top-right of the seat map surface so it never occludes the seats
+     the buyer is choosing from. */
+  .arena-tickets-map-wrap {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+  .arena-tickets-map-wrap :global(.ga-popover) {
+    top: 3rem;
+    right: 0.75rem;
   }
 
   .arena-tickets-placeholder {

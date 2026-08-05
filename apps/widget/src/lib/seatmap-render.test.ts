@@ -872,3 +872,96 @@ describe('clearConflictHighlight', () => {
     expect(el.getAttribute('aria-label')).toBe('Parter, row 1, seat 1, 50.00 CZK, conflict — not available');
   });
 });
+
+// ─── GA polygon rendering (AB-40D) ────────────────────────────────────────────
+
+describe('buildSeatMapSVG — GA polygons on the same hall map (AB-40D)', () => {
+  const gaPolygon = [
+    { x: 0, y: 0 },
+    { x: 200, y: 0 },
+    { x: 200, y: 80 },
+    { x: 0, y: 80 },
+  ];
+
+  function makeHybridGeometry(): Geometry {
+    return {
+      ...makeGeometry(),
+      categories: [
+        { index: 1, name: 'Parter', color: '#ff0000' },
+        { index: 2, name: 'Balkon', color: '#0000ff' },
+        {
+          index: 3,
+          name: 'Fan Zone',
+          color: '#10b981',
+          kind: 'general_admission',
+          capacity: 120,
+          polygon: gaPolygon,
+        },
+      ],
+    };
+  }
+
+  const hybridPrices: CategoryPrice[] = [
+    ...categoryPrices,
+    {
+      index: 3,
+      name: 'Fan Zone',
+      color: '#10b981',
+      tier_id: 'tier-ga',
+      tier_name: 'Fan Zone',
+      price_amount: 4500,
+      currency: 'EUR',
+    },
+  ];
+
+  it('emits a ga-areas group with a polygon carrying data-ga-category-index and data-tier-id', () => {
+    const svg = buildSeatMapSVG(makeHybridGeometry(), hybridPrices, {});
+    expect(svg).toContain('id="ga-areas"');
+    expect(svg).toContain('data-ga-category-index="3"');
+    expect(svg).toContain('data-tier-id="tier-ga"');
+    expect(svg).toContain('data-capacity="120"');
+    expect(svg).toContain('<polygon points="0,0 200,0 200,80 0,80"');
+  });
+
+  it('label carries category name, capacity hint, and price', () => {
+    const svg = buildSeatMapSVG(makeHybridGeometry(), hybridPrices, {});
+    expect(svg).toContain('Fan Zone');
+    expect(svg).toContain('120 places');
+    // Price is derived from price_amount / 100 by buildPriceLabel when
+    // price_hint is not set on the CategoryPrice.
+    expect(svg).toContain('45.00 EUR');
+  });
+
+  it('makes the GA area keyboard-focusable via role and tabindex', () => {
+    const svg = buildSeatMapSVG(makeHybridGeometry(), hybridPrices, {});
+    // Both role="button" and tabindex are needed for keyboard AT to reach
+    // the area; the composite widget focus model promotes it exactly like
+    // the seat circles.
+    expect(svg).toMatch(/data-ga-category-index="3"[^>]*role="button"/);
+    expect(svg).toMatch(/data-ga-category-index="3"[^>]*tabindex="-1"/);
+  });
+
+  it('omits ga-areas group when the geometry carries no GA polygons', () => {
+    // Baseline seated-only fixture — must not produce a stray group.
+    const svg = buildSeatMapSVG(makeGeometry(), categoryPrices, {});
+    expect(svg).not.toContain('id="ga-areas"');
+  });
+
+  it('does not render GA categories that lack a polygon (hand-entered GA-only)', () => {
+    const geom: Geometry = {
+      ...makeGeometry(),
+      categories: [
+        { index: 1, name: 'Parter', color: '#ff0000' },
+        // GA category WITHOUT polygon — the always-visible tier card path.
+        { index: 5, name: 'Standing Only', color: '#f59e0b', kind: 'general_admission', capacity: 800 },
+      ],
+    };
+    const prices: CategoryPrice[] = [
+      ...categoryPrices,
+      { index: 5, name: 'Standing Only', color: '#f59e0b', tier_id: 'tier-so' },
+    ];
+    const svg = buildSeatMapSVG(geom, prices, {});
+    expect(svg).not.toContain('id="ga-areas"');
+    expect(svg).not.toContain('data-ga-category-index');
+  });
+});

@@ -215,6 +215,73 @@ export function buildSeatMapSVG(
     parts.push('</g>');
   }
 
+  // ── GA hit-test polygons on the same hall map (AB-40D) ──
+  // Categories with kind="general_admission" that carry a polygon render as
+  // clickable areas alongside the seats.  The label ("Name · N places · price")
+  // sits at the polygon centroid so the buyer can read the offer without
+  // hovering.  A single visual language for seats and GA areas is exactly the
+  // "one surface, zero toggles" promise of the widget spec (§11).
+  const gaCatColors = new Map<number, string>();
+  for (const cp of categoryPrices) {
+    if (cp.color) gaCatColors.set(cp.index, normalizeColor(cp.color));
+  }
+  for (const cat of geometry.categories) {
+    if (cat.color) {
+      if (!gaCatColors.has(cat.index)) gaCatColors.set(cat.index, normalizeColor(cat.color));
+    }
+  }
+  const gaAreas = geometry.categories.filter(
+    (c) => c.kind === 'general_admission' && c.polygon && c.polygon.length >= 3,
+  );
+  if (gaAreas.length > 0) {
+    parts.push('<g id="ga-areas">');
+    for (const cat of gaAreas) {
+      const poly = cat.polygon!;
+      const color = gaCatColors.get(cat.index) ?? '#4f46e5';
+      const points = poly.map((p) => `${p.x},${p.y}`).join(' ');
+      const cp = categoryPrices.find((c) => c.index === cat.index);
+      const tierId = cp?.tier_id ?? '';
+      const priceLabel = buildPriceLabel(cat.index, categoryPrices);
+      const capText = cat.capacity && cat.capacity > 0 ? `${cat.capacity} places` : 'general admission';
+      const labelText = priceLabel
+        ? `${cat.name} · ${capText} · ${priceLabel}`
+        : `${cat.name} · ${capText}`;
+      const ariaLabel = xmlAttr(labelText);
+
+      // Centroid for label placement.
+      let cx = 0;
+      let cy = 0;
+      for (const p of poly) {
+        cx += p.x;
+        cy += p.y;
+      }
+      cx /= poly.length;
+      cy /= poly.length;
+
+      parts.push(
+        `<g class="ga-area" data-ga-category-index="${cat.index}"` +
+          ` data-tier-id="${xmlAttr(tierId)}"` +
+          ` data-capacity="${cat.capacity ?? 0}"` +
+          ` role="button" tabindex="-1"` +
+          ` aria-label="${ariaLabel}">` +
+          `<title>${xmlAttr(labelText)}</title>` +
+          `<polygon points="${points}"` +
+          ` fill="${color}" fill-opacity="0.28"` +
+          ` stroke="${color}" stroke-width="2"` +
+          ` pointer-events="all" />` +
+          `<text x="${cx.toFixed(1)}" y="${cy.toFixed(1)}"` +
+          ` text-anchor="middle" dominant-baseline="middle"` +
+          ` font-size="14" font-weight="600"` +
+          ` fill="#111827" pointer-events="none"` +
+          ` style="paint-order: stroke; stroke: #ffffff; stroke-width: 3px;">` +
+          `${xmlAttr(labelText)}` +
+          `</text>` +
+          `</g>`,
+      );
+    }
+    parts.push('</g>');
+  }
+
   // ── Seats ──
   // Canonical single-stop model (WID-T5): ALL seat circles start with
   // tabindex="-1".  The .seat-map-container is the SOLE Tab stop for the

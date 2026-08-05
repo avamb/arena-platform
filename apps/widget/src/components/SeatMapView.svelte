@@ -50,6 +50,13 @@
     selectedKeys?: ReadonlySet<string>;
     /** Called when user taps/clicks a seat circle. */
     onSeatTap?: (seatKey: string, status: SeatStatusValue) => void;
+    /**
+     * AB-40D: called when the user taps a general-admission polygon rendered
+     * on the same hall map as seats. `categoryIndex` is the geometry
+     * category index; `tierId` is the resolved tier binding (both come from
+     * the seat map SVG's `data-*` attributes).
+     */
+    onGaAreaTap?: (categoryIndex: number, tierId: string) => void;
     /** Called after the seat map schema is loaded with geometry + category prices. */
     onSchemaLoaded?: (geometry: import('../types.js').Geometry, categoryPrices: import('../types.js').CategoryPrice[]) => void;
     /**
@@ -60,7 +67,7 @@
     apiBase?: string;
   }
 
-  const { session, locale = 'en', conflictKeys, selectedKeys = new Set(), onSeatTap, onSchemaLoaded, apiBase = '' }: Props = $props();
+  const { session, locale = 'en', conflictKeys, selectedKeys = new Set(), onSeatTap, onGaAreaTap, onSchemaLoaded, apiBase = '' }: Props = $props();
 
   // ── i18n ────────────────────────────────────────────────────────────────────
   const t = $derived(getCheckoutI18n(locale));
@@ -192,6 +199,22 @@
     const dx = e.clientX - pointerDownX;
     const dy = e.clientY - pointerDownY;
     if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) return;
+
+    // AB-40D: GA hit-test polygons take priority over seat-circle detection.
+    // Test the click target for a GA area (an ancestor <g> carrying
+    // data-ga-category-index) first — inside a polygon the seat map may also
+    // technically satisfy the coordinate fallback below, but the GA area is
+    // the semantically correct target.
+    const gaEl = (e.target as Element).closest?.('[data-ga-category-index]') ?? null;
+    if (gaEl && onGaAreaTap) {
+      const idx = parseInt(gaEl.getAttribute('data-ga-category-index') ?? '', 10);
+      const tierId = gaEl.getAttribute('data-tier-id') ?? '';
+      if (!Number.isNaN(idx) && tierId) {
+        onGaAreaTap(idx, tierId);
+        return;
+      }
+    }
+
     if (!onSeatTap) return;
 
     // Fast path: e.target is the seat element (works for synthetic/dispatchEvent clicks
