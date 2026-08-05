@@ -272,3 +272,13 @@ func (s *Server) handleUpdateSession(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	s.catalogHandler().HandleDeleteSession(w, r)
 }
+
+// ──── session media gallery shims (AB-47b, feature #435) ─────────────────────
+
+func (s *Server) handleGetSessionMedia(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleGetSessionMedia(w, r)
+}
+
+func (s *Server) handleReplaceSessionMedia(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleReplaceSessionMedia(w, r)
+}

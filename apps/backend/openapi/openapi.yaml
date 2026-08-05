@@ -3773,6 +3773,100 @@ components:
           description: Always true on success; confirms the soft delete.
           example: true
 
+    SessionMediaItem:
+      type: object
+      required: [id, kind, position, created_at, updated_at]
+      description: |
+        One entry of a session media gallery (AB-47b, feature #435).
+        Exactly one of `media_id` (kind='poster') or `video_url`
+        (kind='video') is non-null per row.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Server-generated identifier of this gallery row.
+        kind:
+          type: string
+          enum: [poster, video]
+          description: |
+            Discriminator. `poster` items carry `media_id`; `video` items
+            carry `video_url` (host allowlist: youtube.com, youtu.be,
+            vk.com, rutube.ru, vimeo.com).
+        media_id:
+          type: string
+          format: uuid
+          description: |
+            Media object id for poster items. The referenced object must
+            have `owner_type='session_poster'`. Null for video items.
+        video_url:
+          type: string
+          description: |
+            HTTPS URL for video items on the allowlisted hosts. Null for
+            poster items.
+        position:
+          type: integer
+          description: |
+            Zero-based position in the gallery. Server-assigned in the
+            order items appear in the PUT request body.
+        created_at:
+          type: string
+          format: date-time
+          description: Insertion timestamp of this gallery row (server clock, UTC).
+        updated_at:
+          type: string
+          format: date-time
+          description: Last-modification timestamp of this row (server clock, UTC).
+
+    SessionMediaGalleryResponse:
+      type: object
+      required: [session_id, items]
+      description: Ordered per-session media gallery response.
+      properties:
+        session_id:
+          type: string
+          format: uuid
+          description: Session that owns the gallery.
+        items:
+          type: array
+          description: Gallery rows in position order.
+          items:
+            $ref: "#/components/schemas/SessionMediaItem"
+
+    SessionMediaReplaceRequest:
+      type: object
+      required: [items]
+      description: |
+        PUT body that replaces the entire session media gallery
+        atomically. Item ordering in the request becomes the stored
+        position order. Server assigns positions 0..N-1. Max 5 poster
+        items and 20 total items.
+      properties:
+        items:
+          type: array
+          maxItems: 20
+          description: |
+            Ordered gallery entries. Server assigns positions 0..N-1
+            in request order. Empty array clears the gallery.
+          items:
+            type: object
+            required: [kind]
+            properties:
+              kind:
+                type: string
+                enum: [poster, video]
+              media_id:
+                type: string
+                format: uuid
+                description: |
+                  Required for kind='poster'. Must reference a
+                  media_objects row of owner_type='session_poster'.
+              video_url:
+                type: string
+                description: |
+                  Required for kind='video'. HTTPS URL on an
+                  allowlisted host (youtube.com, youtu.be, vk.com,
+                  rutube.ru, vimeo.com).
+
     TicketTierItem:
       type: object
       required:
@@ -14985,6 +15079,196 @@ paths:
             Internal server error. Possible codes:
             `session.delete_failed`, `session.audit_failed`,
             `session.commit_failed`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or session queries unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/sessions/{id}/media:
+    get:
+      operationId: getSessionMedia
+      summary: Get the ordered session media gallery
+      description: |
+        Returns the ordered per-session media gallery (AB-47b, feature
+        #435). The gallery is additive to the single per-session poster
+        cover (`sessions.poster_media_id`, event fallback) shipped in
+        AB-47. Requires JWT + `session.read`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the session.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Session media gallery in position order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionMediaGalleryResponse"
+        "400":
+          description: Invalid path parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: |
+            Caller lacks the `session.read` permission or is not a
+            member of the session's owning organization
+            (`org.access_denied`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found (`session.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`session_media.list_failed`, `session_media.lookup_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or session queries unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    put:
+      operationId: replaceSessionMedia
+      summary: Replace the ordered session media gallery
+      description: |
+        Atomically replaces the whole session media gallery. Items
+        become positions 0..N-1 in request order. Max 5 poster items
+        and 20 total items per session. Poster items must reference a
+        media object of `owner_type='session_poster'`; video items
+        must use HTTPS on an allowlisted host (youtube.com, youtu.be,
+        vk.com, rutube.ru, vimeo.com). Requires JWT + `session.update`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the session.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionMediaReplaceRequest"
+            examples:
+              posterOnly:
+                summary: Two posters, no videos
+                value:
+                  items:
+                    - kind: "poster"
+                      media_id: "01929d0e-0e47-7000-8000-000000000401"
+                    - kind: "poster"
+                      media_id: "01929d0e-0e47-7000-8000-000000000402"
+              mixedGallery:
+                summary: Posters plus a video trailer
+                value:
+                  items:
+                    - kind: "poster"
+                      media_id: "01929d0e-0e47-7000-8000-000000000401"
+                    - kind: "video"
+                      video_url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+              clearAll:
+                summary: Empty list wipes the gallery
+                value:
+                  items: []
+      responses:
+        "200":
+          description: Replacement succeeded; returns the new gallery.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionMediaGalleryResponse"
+        "400":
+          description: |
+            Body invalid. Possible error codes:
+            `session_media.invalid_body`, `session_media.empty_body`,
+            `session_media.invalid_json`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: |
+            Caller lacks the `session.update` permission or is not a
+            member of the session's owning organization
+            (`org.access_denied`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found (`session.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: |
+            Semantic validation failure. Possible error codes:
+            `session_media.too_many_items` (>20 items),
+            `session_media.too_many_posters` (>5 posters),
+            `session_media.invalid_kind`,
+            `session_media.missing_media_id`,
+            `session_media.missing_video_url`,
+            `session_media.kind_payload_conflict` (both media_id and
+            video_url supplied for one item),
+            `session_media.invalid_media_id`,
+            `session_media.media_not_found`,
+            `session_media.media_owner_type_mismatch`,
+            `session_media.invalid_video_url`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            Internal server error. Possible error codes:
+            `session_media.tx_begin_failed`,
+            `session_media.delete_failed`,
+            `session_media.insert_failed`,
+            `session_media.commit_failed`,
+            `session_media.audit_failed`,
+            `session_media.media_lookup_failed`,
+            `session_media.lookup_failed`.
           content:
             application/json:
               schema:

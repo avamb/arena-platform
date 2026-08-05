@@ -154,6 +154,13 @@ type Querier interface {
 	GetSessionSeatingBindingForUpdate(ctx context.Context, id, eventID uuid.UUID) (SessionSeatingBindingRow, error)
 	BindSessionSeatingPlan(ctx context.Context, id, eventID uuid.UUID, admissionMode string, planVersionID *uuid.UUID, capacityTotal int32) (SessionSeatingBindingRow, error)
 
+	// Session media gallery — per-session posters + video URL links (AB-47b, feature #435)
+	ListSessionMediaItems(ctx context.Context, sessionID uuid.UUID) ([]SessionMediaItemRow, error)
+	DeleteSessionMediaItems(ctx context.Context, sessionID uuid.UUID) error
+	InsertSessionMediaItem(ctx context.Context, sessionID uuid.UUID, kind string, mediaID *uuid.UUID, videoURL *string, position int16) (SessionMediaItemRow, error)
+	SessionExistsActive(ctx context.Context, id uuid.UUID) (bool, error)
+	GetMediaObjectOwnerType(ctx context.Context, id uuid.UUID) (string, error)
+
 	// Ticket tiers — pricing modes for sessions (feature #127)
 	InsertTicketTier(ctx context.Context, sessionID uuid.UUID, name, pricingMode string, priceAmount int64, currency string, pwywMin, pwywMax *int64, capacity *int32, saleWindowStart, saleWindowEnd *time.Time, sortOrder int32) (TicketTierRow, error)
 	GetTicketTierByID(ctx context.Context, id, sessionID uuid.UUID) (TicketTierRow, error)

@@ -3087,6 +3087,13 @@ function SessionsTab({
                         </td>
                       </tr>
                     ) : null}
+                    {canUpdate ? (
+                      <tr>
+                        <td colSpan={7} style={{ ...tdStyle, background: "#f9fafb" }}>
+                          <SessionMediaGallery session={s} />
+                        </td>
+                      </tr>
+                    ) : null}
                   </Fragment>
                 );
               })}
@@ -3785,6 +3792,467 @@ function SessionPosterUpload({ event, session, onUploaded }: SessionPosterUpload
       ) : null}
       {uploadOk ? (
         <div style={{ ...successBoxStyle, marginTop: "4px" }}>{uploadOk}</div>
+      ) : null}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SessionMediaGallery component (AB-47b, feature #435)
+// ---------------------------------------------------------------------------
+
+// Poster cap (5) mirrors backend constant MaxPostersPerGallery. Total items
+// cap (20) mirrors MaxTotalItems. Keep in sync with
+// apps/backend/internal/platform/httpserver/hcatalog/session_media.go.
+const SESSION_MEDIA_MAX_POSTERS = 5;
+const SESSION_MEDIA_MAX_ITEMS = 20;
+
+// Video URL host allowlist mirrors backend `allowedVideoHosts`.
+const SESSION_MEDIA_VIDEO_HOSTS = [
+  "youtube.com",
+  "youtu.be",
+  "vk.com",
+  "rutube.ru",
+  "vimeo.com",
+];
+
+interface SessionMediaItemView {
+  readonly id: string;
+  readonly kind: "poster" | "video";
+  readonly media_id: string | null;
+  readonly video_url: string | null;
+  readonly position: number;
+}
+
+interface SessionMediaGalleryResponse {
+  readonly session_id: string;
+  readonly items: readonly SessionMediaItemView[];
+}
+
+interface DraftItem {
+  readonly localId: string;
+  readonly kind: "poster" | "video";
+  readonly media_id: string | null;
+  readonly video_url: string | null;
+}
+
+/**
+ * Session media gallery editor (AB-47b, feature #435).
+ *
+ * Renders the ordered per-session gallery (up to 5 posters + video URL
+ * links, max 20 items total). Operator can:
+ *   - upload posters (POST /v1/media owner_type=session_poster, then add
+ *     to gallery draft);
+ *   - paste video URLs (allowlisted hosts: YouTube, VK, RuTube, Vimeo);
+ *   - reorder via up/down buttons;
+ *   - remove entries;
+ *   - Save → PUT /v1/sessions/{id}/media (atomic replace).
+ *
+ * The single per-session poster COVER (SessionPosterUpload above) is a
+ * separate concept and is untouched.
+ */
+function SessionMediaGallery({ session }: { session: SessionItem }) {
+  const queryClient = useQueryClient();
+  const queryKey = ["session-media", session.id];
+
+  const query = useQuery<SessionMediaGalleryResponse, ApiError>({
+    queryKey,
+    queryFn: () =>
+      authedFetch<SessionMediaGalleryResponse>({
+        method: "GET",
+        path: `/v1/sessions/${session.id}/media`,
+      }),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+
+  const [draft, setDraft] = useState<DraftItem[] | null>(null);
+  const [videoInput, setVideoInput] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [uiError, setUiError] = useState<string | null>(null);
+  const [uiOk, setUiOk] = useState<string | null>(null);
+
+  // Sync draft with server list on first load / after save.
+  useEffect(() => {
+    if (query.data && draft === null) {
+      setDraft(
+        query.data.items.map((it, idx) => ({
+          localId: `srv-${it.id}-${idx}`,
+          kind: it.kind,
+          media_id: it.media_id,
+          video_url: it.video_url,
+        })),
+      );
+    }
+  }, [query.data, draft]);
+
+  const saveMutation = useMutation<
+    SessionMediaGalleryResponse,
+    ApiError,
+    DraftItem[]
+  >({
+    mutationFn: (items) =>
+      authedFetch<SessionMediaGalleryResponse>({
+        method: "PUT",
+        path: `/v1/sessions/${session.id}/media`,
+        body: {
+          items: items.map((it) => ({
+            kind: it.kind,
+            media_id: it.kind === "poster" ? it.media_id : null,
+            video_url: it.kind === "video" ? it.video_url : null,
+          })),
+        },
+      }),
+    onSuccess: (data) => {
+      setUiOk(`Gallery saved (${data.items.length} item(s)).`);
+      setUiError(null);
+      setDraft(
+        data.items.map((it, idx) => ({
+          localId: `srv-${it.id}-${idx}`,
+          kind: it.kind,
+          media_id: it.media_id,
+          video_url: it.video_url,
+        })),
+      );
+      void queryClient.invalidateQueries({ queryKey });
+    },
+    onError: (err) => {
+      setUiError(`${err.message} (${err.code})`);
+      setUiOk(null);
+    },
+  });
+
+  async function handlePosterUpload(e: {
+    target: { files: FileList | null; value: string };
+  }) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setUiError(null);
+    setUiOk(null);
+    try {
+      const uploaded = await uploadMedia({
+        file,
+        ownerType: "session_poster",
+        ownerId: session.id,
+      });
+      const current = draft ?? [];
+      const posterCount = current.filter((it) => it.kind === "poster").length;
+      if (posterCount >= SESSION_MEDIA_MAX_POSTERS) {
+        setUiError(
+          `Poster cap reached (${SESSION_MEDIA_MAX_POSTERS} per session).`,
+        );
+        return;
+      }
+      if (current.length >= SESSION_MEDIA_MAX_ITEMS) {
+        setUiError(
+          `Gallery is full (${SESSION_MEDIA_MAX_ITEMS} items max).`,
+        );
+        return;
+      }
+      // Warn (never block) on extreme aspect ratios (AB-47b: no rigid
+      // format enforcement).
+      const img = new Image();
+      img.onload = () => {
+        const ratio = img.width / img.height;
+        if (ratio < 0.3 || ratio > 3.5) {
+          setUiOk(
+            `Poster uploaded (unusual aspect ratio ${ratio.toFixed(2)} — will still be shown).`,
+          );
+        } else {
+          setUiOk("Poster added to draft — click Save to persist.");
+        }
+      };
+      img.src = URL.createObjectURL(file);
+      setDraft([
+        ...current,
+        {
+          localId: `local-${uploaded.id}-${Date.now()}`,
+          kind: "poster",
+          media_id: uploaded.id,
+          video_url: null,
+        },
+      ]);
+    } catch (err) {
+      const msg =
+        err instanceof ApiError
+          ? `Upload failed: ${err.message} (${err.code})`
+          : "Upload failed — please try again.";
+      setUiError(msg);
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  }
+
+  function validateVideoUrl(raw: string): string | null {
+    const trimmed = raw.trim();
+    if (trimmed === "") return "video URL is empty";
+    let parsed: URL;
+    try {
+      parsed = new URL(trimmed);
+    } catch {
+      return "not a valid URL";
+    }
+    if (parsed.protocol !== "https:") return "must be an https URL";
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    if (!SESSION_MEDIA_VIDEO_HOSTS.includes(host)) {
+      return `host must be one of: ${SESSION_MEDIA_VIDEO_HOSTS.join(", ")}`;
+    }
+    return null;
+  }
+
+  function handleAddVideo() {
+    const err = validateVideoUrl(videoInput);
+    if (err) {
+      setUiError(`Cannot add video: ${err}`);
+      return;
+    }
+    const current = draft ?? [];
+    if (current.length >= SESSION_MEDIA_MAX_ITEMS) {
+      setUiError(`Gallery is full (${SESSION_MEDIA_MAX_ITEMS} items max).`);
+      return;
+    }
+    setDraft([
+      ...current,
+      {
+        localId: `local-video-${Date.now()}`,
+        kind: "video",
+        media_id: null,
+        video_url: videoInput.trim(),
+      },
+    ]);
+    setVideoInput("");
+    setUiError(null);
+    setUiOk("Video added to draft — click Save to persist.");
+  }
+
+  function move(idx: number, delta: number) {
+    const current = draft ?? [];
+    const target = idx + delta;
+    if (target < 0 || target >= current.length) return;
+    const next = [...current];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    setDraft(next);
+  }
+
+  function remove(idx: number) {
+    const current = draft ?? [];
+    setDraft(current.filter((_, i) => i !== idx));
+  }
+
+  const containerStyle: CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    padding: "8px 0",
+  };
+  const headerStyle: CSSProperties = {
+    fontWeight: 600,
+    fontSize: "13px",
+    color: "#374151",
+  };
+  const listStyle: CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+  };
+  const itemStyle: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    padding: "6px 10px",
+    background: "#ffffff",
+    border: "1px solid #e5e7eb",
+    borderRadius: "4px",
+  };
+  const thumbStyle: CSSProperties = {
+    width: "36px",
+    height: "36px",
+    objectFit: "cover",
+    borderRadius: "3px",
+    border: "1px solid #d1d5db",
+  };
+  const controlsRowStyle: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    flexWrap: "wrap",
+  };
+
+  if (query.isPending) {
+    return <div style={containerStyle}>Loading media gallery…</div>;
+  }
+  if (query.isError) {
+    return (
+      <div style={{ ...containerStyle, ...errorBoxStyle }} role="alert">
+        Failed to load gallery: {query.error.message} ({query.error.code})
+      </div>
+    );
+  }
+
+  const items = draft ?? [];
+  const posterCount = items.filter((it) => it.kind === "poster").length;
+  const posterCapReached = posterCount >= SESSION_MEDIA_MAX_POSTERS;
+  const totalCapReached = items.length >= SESSION_MEDIA_MAX_ITEMS;
+
+  return (
+    <div style={containerStyle}>
+      <div style={headerStyle}>
+        Media gallery — {items.length} item(s) ({posterCount} poster
+        {posterCount === 1 ? "" : "s"}, cap {SESSION_MEDIA_MAX_POSTERS})
+      </div>
+      <div style={listStyle}>
+        {items.length === 0 ? (
+          <div style={{ color: "#6b7280", fontSize: "12px" }}>
+            Gallery is empty. Upload a poster or paste a video URL below.
+          </div>
+        ) : (
+          items.map((it, idx) => (
+            <div key={it.localId} style={itemStyle} data-media-index={idx}>
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontFamily: "monospace",
+                  color: "#6b7280",
+                  minWidth: "22px",
+                }}
+              >
+                #{idx}
+              </span>
+              {it.kind === "poster" && it.media_id ? (
+                <img
+                  src={`/v1/media-files/${it.media_id}`}
+                  alt=""
+                  style={thumbStyle}
+                />
+              ) : (
+                <div
+                  style={{
+                    ...thumbStyle,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "#f3f4f6",
+                    fontSize: "10px",
+                    color: "#4b5563",
+                  }}
+                >
+                  VIDEO
+                </div>
+              )}
+              <span style={{ flex: 1, fontSize: "12px", wordBreak: "break-all" }}>
+                {it.kind === "poster"
+                  ? `poster · ${it.media_id ?? "—"}`
+                  : it.video_url}
+              </span>
+              <button
+                type="button"
+                aria-label={`Move up (position ${idx})`}
+                onClick={() => move(idx, -1)}
+                disabled={idx === 0}
+                style={refreshButtonStyle}
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                aria-label={`Move down (position ${idx})`}
+                onClick={() => move(idx, 1)}
+                disabled={idx === items.length - 1}
+                style={refreshButtonStyle}
+              >
+                ↓
+              </button>
+              <button
+                type="button"
+                aria-label={`Remove item at position ${idx}`}
+                onClick={() => remove(idx)}
+                style={refreshButtonStyle}
+              >
+                Remove
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div style={controlsRowStyle}>
+        <label
+          style={{
+            cursor: uploading || posterCapReached || totalCapReached
+              ? "not-allowed"
+              : "pointer",
+          }}
+        >
+          <input
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            disabled={uploading || posterCapReached || totalCapReached}
+            onChange={handlePosterUpload}
+            aria-label="Add poster to gallery"
+          />
+          <span
+            style={{
+              ...refreshButtonStyle,
+              opacity:
+                uploading || posterCapReached || totalCapReached ? 0.6 : 1,
+              display: "inline-block",
+            }}
+          >
+            {uploading
+              ? "Uploading…"
+              : posterCapReached
+                ? `Poster cap (${SESSION_MEDIA_MAX_POSTERS}) reached`
+                : "Add poster"}
+          </span>
+        </label>
+        <input
+          type="url"
+          placeholder="https://youtube.com/watch?v=…"
+          value={videoInput}
+          onChange={(e) => setVideoInput(e.target.value)}
+          disabled={totalCapReached}
+          style={{
+            flex: 1,
+            minWidth: "220px",
+            padding: "6px 8px",
+            border: "1px solid #d1d5db",
+            borderRadius: "4px",
+            fontSize: "12px",
+          }}
+          aria-label="Video URL"
+        />
+        <button
+          type="button"
+          onClick={handleAddVideo}
+          disabled={totalCapReached || videoInput.trim() === ""}
+          style={refreshButtonStyle}
+        >
+          Add video
+        </button>
+        <button
+          type="button"
+          onClick={() => saveMutation.mutate(items)}
+          disabled={saveMutation.isPending}
+          style={{
+            ...refreshButtonStyle,
+            fontWeight: 600,
+            background: "#2563eb",
+            color: "#ffffff",
+            borderColor: "#1d4ed8",
+          }}
+        >
+          {saveMutation.isPending ? "Saving…" : "Save gallery"}
+        </button>
+      </div>
+
+      {uiError ? (
+        <div style={{ ...formErrorStyle, marginTop: "4px" }}>{uiError}</div>
+      ) : null}
+      {uiOk ? (
+        <div style={{ ...successBoxStyle, marginTop: "4px" }}>{uiOk}</div>
       ) : null}
     </div>
   );

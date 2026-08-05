@@ -2059,6 +2059,38 @@ export interface paths {
         patch: operations["updateSession"];
         trace?: never;
     };
+    "/v1/sessions/{id}/media": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the ordered session media gallery
+         * @description Returns the ordered per-session media gallery (AB-47b, feature
+         *     #435). The gallery is additive to the single per-session poster
+         *     cover (`sessions.poster_media_id`, event fallback) shipped in
+         *     AB-47. Requires JWT + `session.read`.
+         */
+        get: operations["getSessionMedia"];
+        /**
+         * Replace the ordered session media gallery
+         * @description Atomically replaces the whole session media gallery. Items
+         *     become positions 0..N-1 in request order. Max 5 poster items
+         *     and 20 total items per session. Poster items must reference a
+         *     media object of `owner_type='session_poster'`; video items
+         *     must use HTTPS on an allowlisted host (youtube.com, youtu.be,
+         *     vk.com, rutube.ru, vimeo.com). Requires JWT + `session.update`.
+         */
+        put: operations["replaceSessionMedia"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers": {
         parameters: {
             query?: never;
@@ -7985,6 +8017,89 @@ export interface components {
              * @example true
              */
             deleted: boolean;
+        };
+        /**
+         * @description One entry of a session media gallery (AB-47b, feature #435).
+         *     Exactly one of `media_id` (kind='poster') or `video_url`
+         *     (kind='video') is non-null per row.
+         */
+        SessionMediaItem: {
+            /**
+             * Format: uuid
+             * @description Server-generated identifier of this gallery row.
+             */
+            id: string;
+            /**
+             * @description Discriminator. `poster` items carry `media_id`; `video` items
+             *     carry `video_url` (host allowlist: youtube.com, youtu.be,
+             *     vk.com, rutube.ru, vimeo.com).
+             * @enum {string}
+             */
+            kind: "poster" | "video";
+            /**
+             * Format: uuid
+             * @description Media object id for poster items. The referenced object must
+             *     have `owner_type='session_poster'`. Null for video items.
+             */
+            media_id?: string;
+            /**
+             * @description HTTPS URL for video items on the allowlisted hosts. Null for
+             *     poster items.
+             */
+            video_url?: string;
+            /**
+             * @description Zero-based position in the gallery. Server-assigned in the
+             *     order items appear in the PUT request body.
+             */
+            position: number;
+            /**
+             * Format: date-time
+             * @description Insertion timestamp of this gallery row (server clock, UTC).
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description Last-modification timestamp of this row (server clock, UTC).
+             */
+            updated_at: string;
+        };
+        /** @description Ordered per-session media gallery response. */
+        SessionMediaGalleryResponse: {
+            /**
+             * Format: uuid
+             * @description Session that owns the gallery.
+             */
+            session_id: string;
+            /** @description Gallery rows in position order. */
+            items: components["schemas"]["SessionMediaItem"][];
+        };
+        /**
+         * @description PUT body that replaces the entire session media gallery
+         *     atomically. Item ordering in the request becomes the stored
+         *     position order. Server assigns positions 0..N-1. Max 5 poster
+         *     items and 20 total items.
+         */
+        SessionMediaReplaceRequest: {
+            /**
+             * @description Ordered gallery entries. Server assigns positions 0..N-1
+             *     in request order. Empty array clears the gallery.
+             */
+            items: {
+                /** @enum {string} */
+                kind: "poster" | "video";
+                /**
+                 * Format: uuid
+                 * @description Required for kind='poster'. Must reference a
+                 *     media_objects row of owner_type='session_poster'.
+                 */
+                media_id?: string;
+                /**
+                 * @description Required for kind='video'. HTTPS URL on an
+                 *     allowlisted host (youtube.com, youtu.be, vk.com,
+                 *     rutube.ru, vimeo.com).
+                 */
+                video_url?: string;
+            }[];
         };
         /**
          * @description A single pricing tier (ticket type) within a Session. Three pricing
@@ -19110,6 +19225,207 @@ export interface operations {
                 };
             };
             /** @description Internal server error (`session.update_failed`, `session.get_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or session queries unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getSessionMedia: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the session. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session media gallery in position order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionMediaGalleryResponse"];
+                };
+            };
+            /** @description Invalid path parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Caller lacks the `session.read` permission or is not a
+             *     member of the session's owning organization
+             *     (`org.access_denied`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`session_media.list_failed`, `session_media.lookup_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or session queries unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    replaceSessionMedia: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the session. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionMediaReplaceRequest"];
+            };
+        };
+        responses: {
+            /** @description Replacement succeeded; returns the new gallery. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionMediaGalleryResponse"];
+                };
+            };
+            /**
+             * @description Body invalid. Possible error codes:
+             *     `session_media.invalid_body`, `session_media.empty_body`,
+             *     `session_media.invalid_json`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Caller lacks the `session.update` permission or is not a
+             *     member of the session's owning organization
+             *     (`org.access_denied`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Semantic validation failure. Possible error codes:
+             *     `session_media.too_many_items` (>20 items),
+             *     `session_media.too_many_posters` (>5 posters),
+             *     `session_media.invalid_kind`,
+             *     `session_media.missing_media_id`,
+             *     `session_media.missing_video_url`,
+             *     `session_media.kind_payload_conflict` (both media_id and
+             *     video_url supplied for one item),
+             *     `session_media.invalid_media_id`,
+             *     `session_media.media_not_found`,
+             *     `session_media.media_owner_type_mismatch`,
+             *     `session_media.invalid_video_url`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error. Possible error codes:
+             *     `session_media.tx_begin_failed`,
+             *     `session_media.delete_failed`,
+             *     `session_media.insert_failed`,
+             *     `session_media.commit_failed`,
+             *     `session_media.audit_failed`,
+             *     `session_media.media_lookup_failed`,
+             *     `session_media.lookup_failed`.
+             */
             500: {
                 headers: {
                     [name: string]: unknown;

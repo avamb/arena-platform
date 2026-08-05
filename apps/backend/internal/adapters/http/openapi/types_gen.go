@@ -552,6 +552,18 @@ const (
 	SessionItemStatusScheduled SessionItemStatus = "scheduled"
 )
 
+// Defines values for SessionMediaItemKind.
+const (
+	SessionMediaItemKindPoster SessionMediaItemKind = "poster"
+	SessionMediaItemKindVideo  SessionMediaItemKind = "video"
+)
+
+// Defines values for SessionMediaReplaceRequestItemsKind.
+const (
+	SessionMediaReplaceRequestItemsKindPoster SessionMediaReplaceRequestItemsKind = "poster"
+	SessionMediaReplaceRequestItemsKindVideo  SessionMediaReplaceRequestItemsKind = "video"
+)
+
 // Defines values for TicketCredentialItemType.
 const (
 	Pdf      TicketCredentialItemType = "pdf"
@@ -5347,6 +5359,70 @@ type SessionListResponse struct {
 	Sessions []SessionItem `json:"sessions"`
 }
 
+// SessionMediaGalleryResponse Ordered per-session media gallery response.
+type SessionMediaGalleryResponse struct {
+	// Items Gallery rows in position order.
+	Items []SessionMediaItem `json:"items"`
+
+	// SessionId Session that owns the gallery.
+	SessionId openapi_types.UUID `json:"session_id"`
+}
+
+// SessionMediaItem One entry of a session media gallery (AB-47b, feature #435).
+// Exactly one of `media_id` (kind='poster') or `video_url`
+// (kind='video') is non-null per row.
+type SessionMediaItem struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id Server-generated identifier of this gallery row.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Discriminator. `poster` items carry `media_id`; `video` items
+	// carry `video_url` (host allowlist: youtube.com, youtu.be,
+	// vk.com, rutube.ru, vimeo.com).
+	Kind SessionMediaItemKind `json:"kind"`
+
+	// MediaId Media object id for poster items. The referenced object must
+	// have `owner_type='session_poster'`. Null for video items.
+	MediaId *openapi_types.UUID `json:"media_id"`
+
+	// Position Zero-based position in the gallery. Server-assigned in the
+	// order items appear in the PUT request body.
+	Position  int       `json:"position"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// VideoUrl HTTPS URL for video items on the allowlisted hosts. Null for
+	// poster items.
+	VideoUrl *string `json:"video_url"`
+}
+
+// SessionMediaItemKind Discriminator. `poster` items carry `media_id`; `video` items
+// carry `video_url` (host allowlist: youtube.com, youtu.be,
+// vk.com, rutube.ru, vimeo.com).
+type SessionMediaItemKind string
+
+// SessionMediaReplaceRequest PUT body that replaces the entire session media gallery
+// atomically. Item ordering in the request becomes the stored
+// position order. Server assigns positions 0..N-1. Max 5 poster
+// items and 20 total items.
+type SessionMediaReplaceRequest struct {
+	Items []struct {
+		Kind SessionMediaReplaceRequestItemsKind `json:"kind"`
+
+		// MediaId Required for kind='poster'. Must reference a
+		// media_objects row of owner_type='session_poster'.
+		MediaId *openapi_types.UUID `json:"media_id"`
+
+		// VideoUrl Required for kind='video'. HTTPS URL on an
+		// allowlisted host (youtube.com, youtu.be, vk.com,
+		// rutube.ru, vimeo.com).
+		VideoUrl *string `json:"video_url"`
+	} `json:"items"`
+}
+
+// SessionMediaReplaceRequestItemsKind defines model for SessionMediaReplaceRequest.Items.Kind.
+type SessionMediaReplaceRequestItemsKind string
+
 // StartCheckoutRequest Request body for `POST /v1/checkout/start`. Creates a new checkout
 // session in state `created` linked to an existing reservation. The
 // optional `user_id` attaches the session to an authenticated buyer;
@@ -7173,6 +7249,9 @@ type ForkSeatingPlanJSONRequestBody = ForkSeatingPlanRequest
 
 // CreateSeatingPlanVersionJSONRequestBody defines body for CreateSeatingPlanVersion for application/json ContentType.
 type CreateSeatingPlanVersionJSONRequestBody = CreateSeatingPlanVersionRequest
+
+// ReplaceSessionMediaJSONRequestBody defines body for ReplaceSessionMedia for application/json ContentType.
+type ReplaceSessionMediaJSONRequestBody = SessionMediaReplaceRequest
 
 // CreateSeatingPlanJSONRequestBody defines body for CreateSeatingPlan for application/json ContentType.
 type CreateSeatingPlanJSONRequestBody = CreateSeatingPlanRequest

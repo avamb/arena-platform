@@ -83,6 +83,26 @@ func (s *Server) mountSessionRoutes(r chi.Router) {
 	}
 }
 
+// mountSessionMediaRoutes mounts the per-session media gallery endpoints
+// (AB-47b, feature #435). GET requires session.read; PUT requires
+// session.update. Tenancy is enforced inside the handler via
+// GetSessionOrgContext → requireOrgMembership because the routes are
+// flat (no {org_id} path segment).
+func (s *Server) mountSessionMediaRoutes(r chi.Router) {
+	if s.authEnabled() && s.sessionQueries != nil {
+		r.Group(func(pr chi.Router) {
+			s.applyAuth(pr, "session.read", "sessions")
+			pr.Get("/sessions/{id}/media", s.handleGetSessionMedia)
+		})
+	}
+	if s.authEnabled() && s.sessionQueries != nil && s.pool != nil {
+		r.Group(func(pr chi.Router) {
+			s.applyAuth(pr, "session.update", "sessions")
+			pr.Put("/sessions/{id}/media", s.handleReplaceSessionMedia)
+		})
+	}
+}
+
 // mountTierRoutes mounts ticket tier CRUD endpoints (feature #127).
 func (s *Server) mountTierRoutes(r chi.Router) {
 	if s.authEnabled() && s.tierQueries != nil {

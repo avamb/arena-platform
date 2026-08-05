@@ -96,7 +96,7 @@ function parseErrorEnvelope(status: number, raw: unknown): ApiError {
 }
 
 interface RawFetchOptions {
-  method: "GET" | "POST" | "PATCH" | "DELETE";
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   path: string;
   body?: unknown;
   authenticated: boolean;
@@ -301,7 +301,7 @@ export async function createAdminUser(
 }
 
 interface AuthedRequest {
-  method: "GET" | "POST" | "PATCH" | "DELETE";
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   path: string;
   body?: unknown;
 }
