@@ -23213,3 +23213,37 @@ None. All artifacts were already in sync.
   selection model, and end-to-end browser verification on the Palac
   Akropolis plan + widget cache invalidation. Fresh session should
   claim it once #433 lands (stats after this batch: 425/434 passing).
+
+## 2026-08-05 — Batch #433 / #435 / #429
+
+- **#433 (GATE pass 3) PASSING**: owner had already answered confirm=yes
+  in the human-input queue on 2026-08-05T14:14 (interactive wave-4
+  pass 3 landed per MEMORY.md). Verified via feature_claim_and_get,
+  marked passing. This unblocks #435 and #429.
+
+- **#435 (AB-47b session media gallery) NOT ATTEMPTED**: released via
+  feature_clear_in_progress. MAJOR/complexity 2, but the full ceremony
+  is far more than the label implies — new migration 0085
+  (session_media_items with dual-mode CHECK constraint) + head-pin
+  bump in migrations_head_test.go, new sqlc queries + sqlc regen,
+  new GET/PUT /v1/sessions/{id}/media handler with atomic PUT replace
+  and URL allowlist validation (YouTube / VK / RuTube / Vimeo),
+  openapi.yaml additions with block-style error refs, gen-openapi +
+  gen-ts-client regeneration, admin gallery-grid UI in events.tsx
+  (drag-order, poster upload flow, video-URL input, warn-only
+  extreme-aspect check), handler unit tests and an integration-tagged
+  DB round-trip. The description explicitly forbids marking passing
+  from unit tests alone — a PostgreSQL + browser round-trip on the
+  live admin is required. Left cleanly unclaimed so a fresh session
+  with room for the full end-to-end pass can pick it up.
+
+- **#429 (AB-39 per-seat price category) NOT ATTEMPTED**: not claimed
+  this batch. CRITICAL/complexity 3. #433 has now landed so the
+  dependency is cleared; a dedicated implementation session (new
+  PATCH /v1/event-sessions/{id}/seats/category with sold/held 409
+  conflict + seat_status_version bump + widget cache invalidation,
+  dual-surface admin UI with a shared selection model over table
+  and map, Palac Akropolis browser e2e) should claim it next.
+
+Stats after this batch: 429/436 passing (98.4%).
+
