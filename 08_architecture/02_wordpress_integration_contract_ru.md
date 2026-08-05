@@ -177,7 +177,13 @@ GET /v1/catalog/venues/{venue_id}
 Ожидаемое поведение:
 
 - создавать или обновлять `arena_event` posts
-- обновлять title, slug candidate, poster URLs, description, age limit, organizer display data
+- обновлять title, slug candidate, description, age limit, organizer display data
+- **poster URLs теперь берутся с уровня сеанса (AB-47c, feature #436).**
+  Резолвинг обложки: `session.poster_url` (когда установлен) ?? `event.poster_url`.
+  Оба поля отдаются публичным feed'ом (см. `/v1/public/feeds/{token}/events/{event_id}`).
+  Помимо обложки, каждый сеанс несёт `media_gallery: [{kind, poster_url?, video_url?, position}, …]` —
+  до 5 постеров + видео-ссылки (YouTube, VK, RuTube, Vimeo). Ticket PDF/email используют
+  ТОЛЬКО обложку — галерея на них не выводится.
 - обновлять кеш сеансов: date/time, venue, city, currency, ticket categories, tariffs, min/max price
 - сохранять локальные редакторские поля, если sync policy явно не говорит перезаписывать
 - помечать исчезнувшие сеансы inactive, а не удалять сразу

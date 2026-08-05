@@ -340,6 +340,7 @@
           seat_status_url: `/v1/event-sessions/${sessId}/seat-status`,
           buyer_fields: [],
           tiers: [],
+          media_gallery: [],
         },
       ],
     };
@@ -670,6 +671,23 @@
       {:else if loadError}
         <div class="arena-tickets-error" role="alert">{loadError}</div>
       {:else if event && event.sessions.length > 0}
+        {#if selectedSession?.poster_url ?? event.poster_url}
+          <!-- AB-47c: resolved poster cover (session ?? event fallback).
+               The gallery beyond the cover lives in the data layer
+               (selectedSession.media_gallery) — see FeedSession type. -->
+          <div
+            class="arena-tickets-cover"
+            data-arena-poster-cover
+            data-arena-poster-source={selectedSession?.poster_url ? 'session' : 'event'}
+          >
+            <img
+              src={selectedSession?.poster_url ?? event.poster_url ?? ''}
+              alt=""
+              data-arena-poster-media-id={selectedSession?.poster_media_id ?? event.poster_media_id ?? ''}
+              loading="lazy"
+            />
+          </div>
+        {/if}
         <!-- Session date chips + legend -->
         <SessionList
           sessions={event.sessions}
@@ -805,6 +823,20 @@
     border: 1px solid var(--_border);
     border-radius: var(--_radius);
     overflow: hidden;
+  }
+
+  .arena-tickets-cover {
+    display: block;
+    width: 100%;
+    background: #0f172a;
+    line-height: 0;
+  }
+
+  .arena-tickets-cover img {
+    display: block;
+    width: 100%;
+    max-height: 260px;
+    object-fit: cover;
   }
 
   .arena-tickets-loading {

@@ -21291,6 +21291,31 @@ paths:
         given feed token. No JWT required.
 
         Rate-limited per token and per IP.
+
+        Response envelope: `{ event: { …EventItem…, sessions: [SessionDetail] } }`.
+
+        **AB-47c (feature #436) additions on the response:**
+
+        Event level (defaults, used as fallback for sessions):
+          * `poster_media_id` — UUID of the event cover, or null.
+          * `poster_url` — public URL of the event cover, or null.
+
+        Session level (per-session poster + gallery):
+          * `poster_media_id` — resolved cover: session's own value when
+            set, otherwise the event fallback. Same on `poster_url`.
+          * `media_gallery: SessionMediaItem[]` — ordered per-session
+            gallery (up to 5 posters + video URL links). Additive to
+            the cover above. Ticket PDF/email use the cover only —
+            the gallery does NOT propagate to those surfaces.
+
+        `SessionMediaItem` shape here (widget contract):
+        ```
+        { kind: "poster" | "video",
+          poster_url?: string | null,
+          video_url?:  string | null,
+          position:    integer }
+        ```
+        Exactly one of `poster_url` / `video_url` is populated per row.
       tags: [PublicFeed]
       parameters:
         - name: feed_token

@@ -63,8 +63,22 @@ type publicFeedEventResponse struct {
 	VenueNames     []string `json:"venue_names"`
 	Visibility     string   `json:"visibility"`
 	ImageURL       *string  `json:"image_url"`
-	CreatedAt      string   `json:"created_at"`
-	UpdatedAt      string   `json:"updated_at"`
+	// PosterMediaID is the event-level default poster (AB-47/AB-47c). Sessions
+	// fall back to this cover when they don't set their own poster_media_id.
+	PosterMediaID *string `json:"poster_media_id"`
+	// PosterURL is the public URL for the event-level poster cover (nil when
+	// no cover is set). Sessions can override this per-session (AB-47c).
+	PosterURL *string `json:"poster_url"`
+	CreatedAt string  `json:"created_at"`
+	UpdatedAt string  `json:"updated_at"`
+}
+
+// mediaFileURL builds the public URL for a media object id. Kept as a
+// package-level helper so tests and public-feed handlers agree on the shape.
+// Feature #435/#436 (AB-47b/AB-47c) — media objects are served from
+// /v1/media-files/{id} on the same host as the API.
+func mediaFileURL(id uuid.UUID) string {
+	return "/v1/media-files/" + id.String()
 }
 
 func publicFeedEventFromRow(e gen.EventRow) publicFeedEventResponse {
@@ -80,6 +94,12 @@ func publicFeedEventFromRow(e gen.EventRow) publicFeedEventResponse {
 		ImageURL:      e.ImageURL,
 		CreatedAt:     e.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:     e.UpdatedAt.UTC().Format(time.RFC3339),
+	}
+	if e.PosterMediaID != nil {
+		mid := e.PosterMediaID.String()
+		url := mediaFileURL(*e.PosterMediaID)
+		resp.PosterMediaID = &mid
+		resp.PosterURL = &url
 	}
 	if e.FirstSessionAt != nil {
 		s := e.FirstSessionAt.UTC().Format(time.RFC3339)
@@ -188,6 +208,27 @@ type publicFeedSessionResponse struct {
 	SeatStatusURL string                   `json:"seat_status_url,omitempty"`
 	BuyerFields   []BuyerFieldItem         `json:"buyer_fields"`
 	Tiers         []publicFeedTierResponse `json:"tiers"`
+	// PosterMediaID / PosterURL are the resolved cover (AB-47c): the session
+	// value when set, otherwise the event fallback. Same on both fields.
+	// The widget uses PosterURL directly; media_id is exposed for callers
+	// that need to hit a different variant/thumbnail endpoint later.
+	PosterMediaID *string `json:"poster_media_id"`
+	PosterURL     *string `json:"poster_url"`
+	// MediaGallery is the ordered per-session gallery (AB-47b/AB-47c).
+	// Populated only when the session actually has gallery items; each
+	// element carries a URL (`poster_url` for kind='poster' rows built
+	// from media_id, `video_url` for kind='video' rows) so callers do
+	// not need to construct URLs themselves.
+	MediaGallery []publicFeedMediaItem `json:"media_gallery"`
+}
+
+// publicFeedMediaItem is the public shape for one row of a session media
+// gallery in the public feed / widget payload (AB-47c).
+type publicFeedMediaItem struct {
+	Kind     string  `json:"kind"`      // "poster" | "video"
+	PosterURL *string `json:"poster_url"` // filled for kind='poster'
+	VideoURL *string `json:"video_url"` // filled for kind='video'
+	Position int     `json:"position"`
 }
 
 // BuildBuyerFields constructs the buyer_fields list from channel flags.
@@ -208,7 +249,7 @@ func buildBuyerFields(collectName, collectPhone bool) []BuyerFieldItem {
 }
 
 func publicFeedSessionFromRow(s gen.SessionRow, buyerFields []BuyerFieldItem) publicFeedSessionResponse {
-	return publicFeedSessionResponse{
+	resp := publicFeedSessionResponse{
 		ID:            s.ID.String(),
 		StartAt:       s.StartAt.UTC().Format(time.RFC3339),
 		EndAt:         s.EndAt.UTC().Format(time.RFC3339),
@@ -216,7 +257,61 @@ func publicFeedSessionFromRow(s gen.SessionRow, buyerFields []BuyerFieldItem) pu
 		Status:        s.Status,
 		BuyerFields:   buyerFields,
 		Tiers:         []publicFeedTierResponse{},
+		MediaGallery:  []publicFeedMediaItem{},
 	}
+	// Session-level poster wins over the event-level fallback (AB-47c).
+	// The event fallback is applied later by applyPosterFallback when the
+	// caller knows the event cover.
+	if s.PosterMediaID != nil {
+		mid := s.PosterMediaID.String()
+		url := mediaFileURL(*s.PosterMediaID)
+		resp.PosterMediaID = &mid
+		resp.PosterURL = &url
+	}
+	return resp
+}
+
+// applyPosterFallback fills PosterMediaID/PosterURL from the event cover
+// when the session did not carry its own poster (AB-47c: resolution is
+// session ?? event). Called from the event-detail handler once per session
+// after the event row has been loaded.
+func (r *publicFeedSessionResponse) applyPosterFallback(eventPosterMediaID *string, eventPosterURL *string) {
+	if r.PosterMediaID != nil || eventPosterMediaID == nil {
+		return
+	}
+	r.PosterMediaID = eventPosterMediaID
+	r.PosterURL = eventPosterURL
+}
+
+// applyMediaGallery projects a list of gen.SessionMediaItemRow into the
+// public shape. Poster rows expose a poster_url built from media_id; video
+// rows expose video_url. Rows are already ordered by position from the
+// query, but we sort defensively.
+func (r *publicFeedSessionResponse) applyMediaGallery(rows []gen.SessionMediaItemRow) {
+	if len(rows) == 0 {
+		return
+	}
+	items := make([]publicFeedMediaItem, 0, len(rows))
+	for _, row := range rows {
+		item := publicFeedMediaItem{
+			Kind:     row.Kind,
+			Position: int(row.Position),
+		}
+		switch row.Kind {
+		case "poster":
+			if row.MediaID != nil {
+				url := mediaFileURL(*row.MediaID)
+				item.PosterURL = &url
+			}
+		case "video":
+			if row.VideoURL != nil {
+				u := *row.VideoURL
+				item.VideoURL = &u
+			}
+		}
+		items = append(items, item)
+	}
+	r.MediaGallery = items
 }
 
 // applySeatingLinks fills in schema_url / seat_status_url and
@@ -558,6 +653,23 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 			for _, sess := range sessions {
 				sessResp := publicFeedSessionFromRow(sess, defaultBuyerFields)
 				sessResp.applySeatingLinks(admissionByID[sess.ID.String()])
+				sessResp.applyPosterFallback(eventResp.PosterMediaID, eventResp.PosterURL)
+
+				// AB-47c: attach the ordered per-session media gallery.
+				// sessionQueries carries the ListSessionMediaItems method
+				// (added in AB-47b feature #435). Non-fatal — a lookup
+				// failure degrades to an empty gallery rather than 500.
+				if h.sessionQueries != nil {
+					mediaRows, mediaErr := h.sessionQueries.ListSessionMediaItems(ctx, sess.ID)
+					if mediaErr != nil {
+						h.logger.Error("public_feed: list session media failed",
+							slog.String("session_id", sess.ID.String()),
+							slog.String("error", mediaErr.Error()),
+						)
+					} else {
+						sessResp.applyMediaGallery(mediaRows)
+					}
+				}
 
 				// Fetch tiers for each session.
 				if h.tierQueries != nil {

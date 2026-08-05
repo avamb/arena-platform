@@ -58,6 +58,15 @@ const CHECKOUT_SESSION_ID = 'csid-palac-0000001';
 // feed's events and probes details until one contains the session. These
 // fixtures cover that real resolution path — no synthetic fallback.
 
+// AB-47c fixtures: cover + gallery on the public feed. The event-level
+// poster is the fallback the widget uses when a session did not set its
+// own cover; the session-level poster is the winning cover in the
+// resolution session ?? event.
+const EVENT_POSTER_MEDIA_ID = '11110000-0000-4000-8000-000000000001';
+const SESSION_POSTER_MEDIA_ID = '11110000-0000-4000-8000-000000000002';
+const GALLERY_POSTER_MEDIA_ID = '11110000-0000-4000-8000-000000000003';
+const GALLERY_VIDEO_URL = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+
 /** Palác event summary as emitted by GET /v1/public/feeds/{token}/events. */
 function buildPalacEventSummary(): object {
   const now = new Date();
@@ -74,6 +83,8 @@ function buildPalacEventSummary(): object {
     end_at: endAt,
     visibility: 'public',
     image_url: null,
+    poster_media_id: EVENT_POSTER_MEDIA_ID,
+    poster_url: `/v1/media-files/${EVENT_POSTER_MEDIA_ID}`,
     created_at: now.toISOString(),
     updated_at: now.toISOString(),
   };
@@ -97,6 +108,23 @@ function buildPalacEventDetail(): object {
           seat_status_url: `/v1/event-sessions/${SESSION_ID}/seat-status`,
           buyer_fields: [],
           tiers: [],
+          // AB-47c: session-level cover wins over event fallback.
+          poster_media_id: SESSION_POSTER_MEDIA_ID,
+          poster_url: `/v1/media-files/${SESSION_POSTER_MEDIA_ID}`,
+          media_gallery: [
+            {
+              kind: 'poster',
+              poster_url: `/v1/media-files/${GALLERY_POSTER_MEDIA_ID}`,
+              video_url: null,
+              position: 0,
+            },
+            {
+              kind: 'video',
+              poster_url: null,
+              video_url: GALLERY_VIDEO_URL,
+              position: 1,
+            },
+          ],
         },
       ],
     },
@@ -1320,5 +1348,68 @@ test.describe('7 — Backend suites green; lint 0; CI job health', () => {
     expect(typeof result['expires_at']).toBe('string');
     const exp = new Date(result['expires_at'] as string).getTime();
     expect(exp).toBeGreaterThan(Date.now());
+  });
+});
+
+// AB-47c (feature #436): the public feed payload exposes the resolved
+// poster cover (session ?? event) plus the ordered per-session gallery.
+// The widget renders the cover on the selecting stage and the data layer
+// carries the gallery entries. Hybrid-hall map rendering (AB-40D) stays
+// separate — this suite only asserts the media surface.
+test.describe('8 — AB-47c poster cover + gallery on public surfaces', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupPalacRoutes(page.context());
+    await page.goto('/demo/palac-akropolis.html');
+    await waitForSVG(page);
+  });
+
+  test('cover image is rendered on the selecting stage (session cover wins)', async ({ page }) => {
+    // The cover is emitted inside the widget shadow root as
+    // <div class="arena-tickets-cover" data-arena-poster-cover>…</div>.
+    const cover = await page.evaluate(() => {
+      const el = document.querySelector('#widget-hybrid-en');
+      if (!el?.shadowRoot) return null;
+      const wrap = el.shadowRoot.querySelector('[data-arena-poster-cover]');
+      if (!wrap) return null;
+      const img = wrap.querySelector('img') as HTMLImageElement | null;
+      return {
+        source: wrap.getAttribute('data-arena-poster-source'),
+        src: img?.getAttribute('src') ?? null,
+        mediaId: img?.getAttribute('data-arena-poster-media-id') ?? null,
+      };
+    });
+    expect(cover, 'poster cover container must be present in the widget shadow root').not.toBeNull();
+    // Session cover wins over event fallback.
+    expect(cover!.source).toBe('session');
+    expect(cover!.mediaId).toBe(SESSION_POSTER_MEDIA_ID);
+    expect(cover!.src).toContain(SESSION_POSTER_MEDIA_ID);
+  });
+
+  test('feed detail carries poster_url and media_gallery for the session', async ({ page }) => {
+    const detail = await page.evaluate(async ({ token, eventId }) => {
+      const res = await fetch(`/v1/public/feeds/${token}/events/${eventId}`);
+      return res.json() as Promise<Record<string, unknown>>;
+    }, { token: FEED_TOKEN, eventId: EVENT_ID });
+
+    const event = detail['event'] as Record<string, unknown>;
+    // Event carries its own poster fields (used as fallback when a
+    // session doesn't override).
+    expect(typeof event['poster_url']).toBe('string');
+    expect(typeof event['poster_media_id']).toBe('string');
+
+    const sessions = event['sessions'] as Array<Record<string, unknown>>;
+    const session = sessions[0]!;
+    // Session-level cover wins.
+    expect(session['poster_media_id']).toBe(SESSION_POSTER_MEDIA_ID);
+    expect(session['poster_url']).toContain(SESSION_POSTER_MEDIA_ID);
+    // Gallery: exactly one poster + one video, in position order.
+    const gallery = session['media_gallery'] as Array<Record<string, unknown>>;
+    expect(gallery).toHaveLength(2);
+    expect(gallery[0]!['kind']).toBe('poster');
+    expect(gallery[0]!['position']).toBe(0);
+    expect(String(gallery[0]!['poster_url'])).toContain(GALLERY_POSTER_MEDIA_ID);
+    expect(gallery[1]!['kind']).toBe('video');
+    expect(gallery[1]!['position']).toBe(1);
+    expect(gallery[1]!['video_url']).toBe(GALLERY_VIDEO_URL);
   });
 });

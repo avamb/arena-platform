@@ -162,6 +162,18 @@ export interface Tier {
   sort_order: number;
 }
 
+/**
+ * One row of a session media gallery (AB-47b/AB-47c). Exactly one of
+ * `poster_url` (kind='poster') or `video_url` (kind='video') is set.
+ * `position` is the server-assigned 0..N-1 order.
+ */
+export interface FeedSessionMediaItem {
+  kind: 'poster' | 'video';
+  poster_url?: string | null;
+  video_url?: string | null;
+  position: number;
+}
+
 /** Session as returned by the public feed event detail endpoint. */
 export interface FeedSession {
   id: string;
@@ -177,6 +189,19 @@ export interface FeedSession {
   seat_status_url?: string;
   buyer_fields: BuyerField[];
   tiers: Tier[];
+  /**
+   * Resolved poster cover (AB-47c): session's own poster_media_id when set,
+   * otherwise the event-level fallback (event.poster_media_id). Both
+   * fields resolve to the same media object.
+   */
+  poster_media_id?: string | null;
+  poster_url?: string | null;
+  /**
+   * Ordered per-session media gallery (AB-47b/AB-47c). Empty array when
+   * the session has no gallery items. The gallery is additive to the
+   * cover above; the cover is NOT included in this list.
+   */
+  media_gallery: FeedSessionMediaItem[];
 }
 
 export interface FeedEvent {
@@ -198,6 +223,12 @@ export interface FeedEvent {
   venue_names: string[];
   visibility: string;
   image_url?: string | null;
+  /**
+   * Event-level poster cover (AB-47/AB-47c). Sessions fall back to this
+   * media object when they do not carry their own poster_media_id.
+   */
+  poster_media_id?: string | null;
+  poster_url?: string | null;
   created_at: string;
   updated_at: string;
   sessions: FeedSession[];

@@ -19,6 +19,7 @@ const listPublishedEventsByFeedToken = `-- name: ListPublishedEventsByFeedToken 
 SELECT
     e.id, e.display_number, e.org_id, e.name, e.description, e.status,
     e.first_session_at, e.last_session_at, e.visibility, e.image_url,
+    e.poster_media_id,
     e.created_at, e.updated_at, e.deleted_at
 FROM events e
 JOIN event_publications ep ON ep.event_id = e.id
@@ -95,6 +96,7 @@ const getPublishedEventByFeedToken = `-- name: GetPublishedEventByFeedToken :one
 SELECT
     e.id, e.display_number, e.org_id, e.name, e.description, e.status,
     e.first_session_at, e.last_session_at, e.visibility, e.image_url,
+    e.poster_media_id,
     e.created_at, e.updated_at, e.deleted_at
 FROM events e
 JOIN event_publications ep ON ep.event_id = e.id
