@@ -23336,3 +23336,97 @@ Feature #430 marked passing. Overall feature status: 430/436 passing (98.6%).
 
 Stats unchanged after this batch: 430/436 passing (98.6%).
 
+
+## 2026-08-05 (session C) — Batch #435 / #436 / #429 (partial)
+
+**#435 (AB-47b) PASSING.** Docker was up on this host so the mandatory
+integration-tagged DB test could actually run. Delivered:
+- Backend: hcatalog/session_media.go handler (GET + PUT
+  /v1/sessions/{id}/media). Flat path; tenancy via
+  GetSessionOrgContext + requireOrgMembership. Poster cap 5 + total
+  cap 20 as HANDLER constants. Video allowlist: youtube.com,
+  youtu.be, vk.com, rutube.ru, vimeo.com. Atomic replace inside a
+  pgx transaction with positions renumbered 0..N-1. Poster owner_type
+  cross-check (session_poster) via GetMediaObjectOwnerType; NO
+  widening of the media_objects.owner_type CHECK constraint.
+  Wired in catalog_shims + mount_catalog + mount_v1.
+- OpenAPI: new schemas SessionMediaItem, SessionMediaGalleryResponse,
+  SessionMediaReplaceRequest; both endpoints declared with block-style
+  error responses; Go types + TS client regenerated. Querier interface
+  updated; migrations_head_test bumped to 0085.
+- Tests: hcatalog unit tests for validateVideoURL (18 cases),
+  constants + allowlist guards; integration-tagged
+  gen/session_media_integration_test.go (empty gallery, mixed insert,
+  kind_payload CHECK violations, position UNIQUE, WithTx atomic
+  replace, ON DELETE CASCADE) — passing against docker PG on port
+  55432. End-to-end curl against a locally-run arena-api (:8090) +
+  docker PG covered 9 scenarios: GET empty, PUT mixed, persistence,
+  invalid host 422, too_many_posters 422, kind_payload_conflict 422,
+  unknown session 404, missing token 401, empty items clears.
+- Admin UI: SessionMediaGallery component in events.tsx — gallery
+  list with reorder (up/down) + remove, poster upload (reuses
+  uploadMedia session_poster flow), video URL input, cap warnings,
+  aspect-ratio warning (never blocks), Save button (PUT).
+  AuthedRequest widened with "PUT".
+- Suites green: hcatalog + gen, admin-web type-check + 1103 vitest,
+  openapi guard tests. Commit d203dcc.
+
+**#436 (AB-47c) PASSING.** Delivered:
+- Public feed detail (hfeed/public_feed.go) now emits event-level
+  cover (poster_media_id/poster_url) and per-session
+  cover+gallery. Session poster wins over event fallback via
+  applyPosterFallback. Gallery projected from ListSessionMediaItems
+  by applyMediaGallery (poster rows expose poster_url built from
+  media_id, video rows expose video_url; position preserved).
+  Non-fatal: gallery lookup failure degrades to empty, not 500.
+- Pre-existing sqlc bug: GetPublishedEventByFeedToken SELECT missed
+  e.poster_media_id (AB-47 added the column but this query wasn't
+  updated; 14-vs-13 scanner mismatch). Fixed in both queries/*.sql
+  and gen/*.sql.go.
+- OpenAPI: getPublicFeedEvent description now documents the new
+  event/session fields + the widget-contract SessionMediaItem shape.
+  TS client regenerated.
+- Widget: FeedEvent / FeedSession types gain poster_media_id +
+  poster_url, plus FeedSessionMediaItem[] media_gallery.
+  ArenaTickets.svelte renders the resolved cover on the selecting
+  stage (`data-arena-poster-cover`,
+  `data-arena-poster-source="session|event"`,
+  `data-arena-poster-media-id`) with session ?? event fallback.
+- WP contract doc updated: poster URLs move to session-level cover +
+  gallery (Ticket PDF/email still use cover only).
+- Tests: 5 new hfeed unit tests for the projection helpers.
+  palac-akropolis.e2e mock fixture extended with event cover +
+  session cover + 2-item gallery; new describe block
+  "8 — AB-47c poster cover + gallery on public surfaces" adds two
+  Playwright assertions (cover in the shadow root, feed payload
+  shape). End-to-end curl against local arena-api + docker PG
+  verified both the "session cover wins" path and the "session
+  cover cleared -> event fallback" path.
+- Commit e857ae4.
+
+**#429 (AB-39) RELEASED for a dedicated session.** CRITICAL, complexity
+3. What #429 needs and why it doesn't fit alongside #435/#436 in one
+session:
+- Backend PATCH /v1/event-sessions/{id}/seats/category (bulk assign
+  tier_id, 409 sold/held with per-seat conflict list,
+  seat_status_version bump so widget/feed caches invalidate, INVARIANT
+  every seat carries a non-null tier_id after bind) — doable but
+  substantial (endpoint + sqlc query + tests + OpenAPI regen).
+- Admin UI: TWO equivalent surfaces (Table AND Map) over ONE shared
+  selection model. Table columns ID/Sector/Row/Seat/Category/Price/
+  Barcode/Status with multi-select and live "Selected seats: N",
+  actions Category / Unavailable / Available / Price, colour-coded
+  rows, GA rows inline with empty coordinate columns. Map: click +
+  shift-drag rubber-band selection, seat fill by category, legend
+  above. Selecting in one surface must reflect in the other —
+  requires a new store-level shared-selection primitive. This is
+  where the bulk of the work lives.
+- Mandatory browser end-to-end on the Palác Akropolis plan: select
+  balcony seats, reassign to another category, verify widget reflects
+  the new price. Cannot be short-cut per the description.
+
+Recommendation for the next session: claim #429 alone, budget it as a
+full-session feature (backend + PATCH endpoint + shared-selection
+store + table view + map integration + browser e2e).
+
+Stats after this batch: 432/436 passing (99.1%).
