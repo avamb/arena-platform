@@ -95,6 +95,11 @@ export interface SeatingPlan {
    * predating the field omit it — see resolveCurrentVersionNumber.
    */
   readonly current_version_number?: number | null;
+  /**
+   * AB-40 A3: display-name overrides keyed by category index ("1".."15")
+   * applied over geometry category names — renaming never re-imports.
+   */
+  readonly category_name_overrides?: Readonly<Record<string, string>>;
   readonly created_at: string;
   readonly updated_at: string;
 }
@@ -136,6 +141,15 @@ export interface SeatingCategory {
   readonly index: number;
   readonly name: string;
   readonly color: string;
+  /** Price hint imported from the SVG (minor units as text), if any. */
+  readonly price_hint?: string;
+  /**
+   * AB-40: "" / "seated" — seats bind by colour; "general_admission" —
+   * the category carries its own bulk capacity and no seats.
+   */
+  readonly kind?: "" | "seated" | "general_admission";
+  /** Declared bulk capacity of a GA category (absent for seated). */
+  readonly capacity?: number;
 }
 export interface SeatingSeat {
   readonly key: string;
@@ -307,7 +321,7 @@ export function planHasGeneralAdmission(planType: SeatingPlanType): boolean {
 }
 
 /** Field discriminator for create-plan validation issues. */
-export type CreatePlanField = "name" | "owner_org_id";
+export type CreatePlanField = "name" | "owner_org_id" | "ga_categories";
 
 export interface CreatePlanFormIssue {
   readonly field: CreatePlanField;
@@ -629,13 +643,23 @@ function SeatingPlanBody({ plan, venue }: { plan: SeatingPlan; venue: Venue }) {
 
   return (
     <div style={planBodyStyle}>
-      <UploadSVGForm
-        plan={plan}
-        venue={venue}
-        // Snap back to the (new) current version rather than leaving the
-        // preview pinned to whichever historical version was selected.
-        onVersionCreated={() => setSelectedVersionID(null)}
-      />
+      {plan.plan_type === "general_admission" ? (
+        // AB-40 C1: a GA-only plan needs no SVG at all — new versions
+        // are hand-entered category tables.
+        <GAVersionForm
+          plan={plan}
+          baseVersion={selectedVersion}
+          onVersionCreated={() => setSelectedVersionID(null)}
+        />
+      ) : (
+        <UploadSVGForm
+          plan={plan}
+          venue={venue}
+          // Snap back to the (new) current version rather than leaving the
+          // preview pinned to whichever historical version was selected.
+          onVersionCreated={() => setSelectedVersionID(null)}
+        />
+      )}
       <div style={sectionStyle} data-testid={`venues-plan-versions-${plan.id}`}>
         <div style={sectionTitleStyle}>Version history</div>
         {versionsQuery.isPending ? (
@@ -659,6 +683,7 @@ function SeatingPlanBody({ plan, venue }: { plan: SeatingPlan; venue: Venue }) {
           />
         )}
       </div>
+      <CategoryTablePanel plan={plan} version={selectedVersion} />
       <PlanPreviewSection version={selectedVersion} hasGA={planHasGeneralAdmission(plan.plan_type)} />
       <PlanActions plan={plan} venue={venue} />
     </div>
@@ -707,28 +732,218 @@ export function formatVersionTimestamp(iso: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Upload SVG form
+// Category table (AB-40 C3) + GA-only version form (AB-40 C1)
 // ---------------------------------------------------------------------------
 
 /**
- * Parse the standing-capacity input. Returns `undefined` when the field is
- * blank (the backend then defaults it to 0) and null when the text is not a
- * non-negative integer, which the caller surfaces as a validation message.
- *
- * Seated capacity is deliberately NOT an input: the backend derives it from
- * the imported geometry's seat count (`geometry.SeatCount()` in
- * hseating/versions.go) and rejects a `capacity_seated` body field outright.
+ * The Bil24 plan table — `Category | Seats | Starting price` — with GA
+ * rows inline, plus per-category display-name renaming stored as the
+ * plan's category_name_overrides (AB-40 A3: renaming never re-imports).
  */
-export function parseStandingCapacity(
-  raw: string,
-): { readonly value: number | undefined } | null {
-  const trimmed = raw.trim();
-  if (trimmed === "") return { value: undefined };
-  if (!/^\d+$/.test(trimmed)) return null;
-  const n = Number(trimmed);
-  if (!Number.isSafeInteger(n)) return null;
-  return { value: n };
+function CategoryTablePanel({
+  plan,
+  version,
+}: {
+  plan: SeatingPlan;
+  version: SeatingPlanVersion | null;
+}) {
+  const qc = useQueryClient();
+  const [edits, setEdits] = useState<Record<string, string>>({});
+  const [apiError, setApiError] = useState<ApiError | null>(null);
+
+  const mutation = useMutation<SeatingPlanEnvelope, ApiError, void>({
+    mutationFn: () => {
+      const merged: Record<string, string> = {
+        ...(plan.category_name_overrides ?? {}),
+      };
+      for (const [idx, v] of Object.entries(edits)) {
+        if (v.trim() === "") {
+          delete merged[idx];
+        } else {
+          merged[idx] = v.trim();
+        }
+      }
+      return authedFetch<SeatingPlanEnvelope>({
+        method: "PATCH",
+        path: `/v1/seating-plans/${plan.id}`,
+        body: { category_name_overrides: merged },
+      });
+    },
+    onSuccess: () => {
+      setApiError(null);
+      setEdits({});
+      qc.invalidateQueries({ queryKey: ["seating-plans", "by-venue", plan.venue_id] });
+    },
+    onError: (err) => setApiError(err),
+  });
+
+  const categories = version?.geometry.categories ?? [];
+  if (version === null || categories.length === 0) return <></>;
+
+  const dirty = Object.keys(edits).length > 0;
+  return (
+    <div style={sectionStyle} data-testid={`venues-plan-categories-${plan.id}`}>
+      <div style={sectionTitleStyle}>Categories</div>
+      <table style={gaEditorTableStyle}>
+        <thead>
+          <tr>
+            <th style={gaEditorHeadStyle}>Category</th>
+            <th style={gaEditorHeadStyle}>Kind</th>
+            <th style={gaEditorHeadStyle}>Seats</th>
+            <th style={gaEditorHeadStyle}>Starting price</th>
+          </tr>
+        </thead>
+        <tbody>
+          {categories.map((cat) => {
+            const idxKey = String(cat.index);
+            const effective = effectiveCategoryName(cat, plan.category_name_overrides);
+            const value = edits[idxKey] ?? effective;
+            return (
+              <tr key={cat.index} data-testid={`venues-plan-category-row-${plan.id}-${cat.index}`}>
+                <td style={gaEditorCellStyle}>
+                  <input
+                    type="text"
+                    value={value}
+                    onChange={(e) =>
+                      setEdits((prev) => ({ ...prev, [idxKey]: e.target.value }))
+                    }
+                    style={inputStyle}
+                    aria-label={`Display name for category ${cat.index}`}
+                    data-testid={`venues-plan-category-name-${plan.id}-${cat.index}`}
+                  />
+                  {effective !== cat.name ? (
+                    <div style={mutedHintTextStyle}>imported as “{cat.name}”</div>
+                  ) : null}
+                </td>
+                <td style={gaEditorCellStyle}>
+                  <span
+                    style={{
+                      display: "inline-block",
+                      width: 10,
+                      height: 10,
+                      borderRadius: 5,
+                      background: cat.color,
+                      marginRight: 6,
+                    }}
+                  />
+                  {cat.kind === "general_admission" ? "general admission" : "seated"}
+                </td>
+                <td style={gaEditorCellStyle} data-testid={`venues-plan-category-seats-${plan.id}-${cat.index}`}>
+                  {categorySeatCount(cat, version.geometry).toLocaleString()}
+                </td>
+                <td style={gaEditorCellStyle}>{cat.price_hint ?? "—"}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {apiError !== null ? (
+        <div style={errorBoxStyle} role="alert" data-testid={`venues-plan-categories-error-${plan.id}`}>
+          <div style={errorCodeStyle}>{apiError.code}</div>
+          <div style={errorParaStyle}>{apiError.message}</div>
+        </div>
+      ) : null}
+      {dirty ? (
+        <button
+          type="button"
+          style={primaryButtonStyle}
+          disabled={mutation.isPending}
+          onClick={() => mutation.mutate()}
+          data-testid={`venues-plan-categories-save-${plan.id}`}
+        >
+          {mutation.isPending ? "Saving…" : "Save names"}
+        </button>
+      ) : null}
+    </div>
+  );
 }
+
+/**
+ * New-version form for GA-only plans (AB-40 C1): the operator edits the
+ * named-capacity table and publishes it as the next version — no SVG
+ * involved. Pre-fills from the currently selected version.
+ */
+function GAVersionForm({
+  plan,
+  baseVersion,
+  onVersionCreated,
+}: {
+  plan: SeatingPlan;
+  baseVersion: SeatingPlanVersion | null;
+  onVersionCreated: () => void;
+}) {
+  const qc = useQueryClient();
+  const initial: readonly GACategoryDraft[] =
+    baseVersion === null
+      ? [emptyGADraft]
+      : (baseVersion.geometry.categories ?? []).map((c) => ({
+          name: effectiveCategoryName(c, plan.category_name_overrides),
+          capacity: String(c.capacity ?? ""),
+          price: c.price_hint ?? "",
+        }));
+  const [drafts, setDrafts] = useState<readonly GACategoryDraft[]>(
+    initial.length > 0 ? initial : [emptyGADraft],
+  );
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [apiError, setApiError] = useState<ApiError | null>(null);
+
+  const mutation = useMutation<CreateVersionResponse, ApiError, void>({
+    mutationFn: () =>
+      authedFetch<CreateVersionResponse>({
+        method: "POST",
+        path: `/v1/seating-plans/${plan.id}/versions`,
+        body: { geometry: buildGAOnlyGeometry(drafts) },
+      }),
+    onSuccess: () => {
+      setApiError(null);
+      setSubmitAttempted(false);
+      qc.invalidateQueries({ queryKey: ["seating-plan-versions", plan.id] });
+      qc.invalidateQueries({ queryKey: ["seating-plans", "by-venue", plan.venue_id] });
+      onVersionCreated();
+    },
+    onError: (err) => setApiError(err),
+  });
+
+  const issues = gaCategoryIssues(drafts);
+  return (
+    <div style={sectionStyle} data-testid={`venues-plan-ga-version-${plan.id}`}>
+      <div style={sectionTitleStyle}>New version (general admission)</div>
+      <GACategoryEditorView drafts={drafts} onChange={setDrafts} />
+      {submitAttempted && issues.length > 0 ? (
+        <div style={validationMsgStyle} role="alert">
+          <ul style={validationListStyle}>
+            {issues.map((m) => (
+              <li key={m}>{m}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {apiError !== null ? (
+        <div style={errorBoxStyle} role="alert">
+          <div style={errorCodeStyle}>{apiError.code}</div>
+          <div style={errorParaStyle}>{apiError.message}</div>
+        </div>
+      ) : null}
+      <button
+        type="button"
+        style={primaryButtonStyle}
+        disabled={mutation.isPending}
+        onClick={() => {
+          setSubmitAttempted(true);
+          if (issues.length > 0) return;
+          mutation.mutate();
+        }}
+        data-testid={`venues-plan-ga-version-submit-${plan.id}`}
+      >
+        {mutation.isPending ? "Publishing…" : "Publish version"}
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Upload SVG form
+// ---------------------------------------------------------------------------
 
 /**
  * Build the exact request body for POST /v1/seating-plans/{id}/versions.
@@ -736,8 +951,10 @@ export function parseStandingCapacity(
  * The endpoint accepts exactly one of `svg` or `geometry`; this flow always
  * sends `svg` and lets the server-side importer canonicalise, checksum, and
  * count seats. `svg_asset_media_id` links the already-uploaded binary so the
- * drawer can preview the original artwork. Optional keys are omitted rather
- * than sent as null because the handler rejects unknown/ill-typed fields.
+ * drawer can preview the original artwork.
+ *
+ * AB-40: capacity_standing is no longer sent — the server derives it
+ * from the geometry's GA categories and ignores the legacy field.
  *
  * The endpoint bumps the plan's current_version_id to the new row inside the
  * same transaction, so no follow-up PATCH is required to publish it.
@@ -745,16 +962,11 @@ export function parseStandingCapacity(
 export function buildCreateVersionBody(params: {
   readonly svg: string;
   readonly svgAssetMediaID: string;
-  readonly capacityStanding: number | undefined;
 }): Record<string, unknown> {
-  const body: Record<string, unknown> = {
+  return {
     svg: params.svg,
     svg_asset_media_id: params.svgAssetMediaID,
   };
-  if (params.capacityStanding !== undefined) {
-    body.capacity_standing = params.capacityStanding;
-  }
-  return body;
 }
 
 function UploadSVGForm({
@@ -772,24 +984,13 @@ function UploadSVGForm({
   const [uploadError, setUploadError] = useState<ApiError | null>(null);
   const [okMessage, setOkMessage] = useState<string | null>(null);
   const [uploadStep, setUploadStep] = useState<string | null>(null);
-  const [capacityStanding, setCapacityStanding] = useState<string>("");
-  // Client-side rejection (bad MIME, oversized file, malformed capacity) that
-  // never reaches the network.
+  // Client-side rejection (bad MIME, oversized file) that never reaches
+  // the network. AB-40: the standing-capacity input is gone — the server
+  // derives GA capacity from the geometry's #GA-labeled categories.
   const [fileError, setFileError] = useState<string | null>(null);
-
-  const hasGA = planHasGeneralAdmission(plan.plan_type);
 
   const mutation = useMutation<CreateVersionResponse, ApiError, File>({
     mutationFn: async (file: File) => {
-      const standing = hasGA ? parseStandingCapacity(capacityStanding) : { value: 0 };
-      if (standing === null) {
-        // Guarded by onFile as well; this keeps the invariant local to the
-        // mutation in case another caller is added later.
-        throw new ApiError(0, {
-          code: "validation.capacity_standing",
-          message: "GA capacity must be a whole number of 0 or more.",
-        });
-      }
       // Step 1: store the SVG as a binary media object so the signed URL
       // can be used for preview without re-parsing geometry.
       setUploadStep("Uploading SVG asset (1/2)…");
@@ -810,7 +1011,6 @@ function UploadSVGForm({
         body: buildCreateVersionBody({
           svg,
           svgAssetMediaID: mediaObj.id,
-          capacityStanding: standing.value,
         }),
       });
     },
@@ -854,17 +1054,12 @@ function UploadSVGForm({
       setFileError(failure.message);
       return;
     }
-    if (hasGA && parseStandingCapacity(capacityStanding) === null) {
-      setFileError("GA capacity must be a whole number of 0 or more.");
-      return;
-    }
     mutation.mutate(file);
   };
 
   return (
     <UploadSVGFormView
       planID={plan.id}
-      capacityStanding={capacityStanding}
       pending={mutation.isPending}
       step={uploadStep}
       okMessage={okMessage}
@@ -872,19 +1067,14 @@ function UploadSVGForm({
       issues={issues}
       warnings={warnings}
       uploadError={uploadError}
-      onCapacityStandingChange={(v) => {
-        setCapacityStanding(v);
-        setFileError(null);
-      }}
       onFileSelected={onFile}
-      showGAField={hasGA}
+      gaHint={planHasGeneralAdmission(plan.plan_type)}
     />
   );
 }
 
 export interface UploadSVGFormViewProps {
   readonly planID: string;
-  readonly capacityStanding: string;
   readonly pending: boolean;
   /** Which of the two upload steps is running, shown on the picker button. */
   readonly step: string | null;
@@ -894,9 +1084,12 @@ export interface UploadSVGFormViewProps {
   readonly issues: readonly SeatingImportIssue[];
   readonly warnings: readonly SeatingImportIssue[];
   readonly uploadError: ApiError | null;
-  readonly onCapacityStandingChange: (v: string) => void;
-  /** When false the GA-capacity input is hidden and the caller submits 0 instead. */
-  readonly showGAField: boolean;
+  /**
+   * AB-40: for GA-capable plan types the form shows an authoring hint
+   * about #GA-labeled areas instead of a capacity input — GA capacity
+   * is derived server-side from the geometry.
+   */
+  readonly gaHint: boolean;
   readonly onFileSelected: (file: File) => void;
 }
 
@@ -906,7 +1099,6 @@ export interface UploadSVGFormViewProps {
  */
 export function UploadSVGFormView({
   planID,
-  capacityStanding,
   pending,
   step,
   okMessage,
@@ -914,8 +1106,7 @@ export function UploadSVGFormView({
   issues,
   warnings,
   uploadError,
-  onCapacityStandingChange,
-  showGAField,
+  gaHint,
   onFileSelected,
 }: UploadSVGFormViewProps): JSX.Element {
   const onChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -937,26 +1128,13 @@ export function UploadSVGFormView({
         {formatBytes(OWNER_TYPE_MAX_BYTES[SEATING_PLAN_SVG_OWNER_TYPE])}.
         Per-element validation errors appear below.
       </p>
-      {showGAField ? (
-        <div style={fieldRowStyle}>
-          <label style={miniLabelStyle} htmlFor={`venue-plan-standing-${planID}`}>
-            GA capacity (optional)
-          </label>
-          <input
-            id={`venue-plan-standing-${planID}`}
-            type="text"
-            inputMode="numeric"
-            value={capacityStanding}
-            onChange={(e) => onCapacityStandingChange(e.target.value)}
-            style={inputStyle}
-            placeholder="0"
-            disabled={pending}
-            data-testid={`venues-plan-upload-ga-${planID}`}
-          />
-          <span style={hintStyle}>
-            Seated capacity is derived from the SVG and cannot be set by hand.
-          </span>
-        </div>
+      {gaHint ? (
+        <p style={hintStyle} data-testid={`venues-plan-upload-ga-${planID}`}>
+          General-admission areas: label an element &quot;#GA &lt;name&gt;&quot; whose
+          &lt;title&gt; carries the capacity and whose fill matches a category
+          swatch. Both capacities are derived from the file — nothing to
+          enter by hand.
+        </p>
       ) : null}
       <label style={fileButtonStyle}>
         <input
@@ -1423,11 +1601,148 @@ const PLAN_TYPES: readonly SeatingPlanType[] = [
   "mixed",
 ];
 
+// Per-type hint mirroring the Bil24 create dialog (AB-40 C1): the form
+// reshapes with the choice instead of assuming an SVG is the only path.
+export const PLAN_TYPE_HINTS: Readonly<Record<SeatingPlanType, string>> = {
+  assigned_seats:
+    "Assigned seats: upload the hall SVG after creating — seats and categories come from the file.",
+  general_admission:
+    "General admission: no file needed — enter the named capacities below; they become the plan's categories.",
+  tables: "Tables: reserved plan type (not yet supported end-to-end).",
+  mixed:
+    "Combined: upload an SVG whose #GA-labeled area carries the floor capacity alongside the seats.",
+};
+
+// The 15-swatch Bil24 palette (First..Fifteenth), used to auto-colour
+// hand-entered GA categories so they stay within the SVG convention.
+export const CATEGORY_PALETTE: readonly string[] = [
+  "#ff0000", "#ffa000", "#ffff00", "#00ff00", "#00ffff",
+  "#0000ff", "#800080", "#008000", "#a9ff2d", "#aa2800",
+  "#0096ff", "#808000", "#3caa00", "#d4aa00", "#00d455",
+];
+
+/** One hand-entered GA category row (AB-40 C1). */
+export interface GACategoryDraft {
+  readonly name: string;
+  readonly capacity: string; // raw input; validated to a positive int
+  readonly price: string; // optional starting price in minor units
+}
+
+export const emptyGADraft: GACategoryDraft = { name: "", capacity: "", price: "" };
+
+/**
+ * Validates the hand-entered GA category table. Empty rows (all fields
+ * blank) are ignored so an untouched trailing row never blocks submit.
+ */
+export function gaCategoryIssues(
+  drafts: readonly GACategoryDraft[],
+): readonly string[] {
+  const active = drafts.filter(
+    (d) => d.name.trim() !== "" || d.capacity.trim() !== "" || d.price.trim() !== "",
+  );
+  const issues: string[] = [];
+  if (active.length === 0) {
+    issues.push("Add at least one general-admission category (name + capacity).");
+    return issues;
+  }
+  if (active.length > 15) {
+    issues.push("At most 15 categories are allowed (the Bil24 ceiling).");
+  }
+  const seen = new Set<string>();
+  active.forEach((d, i) => {
+    const label = d.name.trim() === "" ? `row ${i + 1}` : `"${d.name.trim()}"`;
+    if (d.name.trim() === "") {
+      issues.push(`Category ${label} needs a name.`);
+    } else if (seen.has(d.name.trim().toLowerCase())) {
+      issues.push(`Category ${label} is listed twice.`);
+    } else {
+      seen.add(d.name.trim().toLowerCase());
+    }
+    const cap = Number(d.capacity.trim());
+    if (
+      d.capacity.trim() === "" ||
+      !Number.isInteger(cap) ||
+      cap <= 0
+    ) {
+      issues.push(`Category ${label} needs a positive whole-number capacity.`);
+    }
+    if (d.price.trim() !== "" && (!/^\d+$/.test(d.price.trim()) || Number(d.price.trim()) < 0)) {
+      issues.push(`Category ${label} starting price must be a whole number of minor units.`);
+    }
+  });
+  return issues;
+}
+
+/**
+ * Builds the canonical GA-only geometry (§5.3) from the hand-entered
+ * table: categories with kind=general_admission and palette colours, no
+ * sections, no canvas dependency. The server derives capacity_standing
+ * from these categories and validates them against plan_type.
+ */
+export function buildGAOnlyGeometry(drafts: readonly GACategoryDraft[]): {
+  readonly schema_version: number;
+  readonly canvas: SeatingCanvas;
+  readonly categories: readonly SeatingCategory[];
+} {
+  const active = drafts.filter(
+    (d) => d.name.trim() !== "" || d.capacity.trim() !== "" || d.price.trim() !== "",
+  );
+  return {
+    schema_version: 1,
+    canvas: { width: 1000, height: 400 },
+    categories: active.map((d, i) => ({
+      index: i + 1,
+      name: d.name.trim(),
+      color: CATEGORY_PALETTE[i % CATEGORY_PALETTE.length],
+      kind: "general_admission" as const,
+      capacity: Number(d.capacity.trim()),
+      ...(d.price.trim() !== "" ? { price_hint: d.price.trim() } : {}),
+    })),
+  };
+}
+
+/**
+ * Effective display name of a category: the per-plan override (AB-40
+ * A3) wins over the geometry name.
+ */
+export function effectiveCategoryName(
+  cat: SeatingCategory,
+  overrides: Readonly<Record<string, string>> | undefined,
+): string {
+  const o = overrides?.[String(cat.index)];
+  return o !== undefined && o.trim() !== "" ? o : cat.name;
+}
+
+/**
+ * Seats column of the Bil24 category table: seated categories count
+ * their bound seats; GA categories show their declared capacity.
+ */
+export function categorySeatCount(
+  cat: SeatingCategory,
+  geometry: SeatingGeometry,
+): number {
+  if (cat.kind === "general_admission") return cat.capacity ?? 0;
+  let n = 0;
+  for (const sec of geometry.sections ?? []) {
+    for (const row of sec.rows) {
+      for (const seat of row.seats) {
+        if (seat.category_index === cat.index) n++;
+      }
+    }
+  }
+  return n;
+}
+
 function CreatePlanForm({ venue }: { venue: Venue }) {
   const qc = useQueryClient();
   const [name, setName] = useState<string>("");
   const [planType, setPlanType] = useState<SeatingPlanType>("assigned_seats");
   const [ownerOrgID, setOwnerOrgID] = useState<string>(venue.org_id);
+  // AB-40 C1: hand-entered GA categories for a general_admission plan —
+  // the plan needs no SVG at all; the table becomes version 1.
+  const [gaDrafts, setGADrafts] = useState<readonly GACategoryDraft[]>([
+    emptyGADraft,
+  ]);
   const [apiError, setApiError] = useState<ApiError | null>(null);
   // Issues are surfaced only after the operator has tried to submit once,
   // then kept live so each message disappears as its requirement is met.
@@ -1455,8 +1770,8 @@ function CreatePlanForm({ venue }: { venue: Venue }) {
   );
 
   const mutation = useMutation<SeatingPlanEnvelope, ApiError, void>({
-    mutationFn: () =>
-      authedFetch<SeatingPlanEnvelope>({
+    mutationFn: async () => {
+      const created = await authedFetch<SeatingPlanEnvelope>({
         method: "POST",
         path: `/v1/venues/${venue.id}/seating-plans`,
         body: {
@@ -1464,17 +1779,38 @@ function CreatePlanForm({ venue }: { venue: Venue }) {
           name: name.trim(),
           plan_type: planType,
         },
-      }),
+      });
+      // AB-40 C1: a GA-only plan is complete at creation — the
+      // hand-entered categories become version 1 in the same submit,
+      // so the operator never faces an "upload an SVG" dead end.
+      if (planType === "general_admission") {
+        await authedFetch<CreateVersionResponse>({
+          method: "POST",
+          path: `/v1/seating-plans/${created.seating_plan.id}/versions`,
+          body: { geometry: buildGAOnlyGeometry(gaDrafts) },
+        });
+      }
+      return created;
+    },
     onSuccess: () => {
       setApiError(null);
       setSubmitAttempted(false);
       setName("");
+      setGADrafts([emptyGADraft]);
       qc.invalidateQueries({ queryKey: ["seating-plans", "by-venue", venue.id] });
     },
     onError: (err) => setApiError(err),
   });
 
-  const issues = createPlanFormIssues(name, ownerOrgID);
+  const issues: CreatePlanFormIssue[] = [
+    ...createPlanFormIssues(name, ownerOrgID),
+    ...(planType === "general_admission"
+      ? gaCategoryIssues(gaDrafts).map((message) => ({
+          field: "ga_categories" as const,
+          message,
+        }))
+      : []),
+  ];
 
   return (
     <CreatePlanFormView
@@ -1483,6 +1819,7 @@ function CreatePlanForm({ venue }: { venue: Venue }) {
       ownerOrgID={ownerOrgID}
       organizations={orgsSorted}
       organizationsPending={orgsQuery.isPending}
+      gaDrafts={gaDrafts}
       // Before the first submit the operator has not asked for anything yet,
       // so an empty form is "not yet filled in", not "wrong".
       issues={submitAttempted ? issues : []}
@@ -1491,6 +1828,7 @@ function CreatePlanForm({ venue }: { venue: Venue }) {
       onNameChange={setName}
       onPlanTypeChange={setPlanType}
       onOwnerOrgChange={setOwnerOrgID}
+      onGADraftsChange={setGADrafts}
       onSubmit={() => {
         // Validate on submit — the button is never silently disabled, so the
         // operator always learns which requirements are unmet.
@@ -1508,6 +1846,8 @@ export interface CreatePlanFormViewProps {
   readonly ownerOrgID: string;
   readonly organizations: readonly OrganizationSummary[];
   readonly organizationsPending: boolean;
+  /** AB-40 C1: hand-entered GA categories (general_admission type only). */
+  readonly gaDrafts: readonly GACategoryDraft[];
   /** Unmet requirements to display; empty renders no validation feedback. */
   readonly issues: readonly CreatePlanFormIssue[];
   readonly submitting: boolean;
@@ -1515,6 +1855,7 @@ export interface CreatePlanFormViewProps {
   readonly onNameChange: (v: string) => void;
   readonly onPlanTypeChange: (v: SeatingPlanType) => void;
   readonly onOwnerOrgChange: (v: string) => void;
+  readonly onGADraftsChange: (v: readonly GACategoryDraft[]) => void;
   readonly onSubmit: () => void;
 }
 
@@ -1532,12 +1873,14 @@ export function CreatePlanFormView({
   ownerOrgID,
   organizations,
   organizationsPending,
+  gaDrafts,
   issues,
   submitting,
   apiError,
   onNameChange,
   onPlanTypeChange,
   onOwnerOrgChange,
+  onGADraftsChange,
   onSubmit,
 }: CreatePlanFormViewProps): JSX.Element {
   const nameIssue = issueForField(issues, "name");
@@ -1598,7 +1941,13 @@ export function CreatePlanFormView({
             </option>
           ))}
         </select>
+        <div style={mutedHintTextStyle} data-testid="venues-plan-create-type-hint">
+          {PLAN_TYPE_HINTS[planType]}
+        </div>
       </div>
+      {planType === "general_admission" ? (
+        <GACategoryEditorView drafts={gaDrafts} onChange={onGADraftsChange} />
+      ) : null}
       <div style={fieldRowStyle}>
         <label style={miniLabelStyle} htmlFor="venue-plan-owner">
           Owner organization
@@ -1670,9 +2019,142 @@ export function CreatePlanFormView({
   );
 }
 
+/**
+ * Hand-entered GA category table (AB-40 C1): No. | Category | Seats |
+ * Starting price with add/remove rows, mirroring the Bil24 create
+ * dialog for GA-only plans. Presentational — exported for Vitest.
+ */
+export function GACategoryEditorView({
+  drafts,
+  onChange,
+}: {
+  readonly drafts: readonly GACategoryDraft[];
+  readonly onChange: (v: readonly GACategoryDraft[]) => void;
+}): JSX.Element {
+  const update = (i: number, patch: Partial<GACategoryDraft>): void => {
+    onChange(drafts.map((d, j) => (j === i ? { ...d, ...patch } : d)));
+  };
+  return (
+    <div style={fieldRowStyle} data-testid="venues-plan-create-ga-editor">
+      <div style={miniLabelStyle}>General-admission categories</div>
+      <table style={gaEditorTableStyle}>
+        <thead>
+          <tr>
+            <th style={gaEditorHeadStyle}>No.</th>
+            <th style={gaEditorHeadStyle}>Category</th>
+            <th style={gaEditorHeadStyle}>Seats</th>
+            <th style={gaEditorHeadStyle}>Starting price</th>
+            <th style={gaEditorHeadStyle} aria-label="Row actions" />
+          </tr>
+        </thead>
+        <tbody>
+          {drafts.map((d, i) => (
+            // Row identity is positional by design: rows are a transient
+            // editing buffer, never reordered, only appended/removed.
+            // eslint-disable-next-line react/no-array-index-key
+            <tr key={i} data-testid={`venues-plan-create-ga-row-${i}`}>
+              <td style={gaEditorCellStyle}>{i + 1}</td>
+              <td style={gaEditorCellStyle}>
+                <input
+                  type="text"
+                  value={d.name}
+                  placeholder="e.g. Dance floor"
+                  onChange={(e) => update(i, { name: e.target.value })}
+                  style={inputStyle}
+                  aria-label={`Category ${i + 1} name`}
+                  data-testid={`venues-plan-create-ga-name-${i}`}
+                />
+              </td>
+              <td style={gaEditorCellStyle}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={d.capacity}
+                  placeholder="500"
+                  onChange={(e) => update(i, { capacity: e.target.value })}
+                  style={inputStyle}
+                  aria-label={`Category ${i + 1} capacity`}
+                  data-testid={`venues-plan-create-ga-capacity-${i}`}
+                />
+              </td>
+              <td style={gaEditorCellStyle}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={d.price}
+                  placeholder="minor units, optional"
+                  onChange={(e) => update(i, { price: e.target.value })}
+                  style={inputStyle}
+                  aria-label={`Category ${i + 1} starting price`}
+                  data-testid={`venues-plan-create-ga-price-${i}`}
+                />
+              </td>
+              <td style={gaEditorCellStyle}>
+                <button
+                  type="button"
+                  style={ghostButtonStyle}
+                  onClick={() => onChange(drafts.filter((_, j) => j !== i))}
+                  disabled={drafts.length === 1}
+                  aria-label={`Remove category row ${i + 1}`}
+                  data-testid={`venues-plan-create-ga-remove-${i}`}
+                >
+                  −
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <button
+        type="button"
+        style={ghostButtonStyle}
+        onClick={() => onChange([...drafts, emptyGADraft])}
+        disabled={drafts.length >= 15}
+        data-testid="venues-plan-create-ga-add"
+      >
+        + Add category
+      </button>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Styles
 // ---------------------------------------------------------------------------
+
+const mutedHintTextStyle: CSSProperties = {
+  fontSize: 12,
+  color: "#64748b",
+  marginTop: 4,
+};
+
+const gaEditorTableStyle: CSSProperties = {
+  width: "100%",
+  borderCollapse: "collapse",
+  marginTop: 4,
+};
+
+const gaEditorHeadStyle: CSSProperties = {
+  textAlign: "left",
+  fontSize: 12,
+  color: "#64748b",
+  padding: "2px 6px 2px 0",
+};
+
+const gaEditorCellStyle: CSSProperties = {
+  padding: "2px 6px 2px 0",
+  verticalAlign: "top",
+};
+
+const ghostButtonStyle: CSSProperties = {
+  background: "transparent",
+  border: "1px solid #cbd5e1",
+  borderRadius: 6,
+  padding: "4px 10px",
+  cursor: "pointer",
+  fontSize: 13,
+  marginTop: 4,
+};
 
 const tabsBarStyle: CSSProperties = {
   display: "flex",

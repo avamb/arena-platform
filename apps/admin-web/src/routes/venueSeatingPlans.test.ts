@@ -10,10 +10,15 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api/client";
 import {
   buildCreateVersionBody,
+  buildGAOnlyGeometry,
+  CATEGORY_PALETTE,
+  categorySeatCount,
   createPlanFormIssues,
+  effectiveCategoryName,
+  emptyGADraft,
   formatVersionTimestamp,
+  gaCategoryIssues,
   issueForField,
-  parseStandingCapacity,
   parseVersionValidationErrors,
   planHasGeneralAdmission,
   renderGeometryToSVG,
@@ -434,56 +439,13 @@ describe("issueForField", () => {
   });
 });
 
-describe("parseStandingCapacity (AB-25b)", () => {
-  it("treats a blank field as absent so the server default applies", () => {
-    expect(parseStandingCapacity("")).toEqual({ value: undefined });
-    expect(parseStandingCapacity("   ")).toEqual({ value: undefined });
-  });
-
-  it("accepts zero and positive whole numbers", () => {
-    expect(parseStandingCapacity("0")).toEqual({ value: 0 });
-    expect(parseStandingCapacity("120")).toEqual({ value: 120 });
-    expect(parseStandingCapacity(" 45 ")).toEqual({ value: 45 });
-  });
-
-  it("rejects non-integers, negatives, and junk", () => {
-    expect(parseStandingCapacity("12.5")).toBeNull();
-    expect(parseStandingCapacity("-1")).toBeNull();
-    expect(parseStandingCapacity("1e3")).toBeNull();
-    expect(parseStandingCapacity("many")).toBeNull();
-  });
-});
-
-describe("buildCreateVersionBody (AB-25b)", () => {
-  it("sends svg plus the uploaded asset id", () => {
+describe("buildCreateVersionBody (AB-25b / AB-40)", () => {
+  it("sends svg plus the uploaded asset id and nothing else", () => {
     const body = buildCreateVersionBody({
       svg: "<svg/>",
       svgAssetMediaID: "media-uuid",
-      capacityStanding: undefined,
     });
     expect(body).toEqual({ svg: "<svg/>", svg_asset_media_id: "media-uuid" });
-  });
-
-  it("includes capacity_standing only when supplied", () => {
-    const body = buildCreateVersionBody({
-      svg: "<svg/>",
-      svgAssetMediaID: "media-uuid",
-      capacityStanding: 120,
-    });
-    expect(body).toEqual({
-      svg: "<svg/>",
-      svg_asset_media_id: "media-uuid",
-      capacity_standing: 120,
-    });
-  });
-
-  it("sends an explicit zero when the operator typed one", () => {
-    const body = buildCreateVersionBody({
-      svg: "<svg/>",
-      svgAssetMediaID: "media-uuid",
-      capacityStanding: 0,
-    });
-    expect(body.capacity_standing).toBe(0);
   });
 
   it("never sends geometry alongside svg", () => {
@@ -491,18 +453,137 @@ describe("buildCreateVersionBody (AB-25b)", () => {
     const body = buildCreateVersionBody({
       svg: "<svg/>",
       svgAssetMediaID: "media-uuid",
-      capacityStanding: 1,
     });
     expect(body).not.toHaveProperty("geometry");
   });
 
-  it("never sends capacity_seated, which the server derives", () => {
+  it("never sends capacity fields — both are server-derived (AB-40)", () => {
     const body = buildCreateVersionBody({
       svg: "<svg/>",
       svgAssetMediaID: "media-uuid",
-      capacityStanding: 1,
     });
     expect(body).not.toHaveProperty("capacity_seated");
+    expect(body).not.toHaveProperty("capacity_standing");
+  });
+});
+
+describe("gaCategoryIssues (AB-40 C1)", () => {
+  it("requires at least one active row", () => {
+    expect(gaCategoryIssues([emptyGADraft])).toEqual([
+      "Add at least one general-admission category (name + capacity).",
+    ]);
+  });
+
+  it("accepts a valid single row", () => {
+    expect(
+      gaCategoryIssues([{ name: "R1", capacity: "10", price: "1000" }]),
+    ).toEqual([]);
+  });
+
+  it("flags a missing name, bad capacity and bad price per row", () => {
+    const issues = gaCategoryIssues([
+      { name: "", capacity: "0", price: "x" },
+    ]);
+    expect(issues.some((m) => m.includes("needs a name"))).toBe(true);
+    expect(issues.some((m) => m.includes("capacity"))).toBe(true);
+    expect(issues.some((m) => m.includes("starting price"))).toBe(true);
+  });
+
+  it("flags duplicate names case-insensitively", () => {
+    const issues = gaCategoryIssues([
+      { name: "Floor", capacity: "10", price: "" },
+      { name: "floor", capacity: "20", price: "" },
+    ]);
+    expect(issues.some((m) => m.includes("listed twice"))).toBe(true);
+  });
+
+  it("ignores fully blank trailing rows", () => {
+    expect(
+      gaCategoryIssues([
+        { name: "R1", capacity: "10", price: "" },
+        emptyGADraft,
+      ]),
+    ).toEqual([]);
+  });
+
+  it("enforces the 15-category ceiling", () => {
+    const rows = Array.from({ length: 16 }, (_, i) => ({
+      name: `C${i}`,
+      capacity: "5",
+      price: "",
+    }));
+    expect(gaCategoryIssues(rows).some((m) => m.includes("At most 15"))).toBe(
+      true,
+    );
+  });
+});
+
+describe("buildGAOnlyGeometry (AB-40 C1)", () => {
+  it("builds kind=general_admission categories with palette colours", () => {
+    const g = buildGAOnlyGeometry([
+      { name: "R1", capacity: "10", price: "1000" },
+      { name: "R2", capacity: "20", price: "" },
+      emptyGADraft, // blank trailing row ignored
+    ]);
+    expect(g.schema_version).toBe(1);
+    expect(g.categories).toHaveLength(2);
+    expect(g.categories[0]).toEqual({
+      index: 1,
+      name: "R1",
+      color: CATEGORY_PALETTE[0],
+      kind: "general_admission",
+      capacity: 10,
+      price_hint: "1000",
+    });
+    expect(g.categories[1]).not.toHaveProperty("price_hint");
+    expect(g.categories[1].capacity).toBe(20);
+  });
+});
+
+describe("effectiveCategoryName / categorySeatCount (AB-40 C3)", () => {
+  const seated = {
+    index: 1,
+    name: "First",
+    color: "#ff0000",
+  } as const;
+  const ga = {
+    index: 2,
+    name: "Fifteenth",
+    color: "#00d455",
+    kind: "general_admission",
+    capacity: 500,
+  } as const;
+
+  it("override wins over the geometry name; blank falls through", () => {
+    expect(effectiveCategoryName(seated, { "1": "SEATING - SEZENI" })).toBe(
+      "SEATING - SEZENI",
+    );
+    expect(effectiveCategoryName(seated, { "1": "  " })).toBe("First");
+    expect(effectiveCategoryName(seated, undefined)).toBe("First");
+  });
+
+  it("counts bound seats for seated and declared capacity for GA", () => {
+    const geometry = {
+      categories: [seated, ga],
+      sections: [
+        {
+          key: "a",
+          name: "A",
+          rows: [
+            {
+              key: "1",
+              name: "1",
+              seats: [
+                { key: "a|1|1", number: "1", x: 0, y: 0, radius: 1, category_index: 1 },
+                { key: "a|1|2", number: "2", x: 1, y: 0, radius: 1, category_index: 1 },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    expect(categorySeatCount(seated, geometry)).toBe(2);
+    expect(categorySeatCount(ga, geometry)).toBe(500);
   });
 });
 
@@ -603,10 +684,9 @@ describe("resolveSelectedVersion (AB-25c)", () => {
   });
 });
 
-describe("UploadSVGFormView — GA field visibility (AB-30)", () => {
+describe("UploadSVGFormView — GA authoring hint (AB-30 / AB-40)", () => {
   const baseProps = {
     planID: "plan-1",
-    capacityStanding: "",
     pending: false,
     step: null,
     okMessage: null,
@@ -614,24 +694,25 @@ describe("UploadSVGFormView — GA field visibility (AB-30)", () => {
     issues: [],
     warnings: [],
     uploadError: null,
-    onCapacityStandingChange: () => {},
     onFileSelected: () => {},
   };
 
-  it("shows GA capacity field for general_admission plan", () => {
+  it("shows the #GA authoring hint for GA-capable plan types", () => {
     const html = renderToStaticMarkup(
-      createElement(UploadSVGFormView, { ...baseProps, showGAField: true }),
+      createElement(UploadSVGFormView, { ...baseProps, gaHint: true }),
     );
     expect(html).toContain("venues-plan-upload-ga-plan-1");
-    expect(html).toContain("GA capacity");
+    expect(html).toContain("#GA");
   });
 
-  it("hides GA capacity field for assigned_seats plan", () => {
+  it("hides the hint for assigned_seats plans and never renders a capacity input", () => {
     const html = renderToStaticMarkup(
-      createElement(UploadSVGFormView, { ...baseProps, showGAField: false }),
+      createElement(UploadSVGFormView, { ...baseProps, gaHint: false }),
     );
     expect(html).not.toContain("venues-plan-upload-ga-plan-1");
-    expect(html).not.toContain("GA capacity");
+    // AB-40: standing capacity is derived server-side; the input is gone
+    // for every plan type.
+    expect(html).not.toContain("GA capacity (optional)");
   });
 });
 

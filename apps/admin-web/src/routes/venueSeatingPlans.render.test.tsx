@@ -11,10 +11,12 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api/client";
 import {
   CreatePlanFormView,
+  GACategoryEditorView,
   UploadSVGFormView,
   VersionHistoryTable,
   VersionPreview,
   createPlanFormIssues,
+  emptyGADraft,
   type OrganizationSummary,
   type SeatingPlanVersion,
 } from "@/routes/venueSeatingPlans";
@@ -36,12 +38,14 @@ function createFormMarkup(
       ownerOrgID=""
       organizations={ORGS}
       organizationsPending={false}
+      gaDrafts={[emptyGADraft]}
       issues={[]}
       submitting={false}
       apiError={null}
       onNameChange={NOOP}
       onPlanTypeChange={NOOP}
       onOwnerOrgChange={NOOP}
+      onGADraftsChange={NOOP}
       onSubmit={NOOP}
       {...overrides}
     />,
@@ -122,7 +126,6 @@ function uploadMarkup(
   return renderToStaticMarkup(
     <UploadSVGFormView
       planID="plan-1"
-      capacityStanding=""
       pending={false}
       step={null}
       okMessage={null}
@@ -130,9 +133,8 @@ function uploadMarkup(
       issues={[]}
       warnings={[]}
       uploadError={null}
-      onCapacityStandingChange={NOOP}
       onFileSelected={NOOP}
-      showGAField={true}
+      gaHint={true}
       {...overrides}
     />,
   );
@@ -146,14 +148,15 @@ describe("UploadSVGFormView (AB-25b)", () => {
     expect(html).toContain("2.00 MiB");
   });
 
-  it("renders the GA-capacity input carried into the version", () => {
-    const html = uploadMarkup({ capacityStanding: "120" });
+  it("shows the #GA authoring hint instead of a capacity input (AB-40)", () => {
+    const html = uploadMarkup();
     expect(html).toContain('data-testid="venues-plan-upload-ga-plan-1"');
-    expect(html).toContain('value="120"');
+    expect(html).toContain("#GA");
+    expect(html).not.toContain("GA capacity (optional)");
   });
 
-  it("explains that seated capacity is derived, not entered", () => {
-    expect(uploadMarkup()).toContain("derived from the SVG");
+  it("explains that capacities are derived, not entered", () => {
+    expect(uploadMarkup()).toContain("derives seated");
   });
 
   it("shows the two-step progress label while uploading", () => {
@@ -429,5 +432,51 @@ describe("VersionPreview (AB-25c)", () => {
     expect(html).toContain("Version 2");
     expect(html).toContain("300");
     expect(html).toContain("40");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AB-40 C1 — type-aware create form + GA category editor
+// ---------------------------------------------------------------------------
+
+describe("CreatePlanFormView type reshape (AB-40 C1)", () => {
+  it("shows the per-type hint", () => {
+    expect(createFormMarkup()).toContain("venues-plan-create-type-hint");
+  });
+
+  it("renders the GA category editor only for general_admission", () => {
+    const ga = createFormMarkup({ planType: "general_admission" });
+    expect(ga).toContain('data-testid="venues-plan-create-ga-editor"');
+    expect(ga).toContain("no file needed");
+    const assigned = createFormMarkup({ planType: "assigned_seats" });
+    expect(assigned).not.toContain('data-testid="venues-plan-create-ga-editor"');
+  });
+});
+
+describe("GACategoryEditorView (AB-40 C1)", () => {
+  it("renders No./Category/Seats/Starting price columns with row inputs", () => {
+    const html = renderToStaticMarkup(
+      <GACategoryEditorView
+        drafts={[
+          { name: "R1", capacity: "10", price: "1000" },
+          { name: "R2", capacity: "20", price: "" },
+        ]}
+        onChange={NOOP}
+      />,
+    );
+    expect(html).toContain("Starting price");
+    expect(html).toContain('data-testid="venues-plan-create-ga-name-0"');
+    expect(html).toContain('data-testid="venues-plan-create-ga-capacity-1"');
+    expect(html).toContain('value="R1"');
+    expect(html).toContain('value="20"');
+    expect(html).toContain('data-testid="venues-plan-create-ga-add"');
+  });
+
+  it("disables removing the last remaining row", () => {
+    const html = renderToStaticMarkup(
+      <GACategoryEditorView drafts={[emptyGADraft]} onChange={NOOP} />,
+    );
+    const btn = html.slice(html.indexOf("venues-plan-create-ga-remove-0") - 200);
+    expect(btn).toContain("disabled");
   });
 });
