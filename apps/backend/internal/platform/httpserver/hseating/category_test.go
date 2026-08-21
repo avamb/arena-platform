@@ -110,23 +110,28 @@ func TestAB39_ValidateCategoryPatchRequest_TooManySeatKeys(t *testing.T) {
 //     conflicts, blocking the whole request via a 409;
 //   - keys resolving to available or unavailable move to target;
 //   - unknown keys move to unknown (soft-report, do not block);
+//   - keys resolving to AB-51 GA units (kind='ga_unit') move to gaUnits,
+//     blocking the whole request via a 422 — regardless of status;
 //   - duplicates in the input dedupe on the way through.
 func TestAB39_PartitionSeatKeys(t *testing.T) {
 	t.Parallel()
 
-	held := gen.SessionSeatRow{ID: uuid.New(), SeatKey: "held", Status: "held"}
-	sold := gen.SessionSeatRow{ID: uuid.New(), SeatKey: "sold", Status: "sold"}
-	avail := gen.SessionSeatRow{ID: uuid.New(), SeatKey: "avail", Status: "available"}
-	unavail := gen.SessionSeatRow{ID: uuid.New(), SeatKey: "unavail", Status: "unavailable"}
-	seatByKey := map[string]gen.SessionSeatRow{
-		"held":    held,
-		"sold":    sold,
-		"avail":   avail,
-		"unavail": unavail,
+	seat := func(key, status, kind string) gen.SessionSeatAdminRow {
+		return gen.SessionSeatAdminRow{
+			SessionSeatRow: gen.SessionSeatRow{ID: uuid.New(), SeatKey: key, Status: status},
+			Kind:           kind,
+		}
+	}
+	seatByKey := map[string]gen.SessionSeatAdminRow{
+		"held":         seat("held", "held", "seat"),
+		"sold":         seat("sold", "sold", "seat"),
+		"avail":        seat("avail", "available", "seat"),
+		"unavail":      seat("unavail", "unavailable", "seat"),
+		"ga|c1|000001": seat("ga|c1|000001", "available", "ga_unit"),
 	}
 
-	target, unknown, conflicts := partitionSeatKeys(
-		[]string{"avail", "unavail", "held", "sold", "typo", "avail", "typo"},
+	target, unknown, conflicts, gaUnits := partitionSeatKeys(
+		[]string{"avail", "unavail", "held", "sold", "typo", "avail", "typo", "ga|c1|000001"},
 		seatByKey,
 	)
 
@@ -141,6 +146,10 @@ func TestAB39_PartitionSeatKeys(t *testing.T) {
 	// unknown: typo (deduped).
 	if len(unknown) != 1 || unknown[0] != "typo" {
 		t.Fatalf("unknown = %v want [typo]", unknown)
+	}
+	// gaUnits: the available GA unit is NOT a target — it is rejected.
+	if len(gaUnits) != 1 || gaUnits[0] != "ga|c1|000001" {
+		t.Fatalf("gaUnits = %v want [ga|c1|000001]", gaUnits)
 	}
 }
 

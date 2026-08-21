@@ -81,9 +81,14 @@ func (h *Handler) HandleGetPublicSessionSchema(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Strong ETag = geometry_checksum. Publish it early so If-None-Match
-	// short-circuits before we do any per-seat / tier queries.
-	etag := `"` + schemaRow.GeometryChecksum + `"`
+	// Strong ETag = geometry_checksum + seat_status_version. The version
+	// component makes tier/category reassignment (AB-39) — which changes
+	// the category_prices overlay without touching the geometry —
+	// cache-visible: the bump invalidates If-None-Match revalidation.
+	// Published early so a match short-circuits before any per-seat /
+	// tier queries.
+	etag := `"` + schemaRow.GeometryChecksum + "-v" +
+		strconv.FormatInt(schemaRow.SeatStatusVersion, 10) + `"`
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", schemaCacheControl)
 	if matchesETag(r.Header.Get("If-None-Match"), etag) {

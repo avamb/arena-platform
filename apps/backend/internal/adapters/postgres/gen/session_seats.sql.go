@@ -460,13 +460,17 @@ UPDATE session_seats
 SET    tier_id    = $3::uuid,
        updated_at = now()
 WHERE  session_id = $1
-  AND  seat_key   = ANY($2::text[])`
+  AND  seat_key   = ANY($2::text[])
+  AND  kind       = 'seat'
+  AND  status     IN ('available', 'unavailable')`
 
 // BulkSetSessionSeatTier reassigns every seat named in seatKeys to tierID
-// under session sessionID in one UPDATE. Returns the number of rows
-// matched (which equals the rows updated — the WHERE clause has no
-// short-circuit on already-set tier values). Not gated by seat status;
-// callers MUST pre-check for sold/held (§AB-39) before invoking.
+// under session sessionID in one UPDATE. Column-side gated to
+// kind='seat' in a reassignable status (available/unavailable) so a seat
+// that became held/sold after the handler's pre-check is skipped rather
+// than silently re-priced. Callers MUST compare the returned
+// rows-affected against the intended target count and treat a mismatch
+// as a concurrent-change conflict (§AB-39).
 func (q *Queries) BulkSetSessionSeatTier(
 	ctx context.Context,
 	sessionID uuid.UUID,
@@ -478,6 +482,51 @@ func (q *Queries) BulkSetSessionSeatTier(
 		return 0, err
 	}
 	return tag.RowsAffected(), nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ListSessionSeatsAdmin  (AB-39, feature #429)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// SessionSeatAdminRow is a SessionSeatRow plus the kind discriminator
+// ('seat' | 'ga_unit', AB-51) for surfaces that must tell physical seats
+// from GA units.
+type SessionSeatAdminRow struct {
+	SessionSeatRow
+	Kind string `json:"kind"`
+}
+
+const listSessionSeatsAdmin = `-- name: ListSessionSeatsAdmin :many
+SELECT id, session_id, seat_key, sector_name, row_name, seat_number,
+       tier_id, status, reservation_id, status_version, updated_at, kind
+FROM   session_seats
+WHERE  session_id = $1
+ORDER  BY seat_key ASC, id ASC`
+
+// ListSessionSeatsAdmin returns every session_seats row (seats AND GA
+// units) for a session with the kind column, in canonical seat_key
+// order. Powers the AB-39 admin seat inventory and the category
+// reassignment pre-check.
+func (q *Queries) ListSessionSeatsAdmin(ctx context.Context, sessionID uuid.UUID) ([]SessionSeatAdminRow, error) {
+	rows, err := q.db.Query(ctx, listSessionSeatsAdmin, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []SessionSeatAdminRow
+	for rows.Next() {
+		var r SessionSeatAdminRow
+		if err := rows.Scan(
+			&r.ID, &r.SessionID, &r.SeatKey, &r.SectorName, &r.RowName,
+			&r.SeatNumber, &r.TierID, &r.Status, &r.ReservationID,
+			&r.StatusVersion, &r.UpdatedAt, &r.Kind,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

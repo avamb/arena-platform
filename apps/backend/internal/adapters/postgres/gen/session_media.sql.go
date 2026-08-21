@@ -144,18 +144,20 @@ func (q *Queries) SessionExistsActive(ctx context.Context, id uuid.UUID) (bool, 
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getMediaObjectOwnerType = `-- name: GetMediaObjectOwnerType :one
-SELECT owner_type
+SELECT owner_type, org_id
 FROM   media_objects
 WHERE  id = $1
   AND  deleted_at IS NULL`
 
-// GetMediaObjectOwnerType returns the owner_type of an ACTIVE media
-// object. Returns pgx.ErrNoRows when the row does not exist or has been
-// soft-deleted. Used by the session-media gallery handler to enforce
-// poster items reference an owner_type='session_poster' media object.
-func (q *Queries) GetMediaObjectOwnerType(ctx context.Context, id uuid.UUID) (string, error) {
+// GetMediaObjectOwnerType returns the owner_type and owning org of an
+// ACTIVE media object. Returns pgx.ErrNoRows when the row does not exist
+// or has been soft-deleted. Used by the session-media gallery handler to
+// enforce poster items reference an owner_type='session_poster' media
+// object belonging to the session's own org (tenant isolation).
+func (q *Queries) GetMediaObjectOwnerType(ctx context.Context, id uuid.UUID) (string, *uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, getMediaObjectOwnerType, id)
 	var ownerType string
-	err := row.Scan(&ownerType)
-	return ownerType, err
+	var orgID *uuid.UUID // NULL for platform-owned assets (0052)
+	err := row.Scan(&ownerType, &orgID)
+	return ownerType, orgID, err
 }

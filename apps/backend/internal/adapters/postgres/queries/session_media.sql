@@ -44,13 +44,14 @@ SELECT EXISTS (
 ) AS exists;
 
 -- name: GetMediaObjectOwnerType :one
--- GetMediaObjectOwnerType returns the owner_type of an ACTIVE media object.
--- Used by the gallery PUT handler to enforce
+-- GetMediaObjectOwnerType returns the owner_type and owning org of an
+-- ACTIVE media object. Used by the gallery PUT handler to enforce
 -- session_media_items.kind='poster' rows point at a media_objects row of
--- owner_type='session_poster' (422 media_owner_type_mismatch otherwise).
--- Returns pgx.ErrNoRows when the media object does not exist or is
--- soft-deleted.
-SELECT owner_type
+-- owner_type='session_poster' (422 media_owner_type_mismatch otherwise)
+-- that belongs to the session's own org (404 media_not_found otherwise —
+-- cross-org media existence is not leaked). Returns pgx.ErrNoRows when
+-- the media object does not exist or is soft-deleted.
+SELECT owner_type, org_id
 FROM   media_objects
 WHERE  id = $1
   AND  deleted_at IS NULL;

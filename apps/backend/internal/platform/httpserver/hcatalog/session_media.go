@@ -338,8 +338,10 @@ func (h *Handler) HandleReplaceSessionMedia(w http.ResponseWriter, r *http.Reque
 				))
 				return
 			}
-			// Owner-type check — poster media MUST be owner_type='session_poster'.
-			ownerType, ownerErr := h.sessionQueries.GetMediaObjectOwnerType(ctx, mediaID)
+			// Owner-type check — poster media MUST be owner_type='session_poster'
+			// AND belong to the session's own org. Cross-org media is reported
+			// as not-found so org A cannot probe org B's media UUIDs.
+			ownerType, mediaOrgID, ownerErr := h.sessionQueries.GetMediaObjectOwnerType(ctx, mediaID)
 			if ownerErr != nil {
 				if errors.Is(ownerErr, pgx.ErrNoRows) {
 					httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
@@ -352,6 +354,14 @@ func (h *Handler) HandleReplaceSessionMedia(w http.ResponseWriter, r *http.Reque
 				h.logger.Error("session_media: media owner_type lookup failed", slog.String("error", ownerErr.Error()))
 				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 					"session_media.media_lookup_failed", "failed to load media object", r,
+				))
+				return
+			}
+			if mediaOrgID == nil || *mediaOrgID != orgCtx.OrgID {
+				httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+					"session_media.media_not_found",
+					"media_id does not reference an existing media object", r,
+					map[string]any{"index": i, "media_id": mediaID.String()},
 				))
 				return
 			}
@@ -425,7 +435,9 @@ func (h *Handler) HandleReplaceSessionMedia(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	defer func() {
-		_ = tx.Rollback(context.Background())
+		// WithoutCancel: the rollback must still run when the request
+		// ctx is already cancelled (guardrail #178).
+		_ = tx.Rollback(context.WithoutCancel(ctx))
 	}()
 	txQueries := h.sessionQueries.WithTx(tx)
 

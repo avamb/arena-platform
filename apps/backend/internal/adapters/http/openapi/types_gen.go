@@ -50,6 +50,12 @@ const (
 	Organization AdminCreatedUserScope = "organization"
 )
 
+// Defines values for AdminSeatRowKind.
+const (
+	AdminSeatRowKindGaUnit AdminSeatRowKind = "ga_unit"
+	AdminSeatRowKindSeat   AdminSeatRowKind = "seat"
+)
+
 // Defines values for AdminSeatRowStatus.
 const (
 	AdminSeatRowStatusAvailable   AdminSeatRowStatus = "available"
@@ -541,9 +547,9 @@ const (
 
 // Defines values for SessionItemAdmissionMode.
 const (
-	AssignedSeats    SessionItemAdmissionMode = "assigned_seats"
-	GeneralAdmission SessionItemAdmissionMode = "general_admission"
-	Hybrid           SessionItemAdmissionMode = "hybrid"
+	SessionItemAdmissionModeAssignedSeats    SessionItemAdmissionMode = "assigned_seats"
+	SessionItemAdmissionModeGeneralAdmission SessionItemAdmissionMode = "general_admission"
+	SessionItemAdmissionModeHybrid           SessionItemAdmissionMode = "hybrid"
 )
 
 // Defines values for SessionItemCurrencySource.
@@ -832,15 +838,28 @@ type AdminCreatedUserOnboarding struct {
 // endpoint intentionally omits `tier_id`; this admin-only surface
 // exposes it so a reassignment can be visually confirmed.
 type AdminSeatRow struct {
+	// Id session_seats row id.
 	Id openapi_types.UUID `json:"id"`
 
-	// Kind Reserved for GA-unit rows; empty string for seated rows.
-	Kind       string             `json:"kind"`
-	RowName    string             `json:"row_name"`
-	SeatKey    string             `json:"seat_key"`
-	SeatNumber string             `json:"seat_number"`
-	SectorName string             `json:"sector_name"`
-	Status     AdminSeatRowStatus `json:"status"`
+	// Kind Row discriminator: `seat` for physical seats, `ga_unit` for
+	// AB-51 general-admission units (which are NOT reassignable
+	// via the category endpoint).
+	Kind AdminSeatRowKind `json:"kind"`
+
+	// RowName Row display name copied from the plan geometry.
+	RowName string `json:"row_name"`
+
+	// SeatKey Session-local seat key produced by the SVG importer.
+	SeatKey string `json:"seat_key"`
+
+	// SeatNumber Seat number within the row.
+	SeatNumber string `json:"seat_number"`
+
+	// SectorName Sector display name copied from the plan geometry.
+	SectorName string `json:"sector_name"`
+
+	// Status Current seat status (AB-36/AB-49 state machine).
+	Status AdminSeatRowStatus `json:"status"`
 
 	// TierId Current tier binding, or null when unbound (should not happen
 	// after AB-39 lands — the invariant is "every seat carries a
@@ -848,15 +867,25 @@ type AdminSeatRow struct {
 	TierId *openapi_types.UUID `json:"tier_id"`
 }
 
-// AdminSeatRowStatus defines model for AdminSeatRow.Status.
+// AdminSeatRowKind Row discriminator: `seat` for physical seats, `ga_unit` for
+// AB-51 general-admission units (which are NOT reassignable
+// via the category endpoint).
+type AdminSeatRowKind string
+
+// AdminSeatRowStatus Current seat status (AB-36/AB-49 state machine).
 type AdminSeatRowStatus string
 
 // AdminSeatsResponse 200 body for `GET /v1/event-sessions/{id}/seats/admin` (AB-39).
 // Returned in canonical seat_key ASC order.
 type AdminSeatsResponse struct {
-	SeatStatusVersion int64              `json:"seat_status_version"`
-	Seats             []AdminSeatRow     `json:"seats"`
-	SessionId         openapi_types.UUID `json:"session_id"`
+	// SeatStatusVersion Current sessions.seat_status_version at read time.
+	SeatStatusVersion int64 `json:"seat_status_version"`
+
+	// Seats Every session_seats row (seats and GA units) in seat_key order.
+	Seats []AdminSeatRow `json:"seats"`
+
+	// SessionId Session whose seat inventory is listed.
+	SessionId openapi_types.UUID `json:"session_id"`
 }
 
 // AdminTicketDeliveryResendResponse Envelope returned by
@@ -3660,12 +3689,16 @@ type PatchSessionSeatsCategoryResponse struct {
 	// SeatStatusVersion Fresh `sessions.seat_status_version` value after the bulk
 	// reassignment commits. Downstream observers should treat
 	// values above their cursor as a signal to refetch.
-	SeatStatusVersion int64              `json:"seat_status_version"`
-	SessionId         openapi_types.UUID `json:"session_id"`
+	SeatStatusVersion int64 `json:"seat_status_version"`
 
-	// Summary Aggregate counters for the category reassignment call.
+	// SessionId Session whose seats were reassigned.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// Summary Aggregate counters for the reassignment call.
 	Summary PatchSessionSeatsCategorySummary `json:"summary"`
-	TierId  openapi_types.UUID               `json:"tier_id"`
+
+	// TierId Target tier echoed from the request.
+	TierId openapi_types.UUID `json:"tier_id"`
 
 	// UnknownSeatKeys Caller-supplied keys not matching any session seat. Sorted.
 	UnknownSeatKeys []string `json:"unknown_seat_keys"`

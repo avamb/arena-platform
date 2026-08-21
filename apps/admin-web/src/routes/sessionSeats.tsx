@@ -844,7 +844,11 @@ export function SessionSeatsScreen({
               dangerouslySetInnerHTML={{ __html: svgHtml }}
             />
             <SeatTable
-              rows={adminSeatsQuery.data?.seats ?? []}
+              // AB-51 GA units share session_seats but are not
+              // category-assignable seats — keep them out of the table.
+              rows={(adminSeatsQuery.data?.seats ?? []).filter(
+                (s) => s.kind !== "ga_unit",
+              )}
               tiers={tierById}
               selected={selected}
               onRowClick={onTableRowClick}

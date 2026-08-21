@@ -159,7 +159,7 @@ type Querier interface {
 	DeleteSessionMediaItems(ctx context.Context, sessionID uuid.UUID) error
 	InsertSessionMediaItem(ctx context.Context, sessionID uuid.UUID, kind string, mediaID *uuid.UUID, videoURL *string, position int16) (SessionMediaItemRow, error)
 	SessionExistsActive(ctx context.Context, id uuid.UUID) (bool, error)
-	GetMediaObjectOwnerType(ctx context.Context, id uuid.UUID) (string, error)
+	GetMediaObjectOwnerType(ctx context.Context, id uuid.UUID) (string, *uuid.UUID, error)
 
 	// Ticket tiers — pricing modes for sessions (feature #127)
 	InsertTicketTier(ctx context.Context, sessionID uuid.UUID, name, pricingMode string, priceAmount int64, currency string, pwywMin, pwywMax *int64, capacity *int32, saleWindowStart, saleWindowEnd *time.Time, sortOrder int32) (TicketTierRow, error)
@@ -453,6 +453,7 @@ type Querier interface {
 	GetSessionSeatByID(ctx context.Context, id, sessionID uuid.UUID) (SessionSeatRow, error)
 	GetSessionSeatByKey(ctx context.Context, sessionID uuid.UUID, seatKey string) (SessionSeatRow, error)
 	ListSessionSeats(ctx context.Context, sessionID uuid.UUID) ([]SessionSeatRow, error)
+	ListSessionSeatsAdmin(ctx context.Context, sessionID uuid.UUID) ([]SessionSeatAdminRow, error)
 	ListSessionSeatsByStatus(ctx context.Context, sessionID uuid.UUID, status string) ([]SessionSeatRow, error)
 	ListSessionSeatsChangedSince(ctx context.Context, sessionID uuid.UUID, sinceVersion int64) ([]SessionSeatRow, error)
 	LockSessionSeatsForHold(ctx context.Context, sessionID uuid.UUID, seatKeys []string) ([]SessionSeatRow, error)

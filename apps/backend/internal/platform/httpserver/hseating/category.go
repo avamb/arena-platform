@@ -145,7 +145,7 @@ func (h *Handler) HandleListSessionSeatsAdmin(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	rows, err := h.queries.ListSessionSeats(ctx, sessionID)
+	rows, err := h.queries.ListSessionSeatsAdmin(ctx, sessionID)
 	if err != nil {
 		h.logger.Error("seating: admin seats list failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
@@ -161,9 +161,6 @@ func (h *Handler) HandleListSessionSeatsAdmin(w http.ResponseWriter, r *http.Req
 			s := row.TierID.String()
 			tid = &s
 		}
-		// The Kind column is not on SessionSeatRow scan today; GA units
-		// simply do not surface here — the widget already handles those
-		// via a separate GA tier UI. Represent it as empty for compatibility.
 		out = append(out, AdminSeatRow{
 			ID:      row.ID.String(),
 			SeatKey: row.SeatKey,
@@ -172,7 +169,7 @@ func (h *Handler) HandleListSessionSeatsAdmin(w http.ResponseWriter, r *http.Req
 			Seat:    row.SeatNumber,
 			Status:  row.Status,
 			TierID:  tid,
-			Kind:    "",
+			Kind:    row.Kind,
 		})
 	}
 
@@ -266,14 +263,15 @@ func (h *Handler) HandlePatchSessionSeatsCategory(w http.ResponseWriter, r *http
 	}
 	_ = tier // fetched for validation only; response echoes the request tier_id
 
-	// Load all materialized seats once and pre-check status. session_seats
+	// Load all materialized rows once and pre-check status. session_seats
 	// rowcount is bounded by the physical seat count (typically < 10 000)
 	// so one scan under an operator-priority endpoint is acceptable and
-	// simpler than a per-key SELECT loop. GA-unit rows are irrelevant to
-	// this endpoint (they carry kind='ga_unit'); they never appear in the
-	// caller's seat_keys because the widget/admin table only surfaces
-	// seated rows via the schema endpoint's `sections[]`.
-	allSeats, err := h.queries.ListSessionSeats(ctx, sessionID)
+	// simpler than a per-key SELECT loop. AB-51 GA units live in the same
+	// table (kind='ga_unit') and are NOT reassignable here — GA categories
+	// have no seats to assign (AB-40 Part C) and re-tiering a unit
+	// corrupts per-tier pool accounting — so their keys are rejected
+	// explicitly below.
+	allSeats, err := h.queries.ListSessionSeatsAdmin(ctx, sessionID)
 	if err != nil {
 		h.logger.Error("seating: category patch list failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
@@ -281,12 +279,21 @@ func (h *Handler) HandlePatchSessionSeatsCategory(w http.ResponseWriter, r *http
 		))
 		return
 	}
-	seatByKey := make(map[string]gen.SessionSeatRow, len(allSeats))
+	seatByKey := make(map[string]gen.SessionSeatAdminRow, len(allSeats))
 	for _, s := range allSeats {
 		seatByKey[s.SeatKey] = s
 	}
 
-	target, unknown, conflicts := partitionSeatKeys(req.SeatKeys, seatByKey)
+	target, unknown, conflicts, gaUnits := partitionSeatKeys(req.SeatKeys, seatByKey)
+	if len(gaUnits) > 0 {
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+			"seating.ga_unit_not_reassignable",
+			"general-admission units cannot be assigned a seat category",
+			r,
+			map[string]any{"ga_unit_seat_keys": gaUnits},
+		))
+		return
+	}
 	if len(conflicts) > 0 {
 		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
 			"seating.category_reassign_conflict",
@@ -324,7 +331,9 @@ func (h *Handler) HandlePatchSessionSeatsCategory(w http.ResponseWriter, r *http
 		))
 		return
 	}
-	defer func() { _ = tx.Rollback(context.Background()) }()
+	// WithoutCancel: the rollback must still run when the request ctx is
+	// already cancelled (guardrail #178).
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
 	qtx := h.queries.WithTx(tx)
 
 	newVersion, err := qtx.IncrementSessionSeatStatusVersion(ctx, sessionID)
@@ -336,9 +345,12 @@ func (h *Handler) HandlePatchSessionSeatsCategory(w http.ResponseWriter, r *http
 		return
 	}
 
-	// Bulk UPDATE. The WHERE clause matches on seat_key (unique per
-	// session) so rowsAffected == len(target) — but we don't strictly
-	// assert that; a partial update just yields a smaller Updated count.
+	// Bulk UPDATE. The query is column-side gated to kind='seat' in
+	// available/unavailable status, so a seat that became held/sold
+	// between the pre-check snapshot and this UPDATE is skipped by the
+	// WHERE clause. rowsAffected < len(target) therefore means a
+	// concurrent status change — roll back and 409 so no subset of the
+	// selection is silently re-priced (§AB-39 TOCTOU guard).
 	rows, err := qtx.BulkSetSessionSeatTier(ctx, sessionID, target, tierID)
 	if err != nil {
 		h.logger.Error("seating: category patch bulk update failed", slog.String("error", err.Error()))
@@ -347,7 +359,18 @@ func (h *Handler) HandlePatchSessionSeatsCategory(w http.ResponseWriter, r *http
 		))
 		return
 	}
-	_ = rows
+	if rows != int64(len(target)) {
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+			"seating.category_reassign_conflict",
+			"seat status changed concurrently; re-fetch and retry",
+			r,
+			map[string]any{
+				"expected_updates": len(target),
+				"actual_updates":   rows,
+			},
+		))
+		return
+	}
 
 	if err := h.writeSessionAuditTx(ctx, tx, r, "v1.session.seats.category", sessionID, map[string]any{
 		"tier_id":             tierID.String(),
@@ -449,28 +472,36 @@ func validateCategoryPatchRequest(
 }
 
 // partitionSeatKeys walks the caller-supplied seat_keys and splits them
-// into three buckets:
-//   - target:    keys that resolve to a session_seat in available/unavailable
-//     status. These are what BulkSetSessionSeatTier will update.
+// into four buckets:
+//   - target:    keys that resolve to a kind='seat' row in
+//     available/unavailable status. These are what
+//     BulkSetSessionSeatTier will update.
 //   - unknown:   keys that do not resolve to any session_seat row (typos,
 //     stale plan versions). Reported per-key in the response
 //     for operator visibility.
 //   - conflicts: keys that resolve but the seat is currently held or sold.
 //     Their presence triggers a 409 — caller MUST NOT proceed.
+//   - gaUnits:   keys that resolve to AB-51 GA unit rows (kind='ga_unit').
+//     Not reassignable — their presence triggers a 422.
 //
 // Duplicate keys in the input are deduplicated. All output slices are
 // sorted lexicographically for stable diffing.
 func partitionSeatKeys(
 	seatKeys []string,
-	seatByKey map[string]gen.SessionSeatRow,
-) (target, unknown, conflicts []string) {
+	seatByKey map[string]gen.SessionSeatAdminRow,
+) (target, unknown, conflicts, gaUnits []string) {
 	seenTarget := make(map[string]struct{}, len(seatKeys))
 	seenUnknown := make(map[string]struct{}, 4)
 	seenConflict := make(map[string]struct{}, 4)
+	seenGAUnit := make(map[string]struct{}, 4)
 	for _, key := range seatKeys {
 		row, ok := seatByKey[key]
 		if !ok {
 			seenUnknown[key] = struct{}{}
+			continue
+		}
+		if row.Kind == "ga_unit" {
+			seenGAUnit[key] = struct{}{}
 			continue
 		}
 		switch row.Status {
@@ -484,7 +515,8 @@ func partitionSeatKeys(
 	target = keysSorted(seenTarget)
 	unknown = keysSorted(seenUnknown)
 	conflicts = keysSorted(seenConflict)
-	return target, unknown, conflicts
+	gaUnits = keysSorted(seenGAUnit)
+	return target, unknown, conflicts, gaUnits
 }
 
 func keysSorted(m map[string]struct{}) []string {

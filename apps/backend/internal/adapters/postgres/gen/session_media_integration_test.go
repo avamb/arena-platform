@@ -79,15 +79,19 @@ func TestSessionMedia_AB47b_LiveDB(t *testing.T) {
 		t.Fatalf("SessionExistsActive missing: got true, want false")
 	}
 
-	// Step 3: GetMediaObjectOwnerType round-trip.
-	owner, err := q.GetMediaObjectOwnerType(ctx, f.mediaID)
+	// Step 3: GetMediaObjectOwnerType round-trip (owner_type + org_id —
+	// the org is part of the gallery tenant-isolation check).
+	owner, mediaOrg, err := q.GetMediaObjectOwnerType(ctx, f.mediaID)
 	if err != nil {
 		t.Fatalf("GetMediaObjectOwnerType: %v", err)
 	}
 	if owner != "session_poster" {
 		t.Fatalf("GetMediaObjectOwnerType: got %q, want session_poster", owner)
 	}
-	if _, err := q.GetMediaObjectOwnerType(ctx, uuid.New()); err == nil {
+	if mediaOrg == nil || *mediaOrg != f.orgID {
+		t.Fatalf("GetMediaObjectOwnerType org: got %v, want %s", mediaOrg, f.orgID)
+	}
+	if _, _, err := q.GetMediaObjectOwnerType(ctx, uuid.New()); err == nil {
 		t.Fatalf("GetMediaObjectOwnerType(missing): got nil, want pgx.ErrNoRows")
 	}
 

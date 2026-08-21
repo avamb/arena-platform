@@ -8195,13 +8195,23 @@ export interface components {
          *     exposes it so a reassignment can be visually confirmed.
          */
         AdminSeatRow: {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description session_seats row id.
+             */
             id: string;
+            /** @description Session-local seat key produced by the SVG importer. */
             seat_key: string;
+            /** @description Sector display name copied from the plan geometry. */
             sector_name: string;
+            /** @description Row display name copied from the plan geometry. */
             row_name: string;
+            /** @description Seat number within the row. */
             seat_number: string;
-            /** @enum {string} */
+            /**
+             * @description Current seat status (AB-36/AB-49 state machine).
+             * @enum {string}
+             */
             status: "available" | "held" | "sold" | "unavailable";
             /**
              * Format: uuid
@@ -8210,18 +8220,30 @@ export interface components {
              *     non-null tier_id after bind").
              */
             tier_id: string | null;
-            /** @description Reserved for GA-unit rows; empty string for seated rows. */
-            kind: string;
+            /**
+             * @description Row discriminator: `seat` for physical seats, `ga_unit` for
+             *     AB-51 general-admission units (which are NOT reassignable
+             *     via the category endpoint).
+             * @enum {string}
+             */
+            kind: "seat" | "ga_unit";
         };
         /**
          * @description 200 body for `GET /v1/event-sessions/{id}/seats/admin` (AB-39).
          *     Returned in canonical seat_key ASC order.
          */
         AdminSeatsResponse: {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Session whose seat inventory is listed.
+             */
             session_id: string;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Current sessions.seat_status_version at read time.
+             */
             seat_status_version: number;
+            /** @description Every session_seats row (seats and GA units) in seat_key order. */
             seats: components["schemas"]["AdminSeatRow"][];
         };
         /**
@@ -8259,9 +8281,15 @@ export interface components {
          *     resolve to any session_seats row (typos or stale plan versions).
          */
         PatchSessionSeatsCategoryResponse: {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Session whose seats were reassigned.
+             */
             session_id: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Target tier echoed from the request.
+             */
             tier_id: string;
             /**
              * Format: int64
@@ -8274,6 +8302,7 @@ export interface components {
             updated_seat_keys: string[];
             /** @description Caller-supplied keys not matching any session seat. Sorted. */
             unknown_seat_keys: string[];
+            /** @description Aggregate counters for the reassignment call. */
             summary: components["schemas"]["PatchSessionSeatsCategorySummary"];
         };
         /** @description Aggregate counters for the category reassignment call. */
@@ -19634,6 +19663,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Event session id. */
                 id: string;
             };
             cookie?: never;
@@ -19771,10 +19801,13 @@ export interface operations {
             };
             /**
              * @description One or more seats are currently `held` or `sold`
-             *     (`seating.category_reassign_conflict`). The
-             *     `details.conflicting_seat_keys` field lists the blocking
-             *     keys — the caller MUST release or cancel the underlying
-             *     reservation before retrying.
+             *     (`seating.category_reassign_conflict`). Raised either from
+             *     the pre-check (the `details.conflicting_seat_keys` field
+             *     lists the blocking keys) or when a seat's status changed
+             *     between the pre-check and the gated bulk UPDATE
+             *     (`details.expected_updates` / `details.actual_updates`) —
+             *     in both cases nothing was reassigned; the caller MUST
+             *     re-fetch and retry.
              */
             409: {
                 headers: {
@@ -19788,7 +19821,11 @@ export interface operations {
              * @description Semantic validation failure. Possible error codes:
              *     `seating.tier_not_found_in_session`,
              *     `seating.no_seated_inventory` (session is general_admission),
-             *     `seating.too_many_seat_keys`.
+             *     `seating.too_many_seat_keys`,
+             *     `seating.ga_unit_not_reassignable` (one or more seat_keys
+             *     resolve to AB-51 general-admission units, listed in
+             *     `details.ga_unit_seat_keys` — GA categories have no seats
+             *     to assign).
              */
             422: {
                 headers: {

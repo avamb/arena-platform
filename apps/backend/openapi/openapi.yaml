@@ -3880,28 +3880,37 @@ components:
         id:
           type: string
           format: uuid
+          description: session_seats row id.
         seat_key:
           type: string
+          description: Session-local seat key produced by the SVG importer.
         sector_name:
           type: string
+          description: Sector display name copied from the plan geometry.
         row_name:
           type: string
+          description: Row display name copied from the plan geometry.
         seat_number:
           type: string
+          description: Seat number within the row.
         status:
           type: string
           enum: [available, held, sold, unavailable]
+          description: Current seat status (AB-36/AB-49 state machine).
         tier_id:
-          type: string
+          type: [string, "null"]
           format: uuid
-          nullable: true
           description: |
             Current tier binding, or null when unbound (should not happen
             after AB-39 lands — the invariant is "every seat carries a
             non-null tier_id after bind").
         kind:
           type: string
-          description: Reserved for GA-unit rows; empty string for seated rows.
+          enum: [seat, ga_unit]
+          description: |
+            Row discriminator: `seat` for physical seats, `ga_unit` for
+            AB-51 general-admission units (which are NOT reassignable
+            via the category endpoint).
 
     AdminSeatsResponse:
       type: object
@@ -3913,11 +3922,14 @@ components:
         session_id:
           type: string
           format: uuid
+          description: Session whose seat inventory is listed.
         seat_status_version:
           type: integer
           format: int64
+          description: Current sessions.seat_status_version at read time.
         seats:
           type: array
+          description: Every session_seats row (seats and GA units) in seat_key order.
           items:
             $ref: "#/components/schemas/AdminSeatRow"
 
@@ -3973,9 +3985,11 @@ components:
         session_id:
           type: string
           format: uuid
+          description: Session whose seats were reassigned.
         tier_id:
           type: string
           format: uuid
+          description: Target tier echoed from the request.
         seat_status_version:
           type: integer
           format: int64
@@ -3994,7 +4008,9 @@ components:
           items:
             type: string
         summary:
-          $ref: "#/components/schemas/PatchSessionSeatsCategorySummary"
+          allOf:
+            - $ref: "#/components/schemas/PatchSessionSeatsCategorySummary"
+          description: Aggregate counters for the reassignment call.
 
     PatchSessionSeatsCategorySummary:
       type: object
@@ -15439,6 +15455,7 @@ paths:
         - name: id
           in: path
           required: true
+          description: Event session id.
           schema:
             type: string
             format: uuid
@@ -15579,10 +15596,13 @@ paths:
         "409":
           description: |
             One or more seats are currently `held` or `sold`
-            (`seating.category_reassign_conflict`). The
-            `details.conflicting_seat_keys` field lists the blocking
-            keys — the caller MUST release or cancel the underlying
-            reservation before retrying.
+            (`seating.category_reassign_conflict`). Raised either from
+            the pre-check (the `details.conflicting_seat_keys` field
+            lists the blocking keys) or when a seat's status changed
+            between the pre-check and the gated bulk UPDATE
+            (`details.expected_updates` / `details.actual_updates`) —
+            in both cases nothing was reassigned; the caller MUST
+            re-fetch and retry.
           content:
             application/json:
               schema:
@@ -15592,7 +15612,11 @@ paths:
             Semantic validation failure. Possible error codes:
             `seating.tier_not_found_in_session`,
             `seating.no_seated_inventory` (session is general_admission),
-            `seating.too_many_seat_keys`.
+            `seating.too_many_seat_keys`,
+            `seating.ga_unit_not_reassignable` (one or more seat_keys
+            resolve to AB-51 general-admission units, listed in
+            `details.ga_unit_seat_keys` — GA categories have no seats
+            to assign).
           content:
             application/json:
               schema:

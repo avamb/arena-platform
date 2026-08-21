@@ -205,16 +205,29 @@ RETURNING id, session_id, seat_key, sector_name, row_name, seat_number,
 
 -- name: BulkSetSessionSeatTier :execrows
 -- AB-39: bulk assign one tier_id to every seat in seat_keys[] for a session.
--- The reassignment is NOT gated by status column-side — the handler
--- (hseating/category.go) enforces the "no sold/held" contract app-side
--- and only calls this after the pre-check clears. Not FOR UPDATE because
--- session_seats.status is orthogonal to tier_id and reassignment does not
--- race with reservations (holds only mutate status + reservation_id).
+-- Gated column-side to the reassignable states so a seat that became
+-- held/sold between the handler's pre-check and this UPDATE is skipped
+-- rather than silently re-priced (TOCTOU guard; the handler compares
+-- rows-affected against the target count and 409s on a mismatch).
+-- kind='seat' keeps AB-51 GA units out — GA categories have no seats to
+-- assign (AB-40 Part C) and re-tiering a unit corrupts pool accounting.
 UPDATE session_seats
 SET    tier_id    = $3::uuid,
        updated_at = now()
 WHERE  session_id = $1
-  AND  seat_key   = ANY($2::text[]);
+  AND  seat_key   = ANY($2::text[])
+  AND  kind       = 'seat'
+  AND  status     IN ('available', 'unavailable');
+
+-- name: ListSessionSeatsAdmin :many
+-- AB-39 admin seat inventory: same shape as ListSessionSeats plus kind,
+-- so the admin table and the category-reassignment pre-check can tell
+-- physical seats from AB-51 GA units.
+SELECT id, session_id, seat_key, sector_name, row_name, seat_number,
+       tier_id, status, reservation_id, status_version, updated_at, kind
+FROM   session_seats
+WHERE  session_id = $1
+ORDER  BY seat_key ASC, id ASC;
 
 -- name: CountSessionSeatsByStatus :one
 -- Returns the number of seats in the given status for a session.
