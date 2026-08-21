@@ -411,6 +411,31 @@ func (h *Handler) HandleSuperadminListTickets(w http.ResponseWriter, r *http.Req
 		} else {
 			m["holder_email"] = nil
 		}
+		// AB-49: seat + cancellation/refund record for the support console.
+		m["seat_key"] = t.SeatKey
+		m["seat_sector"] = t.SeatSector
+		m["seat_row"] = t.SeatRow
+		m["seat_number"] = t.SeatNumber
+		m["cancellation_reason"] = t.CancellationReason
+		m["refund_mode"] = t.RefundMode
+		m["refund_price"] = t.RefundPrice
+		m["review_hold"] = t.ReviewHold
+		m["review_hold_reason"] = t.ReviewHoldReason
+		if t.CancelledAt != nil {
+			m["cancelled_at"] = t.CancelledAt.Format(time.RFC3339)
+		} else {
+			m["cancelled_at"] = nil
+		}
+		if t.RefundID != nil {
+			m["refund_id"] = t.RefundID.String()
+		} else {
+			m["refund_id"] = nil
+		}
+		if t.RefundDate != nil {
+			m["refund_date"] = t.RefundDate.Format(time.RFC3339)
+		} else {
+			m["refund_date"] = nil
+		}
 		tickets = append(tickets, m)
 	}
 

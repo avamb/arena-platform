@@ -34,6 +34,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -41,6 +42,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/htickets"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
@@ -978,7 +980,17 @@ func (h *Handler) HandleRefundWebhook(w http.ResponseWriter, r *http.Request) {
 		slog.String("to", updated.State),
 	)
 
-	// On succeeded: cancel active tickets for the linked checkout session.
+	// On succeeded: apply the AB-49 inbound-refund semantics to the linked
+	// order. A refund initiated directly at the provider is ORDER-level:
+	//   * FULL amount  → cancel every active ticket of the order AND
+	//     release each ticket's seat / GA unit, restore capacity and
+	//     revoke barcodes — in one transaction (pre-AB-49 this path
+	//     cancelled tickets only and a refunded assigned seat stayed
+	//     'sold' forever);
+	//   * PARTIAL amount → auto-cancel NOTHING. The platform cannot know
+	//     which tickets the organizer meant — flag the order's tickets
+	//     for human review and escalate loudly (owner decision
+	//     2026-08-01: the hold flags, never blocks admission).
 	if updated.State == "succeeded" && h.paymentIntentQueries != nil {
 		pi, piErr := h.paymentIntentQueries.GetPaymentIntentByID(ctx, updated.PaymentIntentID)
 		if piErr != nil {
@@ -988,58 +1000,10 @@ func (h *Handler) HandleRefundWebhook(w http.ResponseWriter, r *http.Request) {
 				slog.String("error", piErr.Error()),
 			)
 		} else if pi.CheckoutSessionID != nil {
-			cancelled, cancelErr := h.refundQueries.CancelTicketsByCheckoutSession(ctx, *pi.CheckoutSessionID)
-			if cancelErr != nil {
-				h.logger.Error("refund_webhook: ticket cancellation failed",
-					slog.String("refund_id", updated.ID.String()),
-					slog.String("checkout_session_id", pi.CheckoutSessionID.String()),
-					slog.String("error", cancelErr.Error()),
-				)
+			if updated.Amount < pi.Amount {
+				h.applyPartialInboundRefundHold(ctx, updated, *pi.CheckoutSessionID)
 			} else {
-				h.logger.Info("refund_webhook: tickets cancelled on refund success",
-					slog.String("refund_id", updated.ID.String()),
-					slog.String("checkout_session_id", pi.CheckoutSessionID.String()),
-					slog.Int64("cancelled_count", cancelled),
-				)
-				// Publish Bil24-compatible scanner refund events (feature #143).
-				// Best-effort: errors are logged internally, not returned.
-				if h.publishRefunded != nil {
-					h.publishRefunded(ctx,
-						pi.CheckoutSessionID.String(),
-						updated.ID.String(),
-						updated.Currency,
-						updated.Amount,
-					)
-				}
-
-				// Publish generic per-ticket v1.ticket.refunded events for the
-				// webhook event catalog (feature S-1).  Best-effort: errors are
-				// logged inside publishScannerEvent.  Listing tickets here is
-				// fine because CancelTicketsByCheckoutSession has just updated
-				// them to "cancelled"; the listed rows therefore reflect the
-				// post-cancel state and carry the canonical ticket UUIDs that
-				// scanner subscribers need to identify the revoked entries.
-				if h.ticketQueries != nil && cancelled > 0 && h.publishRefundedV1 != nil {
-					tickets, listErr := h.ticketQueries.ListTicketsByCheckoutSession(ctx, *pi.CheckoutSessionID)
-					if listErr != nil {
-						h.logger.Warn("refund_webhook: list tickets for v1.ticket.refunded events failed",
-							slog.String("checkout_session_id", pi.CheckoutSessionID.String()),
-							slog.String("error", listErr.Error()),
-						)
-					} else {
-						ticketIDs := make([]string, 0, len(tickets))
-						for _, t := range tickets {
-							ticketIDs = append(ticketIDs, t.ID.String())
-						}
-						h.publishRefundedV1(ctx,
-							ticketIDs,
-							pi.CheckoutSessionID.String(),
-							updated.ID.String(),
-							updated.Currency,
-							updated.Amount,
-						)
-					}
-				}
+				h.applyFullInboundRefundCancellation(ctx, updated, *pi.CheckoutSessionID)
 			}
 		}
 	}
@@ -1050,4 +1014,153 @@ func (h *Handler) HandleRefundWebhook(w http.ResponseWriter, r *http.Request) {
 		"processed":    true,
 		"refund":       refundFromRow(updated),
 	})
+}
+
+// applyFullInboundRefundCancellation handles a FULL inbound provider
+// refund: cancels every active ticket of the order and releases their
+// inventory in one transaction (AB-49 step 6 — the defensive secondary
+// trigger; a refund started in the provider's dashboard must also stop
+// the tickets from admitting and return the places to sale).
+func (h *Handler) applyFullInboundRefundCancellation(ctx context.Context, refund gen.RefundRow, checkoutSessionID uuid.UUID) {
+	if h.pool == nil || h.refundQueries == nil {
+		return
+	}
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		h.logger.Error("refund_webhook: begin cancellation tx failed",
+			slog.String("refund_id", refund.ID.String()),
+			slog.String("error", err.Error()),
+		)
+		return
+	}
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	txq := h.refundQueries.WithTx(tx)
+
+	reason := "inbound provider refund " + refund.ID.String()
+	refundID := refund.ID
+	cancelled, err := txq.CancelTicketsByCheckoutSession(ctx, checkoutSessionID, reason, &refundID)
+	if err != nil {
+		h.logger.Error("refund_webhook: ticket cancellation failed",
+			slog.String("refund_id", refund.ID.String()),
+			slog.String("checkout_session_id", checkoutSessionID.String()),
+			slog.String("error", err.Error()),
+		)
+		return
+	}
+
+	// Release each ticket's seat / GA unit and restore ledger capacity.
+	// The ledger scope mirrors checkout conversion: released rows mean
+	// session-level (nil tier) capacity; row-less legacy tickets restore
+	// per-tier. Release failures are logged but do NOT abort — the
+	// tickets are already refunded at the provider; keeping them
+	// admitting because a seat row is inconsistent would be worse.
+	rowReleases := 0
+	legacyByTier := map[string]int32{}
+	legacyTiers := map[string]*uuid.UUID{}
+	for _, t := range cancelled {
+		outcome, relErr := htickets.ReleaseCancelledTicketInventoryTx(ctx, txq, t)
+		if relErr != nil {
+			h.logger.Error("refund_webhook: seat release failed",
+				slog.String("ticket_id", t.ID.String()),
+				slog.String("error", relErr.Error()),
+			)
+			continue
+		}
+		if outcome.RowReleased() {
+			rowReleases++
+		} else {
+			key := ""
+			if t.TierID != nil {
+				key = t.TierID.String()
+			}
+			legacyByTier[key]++
+			legacyTiers[key] = t.TierID
+		}
+	}
+	if len(cancelled) > 0 && h.inventoryQueries != nil {
+		invQ := h.inventoryQueries.WithTx(tx)
+		if rowReleases > 0 {
+			if _, invErr := invQ.RestoreSoldCapacity(ctx, cancelled[0].SessionID, nil, int32(rowReleases)); invErr != nil {
+				h.logger.Error("refund_webhook: session-level capacity restore failed",
+					slog.String("checkout_session_id", checkoutSessionID.String()),
+					slog.String("error", invErr.Error()),
+				)
+			}
+		}
+		for key, n := range legacyByTier {
+			if _, invErr := invQ.RestoreSoldCapacity(ctx, cancelled[0].SessionID, legacyTiers[key], n); invErr != nil {
+				h.logger.Error("refund_webhook: per-tier capacity restore failed",
+					slog.String("tier", key),
+					slog.String("error", invErr.Error()),
+				)
+			}
+		}
+	}
+
+	// Revoke barcodes + credentials so refunded tickets stop scanning.
+	htickets.RevokeTicketArtifactsTx(ctx, h.logger, h.ticketQueries, h.ticketQueries, tx, cancelled)
+
+	if err := tx.Commit(ctx); err != nil {
+		h.logger.Error("refund_webhook: cancellation tx commit failed",
+			slog.String("refund_id", refund.ID.String()),
+			slog.String("error", err.Error()),
+		)
+		return
+	}
+
+	h.logger.Info("refund_webhook: tickets cancelled + inventory released on full refund",
+		slog.String("refund_id", refund.ID.String()),
+		slog.String("checkout_session_id", checkoutSessionID.String()),
+		slog.Int("cancelled_count", len(cancelled)),
+		slog.Int("rows_released", rowReleases),
+	)
+
+	// Publish Bil24-compatible scanner refund events (feature #143) and
+	// per-ticket v1.ticket.refunded events (feature S-1). Best-effort.
+	if h.publishRefunded != nil {
+		h.publishRefunded(ctx,
+			checkoutSessionID.String(), refund.ID.String(), refund.Currency, refund.Amount,
+		)
+	}
+	if len(cancelled) > 0 && h.publishRefundedV1 != nil {
+		ticketIDs := make([]string, 0, len(cancelled))
+		for _, t := range cancelled {
+			ticketIDs = append(ticketIDs, t.ID.String())
+		}
+		h.publishRefundedV1(ctx,
+			ticketIDs, checkoutSessionID.String(), refund.ID.String(), refund.Currency, refund.Amount,
+		)
+	}
+}
+
+// applyPartialInboundRefundHold handles a PARTIAL inbound provider
+// refund: no automatic cancellation (an agent must not invent a
+// proportional-allocation rule) — every active ticket of the order is
+// flagged for human review, loudly. The hold is a review flag, never an
+// admission state, and is never sent to the scanning service.
+func (h *Handler) applyPartialInboundRefundHold(ctx context.Context, refund gen.RefundRow, checkoutSessionID uuid.UUID) {
+	if h.ticketQueries == nil {
+		return
+	}
+	reason := "partial inbound refund " + refund.ID.String() +
+		" (" + strconv.FormatInt(refund.Amount, 10) + " " + refund.Currency +
+		") — attribute to specific tickets"
+	held, err := h.ticketQueries.SetTicketsReviewHoldByCheckoutSession(ctx, checkoutSessionID, reason)
+	if err != nil {
+		h.logger.Error("refund_webhook: review hold failed",
+			slog.String("refund_id", refund.ID.String()),
+			slog.String("checkout_session_id", checkoutSessionID.String()),
+			slog.String("error", err.Error()),
+		)
+		return
+	}
+	// ERROR level deliberately: this REQUIRES operator attention (the
+	// escalation channel of record until AB-50 wires notifications).
+	h.logger.Error("refund_webhook: PARTIAL inbound refund — tickets placed under review hold, operator must attribute it",
+		slog.String("refund_id", refund.ID.String()),
+		slog.String("checkout_session_id", checkoutSessionID.String()),
+		slog.Int64("refund_amount", refund.Amount),
+		slog.String("currency", refund.Currency),
+		slog.Int64("tickets_on_hold", held),
+	)
 }

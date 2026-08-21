@@ -60,6 +60,8 @@ describe("TICKET_STATUSES", () => {
       "cancelled",
       "expired",
       "transferred",
+      // AB-49: complimentary revocation status (0038) joined the filter.
+      "revoked",
     ]);
   });
 });

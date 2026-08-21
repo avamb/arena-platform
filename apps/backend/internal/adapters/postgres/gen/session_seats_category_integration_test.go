@@ -27,10 +27,14 @@ import (
 //  3. IncrementSessionSeatStatusVersion bumps monotonically.
 //  4. A second BulkSetSessionSeatTier flips the third seat to a
 //     different tier while leaving the earlier two in place.
-//  5. Held seats can still be reassigned by the raw query (the app
-//     layer enforces the "no held/sold" contract; this test proves the
-//     query itself is orthogonal to status so the contract lives at
-//     the right layer).
+//  5. Unknown seat keys simply don't match (rows-affected = 0).
+//
+// Since the pass-4 review, BulkSetSessionSeatTier is column-side gated
+// (kind='seat', status available/unavailable): held/sold seats and GA
+// units are skipped by the UPDATE itself, and the handler treats a
+// rows-affected shortfall as a 409 (TOCTOU guard). All seats in this
+// test stay 'available', so the gate is invisible here; the gate's own
+// behaviour is asserted by TestAB49Integration_* (httpserver).
 func TestAB39_BulkSetSessionSeatTier_LiveDB(t *testing.T) {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {

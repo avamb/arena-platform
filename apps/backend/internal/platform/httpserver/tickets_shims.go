@@ -6,14 +6,18 @@ package httpserver
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/htickets"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
 // ticketsHandler constructs a htickets.Handler from the server's dependencies.
@@ -35,7 +39,59 @@ func (s *Server) ticketsHandler() *htickets.Handler {
 		s.logger,
 		s.publishTicketIssuedEvents,
 		s.publishTicketRevokedV1Events,
+		s.publishTicketCancelledEvent,
 	)
+}
+
+// ─── AB-49 ticket cancellation shim ──────────────────────────────────────────
+//
+// Flat path: POST /v1/tickets/{id}/cancel. No {org_id} URL segment, so the
+// ticket's owning org is resolved via its session (GetSessionOrgContext) and
+// membership is enforced before the htickets handler runs — same tenant
+// model as the AB-39 seating shims.
+func (s *Server) handleCancelTicket(w http.ResponseWriter, r *http.Request) {
+	if s.ticketQueries == nil || s.sessionQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			"dependency.database_unavailable", "database is not available", r,
+		))
+		return
+	}
+	id, ok := httputil.UUIDPathParam(w, r, "id")
+	if !ok {
+		return
+	}
+	ticket, err := s.ticketQueries.GetTicketByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+				"ticket.not_found", "ticket not found", r,
+			))
+			return
+		}
+		s.logger.Error("ticket.cancel: shim lookup failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"ticket.lookup_failed", "failed to load ticket", r,
+		))
+		return
+	}
+	orgCtx, err := s.sessionQueries.GetSessionOrgContext(r.Context(), ticket.SessionID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+				"session.not_found", "the ticket's session no longer exists", r,
+			))
+			return
+		}
+		s.logger.Error("ticket.cancel: org lookup failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"ticket.lookup_failed", "failed to resolve the ticket's organization", r,
+		))
+		return
+	}
+	if !s.enforceMembershipInOrg(w, r, orgCtx.OrgID) {
+		return
+	}
+	s.ticketsHandler().HandleCancelTicket(w, r)
 }
 
 // ─── source-grep witnesses ────────────────────────────────────────────────────

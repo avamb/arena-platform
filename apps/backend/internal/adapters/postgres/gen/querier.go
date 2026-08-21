@@ -248,6 +248,11 @@ type Querier interface {
 	InsertTicket(ctx context.Context, checkoutSessionID uuid.UUID, sessionID uuid.UUID, tierID *uuid.UUID, holderEmail *string, seatKey *string, seatSector *string, seatRow *string, seatNumber *string, ordinal int32) (TicketRow, error)
 	ListTicketsByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID) ([]TicketRow, error)
 	GetTicketByID(ctx context.Context, id uuid.UUID) (TicketRow, error)
+	CancelTicket(ctx context.Context, id uuid.UUID, reason string, refundMode string) (TicketRow, error)
+	SetTicketRefundRecord(ctx context.Context, id uuid.UUID, refundID *uuid.UUID, refundDate *time.Time, refundPrice *int64) (TicketRow, error)
+	SetTicketsReviewHoldByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID, reason string) (int64, error)
+	ClearTicketReviewHold(ctx context.Context, id uuid.UUID) (TicketRow, error)
+	CountActiveTicketsForSeat(ctx context.Context, sessionID uuid.UUID, seatKey string) (int64, error)
 	CountTicketsByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID) (int64, error)
 	CountTicketsBySession(ctx context.Context, sessionID uuid.UUID) (int64, error)
 
@@ -268,7 +273,7 @@ type Querier interface {
 	UpdateRefundState(ctx context.Context, id uuid.UUID, newState string, providerRefundID *string, failureReason *string) (RefundRow, error)
 	InsertRefundEvent(ctx context.Context, refundID uuid.UUID, providerRefundID string, eventType string, eventPayload []byte, resultingState *string) (RefundEventRow, error)
 	GetRefundEvent(ctx context.Context, providerRefundID string, eventType string) (RefundEventRow, error)
-	CancelTicketsByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID) (int64, error)
+	CancelTicketsByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID, reason string, refundID *uuid.UUID) ([]TicketRow, error)
 	// SumNonFailedRefundsByIntent aggregates committed refund amounts for over-refund protection (feature #361).
 	SumNonFailedRefundsByIntent(ctx context.Context, paymentIntentID uuid.UUID) (int64, error)
 
@@ -459,6 +464,8 @@ type Querier interface {
 	LockSessionSeatsForHold(ctx context.Context, sessionID uuid.UUID, seatKeys []string) ([]SessionSeatRow, error)
 	HoldSessionSeat(ctx context.Context, id, reservationID uuid.UUID, statusVersion int64) (SessionSeatRow, error)
 	ReleaseSessionSeat(ctx context.Context, id, reservationID uuid.UUID, statusVersion int64) (SessionSeatRow, error)
+	ReleaseSoldSessionSeat(ctx context.Context, sessionID uuid.UUID, seatKey string, statusVersion int64) (SessionSeatRow, error)
+	ReleaseSoldGAUnitForReservation(ctx context.Context, sessionID, reservationID uuid.UUID, tierID *uuid.UUID, statusVersion int64) (SessionSeatRow, error)
 	SellSessionSeat(ctx context.Context, id, reservationID uuid.UUID, statusVersion int64) (SessionSeatRow, error)
 	BlockSessionSeat(ctx context.Context, id uuid.UUID, statusVersion int64) (SessionSeatRow, error)
 	UnblockSessionSeat(ctx context.Context, id uuid.UUID, statusVersion int64) (SessionSeatRow, error)

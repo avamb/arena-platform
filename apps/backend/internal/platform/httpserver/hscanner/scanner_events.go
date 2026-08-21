@@ -78,6 +78,13 @@ const (
 	// because no payment refund is involved.
 	TicketRevokedEventType = "v1.ticket.revoked"
 
+	// TicketCancelledEventType is the per-ticket event emitted when an
+	// operator cancels a ticket from the admin (AB-49). The ticket stops
+	// admitting IMMEDIATELY — the money decision (refund_mode) travels in
+	// the payload but never gates this event. AB-50 consumes it to notify
+	// the external scanning service (MACS).
+	TicketCancelledEventType = "v1.ticket.cancelled"
+
 	// SessionCancelledEventType is emitted once when a session transitions
 	// to the "cancelled" status (regardless of how many tickets are attached).
 	SessionCancelledEventType = "v1.session.cancelled"
@@ -318,6 +325,41 @@ func (h *Handler) PublishTicketRevokedV1Events(ctx context.Context, ticketIDs []
 			Payload:       BuildTicketRevokedV1Payload(tid, complimentaryIssuanceID, reason),
 		})
 	}
+}
+
+// BuildTicketCancelledPayload constructs the payload for v1.ticket.cancelled
+// (AB-49 operator cancellation). seat_key is present for assigned-seat
+// tickets so the scanning service can invalidate by place as well as id.
+func BuildTicketCancelledPayload(ticketID, sessionID, seatKey, reason, refundMode string) map[string]any {
+	payload := map[string]any{
+		"ticket_id":    ticketID,
+		"session_id":   sessionID,
+		"reason":       reason,
+		"refund_mode":  refundMode,
+		"cancelled_at": time.Now().UTC().Format(time.RFC3339),
+	}
+	if seatKey != "" {
+		payload["seat_key"] = seatKey
+	}
+	return payload
+}
+
+// PublishTicketCancelledEvent emits one v1.ticket.cancelled outbox event for
+// an operator-cancelled ticket (AB-49). Fired after the cancellation
+// transaction commits; the refund decision is informational only.
+func (h *Handler) PublishTicketCancelledEvent(ctx context.Context, ticket gen.TicketRow, reason, refundMode string) {
+	seatKey := ""
+	if ticket.SeatKey != nil {
+		seatKey = *ticket.SeatKey
+	}
+	h.PublishScannerEvent(ctx, outbox.Event{
+		AggregateType: TicketAggregateType,
+		AggregateID:   ticket.ID.String(),
+		EventType:     TicketCancelledEventType,
+		Payload: BuildTicketCancelledPayload(
+			ticket.ID.String(), ticket.SessionID.String(), seatKey, reason, refundMode,
+		),
+	})
 }
 
 // PublishSessionCancelledEvent emits a single v1.session.cancelled outbox event

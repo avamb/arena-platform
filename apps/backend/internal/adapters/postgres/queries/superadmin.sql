@@ -26,7 +26,10 @@ LIMIT  $3 OFFSET $4;
 -- Pass NULL for orgID to return tickets from all orgs.
 -- Pass NULL for statusFilter to return tickets in any status.
 SELECT t.id, t.checkout_session_id, t.session_id, t.tier_id,
-       t.holder_email, t.status, t.issued_at, t.created_at, t.updated_at
+       t.holder_email, t.status, t.issued_at, t.created_at, t.updated_at,
+       t.seat_key, t.seat_sector, t.seat_row, t.seat_number, t.ordinal,
+       t.cancelled_at, t.cancellation_reason, t.refund_mode, t.refund_id,
+       t.refund_date, t.refund_price, t.review_hold, t.review_hold_reason
 FROM   tickets t
 JOIN   checkout_sessions cs ON cs.id = t.checkout_session_id
 WHERE  ($1::uuid IS NULL OR cs.org_id = $1)

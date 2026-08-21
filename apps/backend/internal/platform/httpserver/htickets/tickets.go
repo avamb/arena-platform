@@ -68,6 +68,15 @@ type TicketResponse struct {
 	SeatSector        *string `json:"seat_sector,omitempty"`
 	SeatRow           *string `json:"seat_row,omitempty"`
 	SeatNumber        *string `json:"seat_number,omitempty"`
+	// AB-49 cancellation + refund record (omitted while active).
+	CancelledAt        *string `json:"cancelled_at,omitempty"`
+	CancellationReason *string `json:"cancellation_reason,omitempty"`
+	RefundMode         *string `json:"refund_mode,omitempty"`
+	RefundID           *string `json:"refund_id,omitempty"`
+	RefundDate         *string `json:"refund_date,omitempty"`
+	RefundPrice        *int64  `json:"refund_price,omitempty"`
+	ReviewHold         bool    `json:"review_hold"`
+	ReviewHoldReason   *string `json:"review_hold_reason,omitempty"`
 }
 
 // TicketFromRow converts a gen.TicketRow to a TicketResponse.
@@ -89,6 +98,24 @@ func TicketFromRow(t gen.TicketRow) TicketResponse {
 	if t.TierID != nil {
 		s := t.TierID.String()
 		resp.TierID = &s
+	}
+	// AB-49 cancellation + refund record.
+	resp.CancellationReason = t.CancellationReason
+	resp.RefundMode = t.RefundMode
+	resp.RefundPrice = t.RefundPrice
+	resp.ReviewHold = t.ReviewHold
+	resp.ReviewHoldReason = t.ReviewHoldReason
+	if t.CancelledAt != nil {
+		s := t.CancelledAt.UTC().Format(time.RFC3339)
+		resp.CancelledAt = &s
+	}
+	if t.RefundID != nil {
+		s := t.RefundID.String()
+		resp.RefundID = &s
+	}
+	if t.RefundDate != nil {
+		s := t.RefundDate.UTC().Format(time.RFC3339)
+		resp.RefundDate = &s
 	}
 	return resp
 }

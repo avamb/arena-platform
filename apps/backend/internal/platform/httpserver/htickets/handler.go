@@ -38,10 +38,12 @@ type Handler struct {
 
 	// Cross-domain callbacks. tickets.IssueTicketsForCheckout publishes
 	// ticket.issued events; complimentary revocation publishes per-ticket
-	// ticket.revoked events. Injecting them keeps htickets free of the
+	// ticket.revoked events; AB-49 operator cancellation publishes
+	// v1.ticket.cancelled. Injecting them keeps htickets free of the
 	// scanner-events writer wiring.
 	publishTicketIssuedEvents    func(ctx context.Context, tickets []gen.TicketRow)
 	publishTicketRevokedV1Events func(ctx context.Context, ticketIDs []string, complimentaryIssuanceID, reason string)
+	publishTicketCancelledEvent  func(ctx context.Context, ticket gen.TicketRow, reason, refundMode string)
 }
 
 // New constructs a Handler from the caller's dependencies. Nil queries are
@@ -62,6 +64,7 @@ func New(
 	logger *slog.Logger,
 	publishTicketIssuedEvents func(ctx context.Context, tickets []gen.TicketRow),
 	publishTicketRevokedV1Events func(ctx context.Context, ticketIDs []string, complimentaryIssuanceID, reason string),
+	publishTicketCancelledEvent func(ctx context.Context, ticket gen.TicketRow, reason, refundMode string),
 ) *Handler {
 	return &Handler{
 		ticketQueries:                ticketQ,
@@ -78,5 +81,6 @@ func New(
 		logger:                       logger,
 		publishTicketIssuedEvents:    publishTicketIssuedEvents,
 		publishTicketRevokedV1Events: publishTicketRevokedV1Events,
+		publishTicketCancelledEvent:  publishTicketCancelledEvent,
 	}
 }

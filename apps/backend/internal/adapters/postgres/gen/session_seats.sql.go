@@ -772,3 +772,71 @@ func (q *Queries) CountGAUnitsHeldSoldByTier(ctx context.Context, sessionID, tie
 	err := q.db.QueryRow(ctx, countGAUnitsHeldSoldByTier, sessionID, tierID).Scan(&n)
 	return n, err
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AB-49: post-issuance seat release (ticket cancellation)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const releaseSoldSessionSeat = `-- name: ReleaseSoldSessionSeat :one
+UPDATE session_seats ss
+SET    status         = 'available',
+       reservation_id = NULL,
+       status_version = $3,
+       updated_at     = now()
+WHERE  ss.session_id = $1
+  AND  ss.seat_key   = $2
+  AND  ss.kind       = 'seat'
+  AND  ss.status     = 'sold'
+  AND  NOT EXISTS (
+         SELECT 1 FROM tickets t
+         WHERE  t.session_id = ss.session_id
+           AND  t.seat_key   = ss.seat_key
+           AND  t.status     = 'active'
+       )
+RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
+          ss.seat_number, ss.tier_id, ss.status, ss.reservation_id,
+          ss.status_version, ss.updated_at`
+
+// ReleaseSoldSessionSeat performs the conditional 'sold' -> 'available'
+// transition — the ONLY legal way a sold seat returns to sale (AB-49;
+// sold -> unavailable stays forbidden). Guarded so it cannot fire while
+// any ACTIVE ticket still references the seat. Returns pgx.ErrNoRows
+// when the seat is not sold or an active ticket still points at it —
+// the caller MUST abort the cancellation transaction on that.
+func (q *Queries) ReleaseSoldSessionSeat(ctx context.Context, sessionID uuid.UUID, seatKey string, statusVersion int64) (SessionSeatRow, error) {
+	row := q.db.QueryRow(ctx, releaseSoldSessionSeat, sessionID, seatKey, statusVersion)
+	return scanSessionSeatRow(row)
+}
+
+const releaseSoldGAUnitForReservation = `-- name: ReleaseSoldGAUnitForReservation :one
+UPDATE session_seats ss
+SET    status         = 'available',
+       reservation_id = NULL,
+       status_version = $4,
+       updated_at     = now()
+FROM (
+    SELECT id
+    FROM   session_seats
+    WHERE  session_id = $1
+      AND  kind = 'ga_unit'
+      AND  status = 'sold'
+      AND  reservation_id = $2
+      AND  tier_id IS NOT DISTINCT FROM $3::uuid
+    ORDER  BY seat_key DESC
+    LIMIT  1
+    FOR UPDATE SKIP LOCKED
+) picked
+WHERE ss.id = picked.id
+RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
+          ss.seat_number, ss.tier_id, ss.status, ss.reservation_id,
+          ss.status_version, ss.updated_at`
+
+// ReleaseSoldGAUnitForReservation releases exactly ONE sold GA unit of
+// the cancelled ticket's reservation + tier (units are fungible within
+// a tier; GA tickets carry no seat_key). Returns pgx.ErrNoRows for
+// legacy pre-AB-51 reservations without unit rows — callers treat that
+// as ledger-only restore, not an error.
+func (q *Queries) ReleaseSoldGAUnitForReservation(ctx context.Context, sessionID, reservationID uuid.UUID, tierID *uuid.UUID, statusVersion int64) (SessionSeatRow, error) {
+	row := q.db.QueryRow(ctx, releaseSoldGAUnitForReservation, sessionID, reservationID, tierID, statusVersion)
+	return scanSessionSeatRow(row)
+}

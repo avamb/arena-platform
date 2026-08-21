@@ -61,9 +61,27 @@ FROM   refund_events
 WHERE  provider_refund_id = $1
   AND  event_type         = $2;
 
--- name: CancelTicketsByCheckoutSession :exec
+-- name: CancelTicketsByCheckoutSession :many
+-- AB-49: order-level cancellation driven by a FULL inbound provider
+-- refund (a refund initiated directly in Stripe is ORDER-level; one
+-- order = one checkout session — scope decision 7). Moves every active
+-- ticket of the order to cancelled, stamps the refund linkage
+-- (refund_mode='automatic', refund_id, refund_date), and RETURNS the
+-- cancelled rows so the caller can release each ticket's seat / GA
+-- unit, restore capacity and revoke barcodes in the same transaction.
+-- Pre-AB-49 this query updated tickets only and released nothing.
 UPDATE tickets
-SET    status     = 'cancelled',
-       updated_at = now()
+SET    status              = 'cancelled',
+       cancelled_at        = now(),
+       cancellation_reason = $2,
+       refund_mode         = 'automatic',
+       refund_id           = $3,
+       refund_date         = now(),
+       updated_at          = now()
 WHERE  checkout_session_id = $1
-  AND  status = 'active';
+  AND  status = 'active'
+RETURNING id, checkout_session_id, session_id, tier_id, holder_email,
+          status, issued_at, created_at, updated_at,
+          seat_key, seat_sector, seat_row, seat_number, ordinal,
+          cancelled_at, cancellation_reason, refund_mode, refund_id,
+          refund_date, refund_price, review_hold, review_hold_reason;

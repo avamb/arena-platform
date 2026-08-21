@@ -325,21 +325,44 @@ func (q *Queries) GetRefundEvent(
 // CancelTicketsByCheckoutSession
 // ─────────────────────────────────────────────────────────────────────────────
 
-const cancelTicketsByCheckoutSession = `-- name: CancelTicketsByCheckoutSession :exec
+const cancelTicketsByCheckoutSession = `-- name: CancelTicketsByCheckoutSession :many
 UPDATE tickets
-SET    status     = 'cancelled',
-       updated_at = now()
+SET    status              = 'cancelled',
+       cancelled_at        = now(),
+       cancellation_reason = $2,
+       refund_mode         = 'automatic',
+       refund_id           = $3,
+       refund_date         = now(),
+       updated_at          = now()
 WHERE  checkout_session_id = $1
-  AND  status = 'active'`
+  AND  status = 'active'
+RETURNING id, checkout_session_id, session_id, tier_id, holder_email,
+          status, issued_at, created_at, updated_at,
+          seat_key, seat_sector, seat_row, seat_number, ordinal,
+          cancelled_at, cancellation_reason, refund_mode, refund_id,
+          refund_date, refund_price, review_hold, review_hold_reason`
 
-// CancelTicketsByCheckoutSession marks all active tickets for a checkout session
-// as 'cancelled'. Called by the refund webhook handler when a full refund succeeds.
-//
-// Returns the number of rows affected (0 when no active tickets exist — idempotent).
-func (q *Queries) CancelTicketsByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID) (int64, error) {
-	tag, err := q.db.Exec(ctx, cancelTicketsByCheckoutSession, checkoutSessionID)
+// CancelTicketsByCheckoutSession cancels every active ticket of an
+// order after a FULL inbound provider refund (order-level scope: one
+// order = one checkout session). Stamps refund_mode='automatic' plus
+// the refunds-row link and returns the cancelled rows so the caller
+// can release each ticket's seat / GA unit, restore capacity and
+// revoke barcodes in the same transaction (AB-49). Pre-AB-49 this
+// updated tickets only.
+func (q *Queries) CancelTicketsByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID, reason string, refundID *uuid.UUID) ([]TicketRow, error) {
+	rows, err := q.db.Query(ctx, cancelTicketsByCheckoutSession, checkoutSessionID, reason, refundID)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return tag.RowsAffected(), nil
+	defer rows.Close()
+
+	var tickets []TicketRow
+	for rows.Next() {
+		r, err := scanTicketRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		tickets = append(tickets, r)
+	}
+	return tickets, rows.Err()
 }

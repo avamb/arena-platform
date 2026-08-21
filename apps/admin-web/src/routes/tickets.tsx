@@ -71,6 +71,7 @@ export const TICKET_STATUSES: readonly string[] = [
   "cancelled",
   "expired",
   "transferred",
+  "revoked",
 ];
 
 export interface AdminTicket {
@@ -83,6 +84,37 @@ export interface AdminTicket {
   readonly updated_at: string;
   readonly tier_id: string | null;
   readonly holder_email: string | null;
+  // AB-49: seat + cancellation/refund record.
+  readonly seat_key?: string | null;
+  readonly seat_sector?: string | null;
+  readonly seat_row?: string | null;
+  readonly seat_number?: string | null;
+  readonly cancelled_at?: string | null;
+  readonly cancellation_reason?: string | null;
+  readonly refund_mode?: string | null;
+  readonly refund_id?: string | null;
+  readonly refund_date?: string | null;
+  readonly refund_price?: number | null;
+  readonly review_hold?: boolean;
+  readonly review_hold_reason?: string | null;
+}
+
+/** AB-49: refund modes an operator can pick at cancellation. */
+export const CANCEL_REFUND_MODES = ["none", "manual", "automatic"] as const;
+export type CancelRefundMode = (typeof CANCEL_REFUND_MODES)[number];
+
+export interface CancelTicketResponse {
+  readonly ticket: AdminTicket;
+  readonly seat_released: boolean;
+  readonly ga_unit_released: boolean;
+  readonly capacity_restored: boolean;
+  readonly refund?: {
+    readonly id: string;
+    readonly state: string;
+    readonly amount: number;
+    readonly currency: string;
+  } | null;
+  readonly refund_task_failed: boolean;
 }
 
 interface TicketsEnvelope {
@@ -177,8 +209,8 @@ function TicketsConsole() {
             Cross-tenant ticket inventory. Filters map directly to the
             backend's <code>org_id</code>, <code>status</code>,{" "}
             <code>limit</code>, <code>offset</code> query parameters.
-            Read-only; ticket mutations (issue, revoke, transfer) are
-            not exposed under <code>/v1/admin</code>.
+            Cancellation (AB-49) is available from the ticket drawer;
+            issue and transfer are not exposed under <code>/v1/admin</code>.
           </p>
         </div>
         <div style={S.refreshWrapStyle}>
@@ -529,11 +561,94 @@ function TicketDrawer({
               )
             }
           />
+          <MetaRow
+            k="Seat"
+            v={
+              ticket.seat_key == null ? (
+                <span style={S.mutedStyle}>— (general admission)</span>
+              ) : (
+                <span data-testid="tickets-drawer-seat">
+                  {ticket.seat_sector} / row {ticket.seat_row} / seat{" "}
+                  {ticket.seat_number}{" "}
+                  <code style={S.monoStyle}>{ticket.seat_key}</code>
+                </span>
+              )
+            }
+          />
           <MetaRow k="Issued" v={formatDateTime(ticket.issued_at)} />
           <MetaRow k="Created" v={formatDateTime(ticket.created_at)} />
           <MetaRow k="Updated" v={formatDateTime(ticket.updated_at)} />
         </dl>
       </section>
+
+      {ticket.review_hold === true ? (
+        <section
+          style={S.drawerSectionStyle}
+          aria-labelledby="tickets-drawer-hold"
+          data-testid="tickets-review-hold"
+        >
+          <h3 id="tickets-drawer-hold" style={S.drawerSectionTitleStyle}>
+            ⚠ Review hold — partial refund needs attribution
+          </h3>
+          <p style={S.gapNoteStyle}>
+            {ticket.review_hold_reason ??
+              "A partial provider refund landed on this order and must be attributed to specific tickets by an operator."}{" "}
+            Admission stays allowed until resolved — cancel the tickets
+            the refund covers, or confirm this one stays valid.
+          </p>
+        </section>
+      ) : null}
+
+      {ticket.cancelled_at != null ? (
+        <section
+          style={S.drawerSectionStyle}
+          aria-labelledby="tickets-drawer-cancelrec"
+          data-testid="tickets-cancel-record"
+        >
+          <h3 id="tickets-drawer-cancelrec" style={S.drawerSectionTitleStyle}>
+            Cancellation record
+          </h3>
+          <dl style={S.metaListStyle}>
+            <MetaRow k="Cancelled" v={formatDateTime(ticket.cancelled_at)} />
+            <MetaRow
+              k="Reason"
+              v={ticket.cancellation_reason ?? <span style={S.mutedStyle}>—</span>}
+            />
+            <MetaRow
+              k="Refund"
+              v={
+                ticket.refund_mode === "manual" ? (
+                  <span>
+                    manual — <strong>pending, handled outside the platform</strong>
+                  </span>
+                ) : ticket.refund_mode === "automatic" ? (
+                  <span>
+                    automatic
+                    {ticket.refund_price != null
+                      ? ` · ${ticket.refund_price} (minor units)`
+                      : ""}
+                    {ticket.refund_id != null ? (
+                      <>
+                        {" · "}
+                        <code style={S.monoStyle}>{ticket.refund_id}</code>
+                      </>
+                    ) : null}
+                  </span>
+                ) : (
+                  <span>none — nothing owed</span>
+                )
+              }
+            />
+            {ticket.refund_date != null ? (
+              <MetaRow k="Refund date" v={formatDateTime(ticket.refund_date)} />
+            ) : null}
+          </dl>
+        </section>
+      ) : null}
+
+      {ticket.status === "active" ? (
+        <CancelTicketSection ticket={ticket} />
+      ) : null}
 
       <TicketDeliverySection ticketId={ticket.id} />
 
@@ -554,11 +669,6 @@ function TicketDrawer({
             label="Event / performance"
             reason="No /v1/admin/events endpoint exposed; event metadata is not joined into the ticket list."
           />
-          <BackendGapTile
-            id="seat"
-            label="Seat / section"
-            reason="List endpoint omits seat assignment; richer detail endpoint not exposed."
-          />
         </div>
         <p style={S.gapNoteStyle}>
           Cross-tenant tickets/refunds filtered by the same org as this
@@ -578,6 +688,183 @@ function MetaRow({ k, v }: { k: string; v: ReactNode }) {
       <dt style={S.metaKeyStyle}>{k}</dt>
       <dd style={S.metaValStyle}>{v}</dd>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AB-49: operator cancellation
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Cancel form for an active ticket. The refund decision is presented as
+ * a deliberate step (radio group, no default submit), per the AB-49
+ * contract: cancellation frees the seat and stops admission immediately;
+ * the money is a separate recorded consequence that never gates it.
+ */
+function CancelTicketSection({ ticket }: { ticket: AdminTicket }) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [mode, setMode] = useState<CancelRefundMode>("none");
+  const [amount, setAmount] = useState("");
+  const [result, setResult] = useState<CancelTicketResponse | null>(null);
+
+  const mutation = useMutation<CancelTicketResponse, ApiError, void>({
+    mutationFn: () =>
+      authedFetch<CancelTicketResponse>({
+        method: "POST",
+        path: `/v1/tickets/${ticket.id}/cancel`,
+        body: {
+          reason: reason.trim(),
+          refund_mode: mode,
+          ...(mode === "automatic"
+            ? { refund_amount: Number.parseInt(amount, 10) }
+            : {}),
+        },
+      }),
+    onSuccess: (data) => {
+      setResult(data);
+      void queryClient.invalidateQueries({ queryKey: ["admin", "tickets"] });
+    },
+  });
+
+  const amountInvalid =
+    mode === "automatic" &&
+    (amount.trim() === "" ||
+      !Number.isFinite(Number(amount)) ||
+      Number(amount) <= 0);
+  const submitDisabled =
+    mutation.isPending || reason.trim() === "" || amountInvalid;
+
+  if (result !== null) {
+    return (
+      <section
+        style={S.drawerSectionStyle}
+        aria-labelledby="tickets-drawer-cancelled"
+        data-testid="tickets-cancel-done"
+      >
+        <h3 id="tickets-drawer-cancelled" style={S.drawerSectionTitleStyle}>
+          Ticket cancelled
+        </h3>
+        <p style={S.gapNoteStyle}>
+          {result.seat_released
+            ? "The seat is back on sale."
+            : result.ga_unit_released
+              ? "One GA place returned to the pool."
+              : "Capacity was restored (no per-place row to release)."}{" "}
+          {result.refund_task_failed
+            ? "The automatic refund task FAILED — the cancellation stands; retry the refund from the Refunds console."
+            : result.refund != null
+              ? `Refund ${result.refund.state}: ${result.refund.amount} ${result.refund.currency}.`
+              : mode === "manual"
+                ? "Refund pending — handled outside the platform."
+                : "No refund owed."}
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section
+      style={S.drawerSectionStyle}
+      aria-labelledby="tickets-drawer-cancel"
+      data-testid="tickets-cancel-section"
+    >
+      <h3 id="tickets-drawer-cancel" style={S.drawerSectionTitleStyle}>
+        Cancel ticket
+      </h3>
+      {!open ? (
+        <button
+          type="button"
+          style={S.buttonStyle}
+          onClick={() => setOpen(true)}
+          data-testid="tickets-cancel-open"
+        >
+          Cancel this ticket…
+        </button>
+      ) : (
+        <div style={{ display: "grid", gap: 8 }}>
+          <p style={S.gapNoteStyle}>
+            Cancelling immediately invalidates the ticket at the door,
+            returns its place to sale and restores capacity — regardless
+            of the refund choice below.
+          </p>
+          <label style={S.fieldGroupStyle}>
+            <span style={S.fieldLabelStyle}>Reason (required, audited)</span>
+            <input
+              type="text"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              style={S.inputStyle}
+              data-testid="tickets-cancel-reason"
+              placeholder="e.g. customer request"
+            />
+          </label>
+          <fieldset style={{ border: "none", padding: 0, margin: 0 }}>
+            <legend style={S.fieldLabelStyle}>Refund decision</legend>
+            {CANCEL_REFUND_MODES.map((m) => (
+              <label key={m} style={{ display: "block", fontSize: 13 }}>
+                <input
+                  type="radio"
+                  name="cancel-refund-mode"
+                  value={m}
+                  checked={mode === m}
+                  onChange={() => setMode(m)}
+                  data-testid={`tickets-cancel-mode-${m}`}
+                />{" "}
+                {m === "none"
+                  ? "none — nothing owed (comp / no-refund policy)"
+                  : m === "manual"
+                    ? "manual — I will refund from the provider dashboard (recorded as outstanding)"
+                    : "automatic — the platform refunds the confirmed amount"}
+              </label>
+            ))}
+          </fieldset>
+          {mode === "automatic" ? (
+            <label style={S.fieldGroupStyle}>
+              <span style={S.fieldLabelStyle}>
+                Confirmed amount (minor units)
+              </span>
+              <input
+                type="number"
+                min={1}
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                style={amountInvalid ? S.inputInvalidStyle : S.inputStyle}
+                data-testid="tickets-cancel-amount"
+              />
+            </label>
+          ) : null}
+          {mutation.isError ? (
+            <p style={{ color: "#7f1d1d", fontSize: 12 }} data-testid="tickets-cancel-error">
+              {mutation.error instanceof ApiError
+                ? `${mutation.error.code}: ${mutation.error.message}`
+                : "Cancellation failed."}
+            </p>
+          ) : null}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              style={S.buttonStyle}
+              disabled={submitDisabled}
+              onClick={() => mutation.mutate()}
+              data-testid="tickets-cancel-submit"
+            >
+              {mutation.isPending ? "Cancelling…" : "Confirm cancellation"}
+            </button>
+            <button
+              type="button"
+              style={S.buttonStyle}
+              onClick={() => setOpen(false)}
+              disabled={mutation.isPending}
+              data-testid="tickets-cancel-abort"
+            >
+              Keep the ticket
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 

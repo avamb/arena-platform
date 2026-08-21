@@ -75,6 +75,9 @@ type ComplimentaryTicketRow struct {
 	IssuedAt                time.Time  `json:"issued_at"`
 	CreatedAt               time.Time  `json:"created_at"`
 	UpdatedAt               time.Time  `json:"updated_at"`
+	// SeatKey is non-nil when the comp ticket was issued against an
+	// assigned seat (AB-49: revocation must release it back to sale).
+	SeatKey *string `json:"seat_key"`
 }
 
 // scanComplimentaryTicketRow scans a single tickets row for complimentary issuances.
@@ -92,6 +95,7 @@ func scanComplimentaryTicketRow(row interface {
 		&r.IssuedAt,
 		&r.CreatedAt,
 		&r.UpdatedAt,
+		&r.SeatKey,
 	)
 	return r, err
 }
@@ -243,7 +247,7 @@ func (q *Queries) InsertComplimentaryTicket(
 INSERT INTO tickets (complimentary_issuance_id, session_id, tier_id, holder_email)
 VALUES ($1, $2, $3, $4)
 RETURNING id, complimentary_issuance_id, session_id, tier_id, holder_email,
-          status, issued_at, created_at, updated_at`
+          status, issued_at, created_at, updated_at, seat_key`
 	row := q.db.QueryRow(ctx, sql,
 		complimentaryIssuanceID, sessionID, tierID, holderEmail,
 	)
@@ -263,7 +267,7 @@ func (q *Queries) ListTicketsByComplimentaryIssuance(
 ) ([]ComplimentaryTicketRow, error) {
 	const sql = `
 SELECT id, complimentary_issuance_id, session_id, tier_id, holder_email,
-       status, issued_at, created_at, updated_at
+       status, issued_at, created_at, updated_at, seat_key
 FROM   tickets
 WHERE  complimentary_issuance_id = $1
 ORDER BY issued_at ASC, id ASC`
@@ -332,7 +336,7 @@ SET    status     = 'revoked',
        updated_at = now()
 WHERE  complimentary_issuance_id = $1
 RETURNING id, complimentary_issuance_id, session_id, tier_id, holder_email,
-          status, issued_at, created_at, updated_at`
+          status, issued_at, created_at, updated_at, seat_key`
 	rows, err := q.db.Query(ctx, sql, complimentaryIssuanceID)
 	if err != nil {
 		return nil, err

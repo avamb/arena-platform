@@ -400,6 +400,7 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 		logger,
 		nil, // publishTicketIssuedEvents — scanner events not required in worker context
 		nil, // publishTicketRevokedV1Events — revocation events not required here
+		nil, // publishTicketCancelledEvent — AB-49 cancellation is an admin-API action, not a worker one
 	)
 	reg.Register(issuejob.JobType, issuejob.NewHandler(issuejob.HandlerOptions{
 		Queries:      queries,

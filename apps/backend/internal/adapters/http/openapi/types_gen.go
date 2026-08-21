@@ -92,6 +92,13 @@ const (
 	BindSessionSeatingRequestAdmissionModeHybrid        BindSessionSeatingRequestAdmissionMode = "hybrid"
 )
 
+// Defines values for CancelTicketRequestRefundMode.
+const (
+	Automatic CancelTicketRequestRefundMode = "automatic"
+	Manual    CancelTicketRequestRefundMode = "manual"
+	None      CancelTicketRequestRefundMode = "none"
+)
+
 // Defines values for CheckoutSessionItemState.
 const (
 	CheckoutSessionItemStateAbandoned        CheckoutSessionItemState = "abandoned"
@@ -588,6 +595,7 @@ const (
 const (
 	TicketItemStatusActive      TicketItemStatus = "active"
 	TicketItemStatusCancelled   TicketItemStatus = "cancelled"
+	TicketItemStatusRevoked     TicketItemStatus = "revoked"
 	TicketItemStatusTransferred TicketItemStatus = "transferred"
 )
 
@@ -1325,6 +1333,77 @@ type BindSessionSeatingResponse struct {
 		// SeatingPlanVersionId UUIDv7 of the bound plan version, when set.
 		SeatingPlanVersionId *openapi_types.UUID `json:"seating_plan_version_id,omitempty"`
 	} `json:"session"`
+}
+
+// CancelTicketRefundSummary Trimmed refunds-row view embedded in the cancel response.
+type CancelTicketRefundSummary struct {
+	// Amount Refund amount in minor units.
+	Amount int64 `json:"amount"`
+
+	// Currency ISO-4217 currency of the refund.
+	Currency string `json:"currency"`
+
+	// Id refunds row id.
+	Id openapi_types.UUID `json:"id"`
+
+	// State Refund state machine state (requested at creation).
+	State string `json:"state"`
+}
+
+// CancelTicketRequest AB-49 operator cancellation request. Cancellation is the primary
+// operator action and the sole driver of inventory and gate state;
+// the refund decision recorded here is a separate, optional
+// financial consequence that never gates the seat release.
+type CancelTicketRequest struct {
+	// Reason Operator-supplied cancellation reason (audited).
+	Reason string `json:"reason"`
+
+	// RefundAmount Confirmed refund amount in minor units - required for
+	// `refund_mode=automatic`, validated against the remaining
+	// refundable balance of the order's succeeded payment intent.
+	// Full or partial (editable down). Ignored for other modes.
+	RefundAmount *int64 `json:"refund_amount"`
+
+	// RefundMode The money decision - `none` (nothing owed), `manual` (the
+	// organizer refunds from the provider's own dashboard, an
+	// outstanding obligation), or `automatic` (the platform creates
+	// a refund for the confirmed amount).
+	RefundMode CancelTicketRequestRefundMode `json:"refund_mode"`
+}
+
+// CancelTicketRequestRefundMode The money decision - `none` (nothing owed), `manual` (the
+// organizer refunds from the provider's own dashboard, an
+// outstanding obligation), or `automatic` (the platform creates
+// a refund for the confirmed amount).
+type CancelTicketRequestRefundMode string
+
+// CancelTicketResponse 200 response for `POST /v1/tickets/{id}/cancel`. The ticket is
+// cancelled and its inventory released regardless of the refund
+// fields - a failed refund task never rolls back a cancellation.
+type CancelTicketResponse struct {
+	// CapacityRestored True when inventory_ledger.capacity_sold was decremented.
+	CapacityRestored bool `json:"capacity_restored"`
+
+	// GaUnitReleased True when one GA unit of the ticket's reservation moved
+	// sold -> available (GA tickets; false for legacy pre-AB-51
+	// reservations without unit rows).
+	GaUnitReleased bool `json:"ga_unit_released"`
+
+	// Refund Present for refund_mode=automatic when the refunds row was
+	// created. Null/absent for none/manual.
+	Refund *CancelTicketRefundSummary `json:"refund,omitempty"`
+
+	// RefundTaskFailed True when refund_mode=automatic was requested but the refund
+	// task failed. The ticket IS cancelled and the seat IS
+	// released - retry the money side via POST /v1/refunds.
+	RefundTaskFailed bool `json:"refund_task_failed"`
+
+	// SeatReleased True when the ticket's assigned seat moved sold -> available
+	// in the cancellation transaction.
+	SeatReleased bool `json:"seat_released"`
+
+	// Ticket The cancelled ticket with its refund record.
+	Ticket TicketItem `json:"ticket"`
 }
 
 // Channel A sales channel belonging to an organization. Channels represent
@@ -5644,6 +5723,14 @@ type TicketCredentialItemType string
 //	  │ (cancelled by org or buyer)  → cancelled   (terminal)
 //	  │ (transferred to new holder)  → transferred (terminal)
 type TicketItem struct {
+	// CancellationReason AB-49 - operator-supplied reason recorded at cancellation.
+	CancellationReason *string `json:"cancellation_reason"`
+
+	// CancelledAt AB-49 - when the ticket was cancelled (operator action, inbound
+	// refund webhook, or complimentary revocation). Absent while
+	// active.
+	CancelledAt *time.Time `json:"cancelled_at"`
+
 	// CheckoutSessionId FK to the checkout session that triggered issuance. Also acts as
 	// the application-level idempotency key: re-issuing for a session
 	// with existing tickets returns the existing rows.
@@ -5664,12 +5751,53 @@ type TicketItem struct {
 	// confirmed or a free checkout is completed.
 	IssuedAt time.Time `json:"issued_at"`
 
+	// RefundDate AB-49 - when the money moved or the obligation was recorded
+	// (Bil24 export shape ticketList[].refundDate).
+	RefundDate *time.Time `json:"refund_date"`
+
+	// RefundId AB-49 - refunds row created for refund_mode=automatic.
+	RefundId *openapi_types.UUID `json:"refund_id"`
+
+	// RefundMode AB-49 - the money decision taken at cancellation, one of
+	// `none` | `manual` | `automatic` (null while active). `manual`
+	// is an OUTSTANDING obligation handled outside the platform -
+	// it must never be read as done. Never gates inventory or
+	// admission.
+	RefundMode *string `json:"refund_mode"`
+
+	// RefundPrice AB-49 - refunded amount in minor units (Bil24 export shape
+	// ticketList[].refundPrice).
+	RefundPrice *int64 `json:"refund_price"`
+
+	// ReviewHold AB-49 - the order received a PARTIAL inbound provider refund
+	// that a human must attribute to specific tickets. The hold
+	// FLAGS, never blocks admission, and is never sent to the
+	// scanning service as a gate status.
+	ReviewHold *bool `json:"review_hold,omitempty"`
+
+	// ReviewHoldReason Human-readable context for the review hold.
+	ReviewHoldReason *string `json:"review_hold_reason"`
+
+	// SeatKey Denormalized seat key copied from session_seats at issuance
+	// (SEAT-C3). Absent/null for general-admission tickets.
+	SeatKey *string `json:"seat_key"`
+
+	// SeatNumber Denormalized seat number. Null for GA tickets.
+	SeatNumber *string `json:"seat_number"`
+
+	// SeatRow Denormalized row display name. Null for GA tickets.
+	SeatRow *string `json:"seat_row"`
+
+	// SeatSector Denormalized sector display name. Null for GA tickets.
+	SeatSector *string `json:"seat_sector"`
+
 	// SessionId FK to the event session this ticket grants access to.
 	SessionId openapi_types.UUID `json:"session_id"`
 
 	// Status Ticket state machine status. `active` is the issuance default;
-	// `cancelled` and `transferred` are terminal. Pinned to the
-	// `tickets_status_check` constraint in 0026_tickets.sql.
+	// `cancelled`, `transferred` and `revoked` are terminal. Pinned
+	// to the `tickets_status_check` constraint (0026, widened by
+	// 0038 with `revoked` for complimentary revocation).
 	Status TicketItemStatus `json:"status"`
 
 	// TierId Optional FK to the ticket_tiers row associated with this ticket.
@@ -5681,8 +5809,9 @@ type TicketItem struct {
 }
 
 // TicketItemStatus Ticket state machine status. `active` is the issuance default;
-// `cancelled` and `transferred` are terminal. Pinned to the
-// `tickets_status_check` constraint in 0026_tickets.sql.
+// `cancelled`, `transferred` and `revoked` are terminal. Pinned
+// to the `tickets_status_check` constraint (0026, widened by
+// 0038 with `revoked` for complimentary revocation).
 type TicketItemStatus string
 
 // TicketListResponse Response envelope returned by `GET /v1/checkout/{id}/tickets`.
@@ -7391,6 +7520,9 @@ type CreateSeatingPlanVersionJSONRequestBody = CreateSeatingPlanVersionRequest
 
 // ReplaceSessionMediaJSONRequestBody defines body for ReplaceSessionMedia for application/json ContentType.
 type ReplaceSessionMediaJSONRequestBody = SessionMediaReplaceRequest
+
+// CancelTicketJSONRequestBody defines body for CancelTicket for application/json ContentType.
+type CancelTicketJSONRequestBody = CancelTicketRequest
 
 // CreateSeatingPlanJSONRequestBody defines body for CreateSeatingPlan for application/json ContentType.
 type CreateSeatingPlanJSONRequestBody = CreateSeatingPlanRequest

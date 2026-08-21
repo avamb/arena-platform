@@ -204,6 +204,13 @@ func (s *Server) publishTicketRevokedV1Events(ctx context.Context, ticketIDs []s
 	s.scannerHandler().PublishTicketRevokedV1Events(ctx, ticketIDs, complimentaryIssuanceID, reason)
 }
 
+// publishTicketCancelledEvent forwards to hscanner.PublishTicketCancelledEvent
+// (AB-49 operator cancellation). Kept as a *Server method because
+// tickets_shims.go passes it as a func value into htickets.New.
+func (s *Server) publishTicketCancelledEvent(ctx context.Context, ticket gen.TicketRow, reason, refundMode string) {
+	s.scannerHandler().PublishTicketCancelledEvent(ctx, ticket, reason, refundMode)
+}
+
 // publishSessionCancelledEvent forwards to hscanner.PublishSessionCancelledEvent.
 // Kept as a *Server method because catalog_shims.go passes it as a func value
 // into hcatalog.New (the session PATCH handler fires it on cancellation) and

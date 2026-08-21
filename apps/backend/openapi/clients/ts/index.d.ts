@@ -2743,6 +2743,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/tickets/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel an issued ticket (AB-49 operator action)
+         * @description The operator-facing cancellation primitive. In ONE transaction,
+         *     regardless of any money movement, cancellation: invalidates the
+         *     ticket, returns its assigned seat (`sold -> available`, the only
+         *     legal way a sold seat re-enters sale) or one GA unit of its
+         *     reservation, restores `inventory_ledger` capacity, revokes
+         *     barcodes and credentials, writes an audit event, and emits a
+         *     `v1.ticket.cancelled` outbox event so the external scanning
+         *     service stops admitting it.
+         *
+         *     The refund decision travels with the request but NEVER gates the
+         *     above:
+         *
+         *       * `none` — nothing owed (comp ticket, no-refund policy).
+         *       * `manual` — the organizer refunds from the provider's own
+         *         dashboard; the platform records an outstanding obligation
+         *         and performs no financial operation.
+         *       * `automatic` — after the cancellation commits, the platform
+         *         creates a refunds row for the confirmed `refund_amount`
+         *         (validated against the remaining refundable balance). A
+         *         failure here surfaces as `refund_task_failed: true` — the
+         *         ticket stays cancelled and the seat stays on sale; retry the
+         *         money via `POST /v1/refunds`.
+         *
+         *     Re-selling the released seat works immediately: the same request
+         *     that receives this 200 can be followed by a new reservation for
+         *     the same seat_key.
+         *
+         *     Requires JWT + the `ticket.cancel` permission. The ticket's
+         *     owning organization is resolved via its session; the caller must
+         *     be a member.
+         */
+        post: operations["cancelTicket"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/checkout/{id}/tickets": {
         parameters: {
             query?: never;
@@ -8608,12 +8657,13 @@ export interface components {
             holder_email?: string | null;
             /**
              * @description Ticket state machine status. `active` is the issuance default;
-             *     `cancelled` and `transferred` are terminal. Pinned to the
-             *     `tickets_status_check` constraint in 0026_tickets.sql.
+             *     `cancelled`, `transferred` and `revoked` are terminal. Pinned
+             *     to the `tickets_status_check` constraint (0026, widened by
+             *     0038 with `revoked` for complimentary revocation).
              * @example active
              * @enum {string}
              */
-            status: "active" | "cancelled" | "transferred";
+            status: "active" | "cancelled" | "transferred" | "revoked";
             /**
              * Format: date-time
              * @description Issuance timestamp (RFC 3339, UTC). Set when the payment is
@@ -8633,6 +8683,136 @@ export interface components {
              * @example 2026-06-30T12:00:00Z
              */
             updated_at: string;
+            /**
+             * @description Denormalized seat key copied from session_seats at issuance
+             *     (SEAT-C3). Absent/null for general-admission tickets.
+             */
+            seat_key?: string | null;
+            /** @description Denormalized sector display name. Null for GA tickets. */
+            seat_sector?: string | null;
+            /** @description Denormalized row display name. Null for GA tickets. */
+            seat_row?: string | null;
+            /** @description Denormalized seat number. Null for GA tickets. */
+            seat_number?: string | null;
+            /**
+             * Format: date-time
+             * @description AB-49 - when the ticket was cancelled (operator action, inbound
+             *     refund webhook, or complimentary revocation). Absent while
+             *     active.
+             */
+            cancelled_at?: string | null;
+            /** @description AB-49 - operator-supplied reason recorded at cancellation. */
+            cancellation_reason?: string | null;
+            /**
+             * @description AB-49 - the money decision taken at cancellation, one of
+             *     `none` | `manual` | `automatic` (null while active). `manual`
+             *     is an OUTSTANDING obligation handled outside the platform -
+             *     it must never be read as done. Never gates inventory or
+             *     admission.
+             */
+            refund_mode?: string | null;
+            /**
+             * Format: uuid
+             * @description AB-49 - refunds row created for refund_mode=automatic.
+             */
+            refund_id?: string | null;
+            /**
+             * Format: date-time
+             * @description AB-49 - when the money moved or the obligation was recorded
+             *     (Bil24 export shape ticketList[].refundDate).
+             */
+            refund_date?: string | null;
+            /**
+             * Format: int64
+             * @description AB-49 - refunded amount in minor units (Bil24 export shape
+             *     ticketList[].refundPrice).
+             */
+            refund_price?: number | null;
+            /**
+             * @description AB-49 - the order received a PARTIAL inbound provider refund
+             *     that a human must attribute to specific tickets. The hold
+             *     FLAGS, never blocks admission, and is never sent to the
+             *     scanning service as a gate status.
+             */
+            review_hold?: boolean;
+            /** @description Human-readable context for the review hold. */
+            review_hold_reason?: string | null;
+        };
+        /**
+         * @description AB-49 operator cancellation request. Cancellation is the primary
+         *     operator action and the sole driver of inventory and gate state;
+         *     the refund decision recorded here is a separate, optional
+         *     financial consequence that never gates the seat release.
+         */
+        CancelTicketRequest: {
+            /** @description Operator-supplied cancellation reason (audited). */
+            reason: string;
+            /**
+             * @description The money decision - `none` (nothing owed), `manual` (the
+             *     organizer refunds from the provider's own dashboard, an
+             *     outstanding obligation), or `automatic` (the platform creates
+             *     a refund for the confirmed amount).
+             * @enum {string}
+             */
+            refund_mode: "none" | "manual" | "automatic";
+            /**
+             * Format: int64
+             * @description Confirmed refund amount in minor units - required for
+             *     `refund_mode=automatic`, validated against the remaining
+             *     refundable balance of the order's succeeded payment intent.
+             *     Full or partial (editable down). Ignored for other modes.
+             */
+            refund_amount?: number | null;
+        };
+        /** @description Trimmed refunds-row view embedded in the cancel response. */
+        CancelTicketRefundSummary: {
+            /**
+             * Format: uuid
+             * @description refunds row id.
+             */
+            id: string;
+            /** @description Refund state machine state (requested at creation). */
+            state: string;
+            /**
+             * Format: int64
+             * @description Refund amount in minor units.
+             */
+            amount: number;
+            /** @description ISO-4217 currency of the refund. */
+            currency: string;
+        };
+        /**
+         * @description 200 response for `POST /v1/tickets/{id}/cancel`. The ticket is
+         *     cancelled and its inventory released regardless of the refund
+         *     fields - a failed refund task never rolls back a cancellation.
+         */
+        CancelTicketResponse: {
+            /** @description The cancelled ticket with its refund record. */
+            ticket: components["schemas"]["TicketItem"];
+            /**
+             * @description True when the ticket's assigned seat moved sold -> available
+             *     in the cancellation transaction.
+             */
+            seat_released: boolean;
+            /**
+             * @description True when one GA unit of the ticket's reservation moved
+             *     sold -> available (GA tickets; false for legacy pre-AB-51
+             *     reservations without unit rows).
+             */
+            ga_unit_released: boolean;
+            /** @description True when inventory_ledger.capacity_sold was decremented. */
+            capacity_restored: boolean;
+            /**
+             * @description Present for refund_mode=automatic when the refunds row was
+             *     created. Null/absent for none/manual.
+             */
+            refund?: components["schemas"]["CancelTicketRefundSummary"];
+            /**
+             * @description True when refund_mode=automatic was requested but the refund
+             *     task failed. The ticket IS cancelled and the seat IS
+             *     released - retry the money side via POST /v1/refunds.
+             */
+            refund_task_failed: boolean;
         };
         /**
          * @description Response envelope returned by `GET /v1/checkout/{id}/tickets`.
@@ -22267,6 +22447,133 @@ export interface operations {
              * @description Database pool or checkout queries unavailable
              *     (`dependency.database_unavailable`).
              */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    cancelTicket: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Ticket UUID to cancel. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelTicketRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description Ticket cancelled; inventory released and capacity restored.
+             *     The refund fields report the financial consequence only.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CancelTicketResponse"];
+                };
+            };
+            /**
+             * @description Malformed request. Possible error codes -
+             *     `ticket.invalid_id`, `ticket.invalid_body`,
+             *     `ticket.reason_required`, `ticket.invalid_refund_mode`,
+             *     `ticket.invalid_refund_amount`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Caller lacks `ticket.cancel` or is not a member of the
+             *     ticket's owning organization (`org.access_denied`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Ticket not found (`ticket.not_found`), or its session no
+             *     longer exists (`session.not_found`).
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Ticket is not active (`ticket.not_active`) — already
+             *     cancelled, transferred or revoked. `details.current_status`
+             *     carries the state.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The automatic-refund target could not be validated. Possible
+             *     error codes - `ticket.no_succeeded_payment`,
+             *     `ticket.refund_amount_exceeds_refundable`,
+             *     `ticket.refund_unavailable`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error. Possible codes -
+             *     `ticket.lookup_failed`, `ticket.cancel_failed`,
+             *     `ticket.release_failed`, `ticket.capacity_restore_failed`,
+             *     `ticket.audit_failed`, `ticket.commit_failed`.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool or ticket queries unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;

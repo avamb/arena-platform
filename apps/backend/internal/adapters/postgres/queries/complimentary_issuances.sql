@@ -57,12 +57,12 @@ RETURNING id, org_id, session_id, tier_id, qty, recipients, batch_id, status, is
 INSERT INTO tickets (complimentary_issuance_id, session_id, tier_id, holder_email)
 VALUES ($1, $2, $3, $4)
 RETURNING id, complimentary_issuance_id, session_id, tier_id, holder_email,
-          status, issued_at, created_at, updated_at;
+          status, issued_at, created_at, updated_at, seat_key;
 
 -- name: ListTicketsByComplimentaryIssuance :many
 -- Lists all tickets for a complimentary issuance (idempotency check + read).
 SELECT id, complimentary_issuance_id, session_id, tier_id, holder_email,
-       status, issued_at, created_at, updated_at
+       status, issued_at, created_at, updated_at, seat_key
 FROM   tickets
 WHERE  complimentary_issuance_id = $1
 ORDER BY issued_at ASC, id ASC;
@@ -88,4 +88,4 @@ SET    status     = 'revoked',
        updated_at = now()
 WHERE  complimentary_issuance_id = $1
 RETURNING id, complimentary_issuance_id, session_id, tier_id, holder_email,
-          status, issued_at, created_at, updated_at;
+          status, issued_at, created_at, updated_at, seat_key;

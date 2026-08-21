@@ -53,6 +53,17 @@ type TicketRow struct {
 	// Ordinal is the 0-based ticket index within the checkout session.
 	// Added in migration 0066 (feature #366) for idempotent concurrent issuance.
 	Ordinal int32 `json:"ordinal"`
+	// AB-49 (migration 0086): cancellation + refund record. All nil/false
+	// while the ticket is active. RefundMode is 'none' | 'manual' |
+	// 'automatic'; 'manual' is an OUTSTANDING obligation, never "done".
+	CancelledAt        *time.Time `json:"cancelled_at"`
+	CancellationReason *string    `json:"cancellation_reason"`
+	RefundMode         *string    `json:"refund_mode"`
+	RefundID           *uuid.UUID `json:"refund_id"`
+	RefundDate         *time.Time `json:"refund_date"`
+	RefundPrice        *int64     `json:"refund_price"`
+	ReviewHold         bool       `json:"review_hold"`
+	ReviewHoldReason   *string    `json:"review_hold_reason"`
 }
 
 // scanTicketRow scans a single tickets row into a TicketRow.
@@ -75,6 +86,14 @@ func scanTicketRow(row interface {
 		&r.SeatRow,
 		&r.SeatNumber,
 		&r.Ordinal,
+		&r.CancelledAt,
+		&r.CancellationReason,
+		&r.RefundMode,
+		&r.RefundID,
+		&r.RefundDate,
+		&r.RefundPrice,
+		&r.ReviewHold,
+		&r.ReviewHoldReason,
 	)
 	return r, err
 }
@@ -91,7 +110,9 @@ INSERT INTO tickets (
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING id, checkout_session_id, session_id, tier_id, holder_email,
           status, issued_at, created_at, updated_at,
-          seat_key, seat_sector, seat_row, seat_number, ordinal`
+          seat_key, seat_sector, seat_row, seat_number, ordinal,
+          cancelled_at, cancellation_reason, refund_mode, refund_id,
+          refund_date, refund_price, review_hold, review_hold_reason`
 
 // InsertTicket creates a new ticket row for the given checkout session.
 //
@@ -129,7 +150,9 @@ func (q *Queries) InsertTicket(
 const listTicketsByCheckoutSession = `-- name: ListTicketsByCheckoutSession :many
 SELECT id, checkout_session_id, session_id, tier_id, holder_email,
        status, issued_at, created_at, updated_at,
-       seat_key, seat_sector, seat_row, seat_number, ordinal
+       seat_key, seat_sector, seat_row, seat_number, ordinal,
+       cancelled_at, cancellation_reason, refund_mode, refund_id,
+       refund_date, refund_price, review_hold, review_hold_reason
 FROM   tickets
 WHERE  checkout_session_id = $1
 ORDER BY ordinal ASC, issued_at ASC, id ASC`
@@ -162,7 +185,9 @@ func (q *Queries) ListTicketsByCheckoutSession(ctx context.Context, checkoutSess
 const getTicketByID = `-- name: GetTicketByID :one
 SELECT id, checkout_session_id, session_id, tier_id, holder_email,
        status, issued_at, created_at, updated_at,
-       seat_key, seat_sector, seat_row, seat_number, ordinal
+       seat_key, seat_sector, seat_row, seat_number, ordinal,
+       cancelled_at, cancellation_reason, refund_mode, refund_id,
+       refund_date, refund_price, review_hold, review_hold_reason
 FROM   tickets
 WHERE  id = $1`
 
@@ -206,5 +231,112 @@ WHERE  session_id = $1`
 func (q *Queries) CountTicketsBySession(ctx context.Context, sessionID uuid.UUID) (int64, error) {
 	var count int64
 	err := q.db.QueryRow(ctx, countTicketsBySession, sessionID).Scan(&count)
+	return count, err
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AB-49: ticket cancellation
+// ─────────────────────────────────────────────────────────────────────────────
+
+const cancelTicket = `-- name: CancelTicket :one
+UPDATE tickets
+SET    status              = 'cancelled',
+       cancelled_at        = now(),
+       cancellation_reason = $2,
+       refund_mode         = $3,
+       updated_at          = now()
+WHERE  id     = $1
+  AND  status = 'active'
+RETURNING id, checkout_session_id, session_id, tier_id, holder_email,
+          status, issued_at, created_at, updated_at,
+          seat_key, seat_sector, seat_row, seat_number, ordinal,
+          cancelled_at, cancellation_reason, refund_mode, refund_id,
+          refund_date, refund_price, review_hold, review_hold_reason`
+
+// CancelTicket performs the conditional 'active' -> 'cancelled'
+// transition for the AB-49 operator cancellation, recording the reason
+// and the refund-mode decision. Returns pgx.ErrNoRows when the ticket
+// is not active — the caller MUST surface that as a 409 conflict.
+func (q *Queries) CancelTicket(ctx context.Context, id uuid.UUID, reason string, refundMode string) (TicketRow, error) {
+	row := q.db.QueryRow(ctx, cancelTicket, id, reason, refundMode)
+	return scanTicketRow(row)
+}
+
+const setTicketRefundRecord = `-- name: SetTicketRefundRecord :one
+UPDATE tickets
+SET    refund_id    = $2,
+       refund_date  = $3,
+       refund_price = $4,
+       updated_at   = now()
+WHERE  id = $1
+RETURNING id, checkout_session_id, session_id, tier_id, holder_email,
+          status, issued_at, created_at, updated_at,
+          seat_key, seat_sector, seat_row, seat_number, ordinal,
+          cancelled_at, cancellation_reason, refund_mode, refund_id,
+          refund_date, refund_price, review_hold, review_hold_reason`
+
+// SetTicketRefundRecord records the financial side of a cancellation on
+// the ticket (refunds-row link, refund date, refunded amount — the
+// Bil24 refundDate/refundPrice shape). Called AFTER the cancellation
+// transaction committed; never gates inventory or admission.
+func (q *Queries) SetTicketRefundRecord(ctx context.Context, id uuid.UUID, refundID *uuid.UUID, refundDate *time.Time, refundPrice *int64) (TicketRow, error) {
+	row := q.db.QueryRow(ctx, setTicketRefundRecord, id, refundID, refundDate, refundPrice)
+	return scanTicketRow(row)
+}
+
+const setTicketsReviewHoldByCheckoutSession = `-- name: SetTicketsReviewHoldByCheckoutSession :execrows
+UPDATE tickets
+SET    review_hold        = true,
+       review_hold_reason = $2,
+       updated_at         = now()
+WHERE  checkout_session_id = $1
+  AND  status = 'active'
+  AND  review_hold = false`
+
+// SetTicketsReviewHoldByCheckoutSession flags every active ticket of an
+// order for human review after a PARTIAL inbound provider refund that
+// cannot be attributed to specific tickets. The hold FLAGS, never
+// blocks admission, and is never propagated to MACS.
+func (q *Queries) SetTicketsReviewHoldByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID, reason string) (int64, error) {
+	tag, err := q.db.Exec(ctx, setTicketsReviewHoldByCheckoutSession, checkoutSessionID, reason)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+const clearTicketReviewHold = `-- name: ClearTicketReviewHold :one
+UPDATE tickets
+SET    review_hold        = false,
+       review_hold_reason = NULL,
+       updated_at         = now()
+WHERE  id = $1
+  AND  review_hold = true
+RETURNING id, checkout_session_id, session_id, tier_id, holder_email,
+          status, issued_at, created_at, updated_at,
+          seat_key, seat_sector, seat_row, seat_number, ordinal,
+          cancelled_at, cancellation_reason, refund_mode, refund_id,
+          refund_date, refund_price, review_hold, review_hold_reason`
+
+// ClearTicketReviewHold resolves a review hold on one ticket. Returns
+// pgx.ErrNoRows when the ticket carries no hold.
+func (q *Queries) ClearTicketReviewHold(ctx context.Context, id uuid.UUID) (TicketRow, error) {
+	row := q.db.QueryRow(ctx, clearTicketReviewHold, id)
+	return scanTicketRow(row)
+}
+
+const countActiveTicketsForSeat = `-- name: CountActiveTicketsForSeat :one
+SELECT COUNT(*)::bigint AS count
+FROM   tickets
+WHERE  session_id = $1
+  AND  seat_key   = $2
+  AND  status     = 'active'`
+
+// CountActiveTicketsForSeat returns how many ACTIVE tickets still
+// reference (session_id, seat_key). Guard probe for
+// ReleaseSoldSessionSeat (uses tickets_active_seat_idx).
+func (q *Queries) CountActiveTicketsForSeat(ctx context.Context, sessionID uuid.UUID, seatKey string) (int64, error) {
+	var count int64
+	err := q.db.QueryRow(ctx, countActiveTicketsForSeat, sessionID, seatKey).Scan(&count)
 	return count, err
 }

@@ -580,6 +580,39 @@ func (h *Handler) HandleRevokeComplimentaryIssuance(w http.ResponseWriter, r *ht
 		return
 	}
 
+	// Step 6b (AB-49): release any assigned seats the revoked tickets
+	// held. Comp issuance is seat-less today, so this is defensive — but
+	// the spec's failure mode ("a revoked comp ticket leaves its assigned
+	// seat permanently sold") must stay impossible if seats are ever
+	// attached. Version bump happens once, only when needed.
+	var compSeatVersion int64
+	for _, t := range revokedTickets {
+		if t.SeatKey == nil || *t.SeatKey == "" {
+			continue
+		}
+		if compSeatVersion == 0 {
+			compSeatVersion, err = complQ.IncrementSessionSeatStatusVersion(ctx, t.SessionID)
+			if err != nil {
+				h.logger.Error("complimentary.revoke: seat version bump failed",
+					slog.String("issuance_id", id.String()), slog.String("error", err.Error()))
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+					"complimentary.seat_release_failed", "failed to release revoked seats", r,
+				))
+				return
+			}
+		}
+		if _, relErr := complQ.ReleaseSoldSessionSeat(ctx, t.SessionID, *t.SeatKey, compSeatVersion); relErr != nil && !errors.Is(relErr, pgx.ErrNoRows) {
+			h.logger.Error("complimentary.revoke: seat release failed",
+				slog.String("ticket_id", t.ID.String()),
+				slog.String("seat_key", *t.SeatKey),
+				slog.String("error", relErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"complimentary.seat_release_failed", "failed to release revoked seats", r,
+			))
+			return
+		}
+	}
+
 	// Step 7: Revoke all barcodes for each ticket (best-effort; needs barcodeQueries).
 	if h.barcodeQueries != nil {
 		barcodeQ := h.barcodeQueries.WithTx(tx)

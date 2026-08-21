@@ -120,6 +120,12 @@ func (s *Server) mountTicketRoutes(r chi.Router) {
 		s.applyAuth(pr, "ticket.read", "tickets")
 		pr.Get("/checkout/{id}/tickets", s.handleListTickets)
 	})
+	// AB-49: operator ticket cancellation. Flat path — org membership is
+	// resolved from the ticket's session in the shim (tickets_shims.go).
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "ticket.cancel", "tickets")
+		pr.Post("/tickets/{id}/cancel", s.handleCancelTicket)
+	})
 }
 
 // mountCredentialRoutes mounts the lazy ticket credential endpoint
