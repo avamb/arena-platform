@@ -30,12 +30,14 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/seating"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
 )
 
 // schemaCacheControl is the Cache-Control header for the /schema endpoint.
@@ -141,6 +143,19 @@ func (h *Handler) HandleGetPublicSessionSchema(w http.ResponseWriter, r *http.Re
 	}
 	categoryToTier := resolveCategoryTiers(geom, seats, tiers, seatKeyIndex(geom))
 
+	// AB-48: resolve scheduled prices once for all tiers (ONE resolver).
+	effPrices, err := priceresolve.ForTiers(ctx, h.queries, tiers, time.Now().UTC())
+	if err != nil {
+		h.logger.Error("seating_public: price window lookup failed",
+			slog.String("session_id", sessionID.String()),
+			slog.String("error", err.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"event_session.schema_failed", "failed to resolve tier prices", r,
+		))
+		return
+	}
+
 	categories := make([]map[string]any, 0, len(geom.Categories))
 	for _, cat := range geom.Categories {
 		entry := map[string]any{
@@ -156,6 +171,15 @@ func (h *Handler) HandleGetPublicSessionSchema(w http.ResponseWriter, r *http.Re
 			entry["pricing_mode"] = tier.PricingMode
 			entry["price_amount"] = tier.PriceAmount
 			entry["currency"] = tier.Currency
+			// AB-48: effective (scheduled) price + next change for the widget.
+			entry["current_price"] = tier.PriceAmount
+			entry["next_price_change_at"] = nil
+			if eff, ok := effPrices[tier.ID]; ok {
+				entry["current_price"] = eff.Amount
+				if eff.NextChangeAt != nil {
+					entry["next_price_change_at"] = eff.NextChangeAt.UTC().Format(time.RFC3339)
+				}
+			}
 		}
 		categories = append(categories, entry)
 	}

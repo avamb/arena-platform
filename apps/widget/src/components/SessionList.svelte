@@ -45,7 +45,7 @@
   /** Format a price for the legend chip. */
   function formatPrice(tier: Tier): string {
     if (tier.pricing_mode === 'free') return 'Free';
-    const amount = (tier.price_amount / 100).toFixed(0);
+    const amount = ((tier.current_price ?? tier.price_amount) / 100).toFixed(0);
     return `${amount} ${tier.currency.toUpperCase()}`;
   }
 

@@ -4139,6 +4139,207 @@ components:
           format: date-time
           description: ISO 8601 / RFC 3339 timestamp of last update.
           example: "2026-06-02T12:34:56Z"
+        seat_count:
+          type: [integer, "null"]
+          format: int64
+          description: |
+            AB-48 step 3 (admin list endpoint only) - number of physical
+            seats bound to this category, shown beside its price.
+        ga_unit_count:
+          type: [integer, "null"]
+          format: int64
+          description: |
+            AB-48 step 3 (admin list endpoint only) - number of GA units in
+            this category's pool, shown beside its price.
+        current_price:
+          type: [integer, "null"]
+          format: int64
+          description: |
+            AB-48 (public feed only) - the effective scheduled price right
+            now; `price_amount` stays the tier's base.
+        next_price_change_at:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            AB-48 (public feed only) - when the effective price next
+            changes ("price rises on <date>"); null if unknown.
+
+    TierPriceWindow:
+      type: object
+      required: [id, tier_id, valid_from, valid_to, price_amount]
+      description: |
+        AB-48 scheduled price window (ticket_tier_prices). Windows of one
+        tier never overlap (GiST exclusion constraint); `valid_to` is
+        exclusive and `null` means open-ended. Moments covered by no
+        window fall back to the tier's base `price_amount` (the
+        documented gap policy).
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Window row id.
+        tier_id:
+          type: string
+          format: uuid
+          description: Owning ticket tier.
+        valid_from:
+          type: string
+          format: date-time
+          description: Inclusive start of the window (RFC 3339, UTC).
+        valid_to:
+          type: [string, "null"]
+          format: date-time
+          description: Exclusive end of the window; null = open-ended.
+        price_amount:
+          type: integer
+          format: int64
+          description: Price in minor units while the window applies.
+
+    TierPriceWindowInput:
+      type: object
+      required: [valid_from, price_amount]
+      description: One window in a PUT price-schedule / bulk pricing body.
+      properties:
+        valid_from:
+          type: string
+          format: date-time
+          description: Inclusive start (RFC 3339).
+        valid_to:
+          type: [string, "null"]
+          format: date-time
+          description: Exclusive end; omit/null for open-ended.
+        price_amount:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Price in minor units while the window applies.
+
+    TierPriceSchedule:
+      type: object
+      required: [tier_id, base_price_amount, current_price, next_price_change_at, windows]
+      description: |
+        A tier's scheduled-pricing view - the windows plus the resolved
+        "now" price so the admin shows exactly what buyers see.
+      properties:
+        tier_id:
+          type: string
+          format: uuid
+          description: Ticket tier id.
+        base_price_amount:
+          type: integer
+          format: int64
+          description: ticket_tiers.price_amount - the fallback outside any window.
+        current_price:
+          type: integer
+          format: int64
+          description: Effective price right now through the one resolver.
+        next_price_change_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the effective price next changes; null if unknown.
+        windows:
+          type: array
+          description: Windows ordered by valid_from.
+          items:
+            $ref: "#/components/schemas/TierPriceWindow"
+
+    TierPriceScheduleEnvelope:
+      type: object
+      required: [price_schedule]
+      description: Envelope for the price-schedule endpoints.
+      properties:
+        price_schedule:
+          allOf:
+            - $ref: "#/components/schemas/TierPriceSchedule"
+          description: The tier's schedule.
+
+    PutTierPriceScheduleRequest:
+      type: object
+      required: [windows]
+      description: |
+        Replace-all body for PUT .../price-schedule. Overlapping windows
+        are rejected with 422 `tier.price_windows_overlap` (app pre-check
+        and the DB exclusion constraint both enforce it). Mid-sale: future
+        windows are freely editable; changing the currently active window
+        applies to NEW carts only - every reservation locks its quoted
+        price at creation and issued tickets are never repriced.
+      properties:
+        windows:
+          type: array
+          maxItems: 50
+          description: The complete new schedule (an empty array clears it).
+          items:
+            $ref: "#/components/schemas/TierPriceWindowInput"
+
+    BulkSessionPricingRequest:
+      type: object
+      required: [session_ids, prices]
+      description: |
+        AB-48 step 5 - apply one price grid to several sessions of an
+        event in one pass (the reference's multi-select "set ->").
+        Categories are matched by tier NAME (tiers are minted per plan
+        category, so the same name is the same category across
+        sessions); non-fixed tiers are skipped.
+      properties:
+        session_ids:
+          type: array
+          minItems: 1
+          maxItems: 100
+          description: Sessions of this event to apply the grid to.
+          items:
+            type: string
+            format: uuid
+        prices:
+          type: array
+          minItems: 1
+          description: The grid - one row per category name.
+          items:
+            type: object
+            required: [tier_name, price_amount]
+            properties:
+              tier_name:
+                type: string
+                description: Category (tier) name, matched case-insensitively.
+              price_amount:
+                type: integer
+                format: int64
+                minimum: 0
+                description: New base price in minor units.
+              windows:
+                type: array
+                description: Optional schedule to install for the category (replaces any existing schedule).
+                items:
+                  $ref: "#/components/schemas/TierPriceWindowInput"
+
+    BulkSessionPricingResponse:
+      type: object
+      required: [results]
+      description: Per-session outcomes; a partial failure is visible, never silent.
+      properties:
+        results:
+          type: array
+          description: One entry per requested session, in request order.
+          items:
+            type: object
+            required: [session_id, applied, missing_tiers, error]
+            properties:
+              session_id:
+                type: string
+                format: uuid
+                description: The session the row describes.
+              applied:
+                type: array
+                description: Tier names updated in this session.
+                items:
+                  type: string
+              missing_tiers:
+                type: array
+                description: Grid names with no matching tier in this session.
+                items:
+                  type: string
+              error:
+                type: [string, "null"]
+                description: Per-session failure message; null on success.
 
     CreateTicketTierRequest:
       type: object
@@ -5856,6 +6057,14 @@ components:
                 Echoed promo code when one was applied and validated;
                 `null` when no promo code was supplied or it failed
                 validation.
+            next_price_change_at:
+              type: [string, "null"]
+              format: date-time
+              description: |
+                AB-48 scheduled pricing - when the tier's effective price
+                next changes (the data behind "price rises on <date>").
+                `null` when no change is known or the tier is not
+                fixed-price.
 
     QuoteResponseEnvelope:
       type: object
@@ -8014,6 +8223,16 @@ components:
         currency:
           type: string
           description: ISO 4217 currency code of the mapped tier, when resolved.
+        current_price:
+          type: integer
+          format: int64
+          description: |
+            AB-48 - the effective (scheduled) price right now; `price_amount`
+            stays the tier's base. Only present when a tier resolved.
+        next_price_change_at:
+          type: [string, "null"]
+          format: date-time
+          description: AB-48 - when the effective price next changes; null if unknown.
 
     SeatingSchemaResponse:
       type: object
@@ -15966,6 +16185,233 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database pool or tier queries unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule:
+    parameters:
+      - name: org_id
+        in: path
+        required: true
+        description: UUIDv7 of the owning organization.
+        schema:
+          type: string
+          format: uuid
+      - name: event_id
+        in: path
+        required: true
+        description: UUIDv7 of the parent event.
+        schema:
+          type: string
+          format: uuid
+      - name: session_id
+        in: path
+        required: true
+        description: UUIDv7 of the parent session.
+        schema:
+          type: string
+          format: uuid
+      - name: id
+        in: path
+        required: true
+        description: UUIDv7 of the ticket tier.
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getTierPriceSchedule
+      summary: Read a tier's scheduled price windows (AB-48)
+      description: |
+        Returns the tier's price windows plus the resolved current price
+        and next change moment. Requires JWT + `tier.read`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The schedule.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TierPriceScheduleEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `tier.read` or org membership.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Tier not found (`tier.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal error (`tier.schedule_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    put:
+      operationId: putTierPriceSchedule
+      summary: Replace a tier's scheduled price windows (AB-48)
+      description: |
+        Replaces the whole schedule atomically and audits old -> new
+        (`v1.tier.price_schedule.replace`). Only fixed-price tiers carry a
+        schedule. Requires JWT + `tier.update`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutTierPriceScheduleRequest"
+            examples:
+              earlyBird:
+                summary: Early bird then standard price
+                value:
+                  windows:
+                    - valid_from: "2026-09-01T00:00:00Z"
+                      valid_to: "2026-10-01T00:00:00Z"
+                      price_amount: 1500
+                    - valid_from: "2026-10-01T00:00:00Z"
+                      price_amount: 2500
+      responses:
+        "200":
+          description: The new schedule.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TierPriceScheduleEnvelope"
+        "400":
+          description: Malformed body (`tier.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `tier.update` or org membership.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Tier not found (`tier.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: |
+            Semantic failure - `tier.invalid_price_window`,
+            `tier.price_windows_overlap`, `tier.too_many_price_windows`,
+            `tier.schedule_requires_fixed_mode`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal error (`tier.schedule_failed`, `tier.audit_failed`, `tier.commit_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{event_id}/sessions/pricing-bulk:
+    post:
+      operationId: bulkSessionPricing
+      summary: Apply one price grid to several sessions (AB-48)
+      description: |
+        Applies a category-name keyed price grid (base price + optional
+        schedule) to every listed session of the event. Each session is
+        applied in its own transaction with one audit event per tier
+        (`v1.tier.price.bulk`); per-session outcomes are reported so a
+        partial failure is visible. Requires JWT + `tier.update`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the parent event.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkSessionPricingRequest"
+      responses:
+        "200":
+          description: Per-session outcomes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkSessionPricingResponse"
+        "400":
+          description: Malformed body (`tier.invalid_body`, `tier.invalid_session_ids`, `tier.invalid_prices`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `tier.update` or org membership.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Invalid or overlapping windows in the grid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
           content:
             application/json:
               schema:

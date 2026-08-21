@@ -508,7 +508,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 		unit := g.UnitPrice
 		if h.tierQueries != nil {
 			if tier, terr := h.tierQueries.GetTicketTierByID(ctx, g.TierID, origRes.SessionID); terr == nil {
-				if fresh, errCode := resolvePublicTierUnitPrice(tier); errCode == "" {
+				if fresh, errCode := h.publicTierUnitPrice(ctx, tier); errCode == "" {
 					unit = fresh
 				}
 				if currency == "" {
@@ -539,7 +539,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 			tierIDStr = origRes.TierID.String()
 			if h.tierQueries != nil {
 				if tier, terr := h.tierQueries.GetTicketTierByID(ctx, *origRes.TierID, origRes.SessionID); terr == nil {
-					if fresh, errCode := resolvePublicTierUnitPrice(tier); errCode == "" {
+					if fresh, errCode := h.publicTierUnitPrice(ctx, tier); errCode == "" {
 						unit = fresh
 					}
 					if currency == "" {

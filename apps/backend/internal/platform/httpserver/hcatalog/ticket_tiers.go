@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
@@ -53,6 +54,10 @@ type tierResponse struct {
 	SortOrder       int32   `json:"sort_order"`
 	CreatedAt       string  `json:"created_at"`
 	UpdatedAt       string  `json:"updated_at"`
+	// AB-48 step 3: inventory bound to this category (list endpoint only):
+	// physical seats with this tier and GA units in this tier's pool.
+	SeatCount   *int64 `json:"seat_count,omitempty"`
+	GAUnitCount *int64 `json:"ga_unit_count,omitempty"`
 }
 
 // TierResponse is the exported alias of tierResponse for use by the httpserver
@@ -311,9 +316,27 @@ func (h *Handler) HandleListTiers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// AB-48 step 3: seat count / GA capacity beside each category.
+	seatCounts := map[uuid.UUID]int64{}
+	gaCounts := map[uuid.UUID]int64{}
+	if counts, cntErr := h.tierQueries.CountSessionSeatsByTier(ctx, sessionID); cntErr != nil {
+		h.logger.Warn("tier: seat counts failed (non-fatal)", slog.String("error", cntErr.Error()))
+	} else {
+		for _, c := range counts {
+			if c.Kind == "ga_unit" {
+				gaCounts[c.TierID] += c.Count
+			} else {
+				seatCounts[c.TierID] += c.Count
+			}
+		}
+	}
+
 	result := make([]tierResponse, 0, len(rows))
 	for _, t := range rows {
-		result = append(result, tierFromRow(t))
+		tr := tierFromRow(t)
+		sc, gc := seatCounts[t.ID], gaCounts[t.ID]
+		tr.SeatCount, tr.GAUnitCount = &sc, &gc
+		result = append(result, tr)
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"tiers": result,
@@ -565,6 +588,35 @@ func (h *Handler) HandleUpdateTier(w http.ResponseWriter, r *http.Request) {
 			"tier.update_failed", "failed to update ticket tier", r,
 		))
 		return
+	}
+
+	// AB-48 step 6: a price edit is money — audit who changed which
+	// category from what to what, when. Post-commit, best-effort (the
+	// update itself is already durable; a lost audit row is logged loudly).
+	if h.audit != nil && updated.PriceAmount != current.PriceAmount {
+		actor, _ := auth.ActorFromContext(ctx)
+		ev := audit.Event{
+			OccurredAt:   time.Now().UTC(),
+			ActorType:    "user",
+			ActorID:      actor.ID,
+			Action:       "v1.tier.price.update",
+			ResourceType: "ticket_tier",
+			ResourceID:   tierID.String(),
+			RequestID:    logging.RequestID(ctx),
+			TraceID:      logging.TraceID(ctx),
+			IP:           httputil.ExtractClientIP(r),
+			Metadata: map[string]any{
+				"session_id":        sessionID.String(),
+				"tier_name":         updated.Name,
+				"price_amount_from": current.PriceAmount,
+				"price_amount_to":   updated.PriceAmount,
+				"currency":          updated.Currency,
+			},
+		}
+		if err := h.audit.Write(ctx, ev); err != nil {
+			h.logger.Error("tier: price audit write failed — price change is NOT in the audit log",
+				slog.String("tier_id", tierID.String()), slog.String("error", err.Error()))
+		}
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{

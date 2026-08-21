@@ -414,3 +414,13 @@ WHERE ss.id = picked.id
 RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
           ss.seat_number, ss.tier_id, ss.status, ss.reservation_id,
           ss.status_version, ss.updated_at;
+
+-- name: CountSessionSeatsByTier :many
+-- AB-48 step 3: per-tier inventory counts for the price forms ("Third:
+-- EUR 30 · Seats: 260"). Physical seats and GA units are reported
+-- separately; rows with NULL tier are skipped.
+SELECT tier_id, kind, COUNT(*)::bigint AS count
+FROM   session_seats
+WHERE  session_id = $1
+  AND  tier_id IS NOT NULL
+GROUP  BY tier_id, kind;

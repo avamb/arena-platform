@@ -208,6 +208,19 @@ func (s *Server) handleDeleteTier(w http.ResponseWriter, r *http.Request) {
 	s.catalogHandler().HandleDeleteTier(w, r)
 }
 
+// AB-48 scheduled pricing + bulk grid shims.
+func (s *Server) handleGetTierPriceSchedule(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleGetTierPriceSchedule(w, r)
+}
+
+func (s *Server) handlePutTierPriceSchedule(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandlePutTierPriceSchedule(w, r)
+}
+
+func (s *Server) handleBulkSessionPricing(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleBulkSessionPricing(w, r)
+}
+
 // ──── publication handler shims ───────────────────────────────────────────────
 
 func (s *Server) handlePublishEvent(w http.ResponseWriter, r *http.Request) {

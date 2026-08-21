@@ -104,6 +104,10 @@ export interface CategoryPrice {
   tier_name?: string;
   pricing_mode?: string;
   price_amount?: number;
+  /** AB-48: effective (scheduled) price now; price_amount stays the base. */
+  current_price?: number;
+  /** AB-48: when the price next changes ("price rises on <date>"). */
+  next_price_change_at?: string | null;
   currency?: string;
 }
 
@@ -153,6 +157,10 @@ export interface Tier {
   name: string;
   pricing_mode: string;
   price_amount: number;
+  /** AB-48: effective (scheduled) price now; price_amount stays the base. */
+  current_price?: number;
+  /** AB-48: when the price next changes ("price rises on <date>"). */
+  next_price_change_at?: string | null;
   currency: string;
   pwyw_min?: number | null;
   pwyw_max?: number | null;

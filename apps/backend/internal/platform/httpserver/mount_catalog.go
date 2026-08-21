@@ -110,6 +110,8 @@ func (s *Server) mountTierRoutes(r chi.Router) {
 			s.applyAuth(pr, "tier.read", "tiers")
 			pr.Get("/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers", s.handleListTiers)
 			pr.Get("/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}", s.handleGetTier)
+			// AB-48: scheduled price windows (read).
+			pr.Get("/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule", s.handleGetTierPriceSchedule)
 		})
 	}
 	if s.authEnabled() && s.tierQueries != nil && s.pool != nil {
@@ -120,6 +122,9 @@ func (s *Server) mountTierRoutes(r chi.Router) {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "tier.update", "tiers")
 			pr.Patch("/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}", s.handleUpdateTier)
+			// AB-48: scheduled price windows (replace-all) + bulk grid.
+			pr.Put("/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule", s.handlePutTierPriceSchedule)
+			pr.Post("/organizations/{org_id}/events/{event_id}/sessions/pricing-bulk", s.handleBulkSessionPricing)
 		})
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "tier.delete", "tiers")

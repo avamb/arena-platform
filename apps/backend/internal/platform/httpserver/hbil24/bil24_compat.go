@@ -93,6 +93,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -479,12 +480,28 @@ func (h *Handler) getSeatListGA(w http.ResponseWriter, ctx context.Context, req 
 		return
 	}
 
+	// AB-48: scheduled prices via the ONE resolver (base on lookup failure).
+	effPrices, effErr := priceresolve.ForTiers(ctx, h.tierQueries, tiers, time.Now().UTC())
+	if effErr != nil {
+		h.logger.Error("bil24_compat: GET_SEAT_LIST: price window lookup failed",
+			slog.String("session_id", sessionID.String()),
+			slog.String("error", effErr.Error()),
+		)
+		effPrices = nil
+	}
+	effectiveOf := func(t gen.TicketTierRow) int64 {
+		if eff, ok := effPrices[t.ID]; ok {
+			return eff.Amount
+		}
+		return t.PriceAmount
+	}
+
 	seatList := make([]map[string]any, 0, len(tiers))
 	for _, t := range tiers {
 		seat := map[string]any{
 			"categoryPriceId": TranslatePlatformID(t.ID),
 			"categoryName":    t.Name,
-			"price":           t.PriceAmount,
+			"price":           effectiveOf(t),
 			"currency":        t.Currency,
 			"pricingMode":     t.PricingMode,
 		}
@@ -526,6 +543,22 @@ func (h *Handler) getSeatListUnits(w http.ResponseWriter, ctx context.Context, r
 	for _, t := range tiers {
 		tierByID[t.ID] = t
 	}
+	// AB-48: scheduled prices via the ONE resolver (base on failure).
+	var effPrices map[uuid.UUID]priceresolve.Effective
+	if h.tierQueries != nil && len(tiers) > 0 {
+		if m, effErr := priceresolve.ForTiers(ctx, h.tierQueries, tiers, time.Now().UTC()); effErr != nil {
+			h.logger.Warn("bil24_compat: GET_SEAT_LIST: price window lookup failed; using base prices",
+				slog.String("error", effErr.Error()))
+		} else {
+			effPrices = m
+		}
+	}
+	effectiveOf := func(t gen.TicketTierRow) int64 {
+		if eff, ok := effPrices[t.ID]; ok {
+			return eff.Amount
+		}
+		return t.PriceAmount
+	}
 
 	seatList := make([]map[string]any, 0, len(seats))
 	for _, s := range seats {
@@ -541,7 +574,7 @@ func (h *Handler) getSeatListUnits(w http.ResponseWriter, ctx context.Context, r
 		if s.TierID != nil {
 			entry["categoryPriceId"] = TranslatePlatformID(*s.TierID)
 			if t, ok := tierByID[*s.TierID]; ok {
-				entry["price"] = t.PriceAmount
+				entry["price"] = effectiveOf(t)
 				entry["currency"] = t.Currency
 			} else {
 				entry["price"] = int64(0)
@@ -1566,8 +1599,18 @@ func (h *Handler) reservationSeated(w http.ResponseWriter, ctx context.Context, 
 	currency := ""
 	if h.resDeps.TierQ != nil {
 		if tiers, terr := h.resDeps.TierQ.ListTicketTiersBySession(ctx, sessionID); terr == nil {
+			// AB-48: scheduled prices via the ONE resolver.
+			effPrices, effErr := priceresolve.ForTiers(ctx, h.resDeps.TierQ, tiers, time.Now().UTC())
+			if effErr != nil {
+				h.logger.Warn("bil24_compat: RESERVATION: price window lookup failed; using base prices",
+					slog.String("error", effErr.Error()))
+				effPrices = nil
+			}
 			for _, t := range tiers {
 				tierPrice[t.ID.String()] = t.PriceAmount
+				if eff, ok := effPrices[t.ID]; ok {
+					tierPrice[t.ID.String()] = eff.Amount
+				}
 				if currency == "" {
 					currency = t.Currency
 				}
@@ -1704,7 +1747,17 @@ func (h *Handler) reservationGA(w http.ResponseWriter, ctx context.Context, req 
 		case "free":
 			unitPrice = 0
 		case "fixed":
-			unitPrice = tier.PriceAmount
+			// AB-48: scheduled price via the ONE resolver.
+			eff, effErr := priceresolve.ForTier(ctx, h.resDeps.TierQ, tier, time.Now().UTC())
+			if effErr != nil {
+				h.logger.Error("bil24_compat: RESERVATION: price resolution failed",
+					slog.String("error", effErr.Error()))
+				writeBil24JSON(w, http.StatusOK, bil24Error(
+					req.Command, ResultCodeInternalError, "failed to resolve ticket tier price",
+				))
+				return
+			}
+			unitPrice = eff.Amount
 		default:
 			// pwyw (no chosen-price field on the legacy wire) and unknown
 			// modes cannot be priced by the gateway.

@@ -58,6 +58,10 @@ type QuoteResponse struct {
 	TierID    string  `json:"tier_id"`
 	SessionID string  `json:"session_id"`
 	PromoCode *string `json:"promo_code"` // nil when no promo applied
+	// NextPriceChangeAt (AB-48) is when the tier's scheduled price next
+	// changes — the data behind "price rises on <date>". Nil when no
+	// change is known.
+	NextPriceChangeAt *string `json:"next_price_change_at"`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -156,11 +160,22 @@ func (h *Handler) HandleQuote(w http.ResponseWriter, r *http.Request) {
 	// ── Determine unit price by pricing mode ─────────────────────────────────
 
 	var unitPrice int64
+	var nextPriceChangeAt *string
 	switch tier.PricingMode {
 	case "free":
 		unitPrice = 0
 	case "fixed":
-		unitPrice = tier.PriceAmount
+		eff, effErr := EffectiveFixedPrice(ctx, h.tierQueries, tier, time.Now().UTC())
+		if effErr != nil {
+			h.logger.Error("pricing: price resolution failed", slog.String("error", effErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("pricing.tier_lookup_failed", "failed to resolve ticket tier price", r))
+			return
+		}
+		unitPrice = eff.Amount
+		if eff.NextChangeAt != nil {
+			s := eff.NextChangeAt.UTC().Format(time.RFC3339)
+			nextPriceChangeAt = &s
+		}
 	case "pwyw":
 		if chosenPriceStr == "" {
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
@@ -266,10 +281,11 @@ func (h *Handler) HandleQuote(w http.ResponseWriter, r *http.Request) {
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"quote": QuoteResponse{
-			PricingBreakdown: breakdown,
-			TierID:           tierID.String(),
-			SessionID:        sessionID.String(),
-			PromoCode:        appliedPromoCode,
+			PricingBreakdown:  breakdown,
+			TierID:            tierID.String(),
+			SessionID:         sessionID.String(),
+			PromoCode:         appliedPromoCode,
+			NextPriceChangeAt: nextPriceChangeAt,
 		},
 	})
 }

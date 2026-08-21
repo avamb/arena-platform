@@ -513,6 +513,18 @@ func (h *Handler) HandleCreateReservation(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// AB-48 step 9: lock the quoted price for the cart's TTL.
+	if tierID != nil {
+		if _, err := WriteReservationPriceLinesTx(ctx, resQ, sessionID, res.ID,
+			map[uuid.UUID]int32{*tierID: req.Quantity}, time.Now().UTC()); err != nil {
+			h.logger.Error("reservation: price lock failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"reservation.price_lock_failed", "failed to lock the quoted price", r,
+			))
+			return
+		}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"reservation.commit_failed", "failed to commit transaction", r,

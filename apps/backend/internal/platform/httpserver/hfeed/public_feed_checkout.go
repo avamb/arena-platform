@@ -64,6 +64,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -373,23 +374,9 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			))
 			return
 		}
-		var unitPrice int64
-		switch tier.PricingMode {
-		case "free":
-			unitPrice = 0
-		case "fixed":
-			unitPrice = tier.PriceAmount
-		case "pwyw":
-			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
-				"checkout.pwyw_not_supported",
-				"pay-what-you-want tiers require the authenticated checkout flow",
-				r,
-			))
-			return
-		default:
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"checkout.unknown_pricing_mode", "ticket tier has an unsupported pricing mode", r,
-			))
+		unitPrice, priceErr := h.publicTierUnitPrice(ctx, tier)
+		if priceErr != "" {
+			h.writePricingError(w, r, priceErr)
 			return
 		}
 		pricedGA = append(pricedGA, gaItemPriced{
@@ -888,6 +875,24 @@ func resolvePublicTierUnitPrice(tier gen.TicketTierRow) (int64, string) {
 	}
 }
 
+// publicTierUnitPrice is the AB-48-aware variant of
+// resolvePublicTierUnitPrice: fixed-mode tiers resolve their scheduled
+// price window at "now" through the ONE resolver (priceresolve →
+// domain/pricing). The mode gating stays identical.
+func (h *Handler) publicTierUnitPrice(ctx context.Context, tier gen.TicketTierRow) (int64, string) {
+	unit, errCode := resolvePublicTierUnitPrice(tier)
+	if errCode != "" || tier.PricingMode != "fixed" {
+		return unit, errCode
+	}
+	eff, err := priceresolve.ForTier(ctx, h.tierQueries, tier, time.Now().UTC())
+	if err != nil {
+		h.logger.Error("public_feed_checkout: price window lookup failed",
+			slog.String("tier_id", tier.ID.String()), slog.String("error", err.Error()))
+		return 0, "checkout.tier_lookup_failed"
+	}
+	return eff.Amount, ""
+}
+
 // seatPricingLines resolves the unit price of every tier bound to the given
 // (locked) seats and groups the seats into pricing lines — one line per
 // (tier_id, unit_price) group, via the shared SEAT-C2 helper. Seats without
@@ -922,7 +927,7 @@ func (h *Handler) seatPricingLines(
 			)
 			return nil, "", "checkout.tier_lookup_failed"
 		}
-		unit, errCode := resolvePublicTierUnitPrice(tier)
+		unit, errCode := h.publicTierUnitPrice(ctx, tier)
 		if errCode != "" {
 			return nil, "", errCode
 		}

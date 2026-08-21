@@ -2188,6 +2188,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the parent event. */
+                event_id: string;
+                /** @description UUIDv7 of the parent session. */
+                session_id: string;
+                /** @description UUIDv7 of the ticket tier. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a tier's scheduled price windows (AB-48)
+         * @description Returns the tier's price windows plus the resolved current price
+         *     and next change moment. Requires JWT + `tier.read`.
+         */
+        get: operations["getTierPriceSchedule"];
+        /**
+         * Replace a tier's scheduled price windows (AB-48)
+         * @description Replaces the whole schedule atomically and audits old -> new
+         *     (`v1.tier.price_schedule.replace`). Only fixed-price tiers carry a
+         *     schedule. Requires JWT + `tier.update`.
+         */
+        put: operations["putTierPriceSchedule"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/sessions/pricing-bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply one price grid to several sessions (AB-48)
+         * @description Applies a category-name keyed price grid (base price + optional
+         *     schedule) to every listed session of the event. Each session is
+         *     applied in its own transaction with one audit event per tier
+         *     (`v1.tier.price.bulk`); per-session outcomes are reported so a
+         *     partial failure is visible. Requires JWT + `tier.update`.
+         */
+        post: operations["bulkSessionPricing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}": {
         parameters: {
             query?: never;
@@ -8468,6 +8528,167 @@ export interface components {
              * @example 2026-06-02T12:34:56Z
              */
             updated_at: string;
+            /**
+             * Format: int64
+             * @description AB-48 step 3 (admin list endpoint only) - number of physical
+             *     seats bound to this category, shown beside its price.
+             */
+            seat_count?: number | null;
+            /**
+             * Format: int64
+             * @description AB-48 step 3 (admin list endpoint only) - number of GA units in
+             *     this category's pool, shown beside its price.
+             */
+            ga_unit_count?: number | null;
+            /**
+             * Format: int64
+             * @description AB-48 (public feed only) - the effective scheduled price right
+             *     now; `price_amount` stays the tier's base.
+             */
+            current_price?: number | null;
+            /**
+             * Format: date-time
+             * @description AB-48 (public feed only) - when the effective price next
+             *     changes ("price rises on <date>"); null if unknown.
+             */
+            next_price_change_at?: string | null;
+        };
+        /**
+         * @description AB-48 scheduled price window (ticket_tier_prices). Windows of one
+         *     tier never overlap (GiST exclusion constraint); `valid_to` is
+         *     exclusive and `null` means open-ended. Moments covered by no
+         *     window fall back to the tier's base `price_amount` (the
+         *     documented gap policy).
+         */
+        TierPriceWindow: {
+            /**
+             * Format: uuid
+             * @description Window row id.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Owning ticket tier.
+             */
+            tier_id: string;
+            /**
+             * Format: date-time
+             * @description Inclusive start of the window (RFC 3339, UTC).
+             */
+            valid_from: string;
+            /**
+             * Format: date-time
+             * @description Exclusive end of the window; null = open-ended.
+             */
+            valid_to: string | null;
+            /**
+             * Format: int64
+             * @description Price in minor units while the window applies.
+             */
+            price_amount: number;
+        };
+        /** @description One window in a PUT price-schedule / bulk pricing body. */
+        TierPriceWindowInput: {
+            /**
+             * Format: date-time
+             * @description Inclusive start (RFC 3339).
+             */
+            valid_from: string;
+            /**
+             * Format: date-time
+             * @description Exclusive end; omit/null for open-ended.
+             */
+            valid_to?: string | null;
+            /**
+             * Format: int64
+             * @description Price in minor units while the window applies.
+             */
+            price_amount: number;
+        };
+        /**
+         * @description A tier's scheduled-pricing view - the windows plus the resolved
+         *     "now" price so the admin shows exactly what buyers see.
+         */
+        TierPriceSchedule: {
+            /**
+             * Format: uuid
+             * @description Ticket tier id.
+             */
+            tier_id: string;
+            /**
+             * Format: int64
+             * @description ticket_tiers.price_amount - the fallback outside any window.
+             */
+            base_price_amount: number;
+            /**
+             * Format: int64
+             * @description Effective price right now through the one resolver.
+             */
+            current_price: number;
+            /**
+             * Format: date-time
+             * @description When the effective price next changes; null if unknown.
+             */
+            next_price_change_at: string | null;
+            /** @description Windows ordered by valid_from. */
+            windows: components["schemas"]["TierPriceWindow"][];
+        };
+        /** @description Envelope for the price-schedule endpoints. */
+        TierPriceScheduleEnvelope: {
+            /** @description The tier's schedule. */
+            price_schedule: components["schemas"]["TierPriceSchedule"];
+        };
+        /**
+         * @description Replace-all body for PUT .../price-schedule. Overlapping windows
+         *     are rejected with 422 `tier.price_windows_overlap` (app pre-check
+         *     and the DB exclusion constraint both enforce it). Mid-sale: future
+         *     windows are freely editable; changing the currently active window
+         *     applies to NEW carts only - every reservation locks its quoted
+         *     price at creation and issued tickets are never repriced.
+         */
+        PutTierPriceScheduleRequest: {
+            /** @description The complete new schedule (an empty array clears it). */
+            windows: components["schemas"]["TierPriceWindowInput"][];
+        };
+        /**
+         * @description AB-48 step 5 - apply one price grid to several sessions of an
+         *     event in one pass (the reference's multi-select "set ->").
+         *     Categories are matched by tier NAME (tiers are minted per plan
+         *     category, so the same name is the same category across
+         *     sessions); non-fixed tiers are skipped.
+         */
+        BulkSessionPricingRequest: {
+            /** @description Sessions of this event to apply the grid to. */
+            session_ids: string[];
+            /** @description The grid - one row per category name. */
+            prices: {
+                /** @description Category (tier) name, matched case-insensitively. */
+                tier_name: string;
+                /**
+                 * Format: int64
+                 * @description New base price in minor units.
+                 */
+                price_amount: number;
+                /** @description Optional schedule to install for the category (replaces any existing schedule). */
+                windows?: components["schemas"]["TierPriceWindowInput"][];
+            }[];
+        };
+        /** @description Per-session outcomes; a partial failure is visible, never silent. */
+        BulkSessionPricingResponse: {
+            /** @description One entry per requested session, in request order. */
+            results: {
+                /**
+                 * Format: uuid
+                 * @description The session the row describes.
+                 */
+                session_id: string;
+                /** @description Tier names updated in this session. */
+                applied: string[];
+                /** @description Grid names with no matching tier in this session. */
+                missing_tiers: string[];
+                /** @description Per-session failure message; null on success. */
+                error: string | null;
+            }[];
         };
         /**
          * @description Create-time payload for POST
@@ -9962,6 +10183,14 @@ export interface components {
              *     validation.
              */
             promo_code: string | null;
+            /**
+             * Format: date-time
+             * @description AB-48 scheduled pricing - when the tier's effective price
+             *     next changes (the data behind "price rises on <date>").
+             *     `null` when no change is known or the tier is not
+             *     fixed-price.
+             */
+            next_price_change_at?: string | null;
         };
         /**
          * @description Top-level response envelope for `GET /v1/checkout/quote`.
@@ -11755,6 +11984,17 @@ export interface components {
             price_amount?: number;
             /** @description ISO 4217 currency code of the mapped tier, when resolved. */
             currency?: string;
+            /**
+             * Format: int64
+             * @description AB-48 - the effective (scheduled) price right now; `price_amount`
+             *     stays the tier's base. Only present when a tier resolved.
+             */
+            current_price?: number;
+            /**
+             * Format: date-time
+             * @description AB-48 - when the effective price next changes; null if unknown.
+             */
+            next_price_change_at?: string | null;
         };
         /**
          * @description Response body for `GET /v1/event-sessions/{id}/schema`. Contains the
@@ -20177,6 +20417,254 @@ export interface operations {
                 };
             };
             /** @description Database pool or tier queries unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getTierPriceSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the parent event. */
+                event_id: string;
+                /** @description UUIDv7 of the parent session. */
+                session_id: string;
+                /** @description UUIDv7 of the ticket tier. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The schedule. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TierPriceScheduleEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `tier.read` or org membership. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Tier not found (`tier.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal error (`tier.schedule_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    putTierPriceSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the parent event. */
+                event_id: string;
+                /** @description UUIDv7 of the parent session. */
+                session_id: string;
+                /** @description UUIDv7 of the ticket tier. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutTierPriceScheduleRequest"];
+            };
+        };
+        responses: {
+            /** @description The new schedule. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TierPriceScheduleEnvelope"];
+                };
+            };
+            /** @description Malformed body (`tier.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `tier.update` or org membership. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Tier not found (`tier.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Semantic failure - `tier.invalid_price_window`,
+             *     `tier.price_windows_overlap`, `tier.too_many_price_windows`,
+             *     `tier.schedule_requires_fixed_mode`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal error (`tier.schedule_failed`, `tier.audit_failed`, `tier.commit_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    bulkSessionPricing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the parent event. */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkSessionPricingRequest"];
+            };
+        };
+        responses: {
+            /** @description Per-session outcomes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkSessionPricingResponse"];
+                };
+            };
+            /** @description Malformed body (`tier.invalid_body`, `tier.invalid_session_ids`, `tier.invalid_prices`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `tier.update` or org membership. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Invalid or overlapping windows in the grid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;

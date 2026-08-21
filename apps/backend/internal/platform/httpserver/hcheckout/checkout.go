@@ -481,7 +481,18 @@ func (h *Handler) HandleConfirmCheckout(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if len(seats) > 0 {
-		// Resolve unit price for each unique tier_id in the seat rows.
+		// AB-48: prefer the price locked at reservation creation; only
+		// legacy reservations without lines re-resolve (through the ONE
+		// resolver) at confirm time.
+		lockedPrices, err := LockedTierPrices(ctx, h.reservationQueries, reservation.ID)
+		if err != nil {
+			h.logger.Error("checkout: confirm — locked price lookup failed",
+				slog.String("reservation_id", reservation.ID.String()),
+				slog.String("error", err.Error()),
+			)
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("checkout.confirm_failed", "failed to retrieve locked prices", r))
+			return
+		}
 		tierPriceMap := make(map[string]int64)
 		var currency string
 		for _, s := range seats {
@@ -505,7 +516,18 @@ func (h *Handler) HandleConfirmCheckout(w http.ResponseWriter, r *http.Request) 
 				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("checkout.tier_lookup_failed", "failed to retrieve ticket tier", r))
 				return
 			}
-			tierPriceMap[tid] = t.PriceAmount
+			if locked, ok := lockedPrices[t.ID]; ok {
+				tierPriceMap[tid] = locked
+			} else {
+				eff, effErr := EffectiveFixedPrice(ctx, h.tierQueries, t, time.Now().UTC())
+				if effErr != nil {
+					h.logger.Error("checkout: confirm — price resolution failed",
+						slog.String("tier_id", tid), slog.String("error", effErr.Error()))
+					httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("checkout.tier_lookup_failed", "failed to resolve ticket tier price", r))
+					return
+				}
+				tierPriceMap[tid] = eff.Amount
+			}
 			if currency == "" {
 				currency = t.Currency
 			}
@@ -654,7 +676,25 @@ func (h *Handler) HandleConfirmCheckout(w http.ResponseWriter, r *http.Request) 
 	case "free":
 		unitPrice = 0
 	case "fixed":
-		unitPrice = tier.PriceAmount
+		// AB-48: the price locked at reservation creation wins; legacy
+		// reservations without a line resolve through the ONE resolver.
+		lockedPrices, lockErr := LockedTierPrices(ctx, h.reservationQueries, reservation.ID)
+		if lockErr != nil {
+			h.logger.Error("checkout: locked price lookup failed", slog.String("error", lockErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("checkout.confirm_failed", "failed to retrieve locked prices", r))
+			return
+		}
+		if locked, ok := lockedPrices[tier.ID]; ok {
+			unitPrice = locked
+		} else {
+			eff, effErr := EffectiveFixedPrice(ctx, h.tierQueries, tier, time.Now().UTC())
+			if effErr != nil {
+				h.logger.Error("checkout: price resolution failed", slog.String("error", effErr.Error()))
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("checkout.tier_lookup_failed", "failed to resolve ticket tier price", r))
+				return
+			}
+			unitPrice = eff.Amount
+		}
 	case "pwyw":
 		if req.ChosenPrice == nil {
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(

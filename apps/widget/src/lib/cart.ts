@@ -78,7 +78,8 @@ export function buildSeatedLines(
     const tierId = cp?.tier_id ?? '';
     const tier = tierId ? tierById.get(tierId) : undefined;
     const tierName = tier?.name ?? cp?.tier_name ?? 'Unknown';
-    const priceAmount = tier?.price_amount ?? 0;
+    // AB-48: charge the effective (scheduled) price; price_amount is the base.
+    const priceAmount = tier?.current_price ?? tier?.price_amount ?? 0;
     const currency = tier?.currency ?? cp?.currency_hint ?? '';
 
     const existing = groups.get(tierId);

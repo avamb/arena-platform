@@ -79,6 +79,8 @@ type ReservationContextQuerier interface {
 type TierPriceQuerier interface {
 	GetTicketTierByID(ctx context.Context, id, sessionID uuid.UUID) (gen.TicketTierRow, error)
 	ListTicketTiersBySession(ctx context.Context, sessionID uuid.UUID) ([]gen.TicketTierRow, error)
+	// ListTierPriceWindows feeds the AB-48 resolver (priceresolve).
+	ListTierPriceWindows(ctx context.Context, tierIDs []uuid.UUID) ([]gen.TicketTierPriceRow, error)
 }
 
 // SeatedReserveFunc creates a real seated hold. Production wiring

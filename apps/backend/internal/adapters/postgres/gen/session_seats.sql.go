@@ -840,3 +840,41 @@ func (q *Queries) ReleaseSoldGAUnitForReservation(ctx context.Context, sessionID
 	row := q.db.QueryRow(ctx, releaseSoldGAUnitForReservation, sessionID, reservationID, tierID, statusVersion)
 	return scanSessionSeatRow(row)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CountSessionSeatsByTier (AB-48)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// SessionSeatTierCountRow is one (tier, kind) inventory count.
+type SessionSeatTierCountRow struct {
+	TierID uuid.UUID `json:"tier_id"`
+	Kind   string    `json:"kind"`
+	Count  int64     `json:"count"`
+}
+
+const countSessionSeatsByTier = `-- name: CountSessionSeatsByTier :many
+SELECT tier_id, kind, COUNT(*)::bigint AS count
+FROM   session_seats
+WHERE  session_id = $1
+  AND  tier_id IS NOT NULL
+GROUP  BY tier_id, kind`
+
+// CountSessionSeatsByTier returns per-(tier, kind) counts of materialized
+// rows for a session — the seat count / GA capacity shown beside each
+// category price (AB-48 step 3).
+func (q *Queries) CountSessionSeatsByTier(ctx context.Context, sessionID uuid.UUID) ([]SessionSeatTierCountRow, error) {
+	rows, err := q.db.Query(ctx, countSessionSeatsByTier, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SessionSeatTierCountRow
+	for rows.Next() {
+		var r SessionSeatTierCountRow
+		if err := rows.Scan(&r.TierID, &r.Kind, &r.Count); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}

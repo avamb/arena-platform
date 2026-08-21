@@ -166,6 +166,9 @@ type Querier interface {
 	GetTicketTierByID(ctx context.Context, id, sessionID uuid.UUID) (TicketTierRow, error)
 	GetTicketTierByIDGlobal(ctx context.Context, id uuid.UUID) (TicketTierRow, error)
 	ListTicketTiersBySession(ctx context.Context, sessionID uuid.UUID) ([]TicketTierRow, error)
+	ListTierPriceWindows(ctx context.Context, tierIDs []uuid.UUID) ([]TicketTierPriceRow, error)
+	InsertTierPriceWindow(ctx context.Context, tierID uuid.UUID, validFrom time.Time, validTo *time.Time, priceAmount int64) (TicketTierPriceRow, error)
+	DeleteTierPriceWindowsByTier(ctx context.Context, tierID uuid.UUID) (int64, error)
 	UpdateTicketTier(ctx context.Context, id, sessionID uuid.UUID, name, pricingMode string, priceAmount *int64, currency string, pwywMin, pwywMax *int64, capacity *int32, saleWindowStart, saleWindowEnd *time.Time, sortOrder *int32) (TicketTierRow, error)
 	SoftDeleteTicketTier(ctx context.Context, id, sessionID uuid.UUID) (TicketTierRow, error)
 
@@ -472,6 +475,7 @@ type Querier interface {
 	SetSessionSeatTier(ctx context.Context, id, sessionID uuid.UUID, tierID *uuid.UUID) (SessionSeatRow, error)
 	BulkSetSessionSeatTier(ctx context.Context, sessionID uuid.UUID, seatKeys []string, tierID uuid.UUID) (int64, error)
 	CountSessionSeatsByStatus(ctx context.Context, sessionID uuid.UUID, status string) (int64, error)
+	CountSessionSeatsByTier(ctx context.Context, sessionID uuid.UUID) ([]SessionSeatTierCountRow, error)
 	IncrementSessionSeatStatusVersion(ctx context.Context, sessionID uuid.UUID) (int64, error)
 	GetSessionAdmissionModeByID(ctx context.Context, sessionID uuid.UUID) (SessionAdmissionRow, error)
 	CountGAUnitsHeldSoldByTier(ctx context.Context, sessionID, tierID uuid.UUID) (int64, error)

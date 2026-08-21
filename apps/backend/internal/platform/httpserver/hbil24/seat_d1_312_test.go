@@ -137,6 +137,12 @@ func (f *fakeTiers) ListTicketTiersBySession(_ context.Context, _ uuid.UUID) ([]
 	return out, nil
 }
 
+// ListTierPriceWindows satisfies the AB-48 TierPriceQuerier extension;
+// the D1 fixtures carry no scheduled prices, so base prices apply.
+func (f *fakeTiers) ListTierPriceWindows(_ context.Context, _ []uuid.UUID) ([]gen.TicketTierPriceRow, error) {
+	return nil, nil
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Test helpers
 // ─────────────────────────────────────────────────────────────────────────────

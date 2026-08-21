@@ -245,6 +245,80 @@ export interface TicketTierItem {
   readonly sale_window_start?: string | null;
   readonly sale_window_end?: string | null;
   readonly sort_order: number;
+  /** AB-48: inventory bound to the category (list endpoint only). */
+  readonly seat_count?: number | null;
+  readonly ga_unit_count?: number | null;
+}
+
+/** AB-48: one scheduled price window (ticket_tier_prices). */
+export interface TierPriceWindow {
+  readonly id?: string;
+  readonly valid_from: string;
+  readonly valid_to: string | null;
+  readonly price_amount: number;
+}
+
+export interface TierPriceSchedule {
+  readonly tier_id: string;
+  readonly base_price_amount: number;
+  readonly current_price: number;
+  readonly next_price_change_at: string | null;
+  readonly windows: readonly TierPriceWindow[];
+}
+
+interface TierPriceScheduleEnvelope {
+  readonly price_schedule: TierPriceSchedule;
+}
+
+/** AB-48: editable window row (local datetime strings, decimal price). */
+export interface PriceWindowFormRow {
+  readonly valid_from: string;
+  readonly valid_to: string;
+  readonly price_amount: string;
+}
+
+/**
+ * Validate + convert schedule rows to the wire shape. Returns an error
+ * message or the windows. Mirrors the backend rules: RFC3339 bounds,
+ * valid_to > valid_from, non-negative price, no overlaps.
+ */
+export function buildPriceWindows(
+  rows: readonly PriceWindowFormRow[],
+): { windows?: TierPriceWindow[]; error?: string } {
+  const out: TierPriceWindow[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i]!;
+    const from = parseLocalDatetime(r.valid_from);
+    if (from === null) return { error: `Window ${i + 1}: start is required.` };
+    let to: Date | null = null;
+    if (r.valid_to.trim() !== "") {
+      to = parseLocalDatetime(r.valid_to);
+      if (to === null) return { error: `Window ${i + 1}: end is invalid.` };
+      if (to.getTime() <= from.getTime()) {
+        return { error: `Window ${i + 1}: end must be after start.` };
+      }
+    }
+    const cents = decimalToCents(r.price_amount);
+    if (cents === null || cents < 0) {
+      return { error: `Window ${i + 1}: price must be a decimal (e.g. 12.50).` };
+    }
+    out.push({
+      valid_from: toRFC3339(r.valid_from),
+      valid_to: to === null ? null : toRFC3339(r.valid_to),
+      price_amount: cents,
+    });
+  }
+  const sorted = [...out].sort(
+    (a, b) => new Date(a.valid_from).getTime() - new Date(b.valid_from).getTime(),
+  );
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1]!;
+    const cur = sorted[i]!;
+    if (prev.valid_to === null || new Date(cur.valid_from) < new Date(prev.valid_to)) {
+      return { error: "Windows overlap — each moment may carry exactly one price." };
+    }
+  }
+  return { windows: sorted };
 }
 
 interface TicketTierListEnvelope {
@@ -2921,6 +2995,10 @@ function SessionsTab({
         </div>
       ) : null}
 
+      {canUpdate && sessions.length > 0 ? (
+        <BulkPricingPanel event={event} sessions={sessions} />
+      ) : null}
+
       {editor.kind === "create" ? (
         <SessionEditor
           event={event}
@@ -3220,18 +3298,46 @@ function SessionEditor({
     );
   }, [mode.kind, resolvedVersionID]);
 
+  // AB-40 C2 (carried into AB-48): several sessions in one pass. Each
+  // extra start creates one more session with the same venue / plan /
+  // mode / duration. Each POST is its own atomic create; a failure midway
+  // is reported with the count that did land, never hidden.
+  const [extraStarts, setExtraStarts] = useState<string[]>([]);
+  const [extraCreated, setExtraCreated] = useState<number>(0);
+
   const mutation = useMutation<SessionEnvelope, ApiError, SessionFormValues>({
-    mutationFn: (v) => {
+    mutationFn: async (v) => {
       const body = buildSessionRequestBody(
         v,
         mode.kind === "create" ? "create" : "edit",
       );
       if (mode.kind === "create") {
-        return authedFetch<SessionEnvelope>({
+        const first = await authedFetch<SessionEnvelope>({
           method: "POST",
           path: `/v1/organizations/${event.org_id}/events/${event.id}/sessions`,
           body,
         });
+        const durationMs =
+          (parseLocalDatetime(v.end_at)?.getTime() ?? 0) -
+          (parseLocalDatetime(v.start_at)?.getTime() ?? 0);
+        let created = 0;
+        for (const extra of extraStarts) {
+          const start = parseLocalDatetime(extra);
+          if (start === null) continue;
+          const end = new Date(start.getTime() + durationMs);
+          await authedFetch<SessionEnvelope>({
+            method: "POST",
+            path: `/v1/organizations/${event.org_id}/events/${event.id}/sessions`,
+            body: {
+              ...body,
+              start_at: start.toISOString(),
+              end_at: end.toISOString(),
+            },
+          });
+          created++;
+          setExtraCreated(created);
+        }
+        return first;
       }
       return authedFetch<SessionEnvelope>({
         method: "PATCH",
@@ -3240,9 +3346,12 @@ function SessionEditor({
       });
     },
     onSuccess: (data) => {
+      const extras = extraStarts.filter((e) => e.trim() !== "").length;
       onSaved(
         mode.kind === "create"
-          ? `Created session ${formatDateTime(data.session.start_at)}.`
+          ? extras > 0
+            ? `Created session ${formatDateTime(data.session.start_at)} and ${extras} more date${extras === 1 ? "" : "s"}.`
+            : `Created session ${formatDateTime(data.session.start_at)}.`
           : `Updated session ${shortenUUID(data.session.id)}.`,
         data.session,
       );
@@ -3497,6 +3606,54 @@ function SessionEditor({
           </>
         ) : null}
       </div>
+
+      {mode.kind === "create" ? (
+        <div style={editorFieldStyle} data-testid="events-session-extra-dates">
+          <span style={editorLabelStyle}>
+            Additional dates (same venue, plan and duration)
+          </span>
+          {extraStarts.map((v, idx) => (
+            <div key={idx} style={{ display: "flex", gap: 6 }}>
+              <input
+                type="datetime-local"
+                value={v}
+                onChange={(e) =>
+                  setExtraStarts(extraStarts.map((x, i) => (i === idx ? e.target.value : x)))
+                }
+                style={editorInputStyle}
+                data-testid={`events-session-extra-start-${idx}`}
+              />
+              <button
+                type="button"
+                style={refreshButtonStyle}
+                onClick={() => setExtraStarts(extraStarts.filter((_, i) => i !== idx))}
+                aria-label="Remove this extra date"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            style={refreshButtonStyle}
+            onClick={() => setExtraStarts([...extraStarts, ""])}
+            data-testid="events-session-extra-add"
+            disabled={mutation.isPending}
+          >
+            + Add another date
+          </button>
+          {mutation.isPending && extraStarts.length > 0 ? (
+            <span style={mutedHintStyle}>
+              Creating… {extraCreated}/{extraStarts.length} extra dates done.
+            </span>
+          ) : null}
+          {mutation.isError && extraCreated > 0 ? (
+            <span style={fieldErrorStyle}>
+              {extraCreated} extra date{extraCreated === 1 ? "" : "s"} were created before the error — refresh the list.
+            </span>
+          ) : null}
+        </div>
+      ) : null}
 
       {overlaps.length > 0 ? (
         <div
@@ -4363,6 +4520,8 @@ function SessionTiersBlock({
   const [confirmDeleteID, setConfirmDeleteID] = useState<string | null>(null);
   const [actionErr, setActionErr] = useState<string | null>(null);
   const [actionOk, setActionOk] = useState<string | null>(null);
+  // AB-48: which tier's price schedule editor is open.
+  const [scheduleTierID, setScheduleTierID] = useState<string | null>(null);
 
   const deleteMutation = useMutation<void, ApiError, string>({
     mutationFn: (id) =>
@@ -4483,6 +4642,7 @@ function SessionTiersBlock({
                 <th scope="col" style={thStyle}>Price</th>
                 <th scope="col" style={thStyle}>Currency</th>
                 <th scope="col" style={thStyle}>Capacity</th>
+                <th scope="col" style={thStyle}>Seats</th>
                 <th scope="col" style={thStyle}>Sort</th>
                 <th scope="col" style={thStyle}>Actions</th>
               </tr>
@@ -4491,6 +4651,7 @@ function SessionTiersBlock({
               {sortedTiers.map((t) => {
                 const isEditing =
                   editor.kind === "edit" && editor.tier.id === t.id;
+                const isScheduling = scheduleTierID === t.id;
                 return (
                   <Fragment key={t.id}>
                     <tr data-testid={`events-tier-${t.id}`}>
@@ -4513,6 +4674,14 @@ function SessionTiersBlock({
                           ? t.capacity.toLocaleString()
                           : "—"}
                       </td>
+                      <td style={tdStyle} data-testid={`events-tier-seats-${t.id}`}>
+                        {/* AB-48 step 3: inventory beside the price. */}
+                        {(t.seat_count ?? 0) > 0
+                          ? `${(t.seat_count ?? 0).toLocaleString()} seats`
+                          : (t.ga_unit_count ?? 0) > 0
+                            ? `${(t.ga_unit_count ?? 0).toLocaleString()} GA`
+                            : "—"}
+                      </td>
                       <td style={tdStyle}>{t.sort_order}</td>
                       <td style={tdStyle}>
                         <div style={rowActionsStyle}>
@@ -4533,6 +4702,18 @@ function SessionTiersBlock({
                               disabled={isEditing}
                             >
                               Edit
+                            </button>
+                          ) : null}
+                          {canUpdate && t.pricing_mode === "fixed" ? (
+                            <button
+                              type="button"
+                              style={refreshButtonStyle}
+                              onClick={() =>
+                                setScheduleTierID(isScheduling ? null : t.id)
+                              }
+                              data-testid={`events-tier-schedule-${t.id}`}
+                            >
+                              {isScheduling ? "Close schedule" : "Schedule"}
                             </button>
                           ) : null}
                           {canDelete ? (
@@ -4594,7 +4775,7 @@ function SessionTiersBlock({
                     ) : null}
                     {isEditing ? (
                       <tr>
-                        <td colSpan={7} style={tdStyle}>
+                        <td colSpan={8} style={tdStyle}>
                           <TierEditor
                             event={event}
                             session={session}
@@ -4614,6 +4795,26 @@ function SessionTiersBlock({
                         </td>
                       </tr>
                     ) : null}
+                    {isScheduling ? (
+                      <tr data-testid={`events-tier-schedule-row-${t.id}`}>
+                        <td colSpan={8} style={tdStyle}>
+                          <PriceScheduleEditor
+                            event={event}
+                            session={session}
+                            tier={t}
+                            onSaved={(msg) => {
+                              setActionErr(null);
+                              setActionOk(msg);
+                              void queryClient.invalidateQueries({ queryKey });
+                            }}
+                            onError={(msg) => {
+                              setActionOk(null);
+                              setActionErr(msg);
+                            }}
+                          />
+                        </td>
+                      </tr>
+                    ) : null}
                   </Fragment>
                 );
               })}
@@ -4627,6 +4828,336 @@ function SessionTiersBlock({
 
 interface TierEnvelope {
   readonly tier: TicketTierItem;
+}
+
+// ---------------------------------------------------------------------------
+// AB-48: scheduled pricing editor (per tier)
+// ---------------------------------------------------------------------------
+
+function PriceScheduleEditor({
+  event,
+  session,
+  tier,
+  onSaved,
+  onError,
+}: {
+  event: EventItem;
+  session: SessionItem;
+  tier: TicketTierItem;
+  onSaved: (msg: string) => void;
+  onError: (msg: string) => void;
+}) {
+  const basePath = `/v1/organizations/${event.org_id}/events/${event.id}/sessions/${session.id}/tiers/${tier.id}/price-schedule`;
+  const queryKey = ["events", "tier-schedule", tier.id] as const;
+  const query = useQuery<TierPriceScheduleEnvelope, ApiError>({
+    queryKey,
+    queryFn: () => authedFetch<TierPriceScheduleEnvelope>({ method: "GET", path: basePath }),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const [rows, setRows] = useState<PriceWindowFormRow[] | null>(null);
+  const loaded = query.data?.price_schedule;
+  const effectiveRows: PriceWindowFormRow[] =
+    rows ??
+    (loaded?.windows ?? []).map((w) => ({
+      valid_from: toLocalDatetimeValue(w.valid_from),
+      valid_to: w.valid_to === null ? "" : toLocalDatetimeValue(w.valid_to),
+      price_amount: centsToDecimal(w.price_amount),
+    }));
+  const built = buildPriceWindows(effectiveRows);
+  const queryClient = useQueryClient();
+  const mutation = useMutation<TierPriceScheduleEnvelope, ApiError, TierPriceWindow[]>({
+    mutationFn: (windows) =>
+      authedFetch<TierPriceScheduleEnvelope>({ method: "PUT", path: basePath, body: { windows } }),
+    onSuccess: (data) => {
+      setRows(null);
+      void queryClient.invalidateQueries({ queryKey });
+      onSaved(
+        `Saved price schedule for "${tier.name}" — current price ${centsToDecimal(data.price_schedule.current_price)} ${tier.currency}.`,
+      );
+    },
+    onError: (err) => onError(mapTierError(err)),
+  });
+
+  if (query.isPending) {
+    return <div style={statusBoxStyle}>Loading price schedule…</div>;
+  }
+  return (
+    <div data-testid={`events-tier-schedule-editor-${tier.id}`} style={{ display: "grid", gap: 8 }}>
+      <div style={detailLabelStyle}>Scheduled prices — {tier.name}</div>
+      <div style={mutedHintStyle}>
+        Base price {centsToDecimal(tier.price_amount)} {tier.currency} applies whenever no window
+        covers the moment. Current price:{" "}
+        <strong>{centsToDecimal(loaded?.current_price ?? tier.price_amount)} {tier.currency}</strong>
+        {loaded?.next_price_change_at
+          ? ` · changes ${formatDateTime(loaded.next_price_change_at)}`
+          : ""}
+        . Carts lock the price they were quoted; edits apply to new carts only.
+      </div>
+      {effectiveRows.map((r, idx) => (
+        <div key={idx} style={editorGridStyle}>
+          <label style={editorFieldStyle}>
+            <span style={editorLabelStyle}>From</span>
+            <input
+              type="datetime-local"
+              value={r.valid_from}
+              onChange={(e) =>
+                setRows(effectiveRows.map((x, i) => (i === idx ? { ...x, valid_from: e.target.value } : x)))
+              }
+              style={editorInputStyle}
+              data-testid={`events-tier-window-from-${tier.id}-${idx}`}
+            />
+          </label>
+          <label style={editorFieldStyle}>
+            <span style={editorLabelStyle}>Until (empty = open-ended)</span>
+            <input
+              type="datetime-local"
+              value={r.valid_to}
+              onChange={(e) =>
+                setRows(effectiveRows.map((x, i) => (i === idx ? { ...x, valid_to: e.target.value } : x)))
+              }
+              style={editorInputStyle}
+              data-testid={`events-tier-window-to-${tier.id}-${idx}`}
+            />
+          </label>
+          <label style={editorFieldStyle}>
+            <span style={editorLabelStyle}>Price ({tier.currency})</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={r.price_amount}
+              onChange={(e) =>
+                setRows(effectiveRows.map((x, i) => (i === idx ? { ...x, price_amount: e.target.value } : x)))
+              }
+              style={editorInputStyle}
+              data-testid={`events-tier-window-price-${tier.id}-${idx}`}
+            />
+          </label>
+          <button
+            type="button"
+            style={refreshButtonStyle}
+            onClick={() => setRows(effectiveRows.filter((_, i) => i !== idx))}
+            aria-label="Remove window"
+          >
+            Remove
+          </button>
+        </div>
+      ))}
+      {built.error !== undefined ? <span style={fieldErrorStyle}>{built.error}</span> : null}
+      <div style={rowActionsStyle}>
+        <button
+          type="button"
+          style={refreshButtonStyle}
+          onClick={() => setRows([...effectiveRows, { valid_from: "", valid_to: "", price_amount: "" }])}
+          data-testid={`events-tier-window-add-${tier.id}`}
+        >
+          + Add window
+        </button>
+        <button
+          type="button"
+          style={primaryButtonStyle}
+          disabled={built.windows === undefined || mutation.isPending}
+          onClick={() => {
+            if (built.windows !== undefined) mutation.mutate(built.windows);
+          }}
+          data-testid={`events-tier-schedule-save-${tier.id}`}
+        >
+          {mutation.isPending ? "Saving…" : "Save schedule"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AB-48: bulk price grid across sessions
+// ---------------------------------------------------------------------------
+
+interface BulkPricingResult {
+  readonly session_id: string;
+  readonly applied: readonly string[];
+  readonly missing_tiers: readonly string[];
+  readonly error: string | null;
+}
+
+function BulkPricingPanel({
+  event,
+  sessions,
+}: {
+  event: EventItem;
+  sessions: readonly SessionItem[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [grid, setGrid] = useState<{ tier_name: string; price_amount: string }[]>([
+    { tier_name: "", price_amount: "" },
+  ]);
+  const [results, setResults] = useState<readonly BulkPricingResult[] | null>(null);
+  const queryClient = useQueryClient();
+
+  // Propose category names from the first selected session's tiers (AB-48
+  // step A: only the categories that exist, never a fixed 15-row grid).
+  const firstSelected = [...selected][0];
+  const tiersQuery = useQuery<TicketTierListEnvelope, ApiError>({
+    queryKey: ["events", "bulk-pricing-tiers", firstSelected ?? ""],
+    enabled: firstSelected !== undefined,
+    queryFn: () =>
+      authedFetch<TicketTierListEnvelope>({
+        method: "GET",
+        path: `/v1/organizations/${event.org_id}/events/${event.id}/sessions/${firstSelected}/tiers`,
+      }),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const suggested = (tiersQuery.data?.ticket_tiers ?? tiersQuery.data?.tiers ?? []).filter(
+    (t) => t.pricing_mode === "fixed",
+  );
+
+  const mutation = useMutation<{ results: readonly BulkPricingResult[] }, ApiError, void>({
+    mutationFn: () =>
+      authedFetch<{ results: readonly BulkPricingResult[] }>({
+        method: "POST",
+        path: `/v1/organizations/${event.org_id}/events/${event.id}/sessions/pricing-bulk`,
+        body: {
+          session_ids: [...selected],
+          prices: grid
+            .filter((g) => g.tier_name.trim() !== "")
+            .map((g) => ({ tier_name: g.tier_name.trim(), price_amount: decimalToCents(g.price_amount) ?? 0 })),
+        },
+      }),
+    onSuccess: (data) => {
+      setResults(data.results);
+      void queryClient.invalidateQueries({ queryKey: ["events", "detail", event.id] });
+    },
+  });
+
+  const gridValid =
+    grid.some((g) => g.tier_name.trim() !== "") &&
+    grid.every((g) => g.tier_name.trim() === "" || (decimalToCents(g.price_amount) ?? -1) >= 0);
+
+  if (!open) {
+    return (
+      <div style={{ marginTop: 8 }}>
+        <button
+          type="button"
+          style={refreshButtonStyle}
+          onClick={() => setOpen(true)}
+          data-testid="events-bulk-pricing-open"
+        >
+          Apply one price grid to several sessions…
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <section style={tierBlockStyle} data-testid="events-bulk-pricing">
+      <div style={detailLabelStyle}>Bulk pricing — apply one grid to several sessions</div>
+      <div style={mutedHintStyle}>
+        Categories are matched by name across the selected sessions (tiers are created per plan
+        category). Every change is audited.
+      </div>
+      <div style={{ display: "grid", gap: 4, margin: "8px 0" }}>
+        {sessions.map((sess) => (
+          <label key={sess.id} style={{ fontSize: 13 }}>
+            <input
+              type="checkbox"
+              checked={selected.has(sess.id)}
+              onChange={(e) => {
+                const next = new Set(selected);
+                if (e.target.checked) next.add(sess.id);
+                else next.delete(sess.id);
+                setSelected(next);
+              }}
+              data-testid={`events-bulk-pricing-session-${sess.id}`}
+            />{" "}
+            {formatDateTime(sess.start_at)} · {sess.currency}
+          </label>
+        ))}
+      </div>
+      {suggested.length > 0 && grid.length === 1 && grid[0]!.tier_name === "" ? (
+        <button
+          type="button"
+          style={refreshButtonStyle}
+          onClick={() =>
+            setGrid(
+              suggested.map((t) => ({ tier_name: t.name, price_amount: centsToDecimal(t.price_amount) })),
+            )
+          }
+          data-testid="events-bulk-pricing-prefill"
+        >
+          Prefill the {suggested.length} categories of the first selected session
+        </button>
+      ) : null}
+      {grid.map((g, idx) => (
+        <div key={idx} style={editorGridStyle}>
+          <label style={editorFieldStyle}>
+            <span style={editorLabelStyle}>Category name</span>
+            <input
+              type="text"
+              value={g.tier_name}
+              onChange={(e) =>
+                setGrid(grid.map((x, i) => (i === idx ? { ...x, tier_name: e.target.value } : x)))
+              }
+              style={editorInputStyle}
+              data-testid={`events-bulk-pricing-name-${idx}`}
+            />
+          </label>
+          <label style={editorFieldStyle}>
+            <span style={editorLabelStyle}>Price (major units)</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={g.price_amount}
+              onChange={(e) =>
+                setGrid(grid.map((x, i) => (i === idx ? { ...x, price_amount: e.target.value } : x)))
+              }
+              style={editorInputStyle}
+              data-testid={`events-bulk-pricing-price-${idx}`}
+            />
+          </label>
+        </div>
+      ))}
+      <div style={rowActionsStyle}>
+        <button
+          type="button"
+          style={refreshButtonStyle}
+          onClick={() => setGrid([...grid, { tier_name: "", price_amount: "" }])}
+        >
+          + Add category
+        </button>
+        <button
+          type="button"
+          style={primaryButtonStyle}
+          disabled={selected.size === 0 || !gridValid || mutation.isPending}
+          onClick={() => mutation.mutate()}
+          data-testid="events-bulk-pricing-apply"
+        >
+          {mutation.isPending ? "Applying…" : `Apply to ${selected.size} session${selected.size === 1 ? "" : "s"}`}
+        </button>
+        <button type="button" style={refreshButtonStyle} onClick={() => setOpen(false)}>
+          Close
+        </button>
+      </div>
+      {mutation.isError ? (
+        <div style={formErrorStyle} role="alert">
+          {mapTierError(mutation.error)}
+        </div>
+      ) : null}
+      {results !== null ? (
+        <ul style={{ margin: "8px 0", paddingLeft: 20 }} data-testid="events-bulk-pricing-results">
+          {results.map((r) => (
+            <li key={r.session_id}>
+              <code style={monoStyle}>{shortenUUID(r.session_id)}</code>:{" "}
+              {r.error !== null
+                ? `error — ${r.error}`
+                : `applied ${r.applied.length}${r.missing_tiers.length > 0 ? `, missing: ${r.missing_tiers.join(", ")}` : ""}`}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
 }
 
 interface TierEditorProps {

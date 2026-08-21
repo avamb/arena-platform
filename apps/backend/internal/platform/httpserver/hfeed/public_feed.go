@@ -38,6 +38,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -152,19 +153,25 @@ type publicFeedTierResponse struct {
 	SaleWindowStart *string `json:"sale_window_start"`
 	SaleWindowEnd   *string `json:"sale_window_end"`
 	SortOrder       int32   `json:"sort_order"`
+	// AB-48 scheduled pricing: CurrentPrice is the effective price NOW
+	// (price_amount stays the base); NextPriceChangeAt is when it next
+	// changes ("price rises on <date>"), nil when no change is known.
+	CurrentPrice      int64   `json:"current_price"`
+	NextPriceChangeAt *string `json:"next_price_change_at"`
 }
 
 func publicFeedTierFromRow(t gen.TicketTierRow) publicFeedTierResponse {
 	resp := publicFeedTierResponse{
-		ID:          t.ID.String(),
-		Name:        t.Name,
-		PricingMode: t.PricingMode,
-		PriceAmount: t.PriceAmount,
-		Currency:    t.Currency,
-		PwywMin:     t.PwywMin,
-		PwywMax:     t.PwywMax,
-		Capacity:    t.Capacity,
-		SortOrder:   t.SortOrder,
+		ID:           t.ID.String(),
+		Name:         t.Name,
+		PricingMode:  t.PricingMode,
+		PriceAmount:  t.PriceAmount,
+		CurrentPrice: t.PriceAmount,
+		Currency:     t.Currency,
+		PwywMin:      t.PwywMin,
+		PwywMax:      t.PwywMax,
+		Capacity:     t.Capacity,
+		SortOrder:    t.SortOrder,
 	}
 	if t.SaleWindowStart != nil {
 		s := t.SaleWindowStart.UTC().Format(time.RFC3339)
@@ -681,8 +688,26 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 						)
 						// Non-fatal: return the session without tiers.
 					} else {
+						// AB-48: effective prices via the ONE resolver
+						// (non-fatal: a window lookup failure shows base).
+						effPrices, effErr := priceresolve.ForTiers(ctx, h.tierQueries, tiers, time.Now().UTC())
+						if effErr != nil {
+							h.logger.Error("public_feed: price window lookup failed",
+								slog.String("session_id", sess.ID.String()),
+								slog.String("error", effErr.Error()),
+							)
+							effPrices = nil
+						}
 						for _, tier := range tiers {
-							sessResp.Tiers = append(sessResp.Tiers, publicFeedTierFromRow(tier))
+							tr := publicFeedTierFromRow(tier)
+							if eff, ok := effPrices[tier.ID]; ok {
+								tr.CurrentPrice = eff.Amount
+								if eff.NextChangeAt != nil {
+									s := eff.NextChangeAt.UTC().Format(time.RFC3339)
+									tr.NextPriceChangeAt = &s
+								}
+							}
+							sessResp.Tiers = append(sessResp.Tiers, tr)
 						}
 					}
 				}

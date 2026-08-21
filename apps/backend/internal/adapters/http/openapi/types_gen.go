@@ -1335,6 +1335,46 @@ type BindSessionSeatingResponse struct {
 	} `json:"session"`
 }
 
+// BulkSessionPricingRequest AB-48 step 5 - apply one price grid to several sessions of an
+// event in one pass (the reference's multi-select "set ->").
+// Categories are matched by tier NAME (tiers are minted per plan
+// category, so the same name is the same category across
+// sessions); non-fixed tiers are skipped.
+type BulkSessionPricingRequest struct {
+	// Prices The grid - one row per category name.
+	Prices []struct {
+		// PriceAmount New base price in minor units.
+		PriceAmount int64 `json:"price_amount"`
+
+		// TierName Category (tier) name, matched case-insensitively.
+		TierName string `json:"tier_name"`
+
+		// Windows Optional schedule to install for the category (replaces any existing schedule).
+		Windows *[]TierPriceWindowInput `json:"windows,omitempty"`
+	} `json:"prices"`
+
+	// SessionIds Sessions of this event to apply the grid to.
+	SessionIds []openapi_types.UUID `json:"session_ids"`
+}
+
+// BulkSessionPricingResponse Per-session outcomes; a partial failure is visible, never silent.
+type BulkSessionPricingResponse struct {
+	// Results One entry per requested session, in request order.
+	Results []struct {
+		// Applied Tier names updated in this session.
+		Applied []string `json:"applied"`
+
+		// Error Per-session failure message; null on success.
+		Error *string `json:"error"`
+
+		// MissingTiers Grid names with no matching tier in this session.
+		MissingTiers []string `json:"missing_tiers"`
+
+		// SessionId The session the row describes.
+		SessionId openapi_types.UUID `json:"session_id"`
+	} `json:"results"`
+}
+
 // CancelTicketRefundSummary Trimmed refunds-row view embedded in the cancel response.
 type CancelTicketRefundSummary struct {
 	// Amount Refund amount in minor units.
@@ -4479,6 +4519,17 @@ type PublishEventRequest struct {
 	FeedTokenId openapi_types.UUID `json:"feed_token_id"`
 }
 
+// PutTierPriceScheduleRequest Replace-all body for PUT .../price-schedule. Overlapping windows
+// are rejected with 422 `tier.price_windows_overlap` (app pre-check
+// and the DB exclusion constraint both enforce it). Mid-sale: future
+// windows are freely editable; changing the currently active window
+// applies to NEW carts only - every reservation locks its quoted
+// price at creation and issued tickets are never repriced.
+type PutTierPriceScheduleRequest struct {
+	// Windows The complete new schedule (an empty array clears it).
+	Windows []TierPriceWindowInput `json:"windows"`
+}
+
 // QuoteResponseEnvelope Top-level response envelope for `GET /v1/checkout/quote`.
 // Wraps a `QuoteResponseItem` under the `quote` key (matches the
 // legacy single-resource envelope convention used elsewhere in
@@ -4509,6 +4560,12 @@ type QuoteResponseItem struct {
 	// top-level `subtotal`; the top-level `unit_price` is the
 	// weighted average and `quantity` the sum across lines.
 	Lines *[]PricingLineItem `json:"lines,omitempty"`
+
+	// NextPriceChangeAt AB-48 scheduled pricing - when the tier's effective price
+	// next changes (the data behind "price rises on <date>").
+	// `null` when no change is known or the tier is not
+	// fixed-price.
+	NextPriceChangeAt *time.Time `json:"next_price_change_at"`
 
 	// PlatformFee Platform service charge computed as
 	// `(subtotal - discount) * PlatformFeeRate / 10_000` using
@@ -5206,11 +5263,18 @@ type SeatingCategoryPrice struct {
 	// CurrencyHint Import-time currency hint from the source SVG. Advisory only.
 	CurrencyHint *string `json:"currency_hint,omitempty"`
 
+	// CurrentPrice AB-48 - the effective (scheduled) price right now; `price_amount`
+	// stays the tier's base. Only present when a tier resolved.
+	CurrentPrice *int64 `json:"current_price,omitempty"`
+
 	// Index 1-based category index from the imported geometry.
 	Index int `json:"index"`
 
 	// Name Human-readable category name (e.g. "First", "VIP").
 	Name string `json:"name"`
+
+	// NextPriceChangeAt AB-48 - when the effective price next changes; null if unknown.
+	NextPriceChangeAt *time.Time `json:"next_price_change_at"`
 
 	// PriceAmount Fixed-tier price amount in the smallest currency unit, when resolved.
 	PriceAmount *int64 `json:"price_amount,omitempty"`
@@ -5880,11 +5944,23 @@ type TicketTierItem struct {
 	// currency cascades here.
 	Currency string `json:"currency"`
 
+	// CurrentPrice AB-48 (public feed only) - the effective scheduled price right
+	// now; `price_amount` stays the tier's base.
+	CurrentPrice *int64 `json:"current_price"`
+
+	// GaUnitCount AB-48 step 3 (admin list endpoint only) - number of GA units in
+	// this category's pool, shown beside its price.
+	GaUnitCount *int64 `json:"ga_unit_count"`
+
 	// Id UUIDv7 primary key of the ticket-tier row.
 	Id openapi_types.UUID `json:"id"`
 
 	// Name Human-readable tier name. Required; trimmed of whitespace.
 	Name string `json:"name"`
+
+	// NextPriceChangeAt AB-48 (public feed only) - when the effective price next
+	// changes ("price rises on <date>"); null if unknown.
+	NextPriceChangeAt *time.Time `json:"next_price_change_at"`
 
 	// PriceAmount Tier price in the smallest currency unit (cents). Forced to 0
 	// for `pricing_mode = free`; must be > 0 for `pricing_mode = fixed`.
@@ -5909,6 +5985,10 @@ type TicketTierItem struct {
 	// `sale_window_end` must be strictly after `sale_window_start`.
 	SaleWindowStart *time.Time `json:"sale_window_start"`
 
+	// SeatCount AB-48 step 3 (admin list endpoint only) - number of physical
+	// seats bound to this category, shown beside its price.
+	SeatCount *int64 `json:"seat_count"`
+
 	// SessionId FK to the owning session. Immutable after creation; the
 	// owner-org check is enforced via the parent session row.
 	SessionId openapi_types.UUID `json:"session_id"`
@@ -5928,6 +6008,65 @@ type TicketTierItemPricingMode string
 type TicketTierListResponse struct {
 	// Tiers Ticket tiers for the session, ordered by sort_order.
 	Tiers []TicketTierItem `json:"tiers"`
+}
+
+// TierPriceSchedule A tier's scheduled-pricing view - the windows plus the resolved
+// "now" price so the admin shows exactly what buyers see.
+type TierPriceSchedule struct {
+	// BasePriceAmount ticket_tiers.price_amount - the fallback outside any window.
+	BasePriceAmount int64 `json:"base_price_amount"`
+
+	// CurrentPrice Effective price right now through the one resolver.
+	CurrentPrice int64 `json:"current_price"`
+
+	// NextPriceChangeAt When the effective price next changes; null if unknown.
+	NextPriceChangeAt *time.Time `json:"next_price_change_at"`
+
+	// TierId Ticket tier id.
+	TierId openapi_types.UUID `json:"tier_id"`
+
+	// Windows Windows ordered by valid_from.
+	Windows []TierPriceWindow `json:"windows"`
+}
+
+// TierPriceScheduleEnvelope Envelope for the price-schedule endpoints.
+type TierPriceScheduleEnvelope struct {
+	// PriceSchedule The tier's schedule.
+	PriceSchedule TierPriceSchedule `json:"price_schedule"`
+}
+
+// TierPriceWindow AB-48 scheduled price window (ticket_tier_prices). Windows of one
+// tier never overlap (GiST exclusion constraint); `valid_to` is
+// exclusive and `null` means open-ended. Moments covered by no
+// window fall back to the tier's base `price_amount` (the
+// documented gap policy).
+type TierPriceWindow struct {
+	// Id Window row id.
+	Id openapi_types.UUID `json:"id"`
+
+	// PriceAmount Price in minor units while the window applies.
+	PriceAmount int64 `json:"price_amount"`
+
+	// TierId Owning ticket tier.
+	TierId openapi_types.UUID `json:"tier_id"`
+
+	// ValidFrom Inclusive start of the window (RFC 3339, UTC).
+	ValidFrom time.Time `json:"valid_from"`
+
+	// ValidTo Exclusive end of the window; null = open-ended.
+	ValidTo *time.Time `json:"valid_to"`
+}
+
+// TierPriceWindowInput One window in a PUT price-schedule / bulk pricing body.
+type TierPriceWindowInput struct {
+	// PriceAmount Price in minor units while the window applies.
+	PriceAmount int64 `json:"price_amount"`
+
+	// ValidFrom Inclusive start (RFC 3339).
+	ValidFrom time.Time `json:"valid_from"`
+
+	// ValidTo Exclusive end; omit/null for open-ended.
+	ValidTo *time.Time `json:"valid_to"`
 }
 
 // TransitionPaymentIntentRequest Request body for `POST /v1/payment-intents/{id}/transition`.
@@ -7398,6 +7537,9 @@ type CreateEventJSONRequestBody = CreateEventRequest
 // CreateSessionJSONRequestBody defines body for CreateSession for application/json ContentType.
 type CreateSessionJSONRequestBody = CreateSessionRequest
 
+// BulkSessionPricingJSONRequestBody defines body for BulkSessionPricing for application/json ContentType.
+type BulkSessionPricingJSONRequestBody = BulkSessionPricingRequest
+
 // UpdateSessionJSONRequestBody defines body for UpdateSession for application/json ContentType.
 type UpdateSessionJSONRequestBody = UpdateSessionRequest
 
@@ -7424,6 +7566,9 @@ type CreateTicketTierJSONRequestBody = CreateTicketTierRequest
 
 // UpdateTicketTierJSONRequestBody defines body for UpdateTicketTier for application/json ContentType.
 type UpdateTicketTierJSONRequestBody = UpdateTicketTierRequest
+
+// PutTierPriceScheduleJSONRequestBody defines body for PutTierPriceSchedule for application/json ContentType.
+type PutTierPriceScheduleJSONRequestBody = PutTierPriceScheduleRequest
 
 // UpdateEventJSONRequestBody defines body for UpdateEvent for application/json ContentType.
 type UpdateEventJSONRequestBody = UpdateEventRequest

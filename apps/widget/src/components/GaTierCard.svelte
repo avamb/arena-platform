@@ -11,6 +11,11 @@
   const { tier, quantity, onQuantityChange }: Props = $props();
 
   const capacity = $derived(tier.capacity ?? GA_MAX_QUANTITY);
+  // AB-48: the effective (scheduled) price is what the buyer pays now.
+  const price = $derived(tier.current_price ?? tier.price_amount);
+  const nextChange = $derived(
+    tier.next_price_change_at ? new Date(tier.next_price_change_at) : null,
+  );
   const canIncrease = $derived(quantity < Math.min(GA_MAX_QUANTITY, capacity));
   const canDecrease = $derived(quantity > 0);
 
@@ -28,10 +33,15 @@
 <div class="ga-card" data-tier-id={tier.id}>
   <div class="ga-card-info">
     <span class="ga-card-name">{tier.name}</span>
-    {#if tier.price_amount > 0 && tier.currency}
-      <span class="ga-card-price">{formatPrice(tier.price_amount, tier.currency)}</span>
+    {#if price > 0 && tier.currency}
+      <span class="ga-card-price">{formatPrice(price, tier.currency)}</span>
     {:else}
       <span class="ga-card-price">Free</span>
+    {/if}
+    {#if nextChange && !Number.isNaN(nextChange.getTime())}
+      <span class="ga-card-price-change" data-testid="ga-price-change">
+        price changes on {nextChange.toLocaleDateString()}
+      </span>
     {/if}
   </div>
   <div class="ga-card-stepper">
