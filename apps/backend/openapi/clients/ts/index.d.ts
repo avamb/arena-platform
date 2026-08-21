@@ -2900,6 +2900,17 @@ export interface paths {
          *     session — when the payment later transitions to `succeeded`
          *     via webhook, tickets are issued for that session.
          *
+         *     AB-41: the client does not choose the provider. When
+         *     `checkout_session_id` is given, the checkout's sales channel
+         *     decides the provider (`provider` may be omitted; a contradicting
+         *     value is rejected with 422 `payment.provider_mismatch`). In every
+         *     case the organization must hold an active, fully configured
+         *     `payment_provider_configs` row for that provider, else 422
+         *     `payment.provider_not_configured` / `payment.provider_inactive` /
+         *     `payment.provider_missing_required_fields` /
+         *     `payment.provider_kyb_required` (a live config needs a
+         *     KYB-verified organization). There is no default provider.
+         *
          *     Requires JWT + the `payment_intent.create` permission.
          */
         post: operations["createPaymentIntent"];
@@ -17389,6 +17400,20 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /**
+             * @description AB-41 KYB gate - `payment_config.kyb_required_for_live`: a
+             *     `mode=live` config may only be active for a KYB-verified
+             *     organization (`organizations.kyb_status = verified`); test-mode
+             *     configs are unrestricted.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Database not wired */
             503: {
                 headers: {
@@ -17586,6 +17611,20 @@ export interface operations {
             };
             /** @description Not found or owned by another org */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description AB-41 KYB gate - `payment_config.kyb_required_for_live`: a
+             *     `mode=live` config may only be active for a KYB-verified
+             *     organization (`organizations.kyb_status = verified`); test-mode
+             *     configs are unrestricted.
+             */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -22839,6 +22878,22 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /**
+             * @description AB-41 - `payment.provider_mismatch` (payment_provider contradicts
+             *     the checkout's sales channel) or the organization holds no usable
+             *     config for that provider (`payment.provider_not_configured`,
+             *     `payment.provider_inactive`,
+             *     `payment.provider_missing_required_fields`,
+             *     `payment.provider_kyb_required`).
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Internal server error (`checkout.complete_failed`). */
             500: {
                 headers: {
@@ -23198,6 +23253,22 @@ export interface operations {
             };
             /** @description Caller lacks the `payment_intent.create` permission. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description AB-41 provider resolution failed - `payment.provider_mismatch`
+             *     (client value contradicts the checkout's sales channel),
+             *     `payment.provider_not_configured`, `payment.provider_inactive`,
+             *     `payment.provider_missing_required_fields`,
+             *     `payment.provider_kyb_required`, or
+             *     `payment_intent.checkout_org_mismatch`.
+             */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

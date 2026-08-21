@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
@@ -149,6 +150,9 @@ func (h *Handler) HandleCreatePaymentConfig(w http.ResponseWriter, r *http.Reque
 	if req.IsActive != nil {
 		isActive = *req.IsActive
 	}
+	if !h.requireKYBForLive(w, r, orgID, req.Mode, isActive) {
+		return
+	}
 
 	row, err := h.paymentConfigQueries.InsertPaymentProviderConfig(
 		ctx, orgID, req.Provider, req.Mode, providerAccountID,
@@ -259,6 +263,15 @@ func (h *Handler) HandleUpdatePaymentConfig(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
+	// AB-41 step 5: activating a LIVE config requires a KYB-verified org.
+	willBeActive := existing.IsActive
+	if req.IsActive != nil {
+		willBeActive = *req.IsActive
+	}
+	if !h.requireKYBForLive(w, r, orgID, existing.Mode, willBeActive) {
+		return
+	}
+
 	mergedSecrets, secretsChanged, err := MergeSecrets(existing.Secrets, req.Secrets)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
@@ -300,4 +313,31 @@ func (h *Handler) HandleUpdatePaymentConfig(w http.ResponseWriter, r *http.Reque
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"payment_config": PaymentConfigFromRow(row),
 	})
+}
+
+// requireKYBForLive enforces the AB-41 KYB decision: organizations.kyb_status
+// gates going LIVE. A mode=live config may only be active when the org is
+// `verified`; test-mode configs are unrestricted. Writes a 422
+// payment_config.kyb_required_for_live and returns false on violation.
+func (h *Handler) requireKYBForLive(w http.ResponseWriter, r *http.Request, orgID uuid.UUID, mode string, active bool) bool {
+	if mode != "live" || !active {
+		return true
+	}
+	org, err := h.paymentConfigQueries.GetOrganizationByID(r.Context(), orgID)
+	if err != nil {
+		h.logger.Error("payment_config: org lookup for KYB gate failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"payment_config.kyb_check_failed", "failed to verify the organization's KYB status", r,
+		))
+		return false
+	}
+	if org.KybStatus != "verified" {
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+			"payment_config.kyb_required_for_live",
+			"a live payment config can only be active for a KYB-verified organization", r,
+			map[string]any{"kyb_status": org.KybStatus, "mode": mode},
+		))
+		return false
+	}
+	return true
 }

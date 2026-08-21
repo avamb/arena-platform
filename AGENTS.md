@@ -70,6 +70,15 @@ entries short and factual.
 - Full `go test ./...` is slow (4+ min); use focused packages plus
   `go build ./...` for type-checking when iterating, but the full suite must be
   green before a wave is pushed.
+- **Never judge the full suite through a pipeline.** `go test ./... 2>&1 | grep -v ok | head`
+  reports `head`'s exit code (0) even when packages FAIL — wave-4 pass 4 was
+  declared green this way while OpenAPI docs tests were red. Run
+  `go test ./... > log 2>&1; echo EXIT:$?` and grep the log afterwards.
+- The hand-written `gen/*.sql.go` wrappers share scan helpers (e.g.
+  `scanTicketRow`): widening a row struct means EVERY query that feeds that
+  scanner must SELECT the new columns — including ones in other files
+  (`superadmin.sql.go`, `refunds.sql.go`). Unit tests cannot catch a column-
+  count mismatch; grep for the scanner's callers.
 - **Windows file locking**: On this Windows host, tests that call
   `LocalStorage.Get` (which opens an `*os.File`) must explicitly `Close()` the
   body before calling `Delete()` — Windows refuses to delete open files. Linux

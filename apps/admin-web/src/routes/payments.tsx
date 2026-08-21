@@ -1485,6 +1485,11 @@ export function mapServerError(err: ApiError): ServerFieldErrors {
     case "payment_config.duplicate":
       out.form = err.message;
       return out;
+    case "payment_config.kyb_required_for_live":
+      // AB-41: going live is gated on KYB verification.
+      out.mode =
+        "A live config can only be active once the organization is KYB-verified. Save it as test, or deactivate it until verification completes.";
+      return out;
     case "payment_config.not_found":
       out.form = err.message;
       return out;

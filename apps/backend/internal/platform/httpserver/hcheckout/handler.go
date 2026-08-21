@@ -329,8 +329,23 @@ func New(
 //   - When secrets are configured but no recognized signature header is found,
 //     returns ErrInvalidWebhookSignature (caller → 401 Unauthorized, no state change).
 func (h *Handler) verifyWebhookSignature(r *http.Request, body []byte) error {
-	hasStripe := h.webhookStripeSecret != ""
-	hasAllPay := h.webhookAllPaySecret != ""
+	// AB-41: per-organization secrets from payment_provider_configs take
+	// precedence over the process-env secrets (which stay as the
+	// platform-level fallback). The org is located from the refund /
+	// payment-intent id carried in the body — a read-only lookup that
+	// mutates nothing; the HMAC is still verified over the raw bytes.
+	stripeSecret := h.webhookStripeSecret
+	allPaySecret := h.webhookAllPaySecret
+	if cfgStripe, cfgAllPay := h.webhookSecretsFromOrgConfig(r.Context(), body); cfgStripe != "" || cfgAllPay != "" {
+		if cfgStripe != "" {
+			stripeSecret = cfgStripe
+		}
+		if cfgAllPay != "" {
+			allPaySecret = cfgAllPay
+		}
+	}
+	hasStripe := stripeSecret != ""
+	hasAllPay := allPaySecret != ""
 
 	if !hasStripe && !hasAllPay {
 		// Dev/mock path — no secrets configured. Config validation prevents
@@ -343,11 +358,11 @@ func (h *Handler) verifyWebhookSignature(r *http.Request, body []byte) error {
 
 	if stripeHeader != "" && hasStripe {
 		return payments.VerifyStripeSignature(
-			stripeHeader, body, h.webhookStripeSecret, payments.DefaultWebhookTolerance,
+			stripeHeader, body, stripeSecret, payments.DefaultWebhookTolerance,
 		)
 	}
 	if allPayHeader != "" && hasAllPay {
-		return payments.VerifyAllPaySignature(allPayHeader, body, h.webhookAllPaySecret)
+		return payments.VerifyAllPaySignature(allPayHeader, body, allPaySecret)
 	}
 
 	// Secrets are configured but no recognized provider signature header found.

@@ -25,6 +25,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -1040,6 +1041,37 @@ func (h *Handler) HandleCompleteCheckout(w http.ResponseWriter, r *http.Request)
 	// PR2-12: complete + promo redemption insert in one transaction when a
 	// promo code was applied (completeCheckoutWithPromoTx falls back to the
 	// plain CompleteCheckoutSession when promoCodeIDForComplete is nil).
+	// AB-41: the channel decides the provider; the org must hold a usable
+	// config for it. A client-supplied provider that contradicts the
+	// channel is rejected rather than recorded.
+	if h.channelQueries != nil && h.orgQueries != nil {
+		if preCS, preErr := h.checkoutQueries.GetCheckoutSessionByID(ctx, id); preErr == nil {
+			channelProvider, chErr := h.channelProviderForCheckout(ctx, preCS)
+			if chErr != nil {
+				h.logger.Error("checkout: complete — channel lookup failed", slog.String("error", chErr.Error()))
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+					"checkout.complete_failed", "failed to resolve the sales channel provider", r,
+				))
+				return
+			}
+			if !strings.EqualFold(req.PaymentProvider, channelProvider) {
+				httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+					ErrCodeProviderMismatch,
+					"payment_provider does not match the checkout session's sales channel", r,
+					map[string]any{"requested": req.PaymentProvider, "channel_provider": channelProvider},
+				))
+				return
+			}
+			if _, cfgErr := ResolveProviderConfig(ctx, h.orgQueries, preCS.OrgID, channelProvider); cfgErr != nil {
+				httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+					cfgErr.Code, cfgErr.Message, r, cfgErr.Details,
+				))
+				return
+			}
+			req.PaymentProvider = strings.ToLower(channelProvider)
+		}
+	}
+
 	piID := req.PaymentIntentID
 	piProvider := req.PaymentProvider
 	cs, err := h.completeCheckoutWithPromoTx(

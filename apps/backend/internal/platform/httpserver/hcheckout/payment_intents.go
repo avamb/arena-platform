@@ -30,6 +30,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -213,7 +214,7 @@ func (h *Handler) HandleCreatePaymentIntent(w http.ResponseWriter, r *http.Reque
 		))
 		return
 	}
-	if req.Provider == "" {
+	if req.Provider == "" && req.CheckoutSessionID == nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"payment_intent.missing_provider", "provider is required", r,
 			map[string]any{"field": "provider"},
@@ -273,8 +274,62 @@ func (h *Handler) HandleCreatePaymentIntent(w http.ResponseWriter, r *http.Reque
 		checkoutSessionID = &parsed
 	}
 
+	// AB-41: the client does not choose the provider. With a checkout
+	// session the sales channel decides WHICH provider; a contradicting
+	// client value is rejected. Either way the org must hold an active,
+	// configured payment_provider_configs row for it — never a silent
+	// fall-through to a default.
+	provider := strings.ToLower(strings.TrimSpace(req.Provider))
+	if checkoutSessionID != nil && h.checkoutQueries != nil {
+		cs, csErr := h.checkoutQueries.GetCheckoutSessionByID(ctx, *checkoutSessionID)
+		if csErr != nil {
+			if errors.Is(csErr, pgx.ErrNoRows) {
+				httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+					"payment_intent.checkout_not_found", "checkout session not found", r,
+				))
+				return
+			}
+			h.logger.Error("payment_intent: checkout lookup failed", slog.String("error", csErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"payment_intent.create_failed", "failed to load checkout session", r,
+			))
+			return
+		}
+		if cs.OrgID != orgID {
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+				"payment_intent.checkout_org_mismatch", "checkout session belongs to another organization", r,
+			))
+			return
+		}
+		channelProvider, chErr := h.channelProviderForCheckout(ctx, cs)
+		if chErr != nil {
+			h.logger.Error("payment_intent: channel lookup failed", slog.String("error", chErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"payment_intent.create_failed", "failed to resolve the sales channel provider", r,
+			))
+			return
+		}
+		if provider != "" && provider != strings.ToLower(channelProvider) {
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+				ErrCodeProviderMismatch,
+				"provider does not match the checkout session's sales channel", r,
+				map[string]any{"requested": provider, "channel_provider": channelProvider},
+			))
+			return
+		}
+		provider = strings.ToLower(channelProvider)
+	}
+	if h.orgQueries != nil {
+		if _, cfgErr := ResolveProviderConfig(ctx, h.orgQueries, orgID, provider); cfgErr != nil {
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+				cfgErr.Code, cfgErr.Message, r, cfgErr.Details,
+			))
+			return
+		}
+	}
+
 	pi, err := h.paymentIntentQueries.InsertPaymentIntent(ctx,
-		checkoutSessionID, orgID, req.Provider, req.ProviderPaymentID,
+		checkoutSessionID, orgID, provider, req.ProviderPaymentID,
 		req.Amount, req.Currency, req.InitialState,
 		req.ScaRedirectURL, req.ClientSecret,
 	)
