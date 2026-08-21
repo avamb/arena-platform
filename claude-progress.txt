@@ -23717,3 +23717,40 @@ MUST either (a) route to a pass-6 AutoForge session with docker + PG
 interactive sub-features that fit a single turn. Continuing to
 reassign this batch to tail-end single-turn contexts will keep
 producing this identical refusal.
+
+## 2026-08-22 (session I) — Batch #431 / #432 re-assigned yet again, same conclusion
+
+Sixth consecutive fresh-context reassignment of the identical batch.
+Diagnosis unchanged from sessions D, E, F, G, H:
+
+- #431 (AB-50 CRITICAL, complexity 3): greenfield MACS integration. The
+  feature description carries an EXPLICIT acceptance criterion —
+  round-trip test against a stub MACS receiver asserting what MACS
+  STORED (its importer silently fabricates missing values, so an
+  incomplete export imports as plausible garbage). It also carries an
+  EXPLICIT prohibition: "Do not mark passing from unit tests alone when
+  the change requires PostgreSQL, browser, or container integration.
+  Never weaken or delete an acceptance test to obtain green." Cannot
+  be honestly discharged in a single tail-end batch turn.
+- #432 (AB-45, complexity 2): three orthogonal multi-part sub-items
+  (migration-0051 metadata wiring end-to-end incl. event_artists,
+  promo tier restriction enforcement in checkout, org branding
+  population across ~10 delivery.Payload fields + organizations
+  .logo_media_id write path).
+- Backlog execution plan (admin_bootstrap_backlog.md line 543) places
+  both as pass-6 AutoForge work following the interactive pass-5 gate.
+- MEMORY.md autoforge-review-protocol calls out this exact antipattern
+  of fabricating a green mark for wave-4 reconstruction work without
+  running the repo gates.
+
+Action this session: cleared stale in_progress on #431 (left by the
+claim_and_get call in this session). #432 not claimed. Both remain
+unclaimed for the dedicated pass-6 AutoForge session. Stats unchanged:
+434/436 passing (99.5%).
+
+Refusal documented six consecutive sessions. The batch orchestrator
+MUST route these to a pass-6 AutoForge session with docker + PG +
+admin browser + MACS stub receiver, OR split each feature into
+interactive sub-features that fit a single turn. Reassigning this
+batch to tail-end single-turn contexts a seventh time will produce
+this identical refusal.
