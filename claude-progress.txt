@@ -23649,3 +23649,36 @@ session with docker + PG + admin browser + MACS stub receiver, or
 (b) split each feature into interactive sub-features that CAN be
 verified in a single turn. Continuing to reassign them to tail-end
 single-turn batches will keep producing this same refusal.
+
+## 2026-08-22 (session G) — Batch #431 / #432 re-assigned yet again, same conclusion
+
+Fourth fresh-context reassignment of the same batch. Diagnosis unchanged
+from sessions D, E, F:
+
+- #431 (AB-50 CRITICAL, complexity 3) is greenfield MACS integration —
+  `grep -r MACS apps/backend` still empty, no `ticket_system` /
+  `system_ticket_id` columns exist. Explicit acceptance criterion in the
+  feature description is a round-trip test against a MACS stub receiver
+  asserting what MACS STORED, and the description explicitly forbids
+  marking passing from unit tests alone when the change requires
+  PostgreSQL/browser/container integration.
+- #432 (AB-45, complexity 2) is three orthogonal multi-part sub-items
+  requiring end-to-end wiring: migration-0051 event metadata +
+  event_artists, promo_codes.applies_to_tier_ids enforcement at
+  checkout, and organization branding across 10 delivery.Payload fields
+  + organizations.logo_media_id write path.
+- Backlog execution plan (admin_bootstrap_backlog.md line 543) places
+  both as pass-6 AutoForge work following the interactive pass-5 gate.
+- The AutoForge review protocol (MEMORY.md) explicitly flags the exact
+  antipattern of an autonomous agent fabricating a green mark for
+  wave-4 reconstruction work without running the repo gates.
+
+Action this session: cleared stale in_progress on #431 (left by the
+claim_and_get call in this session). #432 not claimed. Both remain
+unclaimed for the dedicated pass-6 AutoForge session. Stats unchanged:
+434/436 passing (99.5%).
+
+The refusal is stable and correct — do NOT reroute this same batch to
+another single-turn context. Either open a pass-6 AutoForge session
+with docker + PG + admin browser + MACS stub receiver, or split each
+feature into interactive sub-features that fit a single turn.
