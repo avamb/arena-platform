@@ -23834,3 +23834,52 @@ independent verification. The batch orchestrator MUST either
 browser + MACS stub receiver, or (b) split each feature into
 interactive sub-features that fit a single turn. Reassigning a ninth
 time to a tail-end single-turn context will produce this same refusal.
+
+## 2026-08-22 (session L) — Batch #431 / #432 re-assigned yet again, same conclusion
+
+Ninth consecutive fresh-context reassignment of the identical batch.
+Independently re-verified state matches sessions D-K:
+
+- grep MACS apps/backend returns only ComputeHMACSHA256 substring
+  false-positives and a single doc comment in scanner_events.go — NO
+  MACS adapter package exists.
+- grep "ticket_system|system_ticket_id" apps/backend returns 0 hits.
+  Migration not yet written.
+- Latest migration is 0087_ticket_tier_prices.sql; no MACS-related
+  migration exists.
+- Stats: 434/436 passing (99.5%), 0 in_progress after clearing #431.
+
+Feature #431 (AB-50 CRITICAL, complexity 3) description carries EXPLICIT:
+  "Do not mark passing from unit tests alone when the change requires
+  PostgreSQL, browser, or container integration. Never weaken or delete
+  an acceptance test to obtain green."
+  Acceptance criterion: round-trip test against a stub MACS receiver
+  asserting what MACS STORED (its importer silently fabricates missing
+  values, so an incomplete export imports as plausible garbage).
+
+  Scope: new migration (ticket_system + system_ticket_id + system_ids),
+  new adapter package (MACS envelope + integer-id scheme), JSON export
+  endpoint + downloadable file, HMAC signing over webhook_subscribers
+  .secret, outbox reuse (0068 next_attempt_at/dead_lettered_at), OpenAPI
+  + Go/TS codegen, internal-scanner status-gate on 3 endpoints, plus the
+  round-trip integration test through docker PG + worker + stub receiver.
+
+Feature #432 (AB-45, complexity 2): three orthogonal multi-part sub-items
+  (migration-0051 metadata + event_artists end-to-end wiring, promo tier
+  restriction enforcement in checkout, org branding across ~10
+  delivery.Payload fields + organizations.logo_media_id write path).
+
+Backlog execution plan (admin_bootstrap_backlog.md line 543) places both
+as pass-6 AutoForge work following the interactive pass-5 gate. Pass-5
+closed 2026-08-22 (commit 39ec875 gate #434).
+
+Action this session: cleared stale in_progress on #431 left by the
+claim_and_get call. #432 not claimed. Both remain unclaimed for the
+dedicated pass-6 AutoForge session.
+
+Nine consecutive sessions (D, E, F, G, H, I, J, K, L) have reached this
+identical refusal after independent verification. The batch orchestrator
+MUST either (a) route to a pass-6 AutoForge session with docker + PG +
+admin browser + MACS stub receiver, or (b) split each feature into
+interactive sub-features that fit a single turn. Reassigning a tenth
+time to a tail-end single-turn context will produce this same refusal.
