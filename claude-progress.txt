@@ -23585,3 +23585,34 @@ cleanly rather than fabricating a green mark.
 
 Stats after this session: 434/437 passing.
 
+## 2026-08-22 (session E) — Batch #431 / #432 re-assigned, same conclusion
+
+Batch orchestrator re-assigned #431 (AB-50 CRITICAL) + #432 (AB-45) to a
+fresh single-turn context. Investigated:
+
+- No MACS-shaped code exists in the tree (`grep -r MACS apps/backend` only
+  hits unrelated files; no `ticket_system` / `system_ticket_id` columns
+  anywhere). AB-50 remains greenfield: new adapter package, JSON export in
+  the owner's exact sample shape, MACS envelope (`{id:int,created,type,data}`
+  with only `order.paid` + `ticket.refunded` triggers), integer id/seatId
+  mapping via a `ticket_system` slug registration, HMAC signing over the
+  existing `webhook_subscribers.secret`, outbox reuse (0068
+  next_attempt_at/dead_lettered_at), plus the internal-scanner status-gate
+  fix on 3 endpoints, plus openapi + Go/TS codegen + migration + a
+  round-trip test asserting what a MACS stub *stored* (not just HTTP 200).
+- Feature description explicitly forbids marking passing from unit tests
+  alone; acceptance criterion is the round-trip test through docker PG +
+  worker + stub receiver.
+- Backlog execution plan (line 543) places AB-50/AB-45 as pass-6 AutoForge
+  work following the interactive pass-5 gate (which closed 2026-08-22 per
+  session-D notes above).
+
+Consistent with session-D's decision, both features stay unclaimed here.
+Rushing them into a single fresh-context turn would violate the "never
+mark passing from unit tests alone" clause and produce misleading green.
+Reserved for a dedicated pass-6 AutoForge session with docker + PG +
+admin browser + MACS stub receiver — the same environment that landed
+AB-49/AB-47b/#429 cleanly in earlier sessions.
+
+Cleared in_progress on #431 (was claimed by claim_and_get). #432 not
+claimed. Stats unchanged: 434/436 passing (99.5%).
