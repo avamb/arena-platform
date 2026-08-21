@@ -272,6 +272,11 @@ func TestReportDelivery160_Step9_HandlerRetryWhenPending(t *testing.T) {
 		ReportQueries: stub.Queries, // will be overridden — see note below
 	})
 	_ = h // verify h is non-nil
+	// Exercise the stub so the pending fixture is actually read (govet
+	// unusedwrite flags a write-only struct literal otherwise).
+	if got, _ := stub.GetEventReportByID(context.Background(), reportID); got.State != "pending" {
+		t.Fatalf("stub report state = %q; want pending", got.State)
+	}
 	// We can't easily inject the stub through the production options since
 	// HandlerOptions takes *gen.Queries (concrete type). Instead we verify the
 	// retry behaviour through the handler file content.

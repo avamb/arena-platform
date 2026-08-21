@@ -360,10 +360,10 @@ func (h *Handler) HandleReplaceSessionMedia(w http.ResponseWriter, r *http.Reque
 					"session_media.media_owner_type_mismatch",
 					"poster media must have owner_type='session_poster'", r,
 					map[string]any{
-						"index":         i,
-						"media_id":      mediaID.String(),
-						"actual_owner":  ownerType,
-						"expected":      PosterOwnerType,
+						"index":        i,
+						"media_id":     mediaID.String(),
+						"actual_owner": ownerType,
+						"expected":     PosterOwnerType,
 					},
 				))
 				return

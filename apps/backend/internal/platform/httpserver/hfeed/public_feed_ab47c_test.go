@@ -72,19 +72,19 @@ func TestPublicFeedSession_PosterFallback_AB47c(t *testing.T) {
 
 	buildRow := func(sessionCover *uuid.UUID) gen.SessionRow {
 		return gen.SessionRow{
-			ID:            uuid.New(),
-			EventID:       uuid.New(),
-			VenueID:       uuid.New(),
-			StartAt:       time.Now().Add(24 * time.Hour),
-			EndAt:         time.Now().Add(27 * time.Hour),
-			CapacityTotal: 100,
-			Status:        "published",
-			AdmissionMode: "general_admission",
-			Currency:      "EUR",
+			ID:             uuid.New(),
+			EventID:        uuid.New(),
+			VenueID:        uuid.New(),
+			StartAt:        time.Now().Add(24 * time.Hour),
+			EndAt:          time.Now().Add(27 * time.Hour),
+			CapacityTotal:  100,
+			Status:         "published",
+			AdmissionMode:  "general_admission",
+			Currency:       "EUR",
 			CurrencySource: "override",
-			CreatedAt:     time.Now(),
-			UpdatedAt:     time.Now(),
-			PosterMediaID: sessionCover,
+			CreatedAt:      time.Now(),
+			UpdatedAt:      time.Now(),
+			PosterMediaID:  sessionCover,
 		}
 	}
 

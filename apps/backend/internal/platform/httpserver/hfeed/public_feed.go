@@ -225,10 +225,10 @@ type publicFeedSessionResponse struct {
 // publicFeedMediaItem is the public shape for one row of a session media
 // gallery in the public feed / widget payload (AB-47c).
 type publicFeedMediaItem struct {
-	Kind     string  `json:"kind"`      // "poster" | "video"
+	Kind      string  `json:"kind"`       // "poster" | "video"
 	PosterURL *string `json:"poster_url"` // filled for kind='poster'
-	VideoURL *string `json:"video_url"` // filled for kind='video'
-	Position int     `json:"position"`
+	VideoURL  *string `json:"video_url"`  // filled for kind='video'
+	Position  int     `json:"position"`
 }
 
 // BuildBuyerFields constructs the buyer_fields list from channel flags.

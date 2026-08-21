@@ -72,12 +72,12 @@ type categoryPatchRequest struct {
 
 // categoryPatchResponse is the JSON envelope returned to the caller on 200.
 type categoryPatchResponse struct {
-	SessionID         string           `json:"session_id"`
-	TierID            string           `json:"tier_id"`
-	SeatStatusVersion int64            `json:"seat_status_version"`
-	UpdatedSeatKeys   []string         `json:"updated_seat_keys"`
-	UnknownSeatKeys   []string         `json:"unknown_seat_keys"`
-	Summary           categorySummary  `json:"summary"`
+	SessionID         string          `json:"session_id"`
+	TierID            string          `json:"tier_id"`
+	SeatStatusVersion int64           `json:"seat_status_version"`
+	UpdatedSeatKeys   []string        `json:"updated_seat_keys"`
+	UnknownSeatKeys   []string        `json:"unknown_seat_keys"`
+	Summary           categorySummary `json:"summary"`
 }
 
 // categorySummary rolls up per-outcome counts.
@@ -95,14 +95,14 @@ type categorySummary struct {
 // endpoint. The admin table needs to see the CURRENT tier per seat so an
 // operator can confirm a reassignment landed.
 type AdminSeatRow struct {
-	ID         string  `json:"id"`
-	SeatKey    string  `json:"seat_key"`
-	Sector     string  `json:"sector_name"`
-	Row        string  `json:"row_name"`
-	Seat       string  `json:"seat_number"`
-	Status     string  `json:"status"`
-	TierID     *string `json:"tier_id"`
-	Kind       string  `json:"kind"`
+	ID      string  `json:"id"`
+	SeatKey string  `json:"seat_key"`
+	Sector  string  `json:"sector_name"`
+	Row     string  `json:"row_name"`
+	Seat    string  `json:"seat_number"`
+	Status  string  `json:"status"`
+	TierID  *string `json:"tier_id"`
+	Kind    string  `json:"kind"`
 }
 
 // AdminSeatsResponse is the top-level envelope returned by
@@ -451,12 +451,12 @@ func validateCategoryPatchRequest(
 // partitionSeatKeys walks the caller-supplied seat_keys and splits them
 // into three buckets:
 //   - target:    keys that resolve to a session_seat in available/unavailable
-//                status. These are what BulkSetSessionSeatTier will update.
+//     status. These are what BulkSetSessionSeatTier will update.
 //   - unknown:   keys that do not resolve to any session_seat row (typos,
-//                stale plan versions). Reported per-key in the response
-//                for operator visibility.
+//     stale plan versions). Reported per-key in the response
+//     for operator visibility.
 //   - conflicts: keys that resolve but the seat is currently held or sold.
-//                Their presence triggers a 409 — caller MUST NOT proceed.
+//     Their presence triggers a 409 — caller MUST NOT proceed.
 //
 // Duplicate keys in the input are deduplicated. All output slices are
 // sorted lexicographically for stable diffing.
