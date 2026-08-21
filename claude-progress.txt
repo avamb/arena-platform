@@ -23616,3 +23616,36 @@ AB-49/AB-47b/#429 cleanly in earlier sessions.
 
 Cleared in_progress on #431 (was claimed by claim_and_get). #432 not
 claimed. Stats unchanged: 434/436 passing (99.5%).
+
+## 2026-08-22 (session F) — Batch #431 / #432 re-assigned again, same conclusion
+
+Batch orchestrator re-assigned #431 (AB-50 CRITICAL, complexity 3) + #432
+(AB-45, complexity 2) yet again to a fresh single-turn context. Same
+diagnosis as sessions D and E:
+
+- Feature descriptions explicitly forbid marking passing from unit tests
+  alone when PostgreSQL, browser, or container integration is involved.
+- #431 mandates a round-trip test against a MACS stub receiver asserting
+  what the receiver STORED — not just HTTP 200. Requires docker PG,
+  worker, stub receiver, plus new adapter package, new migration
+  (ticket_system + system_ticket_id + system_ids), integer-id scheme
+  registration, JSON export, MACS envelope, HMAC signing, outbox reuse,
+  OpenAPI + Go/TS codegen, internal-scanner status-gate on 3 endpoints.
+  Greenfield: `grep -r MACS apps/backend` still empty.
+- #432 is three orthogonal multi-part sub-items (migration-0051 metadata
+  wiring end-to-end incl. event_artists, promo tier restriction
+  enforcement in checkout, org branding population across 10 delivery
+  payload fields + organizations.logo_media_id write path).
+- Backlog execution plan places both as pass-6 AutoForge work, not
+  tail-end batch fill.
+
+Cleared stale in_progress on #431 (left over from session E's claim
+attempt). #432 not claimed. Both remain unclaimed for the dedicated
+pass-6 AutoForge session. Stats unchanged: 434/436 passing (99.5%).
+
+Rationale documented three times now (sessions D, E, F). Next
+orchestrator batch should either (a) route these to a pass-6 AutoForge
+session with docker + PG + admin browser + MACS stub receiver, or
+(b) split each feature into interactive sub-features that CAN be
+verified in a single turn. Continuing to reassign them to tail-end
+single-turn batches will keep producing this same refusal.
