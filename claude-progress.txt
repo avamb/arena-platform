@@ -23555,3 +23555,33 @@ category of the selected seats") is now live. Deliverables:
   `go build ./apps/backend/...` clean.
 
 Stats after this batch: 433/436 passing (99.3%).
+
+--------------------------------------------------------------------------------
+2026-08-22 — GATE #434 closed (pass-5 owner confirmation)
+--------------------------------------------------------------------------------
+
+Feature #434 (priority 991, "GATE - interactive pass 5 (AB-49, AB-48, AB-41)")
+marked PASSING. Gate condition — pass 5 landed and CI green — is satisfied by:
+  - f60e4dd  feat(AB-49): ticket cancellation
+  - 6eaf27f  feat(AB-48): category pricing
+  - 559825a  feat(AB-41): checkout reads payment_provider_configs; KYB gates
+  - eeca460  docs(runbook): pass 5 closed - CI 32535405947 green, head 0087
+
+WAVE4_RUNBOOK.md status board row for pass 5 already recorded "CLOSED
+2026-08-22, CI run 32535405947 green (all 9 jobs), migration head 0087."
+Stand redeploy (migrations 85→87) still pending, tracked separately in
+Dokploy notes — orthogonal to the gate.
+
+Dependencies of #434 (namely #432 AB-45 and #431 AB-50 — pass 6 AutoForge)
+are now unblocked. They were assigned to this batch but NOT attempted here:
+both are complexity-2/3 multi-part features (AB-45 wires migration-0051 event
+metadata + event_artists + promo tier restriction + org branding delivery;
+AB-50 is the full MACS external-scanner integration with new integer-id
+scheme, JSON export, webhook envelope, HMAC signing, outbox reuse and a
+round-trip stub-receiver test) that per the runbook require a dedicated
+pass-6 AutoForge session with docker+CI verification, not a tail-end batch
+squeeze. Leaving them unclaimed so the pass-6 session can pick them up
+cleanly rather than fabricating a green mark.
+
+Stats after this session: 434/437 passing.
+
