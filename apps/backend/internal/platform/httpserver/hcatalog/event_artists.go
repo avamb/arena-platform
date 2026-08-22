@@ -72,6 +72,9 @@ func (h *Handler) HandleListEventArtists(w http.ResponseWriter, r *http.Request)
 	if !h.requireOrgMembership(w, r, h.eventQueries, orgID) {
 		return
 	}
+	if !h.requireEventInOrg(w, r, eventID, orgID) {
+		return
+	}
 	_ = orgID // validated via org membership
 
 	artists, err := h.eventQueries.ListEventArtists(ctx, eventID)
@@ -112,6 +115,9 @@ func (h *Handler) HandleCreateEventArtist(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if !h.requireOrgMembership(w, r, h.eventQueries, orgID) {
+		return
+	}
+	if !h.requireEventInOrg(w, r, eventID, orgID) {
 		return
 	}
 
@@ -181,6 +187,9 @@ func (h *Handler) HandleUpdateEventArtist(w http.ResponseWriter, r *http.Request
 	if !h.requireOrgMembership(w, r, h.eventQueries, orgID) {
 		return
 	}
+	if !h.requireEventInOrg(w, r, eventID, orgID) {
+		return
+	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil || len(body) == 0 {
@@ -238,6 +247,9 @@ func (h *Handler) HandleDeleteEventArtist(w http.ResponseWriter, r *http.Request
 	if !h.requireOrgMembership(w, r, h.eventQueries, orgID) {
 		return
 	}
+	if !h.requireEventInOrg(w, r, eventID, orgID) {
+		return
+	}
 
 	deleted, err := h.eventQueries.SoftDeleteEventArtist(ctx, artistID, eventID)
 	if err != nil {
@@ -250,4 +262,18 @@ func (h *Handler) HandleDeleteEventArtist(w http.ResponseWriter, r *http.Request
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"artist": artistFromRow(deleted), "deleted": true})
+}
+
+// requireEventInOrg closes the pass-6 review finding: org membership alone
+// does not prove the event belongs to that org. Cross-org ids read as
+// not-found so existence is not leaked.
+func (h *Handler) requireEventInOrg(w http.ResponseWriter, r *http.Request, eventID, orgID uuid.UUID) bool {
+	ev, err := h.eventQueries.GetEventByID(r.Context(), eventID, "")
+	if err != nil || ev.OrgID != orgID {
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+			"event.not_found", "event not found", r,
+		))
+		return false
+	}
+	return true
 }

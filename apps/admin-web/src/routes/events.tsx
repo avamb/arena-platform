@@ -3090,14 +3090,40 @@ function SessionsTab({
                               Delete
                             </button>
                           ) : null}
-                          <a
-                            href={`/v1/organizations/${event.org_id}/events/${event.id}/sessions/${s.id}/macs-export?download=1`}
-                            download
-                            className="text-sm text-blue-600 hover:underline"
+                          <button
+                            type="button"
+                            style={refreshButtonStyle}
+                            onClick={() => {
+                              // The API needs the Bearer token — a bare <a download>
+                              // would 401. Fetch the JSON and save it client-side.
+                              void authedFetch<unknown>({
+                                method: "GET",
+                                path: `/v1/organizations/${event.org_id}/events/${event.id}/sessions/${s.id}/macs-export`,
+                              })
+                                .then((data) => {
+                                  const blob = new Blob([JSON.stringify(data, null, 2)], {
+                                    type: "application/json",
+                                  });
+                                  const url = URL.createObjectURL(blob);
+                                  const a = document.createElement("a");
+                                  a.href = url;
+                                  a.download = `macs-export-session-${s.id}.json`;
+                                  a.click();
+                                  URL.revokeObjectURL(url);
+                                  setActionOk(`MACS export downloaded for ${formatDateTime(s.start_at)}.`);
+                                })
+                                .catch((err: unknown) => {
+                                  setActionErr(
+                                    err instanceof ApiError
+                                      ? `${err.code}: ${err.message}`
+                                      : "MACS export failed.",
+                                  );
+                                });
+                            }}
                             data-testid={`events-session-macs-export-${s.id}`}
                           >
-                            MACS Export
-                          </a>
+                            MACS export
+                          </button>
                           {!canUpdate && !canDelete ? (
                             <span style={mutedHintStyle}>read-only</span>
                           ) : null}

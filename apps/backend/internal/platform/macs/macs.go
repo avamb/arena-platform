@@ -23,28 +23,26 @@ package macs
 //	3 — BLOCKED (unavailable / manually blocked)
 //	4 — REFUNDED (cancelled or revoked)
 //
-// Design note: a ticket cancelled with refund_mode = 'none' (comp revocation)
-// still reaches MACS as status 4 — the best available label given the four
-// integer states. The real long-term fix (adding a 5th "revoked" state) belongs
-// on the MACS backlog, not here.
+// MACS holderStatus values (from the MACS source, NOT Bil24's NEVER_USE):
+// 0 not used, 1 checked in, 2 checked out, 3 refunded. MACS conflates
+// usage and refund in this one field; the platform keeps them separate
+// and collapses only at this boundary. 1 and 2 are MACS-side facts we
+// never emit.
 const (
-	StatusValid    = 1 // active ticket; MACS admits bearer
-	StatusUsed     = 2 // MACS-side only; we never emit this
-	StatusBlocked  = 3 // unavailable / admin-blocked
-	StatusRefunded = 4 // cancelled or revoked; MACS denies bearer
+	StatusNotUsed    = 0 // valid, not yet scanned — MACS admits the bearer
+	StatusCheckedIn  = 1 // MACS-side only
+	StatusCheckedOut = 2 // MACS-side only
+	StatusRefunded   = 3 // cancelled / revoked / transferred — MACS denies
 )
 
-// TicketStatus returns the MACS integer status for a given platform ticket
-// status string. Unknown states default to StatusRefunded (safe: deny at door).
+// TicketStatus maps a platform ticket status onto the MACS integer.
+// Every non-active (terminal) platform state is a refund at the door;
+// unknown values default to refunded (deny is the safe failure).
 func TicketStatus(platformStatus string) int {
-	switch platformStatus {
-	case "active":
-		return StatusValid
-	case "cancelled":
-		return StatusRefunded
-	default:
-		return StatusRefunded
+	if platformStatus == "active" {
+		return StatusNotUsed
 	}
+	return StatusRefunded
 }
 
 // SystemSlug is the machine-readable slug under which this platform is

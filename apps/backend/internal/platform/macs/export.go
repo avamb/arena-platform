@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -157,12 +158,12 @@ SELECT
     t.cancelled_at,
     t.refund_date,
     t.refund_price,
-    cs.total AS order_total,
-    cs.subtotal AS order_subtotal,
-    cs.discount AS order_discount,
-    cs.currency AS order_currency,
+    COALESCE(cs.total, 0) AS order_total,
+    COALESCE(cs.subtotal, 0) AS order_subtotal,
+    COALESCE(cs.discount, 0) AS order_discount,
+    COALESCE(cs.currency, s.currency) AS order_currency,
     cs.payment_provider,
-    cs.completed_at AS order_completed_at,
+    COALESCE(cs.completed_at, cs.created_at) AS order_completed_at,
     cs.user_id AS order_user_id,
     s.start_at AS session_start_at,
     e.id AS event_id,
@@ -188,17 +189,47 @@ LEFT JOIN i18n_text t_en ON t_en.namespace = 'geo.cities'
     AND t_en.key = ci.slug AND t_en.locale = 'en'
 LEFT JOIN session_seats ss ON ss.session_id = t.session_id
     AND ss.seat_key = t.seat_key AND t.seat_key IS NOT NULL
-LEFT JOIN ticket_credentials tc ON tc.ticket_id = t.id AND tc.cred_type = 'qr'
+LEFT JOIN ticket_credentials tc ON tc.ticket_id = t.id AND tc.type = 'static_qr'
 LEFT JOIN ticket_tiers tt ON tt.id = t.tier_id
 WHERE t.session_id = $1
-  AND t.status IN ('active', 'cancelled')
+  AND t.status IN ('active', 'cancelled', 'revoked')
   AND cs.state = 'completed'
 ORDER BY t.checkout_session_id, t.ordinal
 `
 
+// exportQueryByTicket is exportQuery scoped to ONE ticket (webhook data
+// payloads carry the same Ticket shape as the export — one builder, one
+// contract). A cancelled/revoked ticket is included so ticket.refunded can
+// carry holderStatus 3.
+var exportQueryByTicket = strings.Replace(exportQuery, "WHERE t.session_id = $1", "WHERE t.id = $1", 1)
+
+// QueryAndBuildTicket returns the MACS Ticket for one platform ticket id
+// (plus the owning Order header) — used by the webhook dispatcher so the
+// `data` object satisfies MACS's required Ticket fields (id, seatId,
+// barcode, actionEvent{...}). Returns nil when the ticket is not
+// exportable (unknown id or its order is not completed).
+func QueryAndBuildTicket(ctx context.Context, pool *pgxpool.Pool, ticketID uuid.UUID) (*Ticket, *Order, error) {
+	rows, err := queryRows(ctx, pool, exportQueryByTicket, ticketID)
+	if err != nil {
+		return nil, nil, err
+	}
+	export := buildExport(rows)
+	if len(export) == 0 || len(export[0].TicketList) == 0 {
+		return nil, nil, nil
+	}
+	order := export[0]
+	ticket := order.TicketList[0]
+	return &ticket, &order, nil
+}
+
 // queryExportRows executes the export query and returns raw rows.
 func queryExportRows(ctx context.Context, pool *pgxpool.Pool, sessionID uuid.UUID) ([]exportRow, error) {
-	rows, err := pool.Query(ctx, exportQuery, sessionID)
+	return queryRows(ctx, pool, exportQuery, sessionID)
+}
+
+// queryRows runs one of the export queries with a single uuid parameter.
+func queryRows(ctx context.Context, pool *pgxpool.Pool, query string, id uuid.UUID) ([]exportRow, error) {
+	rows, err := pool.Query(ctx, query, id)
 	if err != nil {
 		return nil, fmt.Errorf("macs export query: %w", err)
 	}
@@ -342,10 +373,10 @@ func buildExport(rows []exportRow) Export {
 		}
 
 		// Determine holder status.
-		holderStatus := 0 // valid
-		if row.ticketStatus == "cancelled" {
-			holderStatus = 3
-		}
+		// MACS holderStatus: 0 not used, 1 checked in, 2 checked out,
+		// 3 refunded. Every terminal platform state (cancelled, revoked,
+		// transferred) collapses to 3 at this boundary only.
+		holderStatus := TicketStatus(row.ticketStatus)
 
 		// Refund fields.
 		var refundDate *string

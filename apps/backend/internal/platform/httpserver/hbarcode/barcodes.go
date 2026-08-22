@@ -495,6 +495,20 @@ func (h *Handler) HandleScan(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	// AB-50d status gate (pass-6 review): the TICKET's state decides
+	// admission, not only the barcode row — a ticket cancelled via a
+	// provider refund keeps an 'active' barcode. Internal/testing endpoint;
+	// the product gate is MACS.
+	if barcode.TicketID != nil {
+		if t, tErr := h.barcodeQueries.GetTicketByID(ctx, *barcode.TicketID); tErr == nil && t.Status != "active" {
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+				"barcode.ticket_not_admissible",
+				"the ticket behind this barcode is "+t.Status+" and cannot be scanned", r,
+				map[string]any{"ticket_status": t.Status},
+			))
+			return
+		}
+	}
 
 	// ── Step 4: Atomically mark as scanned ────────────────────────────────────
 	// MarkBarcodeScanned uses WHERE status='active'; if barcode was already

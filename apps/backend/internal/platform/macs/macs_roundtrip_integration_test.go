@@ -231,11 +231,18 @@ func TestMACS_RoundTrip(t *testing.T) {
 	if paidEnv.ID != sysID {
 		t.Errorf("order.paid envelope id = %d; want %d (system_ticket_id)", paidEnv.ID, sysID)
 	}
-	if paidEnv.Data["ticketId"] != float64(sysID) {
-		t.Errorf("order.paid data.ticketId = %v; want %d", paidEnv.Data["ticketId"], sysID)
+	// data is the MACS Ticket shape: id/seatId/barcode/actionEvent are the
+	// receiver's REQUIRED fields; holderStatus 0 = not used.
+	if paidEnv.Data["id"] != float64(sysID) {
+		t.Errorf("order.paid data.id = %v; want %d", paidEnv.Data["id"], sysID)
 	}
-	if paidEnv.Data["sessionId"] != f.sessionID.String() {
-		t.Errorf("order.paid data.sessionId = %v; want %s", paidEnv.Data["sessionId"], f.sessionID)
+	for _, key := range []string{"seatId", "barcode", "actionEvent", "orderId"} {
+		if _, ok := paidEnv.Data[key]; !ok {
+			t.Errorf("order.paid data.%s missing — MACS would reject the envelope", key)
+		}
+	}
+	if paidEnv.Data["holderStatus"] != float64(0) {
+		t.Errorf("order.paid holderStatus = %v; want 0 (not used)", paidEnv.Data["holderStatus"])
 	}
 
 	// ── Step 2: Cancel the ticket and dispatch ticket.refunded ───────────────
@@ -266,8 +273,11 @@ func TestMACS_RoundTrip(t *testing.T) {
 	if refEnv.ID != sysID {
 		t.Errorf("ticket.refunded envelope id = %d; want %d (system_ticket_id)", refEnv.ID, sysID)
 	}
-	if refEnv.Data["ticketId"] != float64(sysID) {
-		t.Errorf("ticket.refunded data.ticketId = %v; want %d", refEnv.Data["ticketId"], sysID)
+	if refEnv.Data["id"] != float64(sysID) {
+		t.Errorf("ticket.refunded data.id = %v; want %d", refEnv.Data["id"], sysID)
+	}
+	if refEnv.Data["holderStatus"] != float64(3) {
+		t.Errorf("ticket.refunded holderStatus = %v; want 3 (refunded) — the door must deny", refEnv.Data["holderStatus"])
 	}
 
 	t.Logf("MACS round-trip OK: system_ticket_id=%d order.paid+ticket.refunded delivered to stub", sysID)
@@ -346,8 +356,11 @@ func TestMACS_CancelEnqueuesExactlyOne_OutboxEvent(t *testing.T) {
 	if len(refundedEvents) != 1 {
 		t.Fatalf("stub: want 1 ticket.refunded, got %d", len(refundedEvents))
 	}
-	if refundedEvents[0].Data["ticketId"] != float64(sysID) {
-		t.Errorf("ticket.refunded data.ticketId = %v; want %d", refundedEvents[0].Data["ticketId"], sysID)
+	if refundedEvents[0].Data["id"] != float64(sysID) {
+		t.Errorf("ticket.refunded data.id = %v; want %d", refundedEvents[0].Data["id"], sysID)
+	}
+	if refundedEvents[0].Data["holderStatus"] != float64(3) {
+		t.Errorf("ticket.refunded holderStatus = %v; want 3", refundedEvents[0].Data["holderStatus"])
 	}
 
 	t.Logf("AB-50c outbox acceptance OK: 1 v1.ticket.cancelled → 1 MACS ticket.refunded (system_ticket_id=%d)", sysID)

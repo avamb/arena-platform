@@ -454,6 +454,7 @@ func (od *OutboxEventsDispatcher) deliverRow(ctx context.Context, row *OutboxEve
 	)
 
 	ev := Event{
+		ID:            row.ID,
 		AggregateType: row.AggregateType,
 		AggregateID:   row.AggregateID,
 		EventType:     row.EventType,

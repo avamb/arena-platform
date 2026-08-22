@@ -24,6 +24,12 @@ import (
 // Event is the value-object written to the outbox table.  AggregateID must be
 // a valid UUID string — it is stored in the aggregate_id uuid column.
 type Event struct {
+	// ID is the outbox_events row id when the event is being DISPATCHED
+	// (set by OutboxEventsDispatcher); empty when the event is being
+	// written. Dispatchers that need a per-event identity (the MACS
+	// envelope id) use it; the writer ignores it.
+	ID string
+
 	// AggregateType identifies the domain aggregate (e.g. "order", "ticket").
 	AggregateType string
 

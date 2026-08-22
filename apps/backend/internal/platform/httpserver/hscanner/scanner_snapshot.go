@@ -382,6 +382,11 @@ func (h *Handler) HandleScannerValidate(w http.ResponseWriter, r *http.Request) 
 	if barcode.TicketID != nil {
 		s := barcode.TicketID.String()
 		resp.TicketID = &s
+		// AB-50d status gate (pass-6 review): the ticket's state decides.
+		if t, tErr := h.barcodeQueries.GetTicketByID(ctx, *barcode.TicketID); tErr == nil && t.Status != "active" {
+			resp.Valid = false
+			resp.InvalidReason = "ticket_" + t.Status
+		}
 	}
 	switch barcode.Status {
 	case "revoked":

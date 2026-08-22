@@ -56,38 +56,15 @@ type macsEnvelope struct {
 	Data    any    `json:"data"`
 }
 
-// macsOrderPaidData is the data object for order.paid events.
-type macsOrderPaidData struct {
-	TicketID   int64  `json:"ticketId"`
-	SessionID  string `json:"sessionId"`
-	CheckoutID string `json:"checkoutId"`
-}
-
-// macsTicketRefundedData is the data object for ticket.refunded events.
-type macsTicketRefundedData struct {
-	TicketID int64  `json:"ticketId"`
-	Reason   string `json:"reason"`
-}
-
-// buildMACSData constructs the typed data object for the MACS envelope.
-func buildMACSData(macsType string, systemTicketID int64, payload map[string]any) any {
-	switch macsType {
-	case "order.paid":
-		sessionID, _ := payload["session_id"].(string)
-		checkoutID, _ := payload["checkout_session_id"].(string)
-		return macsOrderPaidData{
-			TicketID:   systemTicketID,
-			SessionID:  sessionID,
-			CheckoutID: checkoutID,
-		}
-	case "ticket.refunded":
-		return macsTicketRefundedData{
-			TicketID: systemTicketID,
-			Reason:   "refunded",
-		}
-	default:
-		return map[string]any{"ticketId": systemTicketID}
-	}
+// macsEventData is the `data` object of every envelope: the SAME Ticket
+// shape as the JSON export (MACS's Pydantic Ticket model requires id,
+// seatId, barcode and actionEvent{id,cityName,venueName,actionName,
+// actionLegalOwner,showTime}; a bare {ticketId} is rejected with 422).
+// orderId lets the receiver correlate order.paid events of one order.
+type macsEventData struct {
+	Ticket
+	OrderID int64  `json:"orderId"`
+	Reason  string `json:"reason,omitempty"`
 }
 
 // Dispatcher implements outbox.Dispatcher for MACS webhook delivery.
@@ -129,19 +106,21 @@ func (d *Dispatcher) Dispatch(ctx context.Context, ev outbox.Event) error {
 	}
 
 	ticketIDStr, _ := ev.Payload["ticket_id"].(string)
-	sessionIDStr, _ := ev.Payload["session_id"].(string)
-	if ticketIDStr == "" || sessionIDStr == "" {
+	if ticketIDStr == "" {
 		// Malformed payload — skip; retrying will not help.
 		return nil
 	}
-
 	ticketID, err := uuid.Parse(ticketIDStr)
 	if err != nil {
 		return nil // malformed UUID; skip
 	}
-	sessionID, err := uuid.Parse(sessionIDStr)
+	// session_id travels in v1.ticket.cancelled / ticket.issued payloads but
+	// NOT in v1.ticket.refunded (provider webhook) or v1.ticket.revoked
+	// (complimentary) — resolve it from the ticket so those two refund
+	// sources reach MACS too (pass-6 review finding).
+	sessionID, err := d.resolveSessionID(ctx, ev.Payload, ticketID)
 	if err != nil {
-		return nil // malformed UUID; skip
+		return nil // ticket unknown; nothing to route
 	}
 
 	// Resolve org from session.
@@ -165,12 +144,32 @@ func (d *Dispatcher) Dispatch(ctx context.Context, ev outbox.Event) error {
 		return fmt.Errorf("macs dispatcher: get system_ticket_id for %s: %w", ticketID, err)
 	}
 
-	// Build the MACS envelope.
+	// data = the export Ticket shape (one builder, one contract).
+	ticket, order, err := QueryAndBuildTicket(ctx, d.pool, ticketID)
+	if err != nil {
+		return fmt.Errorf("macs dispatcher: build ticket %s: %w", ticketID, err)
+	}
+	if ticket == nil {
+		// Not exportable (order not completed) — nothing MACS could store.
+		return nil
+	}
+	data := macsEventData{Ticket: *ticket, OrderID: order.ID}
+	if macsType == "ticket.refunded" {
+		// Whatever the platform's terminal state, at the door it is refunded.
+		data.HolderStatus = StatusRefunded
+		if reason, ok := ev.Payload["reason"].(string); ok {
+			data.Reason = reason
+		}
+	}
+
+	// Build the MACS envelope. id must be unique per EVENT (MACS exposes
+	// /_wh/reprocess/{id}); derive it from the outbox row id, never from
+	// the ticket id which repeats across order.paid / ticket.refunded.
 	env := macsEnvelope{
-		ID:      systemTicketID,
-		Created: ev.OccurredAt.UTC().Format("2006-01-02T15:04:05"), // allow:timeformat: MACS envelope requires no-TZ suffix
+		ID:      envelopeID(ev, systemTicketID),
+		Created: ev.OccurredAt.UTC().Format(time.RFC3339),
 		Type:    macsType,
-		Data:    buildMACSData(macsType, systemTicketID, ev.Payload),
+		Data:    data,
 	}
 
 	// Deliver with HMAC signing.
@@ -252,10 +251,41 @@ func (d *Dispatcher) post(ctx context.Context, callbackURL string, signingSecret
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode >= 400 {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		// Contract: success is HTTP 200 (2xx); a redirect is not a delivery.
 		return fmt.Errorf("macs dispatcher: server returned %d for %s", resp.StatusCode, callbackURL)
 	}
 	return nil
+}
+
+// resolveSessionID returns payload.session_id when present, else the
+// ticket's session from the database.
+func (d *Dispatcher) resolveSessionID(ctx context.Context, payload map[string]any, ticketID uuid.UUID) (uuid.UUID, error) {
+	if s, _ := payload["session_id"].(string); s != "" {
+		if id, err := uuid.Parse(s); err == nil {
+			return id, nil
+		}
+	}
+	const q = `SELECT session_id FROM tickets WHERE id = $1`
+	var sessionID uuid.UUID
+	if err := d.pool.QueryRow(ctx, q, ticketID).Scan(&sessionID); err != nil {
+		return uuid.UUID{}, err
+	}
+	return sessionID, nil
+}
+
+// envelopeID derives a per-event integer id from the outbox row id (a
+// UUID) — the low 63 bits of its first 8 bytes — so every envelope is
+// unique and replayable via /_wh/reprocess/{id}. Falls back to the ticket
+// system id when the event carries no id (unit tests).
+func envelopeID(ev outbox.Event, fallback int64) int64 {
+	if ev.ID == "" {
+		return fallback
+	}
+	if id, err := uuid.Parse(ev.ID); err == nil {
+		return eventIntID(id)
+	}
+	return fallback
 }
 
 // Compile-time interface guard.

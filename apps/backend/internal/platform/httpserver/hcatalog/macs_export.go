@@ -30,7 +30,7 @@ func (h *Handler) HandleMACSExport(pool *pgxpool.Pool, w http.ResponseWriter, r 
 	if !ok {
 		return
 	}
-	_, ok = httputil.UUIDPathParam(w, r, "event_id")
+	eventID, ok := httputil.UUIDPathParam(w, r, "event_id")
 	if !ok {
 		return
 	}
@@ -40,6 +40,21 @@ func (h *Handler) HandleMACSExport(pool *pgxpool.Pool, w http.ResponseWriter, r 
 	}
 
 	if !h.requireOrgMembership(w, r, h.sessionQueries, orgID) {
+		return
+	}
+	// Tenant isolation (pass-6 review): the session must belong to the
+	// event and the event to the org — otherwise any member of any org
+	// could export every ticket on the platform by path-id guessing.
+	if _, err := h.sessionQueries.GetSessionByID(r.Context(), sessionID, eventID); err != nil {
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+			"session.not_found", "session not found", r,
+		))
+		return
+	}
+	if orgCtx, err := h.sessionQueries.GetSessionOrgContext(r.Context(), sessionID); err != nil || orgCtx.OrgID != orgID {
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+			"session.not_found", "session not found", r,
+		))
 		return
 	}
 

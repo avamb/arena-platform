@@ -180,6 +180,10 @@ func run() error {
 		Logger:          logger,
 		PollInterval:    cfg.OutboxPollInterval,
 		ShutdownTimeout: cfg.ShutdownTimeout,
+		// AB-50c: MACS contract is "retry over 24 hours". With the default
+		// backoff (2^n min, capped at 1h) 30 attempts span ~24h; the
+		// previous default of 5 dead-lettered after ~31 minutes.
+		MaxAttempts: 30,
 	})
 	if outboxDispErr != nil {
 		return fmt.Errorf("init outbox events dispatcher: %w", outboxDispErr)

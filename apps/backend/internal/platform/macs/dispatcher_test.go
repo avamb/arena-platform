@@ -4,6 +4,9 @@ package macs
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -61,15 +64,30 @@ func TestMACSDispatcher_EnvelopeShape(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Build the envelope directly (bypassing DB) to test the shape.
+	// Build the envelope directly (bypassing DB) to test the shape: the
+	// data object is the export Ticket (MACS's required fields id, seatId,
+	// barcode, actionEvent{...}) — a bare {ticketId} would be rejected by
+	// the receiver's Pydantic model with 422.
+	var capturedSig string
 	env := macsEnvelope{
 		ID:      42,
-		Created: "2026-08-22T10:00:00",
+		Created: "2026-08-22T10:00:00Z",
 		Type:    "order.paid",
-		Data: macsOrderPaidData{
-			TicketID:   42,
-			SessionID:  "aaa-bbb-ccc",
-			CheckoutID: "ddd-eee-fff",
+		Data: macsEventData{
+			Ticket: Ticket{
+				ID:      42,
+				SeatID:  7,
+				Barcode: "2000000000421",
+				ActionEvent: ActionEvent{
+					ID:               99,
+					CityName:         "Prague",
+					VenueName:        "Palac Akropolis",
+					ActionName:       "Gig",
+					ActionLegalOwner: "Org s.r.o.",
+					ShowTime:         "2026-09-01T19:00:00",
+				},
+			},
+			OrderID: 42,
 		},
 	}
 
@@ -77,6 +95,7 @@ func TestMACSDispatcher_EnvelopeShape(t *testing.T) {
 		pool:   nil,
 		client: srv.Client(),
 	}
+	_ = capturedSig
 
 	err := d.post(context.Background(), srv.URL, "test-secret", env)
 	if err != nil {
@@ -98,23 +117,75 @@ func TestMACSDispatcher_EnvelopeShape(t *testing.T) {
 	if got["id"] != float64(42) {
 		t.Errorf("id = %v; want 42", got["id"])
 	}
-	if got["created"] != "2026-08-22T10:00:00" {
-		t.Errorf("created = %q; want %q", got["created"], "2026-08-22T10:00:00")
+	if got["created"] != "2026-08-22T10:00:00Z" {
+		t.Errorf("created = %q; want RFC3339 UTC", got["created"])
 	}
 
-	// Validate data fields.
+	// Validate the MACS-required Ticket fields are present in data.
 	data, ok := got["data"].(map[string]any)
 	if !ok {
 		t.Fatalf("data is not an object: %T", got["data"])
 	}
-	if data["ticketId"] != float64(42) {
-		t.Errorf("data.ticketId = %v; want 42", data["ticketId"])
+	for _, key := range []string{"id", "seatId", "barcode", "actionEvent", "orderId"} {
+		if _, present := data[key]; !present {
+			t.Errorf("data.%s missing — MACS rejects the envelope without it", key)
+		}
 	}
-	if data["sessionId"] != "aaa-bbb-ccc" {
-		t.Errorf("data.sessionId = %q; want %q", data["sessionId"], "aaa-bbb-ccc")
+	ae, ok := data["actionEvent"].(map[string]any)
+	if !ok {
+		t.Fatalf("data.actionEvent is not an object: %T", data["actionEvent"])
 	}
-	if data["checkoutId"] != "ddd-eee-fff" {
-		t.Errorf("data.checkoutId = %q; want %q", data["checkoutId"], "ddd-eee-fff")
+	for _, key := range []string{"id", "cityName", "venueName", "actionName", "actionLegalOwner", "showTime"} {
+		if _, present := ae[key]; !present {
+			t.Errorf("data.actionEvent.%s missing", key)
+		}
+	}
+}
+
+// TestMACSDispatcher_HMACSignature proves the X-MACS-Signature header is an
+// HMAC-SHA256 over the exact body and is absent when no secret is set.
+func TestMACSDispatcher_HMACSignature(t *testing.T) {
+	var body []byte
+	var sig string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ = io.ReadAll(r.Body)
+		sig = r.Header.Get("X-MACS-Signature")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	d := &Dispatcher{client: srv.Client()}
+	env := macsEnvelope{ID: 1, Created: "2026-08-22T10:00:00Z", Type: "ticket.refunded", Data: macsEventData{}}
+
+	if err := d.post(context.Background(), srv.URL, "s3cret", env); err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	mac := hmac.New(sha256.New, []byte("s3cret"))
+	mac.Write(body)
+	want := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+	if sig != want {
+		t.Fatalf("signature = %q, want %q", sig, want)
+	}
+	if err := d.post(context.Background(), srv.URL, "", env); err != nil {
+		t.Fatalf("post unsigned: %v", err)
+	}
+	if sig != "" {
+		t.Fatalf("unsigned post carried a signature %q", sig)
+	}
+}
+
+// TestMACSDispatcher_NonSuccessIsError pins "success is HTTP 200": a 3xx
+// or 5xx answer must surface as an error so the outbox retries.
+func TestMACSDispatcher_NonSuccessIsError(t *testing.T) {
+	for _, code := range []int{302, 422, 500} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(code)
+		}))
+		d := &Dispatcher{client: &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+		err := d.post(context.Background(), srv.URL, "", macsEnvelope{ID: 1, Type: "order.paid", Data: macsEventData{}})
+		srv.Close()
+		if err == nil {
+			t.Fatalf("status %d: post returned nil, want error", code)
+		}
 	}
 }
 

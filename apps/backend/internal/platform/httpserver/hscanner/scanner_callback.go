@@ -261,7 +261,7 @@ func (h *Handler) processScannerScan(ctx context.Context, orgID uuid.UUID, in sc
 		// callback before any scan_event row is inserted. These endpoints are
 		// internal/testing-only; the actual gate at the physical door is MACS.
 		switch resolved.TicketStatus {
-		case "cancelled", "revoked":
+		case "cancelled", "revoked", "transferred":
 			res.Error = "scanner.ticket_not_admissible: ticket is " + resolved.TicketStatus
 			return res
 		}
