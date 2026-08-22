@@ -541,13 +541,7 @@ func (h *Handler) HandleConfirmCheckout(w http.ResponseWriter, r *http.Request) 
 			seatedSubtotal += l.UnitPrice * int64(l.Quantity)
 		}
 
-		var seatedTierIDs []uuid.UUID
-		for _, s := range seats {
-			if s.TierID != nil {
-				seatedTierIDs = append(seatedTierIDs, *s.TierID)
-			}
-		}
-		discount, promoCodeID, ok := h.applyPromoCode(ctx, w, r, req.PromoCode, orgID, checkoutSession.UserID, seatedSubtotal, seatedTierIDs)
+		discount, promoCodeID, ok := h.applyPromoCode(ctx, w, r, req.PromoCode, orgID, checkoutSession.UserID, TierLinesFromPricingLines(lines))
 		if !ok {
 			return
 		}
@@ -621,11 +615,7 @@ func (h *Handler) HandleConfirmCheckout(w http.ResponseWriter, r *http.Request) 
 			}
 		}
 
-		var gaTierIDs []uuid.UUID
-		for _, it := range gaItems {
-			gaTierIDs = append(gaTierIDs, it.TierID)
-		}
-		discount, promoCodeID, ok := h.applyPromoCode(ctx, w, r, req.PromoCode, orgID, checkoutSession.UserID, gaSubtotal, gaTierIDs)
+		discount, promoCodeID, ok := h.applyPromoCode(ctx, w, r, req.PromoCode, orgID, checkoutSession.UserID, TierLinesFromPricingLines(lines))
 		if !ok {
 			return
 		}
@@ -738,7 +728,7 @@ func (h *Handler) HandleConfirmCheckout(w http.ResponseWriter, r *http.Request) 
 
 	// ── Optionally validate promo code ───────────────────────────────────────
 
-	discount, promoCodeID, ok := h.applyPromoCode(ctx, w, r, req.PromoCode, orgID, checkoutSession.UserID, subtotal, []uuid.UUID{tierID})
+	discount, promoCodeID, ok := h.applyPromoCode(ctx, w, r, req.PromoCode, orgID, checkoutSession.UserID, []TierLine{{TierID: tierID.String(), Amount: subtotal}})
 	if !ok {
 		return
 	}
@@ -798,8 +788,7 @@ func (h *Handler) applyPromoCode(
 	promoCode *string,
 	orgID uuid.UUID,
 	userID *uuid.UUID,
-	subtotal int64,
-	tierIDs []uuid.UUID,
+	promoLines []TierLine,
 ) (discount int64, promoCodeID *uuid.UUID, ok bool) {
 	if promoCode == nil || *promoCode == "" || h.promoQueries == nil {
 		return 0, nil, true
@@ -817,23 +806,8 @@ func (h *Handler) applyPromoCode(
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("checkout.promo_lookup_failed", "failed to retrieve promo code", r))
 		return 0, nil, false
 	}
-	// Build lines for tier-aware promo computation.
-	// Each tier gets an equal share of the total subtotal.
-	tierShare := subtotal
-	if len(tierIDs) > 0 {
-		tierShare = subtotal / int64(len(tierIDs))
-		if tierShare == 0 {
-			tierShare = 1
-		}
-	}
-	promoLines := make([]TierLine, 0, max(1, len(tierIDs)))
-	if len(tierIDs) == 0 {
-		promoLines = append(promoLines, TierLine{TierID: "", Amount: subtotal})
-	} else {
-		for _, tid := range tierIDs {
-			promoLines = append(promoLines, TierLine{TierID: tid.String(), Amount: tierShare})
-		}
-	}
+	// Tier-aware promo computation on the REAL per-line amounts (pass-7
+	// review: an equal-share split misstated the eligible subtotal).
 	d, errCode := ValidatePromoForLines(promoRow, promoLines, time.Now().UTC())
 	if errCode != "" {
 		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(errCode, "promo code is not applicable", r))

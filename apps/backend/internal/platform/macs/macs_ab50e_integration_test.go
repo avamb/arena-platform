@@ -43,9 +43,9 @@ import (
 
 // ab50eFixture holds the seeded state for the 3-ticket AB-50e test.
 type ab50eFixture struct {
-	orgID      uuid.UUID
-	sessionID  uuid.UUID
-	ticketIDs  [3]uuid.UUID
+	orgID       uuid.UUID
+	sessionID   uuid.UUID
+	ticketIDs   [3]uuid.UUID
 	checkoutIDs [3]uuid.UUID
 }
 

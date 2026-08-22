@@ -6746,13 +6746,15 @@ type ValidatePromoCodeRequest struct {
 	// rejected with 400 `promo.invalid_org_id`.
 	OrgId openapi_types.UUID `json:"org_id"`
 
-	// TierIds Optional list of ticket-tier UUIDs present in the cart.
-	// When provided and the promo code has `applies_to_tier_ids`
-	// set, the handler enforces tier applicability
-	// (`promo.tier_not_applicable` when no tier matches).
-	// Discount is computed on the full `order_amount` when at
-	// least one tier matches; pass an empty array to bypass tier
-	// restriction (anonymous pre-flight check).
+	// TierIds Ticket-tier UUIDs present in the cart, for tier-restricted
+	// codes. A restricted code is applicable when at least one
+	// supplied tier is whitelisted; the discount is then computed
+	// on `order_amount` exactly once (this pre-flight carries one
+	// amount, not per-line amounts - use GET /v1/checkout/quote or
+	// the checkout confirm for per-line accuracy). An empty list
+	// does NOT bypass a restriction: a restricted code with no
+	// matching tier returns 422 `promo.tier_not_applicable`.
+	// Unrestricted codes ignore this field.
 	TierIds *[]openapi_types.UUID `json:"tier_ids,omitempty"`
 
 	// UserId Optional buyer UUID. When present, the handler enforces

@@ -153,6 +153,17 @@ func ValidatePromoForLines(pc gen.PromoCodeRow, lines []TierLine, now time.Time)
 	return computeDiscount(pc.DiscountType, pc.DiscountValue, eligibleSubtotal), ""
 }
 
+// TierLinesFromPricingLines converts priced checkout lines into the
+// tier-aware promo input — the ONLY way the confirm/recovery paths may
+// feed ValidatePromoForLines (real per-line amounts, never a split).
+func TierLinesFromPricingLines(lines []PricingLineInput) []TierLine {
+	out := make([]TierLine, 0, len(lines))
+	for _, l := range lines {
+		out = append(out, TierLine{TierID: l.TierID, Amount: l.UnitPrice * int64(l.Quantity)})
+	}
+	return out
+}
+
 // validatePromoCode checks whether a promo code is applicable for a given order.
 // Returns (discountAmount, errorCode) where errorCode is empty when the code is valid.
 // The returned errorCode is suitable for use as an API error code (e.g. "promo.expired").
@@ -625,15 +636,31 @@ func (h *Handler) HandleValidatePromoCode(w http.ResponseWriter, r *http.Request
 	}
 
 	// Step 2: validate status, dates, tier applicability, and minimum order amount.
-	lines := make([]TierLine, 0, max(1, len(req.TierIDs)))
-	if len(req.TierIDs) == 0 {
-		lines = append(lines, TierLine{TierID: "", Amount: req.OrderAmount})
-	} else {
+	// The pre-flight endpoint carries ONE order_amount, not per-line
+	// amounts. It is treated as a single line: eligible when the code is
+	// unrestricted or at least one supplied tier is whitelisted; the
+	// discount is computed on order_amount exactly once (pass-7 review:
+	// one line per tier multiplied the eligible subtotal). Callers that
+	// need per-line accuracy use GET /v1/checkout/quote or the confirm.
+	lineTier := ""
+	if len(pc.AppliesToTierIDs) > 0 {
+		allowed := make(map[string]struct{}, len(pc.AppliesToTierIDs))
+		for _, tid := range pc.AppliesToTierIDs {
+			allowed[tid] = struct{}{}
+		}
 		for _, tid := range req.TierIDs {
-			lines = append(lines, TierLine{TierID: tid, Amount: req.OrderAmount})
+			if _, ok := allowed[tid]; ok {
+				lineTier = tid
+				break
+			}
+		}
+		if lineTier == "" {
+			// Nothing supplied matches (including an empty tier_ids list —
+			// a restricted code is never bypassed by omitting the tiers).
+			lineTier = "__no_eligible_tier__"
 		}
 	}
-	discountAmount, errCode := ValidatePromoForLines(pc, lines, time.Now().UTC())
+	discountAmount, errCode := ValidatePromoForLines(pc, []TierLine{{TierID: lineTier, Amount: req.OrderAmount}}, time.Now().UTC())
 	if errCode != "" {
 		var msg string
 		switch errCode {

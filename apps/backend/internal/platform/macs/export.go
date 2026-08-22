@@ -179,7 +179,10 @@ SELECT
     v.name AS venue_name,
     ci.id AS city_id,
     COALESCE(t_en.value, ci.slug) AS city_name,
-    COALESCE(ss.system_seat_id, t.system_ticket_id) AS seat_system_id,
+    -- GA tickets hold no seat row: give them a seatId from a DISJOINT
+    -- range (1e9 + ticket id) so it can never collide with a real seat's
+    -- system_seat_id (pass-7 review). Seat sequences start at 1.
+    COALESCE(ss.system_seat_id, 1000000000 + t.system_ticket_id) AS seat_system_id,
     tc.payload AS barcode_str,
     tt.name AS tier_name,
     tt.price_amount AS tier_price,
@@ -469,7 +472,8 @@ func buildExport(rows []exportRow) Export {
 		}
 		o.TicketList = append(o.TicketList, ticket)
 		o.TicketQuantity++
-		o.Sum += price
+		// Order.sum stays the checkout subtotal (set at header creation);
+		// accumulating per-ticket prices on top doubled it (pass-7 review).
 	}
 
 	// Second pass: fix OrderID on each ticket now that o.ID is final.
