@@ -67,6 +67,22 @@ func (h *Handler) HandleMACSExport(pool *pgxpool.Pool, w http.ResponseWriter, r 
 		return
 	}
 
+	// Validate completeness: MACS will reject the import when cityName is
+	// missing. Return 422 so the operator knows they must link the venue to a
+	// city before exporting (AB-50g).
+	for _, order := range export {
+		for _, ticket := range order.TicketList {
+			if ticket.ActionEvent.CityName == "" {
+				httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+					"macs.export_incomplete",
+					"one or more tickets have no city — link the session venue to a city before exporting",
+					r,
+				))
+				return
+			}
+		}
+	}
+
 	download := r.URL.Query().Get("download") == "1"
 	if download {
 		w.Header().Set("Content-Disposition", fmt.Sprintf(

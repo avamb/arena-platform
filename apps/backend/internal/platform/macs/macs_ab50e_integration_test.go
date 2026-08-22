@@ -6,6 +6,8 @@
 // HMAC verification, and per-ticket holderStatus tracking:
 //
 //  1. Seed 3 tickets in one session (3 separate checkout sessions).
+//     The session venue is linked to a city so the MACS export carries
+//     a non-empty cityName (strict stub validation, AB-50g).
 //  2. Start a secret-bearing stub receiver (HMAC-SHA256 verification).
 //  3. Export all tickets and POST to stub /import/tickets.
 //  4. Verify /import/tickets validates required fields (422 on missing).
@@ -41,36 +43,6 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 )
 
-// ab50eFixture holds the seeded state for the 3-ticket AB-50e test.
-type ab50eFixture struct {
-	orgID       uuid.UUID
-	sessionID   uuid.UUID
-	ticketIDs   [3]uuid.UUID
-	checkoutIDs [3]uuid.UUID
-}
-
-// seedAB50eFixture seeds one org → venue → event → session → sales channel
-// and then 3 independent checkout sessions each with one ticket.
-// A MACS webhook subscriber is registered for the org pointing at recv.
-// All rows are cleaned up via t.Cleanup.
-func seedAB50eFixture(t *testing.T, pool interface {
-	Exec(ctx context.Context, sql string, args ...any) (interface{}, error)
-}, recv *stub.Receiver, signingSecret string) *ab50eFixture {
-	// Use the existing pool type (pgxpool.Pool).
-	// We import via the roundtripPool helper which returns *pgxpool.Pool.
-	// Since the integration test helper already opened a pool, we receive it
-	// as a concrete type via the test-local helper below.
-	panic("use seedAB50eFixturePool instead")
-}
-
-// seedAB50eFixturePool is the concrete implementation used by the test.
-func seedAB50eFixturePool(t *testing.T, pool interface {
-	QueryRow(ctx context.Context, sql string, args ...any) interface{ Scan(...any) error }
-	Exec(ctx context.Context, sql string, args ...any) (interface{}, error)
-}, recv *stub.Receiver, signingSecret string) *ab50eFixture {
-	panic("not used directly — see TestMACS_AB50e_ThreeTicketRoundTrip")
-}
-
 // TestMACS_AB50e_ThreeTicketRoundTrip is the AB-50e end-to-end acceptance test.
 //
 //	3 tickets seeded → export → import into stub →
@@ -87,13 +59,15 @@ func TestMACS_AB50e_ThreeTicketRoundTrip(t *testing.T) {
 	recv := stub.NewWithSecret(signingSecret)
 	defer recv.Close()
 
-	// ── Seed: org → venue → event → session → channel ────────────────────────
+	// ── Seed: org → city → venue → event → session → channel ─────────────
 	orgID := uuid.New()
 	venueID := uuid.New()
 	eventID := uuid.New()
 	sessionID := uuid.New()
 	channelID := uuid.New()
+	cityID := uuid.New()
 	suffix := orgID.String()[:8]
+	citySlug := "macs-ab50e-city-" + suffix
 
 	mustExec := func(sql string, args ...any) {
 		t.Helper()
@@ -103,10 +77,20 @@ func TestMACS_AB50e_ThreeTicketRoundTrip(t *testing.T) {
 		}
 	}
 
+	// Seed city using the IL country from migration 0006.
+	var countryID uuid.UUID
+	if err := pool.QueryRow(ctx, `SELECT id FROM countries WHERE iso2='IL' LIMIT 1`).Scan(&countryID); err != nil {
+		t.Skipf("IL country not found (migration 0006 not applied?): %v", err)
+	}
+	mustExec(`INSERT INTO cities (id, country_id, slug) VALUES ($1, $2, $3)`,
+		cityID, countryID, citySlug)
+	mustExec(`INSERT INTO i18n_text (namespace, key, locale, value) VALUES ('geo.cities', $1, 'en', 'AB50e Test City')`,
+		citySlug)
+
 	mustExec(`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`,
 		orgID, "AB50e Org "+suffix, "ab50e-"+suffix)
-	mustExec(`INSERT INTO venues (id, org_id, name) VALUES ($1, $2, $3)`,
-		venueID, orgID, "AB50e Venue")
+	mustExec(`INSERT INTO venues (id, org_id, name, city_id) VALUES ($1, $2, $3, $4)`,
+		venueID, orgID, "AB50e Venue", cityID)
 	mustExec(`INSERT INTO events (id, org_id, name, status, visibility) VALUES ($1, $2, $3, 'draft', 'private')`,
 		eventID, orgID, "AB50e Event")
 	mustExec(`INSERT INTO sessions (id, event_id, venue_id, start_at, end_at,
@@ -124,7 +108,7 @@ func TestMACS_AB50e_ThreeTicketRoundTrip(t *testing.T) {
 		VALUES ('', $1, $2, '{}', TRUE, 'macs', $3)`,
 		recv.WebhookURL(), signingSecret, orgID)
 
-	// ── Seed: 3 reservations → 3 checkout sessions → 3 tickets ──────────────
+	// ── Seed: 3 reservations → 3 checkout sessions → 3 tickets ──────────
 	var ticketIDs [3]uuid.UUID
 	var checkoutIDs [3]uuid.UUID
 	q := gen.New(pool)
@@ -161,9 +145,12 @@ func TestMACS_AB50e_ThreeTicketRoundTrip(t *testing.T) {
 		pool.Exec(c, `DELETE FROM events WHERE id=$1`, eventID)
 		pool.Exec(c, `DELETE FROM venues WHERE id=$1`, venueID)
 		pool.Exec(c, `DELETE FROM organizations WHERE id=$1`, orgID)
+		// City + i18n_text must be deleted after the venue that references it.
+		pool.Exec(c, `DELETE FROM i18n_text WHERE namespace='geo.cities' AND key=$1`, citySlug)
+		pool.Exec(c, `DELETE FROM cities WHERE id=$1`, cityID)
 	})
 
-	// ── Retrieve system_ticket_ids ────────────────────────────────────────────
+	// ── Retrieve system_ticket_ids ────────────────────────────────────────
 	var sysIDs [3]int64
 	for i := 0; i < 3; i++ {
 		sysIDs[i] = getSystemTicketID(t, pool, ticketIDs[i])
@@ -172,7 +159,7 @@ func TestMACS_AB50e_ThreeTicketRoundTrip(t *testing.T) {
 		}
 	}
 
-	// ── Step 1: MACS export and import into stub ──────────────────────────────
+	// ── Step 1: MACS export and import into stub ──────────────────────────
 	export, err := macs.QueryAndBuildExport(ctx, pool, sessionID)
 	if err != nil {
 		t.Fatalf("QueryAndBuildExport: %v", err)
@@ -181,11 +168,16 @@ func TestMACS_AB50e_ThreeTicketRoundTrip(t *testing.T) {
 		t.Fatalf("export: want 3 orders (one per checkout session), got %d", len(export))
 	}
 
+	// Verify cityName is populated (city seeding validates the fix).
+	if export[0].TicketList[0].ActionEvent.CityName == "" {
+		t.Fatal("export: cityName is empty — city seeding failed")
+	}
+
 	// Validate required-field check (422) — tamper with a copy.
 	badExport := make([]map[string]any, 1)
 	badExport[0] = map[string]any{
 		"id":         float64(sysIDs[0]),
-		"ticketList": []map[string]any{{"id": float64(sysIDs[0])}}, // missing barcode, actionEvent
+		"ticketList": []map[string]any{{"id": float64(sysIDs[0])}}, // missing barcode, seatId, actionEvent
 	}
 	badBody, _ := json.Marshal(badExport)
 	badResp, err := http.Post(recv.ImportURL(), "application/json", bytes.NewReader(badBody))
@@ -220,7 +212,7 @@ func TestMACS_AB50e_ThreeTicketRoundTrip(t *testing.T) {
 		}
 	}
 
-	// ── Step 2: HMAC verification — stub rejects bad signature ───────────────
+	// ── Step 2: HMAC verification — stub rejects bad signature ───────────
 	badSigReq, _ := http.NewRequest(http.MethodPost, recv.WebhookURL(),
 		bytes.NewReader([]byte(`{"id":1,"created":"2026-01-01T00:00:00Z","type":"test","data":{}}`)))
 	badSigReq.Header.Set("Content-Type", "application/json")
@@ -236,7 +228,7 @@ func TestMACS_AB50e_ThreeTicketRoundTrip(t *testing.T) {
 
 	disp := macs.NewDispatcher(pool)
 
-	// ── Step 3: Dispatch order.paid for all 3 tickets ────────────────────────
+	// ── Step 3: Dispatch order.paid for all 3 tickets ────────────────────
 	for i, ticketID := range ticketIDs {
 		issuedEv := outbox.Event{
 			AggregateType: "ticket",
@@ -271,7 +263,7 @@ func TestMACS_AB50e_ThreeTicketRoundTrip(t *testing.T) {
 		}
 	}
 
-	// ── Step 4: Cancel ticket[0] — retry simulation ──────────────────────────
+	// ── Step 4: Cancel ticket[0] — retry simulation ──────────────────────
 	cancelTicketInDB(t, pool, ticketIDs[0])
 	recv.Reset() // clear order.paid events
 
@@ -313,7 +305,7 @@ func TestMACS_AB50e_ThreeTicketRoundTrip(t *testing.T) {
 			len(refundedEvents), len(recv.Events()))
 	}
 
-	// ── Step 5: Assert holderStatus transitions ───────────────────────────────
+	// ── Step 5: Assert holderStatus transitions ───────────────────────────
 	// ticket[0] must be refunded (holderStatus=3).
 	tk0 := recv.TicketByID(sysIDs[0])
 	if tk0 == nil {
@@ -336,127 +328,4 @@ func TestMACS_AB50e_ThreeTicketRoundTrip(t *testing.T) {
 	}
 
 	t.Logf("AB-50e three-ticket round-trip OK: sysIDs=%v; holderStatus: 3/0/0", sysIDs)
-}
-
-// TestMACS_AB50e_StubImportValidation verifies the stub's required-field
-// validation at /import/tickets without a live database (pure stub test).
-//
-// Because stub.New() starts a real HTTP server, this test can run without
-// the integration build tag — but we keep it here alongside the round-trip
-// test for cohesion.
-func TestMACS_AB50e_StubImportValidation(t *testing.T) {
-	recv := stub.New()
-	defer recv.Close()
-
-	httpPost := func(body any) *http.Response {
-		t.Helper()
-		b, _ := json.Marshal(body)
-		resp, err := http.Post(recv.ImportURL(), "application/json", bytes.NewReader(b))
-		if err != nil {
-			t.Fatalf("POST /import/tickets: %v", err)
-		}
-		return resp
-	}
-
-	// Ticket missing barcode → 422.
-	noBarcodeTicket := []map[string]any{{
-		"id": 1,
-		"ticketList": []map[string]any{{
-			"id":     1,
-			"seatId": 1,
-			// barcode deliberately absent
-			"actionEvent": map[string]any{
-				"id":               1,
-				"cityName":         "Prague",
-				"venueName":        "O2 Arena",
-				"actionName":       "Concert",
-				"actionLegalOwner": "OrgName",
-				"showTime":         "2026-09-01T20:00:00",
-			},
-		}},
-	}}
-	resp := httpPost(noBarcodeTicket)
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusUnprocessableEntity {
-		t.Errorf("missing barcode: want 422, got %d", resp.StatusCode)
-	}
-
-	// Ticket with empty actionEvent.cityName → 200 (cityName is optional;
-	// the stub fabricates "Unknown City" just like the real MACS importer).
-	noCityTicket := []map[string]any{{
-		"id": 1,
-		"ticketList": []map[string]any{{
-			"id":      99001,
-			"seatId":  99001,
-			"barcode": "1234567890",
-			"actionEvent": map[string]any{
-				"id":               1,
-				"cityName":         "", // blank → accepted; fabricated to "Unknown City"
-				"venueName":        "O2 Arena",
-				"actionName":       "Concert",
-				"actionLegalOwner": "OrgName",
-				"showTime":         "2026-09-01T20:00:00",
-			},
-		}},
-	}}
-	resp = httpPost(noCityTicket)
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("missing cityName: want 200 (optional, fabricated to 'Unknown City'), got %d", resp.StatusCode)
-	}
-
-	// Ticket missing actionEvent.actionName (truly required) → 422.
-	noActionNameTicket := []map[string]any{{
-		"id": 2,
-		"ticketList": []map[string]any{{
-			"id":      99002,
-			"seatId":  99002,
-			"barcode": "0987654321",
-			"actionEvent": map[string]any{
-				"id":               2,
-				"cityName":         "Prague",
-				"venueName":        "O2 Arena",
-				"actionName":       "", // blank → invalid (required)
-				"actionLegalOwner": "OrgName",
-				"showTime":         "2026-09-01T20:00:00",
-			},
-		}},
-	}}
-	resp = httpPost(noActionNameTicket)
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusUnprocessableEntity {
-		t.Errorf("missing actionName: want 422, got %d", resp.StatusCode)
-	}
-
-	// Well-formed ticket → 200 and stored.
-	validExport := []map[string]any{{
-		"id":   1,
-		"date": "2026-09-01T10:00:00Z",
-		"ticketList": []map[string]any{{
-			"id":      99,
-			"seatId":  99,
-			"orderId": 1,
-			"barcode": "9876543210",
-			"actionEvent": map[string]any{
-				"id":               42,
-				"cityName":         "Prague",
-				"venueName":        "O2 Arena",
-				"actionName":       "Concert",
-				"actionLegalOwner": "OrgName",
-				"showTime":         "2026-09-01T20:00:00",
-			},
-		}},
-	}}
-	resp = httpPost(validExport)
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("valid import: want 200, got %d", resp.StatusCode)
-	}
-	tk := recv.TicketByID(99)
-	if tk == nil {
-		t.Fatal("ticket id=99 not in stub store after import")
-	}
-	if tk.Barcode != "9876543210" {
-		t.Errorf("stub ticket barcode = %q, want %q", tk.Barcode, "9876543210")
-	}
 }

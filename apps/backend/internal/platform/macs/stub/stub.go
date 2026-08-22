@@ -342,7 +342,6 @@ func (r *Receiver) handleImport(w http.ResponseWriter, req *http.Request) {
 				fmt.Fprintf(w, `{"error":%q}`, verr)
 				return
 			}
-			fabricateOptionals(&t)
 			r.tickets[t.ID] = &Ticket{
 				HolderStatus: t.HolderStatus,
 				Barcode:      t.Barcode,
@@ -368,20 +367,20 @@ func (r *Receiver) handleImport(w http.ResponseWriter, req *http.Request) {
 // validateImportTicket returns a non-empty error string when the ticket is
 // missing any MACS-required field.
 //
-// Required per the MACS Pydantic model: id, barcode, actionEvent.id,
-// actionEvent.actionName, actionEvent.actionLegalOwner, actionEvent.showTime.
+// All of the following fields are strictly required per the MACS Pydantic
+// model (AB-50g: restored to strict validation):
 //
-// Optional fields are fabricated by the real MACS importer when absent and
-// are therefore accepted here too:
-//   - actionEvent.cityName  → "Unknown City"
-//   - actionEvent.venueName → "Unknown Venue"
-//   - ticket.orderId        → random generated
+//	id, seatId (> 0), barcode,
+//	actionEvent.id, actionEvent.cityName, actionEvent.venueName,
+//	actionEvent.actionName, actionEvent.actionLegalOwner, actionEvent.showTime.
 func validateImportTicket(orderIdx, ticketIdx int, t importTicket) string {
 	prefix := fmt.Sprintf("order[%d].ticketList[%d]", orderIdx, ticketIdx)
 	if t.ID == 0 {
 		return prefix + ": id is required and must be non-zero"
 	}
-	// seatId == 0 is acceptable for GA seats; MACS permits zero.
+	if t.SeatID <= 0 {
+		return prefix + ": seatId is required and must be greater than zero"
+	}
 	if t.Barcode == "" {
 		return prefix + ": barcode is required"
 	}
@@ -389,8 +388,12 @@ func validateImportTicket(orderIdx, ticketIdx int, t importTicket) string {
 	if ae.ID == 0 {
 		return prefix + ": actionEvent.id is required and must be non-zero"
 	}
-	// cityName and venueName are optional; the real MACS importer fabricates
-	// "Unknown City" / "Unknown Venue" when these are absent.
+	if ae.CityName == "" {
+		return prefix + ": actionEvent.cityName is required"
+	}
+	if ae.VenueName == "" {
+		return prefix + ": actionEvent.venueName is required"
+	}
 	if ae.ActionName == "" {
 		return prefix + ": actionEvent.actionName is required"
 	}
@@ -401,17 +404,6 @@ func validateImportTicket(orderIdx, ticketIdx int, t importTicket) string {
 		return prefix + ": actionEvent.showTime is required"
 	}
 	return ""
-}
-
-// fabricateOptionals sets default values on a ticket when optional fields are
-// absent, mirroring the real MACS importer's fabrication behaviour.
-func fabricateOptionals(t *importTicket) {
-	if t.ActionEvent.CityName == "" {
-		t.ActionEvent.CityName = "Unknown City"
-	}
-	if t.ActionEvent.VenueName == "" {
-		t.ActionEvent.VenueName = "Unknown Venue"
-	}
 }
 
 // verifyHMAC returns true when sig matches "sha256=" + HMAC-SHA256(secret, body).
