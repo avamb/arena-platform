@@ -21,7 +21,10 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
 type artistResponse struct {
@@ -151,6 +154,26 @@ func (h *Handler) HandleCreateEventArtist(w http.ResponseWriter, r *http.Request
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("event_artists.insert_failed", "failed to create artist", r))
 		return
 	}
+	if h.audit != nil {
+		actor, _ := auth.ActorFromContext(r.Context())
+		if auditErr := h.audit.Write(r.Context(), audit.Event{
+			OccurredAt:   time.Now().UTC(),
+			ActorType:    "user",
+			ActorID:      actor.ID,
+			Action:       "v1.event_artist.create",
+			ResourceType: "event_artist",
+			ResourceID:   artist.ID.String(),
+			RequestID:    logging.RequestID(r.Context()),
+			TraceID:      logging.TraceID(r.Context()),
+			IP:           httputil.ExtractClientIP(r),
+			Metadata: map[string]any{
+				"event_id":    eventID.String(),
+				"artist_name": artist.Name,
+			},
+		}); auditErr != nil {
+			h.logger.Warn("event_artists: audit write failed", "error", auditErr.Error())
+		}
+	}
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{"artist": artistFromRow(artist)})
 }
 
@@ -220,6 +243,26 @@ func (h *Handler) HandleUpdateEventArtist(w http.ResponseWriter, r *http.Request
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("event_artists.update_failed", "failed to update artist", r))
 		return
 	}
+	if h.audit != nil {
+		actor, _ := auth.ActorFromContext(r.Context())
+		if auditErr := h.audit.Write(r.Context(), audit.Event{
+			OccurredAt:   time.Now().UTC(),
+			ActorType:    "user",
+			ActorID:      actor.ID,
+			Action:       "v1.event_artist.update",
+			ResourceType: "event_artist",
+			ResourceID:   artist.ID.String(),
+			RequestID:    logging.RequestID(r.Context()),
+			TraceID:      logging.TraceID(r.Context()),
+			IP:           httputil.ExtractClientIP(r),
+			Metadata: map[string]any{
+				"event_id":    eventID.String(),
+				"artist_name": artist.Name,
+			},
+		}); auditErr != nil {
+			h.logger.Warn("event_artists: audit write failed", "error", auditErr.Error())
+		}
+	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"artist": artistFromRow(artist)})
 }
 
@@ -260,6 +303,26 @@ func (h *Handler) HandleDeleteEventArtist(w http.ResponseWriter, r *http.Request
 		h.logger.Error("event_artists: delete failed", "error", err.Error())
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("event_artists.delete_failed", "failed to delete artist", r))
 		return
+	}
+	if h.audit != nil {
+		actor, _ := auth.ActorFromContext(r.Context())
+		if auditErr := h.audit.Write(r.Context(), audit.Event{
+			OccurredAt:   time.Now().UTC(),
+			ActorType:    "user",
+			ActorID:      actor.ID,
+			Action:       "v1.event_artist.delete",
+			ResourceType: "event_artist",
+			ResourceID:   deleted.ID.String(),
+			RequestID:    logging.RequestID(r.Context()),
+			TraceID:      logging.TraceID(r.Context()),
+			IP:           httputil.ExtractClientIP(r),
+			Metadata: map[string]any{
+				"event_id":    eventID.String(),
+				"artist_name": deleted.Name,
+			},
+		}); auditErr != nil {
+			h.logger.Warn("event_artists: audit write failed", "error", auditErr.Error())
+		}
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"artist": artistFromRow(deleted), "deleted": true})
 }

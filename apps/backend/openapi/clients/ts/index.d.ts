@@ -10225,6 +10225,16 @@ export interface components {
              *     the per-customer counter.
              */
             user_id?: string;
+            /**
+             * @description Optional list of ticket-tier UUIDs present in the cart.
+             *     When provided and the promo code has `applies_to_tier_ids`
+             *     set, the handler enforces tier applicability
+             *     (`promo.tier_not_applicable` when no tier matches).
+             *     Discount is computed on the full `order_amount` when at
+             *     least one tier matches; pass an empty array to bypass tier
+             *     restriction (anonymous pre-flight check).
+             */
+            tier_ids?: string[];
         };
         /**
          * @description Successful validation result. `discount_amount` is the absolute

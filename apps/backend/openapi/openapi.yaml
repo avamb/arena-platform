@@ -5939,6 +5939,19 @@ components:
             `max_uses_per_customer` against this user's previous
             redemptions. Anonymous (empty or non-UUID) callers bypass
             the per-customer counter.
+        tier_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: |
+            Optional list of ticket-tier UUIDs present in the cart.
+            When provided and the promo code has `applies_to_tier_ids`
+            set, the handler enforces tier applicability
+            (`promo.tier_not_applicable` when no tier matches).
+            Discount is computed on the full `order_amount` when at
+            least one tier matches; pass an empty array to bypass tier
+            restriction (anonymous pre-flight check).
 
     ValidatePromoCodeResponse:
       type: object

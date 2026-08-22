@@ -103,6 +103,56 @@ func computeDiscount(discountType string, discountValue, orderAmount int64) int6
 	return ticketsdomain.ComputeDiscount(discountType, discountValue, orderAmount)
 }
 
+// TierLine represents one pricing line for tier-aware promo computation.
+// TierID is the UUID string of the ticket tier; Amount is the total for this line (unitPrice * qty).
+// Pass TierID="" for an untiered GA line or a validate-endpoint call without tier context.
+type TierLine struct {
+	TierID string
+	Amount int64
+}
+
+// ValidatePromoForLines checks whether a promo code is applicable to the given order lines
+// and returns the discount limited to the eligible-tier subtotal.
+// When applies_to_tier_ids is empty every line is eligible (unrestricted code).
+// When the promo is restricted but no provided line's tier matches, returns "promo.tier_not_applicable".
+// The min_order_amount check applies to the eligible subtotal only.
+func ValidatePromoForLines(pc gen.PromoCodeRow, lines []TierLine, now time.Time) (int64, string) {
+	if pc.Status != "active" {
+		return 0, "promo.not_active"
+	}
+	if pc.ValidFrom != nil && now.Before(*pc.ValidFrom) {
+		return 0, "promo.not_yet_valid"
+	}
+	if pc.ValidUntil != nil && now.After(*pc.ValidUntil) {
+		return 0, "promo.expired"
+	}
+
+	var eligibleSubtotal int64
+	if len(pc.AppliesToTierIDs) == 0 {
+		for _, l := range lines {
+			eligibleSubtotal += l.Amount
+		}
+	} else {
+		allowed := make(map[string]struct{}, len(pc.AppliesToTierIDs))
+		for _, tid := range pc.AppliesToTierIDs {
+			allowed[tid] = struct{}{}
+		}
+		for _, l := range lines {
+			if _, ok := allowed[l.TierID]; ok {
+				eligibleSubtotal += l.Amount
+			}
+		}
+		if eligibleSubtotal == 0 {
+			return 0, "promo.tier_not_applicable"
+		}
+	}
+
+	if eligibleSubtotal < pc.MinOrderAmount {
+		return 0, "promo.invalid_order_amount"
+	}
+	return computeDiscount(pc.DiscountType, pc.DiscountValue, eligibleSubtotal), ""
+}
+
 // validatePromoCode checks whether a promo code is applicable for a given order.
 // Returns (discountAmount, errorCode) where errorCode is empty when the code is valid.
 // The returned errorCode is suitable for use as an API error code (e.g. "promo.expired").
@@ -500,10 +550,11 @@ func (h *Handler) HandleDeletePromoCode(w http.ResponseWriter, r *http.Request) 
 
 // validatePromoCodeRequest is the request body for POST /v1/checkout/promo-validate.
 type validatePromoCodeRequest struct {
-	OrgID       string `json:"org_id"`
-	Code        string `json:"code"`
-	OrderAmount int64  `json:"order_amount"`
-	UserID      string `json:"user_id"`
+	OrgID       string   `json:"org_id"`
+	Code        string   `json:"code"`
+	OrderAmount int64    `json:"order_amount"`
+	UserID      string   `json:"user_id"`
+	TierIDs     []string `json:"tier_ids"` // optional; UUIDs of tiers in cart
 }
 
 // HandleValidatePromoCode serves POST /v1/checkout/promo-validate.
@@ -573,8 +624,16 @@ func (h *Handler) HandleValidatePromoCode(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Step 2: validate status, dates, and minimum order amount.
-	discountAmount, errCode := validatePromoCode(pc, req.OrderAmount, time.Now().UTC())
+	// Step 2: validate status, dates, tier applicability, and minimum order amount.
+	lines := make([]TierLine, 0, max(1, len(req.TierIDs)))
+	if len(req.TierIDs) == 0 {
+		lines = append(lines, TierLine{TierID: "", Amount: req.OrderAmount})
+	} else {
+		for _, tid := range req.TierIDs {
+			lines = append(lines, TierLine{TierID: tid, Amount: req.OrderAmount})
+		}
+	}
+	discountAmount, errCode := ValidatePromoForLines(pc, lines, time.Now().UTC())
 	if errCode != "" {
 		var msg string
 		switch errCode {
@@ -586,6 +645,8 @@ func (h *Handler) HandleValidatePromoCode(w http.ResponseWriter, r *http.Request
 			msg = "promo code has expired"
 		case "promo.invalid_order_amount":
 			msg = "order amount does not meet the minimum required for this promo code"
+		case "promo.tier_not_applicable":
+			msg = "promo code is not applicable to the selected ticket tiers"
 		default:
 			msg = "promo code cannot be applied to this order"
 		}

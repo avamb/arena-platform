@@ -209,6 +209,9 @@ func (h *Handler) HandleListWebhookSubscribers(w http.ResponseWriter, r *http.Re
 
 	summaries := make([]webhookSubscriberSummary, 0, len(rows))
 	for _, row := range rows {
+		if row.Kind == "macs" {
+			continue // MACS subscribers are managed via /v1/organizations/{org_id}/macs-webhook
+		}
 		summaries = append(summaries, webhookSubscriberSummary{
 			SubscriberID: row.ID.String(),
 			SiteURL:      row.SiteURL,

@@ -17,7 +17,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
 // MACSWebhookResponse is the response body for MACS webhook subscriber endpoints.
@@ -144,6 +147,25 @@ func (h *Handler) HandleUpsertMACSWebhook(pool *pgxpool.Pool, w http.ResponseWri
 		return
 	}
 
+	if h.audit != nil {
+		actor, _ := auth.ActorFromContext(r.Context())
+		_ = h.audit.Write(r.Context(), audit.Event{
+			OccurredAt:   time.Now().UTC(),
+			ActorType:    "user",
+			ActorID:      actor.ID,
+			Action:       "v1.macs_webhook.upsert",
+			ResourceType: "macs_webhook",
+			ResourceID:   row.ID.String(),
+			RequestID:    logging.RequestID(r.Context()),
+			TraceID:      logging.TraceID(r.Context()),
+			IP:           httputil.ExtractClientIP(r),
+			Metadata: map[string]any{
+				"org_id":       orgID.String(),
+				"callback_url": req.CallbackURL,
+			},
+		})
+	}
+
 	// Include signing_secret on PUT response so callers can record it.
 	httputil.WriteJSON(w, http.StatusOK, macsWebhookResponse(row, true))
 }
@@ -180,6 +202,24 @@ func (h *Handler) HandleDeleteMACSWebhook(pool *pgxpool.Pool, w http.ResponseWri
 			"macs.webhook_deactivate_failed", "failed to deactivate MACS webhook subscriber", r,
 		))
 		return
+	}
+
+	if h.audit != nil {
+		actor, _ := auth.ActorFromContext(r.Context())
+		_ = h.audit.Write(r.Context(), audit.Event{
+			OccurredAt:   time.Now().UTC(),
+			ActorType:    "user",
+			ActorID:      actor.ID,
+			Action:       "v1.macs_webhook.delete",
+			ResourceType: "macs_webhook",
+			ResourceID:   row.ID.String(),
+			RequestID:    logging.RequestID(r.Context()),
+			TraceID:      logging.TraceID(r.Context()),
+			IP:           httputil.ExtractClientIP(r),
+			Metadata: map[string]any{
+				"org_id": orgID.String(),
+			},
+		})
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, macsWebhookResponse(row, false))

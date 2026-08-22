@@ -89,3 +89,17 @@ apps/backend/openapi/.openapi.compat30.gen.yaml
 
 # Claude Code local settings (machine-specific permissions)
 .claude/settings.local.json
+
+# Local tooling caches / scratch (AutoForge pass-7 committed 9.6k cache files by mistake)
+.golangci-cache/
+.tmp/
+.claude/worktrees/
+apps/backend/C/
+/*_out.txt
+/*_out2.txt
+/*_exit.txt
+/*_exit2.txt
+/lint_output*.txt
+/types_gen_new.txt
+/verify_poster.mjs
+apps/admin-web/tests/**/*.xml

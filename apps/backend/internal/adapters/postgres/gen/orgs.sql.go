@@ -227,6 +227,25 @@ func (q *Queries) UpdateOrganization(ctx context.Context, id uuid.UUID, name, sl
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PatchOrgLogoMediaID
+// ─────────────────────────────────────────────────────────────────────────────
+
+const patchOrgLogoMediaID = `-- name: PatchOrgLogoMediaID :one
+UPDATE organizations
+SET    logo_media_id = $2,
+       updated_at    = now()
+WHERE  id = $1
+  AND  deleted_at IS NULL
+RETURNING id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, logo_media_id, created_at, updated_at, deleted_at`
+
+// PatchOrgLogoMediaID sets or clears logo_media_id for an active organization.
+// Returns pgx.ErrNoRows when the org does not exist or has been soft-deleted.
+func (q *Queries) PatchOrgLogoMediaID(ctx context.Context, orgID uuid.UUID, logoMediaID *uuid.UUID) (OrganizationRow, error) {
+	row := q.db.QueryRow(ctx, patchOrgLogoMediaID, orgID, logoMediaID)
+	return scanOrganizationRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GetTicketPDFFormatByTicketID
 // ─────────────────────────────────────────────────────────────────────────────
 

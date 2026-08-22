@@ -35,6 +35,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
@@ -70,6 +71,7 @@ type OrgResponse struct {
 	WebsiteURL             *string `json:"website_url"`
 	KybStatus              string  `json:"kyb_status"`
 	KybVerifiedAt          *string `json:"kyb_verified_at"`
+	LogoMediaID            *string `json:"logo_media_id"`
 	CreatedAt              string  `json:"created_at"`
 	UpdatedAt              string  `json:"updated_at"`
 }
@@ -249,9 +251,14 @@ func responseFromOrganization(o gen.OrganizationRow) orgResponse {
 		value := o.KybVerifiedAt.UTC().Format(time.RFC3339)
 		verifiedAt = &value
 	}
+	var logoMediaID *string
+	if o.LogoMediaID != nil {
+		s := o.LogoMediaID.String()
+		logoMediaID = &s
+	}
 	return orgResponse{ID: o.ID.String(), DisplayNumber: o.DisplayNumber, Name: o.Name, Slug: o.Slug, Country: o.Country, DefaultLocale: o.DefaultLocale, ReservationTTLSeconds: o.ReservationTTLSeconds,
 		LegalName: o.LegalName, TaxID: o.TaxID, TaxIDScheme: o.TaxIDScheme, RegistrationNumber: o.RegistrationNumber, LegalAddressLine1: o.LegalAddressLine1, LegalAddressLine2: o.LegalAddressLine2, LegalAddressPostalCode: o.LegalAddressPostalCode, LegalAddressCity: o.LegalAddressCity, LegalAddressCountry: o.LegalAddressCountry, ContactEmail: o.ContactEmail, ContactPhone: o.ContactPhone, WebsiteURL: o.WebsiteURL, KybStatus: o.KybStatus, KybVerifiedAt: verifiedAt,
-		CreatedAt: o.CreatedAt.UTC().Format(time.RFC3339), UpdatedAt: o.UpdatedAt.UTC().Format(time.RFC3339)}
+		LogoMediaID: logoMediaID, CreatedAt: o.CreatedAt.UTC().Format(time.RFC3339), UpdatedAt: o.UpdatedAt.UTC().Format(time.RFC3339)}
 }
 
 // HandleCreateOrg serves POST /v1/organizations.
@@ -475,6 +482,48 @@ func (h *Handler) HandleUpdateOrg(w http.ResponseWriter, r *http.Request) {
 			"org.update_failed", "failed to update organization", r,
 		))
 		return
+	}
+
+	// AB-45b: logo_media_id write path — validate ownership + set or clear.
+	if req.LogoMediaID != nil {
+		if *req.LogoMediaID == "" {
+			// Clear the logo.
+			cleared, clearErr := h.orgQueries.PatchOrgLogoMediaID(ctx, orgID, nil)
+			if clearErr == nil {
+				updated = cleared
+			} else {
+				h.logger.Error("org: clear logo_media_id failed", slog.String("error", clearErr.Error()))
+			}
+		} else {
+			mediaID, parseErr := uuid.Parse(strings.TrimSpace(*req.LogoMediaID))
+			if parseErr != nil {
+				httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+					"org.invalid_logo_media_id", "logo_media_id must be a valid UUID", r,
+					map[string]any{"field": "logo_media_id"},
+				))
+				return
+			}
+			// Verify media object belongs to this org with owner_type='org_logo'.
+			ownerType, mediaOrgID, ownerErr := h.orgQueries.GetMediaObjectOwnerType(ctx, mediaID)
+			if ownerErr != nil || ownerType != "org_logo" || mediaOrgID == nil || *mediaOrgID != orgID {
+				httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+					"org.invalid_logo_media_id",
+					"media object does not exist, is not an org_logo, or belongs to a different organization",
+					r,
+					map[string]any{"field": "logo_media_id"},
+				))
+				return
+			}
+			patched, patchErr := h.orgQueries.PatchOrgLogoMediaID(ctx, orgID, &mediaID)
+			if patchErr != nil {
+				h.logger.Error("org: patch logo_media_id failed", slog.String("error", patchErr.Error()))
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+					"org.logo_update_failed", "failed to update organization logo", r,
+				))
+				return
+			}
+			updated = patched
+		}
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{

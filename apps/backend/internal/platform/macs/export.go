@@ -35,6 +35,7 @@ type Order struct {
 	Discount         int64         `json:"discount"` // discount in minor units
 	Charge           int64         `json:"charge"`   // total charged (sum - discount)
 	TotalSum         int64         `json:"totalSum"`
+	DiscountReason   string        `json:"discountReason,omitempty"`
 	TicketQuantity   int           `json:"ticketQuantity"`
 	User             OrderUser     `json:"user"`
 	Email            string        `json:"email,omitempty"`
@@ -52,22 +53,23 @@ type OrderUser struct {
 
 // Ticket represents one issued ticket in MACS format.
 type Ticket struct {
-	ID            int64         `json:"id"`      // system_ticket_id
-	SeatID        int64         `json:"seatId"`  // system_seat_id or system_ticket_id for GA
-	OrderID       int64         `json:"orderId"` // parent order id
-	SeatLocation  SeatLocation  `json:"seatLocation"`
-	Category      string        `json:"category,omitempty"` // tier name
-	Tariff        string        `json:"tariff,omitempty"`
-	Price         int64         `json:"price"` // unit price in minor units
-	Discount      int64         `json:"discount"`
-	Charge        int64         `json:"charge"`
-	TotalPrice    int64         `json:"totalPrice"`
-	Barcode       string        `json:"barcode"`
-	BarcodeFormat BarcodeFormat `json:"barcodeFormat"`
-	ActionEvent   ActionEvent   `json:"actionEvent"`
-	HolderStatus  int           `json:"holderStatus"` // 0=valid, 3=refunded
-	RefundDate    *string       `json:"refundDate,omitempty"`
-	RefundPrice   *int64        `json:"refundPrice,omitempty"`
+	ID             int64         `json:"id"`      // system_ticket_id
+	SeatID         int64         `json:"seatId"`  // system_seat_id or system_ticket_id for GA
+	OrderID        int64         `json:"orderId"` // parent order id
+	SeatLocation   SeatLocation  `json:"seatLocation"`
+	Category       string        `json:"category,omitempty"` // tier name
+	Tariff         string        `json:"tariff,omitempty"`
+	Price          int64         `json:"price"` // unit price in minor units
+	Discount       int64         `json:"discount"`
+	Charge         int64         `json:"charge"`
+	TotalPrice     int64         `json:"totalPrice"`
+	DiscountReason string        `json:"discountReason,omitempty"`
+	Barcode        string        `json:"barcode"`
+	BarcodeFormat  BarcodeFormat `json:"barcodeFormat"`
+	ActionEvent    ActionEvent   `json:"actionEvent"`
+	HolderStatus   int           `json:"holderStatus"` // 0=valid, 3=refunded
+	RefundDate     *string       `json:"refundDate,omitempty"`
+	RefundPrice    *int64        `json:"refundPrice,omitempty"`
 }
 
 // SeatLocation is the sector/row/number triple.
@@ -139,6 +141,9 @@ type exportRow struct {
 	barcodeStr        *string
 	tierName          *string
 	tierPrice         *int64
+	soldPrice         int64
+	promoCodeName     *string
+	venueTimezone     *string
 }
 
 const exportQuery = `
@@ -177,7 +182,10 @@ SELECT
     COALESCE(ss.system_seat_id, t.system_ticket_id) AS seat_system_id,
     tc.payload AS barcode_str,
     tt.name AS tier_name,
-    tt.price_amount AS tier_price
+    tt.price_amount AS tier_price,
+    COALESCE(gi.unit_price, tt.price_amount, 0) AS sold_price,
+    pc.code AS promo_code_name,
+    v.timezone AS venue_timezone
 FROM tickets t
 JOIN checkout_sessions cs ON cs.id = t.checkout_session_id
 JOIN sessions s ON s.id = t.session_id
@@ -191,6 +199,9 @@ LEFT JOIN session_seats ss ON ss.session_id = t.session_id
     AND ss.seat_key = t.seat_key AND t.seat_key IS NOT NULL
 LEFT JOIN ticket_credentials tc ON tc.ticket_id = t.id AND tc.type = 'static_qr'
 LEFT JOIN ticket_tiers tt ON tt.id = t.tier_id
+LEFT JOIN reservations r ON r.id = cs.reservation_id
+LEFT JOIN reservation_ga_items gi ON gi.reservation_id = r.id AND gi.tier_id = t.tier_id
+LEFT JOIN promo_codes pc ON pc.id = cs.promo_code_id
 WHERE t.session_id = $1
   AND t.status IN ('active', 'cancelled', 'revoked')
   AND cs.state = 'completed'
@@ -274,6 +285,9 @@ func queryRows(ctx context.Context, pool *pgxpool.Pool, query string, id uuid.UU
 			&r.barcodeStr,
 			&r.tierName,
 			&r.tierPrice,
+			&r.soldPrice,
+			&r.promoCodeName,
+			&r.venueTimezone,
 		); err != nil {
 			return nil, fmt.Errorf("macs export scan: %w", err)
 		}
@@ -355,6 +369,16 @@ func buildExport(rows []exportRow) Export {
 		if row.cityID != nil {
 			cityIDStr = row.cityID.String()
 		}
+
+		// Format showTime in the venue's local timezone.
+		loc := time.UTC
+		if row.venueTimezone != nil && *row.venueTimezone != "" {
+			if l, err := time.LoadLocation(*row.venueTimezone); err == nil {
+				loc = l
+			}
+		}
+		showTime := row.sessionStartAt.In(loc).Format("2006-01-02T15:04:05") // allow:timeformat: MACS requires local time without TZ suffix
+
 		ae := ActionEvent{
 			ID:               eventIntID(row.eventID),
 			CityID:           cityIDStr,
@@ -363,7 +387,7 @@ func buildExport(rows []exportRow) Export {
 			VenueName:        row.venueName,
 			ActionName:       row.eventName,
 			ActionLegalOwner: row.orgLegalName,
-			ShowTime:         row.sessionStartAt.Format("2006-01-02T15:04:05"), // allow:timeformat: MACS requires local time without TZ suffix
+			ShowTime:         showTime,
 		}
 
 		// Build barcode.
@@ -407,10 +431,13 @@ func buildExport(rows []exportRow) Export {
 			category = *row.tierName
 		}
 
-		// Price.
-		var price int64
-		if row.tierPrice != nil {
-			price = *row.tierPrice
+		// Sold price: use the actual price paid (from reservation GA item or tier price).
+		price := row.soldPrice
+
+		// Discount reason: from promo code if present.
+		discountReason := ""
+		if row.promoCodeName != nil {
+			discountReason = *row.promoCodeName
 		}
 
 		// Set order.id to the minimum system_ticket_id in this order.
@@ -419,16 +446,18 @@ func buildExport(rows []exportRow) Export {
 		}
 
 		ticket := Ticket{
-			ID:           row.systemTicketID,
-			SeatID:       row.seatSystemID,
-			OrderID:      o.ID, // placeholder; updated after loop
-			SeatLocation: seatLoc,
-			Category:     category,
-			Price:        price,
-			Discount:     0,
-			Charge:       price,
-			TotalPrice:   price,
-			Barcode:      barcode,
+			ID:             row.systemTicketID,
+			SeatID:         row.seatSystemID,
+			OrderID:        o.ID, // placeholder; updated after loop
+			SeatLocation:   seatLoc,
+			Category:       category,
+			Tariff:         category,
+			Price:          price,
+			Discount:       0,
+			Charge:         price,
+			TotalPrice:     price,
+			DiscountReason: discountReason,
+			Barcode:        barcode,
 			BarcodeFormat: BarcodeFormat{
 				ID:   1,
 				Name: "EAN-13",

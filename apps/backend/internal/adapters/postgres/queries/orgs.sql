@@ -59,6 +59,16 @@ WHERE  id = $1
   AND  deleted_at IS NULL
 RETURNING id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, logo_media_id, created_at, updated_at, deleted_at;
 
+-- name: PatchOrgLogoMediaID :one
+-- PatchOrgLogoMediaID sets or clears logo_media_id for an active organization.
+-- Pass NULL to clear the logo; pass a UUID to set it.
+UPDATE organizations
+SET    logo_media_id = $2,
+       updated_at    = now()
+WHERE  id = $1
+  AND  deleted_at IS NULL
+RETURNING id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, logo_media_id, created_at, updated_at, deleted_at;
+
 -- name: GetTicketPDFFormatByTicketID :one
 -- SEAT-C4: resolve the organizer-level ticket_pdf_format flag
 -- ('mobile' | 'a4' | 'both') for the organization that owns a ticket.

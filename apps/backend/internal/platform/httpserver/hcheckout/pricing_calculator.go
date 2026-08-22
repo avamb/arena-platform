@@ -240,7 +240,8 @@ func (h *Handler) HandleQuote(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		d, errCode := validatePromoCode(promoRow, subtotal, time.Now().UTC())
+		lines := []TierLine{{TierID: tierID.String(), Amount: subtotal}}
+		d, errCode := ValidatePromoForLines(promoRow, lines, time.Now().UTC())
 		if errCode != "" {
 			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(errCode, "promo code is not applicable", r))
 			return

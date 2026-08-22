@@ -581,13 +581,33 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 			req.DurationMinutes, req.TeaserURL, req.TrailerURL, req.MetaDescription, req.MetaKeywords,
 		)
 		if metaErr != nil {
-			h.logger.Warn("event: metadata update failed",
+			h.logger.Error("event: metadata update failed",
 				slog.String("event_id", eventID.String()),
 				slog.String("error", metaErr.Error()),
 			)
-			// Non-fatal: the main update already succeeded
-		} else {
-			updated = meta
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"event.metadata_update_failed", "failed to update event metadata", r,
+			))
+			return
+		}
+		updated = meta
+
+		if h.audit != nil {
+			actor, _ := auth.ActorFromContext(r.Context())
+			if auditErr := h.audit.Write(r.Context(), audit.Event{
+				OccurredAt:   time.Now().UTC(),
+				ActorType:    "user",
+				ActorID:      actor.ID,
+				Action:       "v1.event.update_metadata",
+				ResourceType: "event",
+				ResourceID:   eventID.String(),
+				RequestID:    logging.RequestID(r.Context()),
+				TraceID:      logging.TraceID(r.Context()),
+				IP:           httputil.ExtractClientIP(r),
+				Metadata:     map[string]any{"org_id": orgID.String()},
+			}); auditErr != nil {
+				h.logger.Warn("event: audit write failed", "error", auditErr.Error())
+			}
 		}
 	}
 

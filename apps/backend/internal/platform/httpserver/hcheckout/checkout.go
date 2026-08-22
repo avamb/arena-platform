@@ -817,36 +817,27 @@ func (h *Handler) applyPromoCode(
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("checkout.promo_lookup_failed", "failed to retrieve promo code", r))
 		return 0, nil, false
 	}
-	d, errCode := validatePromoCode(promoRow, subtotal, time.Now().UTC())
+	// Build lines for tier-aware promo computation.
+	// Each tier gets an equal share of the total subtotal.
+	tierShare := subtotal
+	if len(tierIDs) > 0 {
+		tierShare = subtotal / int64(len(tierIDs))
+		if tierShare == 0 {
+			tierShare = 1
+		}
+	}
+	promoLines := make([]TierLine, 0, max(1, len(tierIDs)))
+	if len(tierIDs) == 0 {
+		promoLines = append(promoLines, TierLine{TierID: "", Amount: subtotal})
+	} else {
+		for _, tid := range tierIDs {
+			promoLines = append(promoLines, TierLine{TierID: tid.String(), Amount: tierShare})
+		}
+	}
+	d, errCode := ValidatePromoForLines(promoRow, promoLines, time.Now().UTC())
 	if errCode != "" {
 		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(errCode, "promo code is not applicable", r))
 		return 0, nil, false
-	}
-
-	// ── AB-45: Enforce applies_to_tier_ids restriction ────────────────────────
-	// When the promo code is restricted to specific tiers, at least one item in
-	// the order must use one of those tiers. An empty AppliesToTierIDs means
-	// "applies to all tiers" (unrestricted).
-	if len(promoRow.AppliesToTierIDs) > 0 {
-		allowed := make(map[string]struct{}, len(promoRow.AppliesToTierIDs))
-		for _, tid := range promoRow.AppliesToTierIDs {
-			allowed[tid] = struct{}{}
-		}
-		var tierMatch bool
-		for _, tid := range tierIDs {
-			if _, ok := allowed[tid.String()]; ok {
-				tierMatch = true
-				break
-			}
-		}
-		if !tierMatch {
-			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
-				"promo.tier_not_applicable",
-				"promo code is not applicable to the selected ticket tiers",
-				r,
-			))
-			return 0, nil, false
-		}
 	}
 
 	// ── PR2-12: Soft check — total redemption limit ───────────────────────────

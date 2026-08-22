@@ -23681,3 +23681,90 @@ coverage. No lint issues were detected by the static analysis test package.
 
 Pushing 5 commits (4 from pass-6 agents + 1 integration fix) to origin/master.
 
+
+## 2026-08-22 - AB-50e (#441), AB-50f (#442) PASSING - 443/443 (100%)
+
+Both assigned features implemented, verified, and marked passing. Commit: fe15336
+
+### AB-50e (#441) - MACS stub receiver with importer fidelity + true round-trip test
+
+Fixed the stub's `validateImportTicket` to treat cityName/venueName as optional
+(mirroring the real MACS importer which fabricates "Unknown City"/"Unknown Venue").
+This fixed the integration test `TestMACS_AB50e_ThreeTicketRoundTrip` which was
+failing because the test venue has no city configured.
+
+- Stub: cityName/venueName optional, fabricated defaults applied in `fabricateOptionals()`
+- Updated `TestMACS_AB50e_StubImportValidation` to check optional field behavior
+- Added new validation case: actionEvent.actionName (truly required) → 422
+- Three-ticket round-trip: HMAC signing/verification, import, order.paid x3, 
+  cancel-with-retry, assert holderStatus 3/0/0
+
+Per-endpoint regression tests for the three INTERNAL scan endpoints already existed
+(added by AB-50d session, were untracked in git):
+- `hbarcode/scan_ticket_status_test.go` - POST /v1/scan rejects cancelled/revoked/transferred
+- `hscanner/scanner_validate_status_test.go` - POST /v1/scanner/validate gates
+- `hscanner/scanner_callback_status_test.go` - POST /v1/scanner/scan-events gates
+
+OpenAPI: all three endpoints already marked **INTERNAL / TESTING-ONLY** (done in AB-50d).
+
+### AB-50f (#442) - MACS export fidelity
+
+1. **Sold price**: Export SQL now JOINs `reservations r` and `reservation_ga_items gi`
+   to get `gi.unit_price` as the sold price, falling back to `tt.price_amount` then 0
+   via `COALESCE(gi.unit_price, tt.price_amount, 0)`. Fixes early-bird misreporting.
+
+2. **discountReason**: Export SQL JOINs `promo_codes pc ON pc.id = cs.promo_code_id`.
+   `Ticket.discountReason` is set to `pc.code` when a promo was applied.
+   `DiscountReason` added to both `Order` and `Ticket` structs.
+
+3. **Venue-local showTime**: Export SQL adds `v.timezone AS venue_timezone`. 
+   `buildExport` uses `time.LoadLocation(*row.venueTimezone)` to format showTime 
+   in the venue's local timezone, not server timezone.
+
+4. **Gen querier in dispatcher**: Replaced raw SQL `getMACSSubscriber` method with
+   `gen.New(d.pool).GetMACSSubscriberByOrg(ctx, orgID)`.
+
+5. **Listing separation**: `HandleListWebhookSubscribers` now skips rows where 
+   `row.Kind == "macs"` — MACS subscribers managed separately via their own endpoint.
+
+6. **Audit logging**: `HandleUpsertMACSWebhook` and `HandleDeleteMACSWebhook` now
+   emit `audit.Event` with actions `v1.macs_webhook.upsert` / `v1.macs_webhook.delete`.
+
+7. **Export unit tests**: New `export_unit_test.go` (package `macs`) with 9 white-box
+   unit tests for `buildExport`: empty, single active ticket, cancelled, order ID min,
+   two orders, promo code, venue timezone, sold price, barcode from credential.
+
+Suites green: go test ./apps/backend/... EXIT:0 (57 packages ok), integration tests pass,
+admin-web type-check clean.
+
+Stats: 443/443 passing (100%). All features complete.
+
+## 2026-08-22 - INTEGRATION (pass-7, wave-4 final close)
+
+Run after pass-7 AutoForge wave (AB-50e #441, AB-50f #442).
+
+| Check | Result |
+|-------|--------|
+| `go build ./apps/backend/...` | GREEN |
+| `go test ./apps/backend/...` (57 packages, unit) | GREEN |
+| `npm run type-check` (admin-web) | GREEN |
+| `npm run type-check` (widget) | GREEN |
+| `npm run test --run` (admin-web Vitest, 1103 tests) | GREEN |
+| Migration head pin (0089) | GREEN |
+| golangci-lint `./apps/backend/...` | GREEN (0 issues) after fixes |
+| Codegen drift | DRIFT fixed in commit 56452a6 |
+
+Codegen drift (commit 56452a6): AB-48 added `tier_ids` to
+`ValidatePromoCodeRequest` in openapi.yaml but did not run codegen.
+Regenerated types_gen.go (+9) and TS client index.d.ts (+10).
+
+Lint fixes (commit cb0a4b5): 4 issues in AB-50e/50f files:
+- gofmt on scan_ticket_status_test.go, scanner_validate_status_test.go, stub.go
+- govet: reflect.Ptr → reflect.Pointer (deprecated)
+- revive: StubTicket → Ticket (stutter)
+
+Lint cache note: use `GOLANGCI_LINT_CACHE=/tmp/golangci-cache` (absolute
+path required; relative path returns "not an absolute path" on this host).
+
+Push: 3 commits (1 agent wave + 2 integration fixes) to origin/master.
+443/443 (100%). Wave 4 fully closed.

@@ -6746,6 +6746,15 @@ type ValidatePromoCodeRequest struct {
 	// rejected with 400 `promo.invalid_org_id`.
 	OrgId openapi_types.UUID `json:"org_id"`
 
+	// TierIds Optional list of ticket-tier UUIDs present in the cart.
+	// When provided and the promo code has `applies_to_tier_ids`
+	// set, the handler enforces tier applicability
+	// (`promo.tier_not_applicable` when no tier matches).
+	// Discount is computed on the full `order_amount` when at
+	// least one tier matches; pass an empty array to bypass tier
+	// restriction (anonymous pre-flight check).
+	TierIds *[]openapi_types.UUID `json:"tier_ids,omitempty"`
+
 	// UserId Optional buyer UUID. When present, the handler enforces
 	// `max_uses_per_customer` against this user's previous
 	// redemptions. Anonymous (empty or non-UUID) callers bypass

@@ -668,11 +668,11 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		// Validate the promo against the FULL subtotal (seats + GA) now that
 		// every line is priced. A rejection rolls back the holds via the
 		// deferred tx.Rollback.
-		var subtotal int64
+		promoLines := make([]hcheckout.TierLine, 0, len(lines))
 		for _, l := range lines {
-			subtotal += l.UnitPrice * int64(l.Quantity)
+			promoLines = append(promoLines, hcheckout.TierLine{TierID: l.TierID, Amount: l.UnitPrice * int64(l.Quantity)})
 		}
-		discount, promoCodeID, promoErrCode := h.applyPromoDiscount(promoRow, subtotal)
+		discount, promoCodeID, promoErrCode := h.applyPromoDiscount(promoRow, promoLines)
 		if promoErrCode != "" {
 			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
 				promoErrCode, "promo code is not applicable", r,
@@ -715,11 +715,11 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	}
 
 	// Validate the promo against the platform-computed GA subtotal.
-	var gaSubtotal int64
+	gaPromoLines := make([]hcheckout.TierLine, 0, len(gaLines))
 	for _, l := range gaLines {
-		gaSubtotal += l.UnitPrice * int64(l.Quantity)
+		gaPromoLines = append(gaPromoLines, hcheckout.TierLine{TierID: l.TierID, Amount: l.UnitPrice * int64(l.Quantity)})
 	}
-	discount, promoCodeID, promoErrCode := h.applyPromoDiscount(promoRow, gaSubtotal)
+	discount, promoCodeID, promoErrCode := h.applyPromoDiscount(promoRow, gaPromoLines)
 	if promoErrCode != "" {
 		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
 			promoErrCode, "promo code is not applicable", r,
@@ -963,13 +963,13 @@ func (h *Handler) writePricingError(w http.ResponseWriter, r *http.Request, code
 }
 
 // applyPromoDiscount validates the pre-fetched promo row against the
-// platform-computed subtotal. Returns (discount, promoCodeID, errCode);
+// platform-computed order lines. Returns (discount, promoCodeID, errCode);
 // errCode is "" when no promo was supplied or the promo is applicable.
-func (h *Handler) applyPromoDiscount(promoRow *gen.PromoCodeRow, subtotal int64) (int64, *uuid.UUID, string) {
+func (h *Handler) applyPromoDiscount(promoRow *gen.PromoCodeRow, lines []hcheckout.TierLine) (int64, *uuid.UUID, string) {
 	if promoRow == nil {
 		return 0, nil, ""
 	}
-	d, errCode := h.validatePromo(*promoRow, subtotal, time.Now().UTC())
+	d, errCode := hcheckout.ValidatePromoForLines(*promoRow, lines, time.Now().UTC())
 	if errCode != "" {
 		return 0, nil, errCode
 	}

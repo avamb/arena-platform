@@ -23,6 +23,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 )
 
@@ -195,18 +196,15 @@ type macsSubscriberRow struct {
 }
 
 func (d *Dispatcher) getMACSSubscriber(ctx context.Context, orgID uuid.UUID) (macsSubscriberRow, error) {
-	const q = `
-		SELECT callback_url, signing_secret
-		FROM   webhook_subscribers
-		WHERE  org_id = $1
-		  AND  kind   = 'macs'
-		  AND  active = TRUE`
-	var sub macsSubscriberRow
-	err := d.pool.QueryRow(ctx, q, orgID).Scan(&sub.CallbackURL, &sub.SigningSecret)
+	q := gen.New(d.pool)
+	row, err := q.GetMACSSubscriberByOrg(ctx, orgID)
 	if err != nil {
 		return macsSubscriberRow{}, fmt.Errorf("macs dispatcher: get subscriber for org %s: %w", orgID, err)
 	}
-	return sub, nil
+	return macsSubscriberRow{
+		CallbackURL:   row.CallbackURL,
+		SigningSecret: row.SigningSecret,
+	}, nil
 }
 
 // getSystemTicketID fetches the MACS stable integer id for a ticket.

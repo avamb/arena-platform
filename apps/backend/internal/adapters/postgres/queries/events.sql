@@ -221,17 +221,17 @@ ON CONFLICT (namespace, key, locale) DO UPDATE SET value = EXCLUDED.value;
 
 -- name: UpdateEventMetadata :one
 -- UpdateEventMetadata sets the content-management metadata fields (AB-45, migration 0051).
--- These are optional and fully nullable; pass the existing value to leave it unchanged.
+-- Uses COALESCE so NULL params keep existing values (PATCH-safe).
 UPDATE events
-SET    slug              = $3,
-       short_description = $4,
-       genre             = $5,
-       age_rating        = $6,
-       duration_minutes  = $7,
-       teaser_url        = $8,
-       trailer_url       = $9,
-       meta_description  = $10,
-       meta_keywords     = $11,
+SET    slug              = COALESCE($3, slug),
+       short_description = COALESCE($4, short_description),
+       genre             = COALESCE($5, genre),
+       age_rating        = COALESCE($6, age_rating),
+       duration_minutes  = COALESCE($7, duration_minutes),
+       teaser_url        = COALESCE($8, teaser_url),
+       trailer_url       = COALESCE($9, trailer_url),
+       meta_description  = COALESCE($10, meta_description),
+       meta_keywords     = COALESCE($11, meta_keywords),
        updated_at        = now()
 WHERE  id = $1
   AND  org_id = $2

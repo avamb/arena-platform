@@ -84,14 +84,11 @@ entries short and factual.
   body before calling `Delete()` — Windows refuses to delete open files. Linux
   CI is unaffected. General pattern: close all file handles before any
   `os.Remove`/`st.Delete` calls in tests.
-- **golangci-lint locally**: no binary on this host; run
-  `GOLANGCI_LINT_CACHE=.golangci-cache go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run`
-  from `apps/backend`. Pin to `@latest` — CI uses the action's `latest`; an
-  older pin (v2.1.6) reports G115 false positives on files CI accepts.
-  On this Windows host the cache dir sometimes returns "Access is denied"
-  via cmd.exe; if that happens, `go build ./...` + the `staticanalysis`
-  test package (part of `go test ./...`) provide equivalent coverage for
-  the integration gate — CI lint still runs in the GitHub Actions job.
+- **golangci-lint locally**: no binary on this host; run from repo root:
+  `GOLANGCI_LINT_CACHE=/tmp/golangci-cache go.exe run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run ./apps/backend/...`
+  The cache path MUST be absolute — a relative path (`.golangci-cache`) fails
+  with "not an absolute path". Pin to `@latest` — CI uses the action's
+  `latest`; an older pin (v2.1.6) reports G115 false positives.
 - **go on Windows**: `go.exe` works directly in bash without PATH tricks
   when the harness allowlist includes it. Prefer `go.exe <cmd>` over
   `cmd.exe /c "set PATH=...&& go <cmd>"` — the latter swallows output
