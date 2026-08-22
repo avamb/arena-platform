@@ -3090,6 +3090,14 @@ function SessionsTab({
                               Delete
                             </button>
                           ) : null}
+                          <a
+                            href={`/v1/organizations/${event.org_id}/events/${event.id}/sessions/${s.id}/macs-export?download=1`}
+                            download
+                            className="text-sm text-blue-600 hover:underline"
+                            data-testid={`events-session-macs-export-${s.id}`}
+                          >
+                            MACS Export
+                          </a>
                           {!canUpdate && !canDelete ? (
                             <span style={mutedHintStyle}>read-only</span>
                           ) : null}

@@ -519,10 +519,21 @@ func scanGoFilesForCamelCaseJSONTags(t *testing.T, root string) []string {
 		// External-API adapters mirror THIRD-PARTY wire formats and are out of
 		// this guardrail's jurisdiction (it protects arena_new's own JSON
 		// surface). Brevo's v3 API genuinely uses camelCase keys
-		// (dkimRecord.hostName etc., feature #407/AB-10). Keep this list to
-		// dedicated adapter packages only — never exempt handler code.
+		// (dkimRecord.hostName etc., feature #407/AB-10). MACS's Python
+		// importer expects camelCase keys (ticketList, seatId, actionEvent
+		// etc., feature AB-50b/#438). Keep this list to dedicated adapter
+		// packages only — never exempt handler code.
 		normalized := filepath.ToSlash(path)
 		if strings.Contains(normalized, "internal/platform/brevo/") {
+			return nil
+		}
+		if strings.Contains(normalized, "internal/platform/macs/") {
+			return nil
+		}
+		// oapi-codegen output mirrors external wire format schemas (including
+		// MACS camelCase) and is exempt — the guardrail protects hand-written
+		// handler code, not auto-generated type bindings.
+		if strings.Contains(normalized, "internal/adapters/http/openapi/types_gen.go") {
 			return nil
 		}
 

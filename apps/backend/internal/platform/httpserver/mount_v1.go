@@ -38,6 +38,7 @@ func (s *Server) mountV1Routes() {
 		s.mountEventRoutes(r)
 		s.mountSessionRoutes(r)
 		s.mountSessionMediaRoutes(r)
+		s.mountMACSExportRoutes(r)
 		s.mountTierRoutes(r)
 		s.mountInventoryRoutes(r)
 		s.mountReservationRoutes(r)

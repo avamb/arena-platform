@@ -55,6 +55,17 @@ func (s *Server) mountEventRoutes(r chi.Router) {
 			s.applyAuth(pr, "event.delete", "events")
 			pr.Delete("/organizations/{org_id}/events/{id}", s.handleDeleteEvent)
 		})
+		// AB-45: event artists CRUD
+		r.Group(func(pr chi.Router) {
+			s.applyAuth(pr, "event.read", "events")
+			pr.Get("/organizations/{org_id}/events/{id}/artists", s.handleListEventArtists)
+		})
+		r.Group(func(pr chi.Router) {
+			s.applyAuth(pr, "event.update", "events")
+			pr.Post("/organizations/{org_id}/events/{id}/artists", s.handleCreateEventArtist)
+			pr.Patch("/organizations/{org_id}/events/{id}/artists/{aid}", s.handleUpdateEventArtist)
+			pr.Delete("/organizations/{org_id}/events/{id}/artists/{aid}", s.handleDeleteEventArtist)
+		})
 	}
 }
 
@@ -149,6 +160,18 @@ func (s *Server) mountPublicationRoutes(r chi.Router) {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "publication.delete", "publications")
 			pr.Delete("/events/{event_id}/publications/{feed_token_id}", s.handleUnpublishEvent)
+		})
+	}
+}
+
+// mountMACSExportRoutes mounts the MACS JSON export endpoint for a session
+// (AB-50b, feature #438). Requires session.read auth + org membership.
+// The handler self-gates on a nil pgxPool with a 503 envelope.
+func (s *Server) mountMACSExportRoutes(r chi.Router) {
+	if s.authEnabled() && s.sessionQueries != nil {
+		r.Group(func(pr chi.Router) {
+			s.applyAuth(pr, "session.read", "sessions")
+			pr.Get("/organizations/{org_id}/events/{event_id}/sessions/{id}/macs-export", s.handleMACSExport)
 		})
 	}
 }

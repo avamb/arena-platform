@@ -1982,6 +1982,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/events/{id}/artists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List artists for an event
+         * @description Returns all artists/performers attached to the given event, ordered by
+         *     sort_order ASC. Requires JWT + `event.read` permission and org membership.
+         */
+        get: operations["listEventArtists"];
+        put?: never;
+        /**
+         * Add an artist to an event
+         * @description Creates a new artist record linked to the given event.
+         *     Requires JWT + `event.update` permission and org membership.
+         */
+        post: operations["createEventArtist"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{id}/artists/{aid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove an artist from an event
+         * @description Soft-deletes an artist record from the event.
+         *     Requires JWT + `event.update` permission and org membership.
+         */
+        delete: operations["deleteEventArtist"];
+        options?: never;
+        head?: never;
+        /**
+         * Update an artist on an event
+         * @description Applies a partial update to an existing artist record.
+         *     Requires JWT + `event.update` permission and org membership.
+         */
+        patch: operations["updateEventArtist"];
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/events/{event_id}/sessions": {
         parameters: {
             query?: never;
@@ -2057,6 +2109,31 @@ export interface paths {
          *     Requires JWT + the `session.update` permission.
          */
         patch: operations["updateSession"];
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/sessions/{id}/macs-export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export session tickets in MACS import format
+         * @description Returns a MACS-import-compatible JSON array of orders with nested
+         *     ticket lists. All completed tickets for the session are included.
+         *     Requires JWT + session.read permission + org membership.
+         *     Add ?download=1 for a Content-Disposition attachment response suitable
+         *     for the MACS Import Tickets action.
+         *     AB-50b (feature #438).
+         */
+        get: operations["getSessionMACSExport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/sessions/{id}/media": {
@@ -7907,6 +7984,65 @@ export interface components {
              */
             deleted: boolean;
         };
+        /** @description One artist/performer record attached to an event. */
+        EventArtist: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the artist record.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the parent event.
+             */
+            event_id: string;
+            /** @description Display name of the artist or performer. */
+            name: string;
+            /** @description Optional role label (e.g. "headliner", "DJ"). */
+            role?: string | null;
+            /** @description Optional short biography or description. */
+            bio?: string | null;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of a media object used as the artist photo.
+             */
+            photo_media_id?: string | null;
+            /**
+             * Format: int32
+             * @description Display ordering weight (ascending, lower = first).
+             */
+            sort_order: number;
+            /**
+             * Format: date-time
+             * @description ISO-8601 UTC timestamp when the record was created.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description ISO-8601 UTC timestamp of the last update.
+             */
+            updated_at: string;
+        };
+        /** @description Single-artist response envelope. */
+        EventArtistEnvelope: {
+            /** @description The artist record. */
+            artist: components["schemas"]["EventArtist"];
+        };
+        /** @description List-artists response envelope. */
+        EventArtistListEnvelope: {
+            /** @description Artists attached to the event, ordered by sort_order ASC. */
+            artists: components["schemas"]["EventArtist"][];
+        };
+        /** @description Soft-delete response envelope for an artist. */
+        EventArtistDeleteEnvelope: {
+            /** @description The artist record as it stood at deletion time. */
+            artist: components["schemas"]["EventArtist"];
+            /**
+             * @description Always true on success; confirms the soft delete.
+             * @example true
+             */
+            deleted: boolean;
+        };
         /**
          * @description A single dated session (time slot) of an event at a venue. Since
          *     Wave 4 (AB-36/AB-38) the session — not the event — owns the venue,
@@ -12307,6 +12443,70 @@ export interface components {
              */
             created_at: string;
         };
+        /** @description Denormalized event context on every MACS ticket. */
+        MACSActionEvent: {
+            /**
+             * Format: int64
+             * @description Stable integer derived from the event UUID (first 8 bytes big-endian).
+             */
+            id: number;
+            /** @description Human-readable city name for the event venue. */
+            cityName: string;
+            /** @description Human-readable venue name. */
+            venueName: string;
+            /** @description Event name as shown to ticket buyers. */
+            actionName: string;
+            /** @description Legal name of the organizing entity (org.legal_name or org.name). */
+            actionLegalOwner: string;
+            /** @description Local session start time without timezone, e.g. "2026-08-22T20:00:00" */
+            showTime: string;
+        };
+        /** @description One issued ticket in MACS import format. */
+        MACSTicket: {
+            /**
+             * Format: int64
+             * @description Stable MACS integer from tickets.system_ticket_id (migration 0088).
+             */
+            id: number;
+            /**
+             * Format: int64
+             * @description Stable MACS seat integer from session_seats.system_seat_id (or id for GA tickets).
+             */
+            seatId: number;
+            /**
+             * Format: int64
+             * @description Parent order id (minimum system_ticket_id within the checkout session).
+             */
+            orderId?: number;
+            /** @description Ticket barcode string; falls back to system_ticket_id if no QR credential exists. */
+            barcode: string;
+            /** @description 0 = valid/not used, 3 = refunded/cancelled */
+            holderStatus: number;
+            /**
+             * Format: int64
+             * @description Unit ticket price in minor currency units (from ticket_tiers.price_amount).
+             */
+            price?: number;
+            /** @description Denormalized event context required by every MACS ticket. */
+            actionEvent: components["schemas"]["MACSActionEvent"];
+        };
+        /** @description One checkout session (order) in MACS import format. */
+        MACSOrder: {
+            /**
+             * Format: int64
+             * @description Minimum system_ticket_id among all tickets in this checkout session.
+             */
+            id?: number;
+            /**
+             * @description Always "PAID" for completed checkout sessions exported via this endpoint.
+             * @example PAID
+             */
+            status?: string;
+            /** @description List of issued tickets belonging to this order. */
+            ticketList?: components["schemas"]["MACSTicket"][];
+        };
+        /** @description MACS import file — array of orders with nested ticket lists. */
+        MACSExport: components["schemas"]["MACSOrder"][];
     };
     responses: never;
     parameters: never;
@@ -19494,6 +19694,305 @@ export interface operations {
             };
         };
     };
+    listEventArtists: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the event. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of artists for the event. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventArtistListEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createEventArtist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the event. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Display name of the artist. */
+                    name: string;
+                    /** @description Optional role label (e.g. "headliner"). */
+                    role?: string | null;
+                    /** @description Optional short biography. */
+                    bio?: string | null;
+                    /**
+                     * Format: uuid
+                     * @description UUIDv7 of a media object for the artist photo.
+                     */
+                    photo_media_id?: string | null;
+                    /**
+                     * Format: int32
+                     * @description Display ordering weight.
+                     */
+                    sort_order?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Artist created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventArtistEnvelope"];
+                };
+            };
+            /** @description Invalid request body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteEventArtist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the event. */
+                id: string;
+                /** @description UUIDv7 of the artist record to delete. */
+                aid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Artist soft-deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventArtistDeleteEnvelope"];
+                };
+            };
+            /** @description Invalid artist ID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Artist not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateEventArtist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the event. */
+                id: string;
+                /** @description UUIDv7 of the artist record to update. */
+                aid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Updated display name. */
+                    name?: string;
+                    /** @description Updated role label. */
+                    role?: string | null;
+                    /** @description Updated biography. */
+                    bio?: string | null;
+                    /**
+                     * Format: uuid
+                     * @description Updated media object UUID.
+                     */
+                    photo_media_id?: string | null;
+                    /**
+                     * Format: int32
+                     * @description Updated sort order weight.
+                     */
+                    sort_order?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Artist updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventArtistEnvelope"];
+                };
+            };
+            /** @description Invalid request body or artist ID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Artist not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     listSessions: {
         parameters: {
             query?: never;
@@ -19907,6 +20406,63 @@ export interface operations {
             };
             /** @description Database pool or session queries unavailable. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getSessionMACSExport: {
+        parameters: {
+            query?: {
+                /** @description Set to "1" to receive a Content-Disposition attachment. */
+                download?: "1";
+            };
+            header?: never;
+            path: {
+                /** @description Organization UUID. */
+                org_id: string;
+                /** @description Event UUID. */
+                event_id: string;
+                /** @description Session UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description MACS export document (array of orders). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MACSOrder"][];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller is not an org member. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Export query failed. */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

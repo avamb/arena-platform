@@ -160,6 +160,22 @@ func (s *Server) handleDeleteEvent(w http.ResponseWriter, r *http.Request) {
 	s.catalogHandler().HandleDeleteEvent(w, r)
 }
 
+func (s *Server) handleListEventArtists(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleListEventArtists(w, r)
+}
+
+func (s *Server) handleCreateEventArtist(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleCreateEventArtist(w, r)
+}
+
+func (s *Server) handleUpdateEventArtist(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleUpdateEventArtist(w, r)
+}
+
+func (s *Server) handleDeleteEventArtist(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleDeleteEventArtist(w, r)
+}
+
 // ──── venue handler shims ─────────────────────────────────────────────────────
 
 func (s *Server) handleCreateVenue(w http.ResponseWriter, r *http.Request) {
@@ -294,4 +310,10 @@ func (s *Server) handleGetSessionMedia(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleReplaceSessionMedia(w http.ResponseWriter, r *http.Request) {
 	s.catalogHandler().HandleReplaceSessionMedia(w, r)
+}
+
+// ──── MACS export shim (AB-50b, feature #438) ─────────────────────────────────
+
+func (s *Server) handleMACSExport(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleMACSExport(s.pgxPool, w, r)
 }

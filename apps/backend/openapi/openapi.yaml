@@ -3419,6 +3419,83 @@ components:
           example: true
 
     # ───────────────────────────────────────────────────────────────────────
+    # Event Artists — AB-45 (feature #437)
+    # CRUD child-table for performer/artist metadata on an event.
+    # ───────────────────────────────────────────────────────────────────────
+
+    EventArtist:
+      type: object
+      required: [id, event_id, name, sort_order, created_at, updated_at]
+      description: One artist/performer record attached to an event.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the artist record.
+        event_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the parent event.
+        name:
+          type: string
+          description: Display name of the artist or performer.
+        role:
+          type: [string, "null"]
+          description: Optional role label (e.g. "headliner", "DJ").
+        bio:
+          type: [string, "null"]
+          description: Optional short biography or description.
+        photo_media_id:
+          type: [string, "null"]
+          format: uuid
+          description: UUIDv7 of a media object used as the artist photo.
+        sort_order:
+          type: integer
+          format: int32
+          description: Display ordering weight (ascending, lower = first).
+        created_at:
+          type: string
+          format: date-time
+          description: ISO-8601 UTC timestamp when the record was created.
+        updated_at:
+          type: string
+          format: date-time
+          description: ISO-8601 UTC timestamp of the last update.
+
+    EventArtistEnvelope:
+      type: object
+      required: [artist]
+      description: Single-artist response envelope.
+      properties:
+        artist:
+          description: The artist record.
+          $ref: "#/components/schemas/EventArtist"
+
+    EventArtistListEnvelope:
+      type: object
+      required: [artists]
+      description: List-artists response envelope.
+      properties:
+        artists:
+          type: array
+          description: Artists attached to the event, ordered by sort_order ASC.
+          items:
+            $ref: "#/components/schemas/EventArtist"
+
+    EventArtistDeleteEnvelope:
+      type: object
+      required: [artist, deleted]
+      description: Soft-delete response envelope for an artist.
+      properties:
+        artist:
+          description: The artist record as it stood at deletion time.
+          $ref: "#/components/schemas/EventArtist"
+        deleted:
+          type: boolean
+          description: Always true on success; confirms the soft delete.
+          example: true
+
+    # ───────────────────────────────────────────────────────────────────────
     # Sessions — feature #126 / Wave A-3 documentation (feature #264)
     # Backed by apps/backend/internal/platform/httpserver/sessions.go.
     # A Session is a time slot for an Event with its own capacity_total.
@@ -8542,6 +8619,83 @@ components:
           type: string
           format: date-time
           description: ISO-8601 timestamp when the comp ticket was issued.
+
+    MACSActionEvent:
+      type: object
+      description: Denormalized event context on every MACS ticket.
+      required: [id, cityName, venueName, actionName, actionLegalOwner, showTime]
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Stable integer derived from the event UUID (first 8 bytes big-endian).
+        cityName:
+          type: string
+          description: Human-readable city name for the event venue.
+        venueName:
+          type: string
+          description: Human-readable venue name.
+        actionName:
+          type: string
+          description: Event name as shown to ticket buyers.
+        actionLegalOwner:
+          type: string
+          description: Legal name of the organizing entity (org.legal_name or org.name).
+        showTime:
+          type: string
+          description: Local session start time without timezone, e.g. "2026-08-22T20:00:00"
+    MACSTicket:
+      type: object
+      description: One issued ticket in MACS import format.
+      required: [id, seatId, barcode, actionEvent, holderStatus]
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Stable MACS integer from tickets.system_ticket_id (migration 0088).
+        seatId:
+          type: integer
+          format: int64
+          description: Stable MACS seat integer from session_seats.system_seat_id (or id for GA tickets).
+        orderId:
+          type: integer
+          format: int64
+          description: Parent order id (minimum system_ticket_id within the checkout session).
+        barcode:
+          type: string
+          description: Ticket barcode string; falls back to system_ticket_id if no QR credential exists.
+        holderStatus:
+          type: integer
+          description: "0 = valid/not used, 3 = refunded/cancelled"
+        price:
+          type: integer
+          format: int64
+          description: Unit ticket price in minor currency units (from ticket_tiers.price_amount).
+        actionEvent:
+          $ref: "#/components/schemas/MACSActionEvent"
+          description: Denormalized event context required by every MACS ticket.
+    MACSOrder:
+      type: object
+      description: One checkout session (order) in MACS import format.
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Minimum system_ticket_id among all tickets in this checkout session.
+        status:
+          type: string
+          example: PAID
+          description: Always "PAID" for completed checkout sessions exported via this endpoint.
+        ticketList:
+          type: array
+          description: List of issued tickets belonging to this order.
+          items:
+            $ref: "#/components/schemas/MACSTicket"
+    MACSExport:
+      type: array
+      description: MACS import file — array of orders with nested ticket lists.
+      items:
+        $ref: "#/components/schemas/MACSOrder"
 
 paths:
   /healthz:
@@ -15183,6 +15337,303 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
   # ────────────────────────────────────────────────────────────────────────
+  # Event Artists group — AB-45 (feature #437).
+  # ────────────────────────────────────────────────────────────────────────
+
+  /v1/organizations/{org_id}/events/{id}/artists:
+    get:
+      operationId: listEventArtists
+      summary: List artists for an event
+      description: |
+        Returns all artists/performers attached to the given event, ordered by
+        sort_order ASC. Requires JWT + `event.read` permission and org membership.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the event.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of artists for the event.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventArtistListEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: createEventArtist
+      summary: Add an artist to an event
+      description: |
+        Creates a new artist record linked to the given event.
+        Requires JWT + `event.update` permission and org membership.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the event.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  description: Display name of the artist.
+                role:
+                  type: [string, "null"]
+                  description: Optional role label (e.g. "headliner").
+                bio:
+                  type: [string, "null"]
+                  description: Optional short biography.
+                photo_media_id:
+                  type: [string, "null"]
+                  format: uuid
+                  description: UUIDv7 of a media object for the artist photo.
+                sort_order:
+                  type: integer
+                  format: int32
+                  description: Display ordering weight.
+      responses:
+        "201":
+          description: Artist created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventArtistEnvelope"
+        "400":
+          description: Invalid request body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{id}/artists/{aid}:
+    patch:
+      operationId: updateEventArtist
+      summary: Update an artist on an event
+      description: |
+        Applies a partial update to an existing artist record.
+        Requires JWT + `event.update` permission and org membership.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the event.
+          schema:
+            type: string
+            format: uuid
+        - name: aid
+          in: path
+          required: true
+          description: UUIDv7 of the artist record to update.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Updated display name.
+                role:
+                  type: [string, "null"]
+                  description: Updated role label.
+                bio:
+                  type: [string, "null"]
+                  description: Updated biography.
+                photo_media_id:
+                  type: [string, "null"]
+                  format: uuid
+                  description: Updated media object UUID.
+                sort_order:
+                  type: integer
+                  format: int32
+                  description: Updated sort order weight.
+      responses:
+        "200":
+          description: Artist updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventArtistEnvelope"
+        "400":
+          description: Invalid request body or artist ID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Artist not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      operationId: deleteEventArtist
+      summary: Remove an artist from an event
+      description: |
+        Soft-deletes an artist record from the event.
+        Requires JWT + `event.update` permission and org membership.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the event.
+          schema:
+            type: string
+            format: uuid
+        - name: aid
+          in: path
+          required: true
+          description: UUIDv7 of the artist record to delete.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Artist soft-deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventArtistDeleteEnvelope"
+        "400":
+          description: Invalid artist ID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Artist not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ────────────────────────────────────────────────────────────────────────
   # Sessions group — feature #126, documented under Wave A-3 (feature #264).
   # Backed by apps/backend/internal/platform/httpserver/sessions.go and
   # mounted by mount_catalog.go.
@@ -15638,6 +16089,77 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database pool or session queries unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{event_id}/sessions/{id}/macs-export:
+    get:
+      operationId: getSessionMACSExport
+      summary: Export session tickets in MACS import format
+      description: |
+        Returns a MACS-import-compatible JSON array of orders with nested
+        ticket lists. All completed tickets for the session are included.
+        Requires JWT + session.read permission + org membership.
+        Add ?download=1 for a Content-Disposition attachment response suitable
+        for the MACS Import Tickets action.
+        AB-50b (feature #438).
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: Organization UUID.
+          schema:
+            type: string
+            format: uuid
+        - name: event_id
+          in: path
+          required: true
+          description: Event UUID.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: Session UUID.
+          schema:
+            type: string
+            format: uuid
+        - name: download
+          in: query
+          required: false
+          description: Set to "1" to receive a Content-Disposition attachment.
+          schema:
+            type: string
+            enum: ["1"]
+      responses:
+        "200":
+          description: MACS export document (array of orders).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MACSOrder"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller is not an org member.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Export query failed.
           content:
             application/json:
               schema:

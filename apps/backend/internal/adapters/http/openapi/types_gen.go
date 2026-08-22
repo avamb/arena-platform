@@ -735,6 +735,11 @@ const (
 	PostV1MediaMultipartBodyOwnerTypeSeatingPlanSvg PostV1MediaMultipartBodyOwnerType = "seating_plan_svg"
 )
 
+// Defines values for GetSessionMACSExportParamsDownload.
+const (
+	N1 GetSessionMACSExportParamsDownload = "1"
+)
+
 // Defines values for ResolveReconciliationExceptionJSONBodyResolution.
 const (
 	ResolveReconciliationExceptionJSONBodyResolutionAccepted ResolveReconciliationExceptionJSONBodyResolution = "accepted"
@@ -2657,6 +2662,57 @@ type ErrorEnvelope struct {
 	} `json:"error"`
 }
 
+// EventArtist One artist/performer record attached to an event.
+type EventArtist struct {
+	// Bio Optional short biography or description.
+	Bio *string `json:"bio"`
+
+	// CreatedAt ISO-8601 UTC timestamp when the record was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// EventId UUIDv7 of the parent event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Id UUIDv7 primary key of the artist record.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Display name of the artist or performer.
+	Name string `json:"name"`
+
+	// PhotoMediaId UUIDv7 of a media object used as the artist photo.
+	PhotoMediaId *openapi_types.UUID `json:"photo_media_id"`
+
+	// Role Optional role label (e.g. "headliner", "DJ").
+	Role *string `json:"role"`
+
+	// SortOrder Display ordering weight (ascending, lower = first).
+	SortOrder int32 `json:"sort_order"`
+
+	// UpdatedAt ISO-8601 UTC timestamp of the last update.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// EventArtistDeleteEnvelope Soft-delete response envelope for an artist.
+type EventArtistDeleteEnvelope struct {
+	// Artist One artist/performer record attached to an event.
+	Artist EventArtist `json:"artist"`
+
+	// Deleted Always true on success; confirms the soft delete.
+	Deleted bool `json:"deleted"`
+}
+
+// EventArtistEnvelope Single-artist response envelope.
+type EventArtistEnvelope struct {
+	// Artist One artist/performer record attached to an event.
+	Artist EventArtist `json:"artist"`
+}
+
+// EventArtistListEnvelope List-artists response envelope.
+type EventArtistListEnvelope struct {
+	// Artists Artists attached to the event, ordered by sort_order ASC.
+	Artists []EventArtist `json:"artists"`
+}
+
 // EventDeleteResponse Soft-delete response envelope.
 type EventDeleteResponse struct {
 	// Deleted Always true on success; confirms the soft delete.
@@ -3219,6 +3275,63 @@ type InventoryRowItem struct {
 
 	// UpdatedAt RFC 3339 timestamp of the last ledger mutation.
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// MACSActionEvent Denormalized event context on every MACS ticket.
+type MACSActionEvent struct {
+	// ActionLegalOwner Legal name of the organizing entity (org.legal_name or org.name).
+	ActionLegalOwner string `json:"actionLegalOwner"`
+
+	// ActionName Event name as shown to ticket buyers.
+	ActionName string `json:"actionName"`
+
+	// CityName Human-readable city name for the event venue.
+	CityName string `json:"cityName"`
+
+	// Id Stable integer derived from the event UUID (first 8 bytes big-endian).
+	Id int64 `json:"id"`
+
+	// ShowTime Local session start time without timezone, e.g. "2026-08-22T20:00:00"
+	ShowTime string `json:"showTime"`
+
+	// VenueName Human-readable venue name.
+	VenueName string `json:"venueName"`
+}
+
+// MACSOrder One checkout session (order) in MACS import format.
+type MACSOrder struct {
+	// Id Minimum system_ticket_id among all tickets in this checkout session.
+	Id *int64 `json:"id,omitempty"`
+
+	// Status Always "PAID" for completed checkout sessions exported via this endpoint.
+	Status *string `json:"status,omitempty"`
+
+	// TicketList List of issued tickets belonging to this order.
+	TicketList *[]MACSTicket `json:"ticketList,omitempty"`
+}
+
+// MACSTicket One issued ticket in MACS import format.
+type MACSTicket struct {
+	// ActionEvent Denormalized event context on every MACS ticket.
+	ActionEvent MACSActionEvent `json:"actionEvent"`
+
+	// Barcode Ticket barcode string; falls back to system_ticket_id if no QR credential exists.
+	Barcode string `json:"barcode"`
+
+	// HolderStatus 0 = valid/not used, 3 = refunded/cancelled
+	HolderStatus int `json:"holderStatus"`
+
+	// Id Stable MACS integer from tickets.system_ticket_id (migration 0088).
+	Id int64 `json:"id"`
+
+	// OrderId Parent order id (minimum system_ticket_id within the checkout session).
+	OrderId *int64 `json:"orderId,omitempty"`
+
+	// Price Unit ticket price in minor currency units (from ticket_tiers.price_amount).
+	Price *int64 `json:"price,omitempty"`
+
+	// SeatId Stable MACS seat integer from session_seats.system_seat_id (or id for GA tickets).
+	SeatId int64 `json:"seatId"`
 }
 
 // MeAssignedNetwork defines model for MeAssignedNetwork.
@@ -7275,6 +7388,51 @@ type ListOrgEventsParams struct {
 	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
 }
 
+// GetSessionMACSExportParams defines parameters for GetSessionMACSExport.
+type GetSessionMACSExportParams struct {
+	// Download Set to "1" to receive a Content-Disposition attachment.
+	Download *GetSessionMACSExportParamsDownload `form:"download,omitempty" json:"download,omitempty"`
+}
+
+// GetSessionMACSExportParamsDownload defines parameters for GetSessionMACSExport.
+type GetSessionMACSExportParamsDownload string
+
+// CreateEventArtistJSONBody defines parameters for CreateEventArtist.
+type CreateEventArtistJSONBody struct {
+	// Bio Optional short biography.
+	Bio *string `json:"bio"`
+
+	// Name Display name of the artist.
+	Name string `json:"name"`
+
+	// PhotoMediaId UUIDv7 of a media object for the artist photo.
+	PhotoMediaId *openapi_types.UUID `json:"photo_media_id"`
+
+	// Role Optional role label (e.g. "headliner").
+	Role *string `json:"role"`
+
+	// SortOrder Display ordering weight.
+	SortOrder *int32 `json:"sort_order,omitempty"`
+}
+
+// UpdateEventArtistJSONBody defines parameters for UpdateEventArtist.
+type UpdateEventArtistJSONBody struct {
+	// Bio Updated biography.
+	Bio *string `json:"bio"`
+
+	// Name Updated display name.
+	Name *string `json:"name,omitempty"`
+
+	// PhotoMediaId Updated media object UUID.
+	PhotoMediaId *openapi_types.UUID `json:"photo_media_id"`
+
+	// Role Updated role label.
+	Role *string `json:"role"`
+
+	// SortOrder Updated sort order weight.
+	SortOrder *int32 `json:"sort_order,omitempty"`
+}
+
 // CreateExternalAllocationJSONBody defines parameters for CreateExternalAllocation.
 type CreateExternalAllocationJSONBody struct {
 	PartnerId openapi_types.UUID `json:"partner_id"`
@@ -7572,6 +7730,12 @@ type PutTierPriceScheduleJSONRequestBody = PutTierPriceScheduleRequest
 
 // UpdateEventJSONRequestBody defines body for UpdateEvent for application/json ContentType.
 type UpdateEventJSONRequestBody = UpdateEventRequest
+
+// CreateEventArtistJSONRequestBody defines body for CreateEventArtist for application/json ContentType.
+type CreateEventArtistJSONRequestBody CreateEventArtistJSONBody
+
+// UpdateEventArtistJSONRequestBody defines body for UpdateEventArtist for application/json ContentType.
+type UpdateEventArtistJSONRequestBody UpdateEventArtistJSONBody
 
 // UpdateEventStatusJSONRequestBody defines body for UpdateEventStatus for application/json ContentType.
 type UpdateEventStatusJSONRequestBody = UpdateEventStatusRequest
