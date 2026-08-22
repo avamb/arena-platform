@@ -22,14 +22,14 @@ import (
 
 // MACSWebhookResponse is the response body for MACS webhook subscriber endpoints.
 type MACSWebhookResponse struct {
-	ID            string  `json:"id"`
-	OrgID         string  `json:"org_id"`
-	CallbackURL   string  `json:"callback_url"`
-	SigningSecret string  `json:"signing_secret,omitempty"`
-	Active        bool    `json:"active"`
-	Kind          string  `json:"kind"`
-	CreatedAt     string  `json:"created_at"`
-	UpdatedAt     string  `json:"updated_at"`
+	ID            string `json:"id"`
+	OrgID         string `json:"org_id"`
+	CallbackURL   string `json:"callback_url"`
+	SigningSecret string `json:"signing_secret,omitempty"`
+	Active        bool   `json:"active"`
+	Kind          string `json:"kind"`
+	CreatedAt     string `json:"created_at"`
+	UpdatedAt     string `json:"updated_at"`
 }
 
 func macsWebhookResponse(row gen.WebhookSubscriberRow, includeSecret bool) MACSWebhookResponse {
@@ -38,13 +38,13 @@ func macsWebhookResponse(row gen.WebhookSubscriberRow, includeSecret bool) MACSW
 		orgID = row.OrgID.String()
 	}
 	r := MACSWebhookResponse{
-		ID:        row.ID.String(),
-		OrgID:     orgID,
+		ID:          row.ID.String(),
+		OrgID:       orgID,
 		CallbackURL: row.CallbackURL,
-		Active:    row.Active,
-		Kind:      row.Kind,
-		CreatedAt: row.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt: row.UpdatedAt.UTC().Format(time.RFC3339),
+		Active:      row.Active,
+		Kind:        row.Kind,
+		CreatedAt:   row.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:   row.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 	if includeSecret {
 		r.SigningSecret = row.SigningSecret

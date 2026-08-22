@@ -26,29 +26,29 @@ import (
 // The name and description fields reflect locale-resolved values when the
 // query joins i18n_text; for write-result rows they hold the stored values.
 type EventRow struct {
-	ID              uuid.UUID  `json:"id"`
-	DisplayNumber   int64      `json:"display_number"`
-	OrgID           uuid.UUID  `json:"org_id"`
-	Name            string     `json:"name"`
-	Description     *string    `json:"description"`
-	Status          string     `json:"status"`
-	FirstSessionAt  *time.Time `json:"first_session_at"`
-	LastSessionAt   *time.Time `json:"last_session_at"`
-	Visibility      string     `json:"visibility"`
-	ImageURL        *string    `json:"image_url"`
-	PosterMediaID   *uuid.UUID `json:"poster_media_id"`
-	Slug            *string    `json:"slug"`
-	ShortDescription *string   `json:"short_description"`
-	Genre           *string    `json:"genre"`
-	AgeRating       *string    `json:"age_rating"`
-	DurationMinutes *int32     `json:"duration_minutes"`
-	TeaserURL       *string    `json:"teaser_url"`
-	TrailerURL      *string    `json:"trailer_url"`
-	MetaDescription *string    `json:"meta_description"`
-	MetaKeywords    *string    `json:"meta_keywords"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
-	DeletedAt       *time.Time `json:"deleted_at"`
+	ID               uuid.UUID  `json:"id"`
+	DisplayNumber    int64      `json:"display_number"`
+	OrgID            uuid.UUID  `json:"org_id"`
+	Name             string     `json:"name"`
+	Description      *string    `json:"description"`
+	Status           string     `json:"status"`
+	FirstSessionAt   *time.Time `json:"first_session_at"`
+	LastSessionAt    *time.Time `json:"last_session_at"`
+	Visibility       string     `json:"visibility"`
+	ImageURL         *string    `json:"image_url"`
+	PosterMediaID    *uuid.UUID `json:"poster_media_id"`
+	Slug             *string    `json:"slug"`
+	ShortDescription *string    `json:"short_description"`
+	Genre            *string    `json:"genre"`
+	AgeRating        *string    `json:"age_rating"`
+	DurationMinutes  *int32     `json:"duration_minutes"`
+	TeaserURL        *string    `json:"teaser_url"`
+	TrailerURL       *string    `json:"trailer_url"`
+	MetaDescription  *string    `json:"meta_description"`
+	MetaKeywords     *string    `json:"meta_keywords"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	DeletedAt        *time.Time `json:"deleted_at"`
 }
 
 // scanEventRow scans a single events row into an EventRow.

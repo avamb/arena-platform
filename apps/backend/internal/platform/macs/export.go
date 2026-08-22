@@ -27,8 +27,8 @@ type Export []Order
 // Order represents one checkout_session in MACS format.
 type Order struct {
 	ID               int64         `json:"id"`
-	Date             string        `json:"date"`     // ISO-8601 UTC, e.g. "2026-08-22T10:00:00Z"
-	Status           string        `json:"status"`   // always "PAID" for completed orders
+	Date             string        `json:"date"`   // ISO-8601 UTC, e.g. "2026-08-22T10:00:00Z"
+	Status           string        `json:"status"` // always "PAID" for completed orders
 	Currency         string        `json:"currency"`
 	Sum              int64         `json:"sum"`      // subtotal in minor units
 	Discount         int64         `json:"discount"` // discount in minor units
@@ -39,7 +39,7 @@ type Order struct {
 	Email            string        `json:"email,omitempty"`
 	PaymentMethod    string        `json:"paymentMethod,omitempty"`
 	TicketList       []Ticket      `json:"ticketList"`
-	SeatList         []interface{} `json:"seatList"`        // always empty array for compatibility
+	SeatList         []interface{} `json:"seatList"`         // always empty array for compatibility
 	GatewayOrderList []interface{} `json:"gatewayOrderList"` // always empty array
 }
 
@@ -57,7 +57,7 @@ type Ticket struct {
 	SeatLocation  SeatLocation  `json:"seatLocation"`
 	Category      string        `json:"category,omitempty"` // tier name
 	Tariff        string        `json:"tariff,omitempty"`
-	Price         int64         `json:"price"`      // unit price in minor units
+	Price         int64         `json:"price"` // unit price in minor units
 	Discount      int64         `json:"discount"`
 	Charge        int64         `json:"charge"`
 	TotalPrice    int64         `json:"totalPrice"`
@@ -254,11 +254,13 @@ func queryExportRows(ctx context.Context, pool *pgxpool.Pool, sessionID uuid.UUI
 	return result, nil
 }
 
-// eventIntID derives a stable int64 from a UUID by reading the first 8 bytes
-// as a big-endian uint64 and casting to int64. This is deterministic for a
-// given event UUID and fits MACS's integer event ID requirement.
+// eventIntID derives a stable, non-negative int64 from a UUID by reading
+// the first 8 bytes as a big-endian uint64 and keeping the low 63 bits
+// (>> 1 clears the sign bit, so the conversion can never overflow). This
+// is deterministic for a given event UUID and fits MACS's integer event
+// ID requirement.
 func eventIntID(id uuid.UUID) int64 {
-	return int64(binary.BigEndian.Uint64(id[:8]))
+	return int64(binary.BigEndian.Uint64(id[:8]) >> 1)
 }
 
 // buildExport groups exportRows by checkout_session_id and assembles the MACS
@@ -330,7 +332,7 @@ func buildExport(rows []exportRow) Export {
 			VenueName:        row.venueName,
 			ActionName:       row.eventName,
 			ActionLegalOwner: row.orgLegalName,
-			ShowTime: row.sessionStartAt.Format("2006-01-02T15:04:05"), // allow:timeformat: MACS requires local time without TZ suffix
+			ShowTime:         row.sessionStartAt.Format("2006-01-02T15:04:05"), // allow:timeformat: MACS requires local time without TZ suffix
 		}
 
 		// Build barcode.
