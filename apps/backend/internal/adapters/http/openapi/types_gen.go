@@ -3334,6 +3334,34 @@ type MACSTicket struct {
 	SeatId int64 `json:"seatId"`
 }
 
+// MACSWebhookSubscriber A MACS webhook subscriber registration for an organization (AB-50c, feature
+type MACSWebhookSubscriber struct {
+	// Active Whether the subscriber is currently active.
+	Active *bool `json:"active,omitempty"`
+
+	// CallbackUrl The HTTPS endpoint that receives MACS-shaped webhook payloads.
+	CallbackUrl *string `json:"callback_url,omitempty"`
+
+	// CreatedAt ISO 8601 creation timestamp.
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+
+	// Id Subscriber UUID.
+	Id *openapi_types.UUID `json:"id,omitempty"`
+
+	// Kind Subscriber kind. Always "macs" for this resource.
+	Kind *string `json:"kind,omitempty"`
+
+	// OrgId Organization UUID this subscriber is linked to.
+	OrgId *openapi_types.UUID `json:"org_id,omitempty"`
+
+	// SigningSecret HMAC-SHA256 signing secret. Only included in PUT (upsert) responses.
+	// Store securely — it is not returned by GET.
+	SigningSecret *string `json:"signing_secret,omitempty"`
+
+	// UpdatedAt ISO 8601 last-update timestamp.
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+}
+
 // MeAssignedNetwork defines model for MeAssignedNetwork.
 type MeAssignedNetwork struct {
 	// Id Operator network UUID
@@ -6691,6 +6719,16 @@ type UpdateVenueRequest struct {
 // unchanged.
 type UpdateVenueRequestStatus string
 
+// UpsertMACSWebhookRequest Request body for PUT /v1/organizations/{org_id}/macs-webhook.
+type UpsertMACSWebhookRequest struct {
+	// CallbackUrl The HTTPS endpoint to receive MACS webhook events.
+	CallbackUrl string `json:"callback_url"`
+
+	// SigningSecret HMAC-SHA256 key for the X-MACS-Signature header.
+	// If empty, payloads are sent unsigned.
+	SigningSecret *string `json:"signing_secret,omitempty"`
+}
+
 // ValidatePromoCodeRequest Body for `POST /v1/checkout/promo-validate`. The handler looks
 // up the code by `(org_id, code)`, runs the state/date/min-amount
 // gates, then enforces the global and per-customer redemption
@@ -7745,6 +7783,9 @@ type CreateExternalAllocationJSONRequestBody CreateExternalAllocationJSONBody
 
 // UpdateExternalAllocationJSONRequestBody defines body for UpdateExternalAllocation for application/json ContentType.
 type UpdateExternalAllocationJSONRequestBody UpdateExternalAllocationJSONBody
+
+// UpsertMACSWebhookJSONRequestBody defines body for UpsertMACSWebhook for application/json ContentType.
+type UpsertMACSWebhookJSONRequestBody = UpsertMACSWebhookRequest
 
 // GrantOrganizationMembershipJSONRequestBody defines body for GrantOrganizationMembership for application/json ContentType.
 type GrantOrganizationMembershipJSONRequestBody = GrantMembershipRequest

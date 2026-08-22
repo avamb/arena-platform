@@ -7,6 +7,8 @@ commands:
   # Go development tools
   - name: go
     description: Go toolchain
+  - name: go.exe
+    description: Go toolchain (Windows executable)
   - name: gofmt
     description: Go formatter
   - name: golangci-lint

@@ -23617,3 +23617,32 @@ conclusion" entry. Claim your assigned feature, implement, run the gates
 (go test, lint, openapi codegen, admin/widget tests), commit, push. If
 something genuinely blocks you, say exactly what command failed.
 
+## 2026-08-22 - AB-50c (#439), AB-50d (#440), AB-50 (#431) PASSING - 440/440 (100%)
+
+All three assigned features implemented and verified. Commit: 522a8a3
+
+AB-50c (#439) - MACS webhooks + HMAC + outbox retry:
+- Dispatcher maps v1.scanner.ticket.issued to order.paid, v1.ticket.cancelled to ticket.refunded
+- HMAC-SHA256 signing via X-MACS-Signature header
+- Subscriber management API: GET/PUT/DELETE /v1/organizations/{org_id}/macs-webhook
+- Migration 0089: webhook_subscribers.kind + org_id + partial unique index
+- Worker: MACSDispatcher wired into multiDispatcher fan-out
+- Admin UI: MacsWebhookSection in org overview tab (register/view/deactivate)
+- Fixed timestamp format: time.RFC3339 in macs_webhook.go
+
+AB-50d (#440) - Scanner status gate + round-trip stub:
+- scan-events endpoint: cancelled/revoked tickets rejected with scanner.ticket_not_admissible
+- internal/platform/macs/stub/stub.go: httptest stub receiver, records envelopes for assertions
+- TestMACS_RoundTrip: seeds org->ticket->subscriber, dispatches order.paid + ticket.refunded
+- TestMACS_CancelEnqueuesExactlyOne_OutboxEvent: cancel -> outbox -> MACS dispatcher chain
+- OpenAPI: marked /v1/scan, /v1/scanner/validate, /v1/scanner/scan-events as INTERNAL/TESTING-ONLY
+- 08_architecture/17_macs_integration_contract.md: full ops runbook
+
+AB-50 (#431) - Umbrella acceptance:
+- All 4 sub-features (#437-#440) passing
+- Round-trip test green on localhost:55432
+- Full backend test suite green (go test ./apps/backend/... EXIT:0)
+- admin-web type-check clean, 1103 tests green
+
+Stats: 440/440 passing (100%). All features complete.
+

@@ -2136,6 +2136,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/macs-webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get active MACS webhook subscriber for an org
+         * @description Returns the currently active MACS webhook subscriber for the organization.
+         *     Returns 404 when no active MACS subscriber is registered.
+         *     Requires JWT + org membership. AB-50c (feature #439).
+         */
+        get: operations["getMACSWebhook"];
+        /**
+         * Register or replace the MACS webhook subscriber for an org
+         * @description Deactivates any existing MACS webhook subscriber for the org and creates
+         *     a new one with the supplied callback_url and signing_secret.
+         *     The signing_secret is returned in the response body (only on this call)
+         *     and should be stored securely by the caller.
+         *     Requires JWT + org membership. AB-50c (feature #439).
+         */
+        put: operations["upsertMACSWebhook"];
+        post?: never;
+        /**
+         * Deactivate the MACS webhook subscriber for an org
+         * @description Soft-deletes the active MACS webhook subscriber for the organization.
+         *     Returns 404 when no active subscriber exists.
+         *     Requires JWT + org membership. AB-50c (feature #439).
+         */
+        delete: operations["deleteMACSWebhook"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sessions/{id}/media": {
         parameters: {
             query?: never;
@@ -3391,7 +3427,11 @@ export interface paths {
         put?: never;
         /**
          * Validate and consume a barcode scan
-         * @description Authority-aware scan validation (feature #142, HandleScan).
+         * @description **INTERNAL / TESTING-ONLY** — The production door-admission gate
+         *     is MACS (see AB-50). This endpoint exists for development and
+         *     integration testing only; do not build scanner hardware against it.
+         *
+         *     Authority-aware scan validation (feature #142, HandleScan).
          *     Flow: resolve the authority by `authority_type` (404 when
          *     unknown), look up the barcode by `(authority_id, external_ref)`
          *     (404 when absent), reject revoked barcodes (409
@@ -3453,7 +3493,11 @@ export interface paths {
         put?: never;
         /**
          * Read-only online barcode validation
-         * @description Performs a read-only barcode validity check (feature #144,
+         * @description **INTERNAL / TESTING-ONLY** — The production door-admission gate
+         *     is MACS (see AB-50). This endpoint exists for development and
+         *     integration testing only; do not build scanner hardware against it.
+         *
+         *     Performs a read-only barcode validity check (feature #144,
          *     HandleScannerValidate). Unlike `POST /v1/scan` this endpoint
          *     does NOT mark the barcode as scanned — it reports whether the
          *     barcode is valid (`active`), already scanned, or revoked.
@@ -3833,7 +3877,11 @@ export interface paths {
         put?: never;
         /**
          * Scanner — ingest a batch of scan reports
-         * @description Accepts up to 500 scan attempts uploaded by an external
+         * @description **INTERNAL / TESTING-ONLY** — The production door-admission gate
+         *     is MACS (see AB-50). This endpoint exists for development and
+         *     integration testing only; do not build scanner hardware against it.
+         *
+         *     Accepts up to 500 scan attempts uploaded by an external
          *     scanner device. The handler:
          *
          *       1. Validates the `Authorization: Bearer <agent_feed_token>`
@@ -12507,6 +12555,57 @@ export interface components {
         };
         /** @description MACS import file — array of orders with nested ticket lists. */
         MACSExport: components["schemas"]["MACSOrder"][];
+        /** @description A MACS webhook subscriber registration for an organization (AB-50c, feature */
+        MACSWebhookSubscriber: {
+            /**
+             * Format: uuid
+             * @description Subscriber UUID.
+             */
+            id?: string;
+            /**
+             * Format: uuid
+             * @description Organization UUID this subscriber is linked to.
+             */
+            org_id?: string;
+            /** @description The HTTPS endpoint that receives MACS-shaped webhook payloads. */
+            callback_url?: string;
+            /**
+             * @description HMAC-SHA256 signing secret. Only included in PUT (upsert) responses.
+             *     Store securely — it is not returned by GET.
+             */
+            signing_secret?: string;
+            /** @description Whether the subscriber is currently active. */
+            active?: boolean;
+            /**
+             * @description Subscriber kind. Always "macs" for this resource.
+             * @example macs
+             */
+            kind?: string;
+            /**
+             * Format: date-time
+             * @description ISO 8601 creation timestamp.
+             */
+            created_at?: string;
+            /**
+             * Format: date-time
+             * @description ISO 8601 last-update timestamp.
+             */
+            updated_at?: string;
+        };
+        /** @description Request body for PUT /v1/organizations/{org_id}/macs-webhook. */
+        UpsertMACSWebhookRequest: {
+            /**
+             * @description The HTTPS endpoint to receive MACS webhook events.
+             * @example https://macs.example.com/webhook/arena
+             */
+            callback_url: string;
+            /**
+             * @description HMAC-SHA256 key for the X-MACS-Signature header.
+             *     If empty, payloads are sent unsigned.
+             * @example my-secret-key
+             */
+            signing_secret?: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -20462,6 +20561,187 @@ export interface operations {
                 };
             };
             /** @description Export query failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getMACSWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active MACS webhook subscriber. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MACSWebhookSubscriber"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller is not an org member. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No active MACS webhook subscriber for this org. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    upsertMACSWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertMACSWebhookRequest"];
+            };
+        };
+        responses: {
+            /** @description MACS webhook subscriber created (signing_secret included). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MACSWebhookSubscriber"];
+                };
+            };
+            /** @description Missing or invalid request body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller is not an org member. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteMACSWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description MACS webhook subscriber deactivated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MACSWebhookSubscriber"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller is not an org member. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No active MACS webhook subscriber for this org. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
             500: {
                 headers: {
                     [name: string]: unknown;
