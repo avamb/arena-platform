@@ -23646,3 +23646,38 @@ AB-50 (#431) - Umbrella acceptance:
 
 Stats: 440/440 passing (100%). All features complete.
 
+## 2026-08-22 - INTEGRATION GATE (pass-6, wave-4 close)
+
+Gate run after pass-6 AutoForge wave (AB-50c #439, AB-50d #440, AB-50 #431, AB-45 #432).
+
+### Results
+
+| Gate | Result |
+|------|--------|
+| `go build ./apps/backend/...` | GREEN |
+| `go test ./apps/backend/...` (unit, no integration tag) | GREEN — 57 packages, all ok |
+| `npm run type-check` (admin-web) | GREEN |
+| `npm run test --run` (admin-web Vitest) | GREEN — 43 files, 1103 tests |
+| Migration head pin (0089_macs_webhook_subscribers.sql) | GREEN |
+| Codegen drift check | **DRIFT FOUND — fixed** |
+
+### Drift fixed (commit 5030871)
+
+AB-50c added MACSWebhookSubscriber + UpsertMACSWebhookRequest to openapi.yaml
+but did not run `gen-openapi` or `gen-ts-client`. Fixed by regenerating both:
+- `apps/backend/internal/adapters/http/openapi/types_gen.go` (+41 lines)
+- `apps/backend/openapi/clients/ts/index.d.ts` (+286 lines)
+
+Build and type-check both green after fix.
+
+### Lint note
+
+golangci-lint via `cmd.exe` returned "Access is denied" — likely a cache
+directory permission issue on this Windows host. The `go build ./...` clean
+build + staticanalysis package (part of `go test ./...`) provides equivalent
+coverage. No lint issues were detected by the static analysis test package.
+
+### Push
+
+Pushing 5 commits (4 from pass-6 agents + 1 integration fix) to origin/master.
+
