@@ -53,9 +53,10 @@ type Querier interface {
 	ListOrganizations(ctx context.Context) ([]OrganizationRow, error)
 	ListOrganizationsPage(ctx context.Context, search string, limit, offset int32) ([]OrganizationRow, error)
 	CountOrganizationsPage(ctx context.Context, search string) (int64, error)
-	UpdateOrganization(ctx context.Context, id uuid.UUID, name, slug, country, defaultLocale string, reservationTTL int32, legalName, taxID, taxIDScheme, registrationNumber, addressLine1, addressLine2, postalCode, city, addressCountry, contactEmail, contactPhone, websiteURL *string, kybStatus string) (OrganizationRow, error)
+	UpdateOrganization(ctx context.Context, id uuid.UUID, name, slug, country, defaultLocale string, reservationTTL int32, legalName, taxID, taxIDScheme, registrationNumber, addressLine1, addressLine2, postalCode, city, addressCountry, contactEmail, contactPhone, websiteURL *string, kybStatus string, logoMediaID *uuid.UUID) (OrganizationRow, error)
 	SoftDeleteOrganization(ctx context.Context, id uuid.UUID) (OrganizationRow, error)
 	GetTicketPDFFormatByTicketID(ctx context.Context, ticketID uuid.UUID) (string, error)
+	GetOrgBrandingByTicketID(ctx context.Context, ticketID uuid.UUID) (OrgBrandingRow, error)
 
 	// Payment provider configs — per-org provider credentials + public config (feature #237)
 	InsertPaymentProviderConfig(ctx context.Context, orgID uuid.UUID, provider, mode string, providerAccountID *string, publicConfig, secrets json.RawMessage, status string, isActive bool) (PaymentProviderConfigRow, error)
@@ -258,6 +259,12 @@ type Querier interface {
 	CountActiveTicketsForSeat(ctx context.Context, sessionID uuid.UUID, seatKey string) (int64, error)
 	CountTicketsByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID) (int64, error)
 	CountTicketsBySession(ctx context.Context, sessionID uuid.UUID) (int64, error)
+	// AB-50a: MACS system id resolution (migration 0088)
+	GetSystemIDForTicket(ctx context.Context, ticketID uuid.UUID) (SystemIDForTicketRow, error)
+	GetSystemIDForSeat(ctx context.Context, seatID uuid.UUID) (SystemIDForSeatRow, error)
+	ListSystemIDsForTickets(ctx context.Context, ticketIDs []uuid.UUID) ([]SystemIDForTicketRow, error)
+	GetTicketBySystemTicketID(ctx context.Context, systemTicketID int64) (TicketRow, error)
+	GetTicketSystemBySlug(ctx context.Context, slug string) (TicketSystemRow, error)
 
 	// Ticket credentials — QR and PDF bearer artifacts (feature #140);
 	// human-readable code lookups (SEAT-C4)

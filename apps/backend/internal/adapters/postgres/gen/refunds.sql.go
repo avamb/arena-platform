@@ -340,7 +340,7 @@ RETURNING id, checkout_session_id, session_id, tier_id, holder_email,
           status, issued_at, created_at, updated_at,
           seat_key, seat_sector, seat_row, seat_number, ordinal,
           cancelled_at, cancellation_reason, refund_mode, refund_id,
-          refund_date, refund_price, review_hold, review_hold_reason`
+          refund_date, refund_price, review_hold, review_hold_reason, system_ticket_id`
 
 // CancelTicketsByCheckoutSession cancels every active ticket of an
 // order after a FULL inbound provider refund (order-level scope: one

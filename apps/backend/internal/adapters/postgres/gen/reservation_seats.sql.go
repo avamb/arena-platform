@@ -34,7 +34,7 @@ func (q *Queries) InsertReservationSeat(ctx context.Context, reservationID, sess
 const listReservationSeats = `-- name: ListReservationSeats :many
 SELECT ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
        ss.seat_number, ss.tier_id, ss.status, ss.reservation_id,
-       ss.status_version, ss.updated_at
+       ss.status_version, ss.updated_at, ss.system_seat_id
 FROM   reservation_seats rs
 JOIN   session_seats     ss ON ss.id = rs.session_seat_id
 WHERE  rs.reservation_id = $1

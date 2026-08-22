@@ -64,6 +64,8 @@ type TicketRow struct {
 	RefundPrice        *int64     `json:"refund_price"`
 	ReviewHold         bool       `json:"review_hold"`
 	ReviewHoldReason   *string    `json:"review_hold_reason"`
+	// AB-50a (migration 0088): stable bigint identity for MACS scanning integration.
+	SystemTicketID int64 `json:"system_ticket_id"`
 }
 
 // scanTicketRow scans a single tickets row into a TicketRow.
@@ -94,6 +96,7 @@ func scanTicketRow(row interface {
 		&r.RefundPrice,
 		&r.ReviewHold,
 		&r.ReviewHoldReason,
+		&r.SystemTicketID,
 	)
 	return r, err
 }
@@ -112,7 +115,7 @@ RETURNING id, checkout_session_id, session_id, tier_id, holder_email,
           status, issued_at, created_at, updated_at,
           seat_key, seat_sector, seat_row, seat_number, ordinal,
           cancelled_at, cancellation_reason, refund_mode, refund_id,
-          refund_date, refund_price, review_hold, review_hold_reason`
+          refund_date, refund_price, review_hold, review_hold_reason, system_ticket_id`
 
 // InsertTicket creates a new ticket row for the given checkout session.
 //
@@ -152,7 +155,7 @@ SELECT id, checkout_session_id, session_id, tier_id, holder_email,
        status, issued_at, created_at, updated_at,
        seat_key, seat_sector, seat_row, seat_number, ordinal,
        cancelled_at, cancellation_reason, refund_mode, refund_id,
-       refund_date, refund_price, review_hold, review_hold_reason
+       refund_date, refund_price, review_hold, review_hold_reason, system_ticket_id
 FROM   tickets
 WHERE  checkout_session_id = $1
 ORDER BY ordinal ASC, issued_at ASC, id ASC`
@@ -187,7 +190,7 @@ SELECT id, checkout_session_id, session_id, tier_id, holder_email,
        status, issued_at, created_at, updated_at,
        seat_key, seat_sector, seat_row, seat_number, ordinal,
        cancelled_at, cancellation_reason, refund_mode, refund_id,
-       refund_date, refund_price, review_hold, review_hold_reason
+       refund_date, refund_price, review_hold, review_hold_reason, system_ticket_id
 FROM   tickets
 WHERE  id = $1`
 
@@ -251,7 +254,7 @@ RETURNING id, checkout_session_id, session_id, tier_id, holder_email,
           status, issued_at, created_at, updated_at,
           seat_key, seat_sector, seat_row, seat_number, ordinal,
           cancelled_at, cancellation_reason, refund_mode, refund_id,
-          refund_date, refund_price, review_hold, review_hold_reason`
+          refund_date, refund_price, review_hold, review_hold_reason, system_ticket_id`
 
 // CancelTicket performs the conditional 'active' -> 'cancelled'
 // transition for the AB-49 operator cancellation, recording the reason
@@ -273,7 +276,7 @@ RETURNING id, checkout_session_id, session_id, tier_id, holder_email,
           status, issued_at, created_at, updated_at,
           seat_key, seat_sector, seat_row, seat_number, ordinal,
           cancelled_at, cancellation_reason, refund_mode, refund_id,
-          refund_date, refund_price, review_hold, review_hold_reason`
+          refund_date, refund_price, review_hold, review_hold_reason, system_ticket_id`
 
 // SetTicketRefundRecord records the financial side of a cancellation on
 // the ticket (refunds-row link, refund date, refunded amount — the
@@ -316,7 +319,7 @@ RETURNING id, checkout_session_id, session_id, tier_id, holder_email,
           status, issued_at, created_at, updated_at,
           seat_key, seat_sector, seat_row, seat_number, ordinal,
           cancelled_at, cancellation_reason, refund_mode, refund_id,
-          refund_date, refund_price, review_hold, review_hold_reason`
+          refund_date, refund_price, review_hold, review_hold_reason, system_ticket_id`
 
 // ClearTicketReviewHold resolves a review hold on one ticket. Returns
 // pgx.ErrNoRows when the ticket carries no hold.
