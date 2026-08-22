@@ -23,6 +23,69 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Tri-state optional types (absent=keep, null=clear, string/int=set)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// optionalString preserves the difference between an omitted PATCH field (keep
+// existing) and an explicit JSON null (clear the field). This enables true
+// tri-state metadata PATCH behaviour (AB-45c).
+type optionalString struct {
+	Present bool
+	Value   *string
+}
+
+func (v *optionalString) UnmarshalJSON(data []byte) error {
+	v.Present = true
+	if string(data) == "null" {
+		v.Value = nil
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	v.Value = &s
+	return nil
+}
+
+// optionalInt32 is the integer analogue of optionalString.
+type optionalInt32 struct {
+	Present bool
+	Value   *int32
+}
+
+func (v *optionalInt32) UnmarshalJSON(data []byte) error {
+	v.Present = true
+	if string(data) == "null" {
+		v.Value = nil
+		return nil
+	}
+	var n int32
+	if err := json.Unmarshal(data, &n); err != nil {
+		return err
+	}
+	v.Value = &n
+	return nil
+}
+
+// resolveStr implements the tri-state merge: if opt was absent keep existing;
+// if opt was present and nil clear; if opt was present and non-nil set.
+func resolveStr(opt optionalString, existing *string) *string {
+	if !opt.Present {
+		return existing
+	}
+	return opt.Value
+}
+
+// resolveInt32 is the integer analogue of resolveStr.
+func resolveInt32(opt optionalInt32, existing *int32) *int32 {
+	if !opt.Present {
+		return existing
+	}
+	return opt.Value
+}
+
 // IsValidEventTransition reports whether the transition from → to is allowed
 // by the Event state machine. Exported so httpserver shims and tests can
 // reference it without importing the domain layer directly.
@@ -435,16 +498,17 @@ type updateEventRequest struct {
 		Name        string `json:"name"`
 		Description string `json:"description"`
 	} `json:"translations"`
-	// AB-45: content-management metadata fields (migration 0051)
-	Slug             *string `json:"slug"`
-	ShortDescription *string `json:"short_description"`
-	Genre            *string `json:"genre"`
-	AgeRating        *string `json:"age_rating"`
-	DurationMinutes  *int32  `json:"duration_minutes"`
-	TeaserURL        *string `json:"teaser_url"`
-	TrailerURL       *string `json:"trailer_url"`
-	MetaDescription  *string `json:"meta_description"`
-	MetaKeywords     *string `json:"meta_keywords"`
+	// AB-45c: content-management metadata fields (migration 0051).
+	// These use tri-state optional types: absent=keep, null=clear, value=set.
+	Slug             optionalString `json:"slug"`
+	ShortDescription optionalString `json:"short_description"`
+	Genre            optionalString `json:"genre"`
+	AgeRating        optionalString `json:"age_rating"`
+	DurationMinutes  optionalInt32  `json:"duration_minutes"`
+	TeaserURL        optionalString `json:"teaser_url"`
+	TrailerURL       optionalString `json:"trailer_url"`
+	MetaDescription  optionalString `json:"meta_description"`
+	MetaKeywords     optionalString `json:"meta_keywords"`
 }
 
 func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
@@ -572,13 +636,39 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// AB-45: update metadata fields if any were provided
-	if req.Slug != nil || req.ShortDescription != nil || req.Genre != nil || req.AgeRating != nil ||
-		req.DurationMinutes != nil || req.TeaserURL != nil || req.TrailerURL != nil ||
-		req.MetaDescription != nil || req.MetaKeywords != nil {
+	// AB-45c: update metadata fields if any were provided (tri-state: absent=keep, null=clear, value=set)
+	if req.Slug.Present || req.ShortDescription.Present || req.Genre.Present || req.AgeRating.Present ||
+		req.DurationMinutes.Present || req.TeaserURL.Present || req.TrailerURL.Present ||
+		req.MetaDescription.Present || req.MetaKeywords.Present {
+		// Read the current event to resolve absent fields (keep existing value).
+		existing, existErr := h.eventQueries.GetEventByID(ctx, eventID, "ru")
+		if existErr != nil {
+			if errors.Is(existErr, pgx.ErrNoRows) {
+				httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("event.not_found", "event not found", r))
+				return
+			}
+			h.logger.Error("event: get existing for metadata merge failed",
+				slog.String("event_id", eventID.String()),
+				slog.String("error", existErr.Error()),
+			)
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"event.get_failed", "failed to get event for metadata merge", r,
+			))
+			return
+		}
+		resolvedSlug := resolveStr(req.Slug, existing.Slug)
+		resolvedShortDesc := resolveStr(req.ShortDescription, existing.ShortDescription)
+		resolvedGenre := resolveStr(req.Genre, existing.Genre)
+		resolvedAgeRating := resolveStr(req.AgeRating, existing.AgeRating)
+		resolvedDuration := resolveInt32(req.DurationMinutes, existing.DurationMinutes)
+		resolvedTeaserURL := resolveStr(req.TeaserURL, existing.TeaserURL)
+		resolvedTrailerURL := resolveStr(req.TrailerURL, existing.TrailerURL)
+		resolvedMetaDesc := resolveStr(req.MetaDescription, existing.MetaDescription)
+		resolvedMetaKW := resolveStr(req.MetaKeywords, existing.MetaKeywords)
+
 		meta, metaErr := h.eventQueries.UpdateEventMetadata(ctx, eventID, orgID,
-			req.Slug, req.ShortDescription, req.Genre, req.AgeRating,
-			req.DurationMinutes, req.TeaserURL, req.TrailerURL, req.MetaDescription, req.MetaKeywords,
+			resolvedSlug, resolvedShortDesc, resolvedGenre, resolvedAgeRating,
+			resolvedDuration, resolvedTeaserURL, resolvedTrailerURL, resolvedMetaDesc, resolvedMetaKW,
 		)
 		if metaErr != nil {
 			h.logger.Error("event: metadata update failed",

@@ -111,7 +111,7 @@ type updateOrgRequest struct {
 	WebsiteURL             optionalString `json:"website_url"`
 	KybStatus              optionalString `json:"kyb_status"`
 	SenderEmail            optionalString `json:"sender_email"`
-	LogoMediaID            *string        `json:"logo_media_id"`
+	LogoMediaID            optionalString `json:"logo_media_id"`
 }
 
 // optionalString preserves the difference between an omitted PATCH member and
@@ -484,18 +484,22 @@ func (h *Handler) HandleUpdateOrg(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// AB-45b: logo_media_id write path — validate ownership + set or clear.
-	if req.LogoMediaID != nil {
-		if *req.LogoMediaID == "" {
-			// Clear the logo.
+	// AB-45b / AB-45c: logo_media_id write path — validate ownership + set or clear.
+	// Uses tri-state optionalString: absent=skip, null=clear, non-empty string=set.
+	if req.LogoMediaID.Present {
+		if req.LogoMediaID.Value == nil {
+			// JSON null → clear the logo.
 			cleared, clearErr := h.orgQueries.PatchOrgLogoMediaID(ctx, orgID, nil)
-			if clearErr == nil {
-				updated = cleared
-			} else {
+			if clearErr != nil {
 				h.logger.Error("org: clear logo_media_id failed", slog.String("error", clearErr.Error()))
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+					"org.logo_clear_failed", "failed to clear organization logo", r,
+				))
+				return
 			}
+			updated = cleared
 		} else {
-			mediaID, parseErr := uuid.Parse(strings.TrimSpace(*req.LogoMediaID))
+			mediaID, parseErr := uuid.Parse(strings.TrimSpace(*req.LogoMediaID.Value))
 			if parseErr != nil {
 				httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 					"org.invalid_logo_media_id", "logo_media_id must be a valid UUID", r,

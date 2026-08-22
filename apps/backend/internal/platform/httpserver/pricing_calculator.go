@@ -15,9 +15,7 @@ package httpserver
 
 import (
 	"net/http"
-	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 )
 
@@ -52,15 +50,6 @@ func ComputePricing(unitPrice int64, quantity int32, discount int64, currency st
 // checkout_133_test.go keep calling the discount math unqualified.
 func computeDiscount(discountType string, discountValue, orderAmount int64) int64 {
 	return hcheckout.ComputeDiscount(discountType, discountValue, orderAmount)
-}
-
-// validatePromoCode checks whether a promo code is applicable for a given
-// order. Returns (discountAmount, errorCode); errorCode is empty when the
-// code is valid. Forwards to the canonical hcheckout.ValidatePromoCode;
-// feed_shims.go passes this forwarder into hfeed as the PromoValidator
-// callback.
-func validatePromoCode(pc gen.PromoCodeRow, orderAmount int64, now time.Time) (int64, string) {
-	return hcheckout.ValidatePromoCode(pc, orderAmount, now)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

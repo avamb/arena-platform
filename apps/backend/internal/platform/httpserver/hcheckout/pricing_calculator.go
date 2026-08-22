@@ -39,15 +39,6 @@ func ComputeDiscount(discountType string, discountValue, orderAmount int64) int6
 	return computeDiscount(discountType, discountValue, orderAmount)
 }
 
-// ValidatePromoCode checks whether a promo code is applicable for a given
-// order. Returns (discountAmount, errorCode); errorCode is empty when the
-// code is valid. This is the canonical implementation — the httpserver shim
-// layer forwards to it and feed_shims.go injects it into hfeed as the
-// PromoValidator callback.
-func ValidatePromoCode(pc gen.PromoCodeRow, orderAmount int64, now time.Time) (int64, string) {
-	return validatePromoCode(pc, orderAmount, now)
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // QuoteResponse — JSON envelope for GET /v1/checkout/quote
 // ─────────────────────────────────────────────────────────────────────────────

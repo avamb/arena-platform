@@ -210,8 +210,8 @@ func (h *Handler) HandleAdminUpdateOrg(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var logoMediaID *uuid.UUID
-	if req.LogoMediaID != nil && *req.LogoMediaID != "" {
-		parsed, parseErr := uuid.Parse(*req.LogoMediaID)
+	if req.LogoMediaID.Present && req.LogoMediaID.Value != nil && *req.LogoMediaID.Value != "" {
+		parsed, parseErr := uuid.Parse(*req.LogoMediaID.Value)
 		if parseErr != nil {
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 				"admin_org.invalid_logo_media_id", "logo_media_id must be a valid UUID", r,

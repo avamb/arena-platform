@@ -958,6 +958,8 @@ them ambiguous:
    (`htickets/delivery_enqueue.go`), so every ticket ships with platform-default
    branding. `organizations.logo_media_id` additionally has no write path at all.
 
+**Decision (AB-45c, 2026-08-23):** Promoter, Rating, and Min. service fee % (Bil24 editor inputs) are intentionally NOT wired in this wave. They require operator-facing input fields that belong to a content-management or CMS screen not yet designed. Recording them as `event_metadata` columns would be premature without a UX decision. They remain in the dead-schema list as low priority — wire or drop in a dedicated CMS wave.
+
 ## AB-46. Domain layer has no tests
 
 **Category:** Testing

@@ -164,25 +164,6 @@ func TierLinesFromPricingLines(lines []PricingLineInput) []TierLine {
 	return out
 }
 
-// validatePromoCode checks whether a promo code is applicable for a given order.
-// Returns (discountAmount, errorCode) where errorCode is empty when the code is valid.
-// The returned errorCode is suitable for use as an API error code (e.g. "promo.expired").
-func validatePromoCode(pc gen.PromoCodeRow, orderAmount int64, now time.Time) (int64, string) {
-	if pc.Status != "active" {
-		return 0, "promo.not_active"
-	}
-	if pc.ValidFrom != nil && now.Before(*pc.ValidFrom) {
-		return 0, "promo.not_yet_valid"
-	}
-	if pc.ValidUntil != nil && now.After(*pc.ValidUntil) {
-		return 0, "promo.expired"
-	}
-	if orderAmount < pc.MinOrderAmount {
-		return 0, "promo.invalid_order_amount"
-	}
-	return computeDiscount(pc.DiscountType, pc.DiscountValue, orderAmount), ""
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /v1/organizations/{org_id}/promo-codes
 // ─────────────────────────────────────────────────────────────────────────────

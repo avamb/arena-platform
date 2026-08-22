@@ -476,23 +476,24 @@ func (q *Queries) UpsertEventI18nDescription(ctx context.Context, eventIDStr, lo
 
 const updateEventMetadata = `-- name: UpdateEventMetadata :one
 UPDATE events
-SET    slug              = COALESCE($3, slug),
-       short_description = COALESCE($4, short_description),
-       genre             = COALESCE($5, genre),
-       age_rating        = COALESCE($6, age_rating),
-       duration_minutes  = COALESCE($7, duration_minutes),
-       teaser_url        = COALESCE($8, teaser_url),
-       trailer_url       = COALESCE($9, trailer_url),
-       meta_description  = COALESCE($10, meta_description),
-       meta_keywords     = COALESCE($11, meta_keywords),
+SET    slug              = $3,
+       short_description = $4,
+       genre             = $5,
+       age_rating        = $6,
+       duration_minutes  = $7,
+       teaser_url        = $8,
+       trailer_url       = $9,
+       meta_description  = $10,
+       meta_keywords     = $11,
        updated_at        = now()
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
 RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, poster_media_id, slug, short_description, genre, age_rating, duration_minutes, teaser_url, trailer_url, meta_description, meta_keywords, created_at, updated_at, deleted_at`
 
-// UpdateEventMetadata sets the content-management metadata fields (AB-45, migration 0051).
-// All metadata fields are optional and fully nullable.
+// UpdateEventMetadata sets the content-management metadata fields (AB-45c, migration 0051).
+// The caller resolves tri-state (absent=keep, null=clear, value=set) before calling;
+// params are already-resolved values so direct assignment is used (not COALESCE).
 // Returns pgx.ErrNoRows when the event does not exist, does not belong to the org,
 // or has been soft-deleted.
 func (q *Queries) UpdateEventMetadata(ctx context.Context, id, orgID uuid.UUID, slug, shortDescription, genre, ageRating *string, durationMinutes *int32, teaserURL, trailerURL, metaDescription, metaKeywords *string) (EventRow, error) {

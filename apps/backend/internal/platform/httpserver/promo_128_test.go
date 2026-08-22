@@ -21,6 +21,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -313,7 +314,7 @@ func TestPromo128_Step3_ValidatePromoCode(t *testing.T) {
 			DiscountType:  "percent",
 			DiscountValue: 10,
 		}
-		_, errCode := validatePromoCode(pc, 5000, now)
+		_, errCode := hcheckout.ValidatePromoForLines(pc, []hcheckout.TierLine{{Amount: 5000}}, now)
 		if errCode != "promo.not_active" {
 			t.Errorf("got errCode=%q, want 'promo.not_active'", errCode)
 		}
@@ -327,7 +328,7 @@ func TestPromo128_Step3_ValidatePromoCode(t *testing.T) {
 			DiscountValue: 10,
 			ValidUntil:    &past,
 		}
-		_, errCode := validatePromoCode(pc, 5000, now)
+		_, errCode := hcheckout.ValidatePromoForLines(pc, []hcheckout.TierLine{{Amount: 5000}}, now)
 		if errCode != "promo.expired" {
 			t.Errorf("got errCode=%q, want 'promo.expired'", errCode)
 		}
@@ -341,7 +342,7 @@ func TestPromo128_Step3_ValidatePromoCode(t *testing.T) {
 			DiscountValue: 10,
 			ValidFrom:     &future,
 		}
-		_, errCode := validatePromoCode(pc, 5000, now)
+		_, errCode := hcheckout.ValidatePromoForLines(pc, []hcheckout.TierLine{{Amount: 5000}}, now)
 		if errCode != "promo.not_yet_valid" {
 			t.Errorf("got errCode=%q, want 'promo.not_yet_valid'", errCode)
 		}
@@ -354,7 +355,7 @@ func TestPromo128_Step3_ValidatePromoCode(t *testing.T) {
 			DiscountValue:  10,
 			MinOrderAmount: 10000,
 		}
-		_, errCode := validatePromoCode(pc, 5000, now)
+		_, errCode := hcheckout.ValidatePromoForLines(pc, []hcheckout.TierLine{{Amount: 5000}}, now)
 		if errCode != "promo.invalid_order_amount" {
 			t.Errorf("got errCode=%q, want 'promo.invalid_order_amount'", errCode)
 		}
@@ -367,7 +368,7 @@ func TestPromo128_Step3_ValidatePromoCode(t *testing.T) {
 			DiscountValue:  10,
 			MinOrderAmount: 0,
 		}
-		discount, errCode := validatePromoCode(pc, 5000, now)
+		discount, errCode := hcheckout.ValidatePromoForLines(pc, []hcheckout.TierLine{{Amount: 5000}}, now)
 		if errCode != "" {
 			t.Errorf("unexpected error code: %q", errCode)
 		}
