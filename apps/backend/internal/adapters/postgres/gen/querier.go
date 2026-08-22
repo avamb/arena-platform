@@ -402,12 +402,17 @@ type Querier interface {
 	UpdateBatchEntriesStatus(ctx context.Context, batchID uuid.UUID, newStatus string) (int64, error)
 
 	// WordPress webhook subscriber registry — fan-out endpoint management (feature #156)
-	CreateWebhookSubscriber(ctx context.Context, siteURL string, callbackURL string, signingSecret string, eventTypes []string) (WebhookSubscriberRow, error)
+	CreateWebhookSubscriber(ctx context.Context, siteURL string, callbackURL string, signingSecret string, eventTypes []string, kind string, orgID *uuid.UUID) (WebhookSubscriberRow, error)
 	ListActiveWebhookSubscribers(ctx context.Context) ([]WebhookSubscriberRow, error)
 	GetWebhookSubscriberByID(ctx context.Context, id uuid.UUID) (WebhookSubscriberRow, error)
 	DeactivateWebhookSubscriber(ctx context.Context, id uuid.UUID) (WebhookSubscriberRow, error)
 	UpdateWebhookSubscriberEventTypes(ctx context.Context, id uuid.UUID, eventTypes []string) (WebhookSubscriberRow, error)
 	SetWebhookSubscriberActive(ctx context.Context, id uuid.UUID, active bool) (WebhookSubscriberRow, error)
+	// AB-50c: MACS webhook subscriber management (migration 0089)
+	CreateMACSSubscriber(ctx context.Context, orgID uuid.UUID, callbackURL string, signingSecret string) (WebhookSubscriberRow, error)
+	GetMACSSubscriberByOrg(ctx context.Context, orgID uuid.UUID) (WebhookSubscriberRow, error)
+	ListActiveMACSSubscribers(ctx context.Context) ([]WebhookSubscriberRow, error)
+	DeactivateMACSSubscriberByOrg(ctx context.Context, orgID uuid.UUID) (WebhookSubscriberRow, error)
 
 	// External reconciliation — partner report submission, auto-match, exception queue (feature #147)
 	InsertReconciliationReport(ctx context.Context, allocationID uuid.UUID, partnerOrgID uuid.UUID, totalLines int32, matchedLines int32, exceptionLines int32, status string, notes *string) (ReconciliationReportRow, error)

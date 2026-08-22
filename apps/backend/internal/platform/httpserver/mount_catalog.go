@@ -176,6 +176,25 @@ func (s *Server) mountMACSExportRoutes(r chi.Router) {
 	}
 }
 
+// mountMACSWebhookRoutes mounts the MACS webhook subscriber management endpoints
+// (AB-50c, feature #439). Requires org membership.
+//   - GET    /organizations/{org_id}/macs-webhook  — get active subscriber
+//   - PUT    /organizations/{org_id}/macs-webhook  — upsert subscriber
+//   - DELETE /organizations/{org_id}/macs-webhook  — deactivate subscriber
+func (s *Server) mountMACSWebhookRoutes(r chi.Router) {
+	if s.authEnabled() && s.membershipQueries != nil {
+		r.Group(func(pr chi.Router) {
+			s.applyAuth(pr, "event.read", "macs_webhook")
+			pr.Get("/organizations/{org_id}/macs-webhook", s.handleGetMACSWebhook)
+		})
+		r.Group(func(pr chi.Router) {
+			s.applyAuth(pr, "event.update", "macs_webhook")
+			pr.Put("/organizations/{org_id}/macs-webhook", s.handleUpsertMACSWebhook)
+			pr.Delete("/organizations/{org_id}/macs-webhook", s.handleDeleteMACSWebhook)
+		})
+	}
+}
+
 // mountPublicFeedRoutes mounts the unauthenticated public feed event +
 // checkout endpoints (features #152, #153, #319 WID-0b, #320 WID-0c,
 // #322 WID-0e).

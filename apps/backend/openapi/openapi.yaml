@@ -8696,6 +8696,57 @@ components:
       description: MACS import file — array of orders with nested ticket lists.
       items:
         $ref: "#/components/schemas/MACSOrder"
+    MACSWebhookSubscriber:
+      type: object
+      description: A MACS webhook subscriber registration for an organization (AB-50c, feature #439).
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Subscriber UUID.
+        org_id:
+          type: string
+          format: uuid
+          description: Organization UUID this subscriber is linked to.
+        callback_url:
+          type: string
+          description: The HTTPS endpoint that receives MACS-shaped webhook payloads.
+        signing_secret:
+          type: string
+          description: |
+            HMAC-SHA256 signing secret. Only included in PUT (upsert) responses.
+            Store securely — it is not returned by GET.
+        active:
+          type: boolean
+          description: Whether the subscriber is currently active.
+        kind:
+          type: string
+          description: Subscriber kind. Always "macs" for this resource.
+          example: macs
+        created_at:
+          type: string
+          format: date-time
+          description: ISO 8601 creation timestamp.
+        updated_at:
+          type: string
+          format: date-time
+          description: ISO 8601 last-update timestamp.
+    UpsertMACSWebhookRequest:
+      type: object
+      description: Request body for PUT /v1/organizations/{org_id}/macs-webhook.
+      required:
+        - callback_url
+      properties:
+        callback_url:
+          type: string
+          description: The HTTPS endpoint to receive MACS webhook events.
+          example: https://macs.example.com/webhook/arena
+        signing_secret:
+          type: string
+          description: |
+            HMAC-SHA256 key for the X-MACS-Signature header.
+            If empty, payloads are sent unsigned.
+          example: my-secret-key
 
 paths:
   /healthz:
@@ -16165,6 +16216,163 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/organizations/{org_id}/macs-webhook:
+    get:
+      operationId: getMACSWebhook
+      summary: Get active MACS webhook subscriber for an org
+      description: |
+        Returns the currently active MACS webhook subscriber for the organization.
+        Returns 404 when no active MACS subscriber is registered.
+        Requires JWT + org membership. AB-50c (feature #439).
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: Organization UUID.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Active MACS webhook subscriber.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MACSWebhookSubscriber"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller is not an org member.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No active MACS webhook subscriber for this org.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    put:
+      operationId: upsertMACSWebhook
+      summary: Register or replace the MACS webhook subscriber for an org
+      description: |
+        Deactivates any existing MACS webhook subscriber for the org and creates
+        a new one with the supplied callback_url and signing_secret.
+        The signing_secret is returned in the response body (only on this call)
+        and should be stored securely by the caller.
+        Requires JWT + org membership. AB-50c (feature #439).
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: Organization UUID.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertMACSWebhookRequest"
+      responses:
+        "200":
+          description: MACS webhook subscriber created (signing_secret included).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MACSWebhookSubscriber"
+        "400":
+          description: Missing or invalid request body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller is not an org member.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      operationId: deleteMACSWebhook
+      summary: Deactivate the MACS webhook subscriber for an org
+      description: |
+        Soft-deletes the active MACS webhook subscriber for the organization.
+        Returns 404 when no active subscriber exists.
+        Requires JWT + org membership. AB-50c (feature #439).
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: Organization UUID.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: MACS webhook subscriber deactivated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MACSWebhookSubscriber"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller is not an org member.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No active MACS webhook subscriber for this org.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/sessions/{id}/media:
     get:
       operationId: getSessionMedia
@@ -20934,6 +21142,10 @@ paths:
       operationId: scanBarcode
       summary: Validate and consume a barcode scan
       description: |
+        **INTERNAL / TESTING-ONLY** — The production door-admission gate
+        is MACS (see AB-50). This endpoint exists for development and
+        integration testing only; do not build scanner hardware against it.
+
         Authority-aware scan validation (feature #142, HandleScan).
         Flow: resolve the authority by `authority_type` (404 when
         unknown), look up the barcode by `(authority_id, external_ref)`
@@ -21130,6 +21342,10 @@ paths:
       operationId: validateScannerBarcode
       summary: Read-only online barcode validation
       description: |
+        **INTERNAL / TESTING-ONLY** — The production door-admission gate
+        is MACS (see AB-50). This endpoint exists for development and
+        integration testing only; do not build scanner hardware against it.
+
         Performs a read-only barcode validity check (feature #144,
         HandleScannerValidate). Unlike `POST /v1/scan` this endpoint
         does NOT mark the barcode as scanned — it reports whether the
@@ -22631,6 +22847,10 @@ paths:
       operationId: postScannerScanEvents
       summary: Scanner — ingest a batch of scan reports
       description: |
+        **INTERNAL / TESTING-ONLY** — The production door-admission gate
+        is MACS (see AB-50). This endpoint exists for development and
+        integration testing only; do not build scanner hardware against it.
+
         Accepts up to 500 scan attempts uploaded by an external
         scanner device. The handler:
 

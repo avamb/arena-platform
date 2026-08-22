@@ -156,6 +156,8 @@ func (h *Handler) HandleRegisterWebhookSubscriber(w http.ResponseWriter, r *http
 		req.CallbackURL,
 		secret,
 		req.EventTypes,
+		"generic", // kind: generic for WordPress subscribers
+		nil,       // org_id: nil for WordPress/generic subscribers
 	)
 	if err != nil {
 		h.logger.Warn("handleRegisterWebhookSubscriber: db error",

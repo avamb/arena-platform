@@ -56,6 +56,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/idempotency"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/issuejob"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/macs"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
@@ -165,7 +166,13 @@ func run() error {
 	// URL with an HMAC-SHA256 X-Arena-Signature header (using OUTBOX_SIGNING_SECRET).
 	// When OUTBOX_WEBHOOK_URL is empty, the NoopDispatcher is used so the worker
 	// starts cleanly in environments that have not yet wired a webhook target.
-	outboxDispatcher := buildOutboxDispatcher(cfg, logger)
+	//
+	// AB-50c: MACS dispatcher is added to the fan-out. It delivers MACS-shaped
+	// payloads to per-org MACS webhook subscribers for ticket lifecycle events.
+	// Delivery failure returns an error so the outbox row retries (at-least-once).
+	baseOutboxDispatcher := buildOutboxDispatcher(cfg, logger)
+	macsDispatcher := macs.NewDispatcher(pool.Pool)
+	outboxDispatcher := &multiDispatcher{dispatchers: []outbox.Dispatcher{baseOutboxDispatcher, macsDispatcher}}
 	outboxStore := outbox.NewPGOutboxEventStore(pool.Pool)
 	outboxEventsDisp, outboxDispErr := outbox.NewOutboxEventsDispatcher(outbox.OutboxEventsDispatcherOptions{
 		Store:           outboxStore,
@@ -548,4 +555,21 @@ func coalesce(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// multiDispatcher fans out Dispatch calls to multiple Dispatcher implementations
+// in order. If any dispatcher returns an error, delivery stops and the error is
+// returned (causing the outbox to retry the entire row). This is at-least-once
+// delivery: on retry, all dispatchers are called again.
+type multiDispatcher struct {
+	dispatchers []outbox.Dispatcher
+}
+
+func (m *multiDispatcher) Dispatch(ctx context.Context, ev outbox.Event) error {
+	for _, d := range m.dispatchers {
+		if err := d.Dispatch(ctx, ev); err != nil {
+			return err
+		}
+	}
+	return nil
 }

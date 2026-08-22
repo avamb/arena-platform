@@ -25,15 +25,19 @@ import (
 //   - SigningSecret: raw HMAC-SHA256 key. Store and transmit over TLS only.
 //   - EventTypes:    empty slice = wildcard (receives all event types).
 //   - Active:        soft-delete flag; inactive subscribers are skipped in fan-out.
+//   - Kind:          subscriber kind; 'macs' for MACS integration, 'generic' for WordPress etc.
+//   - OrgID:         nullable org_id for MACS subscribers; generic subscribers have NULL.
 type WebhookSubscriberRow struct {
-	ID            uuid.UUID `json:"id"`
-	SiteURL       string    `json:"site_url"`
-	CallbackURL   string    `json:"callback_url"`
-	SigningSecret string    `json:"signing_secret"`
-	EventTypes    []string  `json:"event_types"`
-	Active        bool      `json:"active"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID            uuid.UUID  `json:"id"`
+	SiteURL       string     `json:"site_url"`
+	CallbackURL   string     `json:"callback_url"`
+	SigningSecret string     `json:"signing_secret"`
+	EventTypes    []string   `json:"event_types"`
+	Active        bool       `json:"active"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	Kind          string     `json:"kind"`
+	OrgID         *uuid.UUID `json:"org_id,omitempty"`
 }
 
 // scanWebhookSubscriberRow scans a single webhook_subscribers row.
@@ -50,6 +54,8 @@ func scanWebhookSubscriberRow(row interface {
 		&r.Active,
 		&r.CreatedAt,
 		&r.UpdatedAt,
+		&r.Kind,
+		&r.OrgID,
 	)
 	return r, err
 }
@@ -64,11 +70,13 @@ INSERT INTO webhook_subscribers (
     callback_url,
     signing_secret,
     event_types,
-    active
+    active,
+    kind,
+    org_id
 ) VALUES (
-    $1, $2, $3, $4, TRUE
+    $1, $2, $3, $4, TRUE, $5, $6
 )
-RETURNING id, site_url, callback_url, signing_secret, event_types, active, created_at, updated_at`
+RETURNING id, site_url, callback_url, signing_secret, event_types, active, created_at, updated_at, kind, org_id`
 
 // CreateWebhookSubscriber registers a new webhook subscriber endpoint.
 //
@@ -77,6 +85,8 @@ RETURNING id, site_url, callback_url, signing_secret, event_types, active, creat
 //   - callbackURL:   The POST endpoint that receives webhook events.
 //   - signingSecret: Caller-generated random hex secret (32 bytes recommended).
 //   - eventTypes:    List of event_type strings to subscribe to. Empty = wildcard.
+//   - kind:          Subscriber kind ('generic' for WordPress, 'macs' for MACS).
+//   - orgID:         Nullable org UUID; non-nil for MACS subscribers.
 //
 // Returns the full row including the generated id.
 func (q *Queries) CreateWebhookSubscriber(
@@ -85,12 +95,16 @@ func (q *Queries) CreateWebhookSubscriber(
 	callbackURL string,
 	signingSecret string,
 	eventTypes []string,
+	kind string,
+	orgID *uuid.UUID,
 ) (WebhookSubscriberRow, error) {
 	row := q.db.QueryRow(ctx, createWebhookSubscriberSQL,
 		siteURL,
 		callbackURL,
 		signingSecret,
 		eventTypes,
+		kind,
+		orgID,
 	)
 	return scanWebhookSubscriberRow(row)
 }
@@ -100,7 +114,7 @@ func (q *Queries) CreateWebhookSubscriber(
 // ─────────────────────────────────────────────────────────────────────────────
 
 const listActiveWebhookSubscribersSQL = `-- name: ListActiveWebhookSubscribers :many
-SELECT id, site_url, callback_url, signing_secret, event_types, active, created_at, updated_at
+SELECT id, site_url, callback_url, signing_secret, event_types, active, created_at, updated_at, kind, org_id
 FROM   webhook_subscribers
 WHERE  active = TRUE
 ORDER  BY created_at ASC`
@@ -130,7 +144,7 @@ func (q *Queries) ListActiveWebhookSubscribers(ctx context.Context) ([]WebhookSu
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getWebhookSubscriberByIDSQL = `-- name: GetWebhookSubscriberByID :one
-SELECT id, site_url, callback_url, signing_secret, event_types, active, created_at, updated_at
+SELECT id, site_url, callback_url, signing_secret, event_types, active, created_at, updated_at, kind, org_id
 FROM   webhook_subscribers
 WHERE  id = $1`
 
@@ -149,7 +163,7 @@ UPDATE webhook_subscribers
 SET    active     = FALSE,
        updated_at = NOW()
 WHERE  id = $1
-RETURNING id, site_url, callback_url, signing_secret, event_types, active, created_at, updated_at`
+RETURNING id, site_url, callback_url, signing_secret, event_types, active, created_at, updated_at, kind, org_id`
 
 // DeactivateWebhookSubscriber soft-deletes a subscriber by setting active = FALSE.
 // Returns the updated row so callers can confirm the deactivation.
@@ -167,7 +181,7 @@ UPDATE webhook_subscribers
 SET    event_types = $2,
        updated_at  = NOW()
 WHERE  id = $1
-RETURNING id, site_url, callback_url, signing_secret, event_types, active, created_at, updated_at`
+RETURNING id, site_url, callback_url, signing_secret, event_types, active, created_at, updated_at, kind, org_id`
 
 // UpdateWebhookSubscriberEventTypes replaces the event_types filter for an existing subscriber.
 func (q *Queries) UpdateWebhookSubscriberEventTypes(
@@ -188,7 +202,7 @@ UPDATE webhook_subscribers
 SET    active     = $2,
        updated_at = NOW()
 WHERE  id = $1
-RETURNING id, site_url, callback_url, signing_secret, event_types, active, created_at, updated_at`
+RETURNING id, site_url, callback_url, signing_secret, event_types, active, created_at, updated_at, kind, org_id`
 
 // SetWebhookSubscriberActive flips the active flag of an existing subscriber.
 //

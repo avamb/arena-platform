@@ -257,6 +257,14 @@ func (h *Handler) processScannerScan(ctx context.Context, orgID uuid.UUID, in sc
 	resolved, lookupErr := h.feedTokenQueries.ResolveScanCredentialByTicketQR(ctx, in.CredentialCode)
 	switch {
 	case lookupErr == nil:
+		// AB-50d status gate: cancelled/revoked tickets are rejected at the scan
+		// callback before any scan_event row is inserted. These endpoints are
+		// internal/testing-only; the actual gate at the physical door is MACS.
+		switch resolved.TicketStatus {
+		case "cancelled", "revoked":
+			res.Error = "scanner.ticket_not_admissible: ticket is " + resolved.TicketStatus
+			return res
+		}
 		id := resolved.TicketID
 		ticketID = &id
 		sid := resolved.SessionID

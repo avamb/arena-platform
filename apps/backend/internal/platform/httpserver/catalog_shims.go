@@ -317,3 +317,17 @@ func (s *Server) handleReplaceSessionMedia(w http.ResponseWriter, r *http.Reques
 func (s *Server) handleMACSExport(w http.ResponseWriter, r *http.Request) {
 	s.catalogHandler().HandleMACSExport(s.pgxPool, w, r)
 }
+
+// ──── MACS webhook shims (AB-50c, feature #439) ───────────────────────────────
+
+func (s *Server) handleGetMACSWebhook(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleGetMACSWebhook(s.pgxPool, w, r)
+}
+
+func (s *Server) handleUpsertMACSWebhook(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleUpsertMACSWebhook(s.pgxPool, w, r)
+}
+
+func (s *Server) handleDeleteMACSWebhook(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleDeleteMACSWebhook(s.pgxPool, w, r)
+}

@@ -894,7 +894,284 @@ function OverviewTab({ org }: { org: AdminOrganization }) {
           }
         />
       </dl>
+      <MacsWebhookSection orgId={org.id} />
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MACS Webhook Section (AB-50c / feature #439)
+//
+// Allows operators to register, view, and revoke the per-org MACS webhook
+// subscriber. Uses:
+//   GET    /v1/organizations/{org_id}/macs-webhook
+//   PUT    /v1/organizations/{org_id}/macs-webhook
+//   DELETE /v1/organizations/{org_id}/macs-webhook
+//
+// The signing_secret is shown ONCE after registration (PUT response) and
+// never exposed again on subsequent GET responses.
+// ---------------------------------------------------------------------------
+
+interface MacsWebhookSubscriber {
+  id: string;
+  org_id: string;
+  callback_url: string;
+  active: boolean;
+  kind: string;
+  created_at: string;
+  updated_at: string;
+  signing_secret?: string;
+}
+
+function MacsWebhookSection({ orgId }: { orgId: string }) {
+  const qc = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [callbackUrl, setCallbackUrl] = useState("");
+  const [signingSecret, setSigningSecret] = useState("");
+  const [justRegistered, setJustRegistered] = useState<MacsWebhookSubscriber | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const queryKey = ["macs-webhook", orgId];
+
+  const { data: subscriber, isLoading, error } = useQuery<MacsWebhookSubscriber | null>({
+    queryKey,
+    queryFn: async () => {
+      try {
+        const res = await authedFetch<MacsWebhookSubscriber>({ method: "GET", path: `/v1/organizations/${orgId}/macs-webhook` });
+        return res;
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) return null;
+        throw err;
+      }
+    },
+  });
+
+  const registerMut = useMutation({
+    mutationFn: async () => {
+      if (!callbackUrl.trim()) throw new Error("Callback URL is required");
+      const res = await authedFetch<MacsWebhookSubscriber>({
+        method: "PUT",
+        path: `/v1/organizations/${orgId}/macs-webhook`,
+        body: {
+          callback_url: callbackUrl.trim(),
+          signing_secret: signingSecret.trim() || undefined,
+        },
+      });
+      return res;
+    },
+    onSuccess: (data) => {
+      setJustRegistered(data);
+      setShowForm(false);
+      setCallbackUrl("");
+      setSigningSecret("");
+      setFormError(null);
+      qc.invalidateQueries({ queryKey });
+    },
+    onError: (err) => {
+      setFormError(err instanceof Error ? err.message : "Registration failed");
+    },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: async () => {
+      await authedFetch<MacsWebhookSubscriber>({ method: "DELETE", path: `/v1/organizations/${orgId}/macs-webhook` });
+    },
+    onSuccess: () => {
+      setJustRegistered(null);
+      setDeleteError(null);
+      qc.invalidateQueries({ queryKey });
+    },
+    onError: (err) => {
+      setDeleteError(err instanceof Error ? err.message : "Deactivation failed");
+    },
+  });
+
+  const macsSubStyle: CSSProperties = {
+    margin: "16px 0 0",
+    padding: "12px",
+    background: "#f8fafc",
+    border: "1px solid #e2e8f0",
+    borderRadius: 6,
+  };
+
+  const macsTitleRowStyle: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  };
+
+  const macsTitleStyle: CSSProperties = {
+    margin: 0,
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#334155",
+  };
+
+  const macsSecretBoxStyle: CSSProperties = {
+    margin: "8px 0",
+    padding: "8px 10px",
+    background: "#fefce8",
+    border: "1px solid #fde68a",
+    borderRadius: 4,
+    fontSize: 12,
+    fontFamily: "ui-monospace, monospace",
+    wordBreak: "break-all",
+    color: "#92400e",
+  };
+
+  const smallBtnStyle: CSSProperties = {
+    fontSize: 11,
+    padding: "3px 8px",
+    border: "1px solid #cbd5e1",
+    borderRadius: 4,
+    cursor: "pointer",
+    background: "#fff",
+    color: "#334155",
+  };
+
+  const dangerBtnStyle: CSSProperties = {
+    ...smallBtnStyle,
+    color: "#b91c1c",
+    borderColor: "#fca5a5",
+  };
+
+  return (
+    <section data-testid="orgs-macs-webhook-section">
+      <h3 style={{ ...drawerSectionTitleStyle, marginTop: 20 }}>MACS scanner webhook</h3>
+
+      {isLoading && <p style={{ fontSize: 13, color: "#64748b" }}>Loading…</p>}
+      {error && !isLoading && (
+        <p style={{ fontSize: 12, color: "#b91c1c" }}>Failed to load MACS webhook: {String(error)}</p>
+      )}
+
+      {justRegistered?.signing_secret && (
+        <div style={macsSubStyle}>
+          <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 600, color: "#065f46" }}>
+            ✓ Registered. Save the signing secret — it will not be shown again.
+          </p>
+          <div style={macsSecretBoxStyle}>{justRegistered.signing_secret}</div>
+          <p style={{ margin: "4px 0 0", fontSize: 11, color: "#64748b" }}>
+            Callback URL: {justRegistered.callback_url}
+          </p>
+          <button
+            type="button"
+            style={{ ...smallBtnStyle, marginTop: 8 }}
+            onClick={() => setJustRegistered(null)}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {!isLoading && subscriber && !justRegistered?.signing_secret && (
+        <div style={macsSubStyle}>
+          <div style={macsTitleRowStyle}>
+            <p style={macsTitleStyle}>Active subscriber</p>
+            <button
+              type="button"
+              style={dangerBtnStyle}
+              disabled={deleteMut.isPending}
+              onClick={() => {
+                setDeleteError(null);
+                deleteMut.mutate();
+              }}
+              data-testid="orgs-macs-webhook-deactivate"
+            >
+              {deleteMut.isPending ? "Deactivating…" : "Deactivate"}
+            </button>
+          </div>
+          <dl style={{ margin: 0, fontSize: 12, color: "#334155" }}>
+            <dt style={{ fontWeight: 600, marginBottom: 2 }}>Callback URL</dt>
+            <dd style={{ margin: "0 0 6px", fontFamily: "ui-monospace, monospace", wordBreak: "break-all" }}>
+              {subscriber.callback_url}
+            </dd>
+            <dt style={{ fontWeight: 600, marginBottom: 2 }}>Registered</dt>
+            <dd style={{ margin: 0 }}>{subscriber.created_at}</dd>
+          </dl>
+          {deleteError && (
+            <p style={{ fontSize: 11, color: "#b91c1c", marginTop: 6 }}>{deleteError}</p>
+          )}
+          <button
+            type="button"
+            style={{ ...smallBtnStyle, marginTop: 10 }}
+            onClick={() => { setShowForm(true); setJustRegistered(null); }}
+            data-testid="orgs-macs-webhook-replace"
+          >
+            Replace
+          </button>
+        </div>
+      )}
+
+      {!isLoading && !subscriber && !showForm && !justRegistered?.signing_secret && (
+        <div style={{ marginTop: 8 }}>
+          <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 8px" }}>No MACS webhook registered for this org.</p>
+          <button
+            type="button"
+            style={smallBtnStyle}
+            onClick={() => setShowForm(true)}
+            data-testid="orgs-macs-webhook-register"
+          >
+            Register webhook
+          </button>
+        </div>
+      )}
+
+      {showForm && (
+        <form
+          style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}
+          onSubmit={(e: FormEvent) => { e.preventDefault(); registerMut.mutate(); }}
+          data-testid="orgs-macs-webhook-form"
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#334155" }}>
+              Callback URL *
+            </label>
+            <input
+              type="url"
+              value={callbackUrl}
+              onChange={(e) => setCallbackUrl(e.target.value)}
+              placeholder="https://macs.example.com/_wh/tickets"
+              required
+              style={{ fontSize: 12, padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: 4 }}
+              data-testid="orgs-macs-webhook-url-input"
+            />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#334155" }}>
+              Signing secret (optional — auto-generated if blank)
+            </label>
+            <input
+              type="text"
+              value={signingSecret}
+              onChange={(e) => setSigningSecret(e.target.value)}
+              placeholder="leave blank to auto-generate"
+              style={{ fontSize: 12, padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: 4, fontFamily: "ui-monospace, monospace" }}
+              data-testid="orgs-macs-webhook-secret-input"
+            />
+          </div>
+          {formError && <p style={{ fontSize: 11, color: "#b91c1c" }}>{formError}</p>}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="submit"
+              disabled={registerMut.isPending || !callbackUrl.trim()}
+              style={{ ...smallBtnStyle, background: "#0ea5e9", color: "#fff", borderColor: "#0ea5e9" }}
+              data-testid="orgs-macs-webhook-submit"
+            >
+              {registerMut.isPending ? "Registering…" : "Register"}
+            </button>
+            <button
+              type="button"
+              style={smallBtnStyle}
+              onClick={() => { setShowForm(false); setFormError(null); }}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
   );
 }
 
