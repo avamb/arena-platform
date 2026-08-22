@@ -299,6 +299,7 @@ func New(opts Options) *Server {
 		seatingQueries:        pickQueries(opts.SeatingQueries, opts.PgxPool),
 		meQueries:             pickMeQueries(opts.MeQueries, opts.PgxPool),
 		media:                 opts.Media,
+		pgxPool:               opts.PgxPool,
 	}
 
 	// Production verifier fallback: when no explicit Verifier is supplied,

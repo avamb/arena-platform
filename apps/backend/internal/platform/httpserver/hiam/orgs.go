@@ -109,6 +109,7 @@ type updateOrgRequest struct {
 	WebsiteURL             optionalString `json:"website_url"`
 	KybStatus              optionalString `json:"kyb_status"`
 	SenderEmail            optionalString `json:"sender_email"`
+	LogoMediaID            *string        `json:"logo_media_id"`
 }
 
 // optionalString preserves the difference between an omitted PATCH member and
@@ -453,6 +454,7 @@ func (h *Handler) HandleUpdateOrg(w http.ResponseWriter, r *http.Request) {
 	updated, err := h.orgQueries.UpdateOrganization(ctx,
 		orgID, req.Name, req.Slug, req.Country, req.DefaultLocale, req.ReservationTTLSeconds,
 		legalName, taxID, taxScheme, registrationNumber, line1, line2, postalCode, city, addressCountry, email, phone, website, kybStatus,
+		nil,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

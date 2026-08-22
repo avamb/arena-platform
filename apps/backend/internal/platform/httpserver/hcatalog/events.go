@@ -57,20 +57,29 @@ type eventResponse = EventResponse
 // venue_names lists the distinct venues of those sessions (empty for an
 // event with no sessions; more than one entry for a tour).
 type EventResponse struct {
-	ID             string   `json:"id"`
-	DisplayNumber  int64    `json:"display_number"`
-	OrgID          string   `json:"org_id"`
-	Name           string   `json:"name"`
-	Description    *string  `json:"description"`
-	Status         string   `json:"status"`
-	FirstSessionAt *string  `json:"first_session_at"`
-	LastSessionAt  *string  `json:"last_session_at"`
-	VenueNames     []string `json:"venue_names"`
-	Visibility     string   `json:"visibility"`
-	ImageURL       *string  `json:"image_url"`
-	PosterMediaID  *string  `json:"poster_media_id"`
-	CreatedAt      string   `json:"created_at"`
-	UpdatedAt      string   `json:"updated_at"`
+	ID               string   `json:"id"`
+	DisplayNumber    int64    `json:"display_number"`
+	OrgID            string   `json:"org_id"`
+	Name             string   `json:"name"`
+	Description      *string  `json:"description"`
+	Status           string   `json:"status"`
+	FirstSessionAt   *string  `json:"first_session_at"`
+	LastSessionAt    *string  `json:"last_session_at"`
+	VenueNames       []string `json:"venue_names"`
+	Visibility       string   `json:"visibility"`
+	ImageURL         *string  `json:"image_url"`
+	PosterMediaID    *string  `json:"poster_media_id"`
+	Slug             *string  `json:"slug"`
+	ShortDescription *string  `json:"short_description"`
+	Genre            *string  `json:"genre"`
+	AgeRating        *string  `json:"age_rating"`
+	DurationMinutes  *int32   `json:"duration_minutes"`
+	TeaserURL        *string  `json:"teaser_url"`
+	TrailerURL       *string  `json:"trailer_url"`
+	MetaDescription  *string  `json:"meta_description"`
+	MetaKeywords     *string  `json:"meta_keywords"`
+	CreatedAt        string   `json:"created_at"`
+	UpdatedAt        string   `json:"updated_at"`
 }
 
 func eventFromRow(e gen.EventRow) eventResponse {
@@ -107,6 +116,15 @@ func EventFromRow(e gen.EventRow) EventResponse {
 		v := e.PosterMediaID.String()
 		resp.PosterMediaID = &v
 	}
+	resp.Slug = e.Slug
+	resp.ShortDescription = e.ShortDescription
+	resp.Genre = e.Genre
+	resp.AgeRating = e.AgeRating
+	resp.DurationMinutes = e.DurationMinutes
+	resp.TeaserURL = e.TeaserURL
+	resp.TrailerURL = e.TrailerURL
+	resp.MetaDescription = e.MetaDescription
+	resp.MetaKeywords = e.MetaKeywords
 	return resp
 }
 
@@ -417,6 +435,16 @@ type updateEventRequest struct {
 		Name        string `json:"name"`
 		Description string `json:"description"`
 	} `json:"translations"`
+	// AB-45: content-management metadata fields (migration 0051)
+	Slug             *string `json:"slug"`
+	ShortDescription *string `json:"short_description"`
+	Genre            *string `json:"genre"`
+	AgeRating        *string `json:"age_rating"`
+	DurationMinutes  *int32  `json:"duration_minutes"`
+	TeaserURL        *string `json:"teaser_url"`
+	TrailerURL       *string `json:"trailer_url"`
+	MetaDescription  *string `json:"meta_description"`
+	MetaKeywords     *string `json:"meta_keywords"`
 }
 
 func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
@@ -541,6 +569,25 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 					slog.String("error", err.Error()),
 				)
 			}
+		}
+	}
+
+	// AB-45: update metadata fields if any were provided
+	if req.Slug != nil || req.ShortDescription != nil || req.Genre != nil || req.AgeRating != nil ||
+		req.DurationMinutes != nil || req.TeaserURL != nil || req.TrailerURL != nil ||
+		req.MetaDescription != nil || req.MetaKeywords != nil {
+		meta, metaErr := h.eventQueries.UpdateEventMetadata(ctx, eventID, orgID,
+			req.Slug, req.ShortDescription, req.Genre, req.AgeRating,
+			req.DurationMinutes, req.TeaserURL, req.TrailerURL, req.MetaDescription, req.MetaKeywords,
+		)
+		if metaErr != nil {
+			h.logger.Warn("event: metadata update failed",
+				slog.String("event_id", eventID.String()),
+				slog.String("error", metaErr.Error()),
+			)
+			// Non-fatal: the main update already succeeded
+		} else {
+			updated = meta
 		}
 	}
 

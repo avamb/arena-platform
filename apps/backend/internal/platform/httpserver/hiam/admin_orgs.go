@@ -32,6 +32,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
@@ -208,9 +209,23 @@ func (h *Handler) HandleAdminUpdateOrg(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var logoMediaID *uuid.UUID
+	if req.LogoMediaID != nil && *req.LogoMediaID != "" {
+		parsed, parseErr := uuid.Parse(*req.LogoMediaID)
+		if parseErr != nil {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+				"admin_org.invalid_logo_media_id", "logo_media_id must be a valid UUID", r,
+				map[string]any{"field": "logo_media_id"},
+			))
+			return
+		}
+		logoMediaID = &parsed
+	}
+
 	updated, err := h.orgQueries.UpdateOrganization(ctx,
 		orgID, req.Name, req.Slug, req.Country, req.DefaultLocale, req.ReservationTTLSeconds,
 		legalName, taxID, taxScheme, registrationNumber, line1, line2, postalCode, city, addressCountry, email, phone, website, kybStatus,
+		logoMediaID,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

@@ -14,7 +14,7 @@
 -- first_session_at / last_session_at start NULL — a new event has no sessions.
 INSERT INTO events (org_id, name, description, status, visibility, image_url)
 VALUES ($1, $2, $3, COALESCE(NULLIF($4, ''), 'draft'), COALESCE(NULLIF($5, ''), 'public'), $6)
-RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, created_at, updated_at, deleted_at;
+RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, poster_media_id, slug, short_description, genre, age_rating, duration_minutes, teaser_url, trailer_url, meta_description, meta_keywords, created_at, updated_at, deleted_at;
 
 -- name: GetEventByID :one
 -- GetEventByID fetches an active event by its UUID primary key.
@@ -30,6 +30,15 @@ SELECT
     e.last_session_at,
     e.visibility,
     e.image_url,
+    e.slug,
+    e.short_description,
+    e.genre,
+    e.age_rating,
+    e.duration_minutes,
+    e.teaser_url,
+    e.trailer_url,
+    e.meta_description,
+    e.meta_keywords,
     e.created_at,
     e.updated_at,
     e.deleted_at
@@ -51,7 +60,7 @@ WHERE e.id = $1
 
 -- name: GetEventRaw :one
 -- GetEventRaw fetches an active event without i18n joins (used for status transitions).
-SELECT id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, poster_media_id, slug, short_description, genre, age_rating, duration_minutes, teaser_url, trailer_url, meta_description, meta_keywords, created_at, updated_at, deleted_at
 FROM   events
 WHERE  id = $1
   AND  deleted_at IS NULL;
@@ -73,6 +82,15 @@ SELECT
     e.last_session_at,
     e.visibility,
     e.image_url,
+    e.slug,
+    e.short_description,
+    e.genre,
+    e.age_rating,
+    e.duration_minutes,
+    e.teaser_url,
+    e.trailer_url,
+    e.meta_description,
+    e.meta_keywords,
     e.created_at,
     e.updated_at,
     e.deleted_at
@@ -108,6 +126,15 @@ SELECT
     e.last_session_at,
     e.visibility,
     e.image_url,
+    e.slug,
+    e.short_description,
+    e.genre,
+    e.age_rating,
+    e.duration_minutes,
+    e.teaser_url,
+    e.trailer_url,
+    e.meta_description,
+    e.meta_keywords,
     e.created_at,
     e.updated_at,
     e.deleted_at
@@ -154,7 +181,7 @@ SET    name        = COALESCE(NULLIF($3, ''), name),
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, created_at, updated_at, deleted_at;
+RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, slug, short_description, genre, age_rating, duration_minutes, teaser_url, trailer_url, meta_description, meta_keywords, created_at, updated_at, deleted_at;
 
 -- name: UpdateEventStatus :one
 -- UpdateEventStatus transitions an event to a new status.
@@ -165,7 +192,7 @@ SET    status     = $3,
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, created_at, updated_at, deleted_at;
+RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, slug, short_description, genre, age_rating, duration_minutes, teaser_url, trailer_url, meta_description, meta_keywords, created_at, updated_at, deleted_at;
 
 -- name: SoftDeleteEvent :one
 -- SoftDeleteEvent marks an event as deleted by setting deleted_at.
@@ -176,7 +203,7 @@ SET    deleted_at = now(),
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, created_at, updated_at, deleted_at;
+RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, slug, short_description, genre, age_rating, duration_minutes, teaser_url, trailer_url, meta_description, meta_keywords, created_at, updated_at, deleted_at;
 
 -- name: UpsertEventI18nName :exec
 -- UpsertEventI18nName stores or updates the localized name for an event.
@@ -191,3 +218,57 @@ ON CONFLICT (namespace, key, locale) DO UPDATE SET value = EXCLUDED.value;
 INSERT INTO i18n_text (namespace, key, locale, value)
 VALUES ('event.description', $1, $2, $3)
 ON CONFLICT (namespace, key, locale) DO UPDATE SET value = EXCLUDED.value;
+
+-- name: UpdateEventMetadata :one
+-- UpdateEventMetadata sets the content-management metadata fields (AB-45, migration 0051).
+-- These are optional and fully nullable; pass the existing value to leave it unchanged.
+UPDATE events
+SET    slug              = $3,
+       short_description = $4,
+       genre             = $5,
+       age_rating        = $6,
+       duration_minutes  = $7,
+       teaser_url        = $8,
+       trailer_url       = $9,
+       meta_description  = $10,
+       meta_keywords     = $11,
+       updated_at        = now()
+WHERE  id = $1
+  AND  org_id = $2
+  AND  deleted_at IS NULL
+RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, poster_media_id, slug, short_description, genre, age_rating, duration_minutes, teaser_url, trailer_url, meta_description, meta_keywords, created_at, updated_at, deleted_at;
+
+-- name: ListEventArtists :many
+-- ListEventArtists returns all active artists for an event, ordered by sort_order.
+SELECT id, event_id, name, role, bio, photo_media_id, sort_order, created_at, updated_at
+FROM   event_artists
+WHERE  event_id = $1
+  AND  deleted_at IS NULL
+ORDER  BY sort_order ASC, id ASC;
+
+-- name: InsertEventArtist :one
+INSERT INTO event_artists (event_id, name, role, bio, photo_media_id, sort_order)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, event_id, name, role, bio, photo_media_id, sort_order, created_at, updated_at;
+
+-- name: UpdateEventArtist :one
+UPDATE event_artists
+SET    name           = COALESCE(NULLIF($3, ''), name),
+       role           = $4,
+       bio            = $5,
+       photo_media_id = $6,
+       sort_order     = CASE WHEN $7::integer IS NOT NULL THEN $7::integer ELSE sort_order END,
+       updated_at     = now()
+WHERE  id = $1
+  AND  event_id = $2
+  AND  deleted_at IS NULL
+RETURNING id, event_id, name, role, bio, photo_media_id, sort_order, created_at, updated_at;
+
+-- name: SoftDeleteEventArtist :one
+UPDATE event_artists
+SET    deleted_at = now(),
+       updated_at = now()
+WHERE  id = $1
+  AND  event_id = $2
+  AND  deleted_at IS NULL
+RETURNING id, event_id, name, role, bio, photo_media_id, sort_order, created_at, updated_at;

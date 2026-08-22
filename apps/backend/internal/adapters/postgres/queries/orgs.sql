@@ -4,22 +4,22 @@
 -- name: InsertOrganization :one
 INSERT INTO organizations (name, slug, country, default_locale, reservation_ttl_seconds)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, created_at, updated_at, deleted_at;
+RETURNING id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, logo_media_id, created_at, updated_at, deleted_at;
 
 -- name: GetOrganizationByID :one
-SELECT id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, created_at, updated_at, deleted_at
+SELECT id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, logo_media_id, created_at, updated_at, deleted_at
 FROM   organizations
 WHERE  id = $1
   AND  deleted_at IS NULL;
 
 -- name: GetOrganizationBySlug :one
-SELECT id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, created_at, updated_at, deleted_at
+SELECT id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, logo_media_id, created_at, updated_at, deleted_at
 FROM   organizations
 WHERE  slug = $1
   AND  deleted_at IS NULL;
 
 -- name: ListOrganizations :many
-SELECT id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, created_at, updated_at, deleted_at
+SELECT id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, logo_media_id, created_at, updated_at, deleted_at
 FROM   organizations
 WHERE  deleted_at IS NULL
 ORDER  BY created_at ASC, id ASC;
@@ -27,7 +27,7 @@ ORDER  BY created_at ASC, id ASC;
 -- name: ListOrganizationsPage :many
 -- Returns a stable page of active organizations. Pass an empty search string to
 -- return all organizations; otherwise name and slug are matched case-insensitively.
-SELECT id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, created_at, updated_at, deleted_at
+SELECT id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, logo_media_id, created_at, updated_at, deleted_at
 FROM   organizations
 WHERE  deleted_at IS NULL
   AND  ($1 = '' OR name ILIKE '%' || $1 || '%' OR slug ILIKE '%' || $1 || '%')
@@ -53,10 +53,11 @@ SET    name                    = COALESCE(NULLIF($2, ''), name),
        legal_address_city = $14, legal_address_country = $15, contact_email = $16,
        contact_phone = $17, website_url = $18, kyb_status = $19,
        kyb_verified_at = CASE WHEN $19 = 'verified' AND kyb_status <> 'verified' THEN now() WHEN $19 <> 'verified' THEN NULL ELSE kyb_verified_at END,
+       logo_media_id = CASE WHEN $20::uuid IS NOT NULL THEN $20::uuid ELSE logo_media_id END,
        updated_at              = now()
 WHERE  id = $1
   AND  deleted_at IS NULL
-RETURNING id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, created_at, updated_at, deleted_at;
+RETURNING id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, logo_media_id, created_at, updated_at, deleted_at;
 
 -- name: GetTicketPDFFormatByTicketID :one
 -- SEAT-C4: resolve the organizer-level ticket_pdf_format flag
@@ -76,4 +77,16 @@ SET    deleted_at = now(),
        updated_at = now()
 WHERE  id = $1
   AND  deleted_at IS NULL
-RETURNING id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, created_at, updated_at, deleted_at;
+RETURNING id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, logo_media_id, created_at, updated_at, deleted_at;
+
+-- name: GetOrgBrandingByTicketID :one
+-- Returns org branding fields for the organization that owns a ticket.
+-- Used by delivery enqueueing to populate the org fields in the worker payload.
+SELECT o.name, o.website_url, o.legal_name, o.legal_address_line1, o.legal_address_line2,
+       o.legal_address_postal_code, o.legal_address_city, o.legal_address_country,
+       o.contact_email, o.logo_media_id, o.sender_email, o.sender_verification_status
+FROM   tickets t
+JOIN   sessions s ON s.id = t.session_id
+JOIN   events   e ON e.id = s.event_id
+JOIN   organizations o ON o.id = e.org_id
+WHERE  t.id = $1;

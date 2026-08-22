@@ -20,6 +20,8 @@ SELECT
     e.id, e.display_number, e.org_id, e.name, e.description, e.status,
     e.first_session_at, e.last_session_at, e.visibility, e.image_url,
     e.poster_media_id,
+    e.slug, e.short_description, e.genre, e.age_rating, e.duration_minutes,
+    e.teaser_url, e.trailer_url, e.meta_description, e.meta_keywords,
     e.created_at, e.updated_at, e.deleted_at
 FROM events e
 JOIN event_publications ep ON ep.event_id = e.id
@@ -97,6 +99,8 @@ SELECT
     e.id, e.display_number, e.org_id, e.name, e.description, e.status,
     e.first_session_at, e.last_session_at, e.visibility, e.image_url,
     e.poster_media_id,
+    e.slug, e.short_description, e.genre, e.age_rating, e.duration_minutes,
+    e.teaser_url, e.trailer_url, e.meta_description, e.meta_keywords,
     e.created_at, e.updated_at, e.deleted_at
 FROM events e
 JOIN event_publications ep ON ep.event_id = e.id

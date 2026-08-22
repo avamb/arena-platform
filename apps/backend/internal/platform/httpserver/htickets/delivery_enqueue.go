@@ -63,6 +63,53 @@ func (h *Handler) EnqueueDeliveryJobs(ctx context.Context, tickets []gen.TicketR
 		if t.SeatNumber != nil {
 			p.SeatNumber = *t.SeatNumber
 		}
+
+		// AB-45: populate org branding fields from the owning organization
+		// so the delivery worker renders branded emails and PDFs without
+		// re-joining at send time. Best-effort: branding failure must not
+		// block ticket delivery.
+		if h.deliveryJobQueries != nil {
+			if branding, bErr := h.deliveryJobQueries.GetOrgBrandingByTicketID(ctx, ticketID); bErr == nil {
+				p.OrgName = branding.Name
+				if branding.WebsiteURL != nil {
+					p.OrgWebsiteURL = *branding.WebsiteURL
+				}
+				if branding.LegalName != nil {
+					p.OrgLegalName = *branding.LegalName
+				}
+				if branding.LegalAddressLine1 != nil {
+					p.OrgLegalAddressLine1 = *branding.LegalAddressLine1
+				}
+				if branding.LegalAddressLine2 != nil {
+					p.OrgLegalAddressLine2 = *branding.LegalAddressLine2
+				}
+				if branding.LegalAddressPostalCode != nil {
+					p.OrgLegalAddressPostal = *branding.LegalAddressPostalCode
+				}
+				if branding.LegalAddressCity != nil {
+					p.OrgLegalAddressCity = *branding.LegalAddressCity
+				}
+				if branding.LegalAddressCountry != nil {
+					p.OrgLegalAddressCountry = *branding.LegalAddressCountry
+				}
+				if branding.ContactEmail != nil {
+					p.OrgContactEmail = *branding.ContactEmail
+				}
+				if branding.LogoMediaID != nil {
+					p.OrgLogoMediaID = branding.LogoMediaID.String()
+				}
+				if branding.SenderEmail != nil {
+					p.SenderEmail = *branding.SenderEmail
+				}
+				p.SenderVerificationStatus = branding.SenderVerificationStatus
+			} else {
+				h.logger.Warn("delivery: org branding lookup failed — using platform defaults",
+					slog.String("ticket_id", ticketID.String()),
+					slog.String("error", bErr.Error()),
+				)
+			}
+		}
+
 		body, jsonErr := json.Marshal(p)
 		if jsonErr != nil {
 			h.logger.Warn("delivery: marshal payload failed",

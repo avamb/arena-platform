@@ -24,7 +24,7 @@ func TestOrganizationLegalFieldsRoundTrip(t *testing.T) {
 	postal, city, country := "10115", "Berlin", "DE"
 	email, phone, website := "legal392@example.test", "+4930123456", "https://example.test"
 	_, err = q.UpdateOrganization(ctx, created.ID, "", "", "", "", 0,
-		&legalName, &taxID, &scheme, &registration, &line1, &line2, &postal, &city, &country, &email, &phone, &website, "pending")
+		&legalName, &taxID, &scheme, &registration, &line1, &line2, &postal, &city, &country, &email, &phone, &website, "pending", nil)
 	if err != nil {
 		t.Fatalf("update organization legal fields: %v", err)
 	}

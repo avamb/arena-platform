@@ -98,6 +98,10 @@ type Server struct {
 	seatingQueries *gen.Queries
 	meQueries      meQuerier
 	media          *mediastore.Repo
+	// pgxPool is the raw *pgxpool.Pool used by features that need direct
+	// pool access beyond the PoolDB interface (e.g. macs export, AB-50b).
+	// Wired from Options.PgxPool in wire.go.
+	pgxPool *pgxpool.Pool
 
 	// Dev / test toggles.
 	faultInjectOutboxAfterAudit bool

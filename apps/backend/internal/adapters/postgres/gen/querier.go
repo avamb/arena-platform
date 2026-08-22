@@ -135,6 +135,13 @@ type Querier interface {
 	SoftDeleteEvent(ctx context.Context, id, orgID uuid.UUID) (EventRow, error)
 	UpsertEventI18nName(ctx context.Context, eventIDStr, locale, value string) error
 	UpsertEventI18nDescription(ctx context.Context, eventIDStr, locale, value string) error
+	// Event metadata fields (AB-45, migration 0051)
+	UpdateEventMetadata(ctx context.Context, id, orgID uuid.UUID, slug, shortDescription, genre, ageRating *string, durationMinutes *int32, teaserURL, trailerURL, metaDescription, metaKeywords *string) (EventRow, error)
+	// Event artists — child table (AB-45, migration 0051)
+	ListEventArtists(ctx context.Context, eventID uuid.UUID) ([]EventArtistRow, error)
+	InsertEventArtist(ctx context.Context, eventID uuid.UUID, name string, role, bio *string, photoMediaID *uuid.UUID, sortOrder int32) (EventArtistRow, error)
+	UpdateEventArtist(ctx context.Context, id, eventID uuid.UUID, name string, role, bio *string, photoMediaID *uuid.UUID, sortOrder *int32) (EventArtistRow, error)
+	SoftDeleteEventArtist(ctx context.Context, id, eventID uuid.UUID) (EventArtistRow, error)
 
 	// Event publications — publish events to agent feed channels (feature #151)
 	PublishEvent(ctx context.Context, eventID, feedTokenID uuid.UUID, cityID *uuid.UUID) (EventPublicationRow, error)

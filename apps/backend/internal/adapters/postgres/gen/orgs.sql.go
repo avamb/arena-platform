@@ -41,6 +41,7 @@ type OrganizationRow struct {
 	KybVerifiedAt            *time.Time `json:"kyb_verified_at"`
 	SenderEmail              *string    `json:"sender_email"`
 	SenderVerificationStatus string     `json:"sender_verification_status"`
+	LogoMediaID              *uuid.UUID `json:"logo_media_id"`
 	CreatedAt                time.Time  `json:"created_at"`
 	UpdatedAt                time.Time  `json:"updated_at"`
 	DeletedAt                *time.Time `json:"deleted_at"`
@@ -61,7 +62,7 @@ func scanOrganizationRow(row interface {
 		&o.ReservationTTLSeconds,
 		&o.LegalName, &o.TaxID, &o.TaxIDScheme, &o.RegistrationNumber,
 		&o.LegalAddressLine1, &o.LegalAddressLine2, &o.LegalAddressPostalCode, &o.LegalAddressCity, &o.LegalAddressCountry,
-		&o.ContactEmail, &o.ContactPhone, &o.WebsiteURL, &o.KybStatus, &o.KybVerifiedAt, &o.SenderEmail, &o.SenderVerificationStatus,
+		&o.ContactEmail, &o.ContactPhone, &o.WebsiteURL, &o.KybStatus, &o.KybVerifiedAt, &o.SenderEmail, &o.SenderVerificationStatus, &o.LogoMediaID,
 		&o.CreatedAt,
 		&o.UpdatedAt,
 		&o.DeletedAt,
@@ -76,7 +77,7 @@ func scanOrganizationRow(row interface {
 const insertOrganization = `-- name: InsertOrganization :one
 INSERT INTO organizations (name, slug, country, default_locale, reservation_ttl_seconds)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, created_at, updated_at, deleted_at`
+RETURNING id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, logo_media_id, created_at, updated_at, deleted_at`
 
 // InsertOrganization creates a new active organization row.
 // Returns the created row including the uuidv7 PK assigned by the database.
@@ -92,7 +93,7 @@ func (q *Queries) InsertOrganization(ctx context.Context, name, slug, country, d
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getOrganizationByID = `-- name: GetOrganizationByID :one
-SELECT id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, created_at, updated_at, deleted_at
+SELECT id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, logo_media_id, created_at, updated_at, deleted_at
 FROM   organizations
 WHERE  id = $1
   AND  deleted_at IS NULL`
@@ -109,7 +110,7 @@ func (q *Queries) GetOrganizationByID(ctx context.Context, id uuid.UUID) (Organi
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getOrganizationBySlug = `-- name: GetOrganizationBySlug :one
-SELECT id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, created_at, updated_at, deleted_at
+SELECT id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, logo_media_id, created_at, updated_at, deleted_at
 FROM   organizations
 WHERE  slug = $1
   AND  deleted_at IS NULL`
@@ -126,7 +127,7 @@ func (q *Queries) GetOrganizationBySlug(ctx context.Context, slug string) (Organ
 // ─────────────────────────────────────────────────────────────────────────────
 
 const listOrganizations = `-- name: ListOrganizations :many
-SELECT id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, created_at, updated_at, deleted_at
+SELECT id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, logo_media_id, created_at, updated_at, deleted_at
 FROM   organizations
 WHERE  deleted_at IS NULL
 ORDER  BY created_at ASC, id ASC`
@@ -155,7 +156,7 @@ func (q *Queries) ListOrganizations(ctx context.Context) ([]OrganizationRow, err
 // search matches organization names and slugs case-insensitively; pass an empty
 // string to return every active organization.
 const listOrganizationsPage = `-- name: ListOrganizationsPage :many
-SELECT id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, created_at, updated_at, deleted_at
+SELECT id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, logo_media_id, created_at, updated_at, deleted_at
 FROM   organizations
 WHERE  deleted_at IS NULL
   AND  ($1 = '' OR name ILIKE '%' || $1 || '%' OR slug ILIKE '%' || $1 || '%')
@@ -210,17 +211,18 @@ SET    name                    = COALESCE(NULLIF($2, ''), name),
        legal_address_city = $14, legal_address_country = $15, contact_email = $16,
        contact_phone = $17, website_url = $18, kyb_status = $19,
        kyb_verified_at = CASE WHEN $19 = 'verified' AND kyb_status <> 'verified' THEN now() WHEN $19 <> 'verified' THEN NULL ELSE kyb_verified_at END,
+       logo_media_id = CASE WHEN $20::uuid IS NOT NULL THEN $20::uuid ELSE logo_media_id END,
        updated_at              = now()
 WHERE  id = $1
   AND  deleted_at IS NULL
-RETURNING id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, created_at, updated_at, deleted_at`
+RETURNING id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, logo_media_id, created_at, updated_at, deleted_at`
 
 // UpdateOrganization applies a partial update to an active organization.
 // Empty string fields are ignored (existing value kept). reservationTTL=0
 // is also ignored. Returns pgx.ErrNoRows when the org does not exist or
 // has been soft-deleted.
-func (q *Queries) UpdateOrganization(ctx context.Context, id uuid.UUID, name, slug, country, defaultLocale string, reservationTTL int32, legalName, taxID, taxIDScheme, registrationNumber, addressLine1, addressLine2, postalCode, city, addressCountry, contactEmail, contactPhone, websiteURL *string, kybStatus string) (OrganizationRow, error) {
-	row := q.db.QueryRow(ctx, updateOrganization, id, name, slug, country, defaultLocale, reservationTTL, legalName, taxID, taxIDScheme, registrationNumber, addressLine1, addressLine2, postalCode, city, addressCountry, contactEmail, contactPhone, websiteURL, kybStatus)
+func (q *Queries) UpdateOrganization(ctx context.Context, id uuid.UUID, name, slug, country, defaultLocale string, reservationTTL int32, legalName, taxID, taxIDScheme, registrationNumber, addressLine1, addressLine2, postalCode, city, addressCountry, contactEmail, contactPhone, websiteURL *string, kybStatus string, logoMediaID *uuid.UUID) (OrganizationRow, error) {
+	row := q.db.QueryRow(ctx, updateOrganization, id, name, slug, country, defaultLocale, reservationTTL, legalName, taxID, taxIDScheme, registrationNumber, addressLine1, addressLine2, postalCode, city, addressCountry, contactEmail, contactPhone, websiteURL, kybStatus, logoMediaID)
 	return scanOrganizationRow(row)
 }
 
@@ -245,6 +247,55 @@ func (q *Queries) GetTicketPDFFormatByTicketID(ctx context.Context, ticketID uui
 	var format string
 	err := q.db.QueryRow(ctx, getTicketPDFFormatByTicketID, ticketID).Scan(&format)
 	return format, err
+}
+
+const getOrgBrandingByTicketID = `-- name: GetOrgBrandingByTicketID :one
+SELECT o.name, o.website_url, o.legal_name, o.legal_address_line1, o.legal_address_line2,
+       o.legal_address_postal_code, o.legal_address_city, o.legal_address_country,
+       o.contact_email, o.logo_media_id, o.sender_email, o.sender_verification_status
+FROM   tickets t
+JOIN   sessions s ON s.id = t.session_id
+JOIN   events   e ON e.id = s.event_id
+JOIN   organizations o ON o.id = e.org_id
+WHERE  t.id = $1`
+
+// OrgBrandingRow holds branding fields for populating a delivery payload.
+type OrgBrandingRow struct {
+	Name                     string     `json:"name"`
+	WebsiteURL               *string    `json:"website_url"`
+	LegalName                *string    `json:"legal_name"`
+	LegalAddressLine1        *string    `json:"legal_address_line1"`
+	LegalAddressLine2        *string    `json:"legal_address_line2"`
+	LegalAddressPostalCode   *string    `json:"legal_address_postal_code"`
+	LegalAddressCity         *string    `json:"legal_address_city"`
+	LegalAddressCountry      *string    `json:"legal_address_country"`
+	ContactEmail             *string    `json:"contact_email"`
+	LogoMediaID              *uuid.UUID `json:"logo_media_id"`
+	SenderEmail              *string    `json:"sender_email"`
+	SenderVerificationStatus string     `json:"sender_verification_status"`
+}
+
+// GetOrgBrandingByTicketID returns the org branding fields for the
+// organization that owns the given ticket. Used by delivery enqueueing
+// to populate the delivery.Payload org fields (AB-45).
+func (q *Queries) GetOrgBrandingByTicketID(ctx context.Context, ticketID uuid.UUID) (OrgBrandingRow, error) {
+	row := q.db.QueryRow(ctx, getOrgBrandingByTicketID, ticketID)
+	var b OrgBrandingRow
+	err := row.Scan(
+		&b.Name,
+		&b.WebsiteURL,
+		&b.LegalName,
+		&b.LegalAddressLine1,
+		&b.LegalAddressLine2,
+		&b.LegalAddressPostalCode,
+		&b.LegalAddressCity,
+		&b.LegalAddressCountry,
+		&b.ContactEmail,
+		&b.LogoMediaID,
+		&b.SenderEmail,
+		&b.SenderVerificationStatus,
+	)
+	return b, err
 }
 
 // GetSenderIdentityByTicketID resolves the owning organization's Brevo sender
@@ -293,7 +344,7 @@ SET    deleted_at = now(),
        updated_at = now()
 WHERE  id = $1
   AND  deleted_at IS NULL
-RETURNING id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, created_at, updated_at, deleted_at`
+RETURNING id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, logo_media_id, created_at, updated_at, deleted_at`
 
 // SoftDeleteOrganization marks an organization as deleted by setting deleted_at
 // to the current timestamp. The row is not physically removed so the audit log

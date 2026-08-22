@@ -26,20 +26,29 @@ import (
 // The name and description fields reflect locale-resolved values when the
 // query joins i18n_text; for write-result rows they hold the stored values.
 type EventRow struct {
-	ID             uuid.UUID  `json:"id"`
-	DisplayNumber  int64      `json:"display_number"`
-	OrgID          uuid.UUID  `json:"org_id"`
-	Name           string     `json:"name"`
-	Description    *string    `json:"description"`
-	Status         string     `json:"status"`
-	FirstSessionAt *time.Time `json:"first_session_at"`
-	LastSessionAt  *time.Time `json:"last_session_at"`
-	Visibility     string     `json:"visibility"`
-	ImageURL       *string    `json:"image_url"`
-	PosterMediaID  *uuid.UUID `json:"poster_media_id"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
-	DeletedAt      *time.Time `json:"deleted_at"`
+	ID              uuid.UUID  `json:"id"`
+	DisplayNumber   int64      `json:"display_number"`
+	OrgID           uuid.UUID  `json:"org_id"`
+	Name            string     `json:"name"`
+	Description     *string    `json:"description"`
+	Status          string     `json:"status"`
+	FirstSessionAt  *time.Time `json:"first_session_at"`
+	LastSessionAt   *time.Time `json:"last_session_at"`
+	Visibility      string     `json:"visibility"`
+	ImageURL        *string    `json:"image_url"`
+	PosterMediaID   *uuid.UUID `json:"poster_media_id"`
+	Slug            *string    `json:"slug"`
+	ShortDescription *string   `json:"short_description"`
+	Genre           *string    `json:"genre"`
+	AgeRating       *string    `json:"age_rating"`
+	DurationMinutes *int32     `json:"duration_minutes"`
+	TeaserURL       *string    `json:"teaser_url"`
+	TrailerURL      *string    `json:"trailer_url"`
+	MetaDescription *string    `json:"meta_description"`
+	MetaKeywords    *string    `json:"meta_keywords"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+	DeletedAt       *time.Time `json:"deleted_at"`
 }
 
 // scanEventRow scans a single events row into an EventRow.
@@ -59,6 +68,15 @@ func scanEventRow(row interface {
 		&e.Visibility,
 		&e.ImageURL,
 		&e.PosterMediaID,
+		&e.Slug,
+		&e.ShortDescription,
+		&e.Genre,
+		&e.AgeRating,
+		&e.DurationMinutes,
+		&e.TeaserURL,
+		&e.TrailerURL,
+		&e.MetaDescription,
+		&e.MetaKeywords,
 		&e.CreatedAt,
 		&e.UpdatedAt,
 		&e.DeletedAt,
@@ -73,7 +91,7 @@ func scanEventRow(row interface {
 const insertEvent = `-- name: InsertEvent :one
 INSERT INTO events (org_id, name, description, status, visibility, image_url)
 VALUES ($1, $2, $3, COALESCE(NULLIF($4, ''), 'draft'), COALESCE(NULLIF($5, ''), 'public'), $6)
-RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, poster_media_id, created_at, updated_at, deleted_at`
+RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, poster_media_id, slug, short_description, genre, age_rating, duration_minutes, teaser_url, trailer_url, meta_description, meta_keywords, created_at, updated_at, deleted_at`
 
 // InsertEvent creates a new active event row owned by the given org.
 // status defaults to 'draft' when empty; visibility defaults to 'public' when empty.
@@ -103,6 +121,15 @@ SELECT
     e.visibility,
     e.image_url,
     e.poster_media_id,
+    e.slug,
+    e.short_description,
+    e.genre,
+    e.age_rating,
+    e.duration_minutes,
+    e.teaser_url,
+    e.trailer_url,
+    e.meta_description,
+    e.meta_keywords,
     e.created_at,
     e.updated_at,
     e.deleted_at
@@ -135,7 +162,7 @@ func (q *Queries) GetEventByID(ctx context.Context, id uuid.UUID, locale string)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getEventRaw = `-- name: GetEventRaw :one
-SELECT id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, poster_media_id, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, poster_media_id, slug, short_description, genre, age_rating, duration_minutes, teaser_url, trailer_url, meta_description, meta_keywords, created_at, updated_at, deleted_at
 FROM   events
 WHERE  id = $1
   AND  deleted_at IS NULL`
@@ -164,6 +191,15 @@ SELECT
     e.visibility,
     e.image_url,
     e.poster_media_id,
+    e.slug,
+    e.short_description,
+    e.genre,
+    e.age_rating,
+    e.duration_minutes,
+    e.teaser_url,
+    e.trailer_url,
+    e.meta_description,
+    e.meta_keywords,
     e.created_at,
     e.updated_at,
     e.deleted_at
@@ -223,6 +259,15 @@ SELECT
     e.visibility,
     e.image_url,
     e.poster_media_id,
+    e.slug,
+    e.short_description,
+    e.genre,
+    e.age_rating,
+    e.duration_minutes,
+    e.teaser_url,
+    e.trailer_url,
+    e.meta_description,
+    e.meta_keywords,
     e.created_at,
     e.updated_at,
     e.deleted_at
@@ -315,7 +360,7 @@ SET    name           = COALESCE(NULLIF($3, ''), name),
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, poster_media_id, created_at, updated_at, deleted_at`
+RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, poster_media_id, slug, short_description, genre, age_rating, duration_minutes, teaser_url, trailer_url, meta_description, meta_keywords, created_at, updated_at, deleted_at`
 
 // UpdateEvent applies a partial update to an active event (non-status fields).
 // Scoped by org_id to enforce owner-gated mutation policy.
@@ -357,7 +402,7 @@ SET    status     = $3,
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, poster_media_id, created_at, updated_at, deleted_at`
+RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, poster_media_id, slug, short_description, genre, age_rating, duration_minutes, teaser_url, trailer_url, meta_description, meta_keywords, created_at, updated_at, deleted_at`
 
 // UpdateEventStatus transitions an event to a new status.
 // Scoped by org_id to enforce owner-gated mutation policy.
@@ -380,7 +425,7 @@ SET    deleted_at = now(),
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, poster_media_id, created_at, updated_at, deleted_at`
+RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, poster_media_id, slug, short_description, genre, age_rating, duration_minutes, teaser_url, trailer_url, meta_description, meta_keywords, created_at, updated_at, deleted_at`
 
 // SoftDeleteEvent marks an event as deleted by setting deleted_at.
 // Scoped by org_id to enforce owner-gated mutation policy.
@@ -423,4 +468,151 @@ ON CONFLICT (namespace, key, locale) DO UPDATE SET value = EXCLUDED.value`
 func (q *Queries) UpsertEventI18nDescription(ctx context.Context, eventIDStr, locale, value string) error {
 	_, err := q.db.Exec(ctx, upsertEventI18nDescription, eventIDStr, locale, value)
 	return err
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UpdateEventMetadata (AB-45, migration 0051)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const updateEventMetadata = `-- name: UpdateEventMetadata :one
+UPDATE events
+SET    slug              = $3,
+       short_description = $4,
+       genre             = $5,
+       age_rating        = $6,
+       duration_minutes  = $7,
+       teaser_url        = $8,
+       trailer_url       = $9,
+       meta_description  = $10,
+       meta_keywords     = $11,
+       updated_at        = now()
+WHERE  id = $1
+  AND  org_id = $2
+  AND  deleted_at IS NULL
+RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, poster_media_id, slug, short_description, genre, age_rating, duration_minutes, teaser_url, trailer_url, meta_description, meta_keywords, created_at, updated_at, deleted_at`
+
+// UpdateEventMetadata sets the content-management metadata fields (AB-45, migration 0051).
+// All metadata fields are optional and fully nullable.
+// Returns pgx.ErrNoRows when the event does not exist, does not belong to the org,
+// or has been soft-deleted.
+func (q *Queries) UpdateEventMetadata(ctx context.Context, id, orgID uuid.UUID, slug, shortDescription, genre, ageRating *string, durationMinutes *int32, teaserURL, trailerURL, metaDescription, metaKeywords *string) (EventRow, error) {
+	row := q.db.QueryRow(ctx, updateEventMetadata,
+		id, orgID, slug, shortDescription, genre, ageRating, durationMinutes,
+		teaserURL, trailerURL, metaDescription, metaKeywords,
+	)
+	return scanEventRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EventArtistRow
+// ─────────────────────────────────────────────────────────────────────────────
+
+// EventArtistRow is the result type for event_artists queries.
+type EventArtistRow struct {
+	ID           uuid.UUID  `json:"id"`
+	EventID      uuid.UUID  `json:"event_id"`
+	Name         string     `json:"name"`
+	Role         *string    `json:"role"`
+	Bio          *string    `json:"bio"`
+	PhotoMediaID *uuid.UUID `json:"photo_media_id"`
+	SortOrder    int32      `json:"sort_order"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+}
+
+func scanEventArtistRow(row interface{ Scan(dest ...any) error }) (EventArtistRow, error) {
+	var a EventArtistRow
+	err := row.Scan(
+		&a.ID, &a.EventID, &a.Name, &a.Role, &a.Bio, &a.PhotoMediaID, &a.SortOrder, &a.CreatedAt, &a.UpdatedAt,
+	)
+	return a, err
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ListEventArtists
+// ─────────────────────────────────────────────────────────────────────────────
+
+const listEventArtists = `-- name: ListEventArtists :many
+SELECT id, event_id, name, role, bio, photo_media_id, sort_order, created_at, updated_at
+FROM   event_artists
+WHERE  event_id = $1
+  AND  deleted_at IS NULL
+ORDER  BY sort_order ASC, id ASC`
+
+// ListEventArtists returns all active artists for an event, ordered by sort_order.
+func (q *Queries) ListEventArtists(ctx context.Context, eventID uuid.UUID) ([]EventArtistRow, error) {
+	rows, err := q.db.Query(ctx, listEventArtists, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var artists []EventArtistRow
+	for rows.Next() {
+		a, err := scanEventArtistRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		artists = append(artists, a)
+	}
+	return artists, rows.Err()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// InsertEventArtist
+// ─────────────────────────────────────────────────────────────────────────────
+
+const insertEventArtist = `-- name: InsertEventArtist :one
+INSERT INTO event_artists (event_id, name, role, bio, photo_media_id, sort_order)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, event_id, name, role, bio, photo_media_id, sort_order, created_at, updated_at`
+
+// InsertEventArtist creates a new artist record linked to the given event.
+func (q *Queries) InsertEventArtist(ctx context.Context, eventID uuid.UUID, name string, role, bio *string, photoMediaID *uuid.UUID, sortOrder int32) (EventArtistRow, error) {
+	row := q.db.QueryRow(ctx, insertEventArtist, eventID, name, role, bio, photoMediaID, sortOrder)
+	return scanEventArtistRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UpdateEventArtist
+// ─────────────────────────────────────────────────────────────────────────────
+
+const updateEventArtist = `-- name: UpdateEventArtist :one
+UPDATE event_artists
+SET    name           = COALESCE(NULLIF($3, ''), name),
+       role           = $4,
+       bio            = $5,
+       photo_media_id = $6,
+       sort_order     = CASE WHEN $7::integer IS NOT NULL THEN $7::integer ELSE sort_order END,
+       updated_at     = now()
+WHERE  id = $1
+  AND  event_id = $2
+  AND  deleted_at IS NULL
+RETURNING id, event_id, name, role, bio, photo_media_id, sort_order, created_at, updated_at`
+
+// UpdateEventArtist applies a partial update to an event artist.
+// Returns pgx.ErrNoRows when the artist does not exist or has been soft-deleted.
+func (q *Queries) UpdateEventArtist(ctx context.Context, id, eventID uuid.UUID, name string, role, bio *string, photoMediaID *uuid.UUID, sortOrder *int32) (EventArtistRow, error) {
+	row := q.db.QueryRow(ctx, updateEventArtist, id, eventID, name, role, bio, photoMediaID, sortOrder)
+	return scanEventArtistRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SoftDeleteEventArtist
+// ─────────────────────────────────────────────────────────────────────────────
+
+const softDeleteEventArtist = `-- name: SoftDeleteEventArtist :one
+UPDATE event_artists
+SET    deleted_at = now(),
+       updated_at = now()
+WHERE  id = $1
+  AND  event_id = $2
+  AND  deleted_at IS NULL
+RETURNING id, event_id, name, role, bio, photo_media_id, sort_order, created_at, updated_at`
+
+// SoftDeleteEventArtist marks an event artist as deleted by setting deleted_at.
+// Returns pgx.ErrNoRows when the artist does not exist or has already been deleted.
+func (q *Queries) SoftDeleteEventArtist(ctx context.Context, id, eventID uuid.UUID) (EventArtistRow, error) {
+	row := q.db.QueryRow(ctx, softDeleteEventArtist, id, eventID)
+	return scanEventArtistRow(row)
 }

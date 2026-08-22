@@ -541,7 +541,13 @@ func (h *Handler) HandleConfirmCheckout(w http.ResponseWriter, r *http.Request) 
 			seatedSubtotal += l.UnitPrice * int64(l.Quantity)
 		}
 
-		discount, promoCodeID, ok := h.applyPromoCode(ctx, w, r, req.PromoCode, orgID, checkoutSession.UserID, seatedSubtotal)
+		var seatedTierIDs []uuid.UUID
+		for _, s := range seats {
+			if s.TierID != nil {
+				seatedTierIDs = append(seatedTierIDs, *s.TierID)
+			}
+		}
+		discount, promoCodeID, ok := h.applyPromoCode(ctx, w, r, req.PromoCode, orgID, checkoutSession.UserID, seatedSubtotal, seatedTierIDs)
 		if !ok {
 			return
 		}
@@ -615,7 +621,11 @@ func (h *Handler) HandleConfirmCheckout(w http.ResponseWriter, r *http.Request) 
 			}
 		}
 
-		discount, promoCodeID, ok := h.applyPromoCode(ctx, w, r, req.PromoCode, orgID, checkoutSession.UserID, gaSubtotal)
+		var gaTierIDs []uuid.UUID
+		for _, it := range gaItems {
+			gaTierIDs = append(gaTierIDs, it.TierID)
+		}
+		discount, promoCodeID, ok := h.applyPromoCode(ctx, w, r, req.PromoCode, orgID, checkoutSession.UserID, gaSubtotal, gaTierIDs)
 		if !ok {
 			return
 		}
@@ -728,7 +738,7 @@ func (h *Handler) HandleConfirmCheckout(w http.ResponseWriter, r *http.Request) 
 
 	// ── Optionally validate promo code ───────────────────────────────────────
 
-	discount, promoCodeID, ok := h.applyPromoCode(ctx, w, r, req.PromoCode, orgID, checkoutSession.UserID, subtotal)
+	discount, promoCodeID, ok := h.applyPromoCode(ctx, w, r, req.PromoCode, orgID, checkoutSession.UserID, subtotal, []uuid.UUID{tierID})
 	if !ok {
 		return
 	}
@@ -789,6 +799,7 @@ func (h *Handler) applyPromoCode(
 	orgID uuid.UUID,
 	userID *uuid.UUID,
 	subtotal int64,
+	tierIDs []uuid.UUID,
 ) (discount int64, promoCodeID *uuid.UUID, ok bool) {
 	if promoCode == nil || *promoCode == "" || h.promoQueries == nil {
 		return 0, nil, true
@@ -810,6 +821,32 @@ func (h *Handler) applyPromoCode(
 	if errCode != "" {
 		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(errCode, "promo code is not applicable", r))
 		return 0, nil, false
+	}
+
+	// ── AB-45: Enforce applies_to_tier_ids restriction ────────────────────────
+	// When the promo code is restricted to specific tiers, at least one item in
+	// the order must use one of those tiers. An empty AppliesToTierIDs means
+	// "applies to all tiers" (unrestricted).
+	if len(promoRow.AppliesToTierIDs) > 0 {
+		allowed := make(map[string]struct{}, len(promoRow.AppliesToTierIDs))
+		for _, tid := range promoRow.AppliesToTierIDs {
+			allowed[tid] = struct{}{}
+		}
+		var tierMatch bool
+		for _, tid := range tierIDs {
+			if _, ok := allowed[tid.String()]; ok {
+				tierMatch = true
+				break
+			}
+		}
+		if !tierMatch {
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+				"promo.tier_not_applicable",
+				"promo code is not applicable to the selected ticket tiers",
+				r,
+			))
+			return 0, nil, false
+		}
 	}
 
 	// ── PR2-12: Soft check — total redemption limit ───────────────────────────
