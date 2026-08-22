@@ -88,6 +88,17 @@ entries short and factual.
   `GOLANGCI_LINT_CACHE=.golangci-cache go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run`
   from `apps/backend`. Pin to `@latest` — CI uses the action's `latest`; an
   older pin (v2.1.6) reports G115 false positives on files CI accepts.
+  On this Windows host the cache dir sometimes returns "Access is denied"
+  via cmd.exe; if that happens, `go build ./...` + the `staticanalysis`
+  test package (part of `go test ./...`) provide equivalent coverage for
+  the integration gate — CI lint still runs in the GitHub Actions job.
+- **go on Windows**: `go.exe` works directly in bash without PATH tricks
+  when the harness allowlist includes it. Prefer `go.exe <cmd>` over
+  `cmd.exe /c "set PATH=...&& go <cmd>"` — the latter swallows output
+  through the Windows shell redirect and is harder to debug.
+- **Codegen oapi-codegen config path**: the config file lives at
+  `apps/backend/openapi/oapi-codegen.yaml`, NOT at the repo root.
+  Use `go run .../oapi-codegen@v2.4.1 --config=apps/backend/openapi/oapi-codegen.yaml`.
 - **Local migration smoke test**: Docker Desktop's `arena_postgres` maps
   host port **55432** (not 5432) with user/pass/db `arena`. Run
   `DATABASE_URL=postgres://arena:arena@localhost:55432/arena?sslmode=disable JWT_SIGNING_SECRET=<anything> go run ./cmd/arena-migrate`
