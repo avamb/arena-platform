@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -340,6 +339,12 @@ func buildExport(rows []exportRow) Export {
 			if row.paymentProvider != nil {
 				paymentMethod = *row.paymentProvider
 			}
+			orderDiscountReason := ""
+			if row.promoCodeName != nil {
+				orderDiscountReason = "Промокод " + *row.promoCodeName
+			} else if row.paymentProvider == nil {
+				orderDiscountReason = "Внешняя система"
+			}
 			orderIdx[csID] = len(orders)
 			orders = append(orders, Order{
 				ID:               0, // will be set to min system_ticket_id after all tickets
@@ -350,6 +355,7 @@ func buildExport(rows []exportRow) Export {
 				Discount:         row.orderDiscount,
 				Charge:           row.orderTotal,
 				TotalSum:         row.orderTotal,
+				DiscountReason:   orderDiscountReason,
 				TicketQuantity:   0, // incremented below
 				User:             OrderUser{ID: userID, Email: userEmail},
 				Email:            userEmail,
@@ -437,10 +443,15 @@ func buildExport(rows []exportRow) Export {
 		// Sold price: use the actual price paid (from reservation GA item or tier price).
 		price := row.soldPrice
 
-		// Discount reason: from promo code if present.
+		// discountReason: human-readable cause of discount.
+		//  - promo applied → "Промокод {code}" (MACS report format, e.g. "Промокод CatDaniel")
+		//  - no promo + no payment provider → "Внешняя система" (external/comp ticket)
+		//  - regular purchase → "" (omitted via omitempty)
 		discountReason := ""
 		if row.promoCodeName != nil {
-			discountReason = *row.promoCodeName
+			discountReason = "Промокод " + *row.promoCodeName
+		} else if row.paymentProvider == nil {
+			discountReason = "Внешняя система"
 		}
 
 		// Set order.id to the minimum system_ticket_id in this order.
@@ -456,7 +467,7 @@ func buildExport(rows []exportRow) Export {
 			Category:       category,
 			Tariff:         category,
 			Price:          price,
-			Discount:       0,
+			Discount:       0, // computed in second pass
 			Charge:         price,
 			TotalPrice:     price,
 			DiscountReason: discountReason,
@@ -476,9 +487,33 @@ func buildExport(rows []exportRow) Export {
 		// accumulating per-ticket prices on top doubled it (pass-7 review).
 	}
 
-	// Second pass: fix OrderID on each ticket now that o.ID is final.
+	// Second pass: fix untiered GA prices, compute per-ticket discount/charge, set OrderID.
 	for i := range orders {
 		o := &orders[i]
+		// (a) Fallback price for untiered GA tickets (tier_id=nil, soldPrice=0):
+		//     use orderSubtotal / ticketCount. Prevents reporting 0 for GA events
+		//     where reservation_ga_items has no row (legacy or untiered).
+		if o.Sum > 0 && o.TicketQuantity > 0 {
+			for j := range o.TicketList {
+				if o.TicketList[j].Price == 0 {
+					o.TicketList[j].Price = o.Sum / int64(o.TicketQuantity)
+					// Charge tracks the actual price paid.
+					o.TicketList[j].Charge = o.TicketList[j].Price
+					o.TicketList[j].TotalPrice = o.TicketList[j].Price
+				}
+			}
+		}
+		// (b) Per-ticket discount = ticket_price * order_discount / order_subtotal.
+		//     Prorates the checkout-level discount across tickets proportionally.
+		if o.Sum > 0 && o.Discount > 0 {
+			for j := range o.TicketList {
+				d := o.TicketList[j].Price * o.Discount / o.Sum
+				o.TicketList[j].Discount = d
+				o.TicketList[j].Charge = o.TicketList[j].Price - d
+				o.TicketList[j].TotalPrice = o.TicketList[j].Charge
+			}
+		}
+		// (c) Fix OrderID now that o.ID is final.
 		for j := range o.TicketList {
 			o.TicketList[j].OrderID = o.ID
 		}
@@ -495,6 +530,5 @@ func QueryAndBuildExport(ctx context.Context, pool *pgxpool.Pool, sessionID uuid
 	if err != nil {
 		return nil, err
 	}
-	_ = pgx.ErrNoRows // ensure pgx import is used
 	return buildExport(rows), nil
 }

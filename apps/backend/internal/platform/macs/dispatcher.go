@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
@@ -177,16 +176,14 @@ func (d *Dispatcher) Dispatch(ctx context.Context, ev outbox.Event) error {
 	return d.post(ctx, sub.CallbackURL, sub.SigningSecret, env)
 }
 
-// getOrgIDForSession resolves the organization UUID from a session UUID by
-// joining sessions → events → org_id.
+// getOrgIDForSession resolves the organization UUID from a session UUID
+// using the gen querier (GetSessionOrgContext).
 func (d *Dispatcher) getOrgIDForSession(ctx context.Context, sessionID uuid.UUID) (uuid.UUID, error) {
-	const q = `SELECT e.org_id FROM sessions s JOIN events e ON e.id = s.event_id WHERE s.id = $1`
-	var orgID uuid.UUID
-	err := d.pool.QueryRow(ctx, q, sessionID).Scan(&orgID)
+	row, err := gen.New(d.pool).GetSessionOrgContext(ctx, sessionID)
 	if err != nil {
 		return uuid.UUID{}, fmt.Errorf("macs dispatcher: get org for session %s: %w", sessionID, err)
 	}
-	return orgID, nil
+	return row.OrgID, nil
 }
 
 // getMACSSubscriber looks up the active MACS subscriber for the given org.
@@ -207,18 +204,14 @@ func (d *Dispatcher) getMACSSubscriber(ctx context.Context, orgID uuid.UUID) (ma
 	}, nil
 }
 
-// getSystemTicketID fetches the MACS stable integer id for a ticket.
+// getSystemTicketID fetches the MACS stable integer id for a ticket
+// using the gen querier (GetSystemIDForTicket).
 func (d *Dispatcher) getSystemTicketID(ctx context.Context, ticketID uuid.UUID) (int64, error) {
-	const q = `SELECT system_ticket_id FROM tickets WHERE id = $1`
-	var id int64
-	err := d.pool.QueryRow(ctx, q, ticketID).Scan(&id)
+	row, err := gen.New(d.pool).GetSystemIDForTicket(ctx, ticketID)
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return 0, fmt.Errorf("ticket %s not found", ticketID)
-		}
-		return 0, err
+		return 0, fmt.Errorf("macs dispatcher: get system_ticket_id for %s: %w", ticketID, err)
 	}
-	return id, nil
+	return row.SystemTicketID, nil
 }
 
 // post serialises env as JSON, signs it with HMAC-SHA256 using signingSecret,

@@ -1,0 +1,46 @@
+[
+  {
+    "id": 1001,
+    "date": "2026-08-22T10:00:00Z",
+    "status": "PAID",
+    "currency": "RUB",
+    "sum": 3000,
+    "discount": 300,
+    "charge": 2700,
+    "totalSum": 2700,
+    "discountReason": "Промокод SUMMER10",
+    "ticketQuantity": 3,
+    "user": {"id": "user-001", "email": "buyer@example.com"},
+    "email": "buyer@example.com",
+    "paymentMethod": "yookassa",
+    "ticketList": [
+      {
+        "id": 1001,
+        "seatId": 1001,
+        "orderId": 1001,
+        "seatLocation": {"sector": "", "row": "", "number": ""},
+        "category": "Standard",
+        "tariff": "Standard",
+        "price": 1000,
+        "discount": 100,
+        "charge": 900,
+        "totalPrice": 900,
+        "discountReason": "Промокод SUMMER10",
+        "barcode": "1001",
+        "barcodeFormat": {"id": 1, "name": "EAN-13"},
+        "actionEvent": {
+          "id": 1,
+          "cityName": "Moscow",
+          "venueName": "Arena Hall",
+          "actionName": "Summer Fest",
+          "actionLegalOwner": "ООО Организатор",
+          "showTime": "2026-08-22T20:00:00",
+          "gateway": {}
+        },
+        "holderStatus": 0
+      }
+    ],
+    "seatList": [],
+    "gatewayOrderList": []
+  }
+]

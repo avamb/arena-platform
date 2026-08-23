@@ -197,8 +197,12 @@ func TestBuildExport_PromoCodeName(t *testing.T) {
 		t.Fatal("expected 1 order with 1 ticket")
 	}
 	tk := export[0].TicketList[0]
-	if tk.DiscountReason != "SUMMER25" {
-		t.Errorf("expected discountReason=SUMMER25, got %q", tk.DiscountReason)
+	if tk.DiscountReason != "Промокод SUMMER25" {
+		t.Errorf("expected discountReason=%q, got %q", "Промокод SUMMER25", tk.DiscountReason)
+	}
+	o := export[0]
+	if o.DiscountReason != "Промокод SUMMER25" {
+		t.Errorf("expected order.discountReason=%q, got %q", "Промокод SUMMER25", o.DiscountReason)
 	}
 }
 

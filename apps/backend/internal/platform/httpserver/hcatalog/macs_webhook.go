@@ -149,7 +149,7 @@ func (h *Handler) HandleUpsertMACSWebhook(pool *pgxpool.Pool, w http.ResponseWri
 
 	if h.audit != nil {
 		actor, _ := auth.ActorFromContext(r.Context())
-		_ = h.audit.Write(r.Context(), audit.Event{
+		if err := h.audit.Write(r.Context(), audit.Event{
 			OccurredAt:   time.Now().UTC(),
 			ActorType:    "user",
 			ActorID:      actor.ID,
@@ -163,7 +163,9 @@ func (h *Handler) HandleUpsertMACSWebhook(pool *pgxpool.Pool, w http.ResponseWri
 				"org_id":       orgID.String(),
 				"callback_url": req.CallbackURL,
 			},
-		})
+		}); err != nil {
+			h.logger.Error("macs-webhook: audit write failed", "error", err.Error())
+		}
 	}
 
 	// Include signing_secret on PUT response so callers can record it.
@@ -206,7 +208,7 @@ func (h *Handler) HandleDeleteMACSWebhook(pool *pgxpool.Pool, w http.ResponseWri
 
 	if h.audit != nil {
 		actor, _ := auth.ActorFromContext(r.Context())
-		_ = h.audit.Write(r.Context(), audit.Event{
+		if err := h.audit.Write(r.Context(), audit.Event{
 			OccurredAt:   time.Now().UTC(),
 			ActorType:    "user",
 			ActorID:      actor.ID,
@@ -219,7 +221,9 @@ func (h *Handler) HandleDeleteMACSWebhook(pool *pgxpool.Pool, w http.ResponseWri
 			Metadata: map[string]any{
 				"org_id": orgID.String(),
 			},
-		})
+		}); err != nil {
+			h.logger.Error("macs-webhook: audit write failed", "error", err.Error())
+		}
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, macsWebhookResponse(row, false))
