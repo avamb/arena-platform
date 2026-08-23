@@ -23768,3 +23768,22 @@ path required; relative path returns "not an absolute path" on this host).
 
 Push: 3 commits (1 agent wave + 2 integration fixes) to origin/master.
 443/443 (100%). Wave 4 fully closed.
+
+## 2026-08-23 - INTEGRATION GATE (pass-8, wave-4 epilogue)
+
+Run after pass-8 AutoForge wave (AB-50g #444, AB-50h #445, AB-45c #446).
+
+| Check | Result |
+|-------|--------|
+| `go build ./apps/backend/...` | GREEN |
+| `go test ./apps/backend/...` (unit, no integration tag) | GREEN — EXIT:0 |
+| `npm run type-check` (admin-web) | GREEN |
+| `npm run type-check` (widget) | GREEN |
+| `npm run test --run` (admin-web Vitest, 1103 tests) | GREEN |
+| Migration head pin (`0089_macs_webhook_subscribers.sql`) | GREEN — pin matches latest migration |
+| Codegen drift (types_gen.go + TS client) | GREEN — no drift after full regen |
+| golangci-lint `./apps/backend/...` | GREEN — 0 issues |
+
+No fixes required. All gates passed on first run. Branch up to date with origin/master.
+
+Stats: 446/446 (100%). Wave 4 epilogue closed.
