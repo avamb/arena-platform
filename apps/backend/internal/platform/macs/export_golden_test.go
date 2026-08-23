@@ -2,6 +2,11 @@
 //
 // Asserts that buildExport produces JSON with the required field presence
 // and types that match what the MACS importer expects.
+//
+// NOTE: testdata/sample_tickets.json is SYNTHETIC — hand-written from the
+// MACS importer source, not captured from a real MACS system. Replace it
+// with a real export sample from the owner when one is provided, keeping
+// the same file name so this test picks it up unchanged.
 package macs
 
 import (

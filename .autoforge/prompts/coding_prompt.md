@@ -161,19 +161,25 @@ Use the feature_mark_passing tool with feature_id=42
 Make a descriptive git commit.
 
 **Git Commit Rules:**
+- NEVER run `git add .` or `git add -A`. Stage ONLY the files you changed, by path
+  (`git add path/to/file.go path/to/other.ts`). Then check `git status --short` and
+  make sure nothing under `.golangci-cache/`, `.tmp/`, `*.txt` scratch outputs,
+  `test-results/`, binaries or token files is staged. A pass-7 commit swept 9.7k
+  cache files and a JWT into the repository this way — the owner had to rewrite
+  history. Unrelated untracked files stay untracked.
 - ALWAYS use simple `-m` flag for commit messages
 - NEVER use heredocs (`cat <<EOF` or `<<'EOF'`) - they fail in sandbox mode with "can't create temp file for here document: operation not permitted"
 - For multi-line messages, use multiple `-m` flags:
 
 ```bash
-git add .
+git add <only the files you changed, by path>   # never `git add .`
 git commit -m "Implement [feature name] - verified end-to-end" -m "- Added [specific changes]" -m "- Tested with browser automation" -m "- Marked feature #X as passing"
 ```
 
 Or use a single descriptive message:
 
 ```bash
-git add .
+git add <only the files you changed, by path>   # never `git add .`
 git commit -m "feat: implement [feature name] with browser verification"
 ```
 
