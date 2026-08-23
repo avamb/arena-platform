@@ -151,28 +151,11 @@ func TestMACS_AB50h_ExportFidelity(t *testing.T) {
 		t.Fatal("expected at least 1 order in export")
 	}
 
-	// Build a map from checkout_session id (= order id?) to order.
-	// The order id is the min system_ticket_id in the order.
-	// We'll look up by ticketID instead.
-	type ticketKey struct{ id uuid.UUID }
-	ticketByID := map[uuid.UUID]macs.Ticket{}
-	orderByCS := map[uuid.UUID]macs.Order{} // keyed by system ticket id → order
-	_ = orderByCS
-
-	// Map tickets by their ordinal position within orders.
-	for _, o := range export {
-		for _, tk := range o.TicketList {
-			_ = tk
-		}
-	}
-
 	// Build ticket map from export (by matching order/ticket counts).
 	// Since we can't directly correlate by UUID (export uses int ids),
 	// we do structural assertions instead.
 	for _, o := range export {
 		for _, tk := range o.TicketList {
-			_ = ticketKey{}
-			_ = ticketByID
 			// Check: if discountReason is "Промокод ...", assert discount > 0.
 			if o.Discount > 0 {
 				// This is the promo order.

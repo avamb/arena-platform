@@ -34,6 +34,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -60,10 +61,14 @@ type Ticket struct {
 	HolderStatus int
 	// Barcode is the ticket barcode value from the import payload.
 	Barcode string
-	// OrderID is the parent order id from the import payload.
+	// OrderID is the parent order id from the import payload (fabricated when absent).
 	OrderID int64
 	// ImportedAt is the time the ticket was stored via /import/tickets.
 	ImportedAt time.Time
+	// Status is always "PAID" — fabricated by the stub on import (AB-50i).
+	Status string
+	// BarcodeFormat is always "EAN-13" — fabricated by the stub on import (AB-50i).
+	BarcodeFormat string
 }
 
 // importTicket is the minimal shape of a MACS ticket from the import JSON
@@ -335,6 +340,11 @@ func (r *Receiver) handleImport(w http.ResponseWriter, req *http.Request) {
 	defer r.mu.Unlock()
 
 	for oi, order := range orders {
+		// AB-50i: fabricate order ID when absent (0) — mirrors buildExport behaviour.
+		orderID := order.ID
+		if orderID == 0 {
+			orderID = rand.Int63() + 1 //nolint:gosec // test stub: non-security-critical fabrication
+		}
 		for ti, t := range order.TicketList {
 			if verr := validateImportTicket(oi, ti, t); verr != "" {
 				w.Header().Set("Content-Type", "application/json")
@@ -342,11 +352,18 @@ func (r *Receiver) handleImport(w http.ResponseWriter, req *http.Request) {
 				fmt.Fprintf(w, `{"error":%q}`, verr)
 				return
 			}
+			// Use the (possibly fabricated) order ID when the ticket has none.
+			ticketOrderID := t.OrderID
+			if ticketOrderID == 0 {
+				ticketOrderID = orderID
+			}
 			r.tickets[t.ID] = &Ticket{
-				HolderStatus: t.HolderStatus,
-				Barcode:      t.Barcode,
-				OrderID:      t.OrderID,
-				ImportedAt:   now,
+				HolderStatus:  t.HolderStatus,
+				Barcode:       t.Barcode,
+				OrderID:       ticketOrderID,
+				ImportedAt:    now,
+				Status:        "PAID",   // AB-50i: always fabricated
+				BarcodeFormat: "EAN-13", // AB-50i: always fabricated
 			}
 		}
 	}

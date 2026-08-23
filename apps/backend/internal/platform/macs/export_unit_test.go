@@ -244,3 +244,70 @@ func TestBuildExport_BarcodeFromCredential(t *testing.T) {
 		t.Errorf("expected barcode from credential, got %q", tk.Barcode)
 	}
 }
+
+func TestBuildExport_ProrationRemainder_LastTicketAbsorbsRounding(t *testing.T) {
+	// 3 tickets at 1000 each; order_subtotal=3000, order_discount=100.
+	// Integer division: 1000*100/3000 = 33 (truncates). First two tickets get 33;
+	// last ticket gets 100-66=34. sum = 33+33+34 = 100 = order_discount. ✓
+	csID := uuid.MustParse("aaaaaaaa-bbbb-cccc-dddd-000000000099")
+	row := baseRow()
+	row.checkoutSessionID = csID
+	row.orderSubtotal = 3000
+	row.orderDiscount = 100
+	row.orderTotal = 2900
+	row.soldPrice = 1000
+
+	row1 := row
+	row1.systemTicketID = 5001
+	row1.seatSystemID = 5001
+	row1.ordinal = 1
+
+	row2 := row
+	row2.systemTicketID = 5002
+	row2.seatSystemID = 5002
+	row2.ordinal = 2
+
+	row3 := row
+	row3.systemTicketID = 5003
+	row3.seatSystemID = 5003
+	row3.ordinal = 3
+
+	export := buildExport([]exportRow{row1, row2, row3})
+	if len(export) != 1 {
+		t.Fatalf("expected 1 order, got %d", len(export))
+	}
+	o := export[0]
+	if len(o.TicketList) != 3 {
+		t.Fatalf("expected 3 tickets, got %d", len(o.TicketList))
+	}
+
+	var totalDiscount int64
+	for _, tk := range o.TicketList {
+		totalDiscount += tk.Discount
+	}
+	if totalDiscount != 100 {
+		t.Errorf("sum of ticket discounts = %d, want 100 (must equal order discount exactly)", totalDiscount)
+	}
+
+	// First two tickets get floor(1000*100/3000) = 33.
+	if o.TicketList[0].Discount != 33 {
+		t.Errorf("ticket[0].discount = %d, want 33", o.TicketList[0].Discount)
+	}
+	if o.TicketList[1].Discount != 33 {
+		t.Errorf("ticket[1].discount = %d, want 33", o.TicketList[1].Discount)
+	}
+	// Last ticket absorbs remainder: 100 - 33 - 33 = 34.
+	if o.TicketList[2].Discount != 34 {
+		t.Errorf("ticket[2].discount = %d, want 34 (absorbs remainder)", o.TicketList[2].Discount)
+	}
+
+	// Charge = price - discount for each ticket.
+	for i, tk := range o.TicketList {
+		if tk.Charge != tk.Price-tk.Discount {
+			t.Errorf("ticket[%d].charge = %d, want %d (price-discount)", i, tk.Charge, tk.Price-tk.Discount)
+		}
+		if tk.TotalPrice != tk.Charge {
+			t.Errorf("ticket[%d].totalPrice = %d, want == charge (%d)", i, tk.TotalPrice, tk.Charge)
+		}
+	}
+}

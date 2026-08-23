@@ -505,9 +505,20 @@ func buildExport(rows []exportRow) Export {
 		}
 		// (b) Per-ticket discount = ticket_price * order_discount / order_subtotal.
 		//     Prorates the checkout-level discount across tickets proportionally.
+		//     The last ticket absorbs the rounding remainder so that
+		//     sum(ticket.discount) == order.discount exactly (AB-50i).
 		if o.Sum > 0 && o.Discount > 0 {
+			var allocated int64
+			n := len(o.TicketList)
 			for j := range o.TicketList {
-				d := o.TicketList[j].Price * o.Discount / o.Sum
+				var d int64
+				if j == n-1 {
+					// Last ticket absorbs any rounding remainder.
+					d = o.Discount - allocated
+				} else {
+					d = o.TicketList[j].Price * o.Discount / o.Sum
+					allocated += d
+				}
 				o.TicketList[j].Discount = d
 				o.TicketList[j].Charge = o.TicketList[j].Price - d
 				o.TicketList[j].TotalPrice = o.TicketList[j].Charge

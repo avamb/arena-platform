@@ -142,17 +142,38 @@ func TestBuildExport_GoldenFieldTypes(t *testing.T) {
 		t.Errorf("ticket.holderStatus should be a number, got %T", ticket["holderStatus"])
 	}
 
-	// Compare golden file structure (field names, not values).
-	if len(golden) > 0 {
+	// Compare golden file structure (field names only, not values) — BINDING.
+	// The golden file is the canonical spec of what MACS requires; a divergence
+	// is a defect, not a note. Update testdata/sample_tickets.json when the
+	// export shape changes deliberately.
+	if len(golden) == 0 {
+		t.Error("golden file is empty — testdata/sample_tickets.json must contain at least one order")
+	} else {
 		goldenOrder := golden[0]
 		for _, f := range orderFields {
 			if _, ok := goldenOrder[f]; !ok {
-				t.Logf("note: golden file missing order field %q (not a failure - golden may be partial)", f)
+				t.Errorf("golden file missing required order field %q — update testdata/sample_tickets.json", f)
+			}
+		}
+		// Check golden ticket fields.
+		goldenTicketList, _ := goldenOrder["ticketList"].([]any)
+		if len(goldenTicketList) > 0 {
+			goldenTicket, _ := goldenTicketList[0].(map[string]any)
+			for _, f := range ticketFields {
+				if _, ok := goldenTicket[f]; !ok {
+					t.Errorf("golden file ticket missing required field %q — update testdata/sample_tickets.json", f)
+				}
+			}
+			goldenAE, _ := goldenTicket["actionEvent"].(map[string]any)
+			for _, f := range aeFields {
+				if _, ok := goldenAE[f]; !ok {
+					t.Errorf("golden file actionEvent missing required field %q — update testdata/sample_tickets.json", f)
+				}
 			}
 		}
 	}
 
-	t.Logf("golden-file field presence OK; export has %d order(s), %d ticket(s)", len(actual), len(ticketList))
+	t.Logf("golden-file field presence OK (binding); export has %d order(s), %d ticket(s)", len(actual), len(ticketList))
 }
 
 // goldenBaseRow is a copy of baseRow() from export_unit_test.go for use here.
