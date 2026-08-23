@@ -185,6 +185,7 @@ GET /v1/catalog/venues/{venue_id}
   до 5 постеров + видео-ссылки (YouTube, VK, RuTube, Vimeo). Ticket PDF/email используют
   ТОЛЬКО обложку — галерея на них не выводится.
 - обновлять кеш сеансов: date/time, venue, city, currency, ticket categories, tariffs, min/max price
+- **AB-48**: каждый тариф несёт `current_price` (текущая эффективная цена расписания, может отличаться от базовой `price_amount`) и `next_price_change_at` (UTC timestamp следующего изменения цены или null). Плагин должен показывать `current_price` покупателю и обновлять кеш при наступлении `next_price_change_at`. Поля присутствуют в публичном feed (`/v1/public/feeds/{token}/events/{event_id}`) и в ответах admin API тиров.
 - сохранять локальные редакторские поля, если sync policy явно не говорит перезаписывать
 - помечать исчезнувшие сеансы inactive, а не удалять сразу
 - делать sync идемпотентным по platform ID и `updated_at`/version
@@ -414,6 +415,51 @@ WordPress-интеграция готова к миграции первого �
 - cache не ломает checkout, nonce или session behavior
 - RU/HE/EN content paths проверены
 - старые URLs редиректятся на новые event pages
+
+## AB-49: Семантика отмены билетов
+
+Начиная с AB-49 оператор может отменить выпущенный билет через
+`POST /v1/tickets/{ticket_id}/cancel`. Для плагина WordPress важны следующие аспекты:
+
+### Новые поля объекта Ticket
+
+| Поле | Тип | Описание |
+|------|-----|---------|
+| `cancelled_at` | `string\|null` | UTC timestamp отмены; null если не отменён |
+| `cancellation_reason` | `string\|null` | Причина отмены, введённая оператором |
+| `refund_mode` | `string\|null` | Решение по деньгам: `"none"`, `"manual"`, `"automatic"` |
+
+### Webhook при отмене
+
+При отмене платформа эмитирует `ticket.refunded` webhook (или `order.cancelled`,
+если отменён весь заказ). Плагин должен:
+
+1. Принять webhook и обновить local order mirror (пометить билет как отменённый).
+2. Не делать независимого решения о возврате — оно уже принято платформой
+   (`refund_mode`).
+3. Для `refund_mode=automatic` платформа сама инициирует возврат через
+   payment provider; WordPress получает `payment.refunded` или
+   `order.refunded` webhook когда деньги возвращены.
+4. Для `refund_mode=manual` оператор вернул деньги вне системы; WordPress
+   должен только отразить факт в local mirror.
+5. Для `refund_mode=none` возврат не производился (бесплатный или
+   внешний билет).
+
+### Запрос отмены
+
+```json
+POST /v1/tickets/{ticket_id}/cancel
+{
+  "reason": "Operator-supplied reason (required)",
+  "refund_mode": "automatic"
+}
+```
+
+`refund_mode` может быть `"none"`, `"manual"` или `"automatic"`.
+При `"automatic"` возвращаемая сумма ограничена ценой билета, уменьшенной
+на любую уже возвращённую часть.
+
+---
 
 ## Открытые вопросы
 

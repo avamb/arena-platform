@@ -105,3 +105,21 @@ entries short and factual.
   `cmd/arena-bil24-import` (incl. live_venues.go) and
   `delivery_integration_test.go` — schema changes must update them or the
   CI Integration job (migrated + seeded) breaks while Unit stays green.
+- **Never `git add .` or `git add -A`**: stage changed files by path only
+  (`git add path/to/file.go path/to/other.ts`). After staging, run
+  `git status --short` and confirm nothing unexpected is staged. A previous
+  agent committed `.golangci-cache/` (9.7k files) and a JWT token this way.
+- **Integration tests must use real handlers + real dispatcher**: do not
+  stub the HTTP handler or the outbox dispatcher in tests that are supposed
+  to verify the full delivery chain. The MACS round-trip tests
+  (`TestMACS_RoundTrip`, `TestMACS_AB50e_ThreeTicketRoundTrip`) exercise
+  `macs.Dispatcher.Dispatch` → real HTTP → stub receiver, which is the only
+  way to catch envelope-shape regressions.
+- **golangci-lint cache path must be absolute**: run from repo root with
+  `GOLANGCI_LINT_CACHE=/tmp/golangci-cache go.exe run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run ./apps/backend/...`.
+  A relative path (`.golangci-cache`) returns "not an absolute path" and aborts.
+- **gofmt all changed files, including integration-tagged ones**: golangci-lint
+  skips files with `//go:build integration` by default, so gofmt violations
+  in those files slip through lint and are only caught by CI's format check.
+  Run `gofmt -l -w <file>` on every new or modified Go file before committing,
+  regardless of build tag.

@@ -31,6 +31,23 @@ stable across exports and webhooks.
 
 ---
 
+## holderStatus Values
+
+MACS uses a 4-value integer `holderStatus` field on every ticket:
+
+| Value | Meaning | Who sets it |
+|-------|---------|-------------|
+| `0` | Valid / not yet scanned — MACS admits the bearer | Platform (export + webhook) |
+| `1` | Checked-in (scanned at entry) | MACS scanner — never emitted by the platform |
+| `2` | Checked-out | MACS scanner — never emitted by the platform |
+| `3` | Refunded / cancelled / revoked — MACS denies the bearer | Platform (export + webhook) |
+
+The platform only ever emits `0` (active ticket) or `3` (any terminal state:
+`cancelled`, `revoked`, `transferred`). Values `1` and `2` are MACS-internal
+and the platform never writes them.
+
+---
+
 ## JSON Export (AB-50b)
 
 **Endpoint:** `GET /v1/organizations/{org_id}/events/{event_id}/sessions/{id}/macs-export`
@@ -39,15 +56,35 @@ stable across exports and webhooks.
 completed tickets for the session. The format matches the MACS Python importer's
 expectations (camelCase field names, integer IDs, `EAN-13` barcode format marker).
 
+**Error:** `422 macs.export_incomplete` — returned when the session's venue has no
+city configured. Link the venue to a city before exporting.
+
 **Key fields per ticket:**
 
 | Field | Source |
 |---|---|
 | `id` | `tickets.system_ticket_id` |
-| `seatId` | `session_seats.system_seat_id` (or `system_ticket_id` for GA) |
-| `barcode` | `ticket_credentials.payload` (type `qr`) or fallback to `system_ticket_id` |
-| `holderStatus` | 0=valid, 3=cancelled (`tickets.status`) |
-| `actionEvent.id` | First 8 bytes of `events.id` UUID → int64 |
+| `seatId` | `session_seats.system_seat_id` for assigned seats; `1_000_000_000 + system_ticket_id` for GA (disjoint range, never collides with real seat IDs — seat sequences start at 1) |
+| `barcode` | `ticket_credentials.payload` (type `static_qr`) or fallback to `system_ticket_id` as string |
+| `holderStatus` | `0`=valid, `3`=cancelled/revoked (see holderStatus table above) |
+| `actionEvent.id` | First 8 bytes of `events.id` UUID → int64 (big-endian uint64 >> 1 to keep sign bit clear) |
+| `actionEvent.showTime` | `sessions.start_at` formatted in the venue's local timezone (`venues.timezone`), without TZ suffix: `"2026-08-22T20:00:00"` |
+| `price` | Actual sold price: `COALESCE(reservation_ga_items.unit_price, ticket_tiers.price_amount, 0)`. Falls back to `order_subtotal / ticket_count` for untiered GA. |
+| `discountReason` | See discountReason vocabulary below |
+
+**discountReason vocabulary:**
+
+| Condition | Value |
+|-----------|-------|
+| Promo code applied | `"Промокод {code}"` (e.g. `"Промокод CATDANIEL"`) |
+| No payment provider (external/complimentary) | `"Внешняя система"` |
+| Regular paid purchase | `""` (field omitted via `omitempty`) |
+
+**Per-ticket discount proration:**
+
+The checkout-level discount is prorated across tickets proportionally:
+`ticket.discount = ticket.price * order.discount / order.subtotal`.
+The last ticket absorbs any rounding remainder so that `sum(ticket.discount) == order.discount` exactly.
 
 ---
 
@@ -55,33 +92,51 @@ expectations (camelCase field names, integer IDs, `EAN-13` barcode format marker
 
 ### Event mapping
 
-MACS handles only two event types:
+The platform emits 4 event types; MACS handles only 2 webhook types:
 
-| Platform event type | MACS webhook type |
+| Platform outbox event type | MACS webhook type |
 |---|---|
 | `v1.scanner.ticket.issued` | `order.paid` |
 | `v1.ticket.cancelled` | `ticket.refunded` |
 | `v1.ticket.refunded` | `ticket.refunded` |
 | `v1.ticket.revoked` | `ticket.refunded` |
 
-All other event types are silently skipped (no-op — outbox row is marked processed).
+All other platform event types are silently skipped (outbox row is marked
+processed without calling the receiver).
 
 ### Envelope shape
 
 ```json
 {
-  "id": 42,
-  "created": "2026-08-22T10:00:00",
+  "id": 4611686019022454784,
+  "created": "2026-08-22T10:00:00Z",
   "type": "order.paid",
   "data": {
-    "ticketId": 42,
-    "sessionId": "...",
-    "checkoutId": "..."
+    "id": 42,
+    "seatId": 1000000042,
+    "orderId": 42,
+    "barcode": "...",
+    "barcodeFormat": {"id": 1, "name": "EAN-13"},
+    "actionEvent": {
+      "id": 123456789,
+      "cityName": "Moscow",
+      "venueName": "Main Hall",
+      "actionName": "Rock Night",
+      "actionLegalOwner": "Arena LLC",
+      "showTime": "2026-08-22T20:00:00"
+    },
+    "holderStatus": 0,
+    "orderId": 42
   }
 }
 ```
 
-The `created` field uses local time without timezone suffix (MACS requirement).
+- **`id`**: derived from the outbox row UUID (low 63 bits of first 8 bytes).
+  Unique per dispatch event, not per ticket. Used by MACS's `/_wh/reprocess/{id}`.
+- **`created`**: `time.RFC3339` UTC string (e.g. `"2026-08-22T10:00:00Z"`).
+- **`data`**: the full MACS `Ticket` shape (same as the JSON export) plus `orderId`.
+  For `ticket.refunded`, `holderStatus` is forced to `3` regardless of the ticket's
+  database state; an optional `reason` string may be included.
 
 ### HMAC signing
 
@@ -92,14 +147,24 @@ Every webhook POST is signed with HMAC-SHA256 using the subscriber's
 X-MACS-Signature: sha256=<hex-encoded-hmac>
 ```
 
-Verification on the MACS side is optional (backward compatible).
+The HMAC is computed over the raw JSON body bytes. Verification on the MACS
+receiver side is **optional** (backward compatible — the header is omitted when
+`signing_secret` is empty, and MACS need not verify if not configured).
 
 ### Retry behaviour
 
-The MACS dispatcher reuses the existing `outbox_events` retry infrastructure
-(migration 0068: `next_attempt_at`, `dead_lettered_at`). A non-2xx HTTP response
-or a network error causes the outbox to retry with exponential backoff. After the
-configured maximum attempts (default: 5) the row is dead-lettered.
+The MACS dispatcher uses the `outbox_events` retry infrastructure
+(migration 0068: `next_attempt_at`, `dead_lettered_at`). Non-2xx responses and
+network errors cause the outbox to retry with exponential backoff
+(`2^n` minutes, capped at 1 hour).
+
+**Worker configuration (arena-worker):**
+
+- `MaxAttempts`: **30** — spans approximately 24 hours before dead-lettering.
+  (The previous default of 5 dead-lettered after ~31 minutes.)
+- HTTP client timeout: 10 seconds per attempt.
+
+Dead-lettered rows have `dead_lettered_at IS NOT NULL` and are not retried again.
 
 ---
 
@@ -154,24 +219,48 @@ Record the `signing_secret` returned in the response body — it is only shown o
 1. PUT with a new `signing_secret` to replace the subscriber.
 2. Update the MACS receiver configuration with the new secret.
 
-### Verify webhook delivery
+### Re-export a session to MACS
 
-Check the `outbox_events` table for unprocessed rows:
+If the MACS importer database is out of sync, re-run the JSON export endpoint
+and feed the result to the MACS importer. The `holderStatus` field will reflect
+current ticket state (`0`=valid, `3`=cancelled/revoked).
+
+```bash
+curl -H "Authorization: Bearer <admin-jwt>" \
+  https://api.example.com/v1/organizations/<org-id>/events/<event-id>/sessions/<session-id>/macs-export \
+  > export.json
+# Feed export.json to the MACS Python importer CLI.
+```
+
+### Read dead-lettered outbox rows
+
+```sql
+SELECT id, event_type, payload, attempts, dead_lettered_at, created_at
+FROM outbox_events
+WHERE dead_lettered_at IS NOT NULL
+  AND event_type IN ('v1.scanner.ticket.issued', 'v1.ticket.cancelled',
+                     'v1.ticket.refunded', 'v1.ticket.revoked')
+ORDER BY dead_lettered_at DESC;
+```
+
+Dead-lettered rows are permanently quarantined (they are skipped by future polls).
+To redeliver manually, clear `dead_lettered_at` and reset `attempts = 0`:
+
+```sql
+UPDATE outbox_events
+SET dead_lettered_at = NULL, attempts = 0, next_attempt_at = NULL
+WHERE id = '<uuid>';
+```
+
+### Verify webhook delivery (non-dead-lettered)
 
 ```sql
 SELECT id, event_type, attempts, next_attempt_at, dead_lettered_at
 FROM outbox_events
 WHERE processed_at IS NULL
+  AND dead_lettered_at IS NULL
 ORDER BY next_attempt_at;
 ```
-
-Dead-lettered rows (all retry attempts exhausted) have `dead_lettered_at IS NOT NULL`.
-
-### Re-export a session to MACS
-
-If the MACS importer database is out of sync, re-run the JSON export endpoint
-and feed the result to the MACS importer. The `holderStatus` field will reflect
-current ticket state (0=valid, 3=cancelled).
 
 ---
 
@@ -208,3 +297,7 @@ Key integration tests:
 - `TestMACS_CancelEnqueuesExactlyOne_OutboxEvent` — verifies the cancel flow
   writes exactly one `v1.ticket.cancelled` outbox event and the dispatcher
   maps it to one MACS `ticket.refunded` envelope.
+- `TestMACS_AB50e_ThreeTicketRoundTrip` — three-ticket round-trip with HMAC
+  verification, cancel-with-retry, and holderStatus assertion (3/0/0).
+- `TestMACS_AB50i_ExportHandler_422_NoCityVenue` — verifies `422 macs.export_incomplete`
+  when the venue has no city configured.
