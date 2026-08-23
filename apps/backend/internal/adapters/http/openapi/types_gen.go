@@ -3300,6 +3300,9 @@ type MACSActionEvent struct {
 
 // MACSOrder One checkout session (order) in MACS import format.
 type MACSOrder struct {
+	// DiscountReason Order-level discount cause (same vocabulary as the ticket field).
+	DiscountReason *string `json:"discountReason,omitempty"`
+
 	// Id Minimum system_ticket_id among all tickets in this checkout session.
 	Id *int64 `json:"id,omitempty"`
 
@@ -3318,6 +3321,11 @@ type MACSTicket struct {
 	// Barcode Ticket barcode string; falls back to system_ticket_id if no QR credential exists.
 	Barcode string `json:"barcode"`
 
+	// DiscountReason Human-readable cause of a discount (AB-50h): "Промокод <code>"
+	// when a promo applied, "Внешняя система" for externally imported
+	// sales; empty for a regular undiscounted sale.
+	DiscountReason *string `json:"discountReason,omitempty"`
+
 	// HolderStatus 0 = valid/not used, 3 = refunded/cancelled
 	HolderStatus int `json:"holderStatus"`
 
@@ -3327,7 +3335,7 @@ type MACSTicket struct {
 	// OrderId Parent order id (minimum system_ticket_id within the checkout session).
 	OrderId *int64 `json:"orderId,omitempty"`
 
-	// Price Unit ticket price in minor currency units (from ticket_tiers.price_amount).
+	// Price Unit ticket price in minor currency units (the SOLD price - the reservation's locked line, falling back to ticket_tiers.price_amount for legacy reservations).
 	Price *int64 `json:"price,omitempty"`
 
 	// SeatId Stable MACS seat integer from session_seats.system_seat_id (or id for GA tickets).

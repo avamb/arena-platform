@@ -45,10 +45,10 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/htickets"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/macs"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/macs/stub"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/htickets"
 )
 
 // TestMACS_AB50g_RealCancelRoundTrip is the AB-50g end-to-end acceptance test.
@@ -224,17 +224,17 @@ func TestMACS_AB50g_RealCancelRoundTrip(t *testing.T) {
 
 	genQ := gen.New(pool)
 	cancelHandler := htickets.New(
-		genQ,           // ticketQueries
-		nil,            // credentialQueries (nil-safe)
-		nil,            // complimentaryQueries (not used in cancel)
-		genQ,           // inventoryQueries (for RestoreSoldCapacity)
-		nil,            // reservationQueries (manual mode needs none)
-		nil,            // barcodeQueries (nil-safe)
-		nil,            // deliveryJobQueries
-		nil,            // feedTokenQueries
-		nil,            // workerPool
-		pool,           // pool (TxStarter)
-		nil,            // audit (nil — skip for test)
+		genQ, // ticketQueries
+		nil,  // credentialQueries (nil-safe)
+		nil,  // complimentaryQueries (not used in cancel)
+		genQ, // inventoryQueries (for RestoreSoldCapacity)
+		nil,  // reservationQueries (manual mode needs none)
+		nil,  // barcodeQueries (nil-safe)
+		nil,  // deliveryJobQueries
+		nil,  // feedTokenQueries
+		nil,  // workerPool
+		pool, // pool (TxStarter)
+		nil,  // audit (nil — skip for test)
 		slog.Default(),
 		nil,              // publishTicketIssuedEvents
 		nil,              // publishTicketRevokedV1Events

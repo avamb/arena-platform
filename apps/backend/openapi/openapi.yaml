@@ -8685,7 +8685,13 @@ components:
         price:
           type: integer
           format: int64
-          description: Unit ticket price in minor currency units (from ticket_tiers.price_amount).
+          description: Unit ticket price in minor currency units (the SOLD price - the reservation's locked line, falling back to ticket_tiers.price_amount for legacy reservations).
+        discountReason:
+          type: string
+          description: |
+            Human-readable cause of a discount (AB-50h): "Промокод <code>"
+            when a promo applied, "Внешняя система" for externally imported
+            sales; empty for a regular undiscounted sale.
         actionEvent:
           $ref: "#/components/schemas/MACSActionEvent"
           description: Denormalized event context required by every MACS ticket.
@@ -8693,6 +8699,10 @@ components:
       type: object
       description: One checkout session (order) in MACS import format.
       properties:
+        discountReason:
+          type: string
+          description: Order-level discount cause (same vocabulary as the ticket field).
+
         id:
           type: integer
           format: int64
@@ -16220,6 +16230,21 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Caller is not an org member.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found in this event/organization (`session.not_found`) - cross-tenant ids are not distinguished.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: |
+            `macs.export_incomplete` - the venue has no city linked, so the
+            export cannot be complete by construction (MACS would fabricate
+            "Unknown City"). Link the venue to a city and retry.
           content:
             application/json:
               schema:

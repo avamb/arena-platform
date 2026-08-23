@@ -12544,14 +12544,22 @@ export interface components {
             holderStatus: number;
             /**
              * Format: int64
-             * @description Unit ticket price in minor currency units (from ticket_tiers.price_amount).
+             * @description Unit ticket price in minor currency units (the SOLD price - the reservation's locked line, falling back to ticket_tiers.price_amount for legacy reservations).
              */
             price?: number;
+            /**
+             * @description Human-readable cause of a discount (AB-50h): "Промокод <code>"
+             *     when a promo applied, "Внешняя система" for externally imported
+             *     sales; empty for a regular undiscounted sale.
+             */
+            discountReason?: string;
             /** @description Denormalized event context required by every MACS ticket. */
             actionEvent: components["schemas"]["MACSActionEvent"];
         };
         /** @description One checkout session (order) in MACS import format. */
         MACSOrder: {
+            /** @description Order-level discount cause (same vocabulary as the ticket field). */
+            discountReason?: string;
             /**
              * Format: int64
              * @description Minimum system_ticket_id among all tickets in this checkout session.
@@ -20565,6 +20573,28 @@ export interface operations {
             };
             /** @description Caller is not an org member. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found in this event/organization (`session.not_found`) - cross-tenant ids are not distinguished. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `macs.export_incomplete` - the venue has no city linked, so the
+             *     export cannot be complete by construction (MACS would fabricate
+             *     "Unknown City"). Link the venue to a city and retry.
+             */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -103,3 +103,16 @@ apps/backend/C/
 /types_gen_new.txt
 /verify_poster.mjs
 apps/admin-web/tests/**/*.xml
+
+# Local scratch that must never be staged
+/.tmp-token.json
+/.tmp-*.ps1
+/COMMIT_MSG_*.txt
+/e2e-411-*.png
+/check-versions.mjs
+/gotest_out*.txt
+apps/backend/arena-bil24-import
+apps/backend/.envprobe.env
+apps/admin-web/e2e-verify-*.mjs
+apps/admin-web/test-results/
+09_autoforge/__pycache__/
