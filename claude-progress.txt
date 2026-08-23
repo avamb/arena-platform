@@ -23787,3 +23787,56 @@ Run after pass-8 AutoForge wave (AB-50g #444, AB-50h #445, AB-45c #446).
 No fixes required. All gates passed on first run. Branch up to date with origin/master.
 
 Stats: 446/446 (100%). Wave 4 epilogue closed.
+
+## 2026-08-24 - #449 DOCS wave-4 epilogue - PASSING - 449/449 (100%)
+
+Feature #449: documentation close-out for wave-4 (commit d63f99b, pushed).
+
+### 17_macs_integration_contract.md — reconciled with shipped code
+- holderStatus 0/1/2/3 table (0=valid, 1/2=MACS scanner only, 3=refunded)
+- Envelope: id from outbox UUID (low-63 bits), created=RFC3339 UTC, data=full Ticket shape
+- MACS event types: order.paid + ticket.refunded only (4 platform events map to 2)
+- HMAC optional on receiver side
+- Retry: 30 attempts / ~24h (worker MaxAttempts:30; previous default 5 = ~31 min)
+- 422 macs.export_incomplete when venue has no city
+- GA seatId: 1_000_000_000 + system_ticket_id (disjoint from real seat IDs)
+- discountReason: "Промокод {code}" / "Внешняя система" / "" (omitempty)
+- Full ops runbook: register receiver, rotate secret, re-export, read dead-lettered rows, manual requeue
+
+### 02_wordpress_integration_contract_ru.md — AB-48/AB-49 fields
+- AB-48: current_price / next_price_change_at on tiers in public feed and admin API
+- AB-49 section: cancelled_at, cancellation_reason, refund_mode (none/manual/automatic), webhook flow for operator cancel
+
+### AGENTS.md — pass 6-8 conventions recorded
+- Never git add -A; add files by path; verify git status --short before commit
+- Integration tests must use real handlers + real dispatcher (not stubs)
+- golangci-lint cache must be absolute path (/tmp/golangci-cache)
+- gofmt all changed files including integration-build-tagged ones (lint skips them)
+
+Stats: 449/449 passing (100%). All features complete.
+
+## 2026-08-24 - INTEGRATION GATE (pass-9, wave-4 epilogue close-out)
+
+Run after pass-9 AutoForge wave (#447 AB-50i, #448 AB-45d, #449 docs).
+New commits since pass-8 gate: 485a6a8, 587e9f0, 9011947, 6233bfd, d63f99b.
+
+| Check | Result |
+|-------|--------|
+| `go build ./apps/backend/...` | GREEN |
+| `go test ./apps/backend/...` (57 packages, unit) | GREEN — EXIT:0 |
+| `npm run type-check` (admin-web) | GREEN |
+| `npm run type-check` (widget) | GREEN |
+| `npm run test --run` (admin-web Vitest, 1103 tests) | GREEN |
+| Migration head (0089_macs_webhook_subscribers.sql) | GREEN — no new migrations |
+| Codegen drift (types_gen.go + TS client) | GREEN — no drift after full regen |
+| golangci-lint `./apps/backend/...` | GREEN — 0 issues |
+
+No fixes required. All gates passed on first run.
+
+Housekeeping: added `apps/backend/C：/` and `/gotest_*.txt` patterns to
+.gitignore to suppress Windows path-artifact and scratch-output noise.
+The `apps/backend/C：/` directory (U+F03A, a private-use char) is a
+Windows path artifact from a previous agent; cannot be deleted in the
+sandbox but is now gitignored so it cannot be accidentally staged.
+
+Stats: 449/449 (100%). Wave 4 fully closed.

@@ -95,6 +95,8 @@ apps/backend/openapi/.openapi.compat30.gen.yaml
 .tmp/
 .claude/worktrees/
 apps/backend/C/
+apps/backend/C：/
+/gotest_*.txt
 /*_out.txt
 /*_out2.txt
 /*_exit.txt
