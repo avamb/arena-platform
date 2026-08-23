@@ -209,6 +209,9 @@ func (h *Handler) HandleAdminUpdateOrg(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Validate logo_media_id if a non-null value is supplied.
+	// Tri-state: absent=skip (UpdateOrganization keeps existing via CASE WHEN NULL),
+	// null=clear (PatchOrgLogoMediaID called after main UPDATE), value=set.
 	var logoMediaID *uuid.UUID
 	if req.LogoMediaID.Present && req.LogoMediaID.Value != nil && *req.LogoMediaID.Value != "" {
 		parsed, parseErr := uuid.Parse(*req.LogoMediaID.Value)
@@ -248,6 +251,22 @@ func (h *Handler) HandleAdminUpdateOrg(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	// AB-45d: null=clear for logo_media_id in admin path.
+	// UpdateOrganization keeps the existing logo when logoMediaID is nil
+	// (CASE WHEN NULL IS NOT NULL = false). A separate PatchOrgLogoMediaID
+	// call is required to physically clear the field to NULL.
+	if req.LogoMediaID.Present && req.LogoMediaID.Value == nil {
+		cleared, clearErr := h.orgQueries.PatchOrgLogoMediaID(ctx, orgID, nil)
+		if clearErr != nil {
+			h.logger.Error("admin_org: clear logo_media_id failed", slog.String("error", clearErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"admin_org.logo_clear_failed", "failed to clear organization logo", r,
+			))
+			return
+		}
+		updated = cleared
+	}
+
 	if req.SenderEmail.Present {
 		if _, _, senderErr := h.orgQueries.UpdateOrganizationSenderEmail(ctx, orgID, optionalValue(req.SenderEmail, nil)); senderErr != nil {
 			h.logger.Error("admin_org: sender update failed", slog.String("error", senderErr.Error()))

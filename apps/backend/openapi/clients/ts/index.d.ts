@@ -7907,6 +7907,63 @@ export interface components {
              */
             poster_media_id?: string | null;
             /**
+             * @description URL-safe marketing slug for the event page (AB-45c, migration 0051).
+             *     Set via PATCH with the tri-state field: absent=keep, null=clear, value=set.
+             * @example summer-festival-2026
+             */
+            slug?: string | null;
+            /**
+             * @description Short marketing description shown in cards and previews (AB-45c).
+             *     Tri-state PATCH: absent=keep, null=clear, value=set.
+             * @example Open-air festival on the Tel Aviv beachfront.
+             */
+            short_description?: string | null;
+            /**
+             * @description Event genre/category (AB-45c). E.g. "concert", "festival", "theatre".
+             *     Tri-state PATCH: absent=keep, null=clear, value=set.
+             * @example festival
+             */
+            genre?: string | null;
+            /**
+             * @description Age rating string, e.g. "0+", "12+", "18+" (AB-45c).
+             *     Tri-state PATCH: absent=keep, null=clear, value=set.
+             * @example 12+
+             */
+            age_rating?: string | null;
+            /**
+             * Format: int32
+             * @description Event runtime in minutes (AB-45c).
+             *     Tri-state PATCH: absent=keep, null=clear, value=set.
+             * @example 120
+             */
+            duration_minutes?: number | null;
+            /**
+             * Format: uri
+             * @description URL to a teaser video or clip (AB-45c).
+             *     Tri-state PATCH: absent=keep, null=clear, value=set.
+             * @example https://cdn.example/teaser.mp4
+             */
+            teaser_url?: string | null;
+            /**
+             * Format: uri
+             * @description URL to the full event trailer (AB-45c).
+             *     Tri-state PATCH: absent=keep, null=clear, value=set.
+             * @example https://youtube.com/watch?v=abc123
+             */
+            trailer_url?: string | null;
+            /**
+             * @description SEO meta description for the event page (AB-45c).
+             *     Tri-state PATCH: absent=keep, null=clear, value=set.
+             * @example Join us for the biggest outdoor festival of 2026.
+             */
+            meta_description?: string | null;
+            /**
+             * @description Comma-separated SEO keywords for the event page (AB-45c).
+             *     Tri-state PATCH: absent=keep, null=clear, value=set.
+             * @example festival,music,outdoor,summer
+             */
+            meta_keywords?: string | null;
+            /**
              * Format: date-time
              * @description ISO 8601 / RFC 3339 timestamp of row creation.
              * @example 2026-06-01T00:00:00Z
@@ -7991,6 +8048,64 @@ export interface components {
             clear_session_overrides: boolean;
             /** @description Optional per-locale name/description overrides stored as i18n_text rows. */
             translations?: components["schemas"]["EventTranslations"];
+            /**
+             * @description Tri-state: **absent** = keep existing value; **null** = clear the field;
+             *     **string** = set to new value. URL-safe marketing slug for the event
+             *     page (AB-45c, migration 0051).
+             * @example summer-festival-2026
+             */
+            slug?: string | null;
+            /**
+             * @description Tri-state (absent=keep, null=clear, value=set).
+             *     Short marketing description shown in cards and previews (AB-45c).
+             * @example Open-air festival on the Tel Aviv beachfront.
+             */
+            short_description?: string | null;
+            /**
+             * @description Tri-state (absent=keep, null=clear, value=set).
+             *     Event genre/category string (AB-45c).
+             * @example festival
+             */
+            genre?: string | null;
+            /**
+             * @description Tri-state (absent=keep, null=clear, value=set).
+             *     Age rating string, e.g. "0+", "12+", "18+" (AB-45c).
+             * @example 12+
+             */
+            age_rating?: string | null;
+            /**
+             * Format: int32
+             * @description Tri-state (absent=keep, null=clear, value=set).
+             *     Event runtime in minutes (AB-45c).
+             * @example 120
+             */
+            duration_minutes?: number | null;
+            /**
+             * Format: uri
+             * @description Tri-state (absent=keep, null=clear, value=set).
+             *     URL to a teaser video or clip (AB-45c).
+             * @example https://cdn.example/teaser.mp4
+             */
+            teaser_url?: string | null;
+            /**
+             * Format: uri
+             * @description Tri-state (absent=keep, null=clear, value=set).
+             *     URL to the full event trailer (AB-45c).
+             * @example https://youtube.com/watch?v=abc123
+             */
+            trailer_url?: string | null;
+            /**
+             * @description Tri-state (absent=keep, null=clear, value=set).
+             *     SEO meta description for the event page (AB-45c).
+             * @example Join us for the biggest outdoor festival of 2026.
+             */
+            meta_description?: string | null;
+            /**
+             * @description Tri-state (absent=keep, null=clear, value=set).
+             *     Comma-separated SEO keywords for the event page (AB-45c).
+             * @example festival,music,outdoor,summer
+             */
+            meta_keywords?: string | null;
         };
         /**
          * @description Status-transition body for POST

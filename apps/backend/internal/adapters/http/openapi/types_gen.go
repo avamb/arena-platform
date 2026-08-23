@@ -2757,6 +2757,10 @@ type EventEnvelope struct {
 // The `name` and `description` fields are locale-resolved per the
 // request's Accept-Language header / ?lang= query parameter.
 type EventItem struct {
+	// AgeRating Age rating string, e.g. "0+", "12+", "18+" (AB-45c).
+	// Tri-state PATCH: absent=keep, null=clear, value=set.
+	AgeRating *string `json:"age_rating"`
+
 	// CreatedAt ISO 8601 / RFC 3339 timestamp of row creation.
 	CreatedAt time.Time `json:"created_at"`
 
@@ -2766,12 +2770,20 @@ type EventItem struct {
 	// DisplayNumber Short operator-facing event number; UUID remains the API key.
 	DisplayNumber int64 `json:"display_number"`
 
+	// DurationMinutes Event runtime in minutes (AB-45c).
+	// Tri-state PATCH: absent=keep, null=clear, value=set.
+	DurationMinutes *int32 `json:"duration_minutes"`
+
 	// FirstSessionAt Earliest `start_at` over the event's active, non-cancelled
 	// sessions (RFC 3339, UTC). Maintained by a database trigger
 	// (migration 0080) — never written directly. Null when the event
 	// has no sessions; an event with no sessions renders no date
 	// anywhere.
 	FirstSessionAt *time.Time `json:"first_session_at"`
+
+	// Genre Event genre/category (AB-45c). E.g. "concert", "festival", "theatre".
+	// Tri-state PATCH: absent=keep, null=clear, value=set.
+	Genre *string `json:"genre"`
 
 	// Id UUIDv7 primary key of the event row.
 	Id openapi_types.UUID `json:"id"`
@@ -2782,6 +2794,14 @@ type EventItem struct {
 	// LastSessionAt Latest `end_at` over the event's active, non-cancelled sessions
 	// (RFC 3339, UTC). Null when the event has no sessions.
 	LastSessionAt *time.Time `json:"last_session_at"`
+
+	// MetaDescription SEO meta description for the event page (AB-45c).
+	// Tri-state PATCH: absent=keep, null=clear, value=set.
+	MetaDescription *string `json:"meta_description"`
+
+	// MetaKeywords Comma-separated SEO keywords for the event page (AB-45c).
+	// Tri-state PATCH: absent=keep, null=clear, value=set.
+	MetaKeywords *string `json:"meta_keywords"`
 
 	// Name Human-readable event name. Locale-resolved: if an i18n_text
 	// row exists for the negotiated locale, that value is returned;
@@ -2798,8 +2818,24 @@ type EventItem struct {
 	// sessions.poster_media_id ?? events.poster_media_id ?? none.
 	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
 
+	// ShortDescription Short marketing description shown in cards and previews (AB-45c).
+	// Tri-state PATCH: absent=keep, null=clear, value=set.
+	ShortDescription *string `json:"short_description"`
+
+	// Slug URL-safe marketing slug for the event page (AB-45c, migration 0051).
+	// Set via PATCH with the tri-state field: absent=keep, null=clear, value=set.
+	Slug *string `json:"slug"`
+
 	// Status Lifecycle status.
 	Status EventItemStatus `json:"status"`
+
+	// TeaserUrl URL to a teaser video or clip (AB-45c).
+	// Tri-state PATCH: absent=keep, null=clear, value=set.
+	TeaserUrl *string `json:"teaser_url"`
+
+	// TrailerUrl URL to the full event trailer (AB-45c).
+	// Tri-state PATCH: absent=keep, null=clear, value=set.
+	TrailerUrl *string `json:"trailer_url"`
 
 	// UpdatedAt ISO 8601 / RFC 3339 timestamp of last update.
 	UpdatedAt time.Time `json:"updated_at"`
@@ -6295,6 +6331,10 @@ type UpdateBankAccountRequest struct {
 // through this endpoint — use POST
 // /v1/organizations/{org_id}/events/{id}/status instead.
 type UpdateEventRequest struct {
+	// AgeRating Tri-state (absent=keep, null=clear, value=set).
+	// Age rating string, e.g. "0+", "12+", "18+" (AB-45c).
+	AgeRating *string `json:"age_rating"`
+
 	// ClearSessionOverrides When true, clears `poster_media_id` on all active sessions of
 	// this event, so the event-level poster becomes effective for
 	// every session (AB-47). No-op when false or omitted.
@@ -6303,8 +6343,24 @@ type UpdateEventRequest struct {
 	// Description New long-form description.
 	Description *string `json:"description"`
 
+	// DurationMinutes Tri-state (absent=keep, null=clear, value=set).
+	// Event runtime in minutes (AB-45c).
+	DurationMinutes *int32 `json:"duration_minutes"`
+
+	// Genre Tri-state (absent=keep, null=clear, value=set).
+	// Event genre/category string (AB-45c).
+	Genre *string `json:"genre"`
+
 	// ImageUrl New poster / cover image URL. Null clears the field.
 	ImageUrl *string `json:"image_url"`
+
+	// MetaDescription Tri-state (absent=keep, null=clear, value=set).
+	// SEO meta description for the event page (AB-45c).
+	MetaDescription *string `json:"meta_description"`
+
+	// MetaKeywords Tri-state (absent=keep, null=clear, value=set).
+	// Comma-separated SEO keywords for the event page (AB-45c).
+	MetaKeywords *string `json:"meta_keywords"`
 
 	// Name New canonical event name. Empty leaves the value unchanged.
 	Name *string `json:"name,omitempty"`
@@ -6313,6 +6369,23 @@ type UpdateEventRequest struct {
 	// becomes the default poster for sessions without a session-level
 	// override. Nil leaves unchanged.
 	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
+
+	// ShortDescription Tri-state (absent=keep, null=clear, value=set).
+	// Short marketing description shown in cards and previews (AB-45c).
+	ShortDescription *string `json:"short_description"`
+
+	// Slug Tri-state: **absent** = keep existing value; **null** = clear the field;
+	// **string** = set to new value. URL-safe marketing slug for the event
+	// page (AB-45c, migration 0051).
+	Slug *string `json:"slug"`
+
+	// TeaserUrl Tri-state (absent=keep, null=clear, value=set).
+	// URL to a teaser video or clip (AB-45c).
+	TeaserUrl *string `json:"teaser_url"`
+
+	// TrailerUrl Tri-state (absent=keep, null=clear, value=set).
+	// URL to the full event trailer (AB-45c).
+	TrailerUrl *string `json:"trailer_url"`
 
 	// Translations Optional map of locale code → translated event name and description.
 	// Keys are BCP-47 locale tags (e.g. "ru", "en", "he"). When provided

@@ -3276,6 +3276,63 @@ components:
             default poster for all sessions that have no session-level
             `poster_media_id` override. Resolution order:
             sessions.poster_media_id ?? events.poster_media_id ?? none.
+        slug:
+          type: [string, "null"]
+          description: |
+            URL-safe marketing slug for the event page (AB-45c, migration 0051).
+            Set via PATCH with the tri-state field: absent=keep, null=clear, value=set.
+          example: "summer-festival-2026"
+        short_description:
+          type: [string, "null"]
+          description: |
+            Short marketing description shown in cards and previews (AB-45c).
+            Tri-state PATCH: absent=keep, null=clear, value=set.
+          example: "Open-air festival on the Tel Aviv beachfront."
+        genre:
+          type: [string, "null"]
+          description: |
+            Event genre/category (AB-45c). E.g. "concert", "festival", "theatre".
+            Tri-state PATCH: absent=keep, null=clear, value=set.
+          example: "festival"
+        age_rating:
+          type: [string, "null"]
+          description: |
+            Age rating string, e.g. "0+", "12+", "18+" (AB-45c).
+            Tri-state PATCH: absent=keep, null=clear, value=set.
+          example: "12+"
+        duration_minutes:
+          type: [integer, "null"]
+          format: int32
+          description: |
+            Event runtime in minutes (AB-45c).
+            Tri-state PATCH: absent=keep, null=clear, value=set.
+          example: 120
+        teaser_url:
+          type: [string, "null"]
+          format: uri
+          description: |
+            URL to a teaser video or clip (AB-45c).
+            Tri-state PATCH: absent=keep, null=clear, value=set.
+          example: "https://cdn.example/teaser.mp4"
+        trailer_url:
+          type: [string, "null"]
+          format: uri
+          description: |
+            URL to the full event trailer (AB-45c).
+            Tri-state PATCH: absent=keep, null=clear, value=set.
+          example: "https://youtube.com/watch?v=abc123"
+        meta_description:
+          type: [string, "null"]
+          description: |
+            SEO meta description for the event page (AB-45c).
+            Tri-state PATCH: absent=keep, null=clear, value=set.
+          example: "Join us for the biggest outdoor festival of 2026."
+        meta_keywords:
+          type: [string, "null"]
+          description: |
+            Comma-separated SEO keywords for the event page (AB-45c).
+            Tri-state PATCH: absent=keep, null=clear, value=set.
+          example: "festival,music,outdoor,summer"
         created_at:
           type: string
           format: date-time
@@ -3362,6 +3419,64 @@ components:
         translations:
           description: Optional per-locale name/description overrides stored as i18n_text rows.
           $ref: "#/components/schemas/EventTranslations"
+        slug:
+          type: [string, "null"]
+          description: |
+            Tri-state: **absent** = keep existing value; **null** = clear the field;
+            **string** = set to new value. URL-safe marketing slug for the event
+            page (AB-45c, migration 0051).
+          example: "summer-festival-2026"
+        short_description:
+          type: [string, "null"]
+          description: |
+            Tri-state (absent=keep, null=clear, value=set).
+            Short marketing description shown in cards and previews (AB-45c).
+          example: "Open-air festival on the Tel Aviv beachfront."
+        genre:
+          type: [string, "null"]
+          description: |
+            Tri-state (absent=keep, null=clear, value=set).
+            Event genre/category string (AB-45c).
+          example: "festival"
+        age_rating:
+          type: [string, "null"]
+          description: |
+            Tri-state (absent=keep, null=clear, value=set).
+            Age rating string, e.g. "0+", "12+", "18+" (AB-45c).
+          example: "12+"
+        duration_minutes:
+          type: [integer, "null"]
+          format: int32
+          description: |
+            Tri-state (absent=keep, null=clear, value=set).
+            Event runtime in minutes (AB-45c).
+          example: 120
+        teaser_url:
+          type: [string, "null"]
+          format: uri
+          description: |
+            Tri-state (absent=keep, null=clear, value=set).
+            URL to a teaser video or clip (AB-45c).
+          example: "https://cdn.example/teaser.mp4"
+        trailer_url:
+          type: [string, "null"]
+          format: uri
+          description: |
+            Tri-state (absent=keep, null=clear, value=set).
+            URL to the full event trailer (AB-45c).
+          example: "https://youtube.com/watch?v=abc123"
+        meta_description:
+          type: [string, "null"]
+          description: |
+            Tri-state (absent=keep, null=clear, value=set).
+            SEO meta description for the event page (AB-45c).
+          example: "Join us for the biggest outdoor festival of 2026."
+        meta_keywords:
+          type: [string, "null"]
+          description: |
+            Tri-state (absent=keep, null=clear, value=set).
+            Comma-separated SEO keywords for the event page (AB-45c).
+          example: "festival,music,outdoor,summer"
 
     UpdateEventStatusRequest:
       type: object
