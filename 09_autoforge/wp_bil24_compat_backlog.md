@@ -545,3 +545,38 @@ without pipelines; lint 0 issues; codegen no drift; admin/widget suites green; s
 redeployed with migrations 0090–0096 applied to the existing stand database; Lampyris
 staging (`staging.lampyrisevents.com`) completes a GA purchase, a seated purchase, a refund
 and a MACS import against the stand (interactive W1-S).
+
+## 8. Split into one-session sub-features (2026-09-04, evening)
+
+AutoForge sessions #2–#45 claimed batch 451/452/453, judged #451 too large for one
+context window, released it and re-queued (37 no-op progress commits, consolidated in
+`claude-progress.txt`). Fix: `batch_size` = 1 globally, and
+`09_autoforge/import_w1_split_features.py` converts #451–#469 into **verification-only
+epics** that depend on 53 sub-features **#470–#522** (priorities 1027–1079), each sized for
+one session with package-level gates; the epic runs the full gate suite once.
+
+| Epic | Sub-features |
+|---|---|
+| 451 per-channel gateway | 470 harness seeding + #450 defect fixes · 471 settings.gateway/fid/token/org-scoped reads · 472 SCAN_TICKET scoping · 473 gateway-credential API · 474 admin-web section |
+| 452 compat ids | 475 migration 0090 + compatids · 476 named structs, int ids, file split |
+| 453 result codes | 477 codes 1/101/-1 · 478 locales ru/he/cs |
+| 454 customers | 479 migration 0091 · 480 customers package · 481 CREATE_USER + session helper · 482 public feed + customers endpoints + admin-web |
+| 455 cart | 483 hold primitives · 484 RESERVATION · 485 GET_CART |
+| 456 orders | 486 migration 0092 · 487 ordering package · 488 wiring + v1.order.paid · 489 orders endpoints · 490 admin-web Orders |
+| 457 | 491 promo commands · 492 CREATE_ORDER_EXT · 493 GET_ORDER_INFO |
+| 458 | 494 PAY_ORDER · 495 GET_TICKETS_BY_ORDER + SEND_TICKETS_TO_EMAIL + PUBLIC_BASE_URL · 496 CANCEL_* |
+| 459 | 497 GET_ALL_ACTIONS core · 498 remaining fields + DST + perf |
+| 460 | 499 GET_SEAT_LIST |
+| 461 | 500 RenderSBT10SVG · 501 image route |
+| 462 | 502 migration 0093 + ean13 + issuance · 503 revoke fix + scan + PDF + backfill |
+| 463 | 504 migration 0094 + orderexport · 505 bil24wire + binding · 506 dispatcher + producers · 507 wp-webhook endpoints + admin-web · 508 round-trip integration |
+| 464 | 509 REFUND_TICKET |
+| 465 MACS | 510 M1–M2 · 511 M3–M5 |
+| 466 API keys | 512 migration 0095 + apikeys · 513 middleware + org-auth twins · 514 endpoints + admin-web + flow |
+| 467 import | 515 ImportSBTSVG · 516 materialization keeps ids · 517 endpoint GA path · 518 seated path + scenario 8 |
+| 468 | 519 migration 0096 + job · 520 endpoints + admin-web |
+| 469 docs | 521 ADRs/runbook/AGENTS · 522 OpenAPI compat routes + env |
+
+Known #450 defects handled by #470/#497/#484: goldens used `id/name/legalOwner` instead of
+spec §7 keys, `cartTimeout` was a placeholder string, `binding_test.go` invented order keys,
+scenario skips cited wrong feature ids.

@@ -922,8 +922,25 @@ Admin-web — секция в карточке канала рядом с §5.4.
    "holderStatus": "NEVER_USE", "refundDate": null, "refundPrice": null}]}
 ```
 
-Правила: полный набор из 36 ключей заказа / 17 ключей билета / 14 ключей `actionEvent`
-(инвентарь §6 отчёта агента, тест на набор ключей — **binding**, как AB-50i);
+Правила: полный набор ключей — **ровно** этот, тест на набор ключей **binding** (как AB-50i),
+инвентарь снят с 420 реальных заказов (`testdata/wp/bil24_orders_pseudonymized.json`):
+
+- Order (36): `id, date, user, agent, frontend, currency, paymentMethod, longReservation,
+  expiration, processing, ticketList, seatList, gatewayOrderList, sum, filteredSum, discount,
+  filteredDiscount, charge, filteredCharge, totalSum, filteredTotalSum, ticketQuantity,
+  filteredTicketQuantity, status, acquiring, paymentBankId, paymentBankStatus,
+  paymentBankMessage, paymentRRN, paymentTerminalId, paymentCardPAN, paymentCardBank, email,
+  emailSent, phone, fullName`; вложенные: `user{id,email}`, `agent{id,name}`,
+  `frontend{id,agentId,name,type{id,name}}`, `paymentMethod{id,name}`,
+  `acquiring{id,systemId,name,systemName,agentId,agentName}`.
+- Ticket (17): `id, seatId, orderId, seatLocation, category, tariff, price, discount, charge,
+  totalPrice, discountReason, barcode, barcodeFormat, actionEvent, holderStatus, refundDate,
+  refundPrice`; `barcodeFormat{id,name}`.
+- actionEvent (14): `id, cityId, cityName, venueId, venueName, actionId, actionName,
+  actionLegalOwner, actionLegalOwnerInn, actionKind, currency, showTime, eTickets, gateway`;
+  `actionKind{id,name}`, `gateway{id,systemId,name,systemName,organizerId,organizerName}`.
+
+Прочие правила:
 `category` — строка (имя тарифа); `seatLocation` — `null` для GA, объект для мест;
 `showTime` — локальное время площадки без TZ; `actionEvent.id` = `actionEventId` **сеанса**;
 `holderStatus` — `NEVER_USE` | `REFUND`; `refundDate` — RFC3339 с офсетом; `charge` билета —
