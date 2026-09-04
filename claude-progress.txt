@@ -24166,3 +24166,18 @@ goldens + full gate suite). Claim released via feature_clear_in_progress(451);
 source files untouched. Owner action from session #18 still pending: split
 each of #451/#452/#453 into sub-features, or allocate a dedicated multi-day
 session per feature.
+
+## 2026-09-04 #24 - batch 451/452/453 released, 24th consistent assessment
+
+Same batch, same conclusion as sessions #4-#23. #451 alone remains infeasible
+in one context window (spec 5+3.1: sales_channels.settings.gateway migration,
+1,920-line bil24_compat.go rewrite under a 400-line cap forcing a file split,
+org-scoped SCAN_TICKET via barcodes->tickets->sessions->events, gateway-credential
+PUT/GET/DELETE + OpenAPI 3.1 + types_gen + TS client + admin-web section modelled
+on MACS webhook, two STRICT-key golden fixtures under the #450 harness, plus full
+gates: go test ./... unpiped 4+ min, gofmt, golangci-lint@latest absolute cache,
+admin:test 1103+, type-check, admin build, migration head pin, docker-PG smoke,
+commit-by-path push, gh run view). Claim released via feature_clear_in_progress(451);
+source files untouched. Owner action from #18 still pending: split each of
+#451/#452/#453 into sub-features (migration, backend org-scoping, gateway-credential
+API, admin-web UI, goldens), or allocate a dedicated multi-day session per feature.
