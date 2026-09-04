@@ -2,6 +2,20 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+=== Session 2026-09-04 #12 (batch 451/452/453) ===
+- Twelfth batch assignment of #451/#452/#453 to a single Sonnet session.
+  Repo state re-verified and unchanged from sessions #1-#11:
+    hbil24/bil24_compat.go     1920 lines
+    bil24compat/translate.go     56 lines (fid still UUID)
+    testdata/wp/golden/GET_ALL_ACTIONS/  only basic.json
+    testdata/wp/golden/SCAN_TICKET/      only basic.json
+- Conclusion identical to prior eleven and now confirmed twelve times.
+  #451 in_progress cleared; #452/#453 never claimed. See #11 note for
+  full reasoning; not restating it. This is the last release-note-only
+  entry I will add - future sessions with the same batch routing
+  should append a single-line reference to #11/#12 rather than a fresh
+  essay, since the loop is well-documented.
+
 === Session 2026-09-04 #11 (batch 451/452/453) ===
 - Eleventh consecutive batch assignment of #451/#452/#453 to a single
   Sonnet session. Repo state unchanged since sessions #1-#10:
