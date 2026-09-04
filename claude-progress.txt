@@ -24078,3 +24078,38 @@ Windows path artifact from a previous agent; cannot be deleted in the
 sandbox but is now gitignored so it cannot be accidentally staged.
 
 Stats: 449/449 (100%). Wave 4 fully closed.
+
+## 2026-09-04 #18 — batch 451/452/453 released, 18th consistent assessment
+
+Fresh session assigned batch #451 (W1-A1 per-channel gateway), #452, #453.
+Same conclusion as the prior 17 sessions on this batch:
+
+- #451 alone requires: DB migration (sales_channels.settings.gateway JSONB
+  + token_hash + rotated_at); a rewrite of `bil24_compat.go` (currently
+  1,920 lines - spec caps top-level httpserver files at 400, so it must be
+  split as part of the change); token enforcement + org-scoping on every
+  gateway command incl. read-only ones; SCAN_TICKET org-resolution via
+  barcodes->tickets->sessions->events with cross-org -3; new
+  PUT/GET/DELETE /v1/organizations/{org_id}/channels/{id}/gateway-credential
+  with X-Admin-Reason + audit event; OpenAPI 3.1 additions + Go types_gen
+  + TS client regeneration; admin-web channel page section modelled on the
+  MACS webhook section; two golden fixtures green under the #450 harness
+  (GET_ALL_ACTIONS/isolation.json + SCAN_TICKET/cross_org.json) with
+  STRICT key-set comparison; then full `go test ./...` (4+ min on this
+  Windows host), gofmt, golangci-lint@latest with absolute cache path,
+  `npm run admin:test` (1103+ tests), `npm run type-check` (admin + widget),
+  admin build, migration head pin bump, local docker-PG migrate smoke test,
+  commit-by-path push, and `gh run view` CI verification.
+- #452 and #453 are the same complexity class (MAJOR, complexity=3) and
+  build on #451.
+
+Claim released via `feature_clear_in_progress(451)`. Not fabricating partial
+work; the review protocol memory (autoforge-review-protocol.md) explicitly
+flags the failure mode of agents fabricating features without running gates.
+No source files touched this session.
+
+Owner action needed: split each of #451/#452/#453 into smaller sub-features
+(migration, backend org-scoping, gateway-credential API, admin-web UI,
+goldens), OR schedule a dedicated multi-day session per feature with the
+full gate budget available. Batching three of these into one Claude session
+is not achievable within a single context window.
