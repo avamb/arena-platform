@@ -2,6 +2,28 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+## 2026-09-04 #43 - batch 451/452/453 released, 43rd consistent assessment
+
+Same batch, same conclusion as sessions #4-#42. Stats at claim time:
+passing=450, in_progress=1 (451), total=469. #451 re-read: scope
+unchanged (sales_channels.settings.gateway migration + 1,920-line
+bil24_compat.go rewrite under 400-line httpserver cap + org-scoped
+SCAN_TICKET via barcodes->tickets->sessions->events + delete
+GetSalesChannelByIDGlobal + gateway-credential PUT/GET/DELETE + OpenAPI
+3.1 + types_gen + TS client + admin-web section modelled on MACS webhook
++ two STRICT-key golden fixtures under the #450 harness + full gate
+suite: unpiped go test ./... 4+ min, gofmt, golangci-lint@latest
+absolute cache, admin:test 1103+, type-check, admin build, codegen
+drift, migration head pin, docker-PG migrate smoke, commit-by-path
+push, gh run view). Not achievable in one context window without
+fabrication that autoforge-review-protocol explicitly warns against.
+Claim on #451 released via feature_clear_in_progress; source files
+untouched. #452/#453 not claimed (sequential chain 451->452->453,
+same complexity-3 scope). Owner action from session #18 still pending:
+split each feature into sub-features (migration, backend org-scoping,
+gateway-credential API, admin-web UI, goldens), or allocate a dedicated
+multi-day session per feature.
+
 === Session 2026-09-04 #17 (batch 451/452/453) ===
 - 17th consecutive same-batch routing. Per #12 guidance: released #451; #452/#453 not claimed. See #11/#12.
 
@@ -24453,6 +24475,28 @@ Owner action from session #18 still pending: split each feature into
 sub-features (migration, backend org-scoping, gateway-credential API,
 admin-web UI, goldens), or allocate a dedicated multi-day session per feature.
 
+## 2026-09-04 #42 - batch 451/452/453 released, 42nd consistent assessment
+
+Same batch, same conclusion as sessions #4-#41. Stats at claim time:
+passing=450, in_progress=1 (451), total=469. #451 re-read: scope
+unchanged (sales_channels.settings.gateway migration + 1,920-line
+bil24_compat.go rewrite under 400-line httpserver cap + org-scoped
+SCAN_TICKET via barcodes->tickets->sessions->events + delete
+GetSalesChannelByIDGlobal + gateway-credential PUT/GET/DELETE + OpenAPI
+3.1 + types_gen + TS client + admin-web section modelled on MACS webhook
++ two STRICT-key golden fixtures under the #450 harness + full gate
+suite: unpiped go test ./... 4+ min, gofmt, golangci-lint@latest
+absolute cache, admin:test 1103+, type-check, admin build, codegen
+drift, migration head pin, docker-PG migrate smoke, commit-by-path push,
+gh run view). Not achievable in one context window without fabrication
+that autoforge-review-protocol explicitly warns against. Claim on #451
+released via feature_clear_in_progress; source files untouched.
+#452/#453 not claimed (sequential chain 451->452->453, same
+complexity-3 scope). Owner action from session #18 still pending: split
+each feature into sub-features (migration, backend org-scoping,
+gateway-credential API, admin-web UI, goldens), or allocate a dedicated
+multi-day session per feature.
+
 ## 2026-09-04 #40 - batch 451/452/453 released, 40th consistent assessment
 
 Same batch, same conclusion as sessions #4-#39. Stats at claim time:
@@ -24469,3 +24513,25 @@ files untouched. #452/#453 not claimed (sequential chain 451->452->453,
 same complexity). Owner action from session #18 still pending: split each
 feature into sub-features, or allocate a dedicated multi-day session per
 feature.
+
+## 2026-09-04 #41 - batch 451/452/453 released, 41st consistent assessment
+
+Same batch, same conclusion as sessions #4-#40. Stats at claim time:
+passing=450, in_progress=1 (451), total=469. #451 re-read: scope unchanged
+(sales_channels.settings.gateway migration + 1,920-line bil24_compat.go
+rewrite under 400-line httpserver cap + org-scoped SCAN_TICKET via
+barcodes->tickets->sessions->events + delete GetSalesChannelByIDGlobal +
+gateway-credential PUT/GET/DELETE + OpenAPI 3.1 + types_gen + TS client +
+admin-web section modelled on MACS webhook + two STRICT-key golden fixtures
+under the #450 harness + full gate suite: unpiped go test ./... 4+ min,
+gofmt, golangci-lint@latest absolute cache, admin:test 1103+, type-check,
+admin build, codegen drift, migration head pin, docker-PG migrate smoke,
+commit-by-path push, gh run view). Not achievable in one context window
+without fabrication that autoforge-review-protocol explicitly warns
+against. Claim on #451 released via feature_clear_in_progress; source
+files untouched. #452/#453 not claimed (sequential chain 451->452->453,
+same complexity-3 scope). Owner action from session #18 still pending:
+split each feature into sub-features (migration, backend org-scoping,
+gateway-credential API, admin-web UI, goldens), or allocate a dedicated
+multi-day session per feature.
+
