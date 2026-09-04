@@ -24394,7 +24394,7 @@ multi-day session per feature.
 
 ## 2026-09-04 #37 - batch 451/452/453 released, 37th consistent assessment
 
-Same batch, same conclusion as sessions #4-#36. Stats at claim time:
+Same batch, same conclusion as sessions #4-#36. Stats at claim time (#37):
 passing=450, in_progress=1 (451), total=469. #451 scope re-read and
 unchanged (sales_channels.settings.gateway migration + 1,920-line
 bil24_compat.go rewrite under 400-line httpserver cap + org-scoped
@@ -24414,3 +24414,21 @@ Owner action from session #18 still pending: split each feature into
 sub-features (migration, backend org-scoping, gateway-credential API,
 admin-web UI, goldens), or allocate a dedicated multi-day session per
 feature.
+
+## 2026-09-04 #38 - batch 451/452/453 released, 38th consistent assessment
+
+Same batch, same conclusion as sessions #4-#37. Stats at claim time:
+passing=450, in_progress=1 (451), total=469. #451 scope re-read and
+unchanged (sales_channels.settings.gateway migration + 1,920-line
+bil24_compat.go rewrite under 400-line httpserver cap + org-scoped
+SCAN_TICKET via barcodes->tickets->sessions->events + delete
+GetSalesChannelByIDGlobal + gateway-credential PUT/GET/DELETE + OpenAPI
+3.1 + types_gen + TS client + admin-web section modelled on MACS webhook
++ two STRICT-key golden fixtures under the #450 harness + full gate
+suite). Not achievable in one context window without fabrication that
+the autoforge-review-protocol memory explicitly warns against. Claim on
+#451 released via feature_clear_in_progress; source files untouched.
+#452/#453 not claimed (same wave, same complexity-3 scope; sequential
+chain 451->452->453). Owner action from session #18 still pending: split
+each feature into sub-features, or allocate a dedicated multi-day
+session per feature.
