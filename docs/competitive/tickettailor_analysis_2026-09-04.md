@@ -5,9 +5,11 @@
 Инвентарь arena — по openapi.yaml, миграциям 0001–0089, apps/admin-web, apps/widget,
 docs/vinoandco_gap_analysis_2026-08-13.md и бэклогам 09_autoforge.
 
-Не просмотрено: Broadcasts (требует Stripe Identity-верификации аккаунта), Account settings
-(требует 5-значный код из письма), шаг «Payment» чекаута (нужно вводить персональные данные),
-редактор схемы зала (функция не активирована на аккаунте, платная).
+Не просмотрено: Broadcasts (требует Stripe Identity-верификации аккаунта), шаг «Payment» чекаута
+(нужно вводить персональные данные), редактор схемы зала (функция не активирована на аккаунте,
+платная). Account settings (личный кабинет владельца, отдельный от Box office settings) снят
+2026-09-04 вторым заходом — раздел требует 5-значный код из письма, владелец аккаунта запросил
+код и ввёл его сам; см. §2.1 и §6.
 
 ---
 
@@ -72,6 +74,87 @@ TT сильнее arena во всём «операционном» слое ор
 | Box office settings | Basic (имя, TZ, логотип, about, hide logo, CAPTCHA, order notifications), Design studio (темы, цвета, шрифты, лого, header links, соцсети, listings layout/search/filters), Contact preferences (reply-to), Checkout form, Multi-checkout (beta, корзина на несколько событий), Email templates (order / event / memberships / vouchers), Checkout fees & tax (fixed + %, tax inclusive/exclusive, label), Privacy policy (+генератор), Banned emails, Cookie consent, Self-serve |
 | Manage | Payment systems (Stripe, PayPal, Square, offline), Seating charts (платно), Integrations (см. §4.9), Team access (роли), Check-in app users, API (keys + webhooks), Custom domain, White Label (add-on), Billing (кредиты, PAYG, add-ons: White label, HubSpot, ActiveCampaign, Constant Contact) |
 | Account | Multiple box offices (несколько тенантов под одним логином), Refer and earn (20 %) |
+
+### 2.1 Account settings и Billing (личный кабинет владельца, требует 2FA-код письмом)
+
+Это отдельный контур от «Box office settings»: доступен через выпадающее меню владельца
+(Account settings / Billing / Refer and earn) и переключает контекст на уровень пользователя,
+а не бокс-офиса. Ticket Tailor присылает 5-значный код на email при первом заходе за сессию —
+владелец аккаунта сам запросил и ввёл код 2026-09-04.
+
+| Раздел | Что внутри |
+|---|---|
+| Account → Account | Name, Email, смена email/пароля требует текущий пароль; Terms and conditions / Privacy policy; Delete account (с предупреждением, что удаляются все box offices, где пользователь owner) |
+| Account → Security and password | Смена пароля (нужен текущий); Two-factor authentication (2FA) — выключен, активация через TOTP-приложение по кнопке «Activate 2FA» |
+| Account → Login methods | Только Google OAuth («Connect Google account»); других провайдеров нет |
+| Billing → Overview | Current billing: Prepay; Credit balance: 4; Auto-Renew: Off; блок «charity/PTA discount — get in touch»; список add-ons с ценами (White label €45/mo, Custom domain €8/mo, HubSpot/ActiveCampaign/Constant Contact по €30/mo) |
+| Billing → Chargeable usage | Таблица списаний по кредитам: дата, Event ID, Order ID, Activity, credits used, PAYG fee (excl. tax), charge method; фильтры Event/From/To/Activity; кнопка Export |
+| Billing → Invoicing | Upcoming invoice (пусто, если нет накопленных начислений) + Invoice history (номер, дата, статус Paid, сумма, применённые кредиты) |
+| Billing → Payment details | Замаскированная карта (тип, последние 4 цифры, страна биллинга), «Update card details», «Update VAT information» |
+| Refer and earn | Реферальная программа: 20% пожизненная скидка с оплат рефералов, приглашённые получают 50 бесплатных кредитов, после первых выплат — приглашение в PartnerStack для отслеживания |
+
+Также в Box office settings → Manage были дополнительно проверены:
+
+- **Team access → Teammates**: таблица с колонками Name / Roles / Email / 2fa enabled / Last seen;
+  у аккаунта 2 участника (Owner + один teammate с ролями Event manager, Event manager with data,
+  Order manager, Overview одновременно) и отдельная вкладка Invites (1) для незавершённых
+  приглашений.
+- **API**: подтверждено, что это полноценные API-ключи (не только webhooks) — вкладки
+  «API keys (0)» и «Webhooks (0)», кнопка «Generate a new key», можно создавать несколько ключей
+  на box office и удалять их в любой момент. (Это подтверждает уже верную оценку в §3, строка
+  «Public API + API keys + webhooks» — TT действительно имеет оба механизма.)
+- **Check-in app users**: отдельная от основного аккаунта пара логин/пароль на пользователя
+  check-in-приложения (не совпадает с паролем Ticket Tailor), список пуст, «Add user».
+- **Custom domain**: tickets.lampyrisevents.com — Status: Active, кнопка Disconnect Domain.
+- **White Label**: страница add-on'а с описанием (убрать бренд TT с виджета/писем/PDF-билетов,
+  свой background на PDF) и биллингом €45/мес, автопродление с датой следующего списания.
+
+### 2.2 Публичный API (developers.tickettailor.com)
+
+Полноценный REST API поверх того же домена, что и админка: base URL `api.tickettailor.com`,
+Basic Auth ключом бокс-офиса (без пароля), `Accept: application/json`, суммы в центах,
+курсорная пагинация (`starting_after`/`ending_before`, лимит 100), общий рейт-лимит 5000
+запросов/30 мин (у `POST /v1/issued_memberships` отдельный лимит 30/час), стандартные HTTP-коды
+ошибок с `error_code`/`message`. Ключ создаётся в Box office settings → API (см. §2.1) — можно
+несколько ключей на бокс-офис, каждый с доступом только к «своему» бокс-офису.
+
+Ресурсы и операции (полный список из навигации доков):
+
+| Ресурс | Операции |
+|---|---|
+| Overview | GET статистика бокс-офиса (credits, revenue, orders_received, total_issued_tickets, waitlist_signups, next_event_in, черновики/опубликованные события — то же, что на Overview-экране) |
+| Events | List (фильтры: start_at/end_at с gt/gte/lt/lte, status, name, venue), Get by id + webhooks New/Updated/Deleted |
+| Event series | Полный CRUD + Change status + occurrences (List/Create/Get/Update/Delete) — recurring events управляются целиком через API |
+| Overrides | List/Create/Update — переопределения конкретного occurrence внутри серии (цена/наличие на дату) |
+| Ticket types / Ticket groups / Bundles | Create/Update/Delete (без List/Get — создаются в контексте event series) |
+| Orders | List (богатые фильтры: name, email, txn_id, **barcode**, event_id/event_series_id списком, status, store_id, referral_tag, created_at-диапазон), Get by id, **Update** (только buyer contact/address — email/имя/телефон/адрес), Confirm offline payment paid, webhooks New/Updated. **Нет endpoint'а cancel/refund/void — эти действия только через UI** |
+| Issued tickets | List, Create (ручная выдача, напр. импорт внешних продаж), Get by id, Void, webhooks New/Updated |
+| Holds | Полный CRUD (List/Create/Get/Update/Delete) |
+| Discount codes | Полный CRUD |
+| Vouchers / Voucher codes | Vouchers: полный CRUD (создание сразу с кодами); Voucher codes: List + Void |
+| Membership types / Issued memberships | Membership types: полный CRUD; Issued memberships: List/Create/Get/Update/**Void**, Create redemption, Get photo URL |
+| Products / Stores | Products: полный CRUD; Stores: List/Get/Update (настройки витрины товаров) |
+| Checkout forms | List forms, List/Get/**Update** элементов формы (per-order/per-attendee вопросы) |
+| Check-ins | List, Create (сторонний сканер может отмечать check-in через API — релевантно для сравнения с MACS-интеграцией arena) |
+| Waitlist signups | List, Delete, webhook New signup |
+| Ping | Health-check |
+
+**Webhooks**: подписка на события вместо поллинга — New/Updated order, New/Updated/Deleted event,
+New/Updated issued ticket, New waitlist signup. Нет webhook'ов на refund/cancel заказа и на
+check-in (check-in доступен только через REST List/Create).
+
+**MCP-сервер** (developers.tickettailor.com/docs/mcp): TT публикует собственный Model Context
+Protocol сервер (`https://mcp.tickettailor.ai/sse` и `/mcp`) — AI-ассистенты (Claude, Cursor и
+т. п.) могут напрямую управлять событиями/билетами/заказами бокс-офиса через естественный язык.
+У arena такого нет — это новый, нетривиальный конкурентный ход (агентский доступ к платформе),
+стоит держать в уме отдельно от P0–P2 бэклога как стратегическую идею.
+
+**Вывод для arena**: набор фильтров `GET /v1/orders` (name/email/txn_id/barcode/event_id list/
+status/store_id/created_at-диапазон) — готовая спецификация для P0-пункта «Экран заказов
+организатора» (см. §4, п.1). Отсутствие cancel/refund в публичном API подтверждает, что у TT
+это тоже намеренно закрытый функционал (не только у arena) — не нужно проектировать открытый
+refund-endpoint в первой волне. Event series + occurrences + overrides — готовая референс-модель
+для будущей реализации recurring events (P2, п.22).
 
 ### Редактор события (самый плотный экран)
 
@@ -244,7 +327,12 @@ search/date/location/sort, list/grid, кнопка «Manage tickets» (self-serv
     письма по событиям. У arena reservation уже мульти-item; нужна поддержка нескольких
     сессий в одном checkout.
 25. **Apple / Google Wallet** passes.
-26. **API keys для организатора** + документация public API, Zapier-подобная интеграция.
+26. **API keys для организатора** + документация public API (см. §2.2 за полным списком
+    ресурсов TT — Events/Orders/Ticket types/Discounts/Vouchers/Memberships/Products/Holds/
+    Checkout forms/Check-ins/Waitlist, курсорная пагинация, рейт-лимит), Zapier-подобная
+    интеграция. Отдельно как более амбициозная идея — MCP-сервер по образцу TT
+    (`mcp.tickettailor.ai`), дающий AI-ассистентам управление событиями/заказами через
+    естественный язык; у TT это уже есть, у arena нет.
 27. **CRM-синк**: экспорт покупателей в Brevo-листы (уже есть SDK), затем Mailchimp/HubSpot.
 28. **Import tickets (CSV)** для внешних продаж — у arena есть allocations агентам, добавить
     импорт списка держателей для сканирования.
@@ -279,7 +367,14 @@ search/date/location/sort, list/grid, кнопка «Manage tickets» (self-serv
 ## 6. Заметки по ходу обхода
 
 - Ticket Tailor прислал на videokontrol@gmail.com письмо с 5-значным кодом: открытие
-  «Account settings» требует верификации. Код никуда не вводился; действие безобидное.
+  «Account settings» требует верификации. 2026-09-04 владелец аккаунта сам запросил письмо и
+  сам ввёл код в браузере — агент код не вводил и не видел. После верификации сняты только для
+  чтения: Account settings (Account/Security and password/Login methods), Billing (все 4
+  вкладки, включая замаскированные последние 4 цифры карты), Refer and earn, Team access,
+  API keys/Webhooks, Check-in app users, Custom domain, White Label. Ничего не изменено, не
+  сохранено и не сгенерировано (ключ API не создавался, 2FA не активировалась, домен не
+  отключался). Публичная документация developers.tickettailor.com (API/Webhooks/MCP) прочитана
+  без авторизации — отдельная вкладка, не требует логина.
 - Broadcasts на аккаунте не активированы (нужна верификация через Stripe Identity) — экран
   рассылок не снят.
 - В публичном чекауте был добавлен 1 билет Early Bird в корзину и открыт шаг «Details»;
