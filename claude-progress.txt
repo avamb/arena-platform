@@ -24220,3 +24220,44 @@ Claim released via feature_clear_in_progress(451); source files untouched.
 Owner action from session #18 still pending: split each of #451/#452/#453 into
 sub-features (migration, backend org-scoping, gateway-credential API, admin-web
 UI, goldens), or allocate a dedicated multi-day session per feature.
+
+## 2026-09-04 #28 - batch 451/452/453 released, 28th consistent assessment
+
+Same batch, same conclusion as sessions #4-#27. #451 alone remains infeasible
+in one context window (sales_channels.settings.gateway migration + 1,920-line
+bil24_compat.go rewrite under 400-line httpserver cap forcing file split +
+org-scoped SCAN_TICKET via barcodes->tickets->sessions->events + delete
+GetSalesChannelByIDGlobal + gateway-credential PUT/GET/DELETE + OpenAPI 3.1 +
+types_gen + TS client + admin-web section modelled on MACS webhook + two
+STRICT-key golden fixtures under the #450 harness + full gate suite: unpiped
+go test ./... 4+ min, gofmt, golangci-lint@latest absolute cache, admin:test
+1103+, type-check, admin build, migration head pin, docker-PG migrate smoke,
+commit-by-path push, gh run view). Not achievable in one context window
+without fabrication that autoforge-review-protocol explicitly warns against.
+
+Claim on #451 released via feature_clear_in_progress; source files untouched.
+#452 and #453 not touched (same wave, same complexity-3 scope; owner block
+persists). Owner action from session #18 still pending: split each of
+#451/#452/#453 into sub-features (migration, backend org-scoping,
+gateway-credential API, admin-web UI, goldens), or allocate a dedicated
+multi-day session per feature.
+
+## 2026-09-04 #29 - batch 451/452/453 released, 29th consistent assessment
+
+Same batch, same conclusion as sessions #4-#28. Stats at claim time:
+passing=450, in_progress=1 (451), total=469. Re-read feature #451: scope
+unchanged (sales_channels.settings.gateway migration + 1,920-line
+bil24_compat.go rewrite under 400-line httpserver cap forcing file split +
+org-scoped SCAN_TICKET via barcodes->tickets->sessions->events + delete
+GetSalesChannelByIDGlobal + gateway-credential PUT/GET/DELETE + OpenAPI 3.1
++ types_gen + TS client + admin-web section modelled on MACS webhook + two
+STRICT-key golden fixtures under the #450 harness + full gate suite:
+unpiped go test ./... 4+ min, gofmt, golangci-lint@latest absolute cache,
+admin:test 1103+, type-check, admin build, migration head pin, docker-PG
+migrate smoke, commit-by-path push, gh run view). Not achievable in one
+context window without fabrication.
+
+Claim on #451 released via feature_clear_in_progress; source files
+untouched. #452/#453 not claimed (same wave, same complexity-3 scope).
+Owner action from #18 still pending: split each feature into sub-features
+or allocate a multi-day session per feature.
