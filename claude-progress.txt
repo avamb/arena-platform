@@ -23862,3 +23862,39 @@ sandbox but is now gitignored so it cannot be accidentally staged.
 
 Stats: 449/449 (100%). Wave 4 fully closed.
 
+## 2026-09-04 - #470 W1-A1a harness seeding + defect fixes - PASSING
+
+Commit ecd71dc, pushed. Stats: 451/522 (86.4%).
+
+Deliverables:
+- seed_test.go (new, integration-tagged): seedHarness() creates the full
+  W1 fixture on Docker PG. Uses raw SQL + gen.Queries import for future
+  scenarios. Seeds: CZ country + Praha city (idempotent), organization
+  with legal_name, sales_channel with display_number readback as FID and
+  bcrypt gateway_token_hash in settings JSON + fee_percent 5, venue with
+  city_id + Europe/Prague timezone, seating_plan bound to Palac Akropolis
+  SVG via seating.ImportSVG (with materialised session_seats keyed
+  Section-Row-Number to system_seat_id), published event, GA session
+  with 50 units + 2 EUR tiers, promo code WAVE1. LIFO cleanup registered.
+- binding_test.go: 4 wrong order keys replaced with spec 9.3 payment
+  fields (paymentRRN, paymentTerminalId, paymentCardPAN, paymentCardBank).
+  Skip line removed; test now strict and green against the pseudonymized
+  fixture (36/17/14 confirmed via inspection over all 68 orders).
+- harness_test.go: 10 scenario skip ids retargeted per assignment mapping
+  (1 to 497, 2 to 495, 3 to 484, 4 to 509, 5 to 494, 6 to 492, 7 to 501,
+  8 to 518, 9 to 514, 10 to 520). setupHarness delegates to seedHarness.
+
+Verification gates all GREEN:
+- go build ./apps/backend/...
+- go vet ./apps/backend/...
+- gofmt -l on the 3 changed files
+- go test ./apps/backend/tests/compat/bil24/... (untagged)
+- go test -tags integration ./apps/backend/tests/compat/bil24/... on
+  Docker PG (localhost:55432); all 10 scenarios properly skipping with
+  the new feature ids, seed + cleanup complete.
+
+Schema drift discovered along the way:
+- events lost venue_id/start_at/end_at (moved to sessions); reflected.
+- countries.currency became NOT NULL as of 0081; CZ seeded with CZK.
+- sessions requires venue_id + currency + currency_source NOT NULL.
+
