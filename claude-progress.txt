@@ -2,6 +2,27 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+=== Session 2026-09-04 #8 (batch 451/452/453) ===
+- Eighth batch assignment of #451/#452/#453 to a single Sonnet session.
+  State reverified again and unchanged from sessions #1-#7:
+    bil24_compat.go       1920 lines (spec caps top-level httpserver/*.go
+                           at <=400 — split is part of #451's scope)
+    translate.go            56 lines (fid still UUID)
+    testdata/wp/golden/GET_ALL_ACTIONS/  only basic.json (isolation.json
+                                          required by DoD is absent)
+    testdata/wp/golden/SCAN_TICKET/      only basic.json (cross_org.json
+                                          required by DoD is absent)
+  No code has moved since session #5. Eighth honest conclusion matches
+  prior seven: each of #451/#452/#453 is complexity-3 MAJOR that cannot
+  be honestly delivered in a batch-of-three Sonnet session without
+  violating the spec's explicit DoD ("Never weaken a test to get
+  green"; "never edit a golden file to get green — stop and ask").
+  #451 in_progress cleared via feature_clear_in_progress; #452/#453
+  not claimed. Recommendation to the orchestrator remains: route each
+  of these one-per-session with a realistic per-feature dev-hours
+  budget (backend refactor + migration + OpenAPI/codegen + admin-web
+  section + integration tests + CI-gate verify).
+
 === Session 2026-09-04 #7 (batch 451/452/453) ===
 - Seventh batch assignment of #451/#452/#453 to a single Sonnet session.
   State reverified and unchanged from sessions #1-#6:
