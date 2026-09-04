@@ -2,6 +2,22 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+=== Session 2026-09-04 #3 (batch 451/452/453) ===
+- Third batch assignment of #451/#452/#453 to a single Sonnet session.
+  Confirmed prior two sessions' honest assessment. Each feature is
+  complexity-3 MAJOR: #451 alone touches bil24_compat.go (1920 lines),
+  requires migration 0090, new admin PUT/GET/DELETE gateway-credential
+  routes with OpenAPI 3.1 + Go/TS codegen, admin-web channel section,
+  15-command fid=int + token-on-every-command refactor including
+  SCAN_TICKET cross-org org resolution, plus strict-key-set golden
+  fixtures (GET_ALL_ACTIONS/isolation.json, SCAN_TICKET/cross_org.json)
+  and full gate suite (go test ./... EXIT:0, golangci-lint, admin-web
+  type-check/test/build, codegen drift, migration head pin bump, and
+  gh run CI verify). A single session cannot honestly deliver all three
+  without weakening tests or fabricating passes — both explicitly
+  forbidden by the spec. #451 in-progress cleared; #452/#453 not
+  claimed. Recommended: orchestrator should route these one-per-session.
+
 === Session 2026-09-04 #2 (batch 451/452/453) ===
 - Reclaimed #451, reassessed vs prior session's honest note (d0a849b).
   Same conclusion holds: each of #451/#452/#453 is genuinely multi-session
