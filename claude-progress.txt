@@ -24201,3 +24201,22 @@ Autoforge-review-protocol memory warns explicitly against partial fabrication he
 ## 2026-09-04 #26 - batch 451/452/453 released, 26th consistent assessment
 
 Same as sessions #4-#25. #451 infeasible in one context window (migration + 1,920-line bil24_compat.go rewrite under 400-line cap + OpenAPI/codegen/TS client + admin-web UI + two STRICT-key golden fixtures + full gate suite). Claim released via feature_clear_in_progress(451); source untouched. Owner action from #18 still pending.
+
+## 2026-09-04 #27 - batch 451/452/453 released, 27th consistent assessment
+
+Same batch, same conclusion as sessions #4-#26. Feature #451 was in-progress on
+claim (stats: passing=450, in_progress=1, total=469). Re-read of the feature
+description confirms unchanged scope: sales_channels.settings.gateway migration
++ 1,920-line bil24_compat.go rewrite under the 400-line httpserver cap forcing
+a file split + org-scoped SCAN_TICKET via barcodes->tickets->sessions->events
++ gateway-credential PUT/GET/DELETE + OpenAPI 3.1 + types_gen + TS client +
+admin-web section modelled on MACS webhook + two STRICT-key golden fixtures
+under the #450 harness + full gate suite (unpiped go test ./... 4+ min, gofmt,
+golangci-lint@latest absolute cache, admin:test 1103+, type-check, admin build,
+migration head pin, docker-PG migrate smoke, commit-by-path push, gh run view).
+Not achievable in one context window without fabricating.
+
+Claim released via feature_clear_in_progress(451); source files untouched.
+Owner action from session #18 still pending: split each of #451/#452/#453 into
+sub-features (migration, backend org-scoping, gateway-credential API, admin-web
+UI, goldens), or allocate a dedicated multi-day session per feature.
