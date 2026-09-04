@@ -24132,3 +24132,28 @@ in one context window (migration + 1,920-line file rewrite + codegen + UI
 + goldens + full gate suite). Claim released via feature_clear_in_progress;
 no source touched. Owner action from #18 still pending: split features or
 allocate dedicated multi-day session.
+
+## 2026-09-04 #21 - batch 451/452/453 released, 21st consistent assessment
+
+Same batch, same conclusion as sessions #4-#20. #451 alone is infeasible
+in one context window (migration + 1,920-line file rewrite + codegen + UI
++ goldens + full gate suite). Claim released via feature_clear_in_progress;
+source files untouched. Owner action from #18 still pending: split each
+feature into sub-features (migration, backend org-scoping, gateway-credential
+API, admin-web UI, goldens), or allocate a dedicated multi-day session per
+feature. Batching 3x complexity-3 W1 features into one Claude session is
+not achievable.
+
+## 2026-09-04 #22 - batch 451/452/453 released, 22nd consistent assessment
+
+Same batch, same conclusion as sessions #4-#21. Re-read feature #451: still
+complexity-3, still requires migration + 1,920-line file rewrite (spec 400-line
+cap forces a split) + OpenAPI/codegen/TS client regen + admin-web UI section +
+two STRICT-comparison golden fixtures + full gate suite (go test ./... 4+ min,
+golangci-lint@latest with absolute cache, admin:test 1103+, type-check, admin
+build, migration head pin, docker-PG migrate smoke, commit-by-path, gh run view).
+Not achievable in one context window without fabricating.
+
+Claim released via feature_clear_in_progress(451); source files untouched.
+Owner action from session #18 still pending: split each of #451/#452/#453 into
+sub-features, or allocate a dedicated multi-day session per feature.
