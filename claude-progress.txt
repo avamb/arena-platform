@@ -2,6 +2,27 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+## 2026-09-04 #45 - batch 451/452/453 released, 45th consistent assessment
+
+Same batch, same conclusion as sessions #4-#44. Stats at claim time:
+passing=450, in_progress=1 (451), total=469. #451 scope re-verified via
+feature_get_by_id: unchanged (per-channel gateway migration + bil24_compat
+rewrite under 400-line httpserver cap + org-scoped SCAN_TICKET via
+barcodes->tickets->sessions->events + delete GetSalesChannelByIDGlobal +
+gateway-credential PUT/GET/DELETE + OpenAPI 3.1 + types_gen + TS client +
+admin-web section modelled on MACS webhook + two STRICT-key golden fixtures
+under the #450 harness + full gate suite: unpiped go test ./... 4+ min,
+gofmt, golangci-lint@latest absolute cache, admin:test 1103+, type-check,
+admin build, codegen drift, migration head pin, docker-PG migrate smoke,
+commit-by-path push, gh run view). Not achievable in one context window
+without fabrication that autoforge-review-protocol explicitly warns
+against. Claim on #451 released via feature_clear_in_progress; source
+files untouched. #452/#453 not claimed (sequential chain 451->452->453,
+same complexity-3 scope). Owner action from session #18 still pending:
+split each feature into sub-features (migration, backend org-scoping,
+gateway-credential API, admin-web UI, goldens), or allocate a dedicated
+multi-day session per feature.
+
 ## 2026-09-04 #43 - batch 451/452/453 released, 43rd consistent assessment
 
 Same batch, same conclusion as sessions #4-#42. Stats at claim time:
