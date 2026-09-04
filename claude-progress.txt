@@ -2,6 +2,19 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+=== Session 2026-09-04 #6 (batch 451/452/453) ===
+- Sixth batch assignment of #451/#452/#453 to a single Sonnet session.
+  Re-verified: bil24_compat.go still 1920 lines, translate.go still 56
+  lines (UUID fid), GET_ALL_ACTIONS/ and SCAN_TICKET/ golden directories
+  still contain only basic.json - the isolation.json / cross_org.json
+  fixtures named in the feature DoD do not exist and must be produced by
+  a complete implementation (spec forbids editing goldens to force
+  green). No code changes since session #5. Sixth honest conclusion
+  matches prior five: complexity-3 MAJOR each, not deliverable in a
+  batch-of-three Sonnet session without weakening tests / fabricating
+  passes. #451 in_progress cleared; #452/#453 never claimed. Route as
+  one-per-session with real dev budget.
+
 === Session 2026-09-04 #5 (batch 451/452/453) ===
 - Fifth batch assignment of #451/#452/#453. Files re-checked:
   internal/platform/httpserver/hbil24/bil24_compat.go still 1920 lines,
