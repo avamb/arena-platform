@@ -56,11 +56,11 @@ type harnessState struct {
 	SeatIDs        map[string]string // "Parter-3-12" → system_seat_id
 }
 
-// setupHarness reads DATABASE_URL, opens a pgxpool, boots the real
-// httpserver.Server with real gen.Queries and returns a testcase context.
-// Concrete implementation is intentionally deferred to feature #451 (per-
-// channel gateway + fid resolution) which is the first feature that needs
-// a running server against real DB.
+// setupHarness reads DATABASE_URL, opens a pgxpool, seeds the fixture via
+// seedHarness (seed_test.go, feature #470) and returns the resulting state.
+// Individual scenarios that un-skip are expected to boot the real
+// httpserver.Server on top of the seeded state; that server bootstrap lands
+// with the scenario that first needs it (each t.Skip line names the id).
 func setupHarness(t *testing.T) *harnessState {
 	t.Helper()
 	if os.Getenv("DATABASE_URL") == "" {
@@ -69,12 +69,11 @@ func setupHarness(t *testing.T) *harnessState {
 	if os.Getenv("JWT_SIGNING_SECRET") == "" {
 		t.Skip("harness requires JWT_SIGNING_SECRET; see harness_test.go docs")
 	}
-	// Real seeding lives in seed_test.go landing with feature #451. We
-	// return an empty state so a scenario that survives t.Skip will fail
-	// loudly with a nil-deref rather than silently pass on a stub.
-	return &harnessState{
-		SeatIDs: map[string]string{},
-	}
+	// seedHarness lives in seed_test.go (feature #470). It creates the
+	// full fixture (org + channel + venue + published event + one
+	// assigned-seats session bound to Palác Akropolis + one GA session +
+	// tiers + promo code) and registers cleanup via t.Cleanup.
+	return seedHarness(t)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -200,35 +199,40 @@ func pathOr(p, fallback string) string {
 func TestCompatBil24_450_Harness_Scenarios(t *testing.T) {
 	st := setupHarness(t)
 
+	// Scenario skip ids retargeted by feature #470 (W1-A1a) against the
+	// post-W1-split backlog in 09_autoforge/wp_bil24_compat_backlog.md.
+	// The mapping is: 1→#497, 2→#495, 3→#484, 4→#509, 5→#494, 6→#492,
+	// 7→#501, 8→#518, 9→#514, 10→#520. Removing the Skip line is how the
+	// implementing feature adopts the scenario.
 	t.Run("01_catalog_get_all_actions", func(t *testing.T) {
-		t.Skip("feature #454: GET_ALL_ACTIONS with org isolation + venue TZ")
+		t.Skip("feature #497: GET_ALL_ACTIONS with org isolation + venue TZ")
 		req, gld := loadWPFixture(t, "GET_ALL_ACTIONS", "basic")
 		_ = req
 		_ = resolveGolden(gld, st)
 	})
 
 	t.Run("02_ga_purchase_flow", func(t *testing.T) {
-		t.Skip("feature #455: CREATE_USER→RESERVE×2→GET_CART→ADD_PROMO_CODES→CREATE_ORDER_EXT→PAY_ORDER→GET_TICKETS_BY_ORDER end-to-end")
+		t.Skip("feature #495: CREATE_USER→RESERVE×2→GET_CART→ADD_PROMO_CODES→CREATE_ORDER_EXT→PAY_ORDER→GET_TICKETS_BY_ORDER end-to-end")
 	})
 
 	t.Run("03_seated_seats_conflict_and_expiry", func(t *testing.T) {
-		t.Skip("feature #456: assigned seats: reserve → parallel conflict resultCode 101 → UN_RESERVE_ALL → expired session resultCode 1")
+		t.Skip("feature #484: assigned seats: reserve → parallel conflict resultCode 101 → UN_RESERVE_ALL → expired session resultCode 1")
 	})
 
 	t.Run("04_refund_dedup", func(t *testing.T) {
-		t.Skip("feature #457: REFUND_TICKET fires ticket.refunded to wpstub AND MACS-stub; repeat → dedup; orders.status updates")
+		t.Skip("feature #509: REFUND_TICKET fires ticket.refunded to wpstub AND MACS-stub; repeat → dedup; orders.status updates")
 	})
 
 	t.Run("05_expired_hold_on_pay_order", func(t *testing.T) {
-		t.Skip("feature #458: PAY_ORDER on expired hold → ReacquireHold success path AND failure path (manual_review + operator alert)")
+		t.Skip("feature #494: PAY_ORDER on expired hold → ReacquireHold success path AND failure path (manual_review + operator alert)")
 	})
 
 	t.Run("06_one_open_order_rule", func(t *testing.T) {
-		t.Skip("feature #459: two sequential CREATE_ORDER_EXT for the same session return the same orderId (one-open-order invariant)")
+		t.Skip("feature #492: two sequential CREATE_ORDER_EXT for the same session return the same orderId (one-open-order invariant)")
 	})
 
 	t.Run("07_svg_image_and_etag", func(t *testing.T) {
-		t.Skip("feature #460: GET /compat/bil24/image sbt/1.0 shape §8 + ETag 304 caching + sbt:cat matches <metadata>")
+		t.Skip("feature #501: GET /compat/bil24/image sbt/1.0 shape §8 + ETag 304 caching + sbt:cat matches <metadata>")
 		// Sanity: the SVG skeleton is checked in.
 		if _, err := os.Stat(filepath.Join("testdata", "wp", "svg", "palac_akropolis.sbt.svg")); err != nil {
 			t.Fatalf("SVG skeleton missing: %v", err)
@@ -236,15 +240,15 @@ func TestCompatBil24_450_Harness_Scenarios(t *testing.T) {
 	})
 
 	t.Run("08_bil24_session_import_idempotent", func(t *testing.T) {
-		t.Skip("feature #461: POST /v1/organizations/{org}/imports/bil24-session twice with same payload → created:false on 2nd; GET_SEAT_LIST preserves Bil24 seatIds")
+		t.Skip("feature #518: POST /v1/organizations/{org}/imports/bil24-session twice with same payload → created:false on 2nd; GET_SEAT_LIST preserves Bil24 seatIds")
 	})
 
 	t.Run("09_api_keys_service_scope", func(t *testing.T) {
-		t.Skip("feature #462: service API keys with scope limits: cross-org → 403; revoked → 401")
+		t.Skip("feature #514: service API keys with scope limits: cross-org → 403; revoked → 401")
 	})
 
 	t.Run("10_customer_import_c7_dry_run_then_apply", func(t *testing.T) {
-		t.Skip("feature #468: dry-run on bil24_orders_pseudonymized.json → report; apply → idempotent")
+		t.Skip("feature #520: dry-run on bil24_orders_pseudonymized.json → report; apply → idempotent")
 	})
 }
 

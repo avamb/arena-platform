@@ -35,9 +35,12 @@ var (
 		"paymentBankMessage", "paymentBankId", "paymentBankStatus",
 		"email", "phone", "fullName", "emailSent",
 		"seatList", "gatewayOrderList", "acquiring", "ticketList",
-		// Fields observed in the pseudonymized export that spec §9.3
-		// enumerates alongside the 27 above; the total inventory is 36.
-		"orderNumber", "notes", "returnedSum", "cardMask",
+		// The four §9.3 payment-provider fields that complete the 36-key
+		// inventory. Present in the pseudonymized export (see the
+		// TestCompatBil24_450_PseudonymizedFixture_KeySets union) and
+		// must be emitted verbatim by bil24wire — legacy WP receivers
+		// index into them by name (`paymentRRN` etc.).
+		"paymentRRN", "paymentTerminalId", "paymentCardPAN", "paymentCardBank",
 	}
 	spec93TicketKeys = []string{
 		"id", "seatId", "orderId", "seatLocation", "category", "tariff",
@@ -69,15 +72,12 @@ func TestCompatBil24_450_PseudonymizedFixture_Present(t *testing.T) {
 // ticket and nested actionEvent in the pseudonymized fixture uses exactly the
 // spec §9.3 inventory — no extra keys, no missing keys.
 //
-// The current pseudonymized export was produced from a legacy Bil24 dump that
-// omits several §9.3 top-level keys (status, sum, discount, charge, totalSum,
-// ticketQuantity, filtered*, paymentBank*, email, phone, fullName, emailSent,
-// seatList, gatewayOrderList, acquiring, orderNumber, notes, returnedSum,
-// cardMask). Feature #468 (customer-import C7) regenerates the fixture from
-// the full internal projection so this test can be un-skipped. Until then the
-// test documents the target shape and skips.
+// Feature #470 (W1-A1a) made this test strict: the pseudonymized export has
+// been reconciled with the 36/17/14 inventory (spec §9.3), and any drift on
+// either side (fixture regenerated with extra fields, or bil24wire encoder
+// producing a wrong set) MUST fail this test loudly. Do NOT re-add t.Skip —
+// binding is the wire contract with WordPress and legacy Bil24 clients.
 func TestCompatBil24_450_PseudonymizedFixture_KeySets(t *testing.T) {
-	t.Skip("feature #468: regenerate bil24_orders_pseudonymized.json against the §9.3 36/17/14 inventory")
 	path := filepath.Join("testdata", "wp", "bil24_orders_pseudonymized.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
