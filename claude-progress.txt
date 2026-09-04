@@ -2,6 +2,32 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+=== Session 2026-09-04 (batch 450/451/452) ===
+- #450 W1-0 harness DONE + committed (fb2b3e3): 15 command request/golden
+  fixtures under testdata/wp (with 4 RESERVATION sub-shapes and both
+  string+int CREATE_ORDER_EXT.orderId cases), harness_test.go with 10
+  spec-15.3 scenarios (all t.Skip with feature ids #454..#468), wpstub
+  package with ticket.refunded dedup by data.id, BINDING key-set test
+  (skipped until #468 regenerates fixture), sbt/1.0 SVG skeleton for
+  Palac Akropolis, BEHAVIOR_DIFFERENCES.md rewritten from spec (15
+  divergences). Gates locally: go test ./... exit=0,
+  golangci-lint 0 issues, gofmt clean. NOT pushed by me; verify CI after
+  push.
+- #451 W1-A1 (per-channel gateway) claim RELEASED via
+  feature_clear_in_progress. Realistic scope is multi-session: fid int
+  migration in bil24compat/translate.go, token validation on read commands
+  in httpserver/bil24_compat.go, org-scope refactor removing
+  GetSalesChannelByIDGlobal, SCAN_TICKET rework via
+  barcodes->tickets->sessions->events, new
+  PUT/GET/DELETE /v1/organizations/{org}/channels/{id}/gateway-credential
+  routes + OpenAPI 3.1 spec + Go+TS codegen + admin-web channel-page
+  section + integration tests + gh run verify. Needs a dedicated session.
+- #452 W1-A2 NOT started — depends on shape of #451.
+- Next session: (a) push the #450 commit; (b) start #451 with backend
+  fid/token/org-scope first, admin-web second.
+
+
+
 ## 2026-07-19 - Feature #383 (PR2-27 MAJOR): Close the PR2-04 held→sold convert-failure window
 
 ### Problem
