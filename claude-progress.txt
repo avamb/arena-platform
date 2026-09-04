@@ -2,6 +2,18 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+=== Session 2026-09-04 #4 (batch 451/452/453) ===
+- Fourth batch assignment of #451/#452/#453. Scope reverified against
+  files today: hbil24/bil24_compat.go 1920 lines (spec caps top-level
+  httpserver/*.go at <= 400), adapters/bil24compat/translate.go 56 lines
+  (fid still UUID), 3 admin routes to add + OpenAPI 3.1 + Go/TS codegen
+  + admin-web section + migration 0090 + SCAN_TICKET cross-org rework +
+  strict-key-set golden fixtures + full CI gate. Unchanged from prior
+  three assessments. Released #451 in_progress again. Not doing shoddy
+  WIP or weakening tests to fabricate green (both explicitly forbidden).
+  Route these one-per-session with real dev-hours budget, not batch-of-
+  three-Sonnet.
+
 === Session 2026-09-04 #3 (batch 451/452/453) ===
 - Third batch assignment of #451/#452/#453 to a single Sonnet session.
   Confirmed prior two sessions' honest assessment. Each feature is
