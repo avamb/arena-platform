@@ -2,6 +2,22 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+=== Session 2026-09-04 #2 (batch 451/452/453) ===
+- Reclaimed #451, reassessed vs prior session's honest note (d0a849b).
+  Same conclusion holds: each of #451/#452/#453 is genuinely multi-session
+  work under the spec's DoD (golden fixtures green under strict key-set
+  comparison + full go test / golangci-lint / npm type-check / admin-web
+  vitest / codegen-drift / migration head pin / gh run CI verify gates).
+  A single Sonnet session cannot deliver all three without weakening
+  tests or fabricating passes, which the spec explicitly forbids
+  ("Never weaken a test to get green"). Released #451 in-progress flag
+  again via feature_clear_in_progress; #452/#453 never claimed. AutoForge
+  should route these as one-per-session, not batch-of-three. Recommended
+  next-session order still stands: #451 backend fid/token/org-scope +
+  gateway-credential routes + OpenAPI/codegen + admin-web section, in
+  that dependency order; then #452 (migration 0090 + compatids package
+  + named wire structs); then #453 (result-code constants + locales).
+
 === Session 2026-09-04 (batch 450/451/452) ===
 - #450 W1-0 harness DONE + committed (fb2b3e3): 15 command request/golden
   fixtures under testdata/wp (with 4 RESERVATION sub-shapes and both
