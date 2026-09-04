@@ -1,0 +1,8 @@
+{
+  "resultCode": 0,
+  "description": "OK",
+  "command": "ADD_PROMO_CODES",
+  "newPromoCodeList": ["WELCOME10"],
+  "existPromoCodeList": [],
+  "errorPromoCodeList": []
+}

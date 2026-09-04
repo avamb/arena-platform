@@ -1,0 +1,16 @@
+{
+  "resultCode": 0,
+  "description": "OK",
+  "command": "GET_TICKETS_BY_ORDER",
+  "ticketList": [
+    {
+      "ticketId": 9001,
+      "pdfUrl": "https://arena.local/tickets/9001.pdf",
+      "downloadUrl": "https://arena.local/tickets/9001",
+      "barcode": "2401502608417",
+      "seatId": "{{seatId:Parter-3-12}}",
+      "categoryPriceId": 1
+    }
+  ],
+  "ticketIdList": [9001]
+}

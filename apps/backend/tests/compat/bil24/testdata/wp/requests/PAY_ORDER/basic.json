@@ -1,0 +1,12 @@
+{
+  "command": "PAY_ORDER",
+  "fid": 1271,
+  "token": "{{token}}",
+  "locale": "ru-RU",
+  "orderId": "{{orderId}}",
+  "userId": 10001,
+  "sessionId": "{{sessionId}}",
+  "amount": 500,
+  "currency": "CZK",
+  "method": "woo_bank_card"
+}

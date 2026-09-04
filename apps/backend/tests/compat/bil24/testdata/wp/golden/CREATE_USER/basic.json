@@ -1,0 +1,7 @@
+{
+  "resultCode": 0,
+  "description": "OK",
+  "command": "CREATE_USER",
+  "userId": 10001,
+  "sessionId": "{{sessionId}}"
+}

@@ -1,0 +1,9 @@
+{
+  "type": "ticket.refunded",
+  "data": {
+    "id": 9001,
+    "orderId": "{{orderId}}",
+    "refundPrice": 500,
+    "refundDate": "{{now}}"
+  }
+}

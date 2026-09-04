@@ -1,0 +1,19 @@
+{
+  "command": "CREATE_ORDER_EXT",
+  "fid": 1271,
+  "token": "{{token}}",
+  "locale": "ru-RU",
+  "orderId": "wc_string_2002",
+  "userId": 10001,
+  "sessionId": "{{sessionId}}",
+  "currency": "CZK",
+  "total": 500,
+  "actionEventId": "{{actionEventId}}",
+  "longReservation": true,
+  "lines": [{"categoryPriceId": 1, "quantity": 1, "tariffPlanId": null}],
+  "email": "buyer@example.com",
+  "phone": "+420123456789",
+  "fullName": "Anna Novak",
+  "chargePercent": 0,
+  "promoCodes": []
+}

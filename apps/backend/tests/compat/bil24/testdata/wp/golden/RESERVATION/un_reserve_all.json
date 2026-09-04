@@ -1,0 +1,12 @@
+{
+  "resultCode": 0,
+  "description": "OK",
+  "command": "RESERVATION",
+  "cartTimeout": "{{now+ttl}}",
+  "currency": "CZK",
+  "sum": 0,
+  "discount": 0,
+  "charge": 0,
+  "totalSum": 0,
+  "seatList": []
+}

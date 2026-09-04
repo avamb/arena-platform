@@ -1,0 +1,10 @@
+{
+  "command": "CREATE_USER",
+  "fid": 1271,
+  "token": "{{token}}",
+  "locale": "ru-RU",
+  "email": "buyer@example.com",
+  "firstName": "Anna",
+  "lastName": "Novak",
+  "phone": "+420123456789"
+}

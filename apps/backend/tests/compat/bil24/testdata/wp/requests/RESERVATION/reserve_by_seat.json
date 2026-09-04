@@ -1,0 +1,11 @@
+{
+  "command": "RESERVATION",
+  "fid": 1271,
+  "token": "{{token}}",
+  "locale": "ru-RU",
+  "type": "RESERVE",
+  "userId": 10001,
+  "sessionId": "{{sessionId}}",
+  "actionEventId": "{{actionEventId}}",
+  "seatList": [{"seatId": "{{seatId:Parter-3-12}}"}]
+}

@@ -1,0 +1,5 @@
+{
+  "resultCode": 0,
+  "description": "OK",
+  "command": "SEND_TICKETS_TO_EMAIL"
+}

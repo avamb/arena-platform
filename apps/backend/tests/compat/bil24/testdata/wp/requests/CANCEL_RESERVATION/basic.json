@@ -1,0 +1,7 @@
+{
+  "command": "CANCEL_RESERVATION",
+  "fid": 1271,
+  "token": "{{token}}",
+  "locale": "ru-RU",
+  "reservationId": "{{sessionId}}"
+}

@@ -1,0 +1,8 @@
+{
+  "command": "GET_SEAT_LIST",
+  "fid": 1271,
+  "token": "{{token}}",
+  "locale": "ru-RU",
+  "actionEventId": "{{actionEventId}}",
+  "availableOnly": true
+}

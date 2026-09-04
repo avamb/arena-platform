@@ -1,0 +1,6 @@
+{
+  "command": "GET_ALL_ACTIONS",
+  "fid": 1271,
+  "token": "{{token}}",
+  "locale": "ru-RU"
+}

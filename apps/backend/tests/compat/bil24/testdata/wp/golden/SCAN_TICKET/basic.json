@@ -1,0 +1,10 @@
+{
+  "resultCode": 0,
+  "description": "OK",
+  "command": "SCAN_TICKET",
+  "ticket": {
+    "id": 9001,
+    "barcode": "2401502608417",
+    "holderStatus": "NEVER_USE"
+  }
+}

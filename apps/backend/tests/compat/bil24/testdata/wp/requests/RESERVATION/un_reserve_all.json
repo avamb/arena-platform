@@ -1,0 +1,9 @@
+{
+  "command": "RESERVATION",
+  "fid": 1271,
+  "token": "{{token}}",
+  "locale": "ru-RU",
+  "type": "UN_RESERVE_ALL",
+  "userId": 10001,
+  "sessionId": "{{sessionId}}"
+}

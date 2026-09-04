@@ -1,0 +1,16 @@
+{
+  "resultCode": 0,
+  "description": "OK",
+  "command": "GET_ORDER_INFO",
+  "order": {
+    "id": "{{orderId}}",
+    "status": "NEW",
+    "currency": "CZK",
+    "sum": 500,
+    "discount": 0,
+    "charge": 0,
+    "totalSum": 500,
+    "ticketQuantity": 1,
+    "expiration": "{{now+ttl}}"
+  }
+}

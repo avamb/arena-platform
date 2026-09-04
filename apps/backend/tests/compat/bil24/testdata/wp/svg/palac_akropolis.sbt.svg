@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SYNTHETIC PALAC AKROPOLIS seating plan skeleton.
+
+  Feature #450 (W1-0): the geometry below is a hand-authored skeleton
+  matching the sbt/1.0 shape defined in
+  08_architecture/18_bil24_compat_wave1_specification_ru.md §8. It is NOT
+  the production Vino&Co plan — feature #467 (SVG import) replaces this
+  fixture with the real .sbt file supplied by the owner. Never ship the
+  synthetic geometry to a live channel.
+
+  Contract enforced by the harness:
+    - Root svg with sbt namespace http://www.w3.org/2015/sbt/1.0
+    - <metadata> with <sbt:category sbt:id sbt:index sbt:name sbt:color
+      sbt:price sbt:class/>
+    - <g sbt:sect="Sector"><g sbt:row="N"><circle sbt:id sbt:state
+      sbt:cat sbt:seat cx cy r/></g></g>
+    - sbt:id = system_seat_id (integer, unique across the plan)
+    - sbt:cat = category INDEX (not id)
+    - sbt:state 1=free, 4=held/sold
+-->
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:sbt="http://www.w3.org/2015/sbt/1.0"
+     viewBox="0 0 400 240" width="400" height="240">
+  <metadata>
+    <sbt:category sbt:id="1" sbt:index="0" sbt:name="Parter"
+                  sbt:color="#3366cc" sbt:price="500" sbt:class="free"/>
+    <sbt:category sbt:id="2" sbt:index="1" sbt:name="Balcony"
+                  sbt:color="#cc3366" sbt:price="800" sbt:class="free"/>
+  </metadata>
+
+  <g sbt:sect="Parter">
+    <g sbt:row="3">
+      <circle sbt:id="1001" sbt:state="1" sbt:cat="0" sbt:seat="12" cx="120" cy="100" r="6"/>
+      <circle sbt:id="1002" sbt:state="1" sbt:cat="0" sbt:seat="13" cx="140" cy="100" r="6"/>
+      <circle sbt:id="1003" sbt:state="1" sbt:cat="0" sbt:seat="14" cx="160" cy="100" r="6"/>
+    </g>
+    <g sbt:row="4">
+      <circle sbt:id="1004" sbt:state="1" sbt:cat="0" sbt:seat="12" cx="120" cy="120" r="6"/>
+      <circle sbt:id="1005" sbt:state="4" sbt:cat="0" sbt:seat="13" cx="140" cy="120" r="6"/>
+      <circle sbt:id="1006" sbt:state="1" sbt:cat="0" sbt:seat="14" cx="160" cy="120" r="6"/>
+    </g>
+  </g>
+
+  <g sbt:sect="Balcony">
+    <g sbt:row="1">
+      <circle sbt:id="2001" sbt:state="1" sbt:cat="1" sbt:seat="1" cx="240" cy="60" r="6"/>
+      <circle sbt:id="2002" sbt:state="1" sbt:cat="1" sbt:seat="2" cx="260" cy="60" r="6"/>
+    </g>
+  </g>
+</svg>

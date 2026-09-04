@@ -1,0 +1,28 @@
+{
+  "resultCode": 0,
+  "description": "OK",
+  "command": "GET_ALL_ACTIONS",
+  "countryList": [],
+  "cityList": [],
+  "actionList": [
+    {
+      "id": 231833,
+      "name": "Palac Akropolis showcase",
+      "legalOwner": "Vino&Co",
+      "legalOwnerInn": "000000000000",
+      "kind": { "id": 0, "name": "Events" },
+      "actionEventList": [
+        {
+          "id": "{{actionEventId}}",
+          "day": "15.02.2028",
+          "time": "19:00",
+          "currency": "CZK",
+          "sellEndTime": "{{now+ttl}}",
+          "seatingPlanId": "{{actionEventId}}",
+          "chargePercent": 0,
+          "categoryLimitList": []
+        }
+      ]
+    }
+  ]
+}

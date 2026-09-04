@@ -1,0 +1,10 @@
+{
+  "command": "SEND_TICKETS_TO_EMAIL",
+  "fid": 1271,
+  "token": "{{token}}",
+  "locale": "ru-RU",
+  "userId": 10001,
+  "sessionId": "{{sessionId}}",
+  "email": "buyer@example.com",
+  "ticketIdList": [9001]
+}

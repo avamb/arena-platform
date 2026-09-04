@@ -1,0 +1,7 @@
+{
+  "command": "CANCEL_ORDER",
+  "fid": 1271,
+  "token": "{{token}}",
+  "locale": "ru-RU",
+  "orderId": "{{orderId}}"
+}

@@ -1,0 +1,7 @@
+{
+  "command": "SCAN_TICKET",
+  "fid": 1271,
+  "token": "{{token}}",
+  "locale": "ru-RU",
+  "ticketId": "2401502608417"
+}

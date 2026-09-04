@@ -1,173 +1,160 @@
-# Bil24 Compatibility Gateway — Behavior Differences from Legacy Bil24.pro API
+# Bil24 Compatibility — Behavior Differences (arena vs. legacy Bil24.pro)
 
-This document records **intentional differences** between the Arena platform's
-Bil24 compatibility gateway (`/compat/bil24/json`) and the original Bil24.pro
-API (`https://api.bil24.pro/json`). The Vino&Co integration relies on this
-gateway; these differences must be understood before the migration is complete.
+Feature #450 (W1-0) rewrites this file from
+`08_architecture/18_bil24_compat_wave1_specification_ru.md`. All numbered
+sections below reference the spec; when the spec changes, this file must
+change with it.
 
----
+## Authority
 
-## Summary Table
+- `apps/backend/tests/compat/bil24/testdata/wp/requests/<COMMAND>/<case>.json`
+  is the wire-format request the legacy PHP plugin actually sends.
+- `apps/backend/tests/compat/bil24/testdata/wp/golden/<COMMAND>/<case>.json`
+  is the target response after arena implements the command. STRICT key-set
+  comparison — a missing OR extra key fails the harness (spec §15.2). Never
+  edit a golden file to make a test pass.
+- Placeholders resolved by the harness: `{{actionEventId}}`,
+  `{{seatId:Parter-3-12}}`, `{{orderId}}`, `{{now+ttl}}`, `{{sessionId}}`,
+  `{{token}}`.
 
-| Behavior | Legacy Bil24.pro | Arena Gateway | Impact |
-|---|---|---|---|
-| HTTP status on protocol error | 200 | 200 ✅ | None — same |
-| HTTP status on application error | 200 | 200 ✅ | None — same |
-| Result code for unknown command | -1 | -1 ✅ | None — same |
-| Result code for invalid input | -2 | -2 ✅ | None — same |
-| Result code for not found | -3 | -3 ✅ | None — same |
-| Result code for internal error | -99 | -99 ✅ | None — same |
-| Result code for success | 0 | 0 ✅ | None — same |
-| Command echo in response | ✅ | ✅ | None — same |
-| `fid` / `token` field type | Ulong (numeric) | String (JSON) | Low — JSON coerces OK |
-| Legacy numeric IDs (actionId, etc.) | Resolved via catalog | Returns -2 (not found) | **Medium** — ID translation table not yet implemented |
-| `GET_ACTIONS_V2` command | Supported | Returns -1 (unknown) | **Medium** — use `GET_ALL_ACTIONS` instead |
-| `CREATE_ORDER_EXT` real order creation | Full checkout flow | Scaffold stub (orderId="pending") | **High** — returns placeholder until checkout flow is wired |
-| `CANCEL_ORDER` real cancellation | Cancels checkout | Scaffold stub (no DB change) | **High** — returns OK without actually cancelling |
-| `GET_ORDER_INFO` financial fields | Legacy currency codes | Platform currency codes | Low — both use ISO 4217 strings |
-| `GET_SEAT_LIST` seat availability | Per-seat status | Per-tier availability count | Medium — arena does not model individual seats yet |
-| `SCAN_TICKET` barcode resolution | Numeric ticket IDs | Requires `legacy_bil24` barcode authority | **High** — barcode authority must be seeded before scanning works |
-| Authentication via fid/token | Validated per request | Not validated (scaffold) | Medium — scaffold trusts any fid/token value |
-| Locale format accepted | `ru-RU` (BCP 47) | Any non-empty string | Low — gateway uses locale as-is for DB query |
+## Command inventory (spec §7)
 
----
+15 commands supported by the gateway:
 
-## Detailed Differences
+`GET_ALL_ACTIONS`, `GET_SEAT_LIST`, `CREATE_USER`, `RESERVATION`,
+`GET_CART`, `ADD_PROMO_CODES`, `CHECK_KDP`, `CREATE_ORDER_EXT`,
+`GET_ORDER_INFO`, `PAY_ORDER`, `GET_TICKETS_BY_ORDER`,
+`SEND_TICKETS_TO_EMAIL`, `CANCEL_RESERVATION`, `CANCEL_ORDER`,
+`SCAN_TICKET`.
 
-### 1. Legacy Numeric ID Translation (HIGH IMPACT)
+`RESERVATION` has **4 request sub-shapes**:
 
-**Bil24.pro behavior:** `actionId`, `actionEventId`, `orderId`, `ticketId` are
-all **opaque integers** (e.g., `4827361`, `779234`). The legacy server resolves
-them via its internal catalog.
+1. `type=RESERVE|UN_RESERVE` with `seatList[]` — assigned-seats event.
+2. `type=RESERVE|UN_RESERVE` with `categoryList[]` (GA units, quantity per
+   `categoryPriceId` + optional `tariffPlanId`).
+3. `type=UN_RESERVE_ALL` — **no `actionEventId`, no seatList, no
+   categoryList**; the server clears every hold in `sessionId`.
+4. Implicit reconciliation on `CREATE_ORDER_EXT`: any `lines[]` entry not
+   already held is reserved as part of order creation.
 
-**Arena gateway behavior:** The `TranslateLegacyID()` function accepts numeric
-IDs but immediately returns `ErrLegacyIDNotFound` (`resultCode=-2`) because
-the `compatibility_id_map` table is not yet implemented.
+## Behavior differences from legacy Bil24.pro
 
-**Migration path:** When a Vino&Co request arrives with a legacy numeric ID:
-1. The gateway returns `-2` with description "must be a valid ... identifier".
-2. The Vino&Co client must be updated to send platform UUIDs.
-3. Alternatively, implement the `compatibility_id_map` DB table to translate
-   legacy IDs → platform UUIDs.
+### 1. `CREATE_ORDER_EXT.orderId` accepts string OR int
 
-**Commands affected:** `GET_SEAT_LIST`, `GET_ORDER_INFO`, `CANCEL_ORDER`.
+Legacy Bil24 required a numeric `orderId`. WooCommerce sends the WC order id
+which is a string like `"wc_string_2002"` for some site templates. The
+gateway now accepts both; on the wire the response echoes
+`externalOrderId` as the request value stringified. See
+`testdata/wp/requests/CREATE_ORDER_EXT/string_orderid.json`.
 
----
+### 2. `RESERVATION.seatList` is the **entire session cart**, not the delta
 
-### 2. CREATE_ORDER_EXT — Scaffold Stub (HIGH IMPACT)
+Legacy responses returned only the seats affected by the current call. The
+arena implementation must return every seat currently held in
+`sessionId` across every event session — the WP plugin recomputes cart
+totals from this snapshot on every mutation.
 
-**Bil24.pro behavior:** Full checkout creation: reserves seats, prices the
-order, links it to a userId/sessionId, returns a real `orderId`.
+### 3. `ADD_PROMO_CODES` accepts both `promoCodeList` and `promoCodes`
 
-**Arena gateway behavior:** Returns a scaffold response:
-```json
-{
-  "resultCode": 0,
-  "command": "CREATE_ORDER_EXT",
-  "orderId": "pending",
-  "status": "scaffold_stub",
-  "message": "order creation requires reservation flow; use POST /v1/checkout/reservations"
-}
-```
+The PHP plugin sends both keys with identical values because different site
+templates use different key names. The server must accept either
+independently and merge into a single set before validation.
 
-The `orderId: "pending"` is **not a real order**. No record is created in the
-database.
+### 4. `UN_RESERVE_ALL` carries **no** `actionEventId`
 
-**Migration path:** Implement the full reservation flow (features #131, #129,
-#132) and wire `CREATE_ORDER_EXT` to `POST /v1/checkout/reservations`.
+Unlike other RESERVATION sub-shapes, `UN_RESERVE_ALL` releases every held
+seat/unit across every event session for the gateway `sessionId`.
 
----
+### 5. `resultCode = -2` (invalid request) never becomes HTTP 4xx
 
-### 3. CANCEL_ORDER — Scaffold Stub (HIGH IMPACT)
+Legacy clients treat any HTTP status other than 200 as a transport failure
+and re-queue the request. Malformed JSON, missing envelope keys and
+unsupported HTTP methods therefore return `HTTP 200` with `resultCode=-2`
+in the JSON envelope. `HTTP 404` is reserved for "compat gateway disabled"
+(feature toggle off).
 
-**Bil24.pro behavior:** Cancels the checkout session, releases reserved seats,
-may trigger a refund.
+### 6. `resultCode = -1` means "unknown command"
 
-**Arena gateway behavior:** Validates the `orderId` UUID format, then returns a
-scaffold response without touching the database:
-```json
-{
-  "resultCode": 0,
-  "command": "CANCEL_ORDER",
-  "orderId": "<uuid>",
-  "status": "scaffold_stub",
-  "message": "cancellation requires checkout state machine; use POST /v1/checkout/{id}/cancel"
-}
-```
+Regression `TestCompatBil24_158_CommandDispatchIsNotUnknown` guards this —
+any of the 15 documented commands returning `-1` is a switch-statement
+regression.
 
-**Migration path:** Wire to the checkout state machine once the checkout cancel
-endpoint is implemented.
+### 7. `fid` is an **integer** on the wire
 
----
+Feature #451 pins `fid` to `sales_channels.display_number` (int64). The PHP
+plugin sends `(int) $fid`; arena parses both `123` and `"123"` and rejects
+anything else with `resultCode=-2`. Cross-channel access uses the token —
+tenant isolation is enforced at the fid→org resolution step, not by the
+caller-supplied `orgId` (which does not exist on the wire).
 
-### 4. SCAN_TICKET — Requires Barcode Authority Setup (HIGH IMPACT)
+### 8. Money is a JSON `number` with ≤2 decimal places
 
-**Bil24.pro behavior:** Accepts any numeric barcode registered in the Bil24
-catalog; validates and marks as scanned.
+The gateway must never emit currency strings, cents integers, or trailing
+zeros beyond 2 decimals. `sum − discount + charge = totalSum` is a
+platform-side invariant computed from the persisted cart, not accepted
+from the client.
 
-**Arena gateway behavior:** Looks up the `legacy_bil24` barcode authority in
-the `barcode_authorities` table. If this record does not exist:
-```json
-{
-  "resultCode": -3,
-  "description": "legacy_bil24 barcode authority not registered..."
-}
-```
+### 9. Show times are venue-local without offset; TTL fields carry offset
 
-**Setup required before Vino&Co can use SCAN_TICKET:**
-```http
-POST /v1/barcodes/authorities
-Authorization: Bearer <admin_token>
-Content-Type: application/json
+`actionEvent.showTime` = `"2028-02-15T19:00:00"` (no timezone) in the venue
+timezone. Everything TTL-bound (`sellEndTime`, `expiration`,
+`cartTimeout`, `refundDate`, `processing`) is RFC3339 with an offset,
+`+01:00` for Prague, `+03:00` for Jerusalem (DST-aware).
 
-{
-  "name": "Bil24 Legacy Scanner",
-  "authority_type": "legacy_bil24",
-  "config": {}
-}
-```
+### 10. One active promo code per session
 
----
+`ADD_PROMO_CODES` enforces one active promo per `sessionId` at platform
+level. Attempts to add a second are rejected via `errorPromoCodeList`;
+`existPromoCodeList` reports codes that were already active.
 
-### 5. GET_ACTIONS_V2 Not Supported
+### 11. One open order per session
 
-**Bil24.pro behavior:** `GET_ACTIONS_V2` returns an extended catalog with
-genre lists, min/max prices, and rich metadata.
+`CREATE_ORDER_EXT` is idempotent per `(sessionId, actionEventId)` — a
+repeated call with the same body must return the same `orderId`, not
+create a second row.
 
-**Arena gateway behavior:** Returns `resultCode=-1` (unknown command). Use
-`GET_ALL_ACTIONS` instead, which returns similar catalog data.
+### 12. `SCAN_TICKET.ticketId` accepts EAN-13 barcode OR internal UUID
 
-**Migration path:** Add `GET_ACTIONS_V2` as an alias for `GET_ALL_ACTIONS`
-if Vino&Co cannot be updated to use `GET_ALL_ACTIONS`.
+The scanner apps use EAN-13; admin tooling passes the internal
+`tickets.id` UUID. The gateway resolves both against `barcodes` with
+`authority='platform'` for EAN-13 issued by arena, or
+`authority='legacy_bil24'` for barcodes imported by feature #461. Rows are
+org-scoped so a scan for another tenant's ticket returns `resultCode=101`,
+not the ticket.
 
----
+### 13. `image?type=seatingPlan` returns `sbt/1.0` XML (spec §8)
 
-### 6. fid/token Authentication Not Validated
+Not SVG in the general sense — it is the schema the WP plugin ships with:
+`xmlns:sbt="http://www.w3.org/2015/sbt/1.0"`, `<metadata><sbt:category/>`,
+`<g sbt:sect><g sbt:row><circle sbt:id sbt:state sbt:cat sbt:seat cx cy r/>`.
+`sbt:cat` is the category **index**, not id. ETag is
+`<geometry_checksum>:<seat_status_version>` and honours 304.
+See `testdata/wp/svg/palac_akropolis.sbt.svg` for the on-disk skeleton.
 
-**Bil24.pro behavior:** Every request's `fid` and `token` are validated against
-the registered interface credentials. Invalid credentials return an error.
+### 14. Webhooks to WordPress use the `{type,data}` envelope
 
-**Arena gateway behavior (scaffold):** The `fid` and `token` fields are
-**logged but not validated**. Any value (or no value) is accepted.
+Spec §7/§9: POST `application/json` `{type, data}`. Empty `type` or empty
+`data` object → `400 {"ok":false,"error":"..."}`. Any other body →
+`200 {"ok":true}`. `ticket.refunded` is deduplicated by `data.id`. The
+receiver stores accepted payloads to `bil24_tickets`. The stub replay
+lives in `apps/backend/tests/compat/bil24/wpstub/`.
 
-**Security implication:** The `/compat/bil24/*` subtree is only mounted when
-`BIL24_COMPAT_ENABLED=true` (env var, default false). In production,
-ensure this is disabled unless you have implemented fid/token validation.
+### 15. Order/Ticket JSON binding: 36/17/14 keys (spec §9.3)
 
----
+`bil24wire` (feature #463) encoder must emit EXACTLY:
 
-## Vino&Co Migration Checklist
+- 36 keys at the Order top level.
+- 17 keys per Ticket in `order.ticketList[]`.
+- 14 keys per `ticket.actionEvent`.
 
-Before Vino&Co can fully migrate from Bil24.pro to the Arena gateway:
+`TestCompatBil24_450_PseudonymizedFixture_KeySets` documents these
+inventories; feature #468 regenerates the pseudonymized fixture from the
+internal projection to un-skip that test.
 
-- [ ] Update Vino&Co client to send UUID `actionEventId` instead of numeric
-      Bil24 event IDs (or implement `compatibility_id_map` table)
-- [ ] Implement `CREATE_ORDER_EXT` → real checkout reservation flow
-- [ ] Implement `CANCEL_ORDER` → checkout state machine cancel
-- [ ] Seed the `legacy_bil24` barcode authority in the database
-- [ ] Implement `fid`/`token` validation middleware
-- [ ] Set `BIL24_COMPAT_ENABLED=true` in Vino&Co-facing deployment
+## Rules for this file
 
----
-
-*Last updated: 2026-06-24 by feature #158 (Bil24 compatibility regression tests)*
+1. New behaviour differences MUST be added here with a spec section reference.
+2. Removing a difference (i.e. arena matches legacy again) requires a code
+   change + spec update in the same commit.
+3. This file is a `TestCompatBil24_158_BehaviorDifferencesDocExists`
+   dependency — it must exist and be non-trivial.

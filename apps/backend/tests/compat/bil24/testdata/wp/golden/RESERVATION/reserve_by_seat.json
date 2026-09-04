@@ -1,0 +1,15 @@
+{
+  "resultCode": 0,
+  "description": "OK",
+  "command": "RESERVATION",
+  "cartTimeout": "{{now+ttl}}",
+  "currency": "CZK",
+  "sum": 500,
+  "discount": 0,
+  "charge": 0,
+  "totalSum": 500,
+  "seatList": [
+    {"seatId": "{{seatId:Parter-3-12}}", "actionEventId": "{{actionEventId}}",
+     "categoryPriceId": 1, "tariffPlanId": null, "price": 500, "discount": 0}
+  ]
+}

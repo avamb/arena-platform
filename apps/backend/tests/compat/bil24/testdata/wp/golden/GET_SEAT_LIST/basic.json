@@ -1,0 +1,13 @@
+{
+  "resultCode": 0,
+  "description": "OK",
+  "command": "GET_SEAT_LIST",
+  "currency": "CZK",
+  "categoryList": [
+    {"id": 1, "index": 0, "name": "Parter", "color": "#3366cc", "price": 500, "class": "free"}
+  ],
+  "seatList": [
+    {"seatId": "{{seatId:Parter-3-12}}", "availability": true, "categoryPriceId": 1,
+     "location": {"sector": "Parter", "row": "3", "number": "12"}}
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "resultCode": 0,
+  "description": "OK",
+  "command": "RESERVATION",
+  "cartTimeout": "{{now+ttl}}",
+  "currency": "CZK",
+  "sum": 1000,
+  "discount": 0,
+  "charge": 0,
+  "totalSum": 1000,
+  "seatList": [
+    {"seatId": "{{seatId:Parter-3-12}}", "actionEventId": "{{actionEventId}}",
+     "categoryPriceId": 1, "tariffPlanId": null, "price": 500, "discount": 0},
+    {"seatId": "{{seatId:Parter-3-13}}", "actionEventId": "{{actionEventId}}",
+     "categoryPriceId": 1, "tariffPlanId": null, "price": 500, "discount": 0}
+  ]
+}
