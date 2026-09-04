@@ -2,6 +2,21 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+=== Session 2026-09-04 #10 (batch 451/452/453) ===
+- Tenth batch assignment of #451/#452/#453 to a single Sonnet session.
+  Repository state unchanged since #1-#9: hbil24/bil24_compat.go still
+  1920 lines, translate.go fid still UUID, isolation.json and
+  cross_org.json golden fixtures still absent. #451 was still in_progress
+  from session #9; cleared again via feature_clear_in_progress. #452/#453
+  never claimed. Conclusion identical to prior nine sessions and now
+  confirmed ten times: each of #451/#452/#453 is a genuine complexity-3
+  MAJOR wave item that cannot be reliably batched in one Sonnet session.
+  Orchestrator MUST route them one-per-session with an adequate hours
+  budget, or the release-and-note loop will continue indefinitely.
+  Not doing shoddy work; not weakening tests to get green (forbidden by
+  spec: "Never weaken a test to get green"; "never edit a golden file to
+  get green - stop and ask").
+
 === Session 2026-09-04 #9 (batch 451/452/453) ===
 - Ninth batch assignment of #451/#452/#453 to a single Sonnet session.
   State reverified again and unchanged from sessions #1-#8:
