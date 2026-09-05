@@ -48,6 +48,13 @@ type AdmissionQuerier interface {
 type SeatQuerier interface {
 	ListSessionSeats(ctx context.Context, sessionID uuid.UUID) ([]gen.SessionSeatRow, error)
 	GetSessionSeatByID(ctx context.Context, id, sessionID uuid.UUID) (gen.SessionSeatRow, error)
+	// GetSessionSeatBySystemSeatID resolves the wave-1 wire seatId
+	// (session_seats.system_seat_id — bigint, migration 0088) to a seat
+	// row. Feature #476 (W1-A2b) spec §4/§7.4: the RESERVATION seated
+	// branch calls this variant when compatDB is wired so the wire stays
+	// int64 end-to-end; the nil-compatDB fallback keeps calling
+	// GetSessionSeatByID with the ADR-005 UUID passthrough.
+	GetSessionSeatBySystemSeatID(ctx context.Context, sessionID uuid.UUID, systemSeatID int64) (gen.SessionSeatRow, error)
 }
 
 // ReservationContextQuerier resolves the tenant context a Bil24 RESERVATION

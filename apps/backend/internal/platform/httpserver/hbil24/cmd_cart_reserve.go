@@ -42,16 +42,21 @@ import (
 //	  "totalSum": <sum - discount + charge>, "currency": "..."
 //	}
 func (h *Handler) reservationSeated(w http.ResponseWriter, ctx context.Context, req bil24Request, sessionID uuid.UUID, admissionMode string) {
-	// Deduplicate + validate seat identifiers. Per ADR-005 each entry is
-	// the platform session_seats.id serialised as a plain UUID string.
+	// Deduplicate + validate seat identifiers. Spec §4 / §7.4 (feature #476,
+	// W1-A2b): the wave-1 wire form is session_seats.system_seat_id (int64)
+	// when compatDB is wired — resolveSeatToRow rejects a UUID request field
+	// with ErrLegacyIDUUIDRejected via ParseLegacyIntID before any DB
+	// round-trip.  The nil-compatDB fallback keeps the ADR-005 UUID
+	// passthrough (uuid.Parse + GetSessionSeatByID) so pre-W1 unit tests
+	// stay green during the step-by-step migration.
 	seen := make(map[string]struct{}, len(req.SeatList))
-	seatIDs := make([]uuid.UUID, 0, len(req.SeatList))
+	rawSeats := make([]string, 0, len(req.SeatList))
 	for _, s := range req.SeatList {
 		s = strings.TrimSpace(s)
 		if s == "" {
 			writeBil24JSON(w, http.StatusOK, bil24Error(
 				req.Command, ResultCodeInvalidRequest,
-				"seatList entries must be non-empty session_seat identifiers",
+				"seatList entries must be non-empty seat identifiers",
 			))
 			return
 		}
@@ -62,16 +67,15 @@ func (h *Handler) reservationSeated(w http.ResponseWriter, ctx context.Context, 
 			))
 			return
 		}
-		seen[s] = struct{}{}
-		id, err := uuid.Parse(s)
-		if err != nil {
+		if err := h.validateSeatIDFormat(s); err != nil {
 			writeBil24JSON(w, http.StatusOK, bil24Error(
 				req.Command, ResultCodeInvalidRequest,
-				fmt.Sprintf("seatList entry %q is not a valid session_seat identifier (ADR-005)", s),
+				fmt.Sprintf("seatList entry %q is not a valid seat identifier", s),
 			))
 			return
 		}
-		seatIDs = append(seatIDs, id)
+		seen[s] = struct{}{}
+		rawSeats = append(rawSeats, s)
 	}
 
 	// Self-gate: the real hold path needs the reservation wiring plus the
@@ -88,20 +92,31 @@ func (h *Handler) reservationSeated(w http.ResponseWriter, ctx context.Context, 
 		return
 	}
 
-	// Translate seat ids → seat_keys (the SEAT-C1 lock path orders and
-	// locks by seat_key).
-	seatKeys := make([]string, 0, len(seatIDs))
-	for _, id := range seatIDs {
-		seat, err := h.seatQ.GetSessionSeatByID(ctx, id, sessionID)
+	// Translate seat wire identifiers → seat_keys (the SEAT-C1 lock path
+	// orders and locks by seat_key). resolveSeatToRow enforces the spec §4
+	// int64 wire form on the compatDB path and preserves ADR-005 UUID
+	// parsing on the fallback path.
+	seatKeys := make([]string, 0, len(rawSeats))
+	for _, raw := range rawSeats {
+		seat, err := h.resolveSeatToRow(ctx, raw, sessionID)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				resp := bil24Error(req.Command, ResultCodeNotFound, "seat not found in this session")
-				resp.Data = map[string]any{"seatId": id.String()}
+				resp.Data = map[string]any{"seatId": raw}
 				writeBil24JSON(w, http.StatusOK, resp)
 				return
 			}
+			// Parse failure (UUID on compat wire, non-numeric on compat wire,
+			// malformed UUID on fallback path) → invalid request.
+			if errors.Is(err, ErrSeatIDInvalid) {
+				writeBil24JSON(w, http.StatusOK, bil24Error(
+					req.Command, ResultCodeInvalidRequest,
+					fmt.Sprintf("seatList entry %q is not a valid seat identifier", raw),
+				))
+				return
+			}
 			h.logger.Error("bil24_compat: RESERVATION: seat lookup failed",
-				slog.String("seat_id", id.String()),
+				slog.String("seat_raw", raw),
 				slog.String("error", err.Error()),
 			)
 			writeBil24JSON(w, http.StatusOK, bil24Error(

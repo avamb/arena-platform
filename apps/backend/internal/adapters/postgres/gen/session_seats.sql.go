@@ -167,6 +167,29 @@ func (q *Queries) GetSessionSeatByID(ctx context.Context, id, sessionID uuid.UUI
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GetSessionSeatBySystemSeatID
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getSessionSeatBySystemSeatID = `-- name: GetSessionSeatBySystemSeatID :one
+SELECT id, session_id, seat_key, sector_name, row_name, seat_number,
+       tier_id, status, reservation_id, status_version, updated_at, system_seat_id
+FROM   session_seats
+WHERE  session_id     = $1
+  AND  system_seat_id = $2`
+
+// GetSessionSeatBySystemSeatID resolves a wire seatId (spec §4 / §7.4 —
+// session_seats.system_seat_id, bigint, migration 0088) to the underlying
+// SessionSeatRow. Feature #476 (W1-A2b): the compat-wired RESERVATION seated
+// branch calls this helper in place of GetSessionSeatByID so the seatId
+// field on the wire stays int64 end-to-end. Session scope keeps
+// cross-session existence from leaking (pgx.ErrNoRows when the row is
+// in another session).
+func (q *Queries) GetSessionSeatBySystemSeatID(ctx context.Context, sessionID uuid.UUID, systemSeatID int64) (SessionSeatRow, error) {
+	row := q.db.QueryRow(ctx, getSessionSeatBySystemSeatID, sessionID, systemSeatID)
+	return scanSessionSeatRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GetSessionSeatByKey
 // ─────────────────────────────────────────────────────────────────────────────
 

@@ -64,6 +64,18 @@ FROM   session_seats
 WHERE  id         = $1
   AND  session_id = $2;
 
+-- name: GetSessionSeatBySystemSeatID :one
+-- Fetches a single seat by (session_id, system_seat_id). Feature #476
+-- (Bil24 compat W1-A2b): the seatId field on the wire is
+-- session_seats.system_seat_id (bigint, migration 0088) so the
+-- RESERVATION seated branch reverse-maps int64 → SessionSeatRow in one
+-- round-trip. Session scope avoids leaking cross-session existence.
+SELECT id, session_id, seat_key, sector_name, row_name, seat_number,
+       tier_id, status, reservation_id, status_version, updated_at, system_seat_id
+FROM   session_seats
+WHERE  session_id     = $1
+  AND  system_seat_id = $2;
+
 -- name: GetSessionSeatByKey :one
 -- Fetches a single seat by (session_id, seat_key). Used by the
 -- seated-checkout path to translate caller-supplied seat_keys into

@@ -480,6 +480,7 @@ type Querier interface {
 	InsertSessionSeats(ctx context.Context, sessionID uuid.UUID, seatKeys, sectorNames, rowNames, seatNumbers []string, tierIDs []*string) (int64, error)
 	DeleteSessionSeatsBySession(ctx context.Context, sessionID uuid.UUID) (int64, error)
 	GetSessionSeatByID(ctx context.Context, id, sessionID uuid.UUID) (SessionSeatRow, error)
+	GetSessionSeatBySystemSeatID(ctx context.Context, sessionID uuid.UUID, systemSeatID int64) (SessionSeatRow, error)
 	GetSessionSeatByKey(ctx context.Context, sessionID uuid.UUID, seatKey string) (SessionSeatRow, error)
 	ListSessionSeats(ctx context.Context, sessionID uuid.UUID) ([]SessionSeatRow, error)
 	ListSessionSeatsAdmin(ctx context.Context, sessionID uuid.UUID) ([]SessionSeatAdminRow, error)

@@ -77,6 +77,23 @@ func (f *fakeSeats) GetSessionSeatByID(_ context.Context, id, sessionID uuid.UUI
 	return gen.SessionSeatRow{}, pgx.ErrNoRows
 }
 
+// GetSessionSeatBySystemSeatID satisfies the feature #476 (W1-A2b)
+// extension of SeatQuerier. The seat_d1_312 / seat_d2_313 / bil24_374
+// unit-test Handlers omit compatDB, so the RESERVATION seated branch
+// stays on the UUID-passthrough fallback path (GetSessionSeatByID) —
+// this stub is only hit by the tests that explicitly wire compatDB.
+func (f *fakeSeats) GetSessionSeatBySystemSeatID(_ context.Context, sessionID uuid.UUID, systemSeatID int64) (gen.SessionSeatRow, error) {
+	if f.err != nil {
+		return gen.SessionSeatRow{}, f.err
+	}
+	for _, s := range f.seats[sessionID] {
+		if s.SystemSeatID == systemSeatID {
+			return s, nil
+		}
+	}
+	return gen.SessionSeatRow{}, pgx.ErrNoRows
+}
+
 // fakeResCtx implements ReservationContextQuerier in memory.
 type fakeResCtx struct {
 	orgBySession map[uuid.UUID]uuid.UUID

@@ -18,13 +18,24 @@ package hbil24
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
 )
+
+// ErrSeatIDInvalid is returned by resolveSeatToRow when the raw wire
+// value cannot be parsed as a legal seat identifier (int64 on the
+// compatDB path, UUID on the fallback path). Callers map this to Bil24
+// result code -2 (invalid request). DB / driver failures (including
+// pgx.ErrNoRows for a missing seat) are NEVER wrapped in this error so
+// callers can still distinguish them via errors.Is.
+var ErrSeatIDInvalid = errors.New("hbil24: seatId is not a valid seat identifier")
 
 // compatCategoryPriceID returns the spec-§4 int64 wire form for a ticket-tier
 // UUID (compatibility_id_map kind = category_price) when h.compatDB is
@@ -98,6 +109,58 @@ func (h *Handler) resolveActionEventID(ctx context.Context, raw string) (uuid.UU
 		return TranslateLegacyID(raw)
 	}
 	return bil24compat.ResolveLegacyIntID(ctx, h.compatDB, compatids.KindActionEvent, raw)
+}
+
+// resolveSeatToRow resolves a wire seatId (spec §7.4 seatList entry) to a
+// SessionSeatRow inside the target session.
+//
+// Spec §4 (feature #476, W1-A2b): when h.compatDB is wired, the raw is
+// parsed as a positive int64 via bil24compat.ParseLegacyIntID (rejecting
+// a UUID request field with ErrLegacyIDUUIDRejected before any DB
+// round-trip) and the row is fetched by (session_id, system_seat_id)
+// via GetSessionSeatBySystemSeatID — session_seats.system_seat_id
+// (bigint, migration 0088) IS the wave-1 wire form so no compatids table
+// lookup is needed.  When h.compatDB is nil (unit tests that construct
+// a Handler without a *pgxpool.Pool) the helper falls back to the ADR-005
+// UUID passthrough (uuid.Parse + GetSessionSeatByID) so the pre-W1
+// unit-test harness (seat_d1_312 / seat_d2_313 / bil24_374) keeps passing
+// during the step-by-step migration.
+//
+// Callers map any parse error to Bil24 result code -2 (invalid request);
+// pgx.ErrNoRows from the lookup surfaces to callers as-is so they can
+// return the spec-mandated -3 (not found) envelope with the seatId echo.
+func (h *Handler) resolveSeatToRow(ctx context.Context, raw string, sessionID uuid.UUID) (gen.SessionSeatRow, error) {
+	if h.compatDB == nil {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			return gen.SessionSeatRow{}, fmt.Errorf("%w: %w", ErrSeatIDInvalid, err)
+		}
+		return h.seatQ.GetSessionSeatByID(ctx, id, sessionID)
+	}
+	n, err := bil24compat.ParseLegacyIntID(raw)
+	if err != nil {
+		return gen.SessionSeatRow{}, fmt.Errorf("%w: %w", ErrSeatIDInvalid, err)
+	}
+	return h.seatQ.GetSessionSeatBySystemSeatID(ctx, sessionID, n)
+}
+
+// validateSeatIDFormat returns nil when raw parses as a legal seat wire
+// value (int64 on the compatDB path, UUID on the fallback path) and
+// ErrSeatIDInvalid otherwise. Used up-front by reservationSeated to
+// reject malformed seatList entries BEFORE the seat-service self-gate,
+// so the wave-1 -2 (invalid request) contract keeps priority over the
+// -99 (service unavailable) envelope.
+func (h *Handler) validateSeatIDFormat(raw string) error {
+	if h.compatDB == nil {
+		if _, err := uuid.Parse(raw); err != nil {
+			return fmt.Errorf("%w: %w", ErrSeatIDInvalid, err)
+		}
+		return nil
+	}
+	if _, err := bil24compat.ParseLegacyIntID(raw); err != nil {
+		return fmt.Errorf("%w: %w", ErrSeatIDInvalid, err)
+	}
+	return nil
 }
 
 // compatEnsure is the shared body of the per-kind helpers. Kept private so

@@ -166,6 +166,66 @@ func TestBil24_476_ResolveCategoryPriceID_NonNumericInput_RejectedWithCompatDB(t
 	}
 }
 
+// TestBil24_476_ResolveSeatToRow_UUIDInput_RejectedWithCompatDB pins the
+// RESERVATION seated request-side wave-1 invariant for the seatList entry
+// (spec §4 / §7.4): with compatDB wired the helper refuses a UUID input
+// with ErrSeatIDInvalid wrapping bil24compat.ErrLegacyIDUUIDRejected —
+// before any DB round-trip. The panicDBTX compatDB stub proves the
+// short-circuit; a fakeSeats attached to the handler is required by the
+// helper signature but the panicDBTX guarantees we never actually reach
+// GetSessionSeatBySystemSeatID.
+func TestBil24_476_ResolveSeatToRow_UUIDInput_RejectedWithCompatDB(t *testing.T) {
+	h := newHandler(nil, seatsEmpty(), nil).WithCompatDB(panicDBTX{})
+	_, err := h.resolveSeatToRow(context.Background(), uuid.New().String(), uuid.New())
+	if !errors.Is(err, ErrSeatIDInvalid) {
+		t.Fatalf("resolveSeatToRow(uuid): want ErrSeatIDInvalid, got %v", err)
+	}
+	if !errors.Is(err, bil24compat.ErrLegacyIDUUIDRejected) {
+		t.Fatalf("resolveSeatToRow(uuid): want wrapped ErrLegacyIDUUIDRejected, got %v", err)
+	}
+}
+
+// TestBil24_476_ResolveSeatToRow_NonNumericInput_RejectedWithCompatDB
+// proves that garbage on the seatList entry field also short-circuits
+// before any DB round-trip.
+func TestBil24_476_ResolveSeatToRow_NonNumericInput_RejectedWithCompatDB(t *testing.T) {
+	h := newHandler(nil, seatsEmpty(), nil).WithCompatDB(panicDBTX{})
+	_, err := h.resolveSeatToRow(context.Background(), "not-an-id", uuid.New())
+	if !errors.Is(err, ErrSeatIDInvalid) {
+		t.Fatalf("resolveSeatToRow(non-numeric): want ErrSeatIDInvalid, got %v", err)
+	}
+}
+
+// TestBil24_476_ResolveSeatToRow_NilCompatDB_FallbackParsesUUID pins the
+// fallback contract for seat resolution: unit-test Handlers that omit
+// the pool keep the ADR-005 UUID passthrough (uuid.Parse +
+// GetSessionSeatByID). A non-UUID string on the fallback path is
+// rejected with ErrSeatIDInvalid; a UUID that matches a fakeSeats row is
+// returned as the SessionSeatRow.
+func TestBil24_476_ResolveSeatToRow_NilCompatDB_FallbackParsesUUID(t *testing.T) {
+	sessionID := uuid.New()
+	seatID := uuid.New()
+	seats := &fakeSeats{seats: map[uuid.UUID][]gen.SessionSeatRow{
+		sessionID: {{ID: seatID, SessionID: sessionID, SeatKey: "A-1", SystemSeatID: 42}},
+	}}
+	h := newHandler(nil, seats, nil) // no WithCompatDB — compatDB stays nil
+
+	// UUID hit → row returned.
+	got, err := h.resolveSeatToRow(context.Background(), seatID.String(), sessionID)
+	if err != nil {
+		t.Fatalf("resolveSeatToRow(uuid hit, nil compatDB): unexpected error: %v", err)
+	}
+	if got.ID != seatID || got.SeatKey != "A-1" {
+		t.Fatalf("resolveSeatToRow(uuid hit): got %+v", got)
+	}
+
+	// Non-UUID → ErrSeatIDInvalid without a DB error surfacing.
+	_, err = h.resolveSeatToRow(context.Background(), "not-a-uuid", sessionID)
+	if !errors.Is(err, ErrSeatIDInvalid) {
+		t.Fatalf("resolveSeatToRow(non-uuid, nil compatDB): want ErrSeatIDInvalid, got %v", err)
+	}
+}
+
 // TestBil24_476_ResolveCategoryPriceID_NilCompatDB_FallbackAcceptsUUID pins
 // the fallback contract: unit-test Handlers that omit the pool keep the
 // pre-W1 UUID passthrough so seat_d1_312 / seat_d2_313 / bil24_374 fixtures
