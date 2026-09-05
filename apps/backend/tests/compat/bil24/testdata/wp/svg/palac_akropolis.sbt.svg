@@ -1,51 +1,360 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  SYNTHETIC PALAC AKROPOLIS seating plan skeleton.
+  PALAC AKROPOLIS sbt/1.0 seating plan - GENERATED GOLDEN, do not hand-edit.
 
-  Feature #450 (W1-0): the geometry below is a hand-authored skeleton
-  matching the sbt/1.0 shape defined in
-  08_architecture/18_bil24_compat_wave1_specification_ru.md §8. It is NOT
-  the production Vino&Co plan — feature #467 (SVG import) replaces this
-  fixture with the real .sbt file supplied by the owner. Never ship the
-  synthetic geometry to a live channel.
+  Geometry: the real 06_venue_maps_and_seating/Palac_Akropolis.svg, imported
+  through seating.ImportSVG + Canonicalize.
 
-  Contract enforced by the harness:
-    - Root svg with sbt namespace http://www.w3.org/2015/sbt/1.0
+  Identities are SYNTHETIC and deterministic, not what the database would
+  hand out - feature #500 supersedes the hand-authored #450 skeleton:
+    - sbt:id on a circle = 10000 + canonical seat ordinal
+    - sbt:id on a category = 1000000000 + 10*index
+    - sbt:price = 500.00 + 250.00*index CZK, only for categories that
+      actually carry seats - the rest have no tier and render as 0
+    - every 7th seat is sold and every 11th held, so both sbt:state values
+      appear
+  Never ship this file to a live channel.
+
+  Contract enforced by image_sbt10_500_test.go:
+    - Root svg with sbt namespace http://www.w3.org/2015/sbt/1.0, viewBox
+      mandatory, width/height NOT emitted
     - <metadata> with <sbt:category sbt:id sbt:index sbt:name sbt:color
-      sbt:price sbt:class/>
+      sbt:price sbt:class/>, one per seated category, index ASC
     - <g sbt:sect="Sector"><g sbt:row="N"><circle sbt:id sbt:state
-      sbt:cat sbt:seat cx cy r/></g></g>
-    - sbt:id = system_seat_id (integer, unique across the plan)
-    - sbt:cat = category INDEX (not id)
-    - sbt:state 1=free, 4=held/sold
+      sbt:cat sbt:seat cx cy r fill/></g></g>
+    - sbt:id = system_seat_id, integer, unique across the plan
+    - sbt:cat = category INDEX, not the category id
+    - sbt:state 1=free, 4=held/sold/unavailable
+    - GA zones live in <g id="Decor"> without sbt:id, so they are never
+      clickable seats
+
+  Regenerate with:
+    ARENA_REGEN_SBT_GOLDEN=1 go test ./apps/backend/tests/compat/bil24/ -run SBT10
+  then re-add this comment block.
 -->
-<svg xmlns="http://www.w3.org/2000/svg"
-     xmlns:sbt="http://www.w3.org/2015/sbt/1.0"
-     viewBox="0 0 400 240" width="400" height="240">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg" xmlns:sbt="http://www.w3.org/2015/sbt/1.0" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" viewBox="0 0 317.49999 423.33334" sbt:statusVersion="42">
   <metadata>
-    <sbt:category sbt:id="1" sbt:index="0" sbt:name="Parter"
-                  sbt:color="#3366cc" sbt:price="500" sbt:class="free"/>
-    <sbt:category sbt:id="2" sbt:index="1" sbt:name="Balcony"
-                  sbt:color="#cc3366" sbt:price="800" sbt:class="free"/>
+    <sbt:category sbt:id="1000000010" sbt:index="1" sbt:name="First" sbt:color="#ffffff" sbt:price="0" sbt:class="cat-1"/>
+    <sbt:category sbt:id="1000000020" sbt:index="2" sbt:name="Second" sbt:color="#ffffff" sbt:price="0" sbt:class="cat-2"/>
+    <sbt:category sbt:id="1000000030" sbt:index="3" sbt:name="Third" sbt:color="#ffffff" sbt:price="1250" sbt:class="cat-3"/>
+    <sbt:category sbt:id="1000000040" sbt:index="4" sbt:name="Fourth" sbt:color="#000000" sbt:price="0" sbt:class="cat-4"/>
+    <sbt:category sbt:id="1000000050" sbt:index="5" sbt:name="Fifth" sbt:color="#000000" sbt:price="0" sbt:class="cat-5"/>
+    <sbt:category sbt:id="1000000060" sbt:index="6" sbt:name="Sixth" sbt:color="#000000" sbt:price="0" sbt:class="cat-6"/>
+    <sbt:category sbt:id="1000000070" sbt:index="7" sbt:name="Seventh" sbt:color="#888888" sbt:price="0" sbt:class="cat-7"/>
+    <sbt:category sbt:id="1000000080" sbt:index="8" sbt:name="Eighth" sbt:color="#000000" sbt:price="0" sbt:class="cat-8"/>
+    <sbt:category sbt:id="1000000090" sbt:index="9" sbt:name="Ninth" sbt:color="#aaaaaa" sbt:price="0" sbt:class="cat-9"/>
+    <sbt:category sbt:id="1000000100" sbt:index="10" sbt:name="Tenth" sbt:color="#aaaaaa" sbt:price="0" sbt:class="cat-10"/>
+    <sbt:category sbt:id="1000000110" sbt:index="11" sbt:name="Eleventh" sbt:color="#000000" sbt:price="0" sbt:class="cat-11"/>
+    <sbt:category sbt:id="1000000120" sbt:index="12" sbt:name="Twelfth" sbt:color="#888888" sbt:price="0" sbt:class="cat-12"/>
+    <sbt:category sbt:id="1000000130" sbt:index="13" sbt:name="Thirteenth" sbt:color="#333333" sbt:price="0" sbt:class="cat-13"/>
+    <sbt:category sbt:id="1000000140" sbt:index="14" sbt:name="Fourteenth" sbt:color="#dddddd" sbt:price="0" sbt:class="cat-14"/>
+    <sbt:category sbt:id="1000000150" sbt:index="15" sbt:name="Fifteenth" sbt:color="#000000" sbt:price="0" sbt:class="cat-15"/>
   </metadata>
-
-  <g sbt:sect="Parter">
-    <g sbt:row="3">
-      <circle sbt:id="1001" sbt:state="1" sbt:cat="0" sbt:seat="12" cx="120" cy="100" r="6"/>
-      <circle sbt:id="1002" sbt:state="1" sbt:cat="0" sbt:seat="13" cx="140" cy="100" r="6"/>
-      <circle sbt:id="1003" sbt:state="1" sbt:cat="0" sbt:seat="14" cx="160" cy="100" r="6"/>
-    </g>
-    <g sbt:row="4">
-      <circle sbt:id="1004" sbt:state="1" sbt:cat="0" sbt:seat="12" cx="120" cy="120" r="6"/>
-      <circle sbt:id="1005" sbt:state="4" sbt:cat="0" sbt:seat="13" cx="140" cy="120" r="6"/>
-      <circle sbt:id="1006" sbt:state="1" sbt:cat="0" sbt:seat="14" cx="160" cy="120" r="6"/>
-    </g>
+  <g id="Decor"><sodipodi:namedview id="namedview7" pagecolor="#ffffff" bordercolor="#000000" borderopacity="0.25" inkscape:showpageshadow="2" inkscape:pageopacity="0.0" inkscape:pagecheckerboard="0" inkscape:deskcolor="#d1d1d1" inkscape:document-units="mm" showgrid="false" inkscape:zoom="1" inkscape:cx="545" inkscape:cy="194.5" inkscape:window-width="1920" inkscape:window-height="1001" inkscape:window-x="-9" inkscape:window-y="-9" inkscape:window-maximized="1" inkscape:current-layer="layer1" showguides="true"/><svg:defs id="defs2"/><svg:g inkscape:label="Слой 1" inkscape:groupmode="layer" id="layer1"><svg:text space="preserve" style="font-size:7.40833px;line-height:1.9;font-family:&#39;Roboto Condensed&#39;;-inkscape-font-specification:&#39;Roboto Condensed, &#39;;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="157.67189" y="34.050137" id="text4755"><svg:tspan sodipodi:role="line" id="tspan4753" style="font-size:7.40833px;stroke-width:0.1" x="157.67189" y="34.050137"/></svg:text><svg:g id="g39" transform="translate(276.65757,-20.240625)"><svg:text space="preserve" style="font-style:normal;font-variant:normal;font-weight:600;font-stretch:normal;font-size:2.64583px;line-height:1.08;font-family:&#39;Lucida Sans&#39;;-inkscape-font-specification:&#39;Lucida Sans Semi-Bold&#39;;text-align:start;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="-136.28159" y="212.56816" id="text3222-7-9-8-8-4-9-4-6"><svg:tspan sodipodi:role="line" style="font-style:normal;font-variant:normal;font-weight:600;font-stretch:normal;font-size:2.64583px;line-height:1.08;font-family:&#39;Lucida Sans&#39;;-inkscape-font-specification:&#39;Lucida Sans Semi-Bold&#39;;text-align:start;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="-136.28159" y="212.56816" id="tspan35-7">HALL ENTRANCE</svg:tspan></svg:text><svg:g id="g38-4" transform="translate(-166.36174,-230.94138)"><svg:g id="g37-1"><svg:path style="fill:none;fill-opacity:1;stroke:#060606;stroke-width:0.3;stroke-dasharray:none;stroke-opacity:1" d="m 61.500261,432.50926 2.637646,2.67639" id="path35-5-5" sodipodi:nodetypes="cc"/><svg:path style="fill:none;fill-opacity:1;stroke:#060606;stroke-width:0.3;stroke-dasharray:none;stroke-opacity:1" d="m 61.645715,432.45545 -2.73119,2.72316" id="path35-6" sodipodi:nodetypes="cc"/></svg:g><svg:path style="fill:none;fill-opacity:1;stroke:#060606;stroke-width:0.3;stroke-dasharray:none;stroke-opacity:1" d="m 61.539915,432.69297 v 10.86437" id="path37-6" sodipodi:nodetypes="cc"/></svg:g><svg:g id="g38-0" transform="translate(-206.44612,-230.94138)"><svg:g id="g37-6"><svg:path style="fill:none;fill-opacity:1;stroke:#060606;stroke-width:0.3;stroke-dasharray:none;stroke-opacity:1" d="m 61.500261,432.50926 2.637646,2.67639" id="path35-5-9" sodipodi:nodetypes="cc"/><svg:path style="fill:none;fill-opacity:1;stroke:#060606;stroke-width:0.3;stroke-dasharray:none;stroke-opacity:1" d="m 61.645715,432.45545 -2.73119,2.72316" id="path35-7" sodipodi:nodetypes="cc"/></svg:g><svg:path style="fill:none;fill-opacity:1;stroke:#060606;stroke-width:0.3;stroke-dasharray:none;stroke-opacity:1" d="m 61.539915,432.69297 v 10.86437" id="path37-8" sodipodi:nodetypes="cc"/></svg:g></svg:g><svg:text space="preserve" style="font-size:5.29167px;line-height:2.02;font-family:&#39;Roboto Condensed&#39;;-inkscape-font-specification:&#39;Roboto Condensed, &#39;;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="257.01578" y="83.223579" id="text3222-7-6"><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="257.01578" y="83.223579" id="tspan7594-1">4</svg:tspan><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="257.01578" y="93.91275" id="tspan7596-0">5</svg:tspan><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="257.01578" y="104.60193" id="tspan7598-3">6</svg:tspan><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="257.01578" y="115.2911" id="tspan7600-3">7</svg:tspan><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="257.01578" y="125.98027" id="tspan7602-8">8</svg:tspan><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="257.01578" y="136.66945" id="tspan7604-4">9</svg:tspan><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="257.01578" y="147.35861" id="tspan7608-8">10</svg:tspan><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="257.01578" y="158.04779" id="tspan7612-0">11</svg:tspan><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="257.01578" y="168.73697" id="tspan3-3">12</svg:tspan></svg:text><svg:g id="g20" transform="translate(-3.0070184,-35.983333)"><svg:rect style="fill:none;fill-opacity:1;stroke:#060606;stroke-width:0.3;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1" id="rect4900" width="150.63028" height="17.761045" x="79.139503" y="56.28664" ry="0"/><svg:text space="preserve" style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:semi-condensed;font-size:5.29167px;line-height:1.88;font-family:&#39;Lucida Console&#39;;-inkscape-font-specification:&#39;Lucida Console Semi-Condensed&#39;;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="154.37842" y="66.824684" id="text3222-7-9-8"><svg:tspan sodipodi:role="line" style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:semi-condensed;font-size:5.29167px;font-family:&#39;Lucida Console&#39;;-inkscape-font-specification:&#39;Lucida Console Semi-Condensed&#39;;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="154.37842" y="66.824684" id="tspan7612-1-3">STAGE</svg:tspan></svg:text></svg:g><svg:text space="preserve" style="font-size:5.29167px;line-height:2.02;font-family:&#39;Roboto Condensed&#39;;-inkscape-font-specification:&#39;Roboto Condensed, &#39;;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="46.481964" y="83.223579" id="text3222-7"><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="46.481964" y="83.223579" id="tspan7594">4</svg:tspan><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="46.481964" y="93.91275" id="tspan7596">5</svg:tspan><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="46.481964" y="104.60193" id="tspan7598">6</svg:tspan><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="46.481964" y="115.2911" id="tspan7600">7</svg:tspan><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="46.481964" y="125.98027" id="tspan7602">8</svg:tspan><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="46.481964" y="136.66945" id="tspan7604">9</svg:tspan><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="46.481964" y="147.35861" id="tspan7608">10</svg:tspan><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="46.481964" y="158.04779" id="tspan7612">11</svg:tspan><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="46.481964" y="168.73697" id="tspan3">12</svg:tspan></svg:text><svg:g id="g21" transform="translate(-2.6644305,-35.983333)"><svg:rect style="fill:#eeb549;fill-opacity:1;stroke:#060606;stroke-width:0.3;stroke-dasharray:none;stroke-opacity:1" id="rect20" width="43.391666" height="28.839582" x="132.82083" y="177.8"/><svg:text space="preserve" style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:semi-condensed;font-size:5.29167px;line-height:1.88;font-family:&#39;Lucida Console&#39;;-inkscape-font-specification:&#39;Lucida Console Semi-Condensed&#39;;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="154.38876" y="193.87732" id="text3222-7-9-8-8-5"><svg:tspan sodipodi:role="line" style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:semi-condensed;font-size:5.29167px;font-family:&#39;Lucida Console&#39;;-inkscape-font-specification:&#39;Lucida Console Semi-Condensed&#39;;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="154.38876" y="193.87732" id="tspan7612-1-3-0-5">FOH</svg:tspan></svg:text></svg:g><svg:text space="preserve" style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:semi-condensed;font-size:5.29167px;line-height:1.88;font-family:&#39;Lucida Console&#39;;-inkscape-font-specification:&#39;Lucida Console Semi-Condensed&#39;;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="151.07867" y="14.507638" id="text3222-7-9-8-8-4-0"><svg:tspan sodipodi:role="line" style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:semi-condensed;font-size:5.29167px;font-family:&#39;Lucida Console&#39;;-inkscape-font-specification:&#39;Lucida Console Semi-Condensed&#39;;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="151.07867" y="14.507638" id="tspan7612-1-3-0-7-1">FLOOR</svg:tspan></svg:text><svg:g id="g36" transform="translate(3.6482291,-5.4255714)"/><svg:g id="g38-9" transform="translate(187.5174,-66.692882)"><svg:g id="g37-0"><svg:path style="fill:none;fill-opacity:1;stroke:#060606;stroke-width:0.3;stroke-dasharray:none;stroke-opacity:1" d="m 61.500261,432.50926 2.637646,2.67639" id="path35-5-8" sodipodi:nodetypes="cc"/><svg:path style="fill:none;fill-opacity:1;stroke:#060606;stroke-width:0.3;stroke-dasharray:none;stroke-opacity:1" d="m 61.645715,432.45545 -2.73119,2.72316" id="path35-9" sodipodi:nodetypes="cc"/></svg:g><svg:path style="fill:none;fill-opacity:1;stroke:#060606;stroke-width:0.3;stroke-dasharray:none;stroke-opacity:1" d="m 61.539915,432.69297 v 10.86437" id="path37-3" sodipodi:nodetypes="cc"/></svg:g><svg:text space="preserve" style="font-style:normal;font-variant:normal;font-weight:600;font-stretch:normal;font-size:2.64583px;line-height:1.08;font-family:&#39;Lucida Sans&#39;;-inkscape-font-specification:&#39;Lucida Sans Semi-Bold&#39;;text-align:end;text-anchor:end;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="251.39703" y="382.17276" id="text3222-7-9-8-8-4-9-4-7"><svg:tspan sodipodi:role="line" style="font-style:normal;font-variant:normal;font-weight:600;font-stretch:normal;font-size:2.64583px;line-height:1.08;font-family:&#39;Lucida Sans&#39;;-inkscape-font-specification:&#39;Lucida Sans Semi-Bold&#39;;text-align:end;text-anchor:end;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="251.39703" y="382.17276" id="tspan7612-1-3-0-7-2-1-3">BALCONY</svg:tspan><svg:tspan sodipodi:role="line" style="font-style:normal;font-variant:normal;font-weight:600;font-stretch:normal;font-size:2.64583px;line-height:1.08;font-family:&#39;Lucida Sans&#39;;-inkscape-font-specification:&#39;Lucida Sans Semi-Bold&#39;;text-align:end;text-anchor:end;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="251.39703" y="385.03024" id="tspan35-5">ENTRANCE</svg:tspan></svg:text><svg:text space="preserve" style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:semi-condensed;font-size:5.29167px;line-height:1.88;font-family:&#39;Lucida Console&#39;;-inkscape-font-specification:&#39;Lucida Console Semi-Condensed&#39;;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="151.91289" y="292.02826" id="text3222-7-9-8-8-4-9"><svg:tspan sodipodi:role="line" style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:semi-condensed;font-size:5.29167px;font-family:&#39;Lucida Console&#39;;-inkscape-font-specification:&#39;Lucida Console Semi-Condensed&#39;;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="151.91289" y="292.02826" id="tspan7612-1-3-0-7-2">Ground floor</svg:tspan></svg:text><svg:text space="preserve" style="font-style:normal;font-variant:normal;font-weight:600;font-stretch:normal;font-size:2.64583px;line-height:1.08;font-family:&#39;Lucida Sans&#39;;-inkscape-font-specification:&#39;Lucida Sans Semi-Bold&#39;;text-align:start;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="52.267887" y="382.17276" id="text3222-7-9-8-8-4-9-4"><svg:tspan sodipodi:role="line" style="font-style:normal;font-variant:normal;font-weight:600;font-stretch:normal;font-size:2.64583px;line-height:1.08;font-family:&#39;Lucida Sans&#39;;-inkscape-font-specification:&#39;Lucida Sans Semi-Bold&#39;;text-align:start;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="52.267887" y="382.17276" id="tspan7612-1-3-0-7-2-1">BALCONY</svg:tspan><svg:tspan sodipodi:role="line" style="font-style:normal;font-variant:normal;font-weight:600;font-stretch:normal;font-size:2.64583px;line-height:1.08;font-family:&#39;Lucida Sans&#39;;-inkscape-font-specification:&#39;Lucida Sans Semi-Bold&#39;;text-align:start;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="52.267887" y="385.03024" id="tspan35">ENTRANCE</svg:tspan></svg:text><svg:rect style="fill:none;fill-opacity:1;stroke:#060606;stroke-width:0.3;stroke-dasharray:0.9, 0.9;stroke-dashoffset:0;stroke-opacity:1" id="rect4900-9" width="150.63028" height="17.761045" x="76.537025" y="221.84383" ry="0"/><svg:text space="preserve" style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:semi-condensed;font-size:5.29167px;line-height:1.88;font-family:&#39;Lucida Console&#39;;-inkscape-font-specification:&#39;Lucida Console Semi-Condensed&#39;;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="151.77594" y="230.93086" id="text3222-7-9-8-8"><svg:tspan sodipodi:role="line" style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:semi-condensed;font-size:5.29167px;font-family:&#39;Lucida Console&#39;;-inkscape-font-specification:&#39;Lucida Console Semi-Condensed&#39;;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="151.77594" y="230.93086" id="tspan7612-1-3-0">STAGE</svg:tspan></svg:text><svg:text space="preserve" style="font-size:5.29167px;line-height:2.02;font-family:&#39;Roboto Condensed&#39;;-inkscape-font-specification:&#39;Roboto Condensed, &#39;;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="230.436" y="354.5903" id="text3222-7-3"><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="230.436" y="354.5903" id="tspan4061-0-8">1</svg:tspan><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="230.436" y="365.27948" id="tspan7590-7">2</svg:tspan><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="230.436" y="375.96866" id="tspan7592-2">3</svg:tspan><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="230.436" y="386.65781" id="tspan7594-6">4</svg:tspan><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="230.436" y="397.34698" id="tspan3-4">5</svg:tspan></svg:text><svg:text space="preserve" style="font-size:5.29167px;line-height:2.02;font-family:&#39;Roboto Condensed&#39;;-inkscape-font-specification:&#39;Roboto Condensed, &#39;;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="73.273506" y="354.32574" id="text3222-7-2"><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="73.273506" y="354.32574" id="tspan4061-0-4">1</svg:tspan><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="73.273506" y="365.01492" id="tspan7590-5">2</svg:tspan><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="73.273506" y="375.7041" id="tspan7592-0">3</svg:tspan><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="73.273506" y="386.39325" id="tspan7594-4">4</svg:tspan><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="73.273506" y="397.08243" id="tspan3-0">5</svg:tspan></svg:text><svg:text space="preserve" style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:semi-condensed;font-size:5.29167px;line-height:1.88;font-family:&#39;Lucida Console&#39;;-inkscape-font-specification:&#39;Lucida Console Semi-Condensed&#39;;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="150.86057" y="213.71184" id="text3222-7-9-8-8-4"><svg:tspan sodipodi:role="line" style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:semi-condensed;font-size:5.29167px;font-family:&#39;Lucida Console&#39;;-inkscape-font-specification:&#39;Lucida Console Semi-Condensed&#39;;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="150.86057" y="213.71184" id="tspan7612-1-3-0-7">BALCONY</svg:tspan></svg:text><svg:g id="g38" transform="translate(-6.7270865,-66.584298)"><svg:g id="g37"><svg:path style="fill:none;fill-opacity:1;stroke:#060606;stroke-width:0.3;stroke-dasharray:none;stroke-opacity:1" d="m 61.500261,432.50926 2.637646,2.67639" id="path35-5" sodipodi:nodetypes="cc"/><svg:path style="fill:none;fill-opacity:1;stroke:#060606;stroke-width:0.3;stroke-dasharray:none;stroke-opacity:1" d="m 61.645715,432.45545 -2.73119,2.72316" id="path35" sodipodi:nodetypes="cc"/></svg:g><svg:path style="fill:none;fill-opacity:1;stroke:#060606;stroke-width:0.3;stroke-dasharray:none;stroke-opacity:1" d="m 61.539915,432.69297 v 10.86437" id="path37" sodipodi:nodetypes="cc"/></svg:g><svg:rect style="fill:none;fill-opacity:1;stroke:#464646;stroke-width:0.1;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1" id="rect41" width="234.60919" height="194.19804" x="34.547638" y="5.238483" ry="10.851143"/><svg:rect style="fill:none;fill-opacity:1;stroke:#464646;stroke-width:0.1;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1" id="rect41-4" width="235.35754" height="209.53931" x="34.173462" y="202.43344" ry="10.851143"/><svg:g id="g39-6" transform="translate(-76.378602,-148.00285)"><svg:g id="g42" transform="translate(276.98477,-9.5415221)"><svg:text space="preserve" style="font-style:normal;font-variant:normal;font-weight:600;font-stretch:normal;font-size:2.64583px;line-height:1.08;font-family:&#39;Lucida Sans&#39;;-inkscape-font-specification:&#39;Lucida Sans Semi-Bold&#39;;text-align:start;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="-134.59779" y="207.3131" id="text3222-7-9-8-8-4-9-4-6-1"><svg:tspan sodipodi:role="line" style="font-style:normal;font-variant:normal;font-weight:600;font-stretch:normal;font-size:2.64583px;line-height:1.08;font-family:&#39;Lucida Sans&#39;;-inkscape-font-specification:&#39;Lucida Sans Semi-Bold&#39;;text-align:start;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="-134.59779" y="207.3131" id="tspan35-7-2">BACKSTAGE ENTRANCE</svg:tspan></svg:text><svg:g id="g38-0-3" transform="rotate(-90,-156.41872,424.30248)"><svg:g id="g37-6-4"><svg:path style="fill:none;fill-opacity:1;stroke:#060606;stroke-width:0.3;stroke-dasharray:none;stroke-opacity:1" d="m 61.500261,432.50926 2.637646,2.67639" id="path35-5-9-1" sodipodi:nodetypes="cc"/><svg:path style="fill:none;fill-opacity:1;stroke:#060606;stroke-width:0.3;stroke-dasharray:none;stroke-opacity:1" d="m 61.645715,432.45545 -2.73119,2.72316" id="path35-7-5" sodipodi:nodetypes="cc"/></svg:g><svg:path style="fill:none;fill-opacity:1;stroke:#060606;stroke-width:0.3;stroke-dasharray:none;stroke-opacity:1" d="m 61.539915,432.69297 v 10.86437" id="path37-8-2" sodipodi:nodetypes="cc"/></svg:g></svg:g></svg:g><svg:g id="g52" transform="translate(280.82835,-10.168796)"><svg:text space="preserve" style="font-style:normal;font-variant:normal;font-weight:600;font-stretch:normal;font-size:2.64583px;line-height:1.08;font-family:&#39;Lucida Sans&#39;;-inkscape-font-specification:&#39;Lucida Sans Semi-Bold&#39;;text-align:start;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="-146.10849" y="-17.359562" id="text3222-7-9-8-8-4-9-4-6-1-6" transform="rotate(-90)"><svg:tspan sodipodi:role="line" style="font-style:normal;font-variant:normal;font-weight:600;font-stretch:normal;font-size:2.64583px;line-height:1.08;font-family:&#39;Lucida Sans&#39;;-inkscape-font-specification:&#39;Lucida Sans Semi-Bold&#39;;text-align:start;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="-146.10849" y="-17.359562" id="tspan35-7-2-6">SMALL STAGE ENTRANCE</svg:tspan></svg:text><svg:g id="g38-0-3-2" transform="rotate(-90,-128.53308,319.04916)"><svg:g id="g37-6-4-3" transform="matrix(1,0,0,-1,0,867.64017)"><svg:path style="fill:none;fill-opacity:1;stroke:#060606;stroke-width:0.3;stroke-dasharray:none;stroke-opacity:1" d="m 61.500261,432.50926 2.637646,2.67639" id="path35-5-9-1-8" sodipodi:nodetypes="cc"/><svg:path style="fill:none;fill-opacity:1;stroke:#060606;stroke-width:0.3;stroke-dasharray:none;stroke-opacity:1" d="m 61.645715,432.45545 -2.73119,2.72316" id="path35-7-5-2" sodipodi:nodetypes="cc"/></svg:g></svg:g></svg:g><svg:text space="preserve" style="font-size:5.29167px;line-height:2.02;font-family:&#39;Roboto Condensed&#39;;-inkscape-font-specification:&#39;Roboto Condensed, &#39;;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="112.34521" y="50.507069" id="text3222-7-6-1"><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="112.34521" y="50.507069" id="tspan3-3-6">1</svg:tspan></svg:text><svg:text space="preserve" style="font-size:5.29167px;line-height:2.02;font-family:&#39;Roboto Condensed&#39;;-inkscape-font-specification:&#39;Roboto Condensed, &#39;;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="89.585869" y="61.570705" id="text3222-7-6-1-8"><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="89.585869" y="61.570705" id="tspan3-3-6-1">2</svg:tspan></svg:text><svg:text space="preserve" style="font-size:5.29167px;line-height:2.02;font-family:&#39;Roboto Condensed&#39;;-inkscape-font-specification:&#39;Roboto Condensed, &#39;;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="191.89575" y="50.251839" id="text3222-7-6-1-82"><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="191.89575" y="50.251839" id="tspan3-3-6-45">1</svg:tspan></svg:text><svg:text space="preserve" style="font-size:5.29167px;line-height:2.02;font-family:&#39;Roboto Condensed&#39;;-inkscape-font-specification:&#39;Roboto Condensed, &#39;;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="213.13033" y="61.196526" id="text3222-7-6-1-9"><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="213.13033" y="61.196526" id="tspan3-3-6-9">2</svg:tspan></svg:text><svg:text space="preserve" style="font-size:5.29167px;line-height:2.02;font-family:&#39;Roboto Condensed&#39;;-inkscape-font-specification:&#39;Roboto Condensed, &#39;;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="246.52565" y="72.047668" id="text3222-7-6-1-3"><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="246.52565" y="72.047668" id="tspan3-3-6-8">3</svg:tspan></svg:text><svg:text space="preserve" style="font-size:5.29167px;line-height:2.02;font-family:&#39;Roboto Condensed&#39;;-inkscape-font-specification:&#39;Roboto Condensed, &#39;;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="57.896843" y="71.954124" id="text3222-7-6-1-1"><svg:tspan sodipodi:role="line" style="font-size:5.29167px;line-height:2.02;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1" x="57.896843" y="71.954124" id="tspan3-3-6-4">3</svg:tspan></svg:text></svg:g></g>
+  <g sbt:sect="Balcony center">
+      <g sbt:row="1">
+        <circle sbt:id="10000" sbt:state="1" sbt:cat="3" sbt:seat="1" cx="-69.301842" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10001" sbt:state="1" sbt:cat="3" sbt:seat="10" cx="-165.47649" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10002" sbt:state="1" sbt:cat="3" sbt:seat="11" cx="-176.16254" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10003" sbt:state="1" sbt:cat="3" sbt:seat="12" cx="-186.8486" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10004" sbt:state="1" sbt:cat="3" sbt:seat="13" cx="-197.73727" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10005" sbt:state="1" sbt:cat="3" sbt:seat="14" cx="-208.39061" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10006" sbt:state="1" sbt:cat="3" sbt:seat="2" cx="-79.987907" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10007" sbt:state="4" sbt:cat="3" sbt:seat="3" cx="-90.673988" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10008" sbt:state="1" sbt:cat="3" sbt:seat="4" cx="-101.36006" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10009" sbt:state="1" sbt:cat="3" sbt:seat="5" cx="-112.04614" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10010" sbt:state="1" sbt:cat="3" sbt:seat="6" cx="-122.73217" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10011" sbt:state="4" sbt:cat="3" sbt:seat="7" cx="-133.41826" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10012" sbt:state="1" sbt:cat="3" sbt:seat="8" cx="-144.10432" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10013" sbt:state="1" sbt:cat="3" sbt:seat="9" cx="-154.79039" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+      </g>
+      <g sbt:row="2">
+        <circle sbt:id="10014" sbt:state="4" sbt:cat="3" sbt:seat="1" cx="-69.301842" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10015" sbt:state="1" sbt:cat="3" sbt:seat="10" cx="-165.47649" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10016" sbt:state="1" sbt:cat="3" sbt:seat="11" cx="-176.16254" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10017" sbt:state="1" sbt:cat="3" sbt:seat="12" cx="-186.8486" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10018" sbt:state="1" sbt:cat="3" sbt:seat="13" cx="-197.73727" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10019" sbt:state="1" sbt:cat="3" sbt:seat="14" cx="-208.39061" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10020" sbt:state="1" sbt:cat="3" sbt:seat="2" cx="-79.987907" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10021" sbt:state="4" sbt:cat="3" sbt:seat="3" cx="-90.673988" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10022" sbt:state="4" sbt:cat="3" sbt:seat="4" cx="-101.36006" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10023" sbt:state="1" sbt:cat="3" sbt:seat="5" cx="-112.04614" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10024" sbt:state="1" sbt:cat="3" sbt:seat="6" cx="-122.73217" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10025" sbt:state="1" sbt:cat="3" sbt:seat="7" cx="-133.41826" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10026" sbt:state="1" sbt:cat="3" sbt:seat="8" cx="-144.10432" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10027" sbt:state="1" sbt:cat="3" sbt:seat="9" cx="-154.79039" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+      </g>
+      <g sbt:row="3">
+        <circle sbt:id="10028" sbt:state="4" sbt:cat="3" sbt:seat="1" cx="-69.301842" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10029" sbt:state="1" sbt:cat="3" sbt:seat="10" cx="-165.47649" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10030" sbt:state="1" sbt:cat="3" sbt:seat="11" cx="-176.16254" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10031" sbt:state="1" sbt:cat="3" sbt:seat="12" cx="-186.8486" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10032" sbt:state="1" sbt:cat="3" sbt:seat="13" cx="-197.73727" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10033" sbt:state="4" sbt:cat="3" sbt:seat="14" cx="-208.39061" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10034" sbt:state="1" sbt:cat="3" sbt:seat="2" cx="-79.987907" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10035" sbt:state="4" sbt:cat="3" sbt:seat="3" cx="-90.673988" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10036" sbt:state="1" sbt:cat="3" sbt:seat="4" cx="-101.36006" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10037" sbt:state="1" sbt:cat="3" sbt:seat="5" cx="-112.04614" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10038" sbt:state="1" sbt:cat="3" sbt:seat="6" cx="-122.73217" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10039" sbt:state="1" sbt:cat="3" sbt:seat="7" cx="-133.41826" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10040" sbt:state="1" sbt:cat="3" sbt:seat="8" cx="-144.10432" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10041" sbt:state="1" sbt:cat="3" sbt:seat="9" cx="-154.79039" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+      </g>
+      <g sbt:row="4">
+        <circle sbt:id="10042" sbt:state="4" sbt:cat="3" sbt:seat="1" cx="-69.301842" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10043" sbt:state="1" sbt:cat="3" sbt:seat="10" cx="-165.47649" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10044" sbt:state="4" sbt:cat="3" sbt:seat="11" cx="-176.16254" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10045" sbt:state="1" sbt:cat="3" sbt:seat="12" cx="-186.8486" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10046" sbt:state="1" sbt:cat="3" sbt:seat="13" cx="-197.73727" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10047" sbt:state="1" sbt:cat="3" sbt:seat="14" cx="-208.39061" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10048" sbt:state="1" sbt:cat="3" sbt:seat="2" cx="-79.987907" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10049" sbt:state="4" sbt:cat="3" sbt:seat="3" cx="-90.673988" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10050" sbt:state="1" sbt:cat="3" sbt:seat="4" cx="-101.36006" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10051" sbt:state="1" sbt:cat="3" sbt:seat="5" cx="-112.04614" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10052" sbt:state="1" sbt:cat="3" sbt:seat="6" cx="-122.73217" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10053" sbt:state="1" sbt:cat="3" sbt:seat="7" cx="-133.41826" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10054" sbt:state="1" sbt:cat="3" sbt:seat="8" cx="-144.10432" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10055" sbt:state="4" sbt:cat="3" sbt:seat="9" cx="-154.79039" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+      </g>
+      <g sbt:row="5">
+        <circle sbt:id="10056" sbt:state="4" sbt:cat="3" sbt:seat="1" cx="-69.301842" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10057" sbt:state="1" sbt:cat="3" sbt:seat="10" cx="-165.47649" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10058" sbt:state="1" sbt:cat="3" sbt:seat="11" cx="-176.16254" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10059" sbt:state="1" sbt:cat="3" sbt:seat="12" cx="-186.8486" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10060" sbt:state="1" sbt:cat="3" sbt:seat="13" cx="-197.73727" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10061" sbt:state="1" sbt:cat="3" sbt:seat="14" cx="-208.39061" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10062" sbt:state="1" sbt:cat="3" sbt:seat="2" cx="-79.987907" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10063" sbt:state="4" sbt:cat="3" sbt:seat="3" cx="-90.673988" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10064" sbt:state="1" sbt:cat="3" sbt:seat="4" cx="-101.36006" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10065" sbt:state="1" sbt:cat="3" sbt:seat="5" cx="-112.04614" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10066" sbt:state="4" sbt:cat="3" sbt:seat="6" cx="-122.73217" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10067" sbt:state="1" sbt:cat="3" sbt:seat="7" cx="-133.41826" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10068" sbt:state="1" sbt:cat="3" sbt:seat="8" cx="-144.10432" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10069" sbt:state="1" sbt:cat="3" sbt:seat="9" cx="-154.79039" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+      </g>
   </g>
-
-  <g sbt:sect="Balcony">
-    <g sbt:row="1">
-      <circle sbt:id="2001" sbt:state="1" sbt:cat="1" sbt:seat="1" cx="240" cy="60" r="6"/>
-      <circle sbt:id="2002" sbt:state="1" sbt:cat="1" sbt:seat="2" cx="260" cy="60" r="6"/>
-    </g>
+  <g sbt:sect="Balcony left">
+      <g sbt:row="no">
+        <circle sbt:id="10070" sbt:state="4" sbt:cat="3" sbt:seat="1" cx="-69.301842" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10071" sbt:state="1" sbt:cat="3" sbt:seat="10" cx="-165.47649" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10072" sbt:state="1" sbt:cat="3" sbt:seat="2" cx="-79.987907" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10073" sbt:state="1" sbt:cat="3" sbt:seat="3" cx="-90.673988" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10074" sbt:state="1" sbt:cat="3" sbt:seat="4" cx="-101.36006" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10075" sbt:state="1" sbt:cat="3" sbt:seat="5" cx="-112.04614" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10076" sbt:state="1" sbt:cat="3" sbt:seat="6" cx="-122.73217" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10077" sbt:state="4" sbt:cat="3" sbt:seat="7" cx="-133.41826" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10078" sbt:state="1" sbt:cat="3" sbt:seat="8" cx="-144.10432" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10079" sbt:state="1" sbt:cat="3" sbt:seat="9" cx="-154.79039" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+      </g>
+  </g>
+  <g sbt:sect="Balcony right">
+      <g sbt:row="no">
+        <circle sbt:id="10080" sbt:state="1" sbt:cat="3" sbt:seat="1" cx="-69.301842" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10081" sbt:state="1" sbt:cat="3" sbt:seat="10" cx="-165.47649" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10082" sbt:state="1" sbt:cat="3" sbt:seat="2" cx="-79.987907" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10083" sbt:state="1" sbt:cat="3" sbt:seat="3" cx="-90.673988" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10084" sbt:state="4" sbt:cat="3" sbt:seat="4" cx="-101.36006" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10085" sbt:state="1" sbt:cat="3" sbt:seat="5" cx="-112.04614" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10086" sbt:state="1" sbt:cat="3" sbt:seat="6" cx="-122.73217" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10087" sbt:state="1" sbt:cat="3" sbt:seat="7" cx="-133.41826" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10088" sbt:state="4" sbt:cat="3" sbt:seat="8" cx="-144.10432" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10089" sbt:state="1" sbt:cat="3" sbt:seat="9" cx="-154.79039" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+      </g>
+  </g>
+  <g sbt:sect="Parter">
+      <g sbt:row="1">
+        <circle sbt:id="10090" sbt:state="1" sbt:cat="3" sbt:seat="10" cx="-165.31006" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10091" sbt:state="4" sbt:cat="3" sbt:seat="11" cx="-175.99611" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10092" sbt:state="1" sbt:cat="3" sbt:seat="12" cx="-186.68217" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10093" sbt:state="1" sbt:cat="3" sbt:seat="6" cx="-122.56574" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10094" sbt:state="1" sbt:cat="3" sbt:seat="7" cx="-133.25183" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10095" sbt:state="1" sbt:cat="3" sbt:seat="8" cx="-143.9379" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10096" sbt:state="1" sbt:cat="3" sbt:seat="9" cx="-154.62396" cy="84.911774" r="3.8877928" fill="#ffffff"/>
+      </g>
+      <g sbt:row="10">
+        <circle sbt:id="10097" sbt:state="1" sbt:cat="3" sbt:seat="1" cx="-58.303925" cy="181.46104" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10098" sbt:state="4" sbt:cat="3" sbt:seat="12" cx="-186.68217" cy="181.46104" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10099" sbt:state="4" sbt:cat="3" sbt:seat="13" cx="-197.57085" cy="181.46104" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10100" sbt:state="1" sbt:cat="3" sbt:seat="14" cx="-208.22418" cy="181.46104" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10101" sbt:state="1" sbt:cat="3" sbt:seat="15" cx="-229.74174" cy="181.46104" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10102" sbt:state="1" sbt:cat="3" sbt:seat="16" cx="-240.39508" cy="181.46104" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10103" sbt:state="1" sbt:cat="3" sbt:seat="17" cx="-251.04843" cy="181.46104" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10104" sbt:state="1" sbt:cat="3" sbt:seat="2" cx="-68.98999" cy="181.46104" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10105" sbt:state="4" sbt:cat="3" sbt:seat="3" cx="-79.676071" cy="181.46104" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10106" sbt:state="1" sbt:cat="3" sbt:seat="4" cx="-101.19364" cy="181.46104" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10107" sbt:state="1" sbt:cat="3" sbt:seat="5" cx="-111.87972" cy="181.46104" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10108" sbt:state="1" sbt:cat="3" sbt:seat="6" cx="-122.56574" cy="181.46104" r="3.8877928" fill="#ffffff"/>
+      </g>
+      <g sbt:row="11">
+        <circle sbt:id="10109" sbt:state="1" sbt:cat="3" sbt:seat="1" cx="-58.303925" cy="192.18874" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10110" sbt:state="4" sbt:cat="3" sbt:seat="12" cx="-186.68217" cy="192.18874" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10111" sbt:state="1" sbt:cat="3" sbt:seat="13" cx="-197.57085" cy="192.18874" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10112" sbt:state="4" sbt:cat="3" sbt:seat="14" cx="-208.22418" cy="192.18874" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10113" sbt:state="1" sbt:cat="3" sbt:seat="15" cx="-229.74174" cy="192.18874" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10114" sbt:state="1" sbt:cat="3" sbt:seat="16" cx="-240.39508" cy="192.18874" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10115" sbt:state="1" sbt:cat="3" sbt:seat="17" cx="-251.04843" cy="192.18874" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10116" sbt:state="1" sbt:cat="3" sbt:seat="2" cx="-68.98999" cy="192.18874" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10117" sbt:state="1" sbt:cat="3" sbt:seat="3" cx="-79.676071" cy="192.18874" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10118" sbt:state="1" sbt:cat="3" sbt:seat="4" cx="-101.19364" cy="192.18874" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10119" sbt:state="4" sbt:cat="3" sbt:seat="5" cx="-111.87972" cy="192.18874" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10120" sbt:state="1" sbt:cat="3" sbt:seat="6" cx="-122.56574" cy="192.18874" r="3.8877928" fill="#ffffff"/>
+      </g>
+      <g sbt:row="12">
+        <circle sbt:id="10121" sbt:state="4" sbt:cat="3" sbt:seat="1" cx="-58.303925" cy="202.91643" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10122" sbt:state="1" sbt:cat="3" sbt:seat="12" cx="-186.68217" cy="202.91643" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10123" sbt:state="1" sbt:cat="3" sbt:seat="13" cx="-197.57085" cy="202.91643" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10124" sbt:state="1" sbt:cat="3" sbt:seat="15" cx="-229.74174" cy="202.91643" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10125" sbt:state="1" sbt:cat="3" sbt:seat="16" cx="-240.39508" cy="202.91643" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10126" sbt:state="4" sbt:cat="3" sbt:seat="17" cx="-251.04843" cy="202.91643" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10127" sbt:state="1" sbt:cat="3" sbt:seat="2" cx="-68.98999" cy="202.91643" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10128" sbt:state="1" sbt:cat="3" sbt:seat="3" cx="-79.676071" cy="202.91643" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10129" sbt:state="1" sbt:cat="3" sbt:seat="4" cx="-101.19364" cy="202.91643" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10130" sbt:state="1" sbt:cat="3" sbt:seat="5" cx="-111.87972" cy="202.91643" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10131" sbt:state="1" sbt:cat="3" sbt:seat="6" cx="-122.56574" cy="202.91643" r="3.8877928" fill="#ffffff"/>
+      </g>
+      <g sbt:row="2">
+        <circle sbt:id="10132" sbt:state="4" sbt:cat="3" sbt:seat="10" cx="-165.31006" cy="95.639473" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10133" sbt:state="4" sbt:cat="3" sbt:seat="11" cx="-175.99611" cy="95.639473" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10134" sbt:state="1" sbt:cat="3" sbt:seat="12" cx="-186.68217" cy="95.639473" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10135" sbt:state="1" sbt:cat="3" sbt:seat="13" cx="-197.57085" cy="95.639473" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10136" sbt:state="1" sbt:cat="3" sbt:seat="14" cx="-208.22418" cy="95.639473" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10137" sbt:state="1" sbt:cat="3" sbt:seat="4" cx="-101.19364" cy="95.639473" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10138" sbt:state="1" sbt:cat="3" sbt:seat="5" cx="-111.87972" cy="95.639473" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10139" sbt:state="1" sbt:cat="3" sbt:seat="6" cx="-122.56574" cy="95.639473" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10140" sbt:state="4" sbt:cat="3" sbt:seat="7" cx="-133.25183" cy="95.639473" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10141" sbt:state="1" sbt:cat="3" sbt:seat="8" cx="-143.9379" cy="95.639473" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10142" sbt:state="1" sbt:cat="3" sbt:seat="9" cx="-154.62396" cy="95.639473" r="3.8877928" fill="#ffffff"/>
+      </g>
+      <g sbt:row="3">
+        <circle sbt:id="10143" sbt:state="4" sbt:cat="3" sbt:seat="10" cx="-165.31006" cy="106.36716" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10144" sbt:state="1" sbt:cat="3" sbt:seat="11" cx="-175.99611" cy="106.36716" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10145" sbt:state="1" sbt:cat="3" sbt:seat="12" cx="-186.68217" cy="106.36716" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10146" sbt:state="1" sbt:cat="3" sbt:seat="13" cx="-197.57085" cy="106.36716" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10147" sbt:state="4" sbt:cat="3" sbt:seat="14" cx="-208.22418" cy="106.36716" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10148" sbt:state="1" sbt:cat="3" sbt:seat="15" cx="-229.74174" cy="106.36716" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10149" sbt:state="1" sbt:cat="3" sbt:seat="16" cx="-240.39508" cy="106.36716" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10150" sbt:state="1" sbt:cat="3" sbt:seat="2" cx="-68.98999" cy="106.36716" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10151" sbt:state="1" sbt:cat="3" sbt:seat="3" cx="-79.676071" cy="106.36716" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10152" sbt:state="1" sbt:cat="3" sbt:seat="4" cx="-101.19364" cy="106.36716" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10153" sbt:state="1" sbt:cat="3" sbt:seat="5" cx="-111.87972" cy="106.36716" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10154" sbt:state="4" sbt:cat="3" sbt:seat="6" cx="-122.56574" cy="106.36716" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10155" sbt:state="1" sbt:cat="3" sbt:seat="7" cx="-133.25183" cy="106.36716" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10156" sbt:state="1" sbt:cat="3" sbt:seat="8" cx="-143.9379" cy="106.36716" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10157" sbt:state="1" sbt:cat="3" sbt:seat="9" cx="-154.62396" cy="106.36716" r="3.8877928" fill="#ffffff"/>
+      </g>
+      <g sbt:row="4">
+        <circle sbt:id="10158" sbt:state="1" sbt:cat="3" sbt:seat="1" cx="-58.303925" cy="117.09486" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10159" sbt:state="1" sbt:cat="3" sbt:seat="10" cx="-165.31006" cy="117.09486" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10160" sbt:state="1" sbt:cat="3" sbt:seat="11" cx="-175.99611" cy="117.09486" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10161" sbt:state="4" sbt:cat="3" sbt:seat="12" cx="-186.68217" cy="117.09486" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10162" sbt:state="1" sbt:cat="3" sbt:seat="13" cx="-197.57085" cy="117.09486" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10163" sbt:state="1" sbt:cat="3" sbt:seat="14" cx="-208.22418" cy="117.09486" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10164" sbt:state="1" sbt:cat="3" sbt:seat="15" cx="-229.74174" cy="117.09486" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10165" sbt:state="4" sbt:cat="3" sbt:seat="16" cx="-240.39508" cy="117.09486" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10166" sbt:state="1" sbt:cat="3" sbt:seat="17" cx="-251.04843" cy="117.09486" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10167" sbt:state="1" sbt:cat="3" sbt:seat="2" cx="-68.98999" cy="117.09486" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10168" sbt:state="4" sbt:cat="3" sbt:seat="3" cx="-79.676071" cy="117.09486" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10169" sbt:state="1" sbt:cat="3" sbt:seat="4" cx="-101.19364" cy="117.09486" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10170" sbt:state="1" sbt:cat="3" sbt:seat="5" cx="-111.87972" cy="117.09486" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10171" sbt:state="1" sbt:cat="3" sbt:seat="6" cx="-122.56574" cy="117.09486" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10172" sbt:state="1" sbt:cat="3" sbt:seat="7" cx="-133.25183" cy="117.09486" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10173" sbt:state="1" sbt:cat="3" sbt:seat="8" cx="-143.9379" cy="117.09486" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10174" sbt:state="1" sbt:cat="3" sbt:seat="9" cx="-154.62396" cy="117.09486" r="3.8877928" fill="#ffffff"/>
+      </g>
+      <g sbt:row="5">
+        <circle sbt:id="10175" sbt:state="4" sbt:cat="3" sbt:seat="1" cx="-58.303925" cy="127.82256" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10176" sbt:state="4" sbt:cat="3" sbt:seat="10" cx="-165.31006" cy="127.82256" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10177" sbt:state="1" sbt:cat="3" sbt:seat="11" cx="-175.99611" cy="127.82256" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10178" sbt:state="1" sbt:cat="3" sbt:seat="12" cx="-186.68217" cy="127.82256" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10179" sbt:state="1" sbt:cat="3" sbt:seat="13" cx="-197.57085" cy="127.82256" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10180" sbt:state="1" sbt:cat="3" sbt:seat="14" cx="-208.22418" cy="127.82256" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10181" sbt:state="1" sbt:cat="3" sbt:seat="15" cx="-229.74174" cy="127.82256" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10182" sbt:state="4" sbt:cat="3" sbt:seat="16" cx="-240.39508" cy="127.82256" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10183" sbt:state="1" sbt:cat="3" sbt:seat="17" cx="-251.04843" cy="127.82256" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10184" sbt:state="1" sbt:cat="3" sbt:seat="2" cx="-68.98999" cy="127.82256" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10185" sbt:state="1" sbt:cat="3" sbt:seat="3" cx="-79.676071" cy="127.82256" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10186" sbt:state="1" sbt:cat="3" sbt:seat="4" cx="-101.19364" cy="127.82256" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10187" sbt:state="4" sbt:cat="3" sbt:seat="5" cx="-111.87972" cy="127.82256" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10188" sbt:state="1" sbt:cat="3" sbt:seat="6" cx="-122.56574" cy="127.82256" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10189" sbt:state="4" sbt:cat="3" sbt:seat="7" cx="-133.25183" cy="127.82256" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10190" sbt:state="1" sbt:cat="3" sbt:seat="8" cx="-143.9379" cy="127.82256" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10191" sbt:state="1" sbt:cat="3" sbt:seat="9" cx="-154.62396" cy="127.82256" r="3.8877928" fill="#ffffff"/>
+      </g>
+      <g sbt:row="6">
+        <circle sbt:id="10192" sbt:state="1" sbt:cat="3" sbt:seat="1" cx="-58.303925" cy="138.55026" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10193" sbt:state="1" sbt:cat="3" sbt:seat="10" cx="-165.31006" cy="138.55026" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10194" sbt:state="1" sbt:cat="3" sbt:seat="11" cx="-175.99611" cy="138.55026" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10195" sbt:state="1" sbt:cat="3" sbt:seat="12" cx="-186.68217" cy="138.55026" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10196" sbt:state="4" sbt:cat="3" sbt:seat="13" cx="-197.57085" cy="138.55026" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10197" sbt:state="1" sbt:cat="3" sbt:seat="14" cx="-208.22418" cy="138.55026" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10198" sbt:state="4" sbt:cat="3" sbt:seat="15" cx="-229.74174" cy="138.55026" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10199" sbt:state="1" sbt:cat="3" sbt:seat="16" cx="-240.39508" cy="138.55026" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10200" sbt:state="1" sbt:cat="3" sbt:seat="17" cx="-251.04843" cy="138.55026" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10201" sbt:state="1" sbt:cat="3" sbt:seat="2" cx="-68.98999" cy="138.55026" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10202" sbt:state="1" sbt:cat="3" sbt:seat="3" cx="-79.676071" cy="138.55026" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10203" sbt:state="4" sbt:cat="3" sbt:seat="4" cx="-101.19364" cy="138.55026" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10204" sbt:state="1" sbt:cat="3" sbt:seat="5" cx="-111.87972" cy="138.55026" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10205" sbt:state="1" sbt:cat="3" sbt:seat="6" cx="-122.56574" cy="138.55026" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10206" sbt:state="1" sbt:cat="3" sbt:seat="7" cx="-133.25183" cy="138.55026" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10207" sbt:state="1" sbt:cat="3" sbt:seat="8" cx="-143.9379" cy="138.55026" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10208" sbt:state="1" sbt:cat="3" sbt:seat="9" cx="-154.62396" cy="138.55026" r="3.8877928" fill="#ffffff"/>
+      </g>
+      <g sbt:row="7">
+        <circle sbt:id="10209" sbt:state="4" sbt:cat="3" sbt:seat="1" cx="-58.303925" cy="149.27795" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10210" sbt:state="4" sbt:cat="3" sbt:seat="10" cx="-165.31006" cy="149.27795" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10211" sbt:state="1" sbt:cat="3" sbt:seat="11" cx="-175.99611" cy="149.27795" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10212" sbt:state="1" sbt:cat="3" sbt:seat="12" cx="-186.68217" cy="149.27795" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10213" sbt:state="1" sbt:cat="3" sbt:seat="13" cx="-197.57085" cy="149.27795" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10214" sbt:state="1" sbt:cat="3" sbt:seat="14" cx="-208.22418" cy="149.27795" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10215" sbt:state="1" sbt:cat="3" sbt:seat="15" cx="-229.74174" cy="149.27795" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10216" sbt:state="1" sbt:cat="3" sbt:seat="16" cx="-240.39508" cy="149.27795" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10217" sbt:state="4" sbt:cat="3" sbt:seat="17" cx="-251.04843" cy="149.27795" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10218" sbt:state="1" sbt:cat="3" sbt:seat="2" cx="-68.98999" cy="149.27795" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10219" sbt:state="1" sbt:cat="3" sbt:seat="3" cx="-79.676071" cy="149.27795" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10220" sbt:state="4" sbt:cat="3" sbt:seat="4" cx="-101.19364" cy="149.27795" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10221" sbt:state="1" sbt:cat="3" sbt:seat="5" cx="-111.87972" cy="149.27795" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10222" sbt:state="1" sbt:cat="3" sbt:seat="6" cx="-122.56574" cy="149.27795" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10223" sbt:state="1" sbt:cat="3" sbt:seat="7" cx="-133.25183" cy="149.27795" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10224" sbt:state="4" sbt:cat="3" sbt:seat="8" cx="-143.9379" cy="149.27795" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10225" sbt:state="1" sbt:cat="3" sbt:seat="9" cx="-154.62396" cy="149.27795" r="3.8877928" fill="#ffffff"/>
+      </g>
+      <g sbt:row="8">
+        <circle sbt:id="10226" sbt:state="1" sbt:cat="3" sbt:seat="1" cx="-58.303925" cy="160.00565" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10227" sbt:state="1" sbt:cat="3" sbt:seat="10" cx="-165.31006" cy="160.00565" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10228" sbt:state="1" sbt:cat="3" sbt:seat="11" cx="-175.99611" cy="160.00565" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10229" sbt:state="1" sbt:cat="3" sbt:seat="12" cx="-186.68217" cy="160.00565" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10230" sbt:state="1" sbt:cat="3" sbt:seat="13" cx="-197.57085" cy="160.00565" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10231" sbt:state="4" sbt:cat="3" sbt:seat="14" cx="-208.22418" cy="160.00565" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10232" sbt:state="1" sbt:cat="3" sbt:seat="15" cx="-229.74174" cy="160.00565" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10233" sbt:state="1" sbt:cat="3" sbt:seat="16" cx="-240.39508" cy="160.00565" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10234" sbt:state="1" sbt:cat="3" sbt:seat="17" cx="-251.04843" cy="160.00565" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10235" sbt:state="1" sbt:cat="3" sbt:seat="2" cx="-68.98999" cy="160.00565" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10236" sbt:state="1" sbt:cat="3" sbt:seat="3" cx="-79.676071" cy="160.00565" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10237" sbt:state="1" sbt:cat="3" sbt:seat="4" cx="-101.19364" cy="160.00565" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10238" sbt:state="4" sbt:cat="3" sbt:seat="5" cx="-111.87972" cy="160.00565" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10239" sbt:state="1" sbt:cat="3" sbt:seat="6" cx="-122.56574" cy="160.00565" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10240" sbt:state="1" sbt:cat="3" sbt:seat="7" cx="-133.25183" cy="160.00565" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10241" sbt:state="1" sbt:cat="3" sbt:seat="8" cx="-143.9379" cy="160.00565" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10242" sbt:state="4" sbt:cat="3" sbt:seat="9" cx="-154.62396" cy="160.00565" r="3.8877928" fill="#ffffff"/>
+      </g>
+      <g sbt:row="9">
+        <circle sbt:id="10243" sbt:state="1" sbt:cat="3" sbt:seat="1" cx="-58.303925" cy="170.73334" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10244" sbt:state="1" sbt:cat="3" sbt:seat="10" cx="-165.31006" cy="170.73334" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10245" sbt:state="4" sbt:cat="3" sbt:seat="11" cx="-175.99611" cy="170.73334" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10246" sbt:state="1" sbt:cat="3" sbt:seat="12" cx="-186.68217" cy="170.73334" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10247" sbt:state="1" sbt:cat="3" sbt:seat="13" cx="-197.57085" cy="170.73334" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10248" sbt:state="1" sbt:cat="3" sbt:seat="14" cx="-208.22418" cy="170.73334" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10249" sbt:state="1" sbt:cat="3" sbt:seat="15" cx="-229.74174" cy="170.73334" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10250" sbt:state="1" sbt:cat="3" sbt:seat="16" cx="-240.39508" cy="170.73334" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10251" sbt:state="1" sbt:cat="3" sbt:seat="17" cx="-251.04843" cy="170.73334" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10252" sbt:state="4" sbt:cat="3" sbt:seat="2" cx="-68.98999" cy="170.73334" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10253" sbt:state="4" sbt:cat="3" sbt:seat="3" cx="-79.676071" cy="170.73334" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10254" sbt:state="1" sbt:cat="3" sbt:seat="4" cx="-101.19364" cy="170.73334" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10255" sbt:state="1" sbt:cat="3" sbt:seat="5" cx="-111.87972" cy="170.73334" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10256" sbt:state="1" sbt:cat="3" sbt:seat="6" cx="-122.56574" cy="170.73334" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10257" sbt:state="1" sbt:cat="3" sbt:seat="7" cx="-133.25183" cy="170.73334" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10258" sbt:state="1" sbt:cat="3" sbt:seat="8" cx="-143.9379" cy="170.73334" r="3.8877928" fill="#ffffff"/>
+        <circle sbt:id="10259" sbt:state="4" sbt:cat="3" sbt:seat="9" cx="-154.62396" cy="170.73334" r="3.8877928" fill="#ffffff"/>
+      </g>
   </g>
 </svg>

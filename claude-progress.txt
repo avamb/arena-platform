@@ -27119,3 +27119,134 @@ neither touched by this session. Marked feature #453 passing.
 Next: none for this epic. If a future session has `gh` available, it should
 run `gh run view` on the latest CI run for #453/#452/#477/#478 to close the
 one skipped verification step.
+
+================================================================================
+INTEGRATION GATE - wave through #506 (W1-B7c bil24_wp dispatcher), 2026-09-06
+================================================================================
+
+Ran the full repo-wide gate set after the W1-B7 sub-wave (orderexport
+extraction #504, bil24wire encoder #505, bil24_wp dispatcher #506, plus the
+#453 verification pass already noted above). 475/522 features passing,
+0 in-progress at start.
+
+  - go.exe test ./... (repo root, redirected to a file, judged via
+    `echo EXIT:$?` not a pipeline) -> 65 ok packages, EXIT 0
+  - go.exe vet ./... -> EXIT 0
+  - gofmt -l apps/backend (filtered for gomodcache) -> empty
+  - GOLANGCI_LINT_CACHE=/tmp/golangci-cache golangci-lint@latest run
+    ./apps/backend/... -> "0 issues."
+  - Migration pin: migrations_head_test.go expectedHead
+    "0094_wp_webhook_subscribers.sql" matches the actual highest-numbered
+    file in internal/migrations/sql/ -> no drift.
+  - Codegen drift: regenerated both artifacts and diffed against the tree,
+    both clean:
+      - go run ./apps/backend/tools/openapi30gen apps/backend/openapi/openapi.yaml
+        apps/backend/openapi/.compat30.gen.yaml, then oapi-codegen@v2.4.1
+        --config=apps/backend/openapi/oapi-codegen.yaml on that file
+        (compat file removed after) -> git status showed no diff.
+      - node scripts/gen-ts-client.mjs (regenerates
+        apps/backend/openapi/clients/ts/index.d.ts) -> git status showed no
+        diff.
+  - npm --prefix apps/admin-web run type-check -> EXIT 0
+  - npm run admin:test -> 43 files / 1114 tests passed
+  - npm --prefix apps/widget run test (vitest) -> 12 files / 497 tests passed
+  - npm --prefix apps/widget run type-check -> EXIT 0
+  - `gh` is still blocked by the sandbox's org-level command allowlist (same
+    limitation #453's session hit); CI could not be watched from here. Branch
+    was already up to date with origin/master (no local commits to push -
+    this session found zero drift, so nothing needed fixing or committing).
+
+git status --short at both start and end showed only the same two
+pre-existing, untouched items noted by the #453 session: a modified
+.autoforge/prompts/coding_prompt.md (infra prompt file, not part of any
+feature) and an untracked features.db (runtime db, not source). Working tree
+otherwise clean; no integration commit was needed.
+
+No repo-wide defects found. Nothing filed. Next session can pick up more
+W1-B wave features normally.
+
+================================================================================
+Feature #500 - W1-B5a: RenderSBT10SVG encoder + golden SVG test (2026-09-06)
+================================================================================
+
+Delivered the sbt/1.0 seating-plan encoder the WordPress Bil24 seat picker
+consumes (spec section 8 of
+08_architecture/18_bil24_compat_wave1_specification_ru.md). The HTTP route
+that serves it is sibling feature #501 and was NOT touched.
+
+New files
+  - apps/backend/internal/platform/httpserver/hseating/sbt10_svg.go
+      hseating.RenderSBT10SVG(geometry, seats, tiers, categoryIDs,
+      statusVersion) []byte - pure function, byte-deterministic, safe to
+      hash into the #501 ETag. Emits:
+        root <svg> with namespace http://www.w3.org/2015/sbt/1.0 bound to
+        the sbt: prefix, viewBox mandatory, width/height deliberately absent,
+        sbt:statusVersion on the root
+        <metadata> with one <sbt:category sbt:id sbt:index sbt:name
+        sbt:color sbt:price sbt:class/> per SEATED category, index ASC
+        <g id="Decor"> carrying the imported decor fragment plus GA zone
+        polygons, none of which have sbt:id
+        <g sbt:sect><g sbt:row><circle sbt:id sbt:state sbt:cat sbt:seat
+        cx cy r fill/>
+      Normative decisions, all test-pinned: sbt:id on a circle is
+      session_seats.system_seat_id and NOT the row uuid, so a geometry seat
+      with no materialised session_seats row is skipped rather than emitted
+      id-less as an unclickable ghost; sbt:cat is the category INDEX, not the
+      category id; sbt:state is the two-value alphabet 1=free / 4=taken with
+      held+sold+unavailable+unknown all collapsing to 4 - the fail-safe
+      direction; sbt:price is major units with at most 2 decimals while the
+      DB stores minor units; an unmapped category still emits sbt:id="0" so
+      the attribute surface never varies; empty rows and sections are
+      dropped. The legacy RenderBSSLayoutSVG encoder in layout_svg.go is
+      untouched - the arena widget keeps its own namespace, swatch group and
+      0-5 status codes, both projections now live side by side over the same
+      geometry.
+  - apps/backend/internal/platform/httpserver/hseating/sbt10_svg_test.go
+      Unit rules: state alphabet, seat attribute surface, GA-as-decor,
+      major-unit money 900 / 12.5 / 26.25, unmapped-category fallback,
+      empty-group dropping, decor namespace declarations.
+  - apps/backend/tests/compat/bil24/image_sbt10_500_test.go
+      Golden test plus a DOM test that replays the picker's parsing rules -
+      sbt attributes resolved through their NAMESPACE and not their spelling,
+      catByIndex built from <metadata> with every circle's sbt:cat resolving,
+      nearest-ancestor sbt:sect / sbt:row, viewBox parsing to four numbers,
+      unique positive sbt:id. Comparison is canonical XML so the golden can
+      keep a human comment. Non-integration: runs in the CI Unit job.
+
+Changed
+  - apps/backend/tests/compat/bil24/testdata/wp/svg/palac_akropolis.sbt.svg
+      Regenerated from the REAL 06_venue_maps_and_seating/Palac_Akropolis.svg
+      through seating.ImportSVG + Canonicalize, replacing the hand-authored
+      #450 skeleton. The seed harness is integration-only and hands out
+      system_seat_id from a sequence, so the golden assigns identities by a
+      deterministic rule instead - 10000 + seat ordinal, category id
+      1000000000 + 10*index, price 500.00 + 250.00*index CZK, every 7th seat
+      sold and every 11th held so both sbt:state values appear. What the
+      golden guards is the ENCODER, not the seeding. The disclaimer comment
+      block was rewritten to describe the new provenance. Regenerate with
+      ARENA_REGEN_SBT_GOLDEN=1 go test ./apps/backend/tests/compat/bil24/
+      -run SBT10 and re-add the comment.
+
+Defect found and fixed while writing the DOM test
+  The imported decor fragment is spliced in verbatim and still carries
+  inkscape: / sodipodi: prefixed attributes, but the root declared only the
+  svg and sbt namespaces. That makes the document namespace-ill-formed - a
+  browser's XML parser refuses the WHOLE plan, not just the decor. The
+  sbt/1.0 root now declares xmlns:svg, xmlns:inkscape and xmlns:sodipodi
+  alongside xmlns and xmlns:sbt. The DOM test now fails on any attribute
+  whose prefix does not resolve to a declared URI, which is how the bug
+  surfaced. NOTE for a future session: RenderBSSLayoutSVG in layout_svg.go
+  has the SAME latent defect and was left alone here because changing its
+  byte surface would churn the arena widget contract - worth a separate look.
+
+Gates - all green
+  - gofmt -l on all three new Go files -> empty
+  - go build ./apps/backend/... -> EXIT 0
+  - go vet ./apps/backend/... -> EXIT 0
+  - go test ./apps/backend/internal/platform/httpserver/...
+      ./apps/backend/internal/domain/seating/...
+      ./apps/backend/tests/compat/bil24/...
+      ./apps/backend/tests/staticanalysis/...
+      ./apps/backend/internal/migrations/... -> EXIT 0
+  - golangci-lint on hseating + tests/compat/bil24 -> 0 issues
+  No openapi.yaml change, so no codegen. No migration, so no head pin.
