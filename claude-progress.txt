@@ -24180,3 +24180,130 @@ Files touched this session:
   apps/backend/internal/adapters/bil24compat/translate_int_test.go   (new)
   apps/backend/internal/platform/httpserver/snake_case_json_test.go  (exception)
 
+## 2026-09-05 - #476 W1-A2b STEP 2 partial - file split delivered, ID migration + no-UUID test deferred
+
+Commit 866887b, pushed to origin/master. Feature #476 STAYS in_progress
+per the sub-feature rule ("NEVER release the claim as too large"): the
+mechanical file split is done, but Step 2's handler ID migrations and
+Step 3's no-UUID guardrail test still need a follow-up session.
+
+Delivered this session (Step 2 first half - mechanical split):
+- apps/backend/internal/platform/httpserver/hbil24/bil24_compat.go
+  truncated 2044 -> 257 lines. Kept: package docs + result-code
+  re-exports (ResultCode*) + envelope aliases (bil24Request/Response +
+  bil24OK/bil24Error/writeBil24JSON) + ID-translation forwarders
+  (TranslateLegacyID/TranslatePlatformID/ErrLegacyIDNotFound) +
+  HandleBil24Command dispatcher only.
+- cmd_catalog.go (398 lines, new): handleBil24GetAllActions,
+  handleBil24GetSeatList, getSeatListGA, getSeatListUnits, bssStatusCode.
+- cmd_order.go (277 lines, new): handleBil24GetOrderInfo,
+  handleBil24CreateOrderExt, handleBil24CancelOrder.
+- cmd_tickets.go (161 lines, new): handleBil24ScanTicket.
+- cmd_cart.go (471 lines, new): handleBil24Reservation dispatcher,
+  reservationContext (shared tenant+credential resolver),
+  bil24FinancialFields, cartTimeoutSeconds, writeHoldError,
+  handleBil24UnReserve.
+- cmd_cart_reserve.go (358 lines, new): reservationSeated +
+  reservationGA bodies (extracted from cmd_cart.go so no file over 700
+  lines).
+- auth.go: 406 -> 619 lines. Appended the 3 legacy per-command token
+  validators (validateGatewayToken, validateUnReserveToken,
+  validateScanTicketToken) so cart/tickets do not own credential blob
+  parsing.
+
+Sentinels + tests preserved:
+- bil24compat_layout_188_test.go AdapterOwnsWireSymbols + AdapterHasNoHTTPImports:
+  unchanged - bil24compat adapter package untouched this session.
+- All 5 hbil24 test files (auth_471, bil24_374, bil24_390, seat_d1_312,
+  seat_d2_313) pass on the new layout without edits (Go packages are
+  file-transparent).
+
+Gates this session - all GREEN:
+- go build ./apps/backend/... (EXIT:0)
+- go vet   ./apps/backend/... (EXIT:0)
+- go test  ./apps/backend/... full suite (EXIT:0)
+- gofmt -l on the 7 changed files: clean
+
+Files touched this session:
+  apps/backend/internal/platform/httpserver/hbil24/bil24_compat.go   (truncated)
+  apps/backend/internal/platform/httpserver/hbil24/auth.go           (appended)
+  apps/backend/internal/platform/httpserver/hbil24/cmd_catalog.go    (new)
+  apps/backend/internal/platform/httpserver/hbil24/cmd_order.go      (new)
+  apps/backend/internal/platform/httpserver/hbil24/cmd_tickets.go    (new)
+  apps/backend/internal/platform/httpserver/hbil24/cmd_cart.go       (new)
+  apps/backend/internal/platform/httpserver/hbil24/cmd_cart_reserve.go (new)
+
+STILL DEFERRED for #476 (Step 2 second half + Step 3):
+
+STEP 2 SECOND HALF - Handler ID migrations (int64 outputs + int64 inputs).
+The wire IDs are STILL emitted as UUID strings via TranslatePlatformID -
+this is the ~60-callsite migration the previous session's note enumerated.
+The exact callsite map produced by the pre-work agent this session:
+
+  cmd_catalog.go:
+    line ~349  handleBil24GetAllActions   actionId       -> compatids.Ensure(KindAction, e.ID) int64
+                                          + full countryList/cityList/venueList aggregation per spec 7.1
+    line ~437  handleBil24GetSeatList     actionEventId  -> ResolveLegacyIntID (input)
+    line ~540  getSeatListGA              categoryPriceId-> compatids.Ensure(KindCategoryPrice, t.ID) int64
+    line ~606  getSeatListUnits           seatId         -> session_seats.system_seat_id int64 (mig 0088 col; harness #470 fills)
+    line ~613  getSeatListUnits           categoryPriceId-> compatids.Ensure(KindCategoryPrice, *s.TierID) int64
+
+  schema.go:
+    line ~74   handleBil24GetSchema       actionEventId  -> ResolveLegacyIntID (input)
+    line ~152  handleBil24GetSchema       seatId         -> session_seats.system_seat_id int64
+
+  cmd_order.go:
+    line ~696  handleBil24GetOrderInfo    orderId        -> ResolveLegacyIntID (input; kind=? spec unclear - orders likely stay UUID for now)
+    line ~784  handleBil24GetOrderInfo    orderId        -> ? (spec 7.6 review)
+    line ~841/848 handleBil24CreateOrderExt actionEventId/categoryPriceId -> ResolveLegacyIntID
+    line ~1046 handleBil24CancelOrder     orderId        -> ResolveLegacyIntID
+
+  cmd_tickets.go:
+    line ~1005 handleBil24ScanTicket      ticketId       -> ParseLegacyIntID (input, tickets.system_ticket_id key)
+    line ~1008 handleBil24ScanTicket      platformTicketId -> tickets.system_ticket_id int64 per spec 7.14
+                                          (need to LOAD tickets row and read system_ticket_id, not TranslatePlatformID)
+
+  cmd_cart.go / cmd_cart_reserve.go:
+    line ~1118 handleBil24Reservation     actionEventId  -> ResolveLegacyIntID (input)
+    line ~1295 reservationContext         fid            -> parseFIDInt64 already exists; drop the UUID fallback per #476 exit criteria
+    line ~1514 validateScanTicketToken    fid            -> same (drop UUID fallback per spec)
+    line ~1604 writeHoldError             categoryPriceId-> compatids.Ensure int64
+    line ~1690 reservationSeated          seatId         -> session_seats.system_seat_id int64
+    line ~1772 reservationSeated          reservationId  -> ? (spec unclear; reservations likely stay UUID)
+    line ~1773 reservationSeated          sessionId      -> compatids.Ensure(KindActionEvent, sessionID) int64
+                                          (BUG per spec: current code emits sessionID but spec 7.4 says per-item actionEventId)
+    line ~1809 reservationGA              categoryPriceId (input) -> ResolveLegacyIntID
+    line ~1856/1920 reservationGA         categoryPriceId (output)-> compatids.Ensure int64
+    line ~1938 reservationGA              reservationId  -> ? (spec review)
+    line ~1939 reservationGA              sessionId      -> compatids.Ensure(KindActionEvent, sessionID) int64
+    line ~1975 handleBil24UnReserve       reservationId (input) -> ? (spec 7.5)
+    line ~2041 handleBil24UnReserve       reservationId (output) -> ? (spec 7.5)
+
+Plus: TX plumbing. compatids.Ensure must run inside the same tx as the
+seat/GA read/write it depends on. Production hcheckout hold paths already
+open a tx (SeatedReserve, GAReserve closures); read commands
+(GET_ALL_ACTIONS, GET_SEAT_LIST, GET_SCHEMA, GET_ORDER_INFO) currently
+do not. Options:
+  a) Add a BeginReadTx callback to ReservationDeps used by the read
+     commands; run compat-id Ensure calls inside it.
+  b) Change compatids.Ensure signature to accept *gen.Queries alongside
+     gen.DBTX so callers with no ambient tx can still upsert (idempotent).
+Option (b) matches the spec's transactional guarantee (Ensure is
+INSERT ... ON CONFLICT DO NOTHING RETURNING - the mint is atomic per
+row) and is significantly less plumbing. Recommend (b).
+
+STEP 3 - No-UUID guardrail test. Add
+apps/backend/tests/staticanalysis/bil24_no_uuid_wire_test.go that:
+  - Walks every file under apps/backend/tests/compat/bil24/testdata/wp/{golden,requests}/*.json
+    with a UUID regex (`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-...`).
+  - Fails on any hit. Cannot land BEFORE Step 2 completes (goldens
+    currently contain UUIDs - see GET_ALL_ACTIONS/basic.json actionId).
+  - Owner: after Step 2 lands, regenerate every golden with the new
+    int64 wire values and un-skip this test.
+
+Sizing note for the next session: Step 2 second half is still ~4-6 hours
+of careful callsite editing plus goldens regeneration. Recommend a
+Plan-agent pass first to sequence the migrations bottom-up (deepest
+helpers first: writeHoldError, then GA branch, then seated branch, then
+read commands, finally dispatcher).
+
