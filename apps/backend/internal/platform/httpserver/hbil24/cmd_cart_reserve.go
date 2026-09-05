@@ -221,7 +221,14 @@ func (h *Handler) reservationGA(w http.ResponseWriter, ctx context.Context, req 
 			))
 			return
 		}
-		tierID, err := TranslateLegacyID(c.CategoryPriceID)
+		// Spec §4 / §7.4 (feature #476, W1-A2b): categoryPriceId is int64 on
+		// the wire when compatDB is wired — resolveCategoryPriceID rejects a
+		// UUID request field with -2 via ParseLegacyIntID before compatids.
+		// Resolve touches the pool.  The nil-compatDB fallback preserves the
+		// pre-W1 UUID passthrough so seat_d1_312 / seat_d2_313 / bil24_374
+		// unit-test constructors that omit the pool stay green during the
+		// step-by-step migration.
+		tierID, err := h.resolveCategoryPriceID(ctx, c.CategoryPriceID)
 		if err != nil {
 			writeBil24JSON(w, http.StatusOK, bil24Error(
 				req.Command, ResultCodeInvalidRequest,

@@ -14,12 +14,14 @@ package hbil24
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
@@ -135,5 +137,47 @@ func TestBil24_476_Reservation_NonNumericInput_RejectedWithCompatDB(t *testing.T
 	if rc != ResultCodeInvalidRequest {
 		t.Errorf("RESERVATION non-numeric input: want %d, got %d; body: %v",
 			ResultCodeInvalidRequest, rc, resp)
+	}
+}
+
+// TestBil24_476_ResolveCategoryPriceID_UUIDInput_RejectedWithCompatDB pins
+// the RESERVATION request-side wave-1 invariant for the categoryList
+// sub-field categoryPriceId (spec §4 / §7.4): with compatDB wired the
+// helper refuses a UUID input with bil24compat.ErrLegacyIDUUIDRejected
+// before any DB round-trip.  The panicDBTX stub guarantees ParseLegacyIntID
+// short-circuits inside resolveCategoryPriceID before compatids.Resolve can
+// touch the pool.
+func TestBil24_476_ResolveCategoryPriceID_UUIDInput_RejectedWithCompatDB(t *testing.T) {
+	h := newMinimalHandler().WithCompatDB(panicDBTX{})
+	_, err := h.resolveCategoryPriceID(context.Background(), uuid.New().String())
+	if !errors.Is(err, bil24compat.ErrLegacyIDUUIDRejected) {
+		t.Fatalf("resolveCategoryPriceID(uuid): want ErrLegacyIDUUIDRejected, got %v", err)
+	}
+}
+
+// TestBil24_476_ResolveCategoryPriceID_NonNumericInput_RejectedWithCompatDB
+// proves that garbage on the categoryPriceId field also returns
+// bil24compat.ErrLegacyIDInvalid without a DB round-trip.
+func TestBil24_476_ResolveCategoryPriceID_NonNumericInput_RejectedWithCompatDB(t *testing.T) {
+	h := newMinimalHandler().WithCompatDB(panicDBTX{})
+	_, err := h.resolveCategoryPriceID(context.Background(), "not-an-id")
+	if !errors.Is(err, bil24compat.ErrLegacyIDInvalid) {
+		t.Fatalf("resolveCategoryPriceID(non-numeric): want ErrLegacyIDInvalid, got %v", err)
+	}
+}
+
+// TestBil24_476_ResolveCategoryPriceID_NilCompatDB_FallbackAcceptsUUID pins
+// the fallback contract: unit-test Handlers that omit the pool keep the
+// pre-W1 UUID passthrough so seat_d1_312 / seat_d2_313 / bil24_374 fixtures
+// stay green during the step-by-step migration.
+func TestBil24_476_ResolveCategoryPriceID_NilCompatDB_FallbackAcceptsUUID(t *testing.T) {
+	h := newMinimalHandler() // no WithCompatDB — compatDB stays nil
+	want := uuid.New()
+	got, err := h.resolveCategoryPriceID(context.Background(), want.String())
+	if err != nil {
+		t.Fatalf("resolveCategoryPriceID(uuid, nil compatDB): unexpected error: %v", err)
+	}
+	if got != want {
+		t.Fatalf("resolveCategoryPriceID(uuid, nil compatDB): got %s, want %s", got, want)
 	}
 }
