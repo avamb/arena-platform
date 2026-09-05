@@ -236,3 +236,105 @@ func (q *Queries) GetVenueSessionContext(ctx context.Context, id uuid.UUID) (Ven
 	err := row.Scan(&r.OrgID, &r.CapacityDefault, &r.DerivedCurrency)
 	return r, err
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ListActionVenuesByOrg — venues + city + country projection for
+// Bil24 compat GET_ALL_ACTIONS (feature #476 W1-A2b slice 14, spec §7.1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ActionVenueRow is the wide projection used by the Bil24 compat
+// GET_ALL_ACTIONS aggregation to build countryList / cityList / venueList
+// blocks (spec §7.1) in a single round-trip. Every field except VenueID /
+// DisplayNumber / VenueName can be nil for venues without a city_id and
+// without a resolvable venues.country ISO2 code — the compat handler emits
+// only the blocks that resolve.
+type ActionVenueRow struct {
+	VenueID       uuid.UUID  `json:"venue_id"`
+	DisplayNumber int64      `json:"display_number"`
+	VenueName     string     `json:"venue_name"`
+	CityID        *uuid.UUID `json:"city_id"`
+	CitySlug      *string    `json:"city_slug"`
+	CityName      *string    `json:"city_name"`
+	CountryID     *uuid.UUID `json:"country_id"`
+	CountryIso2   *string    `json:"country_iso2"`
+	CountryIso3   *string    `json:"country_iso3"`
+	CountrySlug   *string    `json:"country_slug"`
+	CountryName   *string    `json:"country_name"`
+}
+
+const listActionVenuesByOrg = `-- name: ListActionVenuesByOrg :many
+SELECT DISTINCT
+    v.id,
+    v.display_number,
+    v.name,
+    v.city_id,
+    ci.slug                                                                  AS city_slug,
+    COALESCE(t_city_loc.value, t_city_en.value, ci.slug)                     AS city_name,
+    COALESCE(co_city.id, co_vn.id)                                           AS country_id,
+    COALESCE(co_city.iso2, co_vn.iso2)                                       AS country_iso2,
+    COALESCE(co_city.iso3, co_vn.iso3)                                       AS country_iso3,
+    COALESCE(co_city.slug, co_vn.slug)                                       AS country_slug,
+    COALESCE(t_ctry_loc.value, t_ctry_en.value, co_city.iso2, co_vn.iso2)    AS country_name
+FROM   venues v
+JOIN   sessions s ON s.venue_id = v.id AND s.deleted_at IS NULL
+JOIN   events   e ON e.id       = s.event_id AND e.status = 'published'
+LEFT JOIN cities    ci      ON ci.id       = v.city_id
+LEFT JOIN countries co_city ON co_city.id  = ci.country_id
+LEFT JOIN countries co_vn   ON co_vn.iso2  = v.country
+LEFT JOIN i18n_text t_city_loc ON t_city_loc.namespace = 'geo.cities'
+    AND t_city_loc.key = ci.slug
+    AND t_city_loc.locale = $2
+LEFT JOIN i18n_text t_city_en  ON t_city_en.namespace  = 'geo.cities'
+    AND t_city_en.key = ci.slug
+    AND t_city_en.locale = 'en'
+LEFT JOIN i18n_text t_ctry_loc ON t_ctry_loc.namespace = 'geo.countries'
+    AND t_ctry_loc.key = COALESCE(co_city.iso2, co_vn.iso2)
+    AND t_ctry_loc.locale = $2
+LEFT JOIN i18n_text t_ctry_en  ON t_ctry_en.namespace  = 'geo.countries'
+    AND t_ctry_en.key = COALESCE(co_city.iso2, co_vn.iso2)
+    AND t_ctry_en.locale = 'en'
+WHERE  v.org_id = $1
+  AND  v.deleted_at IS NULL
+ORDER BY country_iso2 NULLS LAST, city_slug NULLS LAST, v.display_number`
+
+// ListActionVenuesByOrg returns the distinct set of venues owned by orgID
+// that host at least one non-deleted session of a published event, joined
+// to city + country reference data with locale-fallback names. This is the
+// SQL-side prep for the Bil24 compat GET_ALL_ACTIONS full aggregation
+// (spec §7.1 countryList / cityList / venueList) — the compat handler
+// groups the returned rows by (CountryID, CityID) without additional
+// round-trips.
+//
+// Locale is applied to i18n_text lookups with the standard requested →
+// 'en' → key fallback chain. Country is resolved from cities.country_id
+// first (when a city_id is set), then from venues.country ISO2 as a
+// fallback — a venue with neither reference gets nil country fields.
+func (q *Queries) ListActionVenuesByOrg(ctx context.Context, orgID uuid.UUID, locale string) ([]ActionVenueRow, error) {
+	rows, err := q.db.Query(ctx, listActionVenuesByOrg, orgID, locale)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []ActionVenueRow
+	for rows.Next() {
+		var r ActionVenueRow
+		if err := rows.Scan(
+			&r.VenueID,
+			&r.DisplayNumber,
+			&r.VenueName,
+			&r.CityID,
+			&r.CitySlug,
+			&r.CityName,
+			&r.CountryID,
+			&r.CountryIso2,
+			&r.CountryIso3,
+			&r.CountrySlug,
+			&r.CountryName,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}

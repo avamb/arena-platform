@@ -111,6 +111,9 @@ type Querier interface {
 	UpdateVenue(ctx context.Context, id, orgID uuid.UUID, cityID *uuid.UUID, name string, address *string, capacityDefault *int32) (VenueRow, error)
 	GetVenueSessionContext(ctx context.Context, id uuid.UUID) (VenueSessionContextRow, error)
 	SoftDeleteVenue(ctx context.Context, id, orgID uuid.UUID) (VenueRow, error)
+	// ListActionVenuesByOrg: Bil24 compat GET_ALL_ACTIONS aggregation
+	// (feature #476 W1-A2b slice 14, spec §7.1)
+	ListActionVenuesByOrg(ctx context.Context, orgID uuid.UUID, locale string) ([]ActionVenueRow, error)
 
 	// Geo reference data — countries & cities (feature #123)
 	ListCountries(ctx context.Context, locale string) ([]ListCountryRow, error)
