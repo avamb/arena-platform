@@ -25306,3 +25306,43 @@ Next: organizer id and name join via event org_id.
 GET_ALL_ACTIONS actionList items now carry organizerId (organizations.display_number, int64) and organizerName (organizations.name) per spec 7.1. Catalog is org-scoped in the authed branch, so the org row is fetched ONCE via GetOrganizationByID and the (organizerID, organizerName) pair is threaded into buildActionEntry - no per-row join. Fields omitted when the value is zero/empty (unauthed branch or lookup failure). Unit test TestBil24_476_BuildActionEntry_Organizer pins full/absent/partial cases.
 Gates: go build vet full-test EXIT:0; gofmt clean. Feature stays claimed.
 Next: fullActionName source column discussion, or begin actionEventList subtree (needs session listing with TZ + tier price windows - larger slice), or add minPrice/maxPrice tier scan per event.
+
+
+## 2026-09-05 #476 W1-A2b slice 20 - GET_ORDER_INFO wire shape rename (commit 8730c96)
+
+GET_ORDER_INFO response body relabeled to spec sections 7.8 / 9.3:
+- Outer envelope key: orderInfo -> order.
+- Field renames per spec 9.3: orderId -> id, state -> status, ticketCount -> ticketQuantity.
+- Extracted buildGetOrderInfoBody (package-level pure helper over
+  gen.CheckoutSessionRow + ticket count) so the wire-shape contract can be
+  unit-tested without spinning up a live pool or Handler (matches the earlier
+  buildActionEntry / buildCountryCityLists pattern).
+
+Three unit tests in bil24_476_order_test.go pin the three renames,
+regression-guard charge = platform_fee + provider_fee, and pin the
+omit-when-nil currency contract.
+
+Deferred (documented in cmd_order.go doc comment):
+- id as int64 wire form: needs compatibility_id_map KindOrder migration
+  plus a compatOrderID helper. Until then id carries the UUID string via
+  TranslatePlatformID.
+- RFC3339 hold-window field: needs a hold-row lookup; the checkout row
+  itself only carries a terminal ExpiredAt column.
+- status VALUE mapping to Bil24 sentinels: key renamed, value still
+  checkout state string verbatim.
+
+Gates - all GREEN:
+- go build ./apps/backend/... EXIT:0
+- go vet   ./apps/backend/... EXIT:0
+- go test  ./apps/backend/... full suite EXIT:0 (test_476_slice20_full.log)
+- gofmt -l on 2 changed files clean
+
+Files touched:
+  apps/backend/internal/platform/httpserver/hbil24/cmd_order.go            (M)
+  apps/backend/internal/platform/httpserver/hbil24/bil24_476_order_test.go (A)
+
+Feature #476 STAYS in_progress (sub-feature rule: NEVER release claim as too large).
+
+Recommended next slice: KindOrder compat migration + compatOrderID helper
+so buildGetOrderInfoBody can emit int64 id. Alternatively: begin minPrice /
+maxPrice tier scan for actionList body in GET_ALL_ACTIONS.
