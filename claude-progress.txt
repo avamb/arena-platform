@@ -2,6 +2,77 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+## 2026-09-05 - #476 W1-A2b slice 13 - request-side venue/city/country resolvers
+
+Commit 324c06e, pushed to origin/master. Feature #476 STAYS in_progress
+(sub-feature rule: NEVER release the claim as too large).
+
+Delivered this session:
+- compat_ids.go: three new request-side helpers h.resolveVenueID /
+  h.resolveCityID / h.resolveCountryID, mirroring resolveActionEventID /
+  resolveCategoryPriceID for KindVenue / KindCity / KindCountry. When
+  compatDB is wired, bil24compat.ParseLegacyIntID rejects UUID input with
+  ErrLegacyIDUUIDRejected BEFORE compatids.Resolve touches the pool; the
+  nil-compatDB fallback returns TranslateLegacyID(raw) UUID passthrough
+  so pre-W1 unit-test constructors stay green.
+- bil24_476_input_ids_test.go: six new unit tests pin the invariant with
+  panicDBTX (any DB call is a regression), plus one nil-compatDB
+  fallback test per helper:
+    * TestBil24_476_ResolveVenueID_UUIDInput_RejectedWithCompatDB
+    * TestBil24_476_ResolveVenueID_NonNumericInput_RejectedWithCompatDB
+    * TestBil24_476_ResolveVenueID_NilCompatDB_FallbackAcceptsUUID
+    * TestBil24_476_ResolveCityID_UUIDInput_RejectedWithCompatDB
+    * TestBil24_476_ResolveCityID_NilCompatDB_FallbackAcceptsUUID
+    * TestBil24_476_ResolveCountryID_UUIDInput_RejectedWithCompatDB
+    * TestBil24_476_ResolveCountryID_NilCompatDB_FallbackAcceptsUUID
+
+No production callsite yet - this is prep for the deferred GET_ALL_ACTIONS
+catalog-filter slice (spec s7.1 venueId/cityId/countryId filters). The
+response-side compatVenueID/compatCityID/compatCountryID helpers landed
+in slice 12; slice 13 completes the request/response pair so the eventual
+s7.1 aggregation slice can wire both sides without adding scaffolding.
+
+Gates - all GREEN:
+- go build ./apps/backend/... EXIT:0
+- go vet   ./apps/backend/... EXIT:0
+- go test  ./apps/backend/... full suite EXIT:0 (test_476_slice13.log)
+- gofmt -l on 2 changed files clean
+
+Files touched:
+  apps/backend/internal/platform/httpserver/hbil24/compat_ids.go             (M)
+  apps/backend/internal/platform/httpserver/hbil24/bil24_476_input_ids_test.go (M)
+
+STILL DEFERRED for #476 (Step 2 remaining + Step 3):
+
+Step 2 REMAINING (bottom-up, one slice per session):
+  cmd_catalog.go handleBil24GetAllActions: full s7.1 aggregation
+    (countryList/cityList/venueList) still missing.  Both request-side
+    (slice 13) and response-side (slice 12) compat helpers are now in
+    place; the next slice can focus on the SQL side (new queries for
+    country/city/venue rows scoped to the channel org and the returned
+    sessions).
+  cmd_cart.go handleBil24UnReserve reservationId + full response reshape
+    to ReservationResponse form (spec s7.4/s7.5).  UN_RESERVE per spec
+    s7.4 actually takes seatList / categoryList / UN_RESERVE_ALL, not a
+    reservationId.  Reshape is bigger than one slice - split it.
+  cmd_order.go handleBil24GetOrderInfo / handleBil24CancelOrder orderId:
+    no KindOrder in compatids yet, so orders likely stay UUID for W1.
+    Confirm with owner before touching.
+
+Step 3 - No-uuid guardrail (tests/compat/bil24/no_uuid_in_wire_test.go)
+already GREEN; slice 13 helpers do not change wire fixtures.
+
+Recommended next slice: SQL-side prep for the GET_ALL_ACTIONS
+aggregation.  Add a query ListVenuesWithGeoByOrg(ctx, orgID) (or scoped
+to session_ids) returning venue rows joined to cities + countries, so
+handleBil24GetAllActions can group them into the countryList / cityList
+/ venueList blocks per spec s7.1.  Cities have no direct name column -
+i18n_text lookup under namespace 'geo.countries'/'geo.cities' is
+required for localized names; the query should return raw id + slug +
+i18n row and let the handler pick the locale.  Keep it a read-only
+query - no migrations needed if venues.display_number, cities.slug and
+countries.iso2 already exist (they do, per migrations 0006/0012).
+
 ## 2026-09-05 - #476 W1-A2b slice 12 - compat helpers for venue/city/country
 
 Commit 2481674, pushed to origin/master. Feature #476 STAYS in_progress
