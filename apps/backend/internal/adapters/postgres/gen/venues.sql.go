@@ -252,6 +252,9 @@ type ActionVenueRow struct {
 	VenueID       uuid.UUID  `json:"venue_id"`
 	DisplayNumber int64      `json:"display_number"`
 	VenueName     string     `json:"venue_name"`
+	Address       *string    `json:"address"`
+	GeoLat        *float64   `json:"geo_lat"`
+	GeoLng        *float64   `json:"geo_lng"`
 	CityID        *uuid.UUID `json:"city_id"`
 	CitySlug      *string    `json:"city_slug"`
 	CityName      *string    `json:"city_name"`
@@ -267,6 +270,10 @@ SELECT DISTINCT
     v.id,
     v.display_number,
     v.name,
+    COALESCE(NULLIF(concat_ws(', ', v.address_line1, v.address_line2), ''),
+             v.address)                                                      AS address,
+    v.geo_lat::float8                                                        AS geo_lat,
+    v.geo_lng::float8                                                        AS geo_lng,
     v.city_id,
     ci.slug                                                                  AS city_slug,
     COALESCE(t_city_loc.value, t_city_en.value, ci.slug)                     AS city_name,
@@ -323,6 +330,9 @@ func (q *Queries) ListActionVenuesByOrg(ctx context.Context, orgID uuid.UUID, lo
 			&r.VenueID,
 			&r.DisplayNumber,
 			&r.VenueName,
+			&r.Address,
+			&r.GeoLat,
+			&r.GeoLng,
 			&r.CityID,
 			&r.CitySlug,
 			&r.CityName,

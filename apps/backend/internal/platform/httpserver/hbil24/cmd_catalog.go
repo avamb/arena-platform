@@ -197,9 +197,22 @@ func (h *Handler) buildCountryCityLists(ctx context.Context, rows []gen.ActionVe
 		if r.CityID == nil {
 			continue
 		}
+		// Spec §7.1 venueList entry — venueId, venueName plus optional
+		// address / geoLat / geoLon. Address is emitted only when the
+		// venue has one (structured line1[,line2] fallback to the legacy
+		// free-form address column, resolved SQL-side). Geo coordinates
+		// are emitted as JSON numbers only when both are populated —
+		// half a coordinate is not useful to the site plugin.
 		venue := map[string]any{
 			"venueId":   h.compatVenueID(ctx, r.VenueID),
 			"venueName": r.VenueName,
+		}
+		if r.Address != nil && *r.Address != "" {
+			venue["address"] = *r.Address
+		}
+		if r.GeoLat != nil && r.GeoLng != nil {
+			venue["geoLat"] = *r.GeoLat
+			venue["geoLon"] = *r.GeoLng
 		}
 		if idx, ok := cityIdx[*r.CityID]; ok {
 			existing := cityList[idx]["venueList"].([]map[string]any)

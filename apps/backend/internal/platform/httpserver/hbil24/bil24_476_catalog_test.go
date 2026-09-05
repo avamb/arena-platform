@@ -118,6 +118,95 @@ func TestBil24_476_BuildCountryCityLists_SkipsNilCityAndCountry(t *testing.T) {
 	}
 }
 
+// TestBil24_476_BuildCountryCityLists_VenueAddressAndGeo pins the
+// slice-16 addition (spec §7.1): venueList entries carry `address`,
+// `geoLat`, and `geoLon` when the underlying venues row has them.
+// Rows without an address are emitted without the key (omit rather than
+// empty string), and geo coordinates require BOTH lat AND lng — a lone
+// coordinate never surfaces because the site plugin cannot render half
+// a pin on the venue map.
+func TestBil24_476_BuildCountryCityLists_VenueAddressAndGeo(t *testing.T) {
+	h := &Handler{}
+	ctx := context.Background()
+
+	czID := uuid.New()
+	pragueID := uuid.New()
+	fullVenue := uuid.New()
+	partialVenue := uuid.New()
+	bareVenue := uuid.New()
+	cz := "Czechia"
+	prague := "Praha"
+	iso2 := "CZ"
+	addr := "Kubelíkova 27"
+	lat := 50.0806
+	lng := 14.4508
+	lonelyLat := 49.1951
+
+	rows := []gen.ActionVenueRow{
+		{
+			VenueID: fullVenue, VenueName: "Palác Akropolis",
+			Address: &addr, GeoLat: &lat, GeoLng: &lng,
+			CityID: &pragueID, CityName: &prague,
+			CountryID: &czID, CountryIso2: &iso2, CountryName: &cz,
+		},
+		{
+			// Address present but only latitude → geo pair MUST NOT surface.
+			VenueID: partialVenue, VenueName: "Lucerna",
+			Address: &addr, GeoLat: &lonelyLat,
+			CityID: &pragueID, CityName: &prague,
+			CountryID: &czID, CountryIso2: &iso2, CountryName: &cz,
+		},
+		{
+			// No address, no geo — keys MUST be absent, not empty.
+			VenueID: bareVenue, VenueName: "Bare Stage",
+			CityID: &pragueID, CityName: &prague,
+			CountryID: &czID, CountryIso2: &iso2, CountryName: &cz,
+		},
+	}
+
+	_, cities := h.buildCountryCityLists(ctx, rows)
+	if len(cities) != 1 {
+		t.Fatalf("cityList length = %d, want 1 (all rows in one city)", len(cities))
+	}
+	venues := cities[0]["venueList"].([]map[string]any)
+	if len(venues) != 3 {
+		t.Fatalf("venueList length = %d, want 3", len(venues))
+	}
+
+	// full venue: address + geoLat + geoLon all present.
+	if got, want := venues[0]["address"], addr; got != want {
+		t.Errorf("venues[0].address = %v, want %q", got, want)
+	}
+	if got, want := venues[0]["geoLat"], lat; got != want {
+		t.Errorf("venues[0].geoLat = %v, want %v", got, want)
+	}
+	if got, want := venues[0]["geoLon"], lng; got != want {
+		t.Errorf("venues[0].geoLon = %v, want %v", got, want)
+	}
+
+	// partial venue: address present, geo pair suppressed (half-coordinate).
+	if got, want := venues[1]["address"], addr; got != want {
+		t.Errorf("venues[1].address = %v, want %q", got, want)
+	}
+	if _, has := venues[1]["geoLat"]; has {
+		t.Errorf("venues[1].geoLat MUST be absent when GeoLng is nil, got %v", venues[1]["geoLat"])
+	}
+	if _, has := venues[1]["geoLon"]; has {
+		t.Errorf("venues[1].geoLon MUST be absent when GeoLng is nil, got %v", venues[1]["geoLon"])
+	}
+
+	// bare venue: neither address nor geo keys present (omit rather than empty).
+	if _, has := venues[2]["address"]; has {
+		t.Errorf("venues[2].address MUST be absent when Address is nil, got %v", venues[2]["address"])
+	}
+	if _, has := venues[2]["geoLat"]; has {
+		t.Errorf("venues[2].geoLat MUST be absent when GeoLat is nil, got %v", venues[2]["geoLat"])
+	}
+	if _, has := venues[2]["geoLon"]; has {
+		t.Errorf("venues[2].geoLon MUST be absent when GeoLng is nil, got %v", venues[2]["geoLon"])
+	}
+}
+
 // TestBil24_476_BuildCountryCityLists_EmptyInput pins the empty-input
 // contract: no rows → both lists are empty but non-nil so the JSON
 // envelope emits `[]` not `null`.
