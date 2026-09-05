@@ -25743,3 +25743,155 @@ Gates - all GREEN:
 No openapi.yaml touched, no migration added.
 
 Feature #480 marked PASSING.
+
+## 2026-09-05 #472 W1-A1c - SCAN_TICKET org resolution + delete GetSalesChannelByIDGlobal
+
+Spec section 5 item 3 and 7.14 delivered. SCAN_TICKET now runs through
+the unified authenticateCommand path from #471 (fid = display_number),
+looks up the barcode across ALL authorities via new gen query
+GetBarcodeByExternalRefAny (spec 7.14), and walks tickets -> sessions
+-> events.org_id vs the fid channels org, returning resultCode=-3
+(bil24.not_found, localized) on any cross-tenant match. scanned/revoked
+barcodes keep the -2 semantics per spec.
+
+Deletions:
+  queries/channels.sql        GetSalesChannelByIDGlobal query removed
+  gen/channels.sql.go         GetSalesChannelByIDGlobal wrapper removed
+  hbil24/auth.go              parseFIDUUID + legacy UUID fallback in
+                              resolveChannelByFID removed;
+                              validateScanTicketToken removed;
+                              GetSalesChannelByIDGlobal off the
+                              ChannelLookupQuerier interface.
+  hbil24/handler.go           GetSalesChannelByIDGlobal off the
+                              ReservationContextQuerier interface.
+  bil24_390_test.go           rewired to display_number fid +
+                              fakeChannelLookup (same fake auth_471 uses)
+
+Additions:
+  queries/barcodes.sql        GetBarcodeByExternalRefAny (LIMIT 1)
+  gen/barcodes.sql.go         GetBarcodeByExternalRefAny wrapper
+  hbil24/handler.go           ScanQuerier interface + WithScanQuerier
+                              setter (optional; falls back to
+                              barcodeQueries so pre-#472 tests pass)
+  hbil24/cmd_tickets.go       full SCAN_TICKET rewrite: authenticateCommand
+                              -> GetBarcodeByExternalRefAny -> tickets ->
+                              sessions -> events.org_id check ->
+                              scanned/revoked -2 -> MarkBarcodeScanned;
+                              every error path localized via localizeDesc
+  cmd_tickets_472_test.go     unit tests with fakeScanQ + fakeSessOrg:
+                              CrossOrg_Rejected (-3), SameOrg_Passes (0),
+                              AlreadyScanned_Returns_2 (-2),
+                              BarcodeNotFound_ReturnsMinus3 (-3)
+  scan_ticket_goldens_472_test.go   non-integration golden envelope pin
+                              for basic.json + cross_org.json
+  testdata/wp/golden/SCAN_TICKET/basic.json     rewritten to match the
+                              actual handler wire shape (scanStatus,
+                              ticketId, platformTicketId)
+  testdata/wp/golden/SCAN_TICKET/cross_org.json new (-3 not_found)
+  testdata/wp/requests/SCAN_TICKET/cross_org.json new
+
+Gates - all GREEN:
+- go build ./apps/backend/...                             EXIT:0
+- go vet   ./apps/backend/...                             EXIT:0
+- go test  ./apps/backend/...  full suite                 EXIT:0
+- go test  ./apps/backend/internal/platform/httpserver/hbil24/...  EXIT:0
+- go test  ./apps/backend/tests/compat/bil24/...          EXIT:0
+- go test  ./apps/backend/tests/staticanalysis/...        EXIT:0
+- go test  ./apps/backend/internal/migrations/...         EXIT:0
+- go test  ./apps/backend/internal/adapters/postgres/gen/...  EXIT:0
+- gofmt -l on all changed .go files                       CLEAN
+
+Commit aa42694 pushed to origin/master (13 files, +645/-283). No
+openapi.yaml touched, no migration added. Docker unavailable locally so
+no integration-tag run against Postgres; the fake-based cross-org test
+in cmd_tickets_472_test.go covers the same branch.
+
+Constraint checks (spec + AGENTS.md):
+- bil24compat still no httpserver imports (interface guard test PASS).
+- httpserver/hbil24/*.go all stay under 400 lines; cmd_tickets.go 275.
+- No git add . / -A used; staged 13 files by path.
+- Uncommitted #473 work (gateway_credential.go etc.) left untouched.
+
+Feature #472 marked PASSING.
+
+
+## 2026-09-05 #473 W1-A1d — gateway-credential admin endpoint
+
+Spec section 5.4 delivered. Three routes under
+/v1/organizations/{org_id}/channels/{id}/gateway-credential, all gated on
+channel.update + X-Admin-Reason (superadmin-review convention shared with
+admin_users / admin_orgs / admin_memberships).
+
+Handler: hcatalog/gateway_credential.go (pre-existing untracked skeleton
+from a prior session was completed and wired):
+- put mints a 32-byte hex secret via crypto/rand + bcrypt.DefaultCost,
+  stores hash under settings.gateway.token_hash, flips
+  settings.gateway.enabled=true, stamps token_rotated_at (RFC3339 UTC),
+  and returns {fid, token, base_url, image_url, rotated_at} exactly once.
+  base_url/image_url from cfg.AppPublicURL (empty string when unset per
+  spec text).
+- delete flips settings.gateway.enabled=false (idempotent, hash retained
+  so a follow-up get still surfaces rotated_at).
+- get returns {fid, enabled, rotated_at} — token/hash never exposed.
+- persistGatewaySettings does UpdateSalesChannel + review.WriteTx inside
+  a single pgx transaction; review event
+  v1.channel.gateway_credential.rotated with metadata.outcome =
+  "rotated" | "disabled".
+- mergeGatewayIntoSettings preserves unrelated settings keys (macs config,
+  feature_token, ...) and drops the legacy top-level gateway_token_hash
+  fallback on the first put (documented in hbil24/auth.go parser).
+
+Wiring:
+- catalog_shims.go: three shim methods + WithPublicBaseURL(s.cfg.AppPublicURL)
+  in catalogHandler(); appPublicURL() helper on *Server for the empty-cfg
+  guard.
+- hcatalog/handler.go: WithPublicBaseURL setter + publicBaseURL field.
+- mount_iam.go: three routes added inside the existing channel.update
+  chi.Group (auth + permission gate reuse).
+
+OpenAPI + codegen:
+- openapi/openapi.yaml: /gateway-credential path (get/put/delete) with
+  full parameters (org_id, id, X-Admin-Reason) and 200/400/401/403/404/503
+  responses in the block-style ErrorEnvelope $ref form (mandatory per
+  AGENTS.md — the custom line-based YAML parser cannot expand flow-style).
+- Two new schemas: ChannelGatewayCredentialSummary (fid/enabled/rotated_at)
+  and ChannelGatewayCredentialRotated (fid/token/base_url/image_url/rotated_at).
+- Regen via openapi30gen + oapi-codegen@v2.4.1 + gen-ts-client.mjs
+  produced types_gen.go (+62 lines) and clients/ts/index.d.ts (+321
+  lines). Drift harness (openapi_drift_test.go) auto-includes the new
+  routes from chi router reflection — no manual wiring needed.
+
+Handler tests:
+- httpserver/gateway_credential_473_test.go (route-level): all three verbs
+  are mounted (no 404/405), all three return 401 without JWT, all three
+  return 400 without X-Admin-Reason (even with a valid JWT), all three
+  return 403 org.access_denied for a non-member actor (backed by
+  emptyMembershipDBTX from pr2_01), and all three return 503
+  dependency.database_unavailable when channelQueries is nil.
+- hcatalog/gateway_credential_test.go (pure unit):
+  GenerateGatewayToken shape (64 hex chars) + uniqueness across two calls
+  + bcrypt.CompareHashAndPassword round-trip + cross-check; three
+  mergeGatewayIntoSettings cases (preserves siblings and drops legacy;
+  safe on nil/empty/object existing) with all persisted fields verified;
+  seven extractGatewaySettings cases (nil/empty/garbage/missing gateway
+  key/null gateway/legacy top-level-only-hash → zero value; full shape
+  round-trips enabled/hash/rotated_at/default_locale).
+
+Gates — all GREEN:
+- go build ./apps/backend/...                                     EXIT:0
+- go vet   ./apps/backend/...                                     EXIT:0
+- go test  ./apps/backend/internal/platform/httpserver/hcatalog/  EXIT:0
+- go test  ./apps/backend/internal/platform/httpserver/           EXIT:0
+- go test  ./apps/backend/tests/staticanalysis/...                EXIT:0
+- go test  ./apps/backend/tests/compat/bil24/...                  EXIT:0
+- go test  ./apps/backend/...  full suite (61 pkgs)               EXIT:0
+- gofmt -l on 9 changed .go files                                 CLEAN
+
+Staged and committed by path only (never git add . / -A): 9 files, +1600
+lines. Commit e7048ac on origin/master. Pre-existing uncommitted work
+belonging to feature #472 (SCAN_TICKET org resolution + hbil24 auth
+cleanup) was NOT included in this commit; it was auto-committed
+separately as aa42694 by another process on the same host during the
+session.
+
+Feature #473 marked PASSING.
