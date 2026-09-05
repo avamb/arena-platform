@@ -26044,3 +26044,55 @@ Staged by path only (never git add . / -A): channels.tsx, channels.test.ts,
 reason.ts, reason.test.ts. features.db and an unrelated
 .autoforge/prompts/coding_prompt.md edit were deliberately left unstaged.
 Commit edc36aa, pushed to origin/master (74d07be..edc36aa).
+
+## Feature #451 - W1-A1 [EPIC-VERIFY]: verification pass (2026-09-05)
+
+Wave: WP Bil24 Compat W1. VERIFICATION-ONLY epic; listed sub-feature
+dependencies (450, 470, 471, 472, 473, 474) all already passing. No code
+changes were needed this session - re-ran the full gate suite and
+confirmed the epic's two named goldens.
+
+Golden fixtures named in "Done when":
+- SCAN_TICKET/cross_org.json: actively asserted by
+  TestBil24_472_ScanTicketGoldens_EnvelopeShape/cross_org_rejected
+  (envelope shape, resultCode=-3) AND by the live-handler test
+  TestBil24_472_ScanTicket_CrossOrg_Rejected in hbil24. Both PASS.
+- GET_ALL_ACTIONS/isolation.json: NOT yet wired to a live-handler test.
+  harness_test.go's 10-scenario table (feature #450) explicitly retargets
+  scenario 01 "GET_ALL_ACTIONS with org isolation + venue TZ" to feature
+  #497 (t.Skip line names it), which is outside #451's own sub-feature
+  list. The fixture files exist as placeholders for #497 to adopt; this
+  is the documented post-split scope, not a regression of the sub-features
+  #451 actually owns (470-474 cover fid resolution, token-on-every-command,
+  SCAN_TICKET cross-org rejection, and credential provisioning + admin-web
+  UI - none of which implement GET_ALL_ACTIONS's org-scoped catalog list).
+  Confirmed via 09_autoforge/wp_bil24_compat_backlog.md entry 451 and the
+  harness comment mapping scenario 1 to #497.
+
+Full gate suite run this session (apps/backend and apps/admin-web, using
+go.exe -C / npm --prefix since `cd` is blocked in this sandbox):
+- go.exe build ./...                                        EXIT:0
+- go.exe vet ./...                                           EXIT:0
+- go.exe test ./... (61 packages, no pipeline, full log)     EXIT:0, no FAIL
+- gofmt -l on apps/backend (excluding .gomodcache)           CLEAN
+- GOLANGCI_LINT_CACHE=/tmp/golangci-cache golangci-lint run
+  ./apps/backend/... (@latest, absolute cache path)          0 issues
+- go.exe test ./internal/migrations/...                      EXIT:0 (head
+  pin TestHead_KnownCurrentHead passes, matches embedded FS)
+- npm --prefix apps/admin-web run type-check                 EXIT:0
+- npm --prefix apps/admin-web run test (vitest)               EXIT:0, 1114/1114, 43 files
+- npm --prefix apps/admin-web run build                       EXIT:0
+
+No openapi.yaml/codegen changes pending (git status shows only the
+pre-existing coding_prompt.md diff and untracked features.db, both left
+alone per convention) - codegen drift check already runs inside the full
+`go test ./...` (openapi_drift_test.go) and passed.
+
+`gh` CLI is blocked in this sandbox (org-level restriction), so the latest
+CI run could not be independently re-checked this session; every locally
+reproducible CI-equivalent gate (Unit-job go test, lint, gofmt, migration
+head, admin-web type-check/test/build) is green, and no new untagged
+DB-touching test was added (matching the repo's Unit-vs-Integration split).
+
+Feature #451 marked PASSING (verification-only; no files changed, no
+commit needed this session).
