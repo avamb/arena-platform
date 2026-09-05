@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/orderexport"
 )
 
 // TestBuildExport_GoldenFieldTypes verifies that the export output has the
@@ -24,24 +26,24 @@ import (
 func TestBuildExport_GoldenFieldTypes(t *testing.T) {
 	// Build a representative export using the same helper from export_unit_test.go.
 	row := goldenBaseRow()
-	row.promoCodeName = strPtr("SUMMER10")
+	row.PromoCodeName = strPtr("SUMMER10")
 	// 3 tickets in one order with a promo discount.
 	row1 := row
-	row1.systemTicketID = 1001
-	row1.seatSystemID = 1001
-	row1.ordinal = 1
+	row1.SystemTicketID = 1001
+	row1.SeatSystemID = 1001
+	row1.Ordinal = 1
 
 	row2 := row
-	row2.systemTicketID = 1002
-	row2.seatSystemID = 1002
-	row2.ordinal = 2
+	row2.SystemTicketID = 1002
+	row2.SeatSystemID = 1002
+	row2.Ordinal = 2
 
 	row3 := row
-	row3.systemTicketID = 1003
-	row3.seatSystemID = 1003
-	row3.ordinal = 3
+	row3.SystemTicketID = 1003
+	row3.SeatSystemID = 1003
+	row3.Ordinal = 3
 
-	export := buildExport([]exportRow{row1, row2, row3})
+	export := buildExport([]orderexport.Row{row1, row2, row3})
 
 	// Marshal to JSON.
 	got, err := json.MarshalIndent(export, "", "  ")
@@ -183,50 +185,50 @@ func TestBuildExport_GoldenFieldTypes(t *testing.T) {
 
 // goldenBaseRow is a copy of baseRow() from export_unit_test.go for use here.
 // (Both files are in package macs, so strPtr/i64Ptr are accessible.)
-func goldenBaseRow() exportRow {
+func goldenBaseRow() orderexport.Row {
 	eventID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
 	ticketID := uuid.MustParse("00000000-0000-0000-0000-000000000003")
 	csID := uuid.MustParse("00000000-0000-0000-0000-000000000004")
 	venueID := uuid.MustParse("00000000-0000-0000-0000-000000000005")
 	tierID := uuid.MustParse("00000000-0000-0000-0000-000000000006")
-	return exportRow{
-		ticketID:          ticketID,
-		systemTicketID:    1001,
-		checkoutSessionID: csID,
-		tierID:            &tierID,
-		holderEmail:       strPtr("buyer@example.com"),
-		ticketStatus:      "active",
-		issuedAt:          nil,
-		seatKey:           nil,
-		seatSector:        nil,
-		seatRow:           nil,
-		seatNumber:        nil,
-		ordinal:           1,
-		cancelledAt:       nil,
-		refundDate:        nil,
-		refundPrice:       nil,
-		orderTotal:        2700,
-		orderSubtotal:     3000,
-		orderDiscount:     300,
-		orderCurrency:     "RUB",
-		paymentProvider:   strPtr("yookassa"),
-		orderCompletedAt:  time.Date(2026, 8, 22, 10, 0, 0, 0, time.UTC),
-		orderUserID:       nil,
-		sessionStartAt:    time.Date(2026, 8, 22, 20, 0, 0, 0, time.UTC),
-		eventID:           eventID,
-		eventName:         "Summer Fest",
-		orgLegalName:      "ООО Организатор",
-		orgName:           "Организатор",
-		venueID:           venueID,
-		venueName:         "Arena Hall",
-		cityID:            nil,
-		cityName:          strPtr("Moscow"),
-		seatSystemID:      1001,
-		barcodeStr:        nil,
-		tierName:          strPtr("Standard"),
-		tierPrice:         i64Ptr(1000),
-		soldPrice:         1000,
-		promoCodeName:     nil,
-		venueTimezone:     nil,
+	return orderexport.Row{
+		TicketID:          ticketID,
+		SystemTicketID:    1001,
+		CheckoutSessionID: csID,
+		TierID:            &tierID,
+		HolderEmail:       strPtr("buyer@example.com"),
+		TicketStatus:      "active",
+		IssuedAt:          nil,
+		SeatKey:           nil,
+		SeatSector:        nil,
+		SeatRow:           nil,
+		SeatNumber:        nil,
+		Ordinal:           1,
+		CancelledAt:       nil,
+		RefundDate:        nil,
+		RefundPrice:       nil,
+		OrderTotal:        2700,
+		OrderSubtotal:     3000,
+		OrderDiscount:     300,
+		OrderCurrency:     "RUB",
+		PaymentProvider:   strPtr("yookassa"),
+		OrderCompletedAt:  time.Date(2026, 8, 22, 10, 0, 0, 0, time.UTC),
+		OrderUserID:       nil,
+		SessionStartAt:    time.Date(2026, 8, 22, 20, 0, 0, 0, time.UTC),
+		EventID:           eventID,
+		EventName:         "Summer Fest",
+		OrgLegalName:      "ООО Организатор",
+		OrgName:           "Организатор",
+		VenueID:           venueID,
+		VenueName:         "Arena Hall",
+		CityID:            nil,
+		CityName:          strPtr("Moscow"),
+		SeatSystemID:      1001,
+		BarcodeStr:        nil,
+		TierName:          strPtr("Standard"),
+		TierPrice:         i64Ptr(1000),
+		SoldPrice:         1000,
+		PromoCodeName:     nil,
+		VenueTimezone:     nil,
 	}
 }

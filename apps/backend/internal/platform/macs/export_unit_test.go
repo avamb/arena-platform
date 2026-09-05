@@ -1,5 +1,10 @@
-// export_unit_test.go — white-box unit tests for buildExport.
-// Package macs (internal) so buildExport is directly accessible.
+// export_unit_test.go — white-box unit tests for the MACS export.
+// Package macs (internal) so the encoder is directly accessible.
+//
+// W1-B7a: the DB projection moved to internal/platform/orderexport, so the
+// fixtures build orderexport.Row and buildExport below is the composition
+// under test (project, then encode). Every assertion is unchanged from
+// before the extraction — that is what proves the move was behaviour-free.
 package macs
 
 import (
@@ -7,60 +12,68 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/orderexport"
 )
+
+// buildExport is the pre-extraction entry point, expressed as the
+// projection followed by the MACS encoder.
+func buildExport(rows []orderexport.Row) Export {
+	return encodeExport(orderexport.Build(rows))
+}
 
 // helpers
 
 func strPtr(s string) *string { return &s }
 func i64Ptr(n int64) *int64   { return &n }
 
-// baseRow returns a minimal valid exportRow for a single active GA ticket.
-func baseRow() exportRow {
+// baseRow returns a minimal valid orderexport.Row for a single active GA ticket.
+func baseRow() orderexport.Row {
 	eventID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
 	sessionID := uuid.MustParse("00000000-0000-0000-0000-000000000002")
 	ticketID := uuid.MustParse("00000000-0000-0000-0000-000000000003")
 	csID := uuid.MustParse("00000000-0000-0000-0000-000000000004")
 	venueID := uuid.MustParse("00000000-0000-0000-0000-000000000005")
-	_ = sessionID // not in exportRow
-	return exportRow{
-		ticketID:          ticketID,
-		systemTicketID:    1001,
-		checkoutSessionID: csID,
-		tierID:            nil,
-		holderEmail:       strPtr("buyer@example.com"),
-		ticketStatus:      "active",
-		issuedAt:          nil,
-		seatKey:           nil, // GA
-		seatSector:        nil,
-		seatRow:           nil,
-		seatNumber:        nil,
-		ordinal:           1,
-		cancelledAt:       nil,
-		refundDate:        nil,
-		refundPrice:       nil,
-		orderTotal:        1500,
-		orderSubtotal:     1500,
-		orderDiscount:     0,
-		orderCurrency:     "RUB",
-		paymentProvider:   strPtr("yookassa"),
-		orderCompletedAt:  time.Date(2026, 8, 22, 10, 0, 0, 0, time.UTC),
-		orderUserID:       nil,
-		sessionStartAt:    time.Date(2026, 8, 22, 20, 0, 0, 0, time.UTC),
-		eventID:           eventID,
-		eventName:         "Summer Fest",
-		orgLegalName:      "ООО Организатор",
-		orgName:           "Организатор",
-		venueID:           venueID,
-		venueName:         "Arena Hall",
-		cityID:            nil,
-		cityName:          strPtr("Moscow"),
-		seatSystemID:      1001, // GA: same as systemTicketID
-		barcodeStr:        nil,
-		tierName:          strPtr("Standard"),
-		tierPrice:         i64Ptr(1500),
-		soldPrice:         1500,
-		promoCodeName:     nil,
-		venueTimezone:     nil,
+	_ = sessionID // not in orderexport.Row
+	return orderexport.Row{
+		TicketID:          ticketID,
+		SystemTicketID:    1001,
+		CheckoutSessionID: csID,
+		TierID:            nil,
+		HolderEmail:       strPtr("buyer@example.com"),
+		TicketStatus:      "active",
+		IssuedAt:          nil,
+		SeatKey:           nil, // GA
+		SeatSector:        nil,
+		SeatRow:           nil,
+		SeatNumber:        nil,
+		Ordinal:           1,
+		CancelledAt:       nil,
+		RefundDate:        nil,
+		RefundPrice:       nil,
+		OrderTotal:        1500,
+		OrderSubtotal:     1500,
+		OrderDiscount:     0,
+		OrderCurrency:     "RUB",
+		PaymentProvider:   strPtr("yookassa"),
+		OrderCompletedAt:  time.Date(2026, 8, 22, 10, 0, 0, 0, time.UTC),
+		OrderUserID:       nil,
+		SessionStartAt:    time.Date(2026, 8, 22, 20, 0, 0, 0, time.UTC),
+		EventID:           eventID,
+		EventName:         "Summer Fest",
+		OrgLegalName:      "ООО Организатор",
+		OrgName:           "Организатор",
+		VenueID:           venueID,
+		VenueName:         "Arena Hall",
+		CityID:            nil,
+		CityName:          strPtr("Moscow"),
+		SeatSystemID:      1001, // GA: same as systemTicketID
+		BarcodeStr:        nil,
+		TierName:          strPtr("Standard"),
+		TierPrice:         i64Ptr(1500),
+		SoldPrice:         1500,
+		PromoCodeName:     nil,
+		VenueTimezone:     nil,
 	}
 }
 
@@ -76,7 +89,7 @@ func TestBuildExport_Empty(t *testing.T) {
 
 func TestBuildExport_SingleActiveTicket(t *testing.T) {
 	row := baseRow()
-	export := buildExport([]exportRow{row})
+	export := buildExport([]orderexport.Row{row})
 
 	if len(export) != 1 {
 		t.Fatalf("expected 1 order, got %d", len(export))
@@ -94,8 +107,8 @@ func TestBuildExport_SingleActiveTicket(t *testing.T) {
 	if tk.Price != 1500 {
 		t.Errorf("expected price=1500, got %d", tk.Price)
 	}
-	if tk.SeatID != row.seatSystemID {
-		t.Errorf("GA ticket: expected seatId=%d (seatSystemID), got %d", row.seatSystemID, tk.SeatID)
+	if tk.SeatID != row.SeatSystemID {
+		t.Errorf("GA ticket: expected seatId=%d (seatSystemID), got %d", row.SeatSystemID, tk.SeatID)
 	}
 	if tk.Category != "Standard" {
 		t.Errorf("expected category=Standard, got %q", tk.Category)
@@ -129,12 +142,12 @@ func TestBuildExport_SingleActiveTicket(t *testing.T) {
 
 func TestBuildExport_CancelledTicket(t *testing.T) {
 	row := baseRow()
-	row.ticketStatus = "cancelled"
+	row.TicketStatus = "cancelled"
 	refundT := time.Date(2026, 8, 23, 9, 0, 0, 0, time.UTC)
-	row.refundDate = &refundT
-	row.refundPrice = i64Ptr(1500)
+	row.RefundDate = &refundT
+	row.RefundPrice = i64Ptr(1500)
 
-	export := buildExport([]exportRow{row})
+	export := buildExport([]orderexport.Row{row})
 	if len(export) != 1 || len(export[0].TicketList) != 1 {
 		t.Fatal("expected 1 order with 1 ticket")
 	}
@@ -152,12 +165,12 @@ func TestBuildExport_CancelledTicket(t *testing.T) {
 
 func TestBuildExport_OrderIDIsMinSystemTicketID(t *testing.T) {
 	row1 := baseRow()
-	row1.systemTicketID = 2002
+	row1.SystemTicketID = 2002
 	row2 := baseRow()
-	row2.systemTicketID = 1001
-	row2.ordinal = 2
+	row2.SystemTicketID = 1001
+	row2.Ordinal = 2
 
-	export := buildExport([]exportRow{row1, row2})
+	export := buildExport([]orderexport.Row{row1, row2})
 	if len(export) != 1 {
 		t.Fatalf("expected 1 order (same checkout session), got %d", len(export))
 	}
@@ -175,14 +188,14 @@ func TestBuildExport_OrderIDIsMinSystemTicketID(t *testing.T) {
 
 func TestBuildExport_TwoOrders(t *testing.T) {
 	row1 := baseRow()
-	row1.checkoutSessionID = uuid.MustParse("aaaaaaaa-0000-0000-0000-000000000001")
-	row1.systemTicketID = 1001
+	row1.CheckoutSessionID = uuid.MustParse("aaaaaaaa-0000-0000-0000-000000000001")
+	row1.SystemTicketID = 1001
 
 	row2 := baseRow()
-	row2.checkoutSessionID = uuid.MustParse("bbbbbbbb-0000-0000-0000-000000000002")
-	row2.systemTicketID = 2001
+	row2.CheckoutSessionID = uuid.MustParse("bbbbbbbb-0000-0000-0000-000000000002")
+	row2.SystemTicketID = 2001
 
-	export := buildExport([]exportRow{row1, row2})
+	export := buildExport([]orderexport.Row{row1, row2})
 	if len(export) != 2 {
 		t.Fatalf("expected 2 orders, got %d", len(export))
 	}
@@ -190,9 +203,9 @@ func TestBuildExport_TwoOrders(t *testing.T) {
 
 func TestBuildExport_PromoCodeName(t *testing.T) {
 	row := baseRow()
-	row.promoCodeName = strPtr("SUMMER25")
+	row.PromoCodeName = strPtr("SUMMER25")
 
-	export := buildExport([]exportRow{row})
+	export := buildExport([]orderexport.Row{row})
 	if len(export) != 1 || len(export[0].TicketList) != 1 {
 		t.Fatal("expected 1 order with 1 ticket")
 	}
@@ -209,9 +222,9 @@ func TestBuildExport_PromoCodeName(t *testing.T) {
 func TestBuildExport_VenueTimezone(t *testing.T) {
 	row := baseRow()
 	// sessionStartAt is 20:00 UTC; in Europe/Moscow (UTC+3) it becomes 23:00.
-	row.venueTimezone = strPtr("Europe/Moscow")
+	row.VenueTimezone = strPtr("Europe/Moscow")
 
-	export := buildExport([]exportRow{row})
+	export := buildExport([]orderexport.Row{row})
 	if len(export) != 1 || len(export[0].TicketList) != 1 {
 		t.Fatal("expected 1 order with 1 ticket")
 	}
@@ -224,10 +237,10 @@ func TestBuildExport_VenueTimezone(t *testing.T) {
 func TestBuildExport_SoldPrice(t *testing.T) {
 	row := baseRow()
 	// soldPrice from reservation GA item differs from tier price.
-	row.tierPrice = i64Ptr(1500)
-	row.soldPrice = 1200 // discounted via promo
+	row.TierPrice = i64Ptr(1500)
+	row.SoldPrice = 1200 // discounted via promo
 
-	export := buildExport([]exportRow{row})
+	export := buildExport([]orderexport.Row{row})
 	tk := export[0].TicketList[0]
 	if tk.Price != 1200 {
 		t.Errorf("expected price=1200 (soldPrice), got %d", tk.Price)
@@ -236,9 +249,9 @@ func TestBuildExport_SoldPrice(t *testing.T) {
 
 func TestBuildExport_BarcodeFromCredential(t *testing.T) {
 	row := baseRow()
-	row.barcodeStr = strPtr("1234567890123")
+	row.BarcodeStr = strPtr("1234567890123")
 
-	export := buildExport([]exportRow{row})
+	export := buildExport([]orderexport.Row{row})
 	tk := export[0].TicketList[0]
 	if tk.Barcode != "1234567890123" {
 		t.Errorf("expected barcode from credential, got %q", tk.Barcode)
@@ -251,28 +264,28 @@ func TestBuildExport_ProrationRemainder_LastTicketAbsorbsRounding(t *testing.T) 
 	// last ticket gets 100-66=34. sum = 33+33+34 = 100 = order_discount. ✓
 	csID := uuid.MustParse("aaaaaaaa-bbbb-cccc-dddd-000000000099")
 	row := baseRow()
-	row.checkoutSessionID = csID
-	row.orderSubtotal = 3000
-	row.orderDiscount = 100
-	row.orderTotal = 2900
-	row.soldPrice = 1000
+	row.CheckoutSessionID = csID
+	row.OrderSubtotal = 3000
+	row.OrderDiscount = 100
+	row.OrderTotal = 2900
+	row.SoldPrice = 1000
 
 	row1 := row
-	row1.systemTicketID = 5001
-	row1.seatSystemID = 5001
-	row1.ordinal = 1
+	row1.SystemTicketID = 5001
+	row1.SeatSystemID = 5001
+	row1.Ordinal = 1
 
 	row2 := row
-	row2.systemTicketID = 5002
-	row2.seatSystemID = 5002
-	row2.ordinal = 2
+	row2.SystemTicketID = 5002
+	row2.SeatSystemID = 5002
+	row2.Ordinal = 2
 
 	row3 := row
-	row3.systemTicketID = 5003
-	row3.seatSystemID = 5003
-	row3.ordinal = 3
+	row3.SystemTicketID = 5003
+	row3.SeatSystemID = 5003
+	row3.Ordinal = 3
 
-	export := buildExport([]exportRow{row1, row2, row3})
+	export := buildExport([]orderexport.Row{row1, row2, row3})
 	if len(export) != 1 {
 		t.Fatalf("expected 1 order, got %d", len(export))
 	}
