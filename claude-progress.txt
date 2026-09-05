@@ -26806,3 +26806,98 @@ path called it. This session wired it in.
   (spec 14.2) and the bil24wire dispatcher for v1.order.paid /
   v1.order.cancelled (spec 9.2) - are NOT part of #488 and were not
   started.
+
+================================================================================
+Feature #504 - W1-B7a: migration 0094 + orderexport extraction (MACS unchanged)
+2026-09-06 | commit b299f6f | PUSHED to origin/master | PASSING
+================================================================================
+
+  Why: the DB projection of a completed order (order/ticket structs, discount
+  proration, sold-price fallback, discountReason, venue-local showTime) lived
+  inside macs/export.go. Every other consumer of the SAME facts - the
+  Bil24-compatible WordPress webhook wire (bil24wire, spec 9.3), the gateway
+  GET_ORDER command, admin exports - would have had to import the MACS adapter
+  or re-derive the joins by hand. Both are wrong: MACS is one encoder among
+  several, not the owner of the facts.
+
+  What landed:
+
+  1. Migration 0094_wp_webhook_subscribers.sql (spec 3.5) - adds
+     webhook_subscribers.channel_id (uuid REFERENCES sales_channels ON DELETE
+     CASCADE) plus a PARTIAL unique index over channel_id WHERE
+     kind='bil24_wp' AND active - i.e. at most one active WP subscriber per
+     channel, while leaving other kinds and inactive rows unconstrained.
+     migrations_head_test.go pin bumped 0093 -> 0094.
+
+  2. internal/platform/orderexport - the neutral projection, three files:
+     - orderexport.go: Order / Ticket / Event / SeatLocation. NO wire
+       vocabulary by design: no camelCase JSON tags, no MACS integer status
+       codes, no Bil24 enums. Money stays minor units, times stay time.Time.
+       The one concession is Event.ShowTimeLocal (venue-local wall clock),
+       because resolving it needs venues.timezone, which only the query knows.
+     - query.go: exported Row (38 columns) + sessionQuery moved VERBATIM from
+       macs. ticketQuery/orderQuery are derived from it by a single WHERE
+       replacement, so the column list, joins and filters can never drift
+       between the three entry points. QuerySession / QueryOrder / QueryTicket.
+       QueryOrder is NEW - it resolves through tickets.order_id (the order
+       aggregate from 0092), which is what the wire needs and the MACS
+       session-scoped export could not answer.
+     - build.go: grouping + money. Order.ID = min system_ticket_id, GA
+       price fallback = subtotal/n, discount prorated by price with the LAST
+       ticket absorbing the rounding remainder (AB-50i), order id back-filled
+       onto tickets only after every ticket has been seen.
+
+  3. macs/export.go is now purely an ENCODER: encodeExport/encodeOrder/
+     encodeTicket over orderexport.Order. The MACS vocabulary - integer
+     holderStatus, integer event id from the UUID, EAN-13 barcodeFormat,
+     "PAID" status, RFC3339 dates - is applied there and nowhere else.
+
+  Proof that nothing changed behaviourally (this was the feature's hard
+  requirement, not a nice-to-have):
+    - testdata/sample_tickets.json is byte-for-byte UNTOUCHED and the golden
+      test still passes against it.
+    - The macs unit/golden white-box tests kept every assertion; the only
+      edit was renaming the moved struct's field identifiers (exportRow ->
+      orderexport.Row, lowercase -> exported names) plus a test-local
+      buildExport = encodeExport(orderexport.Build(rows)).
+    - The macs integration tests pass against the live stand unchanged.
+
+  New tests:
+    - build_test.go: 18 unit tests over the projection in its OWN vocabulary -
+      min-order-id, grouping by checkout session, proration summing exactly to
+      the order discount (33/33/34), GA subtotal split, Seated flag, all four
+      discountReason branches, ShowTimeLocal across venue tz / nil / empty /
+      unloadable, barcode credential precedence, guest orders, refund
+      passthrough, and that PlatformStatus is NOT translated.
+    - query_integration_test.go (//go:build integration): seeds a real paid
+      3-ticket order with a promo and asserts QueryOrder resolves it via
+      tickets.order_id, that QuerySession and QueryTicket agree with it, that
+      per-ticket discounts/charges sum exactly to the order discount/total,
+      that GA seat ids land in the disjoint 1e9+ range, that the venue tz is
+      applied (17:00Z -> 2027-03-14T20:00:00 Europe/Moscow), and that unknown
+      ids return nils rather than errors. A second test proves the paid-only
+      filter: an order on a payment_started checkout is NOT exportable.
+
+  Gates (all green):
+    - go build ./...                                            EXIT 0
+    - go vet ./... (and -tags integration on orderexport)        EXIT 0
+    - go test ./... (full suite, redirected to a file, not a
+      pipeline - see AGENTS.md)                                 EXIT 0
+    - golangci-lint@latest ./apps/backend/...                   0 issues
+      (first run flagged one revive unused-parameter in a table-driven
+      test; fixed to func(_ *Row))
+    - gofmt -l over the changed dirs incl. the integration-tagged file, clean
+    - arena-migrate against the Docker stand localhost:55432: applied
+      0094 cleanly, "successfully migrated database to version: 94"
+    - Live DB: the new orderexport integration tests AND the existing macs
+      integration tests both pass on the stand.
+
+  Gotcha worth remembering: checkout_sessions.state has no 'pending' value -
+  the CHECK allows created/pricing_confirmed/payment_started/completed/
+  abandoned/expired/manual_review. The first draft of the not-exportable test
+  died on a 23514 for exactly that.
+
+  Note for the next agent: orderexport.Row is exported ON PURPOSE so adapters
+  and their goldens can be tested without a database. bil24wire (spec 9.3)
+  should be built as a SECOND encoder over orderexport.Order - do not extend
+  the MACS types to carry Bil24 fields.
