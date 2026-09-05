@@ -25238,3 +25238,61 @@ the smallest self-contained field group (fullActionName + description
 Defer price/actionEventList sub-structure to their own slice because
 they need a session listing query and tier price resolution which is
 a whole new SQL query.
+
+
+## 2026-09-05 - #476 W1-A2b slice 17 - actionList lastEventDate + age
+
+Commit 2114f09, pushed to origin/master. Feature #476 STAYS in_progress
+(sub-feature rule: NEVER release claim as too large).
+
+Delivered this session:
+- cmd_catalog.go: extracted buildActionEntry(ctx, EventRow) pure helper
+  from handleBil24GetAllActions loop so per-field spec 7.1 additions on
+  actionList entry body can be unit-tested without spinning up mock
+  eventQueries. Handler loop is now a one-line append; whole
+  field-shape contract lives in one testable function.
+- Emit lastEventDate from EventRow.LastSessionAt (RFC3339 UTC), mirror
+  of firstEventDate. Absent when nil (event with no sessions).
+- Emit age from EventRow.AgeRating with spec 7.1 "NR" sentinel
+  normalised to empty; absent when column is nil OR value ends
+  up empty (WP plugin treats absent === empty; skipping saves wire bytes).
+- bil24_476_catalog_test.go: TestBil24_476_BuildActionEntry_LastEventDateAndAge
+  pins three cases (full row, NR row, bare row) plus baseline invariants
+  on actionId/actionName so fallback path (nil compatDB) is covered.
+
+Gates - all GREEN:
+- go build ./apps/backend/... EXIT:0
+- go vet   ./apps/backend/... EXIT:0
+- go test  ./apps/backend/... full suite EXIT:0 (test_476_slice17_full.log)
+- gofmt -l on 2 changed files clean
+
+Files touched:
+  apps/backend/internal/platform/httpserver/hbil24/cmd_catalog.go            (M)
+  apps/backend/internal/platform/httpserver/hbil24/bil24_476_catalog_test.go (M)
+
+STILL DEFERRED for #476 (Step 2 remaining + Step 3):
+
+Step 2 REMAINING (bottom-up, one slice per session):
+  cmd_catalog.go handleBil24GetAllActions actionList entry still missing
+    per spec 7.1: fullActionName (no source column yet - needs schema
+    slice or short_description reuse discussion), minPrice/maxPrice,
+    organizerId/organizerName (both need tier + org joins), and whole
+    actionEventList sub-tree (session listing with TZ, tier price
+    windows, GA-only category filter). Poster URLs still fall back to
+    events.image_url; a slice can side-load poster_media_id via
+    media_objects for spec-final bigPosterUrl/smallPosterUrl.
+  cmd_cart.go handleBil24UnReserve reservationId + full response reshape
+    to ReservationResponse form (spec s7.5).
+  cmd_order.go handleBil24GetOrderInfo/handleBil24CancelOrder orderId
+    -> spec s7.5/s7.6 review pending (orders likely stay uuid for W1).
+
+Step 3 - No-uuid guardrail (tests/compat/bil24/no_uuid_in_wire_test.go)
+already GREEN; slice 17 only adds RFC3339 timestamps and age strings,
+never surfaces a UUID.
+
+Recommended next slice: side-load poster_media_id via media_objects to
+emit spec-final bigPosterUrl/smallPosterUrl (fallback to
+events.image_url stays). Self-contained: one small query plus one branch
+in buildActionEntry. Alternatively, if a fullActionName source column
+is agreed with owner, add short_description/full_name migration - but
+that is a schema slice needing migration head bump.
