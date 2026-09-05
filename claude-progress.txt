@@ -24777,3 +24777,62 @@ Add h.resolveCategoryPriceID(ctx, raw) helper that calls
 bil24compat.ResolveLegacyIntID(KindCategoryPrice) when compatDB is
 wired and falls back to TranslateLegacyID otherwise; rewire
 reservationGA request parse and add corresponding panicDBTX tests.
+
+
+## 2026-09-05 - #476 W1-A2b slice 10 - RESERVATION categoryPriceId int64 input
+
+Commit 8af64b8, pushed to origin/master. Feature #476 STAYS in_progress
+(sub-feature rule: NEVER release claim as too large).
+
+Delivered this session:
+- compat_ids.go: new h.resolveCategoryPriceID(ctx, raw) helper mirroring
+  resolveActionEventID. When compatDB is wired, bil24compat.
+  ResolveLegacyIntID rejects UUID categoryPriceId with
+  ErrLegacyIDUUIDRejected via ParseLegacyIntID BEFORE compatids.Resolve
+  touches pool. Fallback (nil compatDB) returns TranslateLegacyID UUID
+  passthrough so seat_d1_312 / seat_d2_313 / bil24_374 unit-test
+  constructors that omit pool stay green.
+- cmd_cart_reserve.go reservationGA: TranslateLegacyID(c.CategoryPriceID)
+  call site swapped for h.resolveCategoryPriceID per spec s4 / s7.4.
+- bil24_476_input_ids_test.go: three new unit tests pin invariant with
+  panicDBTX stub:
+    * TestBil24_476_ResolveCategoryPriceID_UUIDInput_RejectedWithCompatDB
+    * TestBil24_476_ResolveCategoryPriceID_NonNumericInput_RejectedWithCompatDB
+    * TestBil24_476_ResolveCategoryPriceID_NilCompatDB_FallbackAcceptsUUID
+
+Gates - all GREEN:
+- go build ./apps/backend/... EXIT:0
+- go vet   ./apps/backend/... EXIT:0
+- go test  ./apps/backend/... full suite EXIT:0 (test_476_slice10.log)
+- gofmt -l on 3 changed files clean
+
+Files touched:
+  apps/backend/internal/platform/httpserver/hbil24/compat_ids.go            (M)
+  apps/backend/internal/platform/httpserver/hbil24/cmd_cart_reserve.go      (M)
+  apps/backend/internal/platform/httpserver/hbil24/bil24_476_input_ids_test.go (M)
+
+STILL DEFERRED for #476 (Step 2 remaining + Step 3):
+
+Step 2 REMAINING (bottom-up, one slice per session):
+  cmd_catalog.go handleBil24GetAllActions: full 7.1 aggregation
+    (countryList/cityList/venueList) still missing.
+  cmd_cart_reserve.go reservationSeated: seatList sub-field seatId input
+    parsing still uses uuid.Parse (session_seats.id UUID). Spec s7.4
+    calls for int64 (session_seats.system_seat_id). Needs a new query
+    (GetSessionSeatBySystemSeatID) and h.resolveSeatID helper.
+  cmd_cart.go handleBil24UnReserve reservationId + full response reshape
+    to ReservationResponse form (spec s7.5).
+  cmd_order.go handleBil24GetOrderInfo / handleBil24CancelOrder orderId
+    -> spec s7.5/s7.6 review pending (orders likely stay uuid for W1).
+
+Step 3 - No-uuid guardrail (tests/compat/bil24/no_uuid_in_wire_test.go)
+already GREEN; remaining request-side slices do not affect response
+goldens it walks.
+
+Recommended next slice: seatList sub-field int64 input parsing in
+reservationSeated. Add h.resolveSeatID helper backed by a new gen query
+that reverse-maps session_seats.system_seat_id -> session_seats.id, and
+add corresponding panicDBTX tests for UUID / non-int / fallback paths.
+This is bigger than categoryPriceId slice because it needs a new SQL
+query, so consider tackling handleBil24GetAllActions aggregation first
+if migration head is not yet at a stable point.
