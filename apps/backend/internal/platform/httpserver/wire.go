@@ -300,6 +300,7 @@ func New(opts Options) *Server {
 		meQueries:             pickMeQueries(opts.MeQueries, opts.PgxPool),
 		media:                 opts.Media,
 		pgxPool:               opts.PgxPool,
+		bundle:                opts.Bundle,
 	}
 
 	// Production verifier fallback: when no explicit Verifier is supplied,

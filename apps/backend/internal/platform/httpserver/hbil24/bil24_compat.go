@@ -188,16 +188,24 @@ func TranslatePlatformID(id uuid.UUID) string {
 func (h *Handler) HandleBil24Command(w http.ResponseWriter, r *http.Request) {
 	var req bil24Request
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		// Feature #478: JSON-parse failures pre-date any locale
+		// resolution (the request field is unreadable), so localize
+		// with the wire-provided locale hint alone; channel default
+		// is unknown at this point.
+		desc := h.localizeDesc(req.Locale, "", "bil24.invalid_request",
+			"request body must be valid JSON", nil)
 		writeBil24JSON(w, http.StatusOK, bil24Error(
-			"", ResultCodeInvalidRequest, "request body must be valid JSON",
+			"", ResultCodeInvalidRequest, desc,
 		))
 		return
 	}
 
 	command := strings.ToUpper(strings.TrimSpace(req.Command))
 	if command == "" {
+		desc := h.localizeDesc(req.Locale, "", "bil24.invalid_request",
+			"command field is required", nil)
 		writeBil24JSON(w, http.StatusOK, bil24Error(
-			"", ResultCodeInvalidRequest, "command field is required",
+			"", ResultCodeInvalidRequest, desc,
 		))
 		return
 	}
@@ -212,8 +220,10 @@ func (h *Handler) HandleBil24Command(w http.ResponseWriter, r *http.Request) {
 				slog.String("command", command),
 				slog.Any("panic", rec),
 			)
+			desc := h.localizeDesc(req.Locale, "", "bil24.internal",
+				"service temporarily unavailable", nil)
 			writeBil24JSON(w, http.StatusOK, bil24Error(
-				command, ResultCodeInternalError, "service temporarily unavailable",
+				command, ResultCodeInternalError, desc,
 			))
 		}
 	}()
@@ -254,7 +264,9 @@ func (h *Handler) HandleBil24Command(w http.ResponseWriter, r *http.Request) {
 		)
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			command, ResultCodeNotImplemented,
-			"ADD_PROMO_CODES is not implemented; apply promo codes via POST /v1/checkout/{id}/promos",
+			h.localizeDesc(req.Locale, "", "bil24.not_implemented",
+				"ADD_PROMO_CODES is not implemented; apply promo codes via POST /v1/checkout/{id}/promos",
+				nil),
 		))
 	default:
 		// Feature #477 / spec section 6: unknown command name is a
@@ -266,9 +278,14 @@ func (h *Handler) HandleBil24Command(w http.ResponseWriter, r *http.Request) {
 			slog.String("command", command),
 			slog.String("fid", req.FID),
 		)
-		writeBil24JSON(w, http.StatusOK, bil24Error(
-			command, ResultCodeInvalidRequest,
+		// Feature #478 / spec §6: unknown command text is localized
+		// through bil24.unknown_command with the command name as
+		// template param so ru/he/cs users see native-language text.
+		desc := h.localizeDesc(req.Locale, "", "bil24.unknown_command",
 			fmt.Sprintf("unknown command: %q", command),
+			map[string]any{"command": command})
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			command, ResultCodeInvalidRequest, desc,
 		))
 	}
 }

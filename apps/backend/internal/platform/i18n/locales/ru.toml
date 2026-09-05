@@ -39,3 +39,59 @@ other = "Комиссия платёжного провайдера"
 
 ["pricing.breakdown.vat"]
 other = "НДС"
+
+# ── Bil24 compat gateway (feature #478, spec section 6) ──────────────────────
+
+["bil24.ok"]
+other = "OK"
+
+["bil24.seat_taken"]
+other = "Место {{.sector}}-{{.row}}-{{.number}} уже занято"
+
+["bil24.category_sold_out"]
+other = "Категория {{.name}} распродана (осталось {{.available}})"
+
+["bil24.session_expired"]
+other = "сессия истекла"
+
+["bil24.sales_closed"]
+other = "продажи на этот сеанс закрыты"
+
+["bil24.promo_invalid"]
+other = "промокод недействителен"
+
+["bil24.hold_expired"]
+other = "бронь истекла, повторите резервирование"
+
+["bil24.order_not_found"]
+other = "заказ не найден"
+
+["bil24.currency_mismatch"]
+other = "валюта корзины не совпадает с валютой сеанса"
+
+["bil24.pricing_mode_unsupported"]
+other = "режим ценообразования не поддерживается шлюзом"
+
+["bil24.line_wrong_session"]
+other = "строка заказа относится к другому сеансу"
+
+["bil24.order_cancelled"]
+other = "заказ отменён"
+
+["bil24.use_refund_ticket"]
+other = "оформите возврат билета"
+
+["bil24.unknown_command"]
+other = "неизвестная команда"
+
+["bil24.invalid_request"]
+other = "неверный запрос"
+
+["bil24.not_found"]
+other = "ресурс не найден в этом канале"
+
+["bil24.unauthorized"]
+other = "нет доступа"
+
+["bil24.internal"]
+other = "внутренняя ошибка"

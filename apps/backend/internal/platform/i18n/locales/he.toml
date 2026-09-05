@@ -1,0 +1,94 @@
+# he.toml — Hebrew message catalog for arena_new.
+#
+# Each key must mirror en.toml. Missing keys fall back to en.toml via
+# go-i18n's built-in fallback chain, so partial catalogs remain safe.
+#
+# Introduced by feature #478 (Bil24 compat gateway, spec section 6).
+
+["server.welcome"]
+other = "ברוכים הבאים לפלטפורמת Arena!"
+
+["error.unauthorized"]
+other = "נדרש אימות: יש לספק אסימון Bearer תקף."
+
+["error.forbidden"]
+other = "אין לך הרשאה לגשת למשאב זה."
+
+["error.not_found"]
+other = "המשאב המבוקש אינו קיים."
+
+["error.validation"]
+other = "הבקשה מכילה נתונים לא תקינים."
+
+["error.internal"]
+other = "אירעה שגיאה בלתי צפויה. נסה שוב מאוחר יותר."
+
+# ── Pricing breakdown labels ─────────────────────────────────────────────────
+
+["pricing.breakdown.promo_discount"]
+other = "הנחה בקוד הטבה"
+
+["pricing.breakdown.platform_fee"]
+other = "עמלת פלטפורמה"
+
+["pricing.breakdown.provider_fee"]
+other = "עמלת ספק תשלום"
+
+["pricing.breakdown.vat"]
+other = "מע\"מ"
+
+# ── Bil24 compat gateway (feature #478, spec section 6) ──────────────────────
+
+["bil24.ok"]
+other = "OK"
+
+["bil24.seat_taken"]
+other = "מושב {{.sector}}-{{.row}}-{{.number}} כבר תפוס"
+
+["bil24.category_sold_out"]
+other = "הקטגוריה {{.name}} אזלה מהמלאי (נשארו {{.available}})"
+
+["bil24.session_expired"]
+other = "פג תוקף החיבור"
+
+["bil24.sales_closed"]
+other = "המכירה לאירוע זה סגורה"
+
+["bil24.promo_invalid"]
+other = "קוד ההטבה אינו תקף"
+
+["bil24.hold_expired"]
+other = "השמירה פגה, יש לבצע הזמנה מחדש"
+
+["bil24.order_not_found"]
+other = "ההזמנה לא נמצאה"
+
+["bil24.currency_mismatch"]
+other = "מטבע העגלה אינו תואם לאירוע"
+
+["bil24.pricing_mode_unsupported"]
+other = "מצב התמחור אינו נתמך בשער"
+
+["bil24.line_wrong_session"]
+other = "שורת ההזמנה שייכת לאירוע אחר"
+
+["bil24.order_cancelled"]
+other = "ההזמנה בוטלה"
+
+["bil24.use_refund_ticket"]
+other = "יש לבקש החזר עבור הכרטיס"
+
+["bil24.unknown_command"]
+other = "פקודה לא ידועה"
+
+["bil24.invalid_request"]
+other = "בקשה שגויה"
+
+["bil24.not_found"]
+other = "המשאב לא נמצא בערוץ זה"
+
+["bil24.unauthorized"]
+other = "אין הרשאה"
+
+["bil24.internal"]
+other = "שגיאה פנימית"

@@ -1,0 +1,94 @@
+# cs.toml — Czech message catalog for arena_new.
+#
+# Each key must mirror en.toml. Missing keys fall back to en.toml via
+# go-i18n's built-in fallback chain, so partial catalogs remain safe.
+#
+# Introduced by feature #478 (Bil24 compat gateway, spec section 6).
+
+["server.welcome"]
+other = "Vítejte na platformě Arena!"
+
+["error.unauthorized"]
+other = "Vyžadováno ověření: poskytněte platný Bearer token."
+
+["error.forbidden"]
+other = "Nemáte oprávnění k přístupu k tomuto zdroji."
+
+["error.not_found"]
+other = "Požadovaný zdroj neexistuje."
+
+["error.validation"]
+other = "Požadavek obsahuje neplatná data."
+
+["error.internal"]
+other = "Došlo k neočekávané chybě. Zkuste to prosím znovu později."
+
+# ── Pricing breakdown labels ─────────────────────────────────────────────────
+
+["pricing.breakdown.promo_discount"]
+other = "Slevový kód"
+
+["pricing.breakdown.platform_fee"]
+other = "Poplatek platformy"
+
+["pricing.breakdown.provider_fee"]
+other = "Poplatek poskytovatele"
+
+["pricing.breakdown.vat"]
+other = "DPH"
+
+# ── Bil24 compat gateway (feature #478, spec section 6) ──────────────────────
+
+["bil24.ok"]
+other = "OK"
+
+["bil24.seat_taken"]
+other = "Místo {{.sector}}-{{.row}}-{{.number}} je již obsazeno"
+
+["bil24.category_sold_out"]
+other = "Kategorie {{.name}} je vyprodána (zbývá {{.available}})"
+
+["bil24.session_expired"]
+other = "relace vypršela"
+
+["bil24.sales_closed"]
+other = "prodej pro tento termín je uzavřen"
+
+["bil24.promo_invalid"]
+other = "slevový kód není platný"
+
+["bil24.hold_expired"]
+other = "rezervace vypršela, prosím zopakujte"
+
+["bil24.order_not_found"]
+other = "objednávka nenalezena"
+
+["bil24.currency_mismatch"]
+other = "měna košíku neodpovídá termínu"
+
+["bil24.pricing_mode_unsupported"]
+other = "režim cen není touto branou podporován"
+
+["bil24.line_wrong_session"]
+other = "řádek objednávky patří k jinému termínu"
+
+["bil24.order_cancelled"]
+other = "objednávka byla zrušena"
+
+["bil24.use_refund_ticket"]
+other = "vraťte prosím peníze za vstupenku"
+
+["bil24.unknown_command"]
+other = "neznámý příkaz"
+
+["bil24.invalid_request"]
+other = "neplatný požadavek"
+
+["bil24.not_found"]
+other = "zdroj nenalezen v tomto kanálu"
+
+["bil24.unauthorized"]
+other = "nepovoleno"
+
+["bil24.internal"]
+other = "vnitřní chyba"

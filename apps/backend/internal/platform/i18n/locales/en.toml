@@ -42,3 +42,62 @@ other = "Provider fee"
 
 ["pricing.breakdown.vat"]
 other = "VAT"
+
+# ── Bil24 compat gateway (feature #478, spec section 6) ──────────────────────
+# These bil24.* keys land in the Bil24-envelope `description` field for
+# non-OK resultCode responses. Keys with {{.Var}} placeholders receive
+# TemplateData from the emitting handler.
+
+["bil24.ok"]
+other = "OK"
+
+["bil24.seat_taken"]
+other = "Seat {{.sector}}-{{.row}}-{{.number}} is already taken"
+
+["bil24.category_sold_out"]
+other = "Category {{.name}} is sold out ({{.available}} left)"
+
+["bil24.session_expired"]
+other = "session expired"
+
+["bil24.sales_closed"]
+other = "sales are closed for this session"
+
+["bil24.promo_invalid"]
+other = "promo code is not valid"
+
+["bil24.hold_expired"]
+other = "your hold has expired, please reserve again"
+
+["bil24.order_not_found"]
+other = "order not found"
+
+["bil24.currency_mismatch"]
+other = "cart currency does not match this session"
+
+["bil24.pricing_mode_unsupported"]
+other = "pricing mode is not supported by this gateway"
+
+["bil24.line_wrong_session"]
+other = "order line does not belong to this session"
+
+["bil24.order_cancelled"]
+other = "order has been cancelled"
+
+["bil24.use_refund_ticket"]
+other = "please issue a refund for the ticket instead"
+
+["bil24.unknown_command"]
+other = "unknown command"
+
+["bil24.invalid_request"]
+other = "invalid request"
+
+["bil24.not_found"]
+other = "resource not found in this channel"
+
+["bil24.unauthorized"]
+other = "unauthorized"
+
+["bil24.internal"]
+other = "internal error"

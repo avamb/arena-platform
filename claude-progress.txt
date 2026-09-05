@@ -25500,3 +25500,119 @@ Gates - all GREEN:
 - gofmt -l on 8 changed files clean
 
 No openapi.yaml touched, no migration added.
+
+## 2026-09-05 - INTEGRATION GATE (post #476+#477)
+
+Wave: features #476 (W1-A2b, 22 slices) + #477 (W1-A3a result codes).
+Stats at gate time: 455 passing / 522 total (87.2%).
+
+Gates run:
+- go build ./apps/backend/...   EXIT:0
+- go vet   ./apps/backend/...   EXIT:0
+- go test  ./apps/backend/...   EXIT:0  (60 pkgs, 0 FAIL)
+- gofmt on hbil24/ + bil24compat/ + tests/  CLEAN
+- Migration head pin: expects 0090_compatibility_ids.sql - matches actual. PASS
+- Codegen drift: regenerated types_gen.go + TS client - NO diff. CLEAN
+- staticanalysis suite: PASS
+- bil24 compat suite: PASS
+- golangci-lint: 2 SA1019 warnings on intentional backward-compat
+  re-exports of ResultCodeUnknownCommand; suppressed with nolint:staticcheck;
+  re-ran lint -> 0 issues. PASS
+
+Drift commit: 5ed8a78 (integration: nolint SA1019 on compat alias re-exports)
+Pushed to origin/master. gh CLI blocked in env so CI not watched directly.
+
+No new fix-features filed. No codegen drift. No migration pin drift.
+Repo clean (git status: only untracked features.db).
+
+## 2026-09-05 #478 W1-A3b - localized descriptions ru/en/he/cs + locale negotiation
+
+Spec section 6 delivered. Non-OK Bil24 descriptions now flow through the
+platform i18n bundle for the negotiated locale (ru-RU->ru, en-GB->en,
+he-IL->he, cs-CZ->cs; unrecognised -> channel default_locale -> en).
+
+Locale files:
+  apps/backend/internal/platform/i18n/locales/en.toml   (M) +bil24.* keys
+  apps/backend/internal/platform/i18n/locales/ru.toml   (M) +bil24.* keys
+  apps/backend/internal/platform/i18n/locales/he.toml   (A) full base+bil24.*
+  apps/backend/internal/platform/i18n/locales/cs.toml   (A) full base+bil24.*
+
+Bundle keys (18 total; both parametrised and bare):
+  bil24.ok, bil24.seat_taken {sector,row,number},
+  bil24.category_sold_out {name,available}, bil24.session_expired,
+  bil24.sales_closed, bil24.promo_invalid, bil24.hold_expired,
+  bil24.order_not_found, bil24.currency_mismatch,
+  bil24.pricing_mode_unsupported, bil24.line_wrong_session,
+  bil24.order_cancelled, bil24.use_refund_ticket,
+  bil24.unknown_command, bil24.invalid_request, bil24.not_found,
+  bil24.unauthorized, bil24.internal
+
+Negotiation + localize helpers:
+  apps/backend/internal/adapters/bil24compat/i18n.go            (A)
+    NegotiateBil24Locale(reqLocale, channelDefault) string
+    LocalizeDescription(loc, key, english, params) string   (nil-safe)
+    Bil24SupportedLocales = ["en","ru","he","cs"]
+    Bil24DescriptionKeys  = <18 spec keys>
+  apps/backend/internal/adapters/bil24compat/i18n_test.go       (A) 4 tests
+    - NegotiateBil24Locale table (12 rows: strict tags, case, underscore,
+      channel default tier, hard fallback tier)
+    - LocaleBundleHasEveryBil24Key: every key in every locale resolves
+      non-empty AND non-key-echo (proves the key is actually defined,
+      not falling through go-i18n fallback to en)
+    - LocalizeDescription_FallbackContract: nil localizer / empty key /
+      missing key -> english fallback
+    - SeatTakenIsLocalized: ru output has Cyrillic; he output has Hebrew;
+      params substituted in both
+
+Handler wiring:
+  apps/backend/internal/platform/httpserver/hbil24/handler.go   (M)
+    Handler.bundle *i18n.Bundle field
+    Handler.WithBundle(*i18n.Bundle) setter
+    Handler.localizeDesc(reqLocale, channelDefault, key, english, params)
+      helper - nil-bundle safe (returns english fallback)
+  apps/backend/internal/platform/httpserver/hbil24/bil24_compat.go (M)
+    dispatcher default (unrecognised command), JSON-parse failure, empty-
+    command, ADD_PROMO_CODES 405, and recover() branches now emit
+    localized descriptions via localizeDesc
+  apps/backend/internal/platform/httpserver/server_struct.go    (M)
+    Server.bundle *i18n.Bundle field
+  apps/backend/internal/platform/httpserver/wire.go             (M)
+    bundle: opts.Bundle in Server assembly
+  apps/backend/internal/platform/httpserver/bil24_shims.go      (M)
+    bil24Handler() calls h.WithBundle(s.bundle) when bundle != nil
+
+Goldens (spec-mandated pair):
+  apps/backend/tests/compat/bil24/testdata/wp/golden/RESERVATION/
+    seat_taken_ru.json (A) description in Russian
+    seat_taken_he.json (A) description in Hebrew
+  apps/backend/tests/compat/bil24/i18n_goldens_478_test.go      (A)
+    reads both goldens, verifies envelope shape (resultCode=101,
+    command=RESERVATION) AND that the description text matches the
+    live bundle output for the fixture params. Non-integration (Unit
+    job): no DB / HTTP needed.
+
+Gates - all GREEN:
+- go build ./apps/backend/...                                 EXIT:0
+- go vet   ./apps/backend/...                                 EXIT:0
+- go test  ./apps/backend/internal/adapters/bil24compat/...   EXIT:0
+- go test  ./apps/backend/internal/platform/i18n/...          EXIT:0
+- go test  ./apps/backend/internal/platform/httpserver/...    EXIT:0
+- go test  ./apps/backend/tests/compat/bil24/...              EXIT:0
+- go test  ./apps/backend/tests/staticanalysis/...            EXIT:0
+- go test  ./apps/backend/...  full suite EXIT:0 (test_478_full.log, 60 ok)
+- gofmt -l on 8 changed files clean
+
+No openapi.yaml touched, no migration added.
+
+Constraint checks (spec + AGENTS.md):
+- bil24compat -> i18n import ok (i18n is a peer under platform/, not
+  httpserver; TestBil24CompatLayout188_AdapterHasNoHTTPImports still PASS).
+- httpserver/*.go files stay under 400 lines (bil24_compat.go 289 lines,
+  handler.go 297 lines).
+- Locale table pinned as spec: ru-RU->ru, en-GB->en, he-IL->he,
+  cs-CZ->cs, unrecognised -> channel default_locale -> en.
+- Every existing dispatcher substring test still passes (English
+  fallback still contains the phrase; ru/he/cs deployments emit
+  target-language text).
+
+Feature #478 marked PASSING.

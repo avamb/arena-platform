@@ -25,8 +25,10 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 )
 
 // AdmissionQuerier is the narrow contract handleBil24GetSeatList and
@@ -175,6 +177,14 @@ type Handler struct {
 	// guardrail (tests/compat/bil24/no_uuid_in_wire_test.go) ensures the
 	// production path never regresses.
 	compatDB gen.DBTX
+
+	// bundle (feature #478, W1-A3b) is the platform i18n bundle used to
+	// translate bil24.* description keys into the locale negotiated per
+	// request (spec §6). A nil bundle preserves the pre-#478 wire byte
+	// surface — the English fallbacks defined by MapDBError / MapScope
+	// Error / MapBusinessError etc. survive verbatim. Production wiring
+	// passes the *i18n.Bundle constructed at server startup.
+	bundle *i18n.Bundle
 }
 
 // New constructs a Handler from the caller's dependencies.
@@ -255,4 +265,31 @@ func (h *Handler) WithChannelLookup(q ChannelLookupQuerier) *Handler {
 func (h *Handler) WithCompatDB(db gen.DBTX) *Handler {
 	h.compatDB = db
 	return h
+}
+
+// WithBundle wires the platform i18n bundle (feature #478, W1-A3b) used
+// to translate bil24.* description keys into the locale negotiated
+// from the wire `locale` field and the resolved channel's default
+// locale (spec §6). Callers that omit this setter retain the pre-#478
+// English wire byte surface. Returns the receiver for chaining.
+func (h *Handler) WithBundle(b *i18n.Bundle) *Handler {
+	h.bundle = b
+	return h
+}
+
+// localizeDesc looks up a bil24.* message key using the negotiated
+// request locale + optional channel default_locale, substituting
+// params. A nil bundle, empty key, or missing key falls back to the
+// english argument, so the wire description never becomes empty.
+//
+// The reqLocale argument is the wire `locale` field (e.g. "ru-RU");
+// the channelDefault is sales_channels.default_locale for the
+// resolved fid (empty when the channel has none). See spec §6 for
+// the negotiation table.
+func (h *Handler) localizeDesc(reqLocale, channelDefault, key, english string, params map[string]any) string {
+	if h.bundle == nil {
+		return english
+	}
+	loc := bil24compat.NegotiateBil24Locale(reqLocale, channelDefault)
+	return bil24compat.LocalizeDescription(h.bundle.LocalizerFor(loc), key, english, params)
 }

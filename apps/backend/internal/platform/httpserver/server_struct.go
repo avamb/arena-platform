@@ -14,6 +14,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/clock"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/idempotency"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
@@ -102,6 +103,13 @@ type Server struct {
 	// pool access beyond the PoolDB interface (e.g. macs export, AB-50b).
 	// Wired from Options.PgxPool in wire.go.
 	pgxPool *pgxpool.Pool
+
+	// bundle is the platform i18n bundle used by the Bil24 compat gateway
+	// (feature #478, W1-A3b) to localize bil24.* description keys per
+	// request. Wired from Options.Bundle in wire.go; may be nil in unit
+	// tests, in which case the gateway falls back to English descriptions
+	// (bil24compat.LocalizeDescription nil-safe).
+	bundle *i18n.Bundle
 
 	// Dev / test toggles.
 	faultInjectOutboxAfterAudit bool

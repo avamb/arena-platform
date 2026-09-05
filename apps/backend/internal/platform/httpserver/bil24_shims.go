@@ -88,6 +88,14 @@ func (s *Server) bil24Handler() *hbil24.Handler {
 	if s.pool != nil {
 		h = h.WithCompatDB(s.pool)
 	}
+	// Feature #478 (W1-A3b): wire the platform i18n bundle so non-OK
+	// descriptions surface in the request's negotiated locale (ru/en/he/
+	// cs) per spec §6. A nil bundle preserves the English wire byte
+	// surface — unit tests without a wired bundle keep their existing
+	// substring expectations.
+	if s.bundle != nil {
+		h = h.WithBundle(s.bundle)
+	}
 	return h
 }
 
