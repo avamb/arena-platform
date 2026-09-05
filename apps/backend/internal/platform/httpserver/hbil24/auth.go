@@ -404,3 +404,216 @@ func (h *Handler) enforceSessionOrg(
 	}
 	return true
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Legacy per-command token validators (features #374, #381, #390)
+//
+// These predate the unified authenticateCommand() path (feature #471) and
+// are still used by RESERVATION (reservationContext), UN_RESERVE
+// (validateUnReserveToken) and SCAN_TICKET (validateScanTicketToken) where
+// the credential resolution needs to look at the settings blob of a
+// specific channel derived from the request payload (reservation lookup,
+// SCAN_TICKET's fid-only path) rather than the fid-first
+// authenticateCommand() flow. Extracted from bil24_compat.go by feature
+// #476 so the reservation / scan files stay well under 700 lines.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// validateGatewayToken reads gateway_token_hash from the channel's settings
+// JSON and compares it against the token in the request using bcrypt.
+// Returns true on success; on failure writes the Bil24 error response and
+// returns false. Feature #374.
+func (h *Handler) validateGatewayToken(
+	w http.ResponseWriter,
+	req bil24Request,
+	settings json.RawMessage,
+) bool {
+	// Parse the stored gateway_token_hash from the channel settings.
+	var cfg struct {
+		GatewayTokenHash string `json:"gateway_token_hash"`
+	}
+	if len(settings) > 0 {
+		_ = json.Unmarshal(settings, &cfg) // ignore decode errors — empty cfg means no hash
+	}
+
+	if cfg.GatewayTokenHash == "" {
+		// No hash configured: this channel has not been set up for gateway
+		// access. Reject rather than allow unauthenticated access.
+		h.logger.Warn("bil24_compat: gateway_token_hash not configured on channel; rejecting",
+			slog.String("command", req.Command),
+			slog.String("fid", req.FID),
+		)
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeUnauthorized,
+			"channel is not configured for gateway access; set gateway_token_hash in channel settings",
+		))
+		return false
+	}
+
+	if strings.TrimSpace(req.Token) == "" {
+		h.logger.Warn("bil24_compat: token missing in request",
+			slog.String("command", req.Command),
+			slog.String("fid", req.FID),
+		)
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeUnauthorized,
+			"authentication required: token field is missing",
+		))
+		return false
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(cfg.GatewayTokenHash), []byte(req.Token)); err != nil {
+		h.logger.Warn("bil24_compat: token validation failed",
+			slog.String("command", req.Command),
+			slog.String("fid", req.FID),
+		)
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeUnauthorized,
+			"authentication failed: invalid token",
+		))
+		return false
+	}
+
+	return true
+}
+
+// validateUnReserveToken validates the token field for UN_RESERVE by resolving
+// the reservation's owning sales channel and comparing the supplied token
+// against the channel's stored gateway_token_hash (bcrypt). Feature #381,
+// PR2-25 variant A.
+//
+// Precondition: req.Token is non-empty (caller guards).
+//
+// On failure the Bil24 error envelope has already been written and false is
+// returned.
+func (h *Handler) validateUnReserveToken(
+	ctx context.Context,
+	w http.ResponseWriter,
+	req bil24Request,
+	reservationID uuid.UUID,
+) bool {
+	// Fail closed: cannot validate without the context querier.
+	if h.resDeps.CtxQ == nil {
+		h.logger.Warn("bil24_compat: UN_RESERVE: requireToken=true but CtxQ is nil; rejecting",
+			slog.String("reservation_id", reservationID.String()),
+		)
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInternalError,
+			"authentication service unavailable",
+		))
+		return false
+	}
+
+	res, err := h.resDeps.CtxQ.GetReservationByID(ctx, reservationID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeNotFound, "reservation not found",
+			))
+		} else {
+			h.logger.Error("bil24_compat: UN_RESERVE: reservation lookup for auth failed",
+				slog.String("reservation_id", reservationID.String()),
+				slog.String("error", err.Error()),
+			)
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeInternalError, "failed to resolve reservation",
+			))
+		}
+		return false
+	}
+
+	channel, err := h.resDeps.CtxQ.GetSalesChannelByID(ctx, res.ChannelID, res.OrgID)
+	if err != nil {
+		h.logger.Error("bil24_compat: UN_RESERVE: channel lookup for auth failed",
+			slog.String("reservation_id", reservationID.String()),
+			slog.String("channel_id", res.ChannelID.String()),
+			slog.String("error", err.Error()),
+		)
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInternalError, "failed to resolve sales channel",
+		))
+		return false
+	}
+
+	return h.validateGatewayToken(w, req, channel.Settings)
+}
+
+// validateScanTicketToken performs the full SCAN_TICKET credential check
+// (feature #390, PR2-32): the fid identifies the sales channel whose
+// gateway_token_hash authenticates the caller. Unlike RESERVATION, a scan
+// carries no session to derive the org from, so the channel is resolved by
+// primary key alone (GetSalesChannelByIDGlobal). On failure the Bil24 error
+// envelope has already been written and false is returned.
+func (h *Handler) validateScanTicketToken(
+	ctx context.Context,
+	w http.ResponseWriter,
+	req bil24Request,
+) bool {
+	// Fail closed: cannot validate without the context querier.
+	if h.resDeps.CtxQ == nil {
+		h.logger.Warn("bil24_compat: SCAN_TICKET: requireToken=true but CtxQ is nil; rejecting",
+			slog.String("fid", req.FID),
+		)
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInternalError,
+			"authentication service unavailable",
+		))
+		return false
+	}
+
+	if strings.TrimSpace(req.FID) == "" {
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeUnauthorized,
+			"fid is required for SCAN_TICKET (sales channel credential)",
+		))
+		return false
+	}
+	// Feature #471 (W1-A1b, spec §5.2): prefer the int64 display_number
+	// path via the channel-lookup surface; fall back to the legacy UUID
+	// resolution so pre-W1 SCAN_TICKET fixtures keep resolving.
+	var (
+		channel gen.SalesChannelRow
+		err     error
+	)
+	if dn, dnOK := parseFIDInt64(req.FID); dnOK && h.channelQ != nil {
+		ch, lookupErr := h.channelQ.GetSalesChannelByDisplayNumber(ctx, dn)
+		if lookupErr == nil {
+			return h.validateGatewayToken(w, req, ch.Settings)
+		}
+		if !errors.Is(lookupErr, pgx.ErrNoRows) {
+			h.logger.Error("bil24_compat: SCAN_TICKET: display_number lookup failed",
+				slog.String("fid", req.FID),
+				slog.Int64("display_number", dn),
+				slog.String("error", lookupErr.Error()),
+			)
+		}
+	}
+	chID, err := TranslateLegacyID(req.FID)
+	if err != nil {
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeUnauthorized,
+			"fid must be a valid sales channel identifier",
+		))
+		return false
+	}
+
+	channel, err = h.resDeps.CtxQ.GetSalesChannelByIDGlobal(ctx, chID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeUnauthorized,
+				"sales channel not found for fid",
+			))
+			return false
+		}
+		h.logger.Error("bil24_compat: SCAN_TICKET: channel lookup for auth failed",
+			slog.String("fid", req.FID),
+			slog.String("error", err.Error()),
+		)
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInternalError, "failed to resolve sales channel",
+		))
+		return false
+	}
+
+	return h.validateGatewayToken(w, req, channel.Settings)
+}

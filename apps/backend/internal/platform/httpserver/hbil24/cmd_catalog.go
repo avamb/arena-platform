@@ -1,0 +1,398 @@
+// cmd_catalog.go — Bil24-compatible catalog reads: GET_ALL_ACTIONS and
+// GET_SEAT_LIST (plus the GA / per-unit branches and the shared
+// bssStatusCode helper). Extracted from bil24_compat.go by feature #476
+// to keep every per-command file under ~700 lines.
+//
+// GET_SCHEMA lives alongside these as schema.go — its file already
+// existed before the split. The dispatcher (HandleBil24Command) stays in
+// bil24_compat.go so its case-list keeps one central home.
+package hbil24
+
+import (
+	"context"
+	"log/slog"
+	"net/http"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET_ALL_ACTIONS — list published events (GetCatalog)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// handleBil24GetAllActions maps GET_ALL_ACTIONS to the platform event catalog.
+//
+// Bil24 request fields used:
+//   - locale: controls the language of event names/descriptions
+//
+// Response: { "resultCode": 0, "command": "GET_ALL_ACTIONS", "actionList": [...] }
+// Each action item:
+//
+//	{
+//	  "actionId":       "<uuid>",
+//	  "actionName":     "...",
+//	  "bigPosterUrl":   "...",
+//	  "firstEventDate": "<RFC3339>"
+//	}
+func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Request, req bil24Request) {
+	if h.eventQueries == nil {
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInternalError, "catalog service unavailable",
+		))
+		return
+	}
+
+	// Feature #471 (W1-A1b, spec §5 / §7.1): resolve the fid → channel row
+	// and enforce fid+token when requireToken=true. GET_ALL_ACTIONS returns
+	// only the caller's own organization's published events; without a
+	// resolved channel we cannot filter, so an unresolved fid under
+	// requireToken=true is a hard -4. When requireToken=false and no fid
+	// resolves, we fall back to the pre-W1 catalog for legacy compatibility.
+	ctx := r.Context()
+	channel, authed := h.authenticateCommand(ctx, w, req)
+	if h.requireToken && !authed {
+		return // envelope already written
+	}
+
+	locale := req.Locale
+	if locale == "" {
+		locale = "en"
+	}
+
+	var events []gen.EventRow
+	var err error
+	if authed {
+		events, err = h.eventQueries.ListEventsByOrg(ctx, channel.OrgID, locale)
+	} else {
+		events, err = h.eventQueries.ListEvents(ctx, locale, "public")
+	}
+	if err != nil {
+		h.logger.Error("bil24_compat: GET_ALL_ACTIONS: list events failed",
+			slog.String("error", err.Error()),
+		)
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInternalError, "failed to retrieve action list",
+		))
+		return
+	}
+
+	actionList := make([]map[string]any, 0, len(events))
+	for _, e := range events {
+		// Spec §7.1: only status='published' events appear in the catalog.
+		// The org-scoped list query is not visibility/status-filtered so we
+		// filter here — the extra field is already on the row.
+		if authed && e.Status != "published" {
+			continue
+		}
+		action := map[string]any{
+			"actionId":   TranslatePlatformID(e.ID),
+			"actionName": e.Name,
+		}
+		// firstEventDate is the earliest session of the action (AB-37):
+		// events carry no own dates; the trigger-maintained cache
+		// first_session_at is the Bil24-correct source. Omitted entirely
+		// for an event with no sessions.
+		if e.FirstSessionAt != nil {
+			action["firstEventDate"] = e.FirstSessionAt.UTC().Format(time.RFC3339)
+		}
+		if e.ImageURL != nil && *e.ImageURL != "" {
+			action["bigPosterUrl"] = *e.ImageURL
+			action["smallPosterUrl"] = *e.ImageURL
+		}
+		if e.Description != nil {
+			action["description"] = *e.Description
+		}
+		actionList = append(actionList, action)
+	}
+
+	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
+		"actionList": actionList,
+	}))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET_SEAT_LIST — list ticket tiers for a session
+// ─────────────────────────────────────────────────────────────────────────────
+
+// handleBil24GetSeatList maps GET_SEAT_LIST to either ticket-tier listing
+// (general_admission) or the real assigned-seat inventory
+// (assigned_seats / hybrid) for a specific event session. Feature #312
+// Wave SEAT-D1 introduced the admission_mode branch on top of the
+// pre-existing tier-facade behavior.
+//
+// Bil24 request fields used:
+//   - actionEventId: platform session UUID (Bil24 event instance)
+//
+// Response shapes:
+//
+//   - general_admission (or admissionQ nil / session not resolvable to a
+//     seating binding) — one entry per ticket_tier, unchanged from
+//     pre-#312 behavior:
+//
+//     {
+//     "categoryPriceId": "<uuid>", "categoryName": "...",
+//     "price": <cents>, "currency": "USD",
+//     "pricingMode": "fixed"|"free"|"pwyw",
+//     "availableCount": <int or null>
+//     }
+//
+//   - assigned_seats / hybrid — one entry per session_seat, per ADR-005
+//     the seat identifier is the platform session_seats.id serialised
+//     as a plain UUID string:
+//
+//     {
+//     "seatId":          "<uuid>",       // session_seats.id as string
+//     "categoryPriceId": "<uuid>",       // tier UUID (nullable)
+//     "sector":          "...",
+//     "row":             "...",
+//     "number":          "...",
+//     "price":           <cents>,        // 0 if no tier bound yet
+//     "currency":        "USD",
+//     "status":          <BSS int>       // 0 unavailable, 1 available, 3 held, 4 sold
+//     }
+//
+// BSS status codes are the Bil24 seat-status wire values (§6 of the
+// Bil24 gateway spec): 0 = unavailable (admin), 1 = available, 3 = held
+// (reservation active), 4 = sold. The mapping never surfaces the internal
+// row status string.
+//
+// Operator note: stadium-scale seat maps can push the seatList payload
+// past 1 MiB. Enable gzip on the reverse proxy fronting POST
+// /compat/bil24/json (nginx: gzip_types application/json; Cloudflare:
+// Auto-Minify JSON + Brotli; Caddy: encode zstd gzip) so callers with
+// Accept-Encoding: gzip receive a compressed response and the wire foot-
+// print stays predictable.
+func (h *Handler) handleBil24GetSeatList(w http.ResponseWriter, r *http.Request, req bil24Request) {
+	// tier and seat services can be independently unwired; the outer
+	// guard fails fast only if BOTH are missing (no data source at all
+	// for either branch).
+	if h.tierQueries == nil && h.seatQ == nil {
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInternalError, "seat service unavailable",
+		))
+		return
+	}
+
+	sessionID, err := TranslateLegacyID(req.ActionEventID)
+	if err != nil {
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInvalidRequest,
+			"actionEventId must be a valid session identifier",
+		))
+		return
+	}
+
+	ctx := r.Context()
+
+	// Feature #471 (spec §5, §7.2): validate fid+token and enforce that the
+	// requested session belongs to the channel's org. Cross-tenant reads
+	// through the compat surface are rejected as "not found in this
+	// channel's organization" (-3).
+	channel, authed := h.authenticateCommand(ctx, w, req)
+	if h.requireToken && !authed {
+		return
+	}
+	if authed {
+		if !h.enforceSessionOrg(ctx, w, req, sessionID, channel.OrgID) {
+			return
+		}
+	}
+
+	// Resolve admission_mode when the seating dependencies are wired.
+	// Missing dependencies / lookup failures silently fall back to the
+	// tier-facade behavior — legacy GA clients keep working during the
+	// SEAT-D rollout even when the seating tables are empty.
+	admissionMode := "general_admission"
+	if h.admissionQ != nil {
+		row, aerr := h.admissionQ.GetSessionAdmissionModeByID(ctx, sessionID)
+		if aerr == nil && row.AdmissionMode != "" {
+			admissionMode = row.AdmissionMode
+		}
+	}
+
+	// Route: sessions with materialized seat/GA-unit rows emit per-unit
+	// entries (AB-51 restored compat parity — every ticketable place has
+	// a seatId); the tier facade remains the fallback for unwired seat
+	// queries and legacy GA sessions without unit rows.
+	if h.seatQ != nil {
+		seats, serr := h.seatQ.ListSessionSeats(ctx, sessionID)
+		if serr != nil && admissionMode != "general_admission" {
+			h.logger.Error("bil24_compat: GET_SEAT_LIST: list session seats failed",
+				slog.String("session_id", sessionID.String()),
+				slog.String("error", serr.Error()),
+			)
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeInternalError, "failed to retrieve seat list",
+			))
+			return
+		}
+		if serr == nil && (admissionMode != "general_admission" || len(seats) > 0) {
+			h.getSeatListUnits(w, ctx, req, sessionID, admissionMode, seats)
+			return
+		}
+	}
+	if h.tierQueries == nil {
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInternalError, "tier service unavailable",
+		))
+		return
+	}
+	h.getSeatListGA(w, ctx, req, sessionID)
+}
+
+// getSeatListGA is the pre-#312 tier-facade GET_SEAT_LIST response for
+// general_admission sessions (and the fallback whenever the SEAT-D
+// dependencies are not wired). Kept factored out so the assigned-seat
+// branch can remain a self-contained addition.
+func (h *Handler) getSeatListGA(w http.ResponseWriter, ctx context.Context, req bil24Request, sessionID uuid.UUID) {
+	tiers, err := h.tierQueries.ListTicketTiersBySession(ctx, sessionID)
+	if err != nil {
+		h.logger.Error("bil24_compat: GET_SEAT_LIST: list tiers failed",
+			slog.String("session_id", sessionID.String()),
+			slog.String("error", err.Error()),
+		)
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInternalError, "failed to retrieve seat list",
+		))
+		return
+	}
+
+	// AB-48: scheduled prices via the ONE resolver (base on lookup failure).
+	effPrices, effErr := priceresolve.ForTiers(ctx, h.tierQueries, tiers, time.Now().UTC())
+	if effErr != nil {
+		h.logger.Error("bil24_compat: GET_SEAT_LIST: price window lookup failed",
+			slog.String("session_id", sessionID.String()),
+			slog.String("error", effErr.Error()),
+		)
+		effPrices = nil
+	}
+	effectiveOf := func(t gen.TicketTierRow) int64 {
+		if eff, ok := effPrices[t.ID]; ok {
+			return eff.Amount
+		}
+		return t.PriceAmount
+	}
+
+	seatList := make([]map[string]any, 0, len(tiers))
+	for _, t := range tiers {
+		seat := map[string]any{
+			"categoryPriceId": TranslatePlatformID(t.ID),
+			"categoryName":    t.Name,
+			"price":           effectiveOf(t),
+			"currency":        t.Currency,
+			"pricingMode":     t.PricingMode,
+		}
+		if t.Capacity != nil {
+			seat["availableCount"] = *t.Capacity
+		}
+		seatList = append(seatList, seat)
+	}
+
+	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
+		"seatList": seatList,
+	}))
+}
+
+// getSeatListUnits is the per-unit GET_SEAT_LIST branch (SEAT-D1,
+// extended by AB-51 to GA sessions). It emits one entry per
+// session_seats row — assigned seats carry sector/row/number, GA units
+// carry empty coordinates exactly like the Bil24 seat-management table —
+// joining tier metadata (price/currency) from the session's
+// ticket_tiers snapshot.
+func (h *Handler) getSeatListUnits(w http.ResponseWriter, ctx context.Context, req bil24Request, sessionID uuid.UUID, admissionMode string, seats []gen.SessionSeatRow) {
+	// Load tier snapshot for price / currency projection. When the tier
+	// dependency is unwired (nil) or fails, we degrade gracefully with
+	// price=0 / currency omitted rather than failing the whole
+	// response — seat inventory is still meaningful without prices.
+	var tiers []gen.TicketTierRow
+	if h.tierQueries != nil {
+		var terr error
+		tiers, terr = h.tierQueries.ListTicketTiersBySession(ctx, sessionID)
+		if terr != nil {
+			h.logger.Warn("bil24_compat: GET_SEAT_LIST: tier snapshot failed; emitting seats with zero price",
+				slog.String("session_id", sessionID.String()),
+				slog.String("error", terr.Error()),
+			)
+			tiers = nil
+		}
+	}
+	tierByID := make(map[uuid.UUID]gen.TicketTierRow, len(tiers))
+	for _, t := range tiers {
+		tierByID[t.ID] = t
+	}
+	// AB-48: scheduled prices via the ONE resolver (base on failure).
+	var effPrices map[uuid.UUID]priceresolve.Effective
+	if h.tierQueries != nil && len(tiers) > 0 {
+		if m, effErr := priceresolve.ForTiers(ctx, h.tierQueries, tiers, time.Now().UTC()); effErr != nil {
+			h.logger.Warn("bil24_compat: GET_SEAT_LIST: price window lookup failed; using base prices",
+				slog.String("error", effErr.Error()))
+		} else {
+			effPrices = m
+		}
+	}
+	effectiveOf := func(t gen.TicketTierRow) int64 {
+		if eff, ok := effPrices[t.ID]; ok {
+			return eff.Amount
+		}
+		return t.PriceAmount
+	}
+
+	seatList := make([]map[string]any, 0, len(seats))
+	for _, s := range seats {
+		entry := map[string]any{
+			// ADR-005: seatId on the wire is the platform session_seats.id
+			// serialised as a plain UUID string.
+			"seatId": s.ID.String(),
+			"sector": s.SectorName,
+			"row":    s.RowName,
+			"number": s.SeatNumber,
+			"status": bssStatusCode(s.Status),
+		}
+		if s.TierID != nil {
+			entry["categoryPriceId"] = TranslatePlatformID(*s.TierID)
+			if t, ok := tierByID[*s.TierID]; ok {
+				entry["price"] = effectiveOf(t)
+				entry["currency"] = t.Currency
+			} else {
+				entry["price"] = int64(0)
+			}
+		} else {
+			entry["price"] = int64(0)
+		}
+		seatList = append(seatList, entry)
+	}
+
+	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
+		"seatList":      seatList,
+		"admissionMode": admissionMode,
+	}))
+}
+
+// bssStatusCode maps an internal session_seats.status string to the Bil24
+// BSS wire code documented in §6 of the gateway spec:
+//
+//	unavailable → 0  (admin-withheld)
+//	available   → 1
+//	held        → 3  (a reservation currently owns the seat)
+//	sold        → 4
+//
+// Any unknown status maps to 0 so legacy clients never see a hole in
+// the enum surface.
+func bssStatusCode(status string) int {
+	switch status {
+	case "available":
+		return 1
+	case "held":
+		return 3
+	case "sold":
+		return 4
+	case "unavailable":
+		return 0
+	default:
+		return 0
+	}
+}
