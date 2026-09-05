@@ -34,7 +34,19 @@ func (s *Server) catalogHandler() *hcatalog.Handler {
 		s.logger,
 		s.publishSessionCancelledEvent,
 	).WithMembershipQueries(s.membershipQueries).
-		WithSeatingBinder(s.bindSeatingForSessionCreate)
+		WithSeatingBinder(s.bindSeatingForSessionCreate).
+		WithPublicBaseURL(s.appPublicURL())
+}
+
+// appPublicURL returns cfg.AppPublicURL when present, otherwise the empty
+// string. Callers (currently the gateway-credential PUT endpoint, feature
+// #473 spec §5.4) treat "" as "operator has not configured a public URL yet",
+// which is a supported development-mode behaviour.
+func (s *Server) appPublicURL() string {
+	if s.cfg == nil {
+		return ""
+	}
+	return s.cfg.AppPublicURL
 }
 
 // bindSeatingForSessionCreate adapts hseating's inline bind (AB-36 step 3)
@@ -271,6 +283,20 @@ func (s *Server) handleUpdateChannel(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDeleteChannel(w http.ResponseWriter, r *http.Request) {
 	s.catalogHandler().HandleDeleteChannel(w, r)
+}
+
+// ──── channel gateway-credential shims (feature #473, W1-A1d) ────────────────
+
+func (s *Server) handleGetChannelGatewayCredential(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleGetChannelGatewayCredential(w, r)
+}
+
+func (s *Server) handlePutChannelGatewayCredential(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandlePutChannelGatewayCredential(w, r)
+}
+
+func (s *Server) handleDeleteChannelGatewayCredential(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleDeleteChannelGatewayCredential(w, r)
 }
 
 // ──── session handler shims ───────────────────────────────────────────────────

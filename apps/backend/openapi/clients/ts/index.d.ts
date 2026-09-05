@@ -4188,6 +4188,52 @@ export interface paths {
         patch: operations["updateChannel"];
         trace?: never;
     };
+    "/v1/organizations/{org_id}/channels/{id}/gateway-credential": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Bil24-compat gateway credential summary
+         * @description Returns the current gateway-credential status
+         *     (`fid`, `enabled`, `rotated_at`) for a Bil24-compat sales channel.
+         *     The plaintext token and its bcrypt hash are never exposed by this
+         *     endpoint. Requires `channel.update` and the `X-Admin-Reason` header
+         *     (audit trail).
+         */
+        get: operations["getChannelGatewayCredential"];
+        /**
+         * Rotate the Bil24-compat gateway credential
+         * @description Generates a fresh 32-byte gateway secret, stores its bcrypt hash under
+         *     `settings.gateway.token_hash`, flips `settings.gateway.enabled=true`,
+         *     stamps `settings.gateway.token_rotated_at`, and returns the plaintext
+         *     token exactly once alongside the wire `fid`, `base_url`, `image_url`
+         *     and `rotated_at`. `base_url` and `image_url` are derived from the
+         *     deployment's `APP_PUBLIC_URL` configuration and are the empty string
+         *     when unset. Emits the audit action `v1.channel.gateway_credential.rotated`
+         *     with `metadata.outcome="rotated"`. Requires `channel.update` and the
+         *     `X-Admin-Reason` header.
+         */
+        put: operations["putChannelGatewayCredential"];
+        post?: never;
+        /**
+         * Disable the Bil24-compat gateway credential
+         * @description Sets `settings.gateway.enabled=false`. The bcrypt token hash is
+         *     retained so a subsequent GET still reflects the last rotation
+         *     timestamp; a follow-up PUT is required to re-enable the gateway.
+         *     Idempotent. Emits the audit action
+         *     `v1.channel.gateway_credential.rotated` with
+         *     `metadata.outcome="disabled"`. Requires `channel.update` and the
+         *     `X-Admin-Reason` header.
+         */
+        delete: operations["deleteChannelGatewayCredential"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/feeds/{token}": {
         parameters: {
             query?: never;
@@ -12440,6 +12486,62 @@ export interface components {
              * @description ISO-8601 timestamp of the last update, if any.
              */
             updated_at?: string;
+        };
+        /**
+         * @description Read-shape of the Bil24-compat gateway credential (feature #473,
+         *     spec §5.4). Emitted by `GET` and `DELETE`. Never carries the token
+         *     or its hash.
+         */
+        ChannelGatewayCredentialSummary: {
+            /**
+             * Format: int64
+             * @description Wire `fid` (channel `display_number`) used by WordPress plugins
+             *     when calling `/compat/bil24/*`.
+             */
+            fid: number;
+            /**
+             * @description Whether the gateway is currently active. `false` after a
+             *     `DELETE` and before the first `PUT`.
+             */
+            enabled: boolean;
+            /**
+             * @description RFC3339 UTC timestamp of the last `PUT` (credential rotation).
+             *     Empty string when the gateway was never provisioned.
+             */
+            rotated_at: string;
+        };
+        /**
+         * @description One-shot response of `PUT /v1/organizations/{org_id}/channels/{id}/gateway-credential`
+         *     (feature #473, spec §5.4). The plaintext `token` is returned exactly
+         *     once and is never retrievable afterwards.
+         */
+        ChannelGatewayCredentialRotated: {
+            /**
+             * Format: int64
+             * @description Wire `fid` (channel `display_number`); WordPress plugins send this
+             *     in every `/compat/bil24/*` request alongside `token`.
+             */
+            fid: number;
+            /**
+             * @description Plaintext 32-byte hex-encoded gateway secret (64 hex chars).
+             *     Only visible in this response body; the server persists only its
+             *     bcrypt hash.
+             */
+            token: string;
+            /**
+             * @description Canonical arena public base URL for the WordPress plugin's
+             *     `/compat/bil24/json` endpoint, derived from `APP_PUBLIC_URL`.
+             *     Empty string when `APP_PUBLIC_URL` is unset.
+             */
+            base_url: string;
+            /**
+             * @description Canonical arena public base URL for the WordPress plugin's
+             *     `/compat/bil24/image` endpoint, derived from `APP_PUBLIC_URL`.
+             *     Empty string when `APP_PUBLIC_URL` is unset.
+             */
+            image_url: string;
+            /** @description RFC3339 UTC timestamp of this rotation. */
+            rotated_at: string;
         };
         /**
          * @description A long-lived bearer token that grants a scanner device read access to the
@@ -27905,6 +28007,225 @@ export interface operations {
                 };
             };
             /** @description Channel not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getChannelGatewayCredential: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for the admin read (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+                /** @description Sales channel UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gateway credential summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelGatewayCredentialSummary"];
+                };
+            };
+            /** @description X-Admin-Reason header missing or empty. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor is not a member of the target organization or lacks `channel.update`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Sales channel not found in the given organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    putChannelGatewayCredential: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for the credential rotation (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+                /** @description Sales channel UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Credential rotated. Plaintext token returned exactly once. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelGatewayCredentialRotated"];
+                };
+            };
+            /** @description X-Admin-Reason header missing or empty. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor is not a member of the target organization or lacks `channel.update`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Sales channel not found in the given organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteChannelGatewayCredential: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for disabling the gateway (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+                /** @description Sales channel UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gateway credential disabled. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelGatewayCredentialSummary"];
+                };
+            };
+            /** @description X-Admin-Reason header missing or empty. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor is not a member of the target organization or lacks `channel.update`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Sales channel not found in the given organization. */
             404: {
                 headers: {
                     [name: string]: unknown;

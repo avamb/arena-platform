@@ -81,6 +81,12 @@ func (s *Server) mountChannelRoutes(r chi.Router) {
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "channel.update", "channels")
 		pr.Patch("/organizations/{org_id}/channels/{id}", s.handleUpdateChannel)
+		// Bil24-compat gateway-credential admin surface (feature #473, spec §5.4).
+		// All three verbs share `channel.update`; each handler also requires the
+		// `X-Admin-Reason` header (superadmin-audit convention).
+		pr.Get("/organizations/{org_id}/channels/{id}/gateway-credential", s.handleGetChannelGatewayCredential)
+		pr.Put("/organizations/{org_id}/channels/{id}/gateway-credential", s.handlePutChannelGatewayCredential)
+		pr.Delete("/organizations/{org_id}/channels/{id}/gateway-credential", s.handleDeleteChannelGatewayCredential)
 	})
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "channel.delete", "channels")

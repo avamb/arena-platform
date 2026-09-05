@@ -46,6 +46,12 @@ type Handler struct {
 	logger                  *slog.Logger
 	publishSessionCancelled SessionCancelledPublisher
 	bindSeating             SeatingBinder // seated session create (AB-36); wired via WithSeatingBinder
+	// publicBaseURL is APP_PUBLIC_URL (spec §5.4 "PUBLIC_BASE_URL"); empty
+	// string when unset. Consumed by the gateway-credential PUT endpoint
+	// (feature #473) to emit base_url/image_url so the WordPress plugin
+	// operator does not have to type them in by hand. Wired via
+	// WithPublicBaseURL from the httpserver shim layer.
+	publicBaseURL string
 }
 
 // New constructs a Handler from the caller's dependencies.
@@ -76,5 +82,14 @@ func New(
 // tests that omit it will have membership checks silently skip.
 func (h *Handler) WithMembershipQueries(q *gen.Queries) *Handler {
 	h.membershipQueries = q
+	return h
+}
+
+// WithPublicBaseURL wires the platform's canonical public base URL (feature
+// #473, spec §5.4). An empty string is a valid input — the gateway-credential
+// PUT endpoint will emit empty base_url/image_url in that case, matching the
+// spec text "empty string if unset".
+func (h *Handler) WithPublicBaseURL(u string) *Handler {
+	h.publicBaseURL = u
 	return h
 }

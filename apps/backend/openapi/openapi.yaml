@@ -8578,6 +8578,68 @@ components:
           format: date-time
           description: ISO-8601 timestamp of the last update, if any.
 
+    ChannelGatewayCredentialSummary:
+      type: object
+      required: [fid, enabled, rotated_at]
+      description: |
+        Read-shape of the Bil24-compat gateway credential (feature #473,
+        spec §5.4). Emitted by `GET` and `DELETE`. Never carries the token
+        or its hash.
+      properties:
+        fid:
+          type: integer
+          format: int64
+          description: |
+            Wire `fid` (channel `display_number`) used by WordPress plugins
+            when calling `/compat/bil24/*`.
+        enabled:
+          type: boolean
+          description: |
+            Whether the gateway is currently active. `false` after a
+            `DELETE` and before the first `PUT`.
+        rotated_at:
+          type: string
+          description: |
+            RFC3339 UTC timestamp of the last `PUT` (credential rotation).
+            Empty string when the gateway was never provisioned.
+
+    ChannelGatewayCredentialRotated:
+      type: object
+      required: [fid, token, base_url, image_url, rotated_at]
+      description: |
+        One-shot response of `PUT /v1/organizations/{org_id}/channels/{id}/gateway-credential`
+        (feature #473, spec §5.4). The plaintext `token` is returned exactly
+        once and is never retrievable afterwards.
+      properties:
+        fid:
+          type: integer
+          format: int64
+          description: |
+            Wire `fid` (channel `display_number`); WordPress plugins send this
+            in every `/compat/bil24/*` request alongside `token`.
+        token:
+          type: string
+          description: |
+            Plaintext 32-byte hex-encoded gateway secret (64 hex chars).
+            Only visible in this response body; the server persists only its
+            bcrypt hash.
+        base_url:
+          type: string
+          description: |
+            Canonical arena public base URL for the WordPress plugin's
+            `/compat/bil24/json` endpoint, derived from `APP_PUBLIC_URL`.
+            Empty string when `APP_PUBLIC_URL` is unset.
+        image_url:
+          type: string
+          description: |
+            Canonical arena public base URL for the WordPress plugin's
+            `/compat/bil24/image` endpoint, derived from `APP_PUBLIC_URL`.
+            Empty string when `APP_PUBLIC_URL` is unset.
+        rotated_at:
+          type: string
+          description: |
+            RFC3339 UTC timestamp of this rotation.
+
     FeedToken:
       type: object
       required: [id, channel_id, token, created_at]
@@ -24004,6 +24066,219 @@ paths:
           description: Channel deleted.
         "404":
           description: Channel not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ── Bil24-compat gateway credential admin (feature #473, W1-A1d) ─────────
+  # Three verbs share `channel.update` and require the `X-Admin-Reason`
+  # header (superadmin-audit convention). PUT/DELETE emit the audit event
+  # `v1.channel.gateway_credential.rotated`.
+  /v1/organizations/{org_id}/channels/{id}/gateway-credential:
+    get:
+      operationId: getChannelGatewayCredential
+      summary: Get Bil24-compat gateway credential summary
+      description: |
+        Returns the current gateway-credential status
+        (`fid`, `enabled`, `rotated_at`) for a Bil24-compat sales channel.
+        The plaintext token and its bcrypt hash are never exposed by this
+        endpoint. Requires `channel.update` and the `X-Admin-Reason` header
+        (audit trail).
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: Organization UUID that scopes this request (tenant isolation).
+          schema: { type: string, format: uuid }
+        - name: id
+          in: path
+          required: true
+          description: Sales channel UUID.
+          schema: { type: string, format: uuid }
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for the admin read (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Gateway credential summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelGatewayCredentialSummary"
+        "400":
+          description: X-Admin-Reason header missing or empty.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor is not a member of the target organization or lacks `channel.update`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Sales channel not found in the given organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    put:
+      operationId: putChannelGatewayCredential
+      summary: Rotate the Bil24-compat gateway credential
+      description: |
+        Generates a fresh 32-byte gateway secret, stores its bcrypt hash under
+        `settings.gateway.token_hash`, flips `settings.gateway.enabled=true`,
+        stamps `settings.gateway.token_rotated_at`, and returns the plaintext
+        token exactly once alongside the wire `fid`, `base_url`, `image_url`
+        and `rotated_at`. `base_url` and `image_url` are derived from the
+        deployment's `APP_PUBLIC_URL` configuration and are the empty string
+        when unset. Emits the audit action `v1.channel.gateway_credential.rotated`
+        with `metadata.outcome="rotated"`. Requires `channel.update` and the
+        `X-Admin-Reason` header.
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: Organization UUID that scopes this request (tenant isolation).
+          schema: { type: string, format: uuid }
+        - name: id
+          in: path
+          required: true
+          description: Sales channel UUID.
+          schema: { type: string, format: uuid }
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for the credential rotation (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Credential rotated. Plaintext token returned exactly once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelGatewayCredentialRotated"
+        "400":
+          description: X-Admin-Reason header missing or empty.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor is not a member of the target organization or lacks `channel.update`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Sales channel not found in the given organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      operationId: deleteChannelGatewayCredential
+      summary: Disable the Bil24-compat gateway credential
+      description: |
+        Sets `settings.gateway.enabled=false`. The bcrypt token hash is
+        retained so a subsequent GET still reflects the last rotation
+        timestamp; a follow-up PUT is required to re-enable the gateway.
+        Idempotent. Emits the audit action
+        `v1.channel.gateway_credential.rotated` with
+        `metadata.outcome="disabled"`. Requires `channel.update` and the
+        `X-Admin-Reason` header.
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: Organization UUID that scopes this request (tenant isolation).
+          schema: { type: string, format: uuid }
+        - name: id
+          in: path
+          required: true
+          description: Sales channel UUID.
+          schema: { type: string, format: uuid }
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for disabling the gateway (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Gateway credential disabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelGatewayCredentialSummary"
+        "400":
+          description: X-Admin-Reason header missing or empty.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor is not a member of the target organization or lacks `channel.update`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Sales channel not found in the given organization.
           content:
             application/json:
               schema:

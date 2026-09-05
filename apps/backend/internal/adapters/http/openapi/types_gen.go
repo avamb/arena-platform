@@ -1483,6 +1483,50 @@ type Channel struct {
 	UpdatedAt *time.Time `json:"updated_at,omitempty"`
 }
 
+// ChannelGatewayCredentialRotated One-shot response of `PUT /v1/organizations/{org_id}/channels/{id}/gateway-credential`
+// (feature #473, spec §5.4). The plaintext `token` is returned exactly
+// once and is never retrievable afterwards.
+type ChannelGatewayCredentialRotated struct {
+	// BaseUrl Canonical arena public base URL for the WordPress plugin's
+	// `/compat/bil24/json` endpoint, derived from `APP_PUBLIC_URL`.
+	// Empty string when `APP_PUBLIC_URL` is unset.
+	BaseUrl string `json:"base_url"`
+
+	// Fid Wire `fid` (channel `display_number`); WordPress plugins send this
+	// in every `/compat/bil24/*` request alongside `token`.
+	Fid int64 `json:"fid"`
+
+	// ImageUrl Canonical arena public base URL for the WordPress plugin's
+	// `/compat/bil24/image` endpoint, derived from `APP_PUBLIC_URL`.
+	// Empty string when `APP_PUBLIC_URL` is unset.
+	ImageUrl string `json:"image_url"`
+
+	// RotatedAt RFC3339 UTC timestamp of this rotation.
+	RotatedAt string `json:"rotated_at"`
+
+	// Token Plaintext 32-byte hex-encoded gateway secret (64 hex chars).
+	// Only visible in this response body; the server persists only its
+	// bcrypt hash.
+	Token string `json:"token"`
+}
+
+// ChannelGatewayCredentialSummary Read-shape of the Bil24-compat gateway credential (feature #473,
+// spec §5.4). Emitted by `GET` and `DELETE`. Never carries the token
+// or its hash.
+type ChannelGatewayCredentialSummary struct {
+	// Enabled Whether the gateway is currently active. `false` after a
+	// `DELETE` and before the first `PUT`.
+	Enabled bool `json:"enabled"`
+
+	// Fid Wire `fid` (channel `display_number`) used by WordPress plugins
+	// when calling `/compat/bil24/*`.
+	Fid int64 `json:"fid"`
+
+	// RotatedAt RFC3339 UTC timestamp of the last `PUT` (credential rotation).
+	// Empty string when the gateway was never provisioned.
+	RotatedAt string `json:"rotated_at"`
+}
+
 // CheckoutRecoverResponse Response body for `POST /v1/public/checkout/{checkout_token}/recover`
 // (feature #320 WID-0c).  Returned when a fresh reservation was
 // successfully created for the same seats/zones.
@@ -7501,6 +7545,24 @@ type CreateFeedTokenJSONBody struct {
 // UpdateChannelJSONBody defines parameters for UpdateChannel.
 type UpdateChannelJSONBody struct {
 	Name *string `json:"name,omitempty"`
+}
+
+// DeleteChannelGatewayCredentialParams defines parameters for DeleteChannelGatewayCredential.
+type DeleteChannelGatewayCredentialParams struct {
+	// XAdminReason Human-readable business reason for disabling the gateway (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// GetChannelGatewayCredentialParams defines parameters for GetChannelGatewayCredential.
+type GetChannelGatewayCredentialParams struct {
+	// XAdminReason Human-readable business reason for the admin read (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PutChannelGatewayCredentialParams defines parameters for PutChannelGatewayCredential.
+type PutChannelGatewayCredentialParams struct {
+	// XAdminReason Human-readable business reason for the credential rotation (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
 }
 
 // CreateComplimentaryIssuanceJSONBody defines parameters for CreateComplimentaryIssuance.
