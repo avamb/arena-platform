@@ -1192,6 +1192,12 @@ func (h *Handler) createPublicOrder(
 		}
 	}
 
+	if customerID != nil {
+		if err := h.supersedeOpenOrder(ctx, txq, checkCtx, cs, *customerID); err != nil {
+			return err
+		}
+	}
+
 	// The channel fee percentage is an audit snapshot only; the exact charge
 	// travels in orders.charge, so a lookup failure degrades to 0.
 	var chargePercentBP int32
@@ -1212,4 +1218,48 @@ func (h *Handler) createPublicOrder(
 		TierUnitPrices:    tierUnitPrices,
 	})
 	return err
+}
+
+// supersedeOpenOrder closes the customer's previous pending_payment order on
+// this event session before a new one is minted, so the partial unique index
+// orders_one_pending_per_customer_session_uq (spec §14.3) admits the insert.
+//
+// A widget buyer who abandons one cart and starts another with the same email
+// legitimately arrives here; before W1-A6c that was two independent holds and
+// nothing else. The earlier hold still keeps its seats until it expires on its
+// own (unchanged behaviour), only its order aggregate is cancelled with a
+// "superseded_by_new_checkout" event so the admin list shows what happened.
+// Without this the second checkout/start died on the index with a 500.
+func (h *Handler) supersedeOpenOrder(
+	ctx context.Context,
+	txq *gen.Queries,
+	checkCtx gen.PublicCheckoutContextRow,
+	cs gen.CheckoutSessionRow,
+	customerID uuid.UUID,
+) error {
+	open, err := ordering.FindOpenOrder(ctx, txq, customerID, checkCtx.SessionID)
+	if errors.Is(err, ordering.ErrNoOpenOrder) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if open.CheckoutSessionID == cs.ID {
+		return nil
+	}
+	if _, err := ordering.Cancel(ctx, txq, ordering.CancelInput{
+		OrderID: open.ID,
+		OrgID:   open.OrgID,
+		Actor:   ordering.ActorSystem,
+		Reason:  "superseded_by_new_checkout",
+	}); err != nil {
+		return fmt.Errorf("supersede open order %s: %w", open.ID, err)
+	}
+	h.logger.Info("public_feed_checkout: superseded open order",
+		slog.String("order_id", open.ID.String()),
+		slog.String("customer_id", customerID.String()),
+		slog.String("session_id", checkCtx.SessionID.String()),
+		slog.String("checkout_session_id", cs.ID.String()),
+	)
+	return nil
 }
