@@ -99,3 +99,41 @@ func TestBil24_476_GetSeatList_NonNumericInput_RejectedWithCompatDB(t *testing.T
 			ResultCodeInvalidRequest, rc, resp)
 	}
 }
+
+// TestBil24_476_Reservation_UUIDInput_RejectedWithCompatDB pins the wave-1
+// invariant for RESERVATION (spec §4 / §7.4): with compatDB wired the
+// handler refuses a UUID actionEventId with -2 before any DB call. The
+// panicDBTX stub guarantees ParseLegacyIntID short-circuits inside
+// resolveActionEventID before compatids.Resolve can touch the pool.
+func TestBil24_476_Reservation_UUIDInput_RejectedWithCompatDB(t *testing.T) {
+	// Minimal handler is enough — actionEventId parsing happens before any
+	// dependency (admissionQ / resDeps / channelQ) is consulted, so nil
+	// dependencies do not affect this contract.
+	h := newMinimalHandler().WithCompatDB(panicDBTX{})
+	sessionUUID := uuid.New().String()
+	// categoryList satisfies the "seatList or categoryList required" gate
+	// that runs after ID resolution; the request never reaches it because
+	// the UUID input is rejected first, but including it keeps the fixture
+	// self-contained if the ordering ever changes.
+	resp := postJSON(t, h,
+		`{"command":"RESERVATION","actionEventId":"`+sessionUUID+
+			`","fid":"1","token":"x","categoryList":[{"categoryPriceId":"1","quantity":1}]}`)
+	rc := mustResultCode(t, resp)
+	if rc != ResultCodeInvalidRequest {
+		t.Errorf("RESERVATION UUID input: want %d, got %d; body: %v",
+			ResultCodeInvalidRequest, rc, resp)
+	}
+}
+
+// TestBil24_476_Reservation_NonNumericInput_RejectedWithCompatDB proves
+// that garbage on the actionEventId field also returns -2.
+func TestBil24_476_Reservation_NonNumericInput_RejectedWithCompatDB(t *testing.T) {
+	h := newMinimalHandler().WithCompatDB(panicDBTX{})
+	resp := postJSON(t, h,
+		`{"command":"RESERVATION","actionEventId":"not-an-id","fid":"1","token":"x","categoryList":[{"categoryPriceId":"1","quantity":1}]}`)
+	rc := mustResultCode(t, resp)
+	if rc != ResultCodeInvalidRequest {
+		t.Errorf("RESERVATION non-numeric input: want %d, got %d; body: %v",
+			ResultCodeInvalidRequest, rc, resp)
+	}
+}

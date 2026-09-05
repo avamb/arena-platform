@@ -76,7 +76,13 @@ func (h *Handler) handleBil24Reservation(w http.ResponseWriter, r *http.Request,
 		))
 		return
 	}
-	sessionID, err := TranslateLegacyID(req.ActionEventID)
+	// Spec §4 / §7.4 (feature #476, W1-A2b): actionEventId is int64 on the
+	// wire when compatDB is wired — resolveActionEventID rejects UUID input
+	// with -2 before touching downstream queries. The nil-compatDB fallback
+	// keeps the pre-W1 UUID passthrough so existing unit-test constructors
+	// (seat_d1_312, bil24_374, ...) that omit the pool stay green during the
+	// step-by-step migration.
+	sessionID, err := h.resolveActionEventID(r.Context(), req.ActionEventID)
 	if err != nil {
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeInvalidRequest,
