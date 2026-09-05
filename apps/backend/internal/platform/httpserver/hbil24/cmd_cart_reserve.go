@@ -332,7 +332,9 @@ func (h *Handler) reservationGA(w http.ResponseWriter, ctx context.Context, req 
 	for _, it := range items {
 		total += it.Quantity
 		echoed = append(echoed, map[string]any{
-			"categoryPriceId": TranslatePlatformID(it.TierID),
+			// Spec §4 / §7.4 (feature #476): int64 wire form via compat map.
+			// Fallback (nil compatDB) returns the legacy UUID string.
+			"categoryPriceId": h.compatCategoryPriceID(ctx, it.TierID),
 			"quantity":        it.Quantity,
 		})
 	}

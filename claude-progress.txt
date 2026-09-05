@@ -24483,3 +24483,52 @@ plus the guardrail test still need ~4-6 hours across future sessions.
 Recommend continuing bottom-up (categoryPriceId in writeHoldError, then
 GA branch, then read commands, then order/tickets, finally goldens).
 
+## 2026-09-05 - #476 W1-A2b STEP 2 partial (4th slice) - categoryPriceId int64 emission
+
+Feature #476 STAYS in_progress (sub-feature rule: NEVER release the claim as too large).
+
+Delivered this session (Step 2 - categoryPriceId int64 wire form on 3 emit sites):
+- cmd_catalog.go getSeatListGA: categoryPriceId now h.compatCategoryPriceID(ctx, t.ID)
+  (int64 when compatDB wired, UUID string fallback when nil).
+- cmd_catalog.go getSeatListUnits: same swap for *s.TierID.
+- cmd_cart_reserve.go reservationGA echoed categoryList: same swap for it.TierID.
+
+Handler.compatDB is nil in all existing hbil24 unit tests (no WithCompatDB
+call sites), so the fallback keeps every seat_d1_312_test.go /
+bil24_374_test.go assertion (UUID string equality) green without edits.
+
+Gates this session - all GREEN:
+- go build ./apps/backend/... (EXIT:0)
+- go vet   ./apps/backend/... (EXIT:0)
+- go test  ./apps/backend/... full suite (EXIT:0)
+- gofmt -l on 2 changed files: clean
+
+Files touched this session:
+  apps/backend/internal/platform/httpserver/hbil24/cmd_catalog.go       (M)
+  apps/backend/internal/platform/httpserver/hbil24/cmd_cart_reserve.go  (M)
+
+STILL DEFERRED for #476 (Step 2 remaining + Step 3):
+
+Step 2 REMAINING (bottom-up order, recommended next slices first):
+  cmd_catalog.go handleBil24GetAllActions actionId + full 7.1 aggregation
+    -> compatActionID + venue/city/country lists.
+  cmd_order.go handleBil24CreateOrderExt actionEventId/categoryPriceId
+    -> ResolveLegacyIntID (input) + compat helpers (output).
+  cmd_order.go handleBil24GetOrderInfo / handleBil24CancelOrder orderId
+    -> spec 7.5/7.6 review pending.
+  cmd_tickets.go:154 handleBil24ScanTicket platformTicketId
+    -> tickets.system_ticket_id int64 per spec 7.14 (needs new query
+       to load ticket row and read system_ticket_id).
+  cmd_cart_reserve.go reservationSeated sessionId output
+    -> compatActionEventID per spec 7.4 (currently TranslatePlatformID).
+  cmd_cart_reserve.go reservationGA sessionId output
+    -> compatActionEventID likewise.
+  cmd_cart.go handleBil24UnReserve reservationId in/out
+    -> spec 7.5 review pending.
+
+Note: cmd_cart.go writeHoldError.categoryPriceId already emits int64
+via h.compatCategoryPriceID (pre-existing from an earlier slice).
+
+Step 3 - No-UUID guardrail test in tests/staticanalysis remains blocked
+until every remaining callsite is migrated and goldens regenerated.
+

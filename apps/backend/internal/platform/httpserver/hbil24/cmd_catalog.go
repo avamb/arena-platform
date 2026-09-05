@@ -280,7 +280,10 @@ func (h *Handler) getSeatListGA(w http.ResponseWriter, ctx context.Context, req 
 	seatList := make([]map[string]any, 0, len(tiers))
 	for _, t := range tiers {
 		seat := map[string]any{
-			"categoryPriceId": TranslatePlatformID(t.ID),
+			// Spec §4 / §7.2 (feature #476): int64 wire form via compat map.
+			// Fallback (nil compatDB) returns the legacy UUID string so the
+			// pre-W1 unit-test Handlers stay green.
+			"categoryPriceId": h.compatCategoryPriceID(ctx, t.ID),
 			"categoryName":    t.Name,
 			"price":           effectiveOf(t),
 			"currency":        t.Currency,
@@ -356,7 +359,8 @@ func (h *Handler) getSeatListUnits(w http.ResponseWriter, ctx context.Context, r
 			"status": bssStatusCode(s.Status),
 		}
 		if s.TierID != nil {
-			entry["categoryPriceId"] = TranslatePlatformID(*s.TierID)
+			// Spec §4 / §7.2 (feature #476): int64 wire form via compat map.
+			entry["categoryPriceId"] = h.compatCategoryPriceID(ctx, *s.TierID)
 			if t, ok := tierByID[*s.TierID]; ok {
 				entry["price"] = effectiveOf(t)
 				entry["currency"] = t.Currency
