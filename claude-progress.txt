@@ -26667,3 +26667,52 @@ Feature #485 — W1-A5c: GET_CART (spec §7.5)
   head pin nor codegen needed touching.
 
   Commit 8f08679, pushed to origin/master.
+
+================================================================================
+Integration gate - wave check after #487 (2026-09-05)
+================================================================================
+
+Ran all repo-wide gates from a clean tree (470/522 passing, 90.0%). No
+feature work done this session - pure gatekeeping. All green, nothing to
+fix, no fix-features filed:
+
+- go.exe build ./...                                               EXIT:0
+- go.exe vet ./...                                                 EXIT:0
+- go.exe test ./... (full suite, untruncated log, judged via
+  exit-code file + grep, never through a pipeline)                 EXIT:0,
+  63 packages ok, 0 FAIL
+- GOLANGCI_LINT_CACHE=/tmp/golangci-cache go.exe run
+  golangci-lint@latest run ./apps/backend/...                       0 issues
+- gofmt -l ./apps/backend/cmd ./apps/backend/internal               clean
+- npm --prefix apps/admin-web run type-check                        EXIT:0
+- npm --prefix apps/admin-web run test (vitest)                     EXIT:0,
+  1114/1114, 43 files
+- npm --prefix apps/admin-web run build                             EXIT:0
+- Migration head pin (TestHead_KnownCurrentHead, 0093_ean13_credentials.sql,
+  set by #502 before #486/#487 landed 0092 at a lower number) confirmed
+  current as part of the full go test pass.
+- Codegen drift check: regenerated all three generated artifacts from the
+  committed openapi.yaml and diffed against HEAD - zero diff on all three
+  (expected: #486/#487 are internal-only, no new HTTP routes, no
+  openapi.yaml change):
+  - go.exe run ./apps/backend/tools/openapi30gen openapi.yaml <tmp compat file>
+  - go.exe run oapi-codegen@v2.4.1 --config=apps/backend/openapi/oapi-codegen.yaml
+    -> apps/backend/internal/adapters/http/openapi/types_gen.go (no diff)
+  - node scripts/gen-ts-client.mjs
+    -> apps/backend/openapi/clients/ts/index.d.ts (no diff)
+
+git status showed only the pre-existing unrelated .autoforge/prompts/
+coding_prompt.md CRLF/LF diff and untracked features.db, both left alone
+per convention (documented in earlier sessions too - not touched here).
+Nothing was staged or committed; nothing to push (branch already matched
+origin/master, no local gate needed a fix).
+
+Noted but out of scope for this gate: a stale worktree
+.claude/worktrees/agent-a03e9d6253e551a79 (branch
+worktree-agent-a03e9d6253e551a79, last commit Aug 22) sits alongside the
+main tree. It is not part of this wave and was not touched.
+
+gh CLI remains blocked in this sandbox (org-level restriction, consistent
+with earlier verification sessions), so CI could not be independently
+re-watched here; every locally reproducible CI-equivalent gate matches
+green.
